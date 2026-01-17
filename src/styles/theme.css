@@ -1,0 +1,254 @@
+@custom-variant dark (&:is(.dark *));
+
+/**
+ * Global Theme System
+ * 
+ * This file maps design tokens to theme variables used throughout the app.
+ * All values should reference tokens.css variables (which come from Figma).
+ */
+
+:root {
+  /* Typography */
+  --font-size: var(--font-size-base, 16px);
+  --font-weight-medium: var(--font-weight-medium, 500);
+  --font-weight-normal: var(--font-weight-normal, 400);
+  
+  /* Background Colors - Using tokens from tokens.css */
+  --background: var(--color-bg-primary, #111827);
+  --foreground: var(--color-text-primary, #FFFFFF);
+  --card: var(--color-bg-card, #1F2937);
+  --card-foreground: var(--color-text-primary, #FFFFFF);
+  --popover: var(--color-bg-panel, #0B1019);
+  --popover-foreground: var(--color-text-primary, #FFFFFF);
+  
+  /* Primary Colors */
+  --primary: var(--color-primary, #3B82F6);
+  --primary-foreground: var(--color-text-primary, #FFFFFF);
+  
+  /* Secondary Colors */
+  --secondary: var(--color-bg-secondary, #0B1019);
+  --secondary-foreground: var(--color-text-secondary, #9CA3AF);
+  
+  /* Muted Colors */
+  --muted: var(--color-bg-tertiary, #1F2937);
+  --muted-foreground: var(--color-text-secondary, #9CA3AF);
+  
+  /* Accent Colors */
+  --accent: var(--color-hover-bg, rgba(255, 255, 255, 0.05));
+  --accent-foreground: var(--color-text-primary, #FFFFFF);
+  
+  /* Destructive/Error Colors */
+  --destructive: var(--color-error, #EF4444);
+  --destructive-foreground: var(--color-text-primary, #FFFFFF);
+  
+  /* Border Colors */
+  --border: var(--color-border-primary, rgba(255, 255, 255, 0.1));
+  --input: var(--color-border-secondary, rgba(255, 255, 255, 0.05));
+  --input-background: var(--color-bg-panel, #0B1019);
+  --switch-background: var(--color-bg-tertiary, #1F2937);
+  
+  /* Focus Ring */
+  --ring: var(--color-border-focus, #3B82F6);
+  
+  /* Chart Colors - TODO: Extract from Figma */
+  --chart-1: oklch(0.646 0.222 41.116);
+  --chart-2: oklch(0.6 0.118 184.704);
+  --chart-3: oklch(0.398 0.07 227.392);
+  --chart-4: oklch(0.828 0.189 84.429);
+  --chart-5: oklch(0.769 0.188 70.08);
+  
+  /* Border Radius */
+  --radius: var(--radius-lg, 0.75rem);
+  
+  /* Sidebar Colors */
+  --sidebar: var(--color-bg-panel, #0B1019);
+  --sidebar-foreground: var(--color-text-primary, #FFFFFF);
+  --sidebar-primary: var(--color-primary, #3B82F6);
+  --sidebar-primary-foreground: var(--color-text-primary, #FFFFFF);
+  --sidebar-accent: var(--color-hover-bg, rgba(255, 255, 255, 0.05));
+  --sidebar-accent-foreground: var(--color-text-primary, #FFFFFF);
+  --sidebar-border: var(--color-border-primary, rgba(255, 255, 255, 0.1));
+  --sidebar-ring: var(--color-border-focus, #3B82F6);
+}
+
+.dark {
+  /* Dark theme uses same tokens - override only if Figma specifies different values */
+  --background: var(--color-bg-primary, #111827);
+  --foreground: var(--color-text-primary, #FFFFFF);
+  --card: var(--color-bg-card, #1F2937);
+  --card-foreground: var(--color-text-primary, #FFFFFF);
+  --popover: var(--color-bg-panel, #0B1019);
+  --popover-foreground: var(--color-text-primary, #FFFFFF);
+  --primary: var(--color-primary, #3B82F6);
+  --primary-foreground: var(--color-text-primary, #FFFFFF);
+  --secondary: var(--color-bg-secondary, #0B1019);
+  --secondary-foreground: var(--color-text-secondary, #9CA3AF);
+  --muted: var(--color-bg-tertiary, #1F2937);
+  --muted-foreground: var(--color-text-secondary, #9CA3AF);
+  --accent: var(--color-hover-bg, rgba(255, 255, 255, 0.05));
+  --accent-foreground: var(--color-text-primary, #FFFFFF);
+  --destructive: var(--color-error, #EF4444);
+  --destructive-foreground: var(--color-text-primary, #FFFFFF);
+  --border: var(--color-border-primary, rgba(255, 255, 255, 0.1));
+  --input: var(--color-border-secondary, rgba(255, 255, 255, 0.05));
+  --ring: var(--color-border-focus, #3B82F6);
+  --sidebar: var(--color-bg-panel, #0B1019);
+  --sidebar-foreground: var(--color-text-primary, #FFFFFF);
+  --sidebar-primary: var(--color-primary, #3B82F6);
+  --sidebar-primary-foreground: var(--color-text-primary, #FFFFFF);
+  --sidebar-accent: var(--color-hover-bg, rgba(255, 255, 255, 0.05));
+  --sidebar-accent-foreground: var(--color-text-primary, #FFFFFF);
+  --sidebar-border: var(--color-border-primary, rgba(255, 255, 255, 0.1));
+  --sidebar-ring: var(--color-border-focus, #3B82F6);
+}
+
+@theme inline {
+  /* Colors - Mapped from tokens.css */
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-input-background: var(--input-background);
+  --color-switch-background: var(--switch-background);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  
+  /* Design Token Colors - Direct from tokens.css */
+  --color-bg-primary: var(--color-bg-primary);
+  --color-bg-secondary: var(--color-bg-secondary);
+  --color-bg-tertiary: var(--color-bg-tertiary);
+  --color-bg-card: var(--color-bg-card);
+  --color-bg-panel: var(--color-bg-panel);
+  --color-text-primary: var(--color-text-primary);
+  --color-text-secondary: var(--color-text-secondary);
+  --color-text-tertiary: var(--color-text-tertiary);
+  --color-text-disabled: var(--color-text-disabled);
+  --color-border-primary: var(--color-border-primary);
+  --color-border-secondary: var(--color-border-secondary);
+  --color-border-focus: var(--color-border-focus);
+  --color-hover-bg: var(--color-hover-bg);
+  --color-hover-text: var(--color-hover-text);
+  --color-hover-border: var(--color-hover-border);
+  --color-selected-bg: var(--color-selected-bg);
+  --color-selected-text: var(--color-selected-text);
+  --color-selected-border: var(--color-selected-border);
+  --color-disabled-bg: var(--color-disabled-bg);
+  --color-disabled-text: var(--color-disabled-text);
+  --color-disabled-border: var(--color-disabled-border);
+  --color-success: var(--color-success);
+  --color-success-hover: var(--color-success-hover);
+  --color-success-bg: var(--color-success-bg);
+  --color-warning: var(--color-warning);
+  --color-warning-hover: var(--color-warning-hover);
+  --color-warning-bg: var(--color-warning-bg);
+  --color-error: var(--color-error);
+  --color-error-hover: var(--color-error-hover);
+  --color-error-bg: var(--color-error-bg);
+  
+  /* Border Radius - From tokens.css */
+  --radius-sm: var(--radius-sm);
+  --radius-md: var(--radius-md);
+  --radius-lg: var(--radius-lg);
+  --radius-xl: var(--radius-xl);
+  --radius-2xl: var(--radius-2xl);
+  --radius-full: var(--radius-full);
+  --radius: var(--radius-lg);
+  
+  /* Sidebar Colors */
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+  
+  /* Z-Index - From tokens.css */
+  --z-index-dropdown: var(--z-index-dropdown);
+  --z-index-sticky: var(--z-index-sticky);
+  --z-index-fixed: var(--z-index-fixed);
+  --z-index-modal-backdrop: var(--z-index-modal-backdrop);
+  --z-index-modal: var(--z-index-modal);
+  --z-index-popover: var(--z-index-popover);
+  --z-index-tooltip: var(--z-index-tooltip);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+  }
+
+  /**
+  * Default typography styles for HTML elements (h1-h4, p, label, button, input).
+  * These are in @layer base, so Tailwind utility classes (like text-sm, text-lg) automatically override them.
+  */
+
+  html {
+    font-size: var(--font-size);
+  }
+
+  h1 {
+    font-size: var(--text-2xl);
+    font-weight: var(--font-weight-medium);
+    line-height: 1.5;
+  }
+
+  h2 {
+    font-size: var(--text-xl);
+    font-weight: var(--font-weight-medium);
+    line-height: 1.5;
+  }
+
+  h3 {
+    font-size: var(--text-lg);
+    font-weight: var(--font-weight-medium);
+    line-height: 1.5;
+  }
+
+  h4 {
+    font-size: var(--text-base);
+    font-weight: var(--font-weight-medium);
+    line-height: 1.5;
+  }
+
+  label {
+    font-size: var(--text-base);
+    font-weight: var(--font-weight-medium);
+    line-height: 1.5;
+  }
+
+  button {
+    font-size: var(--text-base);
+    font-weight: var(--font-weight-medium);
+    line-height: 1.5;
+  }
+
+  input {
+    font-size: var(--text-base);
+    font-weight: var(--font-weight-normal);
+    line-height: 1.5;
+  }
+}
