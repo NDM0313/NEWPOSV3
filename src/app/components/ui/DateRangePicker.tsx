@@ -66,11 +66,32 @@ const presetRanges = [
     }
   },
   {
+    label: 'Last Quarter',
+    getValue: () => {
+      const today = new Date();
+      const currentQuarter = Math.floor(today.getMonth() / 3);
+      const lastQuarter = currentQuarter === 0 ? 3 : currentQuarter - 1;
+      const lastQuarterYear = currentQuarter === 0 ? today.getFullYear() - 1 : today.getFullYear();
+      const quarterStart = new Date(lastQuarterYear, lastQuarter * 3, 1);
+      const quarterEnd = new Date(lastQuarterYear, (lastQuarter + 1) * 3, 0);
+      return { from: quarterStart, to: quarterEnd };
+    }
+  },
+  {
     label: 'This Year',
     getValue: () => {
       const today = new Date();
       const firstDay = new Date(today.getFullYear(), 0, 1);
       return { from: firstDay, to: today };
+    }
+  },
+  {
+    label: 'Last Year',
+    getValue: () => {
+      const today = new Date();
+      const lastYearStart = new Date(today.getFullYear() - 1, 0, 1);
+      const lastYearEnd = new Date(today.getFullYear() - 1, 11, 31);
+      return { from: lastYearStart, to: lastYearEnd };
     }
   },
 ];

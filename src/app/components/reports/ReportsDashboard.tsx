@@ -57,6 +57,7 @@ import { useAccounting } from '@/app/context/AccountingContext';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { useDateRange } from '@/app/context/DateRangeContext';
 import { productService } from '@/app/services/productService';
+import { exportToCSV, exportToExcel, exportToPDF, prepareExportData } from '@/app/utils/exportUtils';
 
 // --- Mock Data (Fallback) ---
 
@@ -317,6 +318,96 @@ export const ReportsDashboard = () => {
         alert: p.stock <= (p.reorderLevel || 10) / 2 ? 'Critical' : 'Low'
       }));
   }, [products]);
+
+  // Export handlers
+  const handleExportPDF = () => {
+    const exportData = getCurrentReportData();
+    exportToPDF(exportData, `Reports_${activeTab}`);
+  };
+
+  const handleExportExcel = () => {
+    const exportData = getCurrentReportData();
+    exportToExcel(exportData, `Reports_${activeTab}`);
+  };
+
+  const handleExportCSV = () => {
+    const exportData = getCurrentReportData();
+    exportToCSV(exportData, `Reports_${activeTab}`);
+  };
+
+  // Get current report data based on active tab
+  const getCurrentReportData = (): { headers: string[]; rows: (string | number)[][]; title?: string } => {
+    const dateRange = startDate && endDate 
+      ? `${new Date(startDate).toLocaleDateString()} - ${new Date(endDate).toLocaleDateString()}`
+      : 'All Time';
+
+    switch (activeTab) {
+      case 'overview':
+        return {
+          title: `Reports Overview - ${dateRange}`,
+          headers: ['Metric', 'Value'],
+          rows: [
+            ['Total Sales', `₨${metrics.totalSales.toLocaleString()}`],
+            ['Total Purchases', `₨${metrics.totalPurchases.toLocaleString()}`],
+            ['Total Expenses', `₨${metrics.totalExpenses.toLocaleString()}`],
+            ['Net Profit', `₨${metrics.netProfit.toLocaleString()}`],
+            ['Expense Ratio', `${metrics.expenseRatio.toFixed(1)}%`],
+            ['Sales Count', metrics.salesCount.toString()],
+          ]
+        };
+
+      case 'sales':
+        const filteredSales = sales.sales.filter(sale => filterByDateRange(sale.date));
+        return {
+          title: `Sales Report - ${dateRange}`,
+          headers: ['Date', 'Invoice No', 'Customer', 'Type', 'Total', 'Paid', 'Due', 'Status'],
+          rows: filteredSales.map(sale => [
+            sale.date || '',
+            sale.invoiceNo || '',
+            sale.customerName || '',
+            sale.type || '',
+            sale.total || 0,
+            sale.paid || 0,
+            sale.due || 0,
+            sale.status || ''
+          ])
+        };
+
+      case 'inventory':
+        return {
+          title: `Inventory Report - ${dateRange}`,
+          headers: ['Product', 'Category', 'Stock', 'Alert Level'],
+          rows: lowStockItems.map(item => [
+            item.name,
+            item.category,
+            item.stock,
+            item.alert
+          ])
+        };
+
+      case 'finance':
+        const filteredExpenses = expenses.expenses.filter(expense => filterByDateRange(expense.expenseDate));
+        return {
+          title: `Finance Report - ${dateRange}`,
+          headers: ['Date', 'Category', 'Amount', 'Status', 'Payment Method', 'Notes'],
+          rows: filteredExpenses.map(expense => [
+            expense.expenseDate || '',
+            expense.category || '',
+            expense.amount || 0,
+            expense.status || '',
+            expense.paymentMethod || '',
+            expense.notes || ''
+          ])
+        };
+
+      default:
+        return {
+          title: `Report - ${activeTab} - ${dateRange}`,
+          headers: ['Data'],
+          rows: [['No data available for export']]
+        };
+    }
+  };
 
   const renderTabContent = () => {
     switch (activeTab) {
@@ -759,8 +850,24 @@ export const ReportsDashboard = () => {
                 </Button>
              </DropdownMenuTrigger>
              <DropdownMenuContent className="bg-gray-900 border-gray-800 text-white">
-                <DropdownMenuItem className="cursor-pointer hover:bg-gray-800">Export as PDF</DropdownMenuItem>
-                <DropdownMenuItem className="cursor-pointer hover:bg-gray-800">Export as Excel</DropdownMenuItem>
+                <DropdownMenuItem 
+                  className="cursor-pointer hover:bg-gray-800"
+                  onClick={handleExportPDF}
+                >
+                  Export as PDF
+                </DropdownMenuItem>
+                <DropdownMenuItem 
+                  className="cursor-pointer hover:bg-gray-800"
+                  onClick={handleExportExcel}
+                >
+                  Export as Excel
+                </DropdownMenuItem>
+                <DropdownMenuItem 
+                  className="cursor-pointer hover:bg-gray-800"
+                  onClick={handleExportCSV}
+                >
+                  Export as CSV
+                </DropdownMenuItem>
              </DropdownMenuContent>
            </DropdownMenu>
         </div>

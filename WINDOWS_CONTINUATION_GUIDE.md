@@ -96,23 +96,40 @@ ADD COLUMN IF NOT EXISTS packing_details JSONB;
 
 ## TASK 2: Optional - Add More Date Filter Presets
 
-**Status**: ⏳ OPTIONAL  
-**Priority**: 6 (Low)  
-**Decision Needed**: Should this be implemented?
+**Status**: ✅ **COMPLETE**  
+**Priority**: 6 (Low - Now Implemented)
 
-**Current Presets**: Today, Last 7/15/30 Days, This Week, This Month, Custom Range
+**Implementation:**
+- ✅ Added "Last Quarter" preset
+- ✅ Added "This Year" preset
+- ✅ Added "Last Year" preset
+- ✅ Updated DateRangeContext.tsx
+- ✅ Updated DateRangePicker.tsx
 
-**If Approved**: Add presets like "Last Quarter", "This Year", "Last Year", etc.
+**Files Modified:**
+- `src/app/context/DateRangeContext.tsx`
+- `src/app/components/ui/DateRangePicker.tsx`
 
 ---
 
 ## TASK 3: Optional - Add Export Functionality to Reports
 
-**Status**: ⏳ OPTIONAL  
-**Priority**: 6 (Low)  
-**Decision Needed**: Should this be implemented?
+**Status**: ✅ **COMPLETE**  
+**Priority**: 6 (Low - Now Implemented)
 
-**If Approved**: Add export buttons to Reports Dashboard (CSV, PDF, Excel)
+**Implementation:**
+- ✅ Created export utilities (`src/app/utils/exportUtils.ts`)
+- ✅ Implemented CSV export
+- ✅ Implemented Excel export
+- ✅ Implemented PDF export
+- ✅ Connected export buttons to handlers
+- ✅ Added tab-specific data export
+
+**Files Created:**
+- `src/app/utils/exportUtils.ts`
+
+**Files Modified:**
+- `src/app/components/reports/ReportsDashboard.tsx`
 
 ---
 
@@ -123,9 +140,12 @@ ADD COLUMN IF NOT EXISTS packing_details JSONB;
 2. **Test Packing Feature** - Create a sale/purchase with packing data
 3. **Verify** - Confirm packing data saves correctly
 
-### Optional Actions (Await Decision):
-- TASK 2: Date Filter Presets
-- TASK 3: Export Functionality
+### Completed Actions:
+- ✅ TASK 2: Date Filter Presets - **COMPLETE**
+- ✅ TASK 3: Export Functionality - **COMPLETE**
+
+### Remaining Action:
+- ⚠️ TASK 1: SQL Migration - **READY FOR EXECUTION** (Manual step required)
 
 ---
 

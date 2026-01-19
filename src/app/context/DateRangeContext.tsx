@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, ReactNode } from 'react';
 
-export type DateRangeType = 'today' | 'last7days' | 'last15days' | 'last30days' | 'week' | 'month' | 'custom';
+export type DateRangeType = 'today' | 'last7days' | 'last15days' | 'last30days' | 'week' | 'month' | 'lastQuarter' | 'thisYear' | 'lastYear' | 'custom';
 
 export interface DateRange {
   type: DateRangeType;
@@ -65,6 +65,25 @@ export const DateRangeProvider: React.FC<{ children: ReactNode }> = ({ children 
       case 'month':
         const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
         return { startDate: monthStart, endDate };
+
+      case 'lastQuarter':
+        const currentQuarter = Math.floor(today.getMonth() / 3);
+        const lastQuarter = currentQuarter === 0 ? 3 : currentQuarter - 1;
+        const lastQuarterYear = currentQuarter === 0 ? today.getFullYear() - 1 : today.getFullYear();
+        const quarterStart = new Date(lastQuarterYear, lastQuarter * 3, 1);
+        const quarterEnd = new Date(lastQuarterYear, (lastQuarter + 1) * 3, 0);
+        quarterEnd.setHours(23, 59, 59, 999);
+        return { startDate: quarterStart, endDate: quarterEnd };
+
+      case 'thisYear':
+        const yearStart = new Date(today.getFullYear(), 0, 1);
+        return { startDate: yearStart, endDate };
+
+      case 'lastYear':
+        const lastYearStart = new Date(today.getFullYear() - 1, 0, 1);
+        const lastYearEnd = new Date(today.getFullYear() - 1, 11, 31);
+        lastYearEnd.setHours(23, 59, 59, 999);
+        return { startDate: lastYearStart, endDate: lastYearEnd };
 
       case 'custom':
         // Will be set by setCustomDateRange
