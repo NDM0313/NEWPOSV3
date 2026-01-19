@@ -1,10 +1,14 @@
-import React, { useState } from 'react';
-import { Plus, Search, Users, Phone, Mail, MoreVertical, Eye, Edit, Trash2, Receipt, DollarSign, ArrowUpRight, ArrowDownRight } from 'lucide-react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { Plus, Search, Users, Phone, Mail, MoreVertical, Eye, Edit, Trash2, Receipt, DollarSign, ArrowUpRight, ArrowDownRight, Loader2 } from 'lucide-react';
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Avatar, AvatarFallback, AvatarImage } from "../ui/avatar";
 import { cn } from "../ui/utils";
 import { useNavigation } from '../../context/NavigationContext';
+import { useSupabase } from '../../context/SupabaseContext';
+import { contactService } from '../../services/contactService';
+import { saleService } from '../../services/saleService';
+import { purchaseService } from '../../services/purchaseService';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -18,27 +22,122 @@ import { UnifiedLedgerView } from '../shared/UnifiedLedgerView';
 import { UnifiedPaymentDialog } from '../shared/UnifiedPaymentDialog';
 import { toast } from 'sonner';
 
-// Mock Data
-const initialContacts = [
-  { id: 1, name: 'Bilal Fabrics', type: 'Supplier', email: 'bilal@example.com', phone: '+92 300 1234567', receivables: 0, payables: 15000, status: 'Active', balance: -15000 },
-  { id: 2, name: 'Ahmed Retailers', type: 'Customer', email: 'ahmed@example.com', phone: '+92 321 7654321', receivables: 45000, payables: 0, status: 'Active', balance: 45000 },
-  { id: 3, name: 'ChenOne', type: 'Supplier', email: 'purchase@chenone.com', phone: '+92 42 111 222', receivables: 0, payables: 120000, status: 'On Hold', balance: -120000 },
-  { id: 4, name: 'Walk-in Customer', type: 'Customer', email: '-', phone: '-', receivables: 0, payables: 0, status: 'Active', balance: 0 },
-  { id: 5, name: 'Sapphire Mills', type: 'Supplier', email: 'accounts@sapphire.com', phone: '+92 300 9876543', receivables: 5000, payables: 45000, status: 'Active', balance: -40000 },
-];
+interface ContactListItem {
+  id: number;
+  uuid: string;
+  name: string;
+  type: 'Supplier' | 'Customer';
+  email: string;
+  phone: string;
+  receivables: number;
+  payables: number;
+  status: 'Active' | 'On Hold';
+  balance: number;
+}
 
 export const ContactList = () => {
   const { openDrawer } = useNavigation();
-  const [contacts, setContacts] = useState(initialContacts);
+  const { companyId, branchId } = useSupabase();
+  const [contacts, setContacts] = useState<ContactListItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState('');
   
   // Action States
-  const [selectedContact, setSelectedContact] = useState<any>(null);
+  const [selectedContact, setSelectedContact] = useState<ContactListItem | null>(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   
   // ✅ Unified Components State
   const [isLedgerOpen, setIsLedgerOpen] = useState(false);
   const [isPaymentDialogOpen, setIsPaymentDialogOpen] = useState(false);
+
+  // Load contacts from Supabase
+  const loadContacts = useCallback(async () => {
+    if (!companyId) return;
+    
+    try {
+      setLoading(true);
+      
+      // Load contacts
+      const contactsData = await contactService.getAllContacts(companyId);
+      
+      // Load sales and purchases to calculate balances
+      const [salesData, purchasesData] = await Promise.all([
+        saleService.getAllSales(companyId, branchId || undefined).catch(() => []),
+        purchaseService.getAllPurchases(companyId, branchId || undefined).catch(() => []),
+      ]);
+      
+      // Convert to app format
+      const convertedContacts: ContactListItem[] = contactsData.map((c: any, index: number) => {
+        // Calculate receivables (from sales)
+        const receivables = salesData
+          .filter((s: any) => s.customer_id === c.id)
+          .reduce((sum: number, s: any) => sum + (s.due_amount || 0), 0);
+        
+        // Calculate payables (from purchases)
+        const payables = purchasesData
+          .filter((p: any) => p.supplier_id === c.id)
+          .reduce((sum: number, p: any) => sum + (p.due_amount || 0), 0);
+        
+        // Determine type
+        let contactType: 'Supplier' | 'Customer' = 'Customer';
+        if (c.type === 'supplier') {
+          contactType = 'Supplier';
+        } else if (c.type === 'customer') {
+          contactType = 'Customer';
+        } else if (c.type === 'worker') {
+          contactType = 'Supplier'; // Workers are treated as suppliers for payments
+        }
+        
+        // Determine status
+        let status: 'Active' | 'On Hold' = 'Active';
+        if (c.status === 'onhold' || c.status === 'inactive') {
+          status = 'On Hold';
+        }
+        
+        return {
+          id: index + 1,
+          uuid: c.id,
+          name: c.name || '',
+          type: contactType,
+          email: c.email || '-',
+          phone: c.phone || c.mobile || '-',
+          receivables,
+          payables,
+          status,
+          balance: receivables - payables,
+        };
+      });
+      
+      setContacts(convertedContacts);
+    } catch (error: any) {
+      console.error('[CONTACT LIST] Error loading contacts:', error);
+      toast.error('Failed to load contacts: ' + (error.message || 'Unknown error'));
+      setContacts([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [companyId, branchId]);
+
+  // Load contacts on mount
+  useEffect(() => {
+    if (companyId) {
+      loadContacts();
+    } else {
+      setLoading(false);
+    }
+  }, [companyId, loadContacts]);
+
+  // Filter contacts by search term
+  const filteredContacts = useMemo(() => {
+    if (!searchTerm) return contacts;
+    const term = searchTerm.toLowerCase();
+    return contacts.filter(c => 
+      c.name.toLowerCase().includes(term) ||
+      c.email.toLowerCase().includes(term) ||
+      c.phone.toLowerCase().includes(term)
+    );
+  }, [contacts, searchTerm]);
 
   // Handlers
   const handleEdit = (contact: any) => {
@@ -69,51 +168,52 @@ export const ContactList = () => {
     setIsPaymentDialogOpen(true);
   };
 
-  const handleConfirmDelete = () => {
+  const handleConfirmDelete = async () => {
     if (selectedContact) {
-      setContacts(prev => prev.filter(c => c.id !== selectedContact.id));
-      setIsDeleteModalOpen(false);
+      try {
+        await contactService.deleteContact(selectedContact.uuid);
+        await loadContacts(); // Reload from database
+        setIsDeleteModalOpen(false);
+        setSelectedContact(null);
+        toast.success(`${selectedContact.name} deleted successfully`);
+      } catch (error: any) {
+        console.error('[CONTACT LIST] Error deleting contact:', error);
+        toast.error('Failed to delete contact: ' + (error.message || 'Unknown error'));
+      }
+    }
+  };
+
+  const handleUpdateContact = async (updatedContact: Contact) => {
+    if (!selectedContact) return;
+    
+    try {
+      // Update in Supabase
+      await contactService.updateContact(selectedContact.uuid, {
+        name: updatedContact.name,
+        email: updatedContact.email,
+        phone: updatedContact.mobile || updatedContact.phone,
+        city: updatedContact.city,
+        country: updatedContact.country,
+        address: updatedContact.address,
+      });
+      
+      // Reload contacts
+      await loadContacts();
+      
+      setIsEditModalOpen(false);
       setSelectedContact(null);
-      toast.success(`${selectedContact.name} deleted successfully`);
+      toast.success('Contact updated successfully');
+    } catch (error: any) {
+      console.error('[CONTACT LIST] Error updating contact:', error);
+      toast.error('Failed to update contact: ' + (error.message || 'Unknown error'));
     }
   };
 
-  const handleUpdateContact = (updatedContact: Contact) => {
-    setContacts(prev => prev.map(c => 
-      c.id === updatedContact.id 
-        ? { ...c, ...updatedContact, email: updatedContact.email || c.email } 
-        : c
-    ));
-    if (selectedContact && selectedContact.id === updatedContact.id) {
-       setSelectedContact({ ...selectedContact, ...updatedContact });
-    }
-    toast.success('Contact updated successfully');
-  };
-
-  const handlePaymentComplete = (paymentData: any) => {
-    // Update contact balance
-    if (selectedContact) {
-      setContacts(prev => prev.map(c => {
-        if (c.id === selectedContact.id) {
-          if (c.type === 'Supplier') {
-            return {
-              ...c,
-              payables: Math.max(0, c.payables - paymentData.amount),
-              balance: c.balance + paymentData.amount
-            };
-          } else {
-            return {
-              ...c,
-              receivables: Math.max(0, c.receivables - paymentData.amount),
-              balance: c.balance - paymentData.amount
-            };
-          }
-        }
-        return c;
-      }));
-      toast.success('Payment recorded successfully');
-    }
+  const handlePaymentComplete = async (paymentData: any) => {
+    // Reload contacts to get updated balances
+    await loadContacts();
     setIsPaymentDialogOpen(false);
+    toast.success('Payment recorded successfully');
   };
 
   return (
@@ -154,7 +254,7 @@ export const ContactList = () => {
         <GlassCard 
           title="Active Contacts" 
           value={contacts.length.toString()} 
-          subtitle="+3 New this month"
+          subtitle={`${contacts.filter(c => c.status === 'Active').length} Active`}
           highlightColor="text-white"
         />
       </div>
@@ -167,7 +267,9 @@ export const ContactList = () => {
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={16} />
             <Input 
               placeholder="Search contacts..." 
-              className="pl-9 bg-gray-950 border-gray-800 text-white focus:border-blue-500 transition-all" 
+              className="pl-9 bg-gray-950 border-gray-800 text-white focus:border-blue-500 transition-all"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
             />
           </div>
           <div className="flex gap-2 ml-auto">
@@ -191,7 +293,23 @@ export const ContactList = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-800">
-              {contacts.map((contact) => {
+              {loading ? (
+                <tr>
+                  <td colSpan={7} className="px-6 py-12 text-center">
+                    <Loader2 size={48} className="mx-auto text-blue-500 mb-3 animate-spin" />
+                    <p className="text-gray-400 text-sm">Loading contacts...</p>
+                  </td>
+                </tr>
+              ) : filteredContacts.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="px-6 py-12 text-center">
+                    <Users size={48} className="mx-auto text-gray-600 mb-3" />
+                    <p className="text-gray-400 text-sm">No contacts found</p>
+                    <p className="text-gray-600 text-xs mt-1">Try adjusting your search</p>
+                  </td>
+                </tr>
+              ) : (
+                filteredContacts.map((contact) => {
                 const hasOutstanding = contact.type === 'Supplier' ? contact.payables > 0 : contact.receivables > 0;
                 
                 return (
@@ -304,7 +422,7 @@ export const ContactList = () => {
                     </td>
                   </tr>
                 );
-              })}
+              }))}
             </tbody>
           </table>
         </div>
@@ -326,7 +444,7 @@ export const ContactList = () => {
         onClose={() => setIsLedgerOpen(false)}
         entityType={selectedContact?.type === 'Supplier' ? 'supplier' : 'customer'}
         entityName={selectedContact?.name || ''}
-        entityId={selectedContact?.id?.toString()}
+        entityId={selectedContact?.uuid}
       />
 
       {/* 3. Unified Payment Dialog */}
@@ -335,7 +453,7 @@ export const ContactList = () => {
         onClose={() => setIsPaymentDialogOpen(false)}
         context={selectedContact?.type === 'Supplier' ? 'supplier' : 'customer'}
         entityName={selectedContact?.name || ''}
-        entityId={selectedContact?.id?.toString()}
+        entityId={selectedContact?.uuid}
         outstandingAmount={selectedContact?.type === 'Supplier' ? selectedContact?.payables || 0 : selectedContact?.receivables || 0}
         onSuccess={handlePaymentComplete}
       />
@@ -352,6 +470,9 @@ export const ContactList = () => {
            name: selectedContact?.name,
            mobile: selectedContact?.phone,
            balance: selectedContact?.balance,
+           city: selectedContact?.city,
+           country: selectedContact?.country,
+           address: selectedContact?.address,
            type: 'individual'
         }}
       />

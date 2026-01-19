@@ -1,4 +1,7 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import { useSupabase } from '@/app/context/SupabaseContext';
+import { rentalService } from '@/app/services/rentalService';
+import { toast } from 'sonner';
 import { 
   Search, 
   Calendar, 
@@ -65,102 +68,7 @@ interface RentalOrder {
   status: RentalStatus;
 }
 
-// Enhanced mock data with all fields
-const mockOrders: RentalOrder[] = [
-  { 
-    id: "ORD-1001", 
-    productName: "Royal Red Bridal Lehenga",
-    productCode: "RBL-001",
-    productImage: "https://images.unsplash.com/photo-1595777457583-95e059d581b8?w=800&q=80",
-    rentalType: "Premium",
-    customerName: "Sarah Khan", 
-    customerMobile: "+92 300 1234567",
-    pickupDate: "2026-02-01",
-    pickupTime: "10:00 AM",
-    returnDate: "2026-02-05", 
-    rentalAmount: 25000,
-    paidAmount: 15000,
-    balanceDue: 10000,
-    securityDeposit: 5000,
-    guaranteeType: "ID Card",
-    documentAttached: true,
-    status: "Booked",
-  },
-  { 
-    id: "ORD-1002", 
-    productName: "Emerald Green Sharara",
-    productCode: "EGS-002",
-    productImage: "https://images.unsplash.com/photo-1583391725988-e3eefa84d0f7?w=800&q=80",
-    rentalType: "Standard",
-    customerName: "Fatima Ali", 
-    customerMobile: "+92 321 9876543",
-    pickupDate: "2026-01-28",
-    pickupTime: "02:00 PM",
-    returnDate: "2026-02-02", 
-    rentalAmount: 18000,
-    paidAmount: 18000,
-    balanceDue: 0,
-    securityDeposit: 3000,
-    guaranteeType: "License",
-    documentAttached: true,
-    status: "Dispatched",
-  },
-  { 
-    id: "ORD-1003", 
-    productName: "Ivory Gold Gown",
-    productCode: "IGG-003",
-    productImage: "https://images.unsplash.com/photo-1566174053879-31528523f8ae?w=800&q=80",
-    rentalType: "Premium",
-    customerName: "Zara Ahmed", 
-    customerMobile: "+92 333 4567890",
-    pickupDate: "2026-01-15",
-    pickupTime: "11:00 AM",
-    returnDate: new Date().toISOString().split('T')[0], // Today - Due Today
-    rentalAmount: 30000,
-    paidAmount: 30000,
-    balanceDue: 0,
-    securityDeposit: 6000,
-    guaranteeType: "Passport",
-    documentAttached: true,
-    status: "Dispatched",
-  },
-  { 
-    id: "ORD-1004", 
-    productName: "Peach Walima Dress",
-    productCode: "PWD-004",
-    productImage: "https://images.unsplash.com/photo-1518049362260-00ac5bf47086?w=800&q=80",
-    rentalType: "Standard",
-    customerName: "Ayesha Malik", 
-    customerMobile: "+92 345 1122334",
-    pickupDate: "2026-01-10",
-    returnDate: "2026-01-15", // Overdue (past date)
-    rentalAmount: 22000,
-    paidAmount: 12000,
-    balanceDue: 10000,
-    securityDeposit: 4000,
-    guaranteeType: "ID Card",
-    documentAttached: false,
-    status: "Overdue",
-  },
-  { 
-    id: "ORD-1005", 
-    productName: "Silver Mirror Work Anarkali",
-    productCode: "SMA-005",
-    productImage: "https://images.unsplash.com/photo-1610030469983-98e550d6193c?w=800&q=80",
-    rentalType: "Premium",
-    customerName: "Hina Tariq", 
-    customerMobile: "+92 312 5566778",
-    pickupDate: "2026-01-20",
-    returnDate: "2026-01-24", 
-    rentalAmount: 28000,
-    paidAmount: 28000,
-    balanceDue: 0,
-    securityDeposit: 5000,
-    guaranteeType: "License",
-    documentAttached: true,
-    status: "Returned",
-  },
-];
+// Rental data will be loaded from Supabase
 
 // Column visibility options
 const allColumns = [
@@ -177,6 +85,9 @@ const allColumns = [
 ];
 
 export const RentalOrdersList = () => {
+  const { companyId, branchId } = useSupabase();
+  const [orders, setOrders] = useState<RentalOrder[]>([]);
+  const [loading, setLoading] = useState(true);
   const [returnModalOpen, setReturnModalOpen] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState<RentalOrder | null>(null);
 
@@ -199,14 +110,77 @@ export const RentalOrdersList = () => {
   );
   const [columnOpen, setColumnOpen] = useState(false);
 
+  // Convert Supabase rental to RentalOrder format
+  const convertFromSupabaseRental = useCallback((rental: any): RentalOrder => {
+    // Get first item for product info
+    const firstItem = rental.items?.[0];
+    const product = firstItem?.product || {};
+    
+    // Map status
+    const statusMap: Record<string, RentalStatus> = {
+      'booked': 'Booked',
+      'picked_up': 'Dispatched',
+      'returned': 'Returned',
+      'overdue': 'Overdue',
+      'cancelled': 'Cancelled',
+      'closed': 'Returned'
+    };
+    
+    return {
+      id: rental.id || rental.booking_no || '',
+      productName: product.name || firstItem?.product_name || 'Unknown Product',
+      productCode: product.sku || firstItem?.product_name || '',
+      productImage: product.image_url || '/placeholder-product.jpg',
+      rentalType: rental.rental_charges > 50000 ? 'Premium' : 'Standard',
+      customerName: rental.customer_name || rental.customer?.name || 'Walk-in Customer',
+      customerMobile: rental.customer?.phone || '',
+      pickupDate: rental.pickup_date || rental.booking_date || '',
+      pickupTime: rental.pickup_time,
+      returnDate: rental.return_date || '',
+      rentalAmount: rental.rental_charges || 0,
+      paidAmount: rental.paid_amount || 0,
+      balanceDue: (rental.total_amount || 0) - (rental.paid_amount || 0),
+      securityDeposit: rental.security_deposit || 0,
+      guaranteeType: 'ID Card', // Default, can be enhanced
+      documentAttached: false, // Can be enhanced
+      status: statusMap[rental.status] || 'Booked'
+    };
+  }, []);
+
+  // Load rentals from Supabase
+  const loadRentals = useCallback(async () => {
+    if (!companyId) {
+      setLoading(false);
+      return;
+    }
+
+    try {
+      setLoading(true);
+      const rentalsData = await rentalService.getAllRentals(companyId, branchId || undefined);
+      const convertedOrders = rentalsData.map(convertFromSupabaseRental);
+      setOrders(convertedOrders);
+    } catch (error: any) {
+      console.error('[RENTAL ORDERS LIST] Error loading rentals:', error);
+      toast.error('Failed to load rentals: ' + (error.message || 'Unknown error'));
+      setOrders([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [companyId, branchId, convertFromSupabaseRental]);
+
+  // Load rentals on mount
+  useEffect(() => {
+    loadRentals();
+  }, [loadRentals]);
+
   // Calculate dashboard stats
   const stats = useMemo(() => {
-    const activeRentals = mockOrders.filter(o => o.status === 'Dispatched').length;
-    const overdueReturns = mockOrders.filter(o => o.status === 'Overdue').length;
-    const totalOutstanding = mockOrders.reduce((sum, o) => sum + o.balanceDue, 0);
+    const activeRentals = orders.filter(o => o.status === 'Dispatched').length;
+    const overdueReturns = orders.filter(o => o.status === 'Overdue').length;
+    const totalOutstanding = orders.reduce((sum, o) => sum + o.balanceDue, 0);
     const todayDate = new Date().toISOString().split('T')[0];
-    const todayDispatches = mockOrders.filter(o => o.pickupDate === todayDate).length;
-    const todayReturns = mockOrders.filter(o => o.returnDate === todayDate).length;
+    const todayDispatches = orders.filter(o => o.pickupDate === todayDate).length;
+    const todayReturns = orders.filter(o => o.returnDate === todayDate).length;
 
     return {
       activeRentals,
@@ -215,7 +189,7 @@ export const RentalOrdersList = () => {
       todayDispatches,
       todayReturns
     };
-  }, []);
+  }, [orders]);
 
   // Get return date status
   const getReturnDateStatus = (returnDate: string) => {
@@ -235,12 +209,12 @@ export const RentalOrdersList = () => {
 
   // Apply search and filters with auto-sort
   const filteredOrders = useMemo(() => {
-    let orders = [...mockOrders];
+    let filtered = [...orders];
 
     // Search filter
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase();
-      orders = orders.filter(o => 
+      filtered = filtered.filter(o => 
         o.id.toLowerCase().includes(query) || 
         o.customerName.toLowerCase().includes(query) ||
         o.customerMobile.includes(query) ||
@@ -251,12 +225,12 @@ export const RentalOrdersList = () => {
 
     // Status filter
     if (filterStatus !== 'all') {
-      orders = orders.filter(o => o.status === filterStatus);
+      filtered = filtered.filter(o => o.status === filterStatus);
     }
 
     // Date range filter
     if (filterDateRange.from || filterDateRange.to) {
-      orders = orders.filter(o => {
+      filtered = filtered.filter(o => {
         const returnDate = new Date(o.returnDate);
         if (filterDateRange.from && returnDate < filterDateRange.from) return false;
         if (filterDateRange.to && returnDate > filterDateRange.to) return false;
@@ -265,7 +239,7 @@ export const RentalOrdersList = () => {
     }
 
     // AUTO-SORT: Overdue first, then near-due, then normal
-    orders.sort((a, b) => {
+    filtered.sort((a, b) => {
       const statusA = getReturnDateStatus(a.returnDate);
       const statusB = getReturnDateStatus(b.returnDate);
       
@@ -273,8 +247,8 @@ export const RentalOrdersList = () => {
       return priority[statusA] - priority[statusB];
     });
 
-    return orders;
-  }, [searchQuery, filterStatus, filterDateRange]);
+    return filtered;
+  }, [orders, searchQuery, filterStatus, filterDateRange]);
 
   // Paginated orders
   const displayedOrders = rowsPerPage === 0 ? filteredOrders : filteredOrders.slice(0, rowsPerPage);
@@ -492,7 +466,11 @@ export const RentalOrdersList = () => {
         {/* Results Header */}
         <div className="bg-gray-900/70 px-4 py-2 border-b border-gray-800 flex items-center justify-between">
           <p className="text-xs text-gray-400">
-            Showing <span className="text-white font-medium">{displayedOrders.length}</span> of <span className="text-white font-medium">{filteredOrders.length}</span> bookings
+            {loading ? 'Loading...' : (
+              <>
+                Showing <span className="text-white font-medium">{displayedOrders.length}</span> of <span className="text-white font-medium">{filteredOrders.length}</span> bookings
+              </>
+            )}
           </p>
           {hasActiveFilters && (
             <span className="text-xs text-pink-400 flex items-center gap-1">
@@ -504,29 +482,35 @@ export const RentalOrdersList = () => {
 
         {/* Table with sticky header */}
         <div className="overflow-auto max-h-[600px]">
-          <table className="w-full text-sm text-left">
-            <thead className="bg-gray-900 text-gray-400 font-medium border-b border-gray-800 sticky top-0 z-10">
-              <tr>
-                {columnVisibility.product && <th className="p-4 font-medium">Product</th>}
-                {columnVisibility.customer && <th className="p-4 font-medium">Customer</th>}
-                {columnVisibility.pickupDate && <th className="p-4 font-medium">Pickup Date</th>}
-                {columnVisibility.returnDate && <th className="p-4 font-medium">Return Date</th>}
-                {columnVisibility.rentalAmount && <th className="p-4 font-medium text-right">Rental Amount</th>}
-                {columnVisibility.paidAmount && <th className="p-4 font-medium text-right">Paid Amount</th>}
-                {columnVisibility.balanceDue && <th className="p-4 font-medium text-right">Balance Due</th>}
-                {columnVisibility.securityDeposit && <th className="p-4 font-medium text-right">Security</th>}
-                {columnVisibility.status && <th className="p-4 font-medium">Status</th>}
-                {columnVisibility.action && <th className="p-4 font-medium text-right">Action</th>}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-800">
-              {displayedOrders.length === 0 ? (
+          {loading ? (
+            <div className="p-8 text-center text-gray-500">
+              <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-pink-500"></div>
+              <p className="mt-2">Loading rentals...</p>
+            </div>
+          ) : (
+            <table className="w-full text-sm text-left">
+              <thead className="bg-gray-900 text-gray-400 font-medium border-b border-gray-800 sticky top-0 z-10">
                 <tr>
-                  <td colSpan={11} className="p-8 text-center text-gray-500">
-                    No bookings found
-                  </td>
+                  {columnVisibility.product && <th className="p-4 font-medium">Product</th>}
+                  {columnVisibility.customer && <th className="p-4 font-medium">Customer</th>}
+                  {columnVisibility.pickupDate && <th className="p-4 font-medium">Pickup Date</th>}
+                  {columnVisibility.returnDate && <th className="p-4 font-medium">Return Date</th>}
+                  {columnVisibility.rentalAmount && <th className="p-4 font-medium text-right">Rental Amount</th>}
+                  {columnVisibility.paidAmount && <th className="p-4 font-medium text-right">Paid Amount</th>}
+                  {columnVisibility.balanceDue && <th className="p-4 font-medium text-right">Balance Due</th>}
+                  {columnVisibility.securityDeposit && <th className="p-4 font-medium text-right">Security</th>}
+                  {columnVisibility.status && <th className="p-4 font-medium">Status</th>}
+                  {columnVisibility.action && <th className="p-4 font-medium text-right">Action</th>}
                 </tr>
-              ) : displayedOrders.map((order) => {
+              </thead>
+              <tbody className="divide-y divide-gray-800">
+                {displayedOrders.length === 0 ? (
+                  <tr>
+                    <td colSpan={11} className="p-8 text-center text-gray-500">
+                      No bookings found
+                    </td>
+                  </tr>
+                ) : displayedOrders.map((order) => {
                 const dateStatus = getReturnDateStatus(order.returnDate);
                 const isOverdue = dateStatus === 'overdue';
                 const isNearDue = dateStatus === 'today' || dateStatus === 'neardue';
@@ -751,6 +735,7 @@ export const RentalOrdersList = () => {
               })}
             </tbody>
           </table>
+          )}
         </div>
 
         {/* Footer - Sticky */}

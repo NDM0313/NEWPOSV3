@@ -12,6 +12,8 @@ interface SupabaseContextType {
   userRole: string | null;
   branchId: string | null;
   defaultBranchId: string | null;
+  setBranchId: (branchId: string | null) => void;
+  supabaseClient: typeof supabase;
 }
 
 const SupabaseContext = createContext<SupabaseContextType | undefined>(undefined);
@@ -111,7 +113,7 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   // Load user's default branch
   const loadUserBranch = async (userId: string, companyId: string) => {
     try {
-      // First, try to get user's default branch
+      // First, try to get user's default branch (table may not exist)
       const { data: userBranch, error: branchError } = await supabase
         .from('user_branches')
         .select('branch_id')
@@ -119,11 +121,17 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         .eq('is_default', true)
         .single();
 
+      // If table doesn't exist (406 error) or no data, skip to company branch
       if (userBranch && !branchError) {
         setDefaultBranchId(userBranch.branch_id);
         setBranchId(userBranch.branch_id);
         console.log('[BRANCH LOADED]', { branchId: userBranch.branch_id });
         return;
+      }
+      
+      // If error is 406 (Not Acceptable), table doesn't exist - skip to company branch
+      if (branchError && branchError.code === 'PGRST301') {
+        // Table doesn't exist, continue to company branch lookup
       }
 
       // If no default branch, get first branch for company
@@ -197,7 +205,7 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   return (
     <SupabaseContext.Provider
-      value={{ user, session, loading, signIn, signOut, companyId, userRole, branchId, defaultBranchId }}
+      value={{ user, session, loading, signIn, signOut, companyId, userRole, branchId, defaultBranchId, setBranchId, supabaseClient: supabase }}
     >
       {children}
     </SupabaseContext.Provider>

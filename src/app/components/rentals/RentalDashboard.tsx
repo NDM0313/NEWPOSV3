@@ -1,14 +1,67 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Plus, LayoutList, Calendar as CalendarIcon } from 'lucide-react';
 import { Button } from "../ui/button";
 import { RentalBookingDrawer } from './RentalBookingDrawer';
 import { RentalOrdersList } from './RentalOrdersList';
 import { RentalCalendar } from './RentalCalendar';
 import { clsx } from 'clsx';
+import { useSupabase } from '@/app/context/SupabaseContext';
+import { rentalService } from '@/app/services/rentalService';
 
 export const RentalDashboard = () => {
+  const { companyId, branchId } = useSupabase();
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [viewMode, setViewMode] = useState<'list' | 'calendar'>('list');
+  const [rentals, setRentals] = useState<any[]>([]);
+  
+  // Load rentals
+  useEffect(() => {
+    const loadRentals = async () => {
+      if (!companyId) return;
+      
+      try {
+        const data = await rentalService.getAllRentals(companyId, branchId || undefined);
+        setRentals(data || []);
+      } catch (error) {
+        console.error('[RENTAL DASHBOARD] Error loading rentals:', error);
+      }
+    };
+    
+    loadRentals();
+  }, [companyId, branchId]);
+  
+  // Calculate stats
+  const stats = useMemo(() => {
+    const today = new Date().toISOString().split('T')[0];
+    const activeRentals = rentals.filter(r => 
+      r.status === 'booked' || r.status === 'picked_up'
+    );
+    const returnsDueToday = rentals.filter(r => 
+      r.return_date === today && (r.status === 'booked' || r.status === 'picked_up')
+    );
+    const overdueItems = rentals.filter(r => {
+      if (!r.return_date || r.status === 'returned' || r.status === 'closed') return false;
+      return new Date(r.return_date) < new Date(today);
+    });
+    
+    // Calculate total revenue for current month
+    const currentMonth = new Date().getMonth();
+    const currentYear = new Date().getFullYear();
+    const monthlyRevenue = rentals
+      .filter(r => {
+        const rentalDate = new Date(r.booking_date || r.created_at);
+        return rentalDate.getMonth() === currentMonth && 
+               rentalDate.getFullYear() === currentYear;
+      })
+      .reduce((sum, r) => sum + (r.paid_amount || 0), 0);
+    
+    return {
+      activeRentals: activeRentals.length,
+      returnsDueToday: returnsDueToday.length,
+      overdueItems: overdueItems.length,
+      totalRevenue: monthlyRevenue
+    };
+  }, [rentals]);
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500 h-full flex flex-col">
@@ -56,19 +109,19 @@ export const RentalDashboard = () => {
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 shrink-0">
             <div className="bg-gray-900 border border-gray-800 p-4 rounded-xl">
                 <p className="text-gray-500 text-sm">Active Rentals</p>
-                <h3 className="text-2xl font-bold text-white mt-1">12</h3>
+                <h3 className="text-2xl font-bold text-white mt-1">{stats.activeRentals}</h3>
             </div>
             <div className="bg-gray-900 border border-gray-800 p-4 rounded-xl">
                 <p className="text-gray-500 text-sm">Returns Due Today</p>
-                <h3 className="text-2xl font-bold text-orange-400 mt-1">1</h3>
+                <h3 className="text-2xl font-bold text-orange-400 mt-1">{stats.returnsDueToday}</h3>
             </div>
             <div className="bg-gray-900 border border-gray-800 p-4 rounded-xl">
                 <p className="text-gray-500 text-sm">Overdue Items</p>
-                <h3 className="text-2xl font-bold text-red-500 mt-1">1</h3>
+                <h3 className="text-2xl font-bold text-red-500 mt-1">{stats.overdueItems}</h3>
             </div>
             <div className="bg-gray-900 border border-gray-800 p-4 rounded-xl">
-                <p className="text-gray-500 text-sm">Total Revenue (Dec)</p>
-                <h3 className="text-2xl font-bold text-green-500 mt-1">$450k</h3>
+                <p className="text-gray-500 text-sm">Total Revenue ({new Date().toLocaleString('default', { month: 'short' })})</p>
+                <h3 className="text-2xl font-bold text-green-500 mt-1">${(stats.totalRevenue / 1000).toFixed(0)}k</h3>
             </div>
         </div>
       )}

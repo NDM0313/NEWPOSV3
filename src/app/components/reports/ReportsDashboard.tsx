@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import { 
   BarChart, 
   Bar, 
@@ -50,8 +50,15 @@ import {
 import { ProductLedger } from './ProductLedger';
 import { CustomerProfitabilityReport } from './CustomerProfitability';
 import { ProfitLossStatement } from './ProfitLossStatement';
+import { useSales } from '@/app/context/SalesContext';
+import { usePurchases } from '@/app/context/PurchaseContext';
+import { useExpenses } from '@/app/context/ExpenseContext';
+import { useAccounting } from '@/app/context/AccountingContext';
+import { useSupabase } from '@/app/context/SupabaseContext';
+import { useDateRange } from '@/app/context/DateRangeContext';
+import { productService } from '@/app/services/productService';
 
-// --- Mock Data ---
+// --- Mock Data (Fallback) ---
 
 // Overview: Income vs Expense
 const incomeExpenseData = [
@@ -189,7 +196,127 @@ const CalendarHeatmap = () => {
 import { ItemLifecycleReport } from './ItemLifecycleReport';
 
 export const ReportsDashboard = () => {
+  const sales = useSales();
+  const purchases = usePurchases();
+  const expenses = useExpenses();
+  const accounting = useAccounting();
+  const { companyId } = useSupabase();
+  const { startDate, endDate } = useDateRange();
   const [activeTab, setActiveTab] = useState('overview');
+  const [products, setProducts] = useState<any[]>([]);
+
+  // Filter data by date range
+  const filterByDateRange = useCallback((dateStr: string | undefined): boolean => {
+    if (!startDate && !endDate) return true;
+    if (!dateStr) return false;
+    
+    const date = new Date(dateStr);
+    if (startDate && date < new Date(startDate)) return false;
+    if (endDate && date > new Date(endDate + 'T23:59:59')) return false;
+    return true;
+  }, [startDate, endDate]);
+
+  // Load products for inventory reports
+  React.useEffect(() => {
+    if (companyId) {
+      productService.getAllProducts(companyId).then(setProducts).catch(console.error);
+    }
+  }, [companyId]);
+
+  // Calculate real metrics (filtered by date range)
+  const metrics = useMemo(() => {
+    const filteredSales = sales.sales.filter(sale => filterByDateRange(sale.date));
+    const filteredPurchases = purchases.purchases.filter(purchase => filterByDateRange(purchase.poDate));
+    const filteredExpenses = expenses.expenses.filter(expense => filterByDateRange(expense.expenseDate));
+
+    const totalSales = filteredSales.reduce((sum, sale) => 
+      sale.type === 'invoice' ? sum + sale.total : sum, 0
+    );
+    
+    const totalPurchases = filteredPurchases.reduce((sum, purchase) => 
+      sum + purchase.total, 0
+    );
+    
+    const totalExpenses = filteredExpenses
+      .filter(e => e.status === 'paid')
+      .reduce((sum, expense) => sum + expense.amount, 0);
+    
+    const netProfit = totalSales - totalPurchases - totalExpenses;
+    const expenseRatio = totalSales > 0 ? (totalExpenses / totalSales) * 100 : 0;
+
+    return {
+      totalSales,
+      totalPurchases,
+      totalExpenses,
+      netProfit,
+      expenseRatio,
+      salesCount: filteredSales.filter(s => s.type === 'invoice').length
+    };
+  }, [sales.sales, purchases.purchases, expenses.expenses, filterByDateRange]);
+
+  // Generate income vs expense chart data (last 7 months)
+  const incomeExpenseData = useMemo(() => {
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul'];
+    return months.map((month, index) => {
+      const monthDate = new Date();
+      monthDate.setMonth(monthDate.getMonth() - (6 - index));
+      const monthStart = new Date(monthDate.getFullYear(), monthDate.getMonth(), 1);
+      const monthEnd = new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 0);
+
+      const income = sales.sales
+        .filter(s => {
+          if (!filterByDateRange(s.date)) return false;
+          const saleDate = new Date(s.date);
+          return saleDate >= monthStart && saleDate <= monthEnd && s.type === 'invoice';
+        })
+        .reduce((sum, s) => sum + s.total, 0);
+
+      const expense = expenses.expenses
+        .filter(e => {
+          if (!filterByDateRange(e.expenseDate)) return false;
+          const expenseDate = new Date(e.expenseDate);
+          return expenseDate >= monthStart && expenseDate <= monthEnd && e.status === 'paid';
+        })
+        .reduce((sum, e) => sum + e.amount, 0);
+
+      return { name: month, income, expense };
+    });
+  }, [sales.sales, expenses.expenses, filterByDateRange]);
+
+  // Top customers with receivables (filtered by date range)
+  const topCustomers = useMemo(() => {
+    const customerMap = new Map<string, { name: string; type: string; total: number; balance: number }>();
+    
+    sales.sales
+      .filter(sale => filterByDateRange(sale.date))
+      .forEach(sale => {
+        if (sale.type === 'invoice' && sale.customerId) {
+          const existing = customerMap.get(sale.customerId) || { name: sale.customerName || 'Unknown', type: 'Retail', total: 0, balance: 0 };
+          existing.total += sale.total;
+          existing.balance += sale.due;
+          customerMap.set(sale.customerId, existing);
+        }
+      });
+
+    return Array.from(customerMap.values())
+      .sort((a, b) => b.balance - a.balance)
+      .slice(0, 5)
+      .map((c, i) => ({ id: i + 1, ...c }));
+  }, [sales.sales, filterByDateRange]);
+
+  // Low stock items
+  const lowStockItems = useMemo(() => {
+    return products
+      .filter(p => p.stock <= (p.reorderLevel || 10))
+      .slice(0, 5)
+      .map((p, i) => ({
+        id: i + 1,
+        name: p.name,
+        category: p.category || 'Uncategorized',
+        stock: p.stock || 0,
+        alert: p.stock <= (p.reorderLevel || 10) / 2 ? 'Critical' : 'Low'
+      }));
+  }, [products]);
 
   const renderTabContent = () => {
     switch (activeTab) {
@@ -200,27 +327,27 @@ export const ReportsDashboard = () => {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <MetricCard 
                 title="Total Revenue" 
-                value="$1,240,500" 
+                value={`₨${metrics.totalSales.toLocaleString()}`}
                 trend="up" 
-                trendValue="+14.5%" 
-                subtext="vs last month"
+                trendValue=""
+                subtext={`${metrics.salesCount} sales`}
                 icon={DollarSign}
                 colorClass="bg-gradient-to-br from-gray-900 to-green-900/20 border-green-900/30"
               />
               <MetricCard 
                 title="Net Profit" 
-                value="$342,000" 
-                trend="up" 
-                trendValue="+8.2%" 
+                value={`₨${metrics.netProfit.toLocaleString()}`}
+                trend={metrics.netProfit >= 0 ? "up" : "down"}
+                trendValue=""
                 subtext="after expenses"
                 icon={Activity}
                 colorClass="bg-gradient-to-br from-gray-900 to-blue-900/20 border-blue-900/30"
               />
               <MetricCard 
                 title="Expense Ratio" 
-                value="27.5%" 
+                value={`${metrics.expenseRatio.toFixed(1)}%`}
                 trend="down" 
-                trendValue="-2.1%" 
+                trendValue=""
                 subtext="of total revenue"
                 icon={Percent}
                 colorClass="bg-gradient-to-br from-gray-900 to-orange-900/20 border-orange-900/30"
@@ -309,7 +436,7 @@ export const ReportsDashboard = () => {
                                   <td className="px-4 py-3 text-right">
                                      {customer.balance > 0 ? (
                                         <span className="text-red-400 font-bold bg-red-900/10 px-2 py-1 rounded">
-                                           ${customer.balance.toLocaleString()}
+                                           ₨{customer.balance.toLocaleString()}
                                         </span>
                                      ) : (
                                         <span className="text-green-500 font-medium">Paid</span>

@@ -27,7 +27,8 @@ export interface Product {
 export const productService = {
   // Get all products
   async getAllProducts(companyId: string) {
-    const { data, error } = await supabase
+    // Note: company_id and is_active columns may not exist in all databases
+    let query = supabase
       .from('products')
       .select(`
         *,
@@ -37,6 +38,66 @@ export const productService = {
       .eq('company_id', companyId)
       .eq('is_active', true)
       .order('name');
+    
+    const { data, error } = await query;
+    
+    // If error is about is_active column not existing, retry without it
+    if (error && error.code === '42703' && error.message?.includes('is_active')) {
+      const { data: retryData, error: retryError } = await supabase
+        .from('products')
+        .select(`
+          *,
+          category:product_categories(id, name),
+          variations:product_variations(*)
+        `)
+        .eq('company_id', companyId)
+        .order('name');
+      
+      if (retryError) {
+        // If company_id also doesn't exist, retry without both
+        const { data: finalData, error: finalError } = await supabase
+          .from('products')
+          .select(`
+            *,
+            category:product_categories(id, name),
+            variations:product_variations(*)
+          `)
+          .order('name');
+        
+        if (finalError) throw finalError;
+        return finalData;
+      }
+      return retryData;
+    }
+    
+    // If error is about company_id column not existing, retry without it
+    if (error && error.code === '42703' && error.message?.includes('company_id')) {
+      const { data: retryData, error: retryError } = await supabase
+        .from('products')
+        .select(`
+          *,
+          category:product_categories(id, name),
+          variations:product_variations(*)
+        `)
+        .eq('is_active', true)
+        .order('name');
+      
+      if (retryError) {
+        // If is_active also doesn't exist, retry without both
+        const { data: finalData, error: finalError } = await supabase
+          .from('products')
+          .select(`
+            *,
+            category:product_categories(id, name),
+            variations:product_variations(*)
+          `)
+          .order('name');
+        
+        if (finalError) throw finalError;
+        return finalData;
+      }
+      return retryData;
+    }
 
     if (error) throw error;
     return data;
@@ -103,6 +164,19 @@ export const productService = {
       .or(`name.ilike.%${query}%,sku.ilike.%${query}%,barcode.ilike.%${query}%`)
       .limit(20);
 
+    // If error is about is_active column not existing, retry without it
+    if (error && error.message?.includes('is_active')) {
+      const { data: retryData, error: retryError } = await supabase
+        .from('products')
+        .select('*')
+        .eq('company_id', companyId)
+        .or(`name.ilike.%${query}%,sku.ilike.%${query}%,barcode.ilike.%${query}%`)
+        .limit(20);
+      
+      if (retryError) throw retryError;
+      return retryData;
+    }
+    
     if (error) throw error;
     return data;
   },
@@ -117,6 +191,19 @@ export const productService = {
       .lt('current_stock', 'min_stock')
       .order('current_stock');
 
+    // If error is about is_active column not existing, retry without it
+    if (error && error.message?.includes('is_active')) {
+      const { data: retryData, error: retryError } = await supabase
+        .from('products')
+        .select('*')
+        .eq('company_id', companyId)
+        .lt('current_stock', 'min_stock')
+        .order('current_stock');
+      
+      if (retryError) throw retryError;
+      return retryData;
+    }
+    
     if (error) throw error;
     return data;
   },

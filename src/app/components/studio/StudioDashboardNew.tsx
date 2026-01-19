@@ -1,4 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { useSupabase } from '@/app/context/SupabaseContext';
+import { studioService } from '@/app/services/studioService';
+import { toast } from 'sonner';
 import { 
   Palette, 
   Sparkles, 
@@ -17,64 +20,7 @@ import { Badge } from '../ui/badge';
 import { useNavigation } from '@/app/context/NavigationContext';
 import { cn } from '../ui/utils';
 
-// Mock data - In real app, this comes from API
-const mockStudioOrders = [
-  {
-    id: '1',
-    invoiceNo: 'INV-2026-0015',
-    customerName: 'Ayesha Khan',
-    customerPhone: '+92 300 1234567',
-    fabricName: 'Silk Lawn - Red',
-    currentStage: 'Handwork',
-    assignedWorker: 'Ahmed Hussain',
-    expectedDate: '2026-01-15',
-    status: 'In Progress'
-  },
-  {
-    id: '2',
-    invoiceNo: 'INV-2026-0016',
-    customerName: 'Sarah Ali',
-    customerPhone: '+92 301 7654321',
-    fabricName: 'Cotton - Blue',
-    currentStage: 'Dyeing',
-    assignedWorker: 'Ali Raza',
-    expectedDate: '2026-01-18',
-    status: 'In Progress'
-  },
-  {
-    id: '3',
-    invoiceNo: 'INV-2026-0017',
-    customerName: 'Zainab Sheikh',
-    customerPhone: '+92 302 1112233',
-    fabricName: 'Chiffon - Green',
-    currentStage: 'Stitching',
-    assignedWorker: 'Fatima Bibi',
-    expectedDate: '2026-01-20',
-    status: 'In Progress'
-  },
-  {
-    id: '4',
-    invoiceNo: 'INV-2026-0018',
-    customerName: 'Maryam Khan',
-    customerPhone: '+92 303 4445566',
-    fabricName: 'Lawn - Yellow',
-    currentStage: 'Dyeing',
-    assignedWorker: 'Ali Raza',
-    expectedDate: '2026-01-19',
-    status: 'In Progress'
-  },
-  {
-    id: '5',
-    invoiceNo: 'INV-2026-0019',
-    customerName: 'Hina Ahmed',
-    customerPhone: '+92 304 7778899',
-    fabricName: 'Net - Pink',
-    currentStage: 'Handwork',
-    assignedWorker: 'Zainab Sheikh',
-    expectedDate: '2026-01-22',
-    status: 'In Progress'
-  }
-];
+// Studio orders will be loaded from Supabase
 
 interface DepartmentCardProps {
   name: string;
@@ -116,23 +62,103 @@ const DepartmentCard = ({ name, icon: Icon, count, color, onClick }: DepartmentC
   );
 };
 
+interface StudioOrderDisplay {
+  id: string;
+  invoiceNo: string;
+  customerName: string;
+  customerPhone: string;
+  fabricName: string;
+  currentStage: string;
+  assignedWorker: string;
+  expectedDate: string;
+  status: string;
+}
+
 export const StudioDashboardNew = () => {
   const { setCurrentView } = useNavigation();
+  const { companyId, branchId } = useSupabase();
+  const [orders, setOrders] = useState<StudioOrderDisplay[]>([]);
+  const [loading, setLoading] = useState(true);
   const [selectedDepartment, setSelectedDepartment] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
 
+  // Convert Supabase order to display format
+  const convertFromSupabaseOrder = useCallback((supabaseOrder: any): StudioOrderDisplay => {
+    const firstItem = supabaseOrder.items?.[0];
+    const jobCards = supabaseOrder.job_cards || [];
+    
+    // Determine current stage from job cards
+    let currentStage = 'Dyeing';
+    let assignedWorker = 'Unassigned';
+    
+    if (jobCards.length > 0) {
+      const activeJob = jobCards.find((jc: any) => jc.status === 'in_progress');
+      if (activeJob) {
+        currentStage = activeJob.task_type === 'cutting' ? 'Dyeing' : 
+                      activeJob.task_type === 'embroidery' ? 'Handwork' : 
+                      activeJob.task_type === 'stitching' ? 'Stitching' : 'Dyeing';
+        assignedWorker = activeJob.worker?.name || 'Unassigned';
+      } else {
+        // Check if all completed
+        const allCompleted = jobCards.every((jc: any) => jc.status === 'completed');
+        if (allCompleted) {
+          currentStage = 'Completed';
+        }
+      }
+    }
+
+    return {
+      id: supabaseOrder.id,
+      invoiceNo: supabaseOrder.order_no || `ST-${supabaseOrder.id.slice(0, 8)}`,
+      customerName: supabaseOrder.customer_name || supabaseOrder.customer?.name || '',
+      customerPhone: supabaseOrder.customer?.phone || '',
+      fabricName: firstItem?.item_description || 'Fabric',
+      currentStage,
+      assignedWorker,
+      expectedDate: supabaseOrder.delivery_date || '',
+      status: supabaseOrder.status === 'completed' ? 'Completed' : 'In Progress',
+    };
+  }, []);
+
+  // Load studio orders from Supabase
+  const loadStudioOrders = useCallback(async () => {
+    if (!companyId) return;
+    
+    try {
+      setLoading(true);
+      const data = await studioService.getAllStudioOrders(companyId, branchId || undefined);
+      const convertedOrders = data.map(convertFromSupabaseOrder);
+      setOrders(convertedOrders);
+    } catch (error) {
+      console.error('[STUDIO DASHBOARD] Error loading studio orders:', error);
+      toast.error('Failed to load studio orders');
+      setOrders([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [companyId, branchId, convertFromSupabaseOrder]);
+
+  // Load orders on mount
+  useEffect(() => {
+    if (companyId) {
+      loadStudioOrders();
+    } else {
+      setLoading(false);
+    }
+  }, [companyId, loadStudioOrders]);
+
   // Calculate department counts
   const departmentCounts = {
-    dyeing: mockStudioOrders.filter(o => o.currentStage === 'Dyeing').length,
-    handwork: mockStudioOrders.filter(o => o.currentStage === 'Handwork').length,
-    stitching: mockStudioOrders.filter(o => o.currentStage === 'Stitching').length,
-    completed: 3 // Mock completed today count
+    dyeing: orders.filter(o => o.currentStage === 'Dyeing').length,
+    handwork: orders.filter(o => o.currentStage === 'Handwork').length,
+    stitching: orders.filter(o => o.currentStage === 'Stitching').length,
+    completed: orders.filter(o => o.status === 'Completed').length
   };
 
   // Filter orders based on department selection
   const filteredOrders = selectedDepartment
-    ? mockStudioOrders.filter(o => o.currentStage === selectedDepartment)
-    : mockStudioOrders;
+    ? orders.filter(o => o.currentStage === selectedDepartment)
+    : orders;
 
   // Apply search filter
   const searchFilteredOrders = filteredOrders.filter(o =>
@@ -251,7 +277,14 @@ export const StudioDashboardNew = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-800">
-              {searchFilteredOrders.length === 0 ? (
+              {loading ? (
+                <tr>
+                  <td colSpan={8} className="p-8 text-center text-gray-500">
+                    <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+                    <p className="mt-2">Loading studio orders...</p>
+                  </td>
+                </tr>
+              ) : searchFilteredOrders.length === 0 ? (
                 <tr>
                   <td colSpan={8} className="p-8 text-center text-gray-500">
                     No orders found

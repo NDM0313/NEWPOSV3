@@ -46,44 +46,48 @@ export const SettingsPageNew = () => {
   const [permissionsForm, setPermissionsForm] = useState(settings.currentUser);
   const [modulesForm, setModulesForm] = useState(settings.modules);
 
-  const handleSave = () => {
-    switch(activeTab) {
-      case 'company':
-        settings.updateCompanySettings(companyForm);
-        break;
-      case 'pos':
-        settings.updatePOSSettings(posForm);
-        break;
-      case 'sales':
-        settings.updateSalesSettings(salesForm);
-        break;
-      case 'purchase':
-        settings.updatePurchaseSettings(purchaseForm);
-        break;
-      case 'inventory':
-        settings.updateInventorySettings(inventoryForm);
-        break;
-      case 'rental':
-        settings.updateRentalSettings(rentalForm);
-        break;
-      case 'accounting':
-        settings.updateAccountingSettings(accountingForm);
-        break;
-      case 'accounts':
-        settings.updateDefaultAccounts(accountsForm);
-        break;
-      case 'numbering':
-        settings.updateNumberingRules(numberingForm);
-        break;
-      case 'permissions':
-        settings.updatePermissions(permissionsForm);
-        break;
-      case 'modules':
-        settings.updateModules(modulesForm);
-        break;
+  const handleSave = async () => {
+    try {
+      switch(activeTab) {
+        case 'company':
+          await settings.updateCompanySettings(companyForm);
+          break;
+        case 'pos':
+          await settings.updatePOSSettings(posForm);
+          break;
+        case 'sales':
+          await settings.updateSalesSettings(salesForm);
+          break;
+        case 'purchase':
+          await settings.updatePurchaseSettings(purchaseForm);
+          break;
+        case 'inventory':
+          await settings.updateInventorySettings(inventoryForm);
+          break;
+        case 'rental':
+          await settings.updateRentalSettings(rentalForm);
+          break;
+        case 'accounting':
+          await settings.updateAccountingSettings(accountingForm);
+          break;
+        case 'accounts':
+          await settings.updateDefaultAccounts(accountsForm);
+          break;
+        case 'numbering':
+          await settings.updateNumberingRules(numberingForm);
+          break;
+        case 'permissions':
+          await settings.updatePermissions(permissionsForm);
+          break;
+        case 'modules':
+          await settings.updateModules(modulesForm);
+          break;
+      }
+      setHasUnsavedChanges(false);
+    } catch (error) {
+      console.error('[SETTINGS PAGE] Error saving:', error);
+      toast.error('Failed to save settings');
     }
-    setHasUnsavedChanges(false);
-    toast.success('Settings saved successfully!');
   };
 
   const tabs = [

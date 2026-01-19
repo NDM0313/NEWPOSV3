@@ -6,6 +6,8 @@ import { Label } from "../ui/label";
 import { Button } from "../ui/button";
 import { Tabs, TabsList, TabsTrigger } from "../ui/tabs";
 import { Badge } from "../ui/badge";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
+import { Textarea } from "../ui/textarea";
 
 export interface Contact {
   id: number;
@@ -14,6 +16,9 @@ export interface Contact {
   mobile: string;
   email?: string; // Added email
   balance?: number;
+  city?: string;
+  country?: string;
+  address?: string;
 }
 
 interface QuickAddContactModalProps {
@@ -39,6 +44,9 @@ export const QuickAddContactModal = ({
   const [name, setName] = useState(initialName);
   const [mobile, setMobile] = useState('');
   const [balance, setBalance] = useState('');
+  const [city, setCity] = useState('');
+  const [country, setCountry] = useState('pk');
+  const [address, setAddress] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
   // Update form when prop changes or modal opens
@@ -49,12 +57,18 @@ export const QuickAddContactModal = ({
          setName(initialData.name);
          setMobile(initialData.mobile);
          setBalance(initialData.balance?.toString() || '');
+         setCity(initialData.city || '');
+         setCountry(initialData.country === 'Pakistan' ? 'pk' : initialData.country === 'India' ? 'in' : initialData.country === 'Bangladesh' ? 'bd' : 'pk');
+         setAddress(initialData.address || '');
          setIsBusiness(initialData.type === 'business');
       } else {
          // Reset for Add Mode
          setName(initialName);
          setMobile('');
          setBalance('');
+         setCity('');
+         setCountry('pk');
+         setAddress('');
          setIsBusiness(false);
       }
       setIsLoading(false);
@@ -74,7 +88,10 @@ export const QuickAddContactModal = ({
       name,
       type: isBusiness ? 'business' : 'individual',
       mobile,
-      balance: parseFloat(balance) || 0
+      balance: parseFloat(balance) || 0,
+      city: city || undefined,
+      country: country === 'pk' ? 'Pakistan' : country === 'in' ? 'India' : country === 'bd' ? 'Bangladesh' : 'Pakistan',
+      address: address || undefined,
     };
 
     onSave(contactData);
@@ -169,6 +186,43 @@ export const QuickAddContactModal = ({
               <p className="text-[10px] text-gray-500">
                 Positive value = They owe you. Negative = You owe them.
               </p>
+            </div>
+
+            {/* Address */}
+            <div className="space-y-2">
+              <Label className="text-xs text-gray-500 uppercase tracking-wider">Address (Optional)</Label>
+              <Textarea 
+                value={address}
+                onChange={(e) => setAddress(e.target.value)}
+                placeholder="Enter full address"
+                className="bg-gray-800 border-gray-700 text-white min-h-[60px]"
+              />
+            </div>
+
+            {/* City and Country */}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label className="text-xs text-gray-500 uppercase tracking-wider">City (Optional)</Label>
+                <Input 
+                  value={city}
+                  onChange={(e) => setCity(e.target.value)}
+                  placeholder="Karachi"
+                  className="bg-gray-800 border-gray-700 text-white"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label className="text-xs text-gray-500 uppercase tracking-wider">Country (Optional)</Label>
+                <Select value={country} onValueChange={setCountry}>
+                  <SelectTrigger className="bg-gray-800 border-gray-700 text-white">
+                    <SelectValue placeholder="Pakistan" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-gray-800 border-gray-700 text-white">
+                    <SelectItem value="pk">Pakistan</SelectItem>
+                    <SelectItem value="in">India</SelectItem>
+                    <SelectItem value="bd">Bangladesh</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
           </div>
         </div>

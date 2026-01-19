@@ -1,14 +1,9 @@
-import React from 'react';
-import { Building2, Lock } from 'lucide-react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { Building2, Lock, Loader2 } from 'lucide-react';
 import { Label } from '@/app/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/app/components/ui/select';
-
-// Global Branches Data
-export const branches = [
-  { id: 1, name: "Main Branch - Karachi", code: "BR-001" },
-  { id: 2, name: "Sub Branch - Lahore", code: "BR-002" },
-  { id: 3, name: "Sub Branch - Islamabad", code: "BR-003" },
-];
+import { useSupabase } from '@/app/context/SupabaseContext';
+import { branchService, Branch } from '@/app/services/branchService';
 
 // Global Current User - Change role to 'user' to test locked behavior
 export const currentUser = {
@@ -19,7 +14,7 @@ export const currentUser = {
 };
 
 interface BranchSelectorProps {
-  branchId: string;
+  branchId: string | number;
   setBranchId: (id: string) => void;
   variant?: 'header' | 'inline';
   className?: string;
@@ -31,8 +26,42 @@ export const BranchSelector: React.FC<BranchSelectorProps> = ({
   variant = 'header',
   className = '' 
 }) => {
+  const { companyId, branchId: contextBranchId, user } = useSupabase();
+  const [branches, setBranches] = useState<Branch[]>([]);
+  const [loading, setLoading] = useState(false);
+  
   const isBranchLocked = currentUser.role !== "admin";
-  const getBranchName = () => branches.find(b => b.id.toString() === branchId)?.name || "Select Branch";
+  
+  // Load branches from Supabase
+  const loadBranches = useCallback(async () => {
+    if (!companyId) return;
+    
+    try {
+      setLoading(true);
+      const branchesData = await branchService.getAllBranches(companyId);
+      setBranches(branchesData);
+      
+      // If branchId is not set, use context branchId or first branch
+      if (!branchId && contextBranchId) {
+        setBranchId(contextBranchId);
+      } else if (!branchId && branchesData.length > 0) {
+        setBranchId(branchesData[0].id);
+      }
+    } catch (error) {
+      console.error('[BRANCH SELECTOR] Error loading branches:', error);
+    } finally {
+      setLoading(false);
+    }
+  }, [companyId, branchId, contextBranchId, setBranchId]);
+
+  useEffect(() => {
+    loadBranches();
+  }, [loadBranches]);
+  
+  const getBranchName = () => {
+    const branch = branches.find(b => b.id === branchId || b.id.toString() === branchId.toString());
+    return branch?.name || "Select Branch";
+  };
 
   if (variant === 'header') {
     return (
@@ -58,14 +87,25 @@ export const BranchSelector: React.FC<BranchSelectorProps> = ({
             </div>
           </SelectTrigger>
           <SelectContent className="bg-gray-950 border-gray-800 text-white">
-            {branches.map(b => (
-              <SelectItem key={b.id} value={b.id.toString()}>
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-gray-500">{b.code}</span>
-                  <span>{b.name}</span>
-                </div>
-              </SelectItem>
-            ))}
+            {loading ? (
+              <div className="px-3 py-4 text-center text-gray-400">
+                <Loader2 size={16} className="animate-spin mx-auto mb-2" />
+                <p className="text-xs">Loading branches...</p>
+              </div>
+            ) : branches.length === 0 ? (
+              <div className="px-3 py-4 text-center text-gray-400">
+                <p className="text-xs">No branches found</p>
+              </div>
+            ) : (
+              branches.map(b => (
+                <SelectItem key={b.id} value={b.id}>
+                  <div className="flex items-center gap-2">
+                    {b.code && <span className="text-xs text-gray-500">{b.code}</span>}
+                    <span>{b.name}</span>
+                  </div>
+                </SelectItem>
+              ))
+            )}
           </SelectContent>
         </Select>
       </div>
@@ -96,14 +136,25 @@ export const BranchSelector: React.FC<BranchSelectorProps> = ({
           </div>
         </SelectTrigger>
         <SelectContent className="bg-gray-950 border-gray-800 text-white">
-          {branches.map(b => (
-            <SelectItem key={b.id} value={b.id.toString()}>
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-gray-500">{b.code}</span>
-                <span>{b.name}</span>
-              </div>
-            </SelectItem>
-          ))}
+          {loading ? (
+            <div className="px-3 py-4 text-center text-gray-400">
+              <Loader2 size={16} className="animate-spin mx-auto mb-2" />
+              <p className="text-xs">Loading branches...</p>
+            </div>
+          ) : branches.length === 0 ? (
+            <div className="px-3 py-4 text-center text-gray-400">
+              <p className="text-xs">No branches found</p>
+            </div>
+          ) : (
+            branches.map(b => (
+              <SelectItem key={b.id} value={b.id}>
+                <div className="flex items-center gap-2">
+                  {b.code && <span className="text-xs text-gray-500">{b.code}</span>}
+                  <span>{b.name}</span>
+                </div>
+              </SelectItem>
+            ))
+          )}
         </SelectContent>
       </Select>
     </div>

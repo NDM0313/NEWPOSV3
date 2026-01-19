@@ -1,8 +1,8 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { 
   Search, Filter, Download, Upload, Users, DollarSign, TrendingUp, 
   MoreVertical, Eye, Edit, Trash2, FileText, X, Phone, Mail, MapPin,
-  Check, User, AlertCircle, Briefcase, CheckCircle, Clock, UserCheck
+  Check, User, AlertCircle, Briefcase, CheckCircle, Clock, UserCheck, Loader2
 } from 'lucide-react';
 import { Button } from "@/app/components/ui/button";
 import { Input } from "@/app/components/ui/input";
@@ -46,6 +46,7 @@ type StatusType = 'all' | 'active' | 'inactive' | 'onhold';
 
 interface Contact {
   id: number;
+  uuid: string; // Supabase UUID
   name: string;
   code: string;
   type: 'customer' | 'supplier' | 'worker';
@@ -61,21 +62,6 @@ interface Contact {
   lastTransaction?: string;
 }
 
-// Mock Data
-const mockContacts: Contact[] = [
-  { id: 1, name: 'Bilal Fabrics', code: 'SUP-001', type: 'supplier', email: 'bilal@example.com', phone: '+92 300 1234567', receivables: 0, payables: 15000, netBalance: -15000, status: 'active', branch: 'Main Branch (HQ)', lastTransaction: '2026-01-15' },
-  { id: 2, name: 'Ahmed Retailers', code: 'CUS-002', type: 'customer', email: 'ahmed@example.com', phone: '+92 321 7654321', receivables: 45000, payables: 0, netBalance: 45000, status: 'active', branch: 'Main Branch (HQ)', lastTransaction: '2026-01-16' },
-  { id: 3, name: 'ChenOne', code: 'SUP-003', type: 'supplier', email: 'purchase@chenone.com', phone: '+92 42 111 222', receivables: 0, payables: 120000, netBalance: -120000, status: 'onhold', branch: 'Mall Outlet', lastTransaction: '2026-01-10' },
-  { id: 4, name: 'Walk-in Customer', code: 'CUS-004', type: 'customer', email: '-', phone: '-', receivables: 0, payables: 0, netBalance: 0, status: 'active', branch: 'Main Branch (HQ)', lastTransaction: '2026-01-17' },
-  { id: 5, name: 'Sapphire Mills', code: 'SUP-005', type: 'supplier', email: 'accounts@sapphire.com', phone: '+92 300 9876543', receivables: 5000, payables: 45000, netBalance: -40000, status: 'active', branch: 'Warehouse', lastTransaction: '2026-01-14' },
-  { id: 6, name: 'Ali Tailor', code: 'WRK-001', type: 'worker', workerRole: 'tailor', email: 'ali.tailor@example.com', phone: '+92 333 1122334', receivables: 0, payables: 8000, netBalance: -8000, status: 'active', branch: 'Main Branch (HQ)', lastTransaction: '2026-01-13' },
-  { id: 7, name: 'Fashion House Ltd', code: 'CUS-007', type: 'customer', email: 'orders@fashionhouse.com', phone: '+92 300 5566778', receivables: 85000, payables: 0, netBalance: 85000, status: 'active', branch: 'Mall Outlet', lastTransaction: '2026-01-16' },
-  { id: 8, name: 'Hassan Embroidery', code: 'WRK-002', type: 'worker', workerRole: 'stitching-master', email: 'hassan@example.com', phone: '+92 345 9988776', receivables: 0, payables: 12000, netBalance: -12000, status: 'active', branch: 'Main Branch (HQ)', lastTransaction: '2026-01-15' },
-  { id: 9, name: 'Zubair Cutter', code: 'WRK-003', type: 'worker', workerRole: 'cutter', email: '-', phone: '+92 301 4455667', receivables: 0, payables: 3500, netBalance: -3500, status: 'active', branch: 'Main Branch (HQ)', lastTransaction: '2026-01-17' },
-  { id: 10, name: 'Premium Dyeing', code: 'SUP-006', type: 'supplier', email: 'info@premiumdyeing.com', phone: '+92 322 8899001', receivables: 0, payables: 25000, netBalance: -25000, status: 'inactive', branch: 'Warehouse', lastTransaction: '2026-01-05' },
-  { id: 11, name: 'Imran Helper', code: 'WRK-004', type: 'worker', workerRole: 'helper', email: '-', phone: '+92 340 2233445', receivables: 0, payables: 1500, netBalance: -1500, status: 'active', branch: 'Mall Outlet', lastTransaction: '2026-01-16' },
-];
-
 const workerRoleLabels: Record<WorkerRole, string> = {
   'tailor': 'Tailor',
   'stitching-master': 'Stitching Master',
@@ -88,6 +74,8 @@ const workerRoleLabels: Record<WorkerRole, string> = {
 export const ContactsPage = () => {
   const { openDrawer, setCurrentView } = useNavigation();
   const { companyId, branchId } = useSupabase();
+  const [contacts, setContacts] = useState<Contact[]>([]);
+  const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<ContactType>('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [filterOpen, setFilterOpen] = useState(false);
@@ -100,6 +88,101 @@ export const ContactsPage = () => {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [editContactOpen, setEditContactOpen] = useState(false);
   const [viewProfileOpen, setViewProfileOpen] = useState(false);
+
+  // Convert Supabase contact to app format
+  const convertFromSupabaseContact = useCallback((supabaseContact: any, index: number, sales: any[], purchases: any[]): Contact => {
+    // Calculate receivables (from sales)
+    const contactSales = sales.filter(s => 
+      s.customer_id === supabaseContact.id || s.customer_name === supabaseContact.name
+    );
+    const receivables = contactSales.reduce((sum, s) => sum + (s.due_amount || 0), 0);
+
+    // Calculate payables (from purchases)
+    const contactPurchases = purchases.filter(p => 
+      p.supplier_id === supabaseContact.id || p.supplier_name === supabaseContact.name
+    );
+    const payables = contactPurchases.reduce((sum, p) => sum + (p.due_amount || 0), 0);
+
+    // Determine contact type
+    let contactType: 'customer' | 'supplier' | 'worker' = 'customer';
+    if (supabaseContact.type === 'supplier') {
+      contactType = 'supplier';
+    } else if (supabaseContact.type === 'worker') {
+      contactType = 'worker';
+    }
+
+    // Generate code if missing
+    const code = supabaseContact.code || 
+      (contactType === 'supplier' ? `SUP-${String(index + 1).padStart(3, '0')}` :
+       contactType === 'customer' ? `CUS-${String(index + 1).padStart(3, '0')}` :
+       `WRK-${String(index + 1).padStart(3, '0')}`);
+
+    // Map status
+    let status: 'active' | 'inactive' | 'onhold' = 'active';
+    if (!supabaseContact.is_active) {
+      status = 'inactive';
+    } else if (supabaseContact.status === 'onhold') {
+      status = 'onhold';
+    }
+
+    return {
+      id: index + 1, // Display ID
+      uuid: supabaseContact.id, // Supabase UUID
+      name: supabaseContact.name || '',
+      code,
+      type: contactType,
+      workerRole: supabaseContact.worker_role as WorkerRole | undefined,
+      email: supabaseContact.email || '-',
+      phone: supabaseContact.phone || supabaseContact.mobile || '-',
+      receivables,
+      payables,
+      netBalance: receivables - payables,
+      status,
+      branch: supabaseContact.branch_id || 'Main Branch (HQ)',
+      address: supabaseContact.address,
+      lastTransaction: supabaseContact.updated_at ? new Date(supabaseContact.updated_at).toISOString().split('T')[0] : undefined,
+    };
+  }, []);
+
+  // Load contacts from Supabase
+  const loadContacts = useCallback(async () => {
+    if (!companyId) return;
+    
+    try {
+      setLoading(true);
+      
+      // Load contacts
+      const contactsData = await contactService.getAllContacts(companyId);
+      
+      // Load sales and purchases to calculate balances
+      const [salesData, purchasesData] = await Promise.all([
+        saleService.getAllSales(companyId, branchId || undefined).catch(() => []),
+        purchaseService.getAllPurchases(companyId, branchId || undefined).catch(() => []),
+      ]);
+      
+      // Convert to app format
+      const convertedContacts: Contact[] = contactsData.map((c: any, index: number) => 
+        convertFromSupabaseContact(c, index, salesData, purchasesData)
+      );
+      
+      setContacts(convertedContacts);
+    } catch (error: any) {
+      console.error('[CONTACTS PAGE] Error loading contacts:', error);
+      toast.error('Failed to load contacts: ' + (error.message || 'Unknown error'));
+      setContacts([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [companyId, branchId, convertFromSupabaseContact]);
+
+  // Load contacts on mount
+  useEffect(() => {
+    if (companyId) {
+      loadContacts();
+    } else {
+      setLoading(false);
+    }
+  }, [companyId, loadContacts]);
   
   // Filter states
   const [typeFilter, setTypeFilter] = useState<string[]>([]);
@@ -111,7 +194,7 @@ export const ContactsPage = () => {
 
   // Filtered contacts
   const filteredContacts = useMemo(() => {
-    return mockContacts.filter(contact => {
+    return contacts.filter(contact => {
       // Tab filter
       if (activeTab !== 'all' && contact.type !== activeTab.slice(0, -1)) return false;
       
@@ -154,22 +237,22 @@ export const ContactsPage = () => {
 
   // Calculate summary based on active tab
   const summary = useMemo(() => {
-    const contacts = mockContacts.filter(c => activeTab === 'all' || c.type === activeTab.slice(0, -1));
+    const filtered = contacts.filter(c => activeTab === 'all' || c.type === activeTab.slice(0, -1));
     return {
-      totalReceivables: contacts.reduce((sum, c) => sum + c.receivables, 0),
-      totalPayables: contacts.reduce((sum, c) => sum + c.payables, 0),
-      activeCount: contacts.filter(c => c.status === 'active').length,
-      totalCount: contacts.length,
+      totalReceivables: filtered.reduce((sum, c) => sum + c.receivables, 0),
+      totalPayables: filtered.reduce((sum, c) => sum + c.payables, 0),
+      activeCount: filtered.filter(c => c.status === 'active').length,
+      totalCount: filtered.length,
     };
-  }, [activeTab]);
+  }, [activeTab, contacts]);
 
   // Calculate tab counts
   const tabCounts = useMemo(() => ({
-    all: mockContacts.length,
-    customers: mockContacts.filter(c => c.type === 'customer').length,
-    suppliers: mockContacts.filter(c => c.type === 'supplier').length,
-    workers: mockContacts.filter(c => c.type === 'worker').length,
-  }), []);
+    all: contacts.length,
+    customers: contacts.filter(c => c.type === 'customer').length,
+    suppliers: contacts.filter(c => c.type === 'supplier').length,
+    workers: contacts.filter(c => c.type === 'worker').length,
+  }), [contacts]);
 
   const getInitials = (name: string) => {
     return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
@@ -264,24 +347,19 @@ export const ContactsPage = () => {
     if (!selectedContact) return;
     
     try {
-      const result = await contactService.deleteContact(selectedContact.id.toString());
-      if (result.success) {
-        toast.success('Contact deleted successfully');
-        setDeleteDialogOpen(false);
-        setSelectedContact(null);
-        // Reload page to refresh list
-        window.location.reload();
-      } else {
-        toast.error(result.error || 'Failed to delete contact');
-      }
+      await contactService.deleteContact(selectedContact.uuid);
+      toast.success('Contact deleted successfully');
+      setDeleteDialogOpen(false);
+      setSelectedContact(null);
+      // Reload contacts from database
+      await loadContacts();
     } catch (error: any) {
       toast.error('Failed to delete contact: ' + (error.message || 'Unknown error'));
     }
   };
 
-  const refreshContacts = () => {
-    // Reload page to refresh list
-    window.location.reload();
+  const refreshContacts = async () => {
+    await loadContacts();
   };
 
   return (
@@ -632,26 +710,33 @@ export const ContactsPage = () => {
       {/* Contacts Table - Scrollable */}
       <div className="flex-1 overflow-auto px-6 py-4">
         <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden">
-          {/* Wrapper for horizontal scroll */}
-          <div className="overflow-x-auto">
-            <div className="min-w-[1000px]">
-              {/* Table Header - Fixed within scroll container */}
-              <div className="sticky top-0 bg-gray-950/95 backdrop-blur-sm z-10 border-b border-gray-800">
-                <div className="grid grid-cols-[40px_1fr_120px_160px_100px_100px_110px_60px] gap-3 px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                  <div className="text-left">#</div>
-                  <div className="text-left">Name</div>
-                  <div className="text-left">Type</div>
-                  <div className="text-left">Contact Info</div>
-                  <div className="text-right">Receivables</div>
-                  <div className="text-right">Payables</div>
-                  <div className="text-center">Status</div>
-                  <div className="text-center">Actions</div>
-                </div>
-              </div>
+          {loading ? (
+            <div className="py-12 text-center">
+              <Loader2 size={48} className="mx-auto text-blue-500 mb-3 animate-spin" />
+              <p className="text-gray-400 text-sm">Loading contacts...</p>
+            </div>
+          ) : (
+            <>
+              {/* Wrapper for horizontal scroll */}
+              <div className="overflow-x-auto">
+                <div className="min-w-[1000px]">
+                  {/* Table Header - Fixed within scroll container */}
+                  <div className="sticky top-0 bg-gray-950/95 backdrop-blur-sm z-10 border-b border-gray-800">
+                    <div className="grid grid-cols-[40px_1fr_120px_160px_100px_100px_110px_60px] gap-3 px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                      <div className="text-left">#</div>
+                      <div className="text-left">Name</div>
+                      <div className="text-left">Type</div>
+                      <div className="text-left">Contact Info</div>
+                      <div className="text-right">Receivables</div>
+                      <div className="text-right">Payables</div>
+                      <div className="text-center">Status</div>
+                      <div className="text-center">Actions</div>
+                    </div>
+                  </div>
 
-              {/* Table Body */}
-              <div>
-                {paginatedContacts.length === 0 ? (
+                  {/* Table Body */}
+                  <div>
+                    {paginatedContacts.length === 0 ? (
                   <div className="py-12 text-center">
                     <Users size={48} className="mx-auto text-gray-600 mb-3" />
                     <p className="text-gray-400 text-sm">No contacts found</p>
@@ -939,6 +1024,8 @@ export const ContactsPage = () => {
               </div>
             </div>
           </div>
+            </>
+          )}
         </div>
       </div>
 

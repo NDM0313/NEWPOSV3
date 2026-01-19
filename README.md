@@ -80,11 +80,13 @@
 - Node.js 18+ ([Download](https://nodejs.org/))
 - Git ([Download](https://git-scm.com/))
 - PowerShell 5.1+
+- **📖 See [WINDOWS_SETUP_GUIDE.md](./WINDOWS_SETUP_GUIDE.md) for detailed Windows setup instructions**
 
 ### For MacBook:
 - Node.js 18+ ([Download](https://nodejs.org/))
 - Git ([Download](https://git-scm.com/))
 - Terminal (Built-in)
+- **📖 See [MACBOOK_SETUP_GUIDE.md](./MACBOOK_SETUP_GUIDE.md) for detailed MacBook setup instructions**
 
 ### For Linux:
 - Node.js 18+ ([Download](https://nodejs.org/))
@@ -267,6 +269,32 @@ NEWPOSV3/
 
 ## 🔧 Development Workflow
 
+### Working from Windows
+
+1. **Clone the repository:**
+   ```powershell
+   git clone https://github.com/NDM0313/NEWPOSV3.git
+   cd NEWPOSV3
+   ```
+
+2. **Install dependencies:**
+   ```powershell
+   npm install
+   ```
+
+3. **Set up environment:**
+   ```powershell
+   New-Item -Path .env.local -ItemType File
+   # Edit .env.local with your Supabase credentials
+   ```
+
+4. **Start development server:**
+   ```powershell
+   npm run dev
+   ```
+
+**📖 For detailed Windows setup, see [WINDOWS_SETUP_GUIDE.md](./WINDOWS_SETUP_GUIDE.md)**
+
 ### Working from MacBook
 
 1. **Clone the repository:**
@@ -282,7 +310,7 @@ NEWPOSV3/
 
 3. **Set up environment:**
    ```bash
-   cp .env.example .env.local
+   touch .env.local
    # Edit .env.local with your Supabase credentials
    ```
 
@@ -290,6 +318,8 @@ NEWPOSV3/
    ```bash
    npm run dev
    ```
+
+**📖 For detailed MacBook setup, see [MACBOOK_SETUP_GUIDE.md](./MACBOOK_SETUP_GUIDE.md)**
 
 ### Git Workflow
 

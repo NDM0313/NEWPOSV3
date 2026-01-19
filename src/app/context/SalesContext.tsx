@@ -287,6 +287,11 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
         quantity: item.quantity,
         unit_price: item.price,
         total: item.total,
+        // Include packing data
+        packing_type: (item as any).packingDetails?.packing_type || null,
+        packing_quantity: (item as any).packingDetails?.total_meters || (item as any).meters || null,
+        packing_unit: (item as any).packingDetails?.unit || 'meters',
+        packing_details: (item as any).packingDetails || null,
       }));
 
       // Save to Supabase

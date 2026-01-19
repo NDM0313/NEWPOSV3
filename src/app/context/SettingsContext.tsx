@@ -1,4 +1,9 @@
-import React, { createContext, useContext, useState, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
+import { useSupabase } from './SupabaseContext';
+import { settingsService } from '@/app/services/settingsService';
+import { branchService } from '@/app/services/branchService';
+import { supabase } from '@/lib/supabase';
+import { toast } from 'sonner';
 
 // ============================================
 // 🎯 TYPES & INTERFACES
@@ -142,9 +147,12 @@ export interface ModuleToggles {
 }
 
 interface SettingsContextType {
+  // Loading state
+  loading: boolean;
+  
   // Company Info
   company: CompanySettings;
-  updateCompanySettings: (settings: Partial<CompanySettings>) => void;
+  updateCompanySettings: (settings: Partial<CompanySettings>) => Promise<void>;
   
   // Branch Management
   branches: BranchSettings[];
@@ -153,44 +161,47 @@ interface SettingsContextType {
   
   // POS Settings
   posSettings: POSSettings;
-  updatePOSSettings: (settings: Partial<POSSettings>) => void;
+  updatePOSSettings: (settings: Partial<POSSettings>) => Promise<void>;
   
   // Sales Settings
   salesSettings: SalesSettings;
-  updateSalesSettings: (settings: Partial<SalesSettings>) => void;
+  updateSalesSettings: (settings: Partial<SalesSettings>) => Promise<void>;
   
   // Purchase Settings
   purchaseSettings: PurchaseSettings;
-  updatePurchaseSettings: (settings: Partial<PurchaseSettings>) => void;
+  updatePurchaseSettings: (settings: Partial<PurchaseSettings>) => Promise<void>;
   
   // Inventory Settings
   inventorySettings: InventorySettings;
-  updateInventorySettings: (settings: Partial<InventorySettings>) => void;
+  updateInventorySettings: (settings: Partial<InventorySettings>) => Promise<void>;
   
   // Rental Settings
   rentalSettings: RentalSettings;
-  updateRentalSettings: (settings: Partial<RentalSettings>) => void;
+  updateRentalSettings: (settings: Partial<RentalSettings>) => Promise<void>;
   
   // Accounting Settings
   accountingSettings: AccountingSettings;
-  updateAccountingSettings: (settings: Partial<AccountingSettings>) => void;
+  updateAccountingSettings: (settings: Partial<AccountingSettings>) => Promise<void>;
   
   // Default Accounts
   defaultAccounts: DefaultAccounts;
-  updateDefaultAccounts: (accounts: Partial<DefaultAccounts>) => void;
+  updateDefaultAccounts: (accounts: Partial<DefaultAccounts>) => Promise<void>;
   
   // Numbering
   numberingRules: NumberingRules;
-  updateNumberingRules: (rules: Partial<NumberingRules>) => void;
-  getNextNumber: (module: keyof NumberingRules) => string;
+  updateNumberingRules: (rules: Partial<NumberingRules>) => Promise<void>;
+  getNextNumber: (module: keyof NumberingRules) => Promise<string>;
   
   // Permissions
   currentUser: UserPermissions;
-  updatePermissions: (permissions: Partial<UserPermissions>) => void;
+  updatePermissions: (permissions: Partial<UserPermissions>) => Promise<void>;
   
   // Module Toggles
   modules: ModuleToggles;
-  updateModules: (modules: Partial<ModuleToggles>) => void;
+  updateModules: (modules: Partial<ModuleToggles>) => Promise<void>;
+  
+  // Refresh
+  refreshSettings: () => Promise<void>;
 }
 
 // ============================================
@@ -212,157 +223,361 @@ interface SettingsProviderProps {
 }
 
 export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) => {
+  const { companyId, branchId } = useSupabase();
+  const [loading, setLoading] = useState<boolean>(true);
+
   // Company Settings
   const [company, setCompany] = useState<CompanySettings>({
-    businessName: 'Din Collection',
-    businessAddress: 'Main Branch, Lahore, Pakistan',
-    businessPhone: '+92 300 1234567',
-    businessEmail: 'contact@dincollection.com',
-    taxId: 'TAX-123456',
+    businessName: '',
+    businessAddress: '',
+    businessPhone: '',
+    businessEmail: '',
+    taxId: '',
     currency: 'PKR',
     logoUrl: undefined,
   });
 
   // Branch Management
-  const [branches, setBranches] = useState<BranchSettings[]>([
-    {
-      id: '1',
-      branchCode: 'MB',
-      branchName: 'Main Branch',
-      address: 'Main Branch, Lahore, Pakistan',
-      phone: '+92 300 1234567',
-      isActive: true,
-      isDefault: true,
-      cashAccount: 'Cash Drawer',
-      bankAccount: 'Meezan Bank - Business Account',
-      posCashDrawer: 'POS Cash Drawer',
-    },
-  ]);
+  const [branches, setBranches] = useState<BranchSettings[]>([]);
 
   // POS Settings
   const [posSettings, setPOSSettings] = useState<POSSettings>({
-    defaultCashAccount: 'Cash Drawer',
-    creditSaleAllowed: true,
-    autoPrintReceipt: true,
-    defaultTaxRate: 15,
-    invoicePrefix: 'INV-',
+    defaultCashAccount: '',
+    creditSaleAllowed: false,
+    autoPrintReceipt: false,
+    defaultTaxRate: 0,
+    invoicePrefix: 'POS-',
     negativeStockAllowed: false,
-    allowDiscount: true,
-    maxDiscountPercent: 10,
+    allowDiscount: false,
+    maxDiscountPercent: 0,
   });
 
   // Sales Settings
   const [salesSettings, setSalesSettings] = useState<SalesSettings>({
-    partialPaymentAllowed: true,
+    partialPaymentAllowed: false,
     defaultPaymentMethod: 'Cash',
-    autoLedgerEntry: true,
-    invoicePrefix: 'INV-',
-    autoDueDays: 30,
-    allowCreditSale: true,
-    requireCustomerInfo: true,
+    autoLedgerEntry: false,
+    invoicePrefix: 'SAL-',
+    autoDueDays: 0,
+    allowCreditSale: false,
+    requireCustomerInfo: false,
   });
 
   // Purchase Settings
   const [purchaseSettings, setPurchaseSettings] = useState<PurchaseSettings>({
-    defaultSupplierPayableAccount: 'Supplier Payable',
-    overReceiveAllowed: true,
-    purchaseApprovalRequired: true,
-    grnRequired: true,
-    autoPostToInventory: true,
-    defaultPaymentTerms: 30,
+    defaultSupplierPayableAccount: '',
+    overReceiveAllowed: false,
+    purchaseApprovalRequired: false,
+    grnRequired: false,
+    autoPostToInventory: false,
+    defaultPaymentTerms: 0,
   });
 
   // Inventory Settings
   const [inventorySettings, setInventorySettings] = useState<InventorySettings>({
-    lowStockThreshold: 10,
-    reorderAlertDays: 5,
+    lowStockThreshold: 0,
+    reorderAlertDays: 0,
     negativeStockAllowed: false,
     valuationMethod: 'FIFO',
-    autoReorderEnabled: true,
-    barcodeRequired: true,
+    autoReorderEnabled: false,
+    barcodeRequired: false,
   });
 
   // Rental Settings
   const [rentalSettings, setRentalSettings] = useState<RentalSettings>({
-    defaultLateFeePerDay: 100,
-    gracePeriodDays: 3,
-    advanceRequired: true,
-    advancePercentage: 20,
-    securityDepositRequired: true,
-    securityDepositAmount: 500,
-    damageChargeEnabled: true,
-    autoExtendAllowed: true,
+    defaultLateFeePerDay: 0,
+    gracePeriodDays: 0,
+    advanceRequired: false,
+    advancePercentage: 0,
+    securityDepositRequired: false,
+    securityDepositAmount: 0,
+    damageChargeEnabled: false,
+    autoExtendAllowed: false,
   });
 
   // Accounting Settings
   const [accountingSettings, setAccountingSettings] = useState<AccountingSettings>({
-    fiscalYearStart: '2023-01-01',
-    fiscalYearEnd: '2023-12-31',
+    fiscalYearStart: new Date().toISOString().split('T')[0],
+    fiscalYearEnd: new Date(new Date().setFullYear(new Date().getFullYear() + 1)).toISOString().split('T')[0],
     lockAccountingDate: undefined,
-    manualJournalEnabled: true,
+    manualJournalEnabled: false,
     defaultCurrency: 'PKR',
     multiCurrencyEnabled: false,
     taxCalculationMethod: 'Inclusive',
-    defaultTaxRate: 15,
+    defaultTaxRate: 0,
   });
 
   // Default Accounts
   const [defaultAccounts, setDefaultAccounts] = useState<DefaultAccounts>({
     paymentMethods: [
-      { id: '1', method: 'Cash', enabled: true, defaultAccount: 'Cash Drawer' },
-      { id: '2', method: 'Bank', enabled: true, defaultAccount: 'Meezan Bank - Business Account' },
-      { id: '3', method: 'Mobile Wallet', enabled: true, defaultAccount: 'JazzCash - Business' },
+      { id: '1', method: 'Cash', enabled: true, defaultAccount: '' },
+      { id: '2', method: 'Bank', enabled: true, defaultAccount: '' },
+      { id: '3', method: 'Mobile Wallet', enabled: true, defaultAccount: '' },
     ],
   });
 
   // Numbering Rules
   const [numberingRules, setNumberingRules] = useState<NumberingRules>({
-    salePrefix: 'INV-',
-    saleNextNumber: 1001,
+    salePrefix: 'SAL-',
+    saleNextNumber: 1,
     purchasePrefix: 'PO-',
-    purchaseNextNumber: 5001,
+    purchaseNextNumber: 1,
     rentalPrefix: 'RNT-',
-    rentalNextNumber: 3001,
+    rentalNextNumber: 1,
     expensePrefix: 'EXP-',
-    expenseNextNumber: 2001,
+    expenseNextNumber: 1,
     productPrefix: 'PRD-',
-    productNextNumber: 1001,
+    productNextNumber: 1,
     studioPrefix: 'STD-',
-    studioNextNumber: 4001,
+    studioNextNumber: 1,
     posPrefix: 'POS-',
-    posNextNumber: 6001,
+    posNextNumber: 1,
   });
 
   // User Permissions
   const [currentUser, setCurrentUser] = useState<UserPermissions>({
-    role: 'Admin',
-    canCreateSale: true,
-    canEditSale: true,
-    canDeleteSale: true,
-    canViewReports: true,
-    canManageSettings: true,
-    canManageUsers: true,
-    canAccessAccounting: true,
-    canMakePayments: true,
-    canReceivePayments: true,
-    canManageExpenses: true,
-    canManageProducts: true,
-    canManagePurchases: true,
-    canManageRentals: true,
+    role: 'Staff',
+    canCreateSale: false,
+    canEditSale: false,
+    canDeleteSale: false,
+    canViewReports: false,
+    canManageSettings: false,
+    canManageUsers: false,
+    canAccessAccounting: false,
+    canMakePayments: false,
+    canReceivePayments: false,
+    canManageExpenses: false,
+    canManageProducts: false,
+    canManagePurchases: false,
+    canManageRentals: false,
   });
 
   // Module Toggles
   const [modules, setModules] = useState<ModuleToggles>({
-    rentalModuleEnabled: true,
-    studioModuleEnabled: true,
-    accountingModuleEnabled: true,
+    rentalModuleEnabled: false,
+    studioModuleEnabled: false,
+    accountingModuleEnabled: false,
     productionModuleEnabled: false,
-    posModuleEnabled: true,
+    posModuleEnabled: false,
   });
 
-  // Update Functions
-  const updateCompanySettings = (settings: Partial<CompanySettings>) => {
+  // ============================================
+  // 🎯 LOAD SETTINGS FROM DATABASE
+  // ============================================
+
+  const loadAllSettings = useCallback(async () => {
+    if (!companyId) {
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
+    try {
+      // Load company info from companies table
+      const { data: companyData } = await supabase
+        .from('companies')
+        .select('*')
+        .eq('id', companyId)
+        .single();
+
+      if (companyData) {
+        setCompany({
+          businessName: companyData.name || '',
+          businessAddress: companyData.address || '',
+          businessPhone: companyData.phone || '',
+          businessEmail: companyData.email || '',
+          taxId: companyData.tax_number || '',
+          currency: companyData.currency || 'PKR',
+          logoUrl: companyData.logo_url || undefined,
+        });
+      }
+
+      // Load branches
+      const branchesData = await branchService.getAllBranches(companyId);
+      const convertedBranches: BranchSettings[] = branchesData.map(b => ({
+        id: b.id,
+        branchCode: b.code || '',
+        branchName: b.name || '',
+        address: b.address || '',
+        phone: b.phone || '',
+        isActive: b.is_active !== false,
+        isDefault: false, // TODO: Get from user_branches or branch settings
+        cashAccount: '', // TODO: Load from branch settings
+        bankAccount: '', // TODO: Load from branch settings
+        posCashDrawer: '', // TODO: Load from branch settings
+      }));
+      setBranches(convertedBranches);
+
+      // Load all settings
+      const allSettings = await settingsService.getAllSettings(companyId);
+      const settingsMap = new Map(allSettings.map(s => [s.key, s.value]));
+
+      // Load POS Settings
+      const posData = (settingsMap.get('pos_settings') as any) || {};
+      setPOSSettings({
+        defaultCashAccount: posData.defaultCashAccount || '',
+        creditSaleAllowed: posData.creditSaleAllowed || false,
+        autoPrintReceipt: posData.autoPrintReceipt || false,
+        defaultTaxRate: posData.defaultTaxRate || 0,
+        invoicePrefix: posData.invoicePrefix || 'POS-',
+        negativeStockAllowed: posData.negativeStockAllowed || false,
+        allowDiscount: posData.allowDiscount || false,
+        maxDiscountPercent: posData.maxDiscountPercent || 0,
+      });
+
+      // Load Sales Settings
+      const salesData = (settingsMap.get('sales_settings') as any) || {};
+      setSalesSettings({
+        partialPaymentAllowed: salesData.partialPaymentAllowed || false,
+        defaultPaymentMethod: salesData.defaultPaymentMethod || 'Cash',
+        autoLedgerEntry: salesData.autoLedgerEntry || false,
+        invoicePrefix: salesData.invoicePrefix || 'SAL-',
+        autoDueDays: salesData.autoDueDays || 0,
+        allowCreditSale: salesData.allowCreditSale || false,
+        requireCustomerInfo: salesData.requireCustomerInfo || false,
+      });
+
+      // Load Purchase Settings
+      const purchaseData = (settingsMap.get('purchase_settings') as any) || {};
+      setPurchaseSettings({
+        defaultSupplierPayableAccount: purchaseData.defaultSupplierPayableAccount || '',
+        overReceiveAllowed: purchaseData.overReceiveAllowed || false,
+        purchaseApprovalRequired: purchaseData.purchaseApprovalRequired || false,
+        grnRequired: purchaseData.grnRequired || false,
+        autoPostToInventory: purchaseData.autoPostToInventory || false,
+        defaultPaymentTerms: purchaseData.defaultPaymentTerms || 0,
+      });
+
+      // Load Inventory Settings
+      const inventoryData = (settingsMap.get('inventory_settings') as any) || {};
+      setInventorySettings({
+        lowStockThreshold: inventoryData.lowStockThreshold || 0,
+        reorderAlertDays: inventoryData.reorderAlertDays || 0,
+        negativeStockAllowed: inventoryData.negativeStockAllowed || false,
+        valuationMethod: inventoryData.valuationMethod || 'FIFO',
+        autoReorderEnabled: inventoryData.autoReorderEnabled || false,
+        barcodeRequired: inventoryData.barcodeRequired || false,
+      });
+
+      // Load Rental Settings
+      const rentalData = (settingsMap.get('rental_settings') as any) || {};
+      setRentalSettings({
+        defaultLateFeePerDay: rentalData.defaultLateFeePerDay || 0,
+        gracePeriodDays: rentalData.gracePeriodDays || 0,
+        advanceRequired: rentalData.advanceRequired || false,
+        advancePercentage: rentalData.advancePercentage || 0,
+        securityDepositRequired: rentalData.securityDepositRequired || false,
+        securityDepositAmount: rentalData.securityDepositAmount || 0,
+        damageChargeEnabled: rentalData.damageChargeEnabled || false,
+        autoExtendAllowed: rentalData.autoExtendAllowed || false,
+      });
+
+      // Load Accounting Settings
+      const accountingData = (settingsMap.get('accounting_settings') as any) || {};
+      setAccountingSettings({
+        fiscalYearStart: accountingData.fiscalYearStart || new Date().toISOString().split('T')[0],
+        fiscalYearEnd: accountingData.fiscalYearEnd || new Date(new Date().setFullYear(new Date().getFullYear() + 1)).toISOString().split('T')[0],
+        lockAccountingDate: accountingData.lockAccountingDate || undefined,
+        manualJournalEnabled: accountingData.manualJournalEnabled || false,
+        defaultCurrency: accountingData.defaultCurrency || 'PKR',
+        multiCurrencyEnabled: accountingData.multiCurrencyEnabled || false,
+        taxCalculationMethod: accountingData.taxCalculationMethod || 'Inclusive',
+        defaultTaxRate: accountingData.defaultTaxRate || 0,
+      });
+
+      // Load Default Accounts
+      const accountsData = (settingsMap.get('default_accounts') as any) || {};
+      setDefaultAccounts({
+        paymentMethods: accountsData.paymentMethods || [
+          { id: '1', method: 'Cash', enabled: true, defaultAccount: '' },
+          { id: '2', method: 'Bank', enabled: true, defaultAccount: '' },
+          { id: '3', method: 'Mobile Wallet', enabled: true, defaultAccount: '' },
+        ],
+      });
+
+      // Load Numbering Rules from document_sequences
+      const sequences = await settingsService.getAllDocumentSequences(companyId, branchId || undefined);
+      const sequencesMap = new Map(sequences.map(s => [s.document_type, s]));
+      
+      const getSequence = (type: string) => sequencesMap.get(type);
+      
+      setNumberingRules({
+        salePrefix: getSequence('sale')?.prefix || 'SAL-',
+        saleNextNumber: getSequence('sale')?.current_number || 1,
+        purchasePrefix: getSequence('purchase')?.prefix || 'PO-',
+        purchaseNextNumber: getSequence('purchase')?.current_number || 1,
+        rentalPrefix: getSequence('rental')?.prefix || 'RNT-',
+        rentalNextNumber: getSequence('rental')?.current_number || 1,
+        expensePrefix: getSequence('expense')?.prefix || 'EXP-',
+        expenseNextNumber: getSequence('expense')?.current_number || 1,
+        productPrefix: getSequence('product')?.prefix || 'PRD-',
+        productNextNumber: getSequence('product')?.current_number || 1,
+        studioPrefix: getSequence('studio')?.prefix || 'STD-',
+        studioNextNumber: getSequence('studio')?.current_number || 1,
+        posPrefix: getSequence('pos')?.prefix || 'POS-',
+        posNextNumber: getSequence('pos')?.current_number || 1,
+      });
+
+      // Load Module Toggles
+      const moduleConfigs = await settingsService.getAllModuleConfigs(companyId);
+      const modulesMap = new Map(moduleConfigs.map(m => [m.module_name, m.is_enabled]));
+      
+      const getModuleEnabled = (name: string): boolean => {
+        const enabled = modulesMap.get(name);
+        return enabled === true;
+      };
+      
+      setModules({
+        rentalModuleEnabled: getModuleEnabled('rentals'),
+        studioModuleEnabled: getModuleEnabled('studio'),
+        accountingModuleEnabled: getModuleEnabled('accounting'),
+        productionModuleEnabled: getModuleEnabled('production'),
+        posModuleEnabled: getModuleEnabled('pos'),
+      });
+
+      console.log('✅ Settings loaded from database');
+    } catch (error) {
+      console.error('[SETTINGS CONTEXT] Error loading settings:', error);
+      toast.error('Failed to load settings');
+    } finally {
+      setLoading(false);
+    }
+  }, [companyId, branchId]);
+
+  // Load settings on mount
+  useEffect(() => {
+    loadAllSettings();
+  }, [loadAllSettings]);
+
+  // ============================================
+  // 🎯 UPDATE FUNCTIONS (SAVE TO DATABASE)
+  // ============================================
+
+  const updateCompanySettings = async (settings: Partial<CompanySettings>) => {
+    if (!companyId) return;
+    
     setCompany(prev => ({ ...prev, ...settings }));
+    
+    try {
+      // Update companies table
+      await supabase
+        .from('companies')
+        .update({
+          name: settings.businessName,
+          address: settings.businessAddress,
+          phone: settings.businessPhone,
+          email: settings.businessEmail,
+          tax_number: settings.taxId,
+          currency: settings.currency,
+          logo_url: settings.logoUrl,
+        })
+        .eq('id', companyId);
+      
+      toast.success('Company settings saved');
+    } catch (error) {
+      console.error('[SETTINGS] Error saving company settings:', error);
+      toast.error('Failed to save company settings');
+    }
   };
 
   const updateBranches = (branches: BranchSettings[]) => {
@@ -373,61 +588,241 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
     setBranches(prev => [...prev, branch]);
   };
 
-  const updatePOSSettings = (settings: Partial<POSSettings>) => {
-    setPOSSettings(prev => ({ ...prev, ...settings }));
-  };
-
-  const updateSalesSettings = (settings: Partial<SalesSettings>) => {
-    setSalesSettings(prev => ({ ...prev, ...settings }));
-  };
-
-  const updatePurchaseSettings = (settings: Partial<PurchaseSettings>) => {
-    setPurchaseSettings(prev => ({ ...prev, ...settings }));
-  };
-
-  const updateInventorySettings = (settings: Partial<InventorySettings>) => {
-    setInventorySettings(prev => ({ ...prev, ...settings }));
-  };
-
-  const updateRentalSettings = (settings: Partial<RentalSettings>) => {
-    setRentalSettings(prev => ({ ...prev, ...settings }));
-  };
-
-  const updateAccountingSettings = (settings: Partial<AccountingSettings>) => {
-    setAccountingSettings(prev => ({ ...prev, ...settings }));
-  };
-
-  const updateDefaultAccounts = (accounts: Partial<DefaultAccounts>) => {
-    setDefaultAccounts(prev => ({ ...prev, ...accounts }));
-  };
-
-  const updateNumberingRules = (rules: Partial<NumberingRules>) => {
-    setNumberingRules(prev => ({ ...prev, ...rules }));
-  };
-
-  const getNextNumber = (module: keyof NumberingRules): string => {
-    const prefixKey = module.replace('NextNumber', 'Prefix') as keyof NumberingRules;
-    const prefix = numberingRules[prefixKey] as string;
-    const nextNum = numberingRules[module] as number;
+  const updatePOSSettings = async (settings: Partial<POSSettings>) => {
+    if (!companyId) return;
     
-    // Auto-increment
-    setNumberingRules(prev => ({
-      ...prev,
-      [module]: nextNum + 1,
-    }));
+    const updated = { ...posSettings, ...settings };
+    setPOSSettings(updated);
     
-    return `${prefix}${String(nextNum).padStart(4, '0')}`;
+    try {
+      await settingsService.setSetting(companyId, 'pos_settings', updated, 'pos', 'POS module settings');
+      toast.success('POS settings saved');
+    } catch (error) {
+      console.error('[SETTINGS] Error saving POS settings:', error);
+      toast.error('Failed to save POS settings');
+    }
   };
 
-  const updatePermissions = (permissions: Partial<UserPermissions>) => {
-    setCurrentUser(prev => ({ ...prev, ...permissions }));
+  const updateSalesSettings = async (settings: Partial<SalesSettings>) => {
+    if (!companyId) return;
+    
+    const updated = { ...salesSettings, ...settings };
+    setSalesSettings(updated);
+    
+    try {
+      await settingsService.setSetting(companyId, 'sales_settings', updated, 'sales', 'Sales module settings');
+      toast.success('Sales settings saved');
+    } catch (error) {
+      console.error('[SETTINGS] Error saving sales settings:', error);
+      toast.error('Failed to save sales settings');
+    }
   };
 
-  const updateModules = (newModules: Partial<ModuleToggles>) => {
-    setModules(prev => ({ ...prev, ...newModules }));
+  const updatePurchaseSettings = async (settings: Partial<PurchaseSettings>) => {
+    if (!companyId) return;
+    
+    const updated = { ...purchaseSettings, ...settings };
+    setPurchaseSettings(updated);
+    
+    try {
+      await settingsService.setSetting(companyId, 'purchase_settings', updated, 'purchase', 'Purchase module settings');
+      toast.success('Purchase settings saved');
+    } catch (error) {
+      console.error('[SETTINGS] Error saving purchase settings:', error);
+      toast.error('Failed to save purchase settings');
+    }
+  };
+
+  const updateInventorySettings = async (settings: Partial<InventorySettings>) => {
+    if (!companyId) return;
+    
+    const updated = { ...inventorySettings, ...settings };
+    setInventorySettings(updated);
+    
+    try {
+      await settingsService.setSetting(companyId, 'inventory_settings', updated, 'inventory', 'Inventory module settings');
+      toast.success('Inventory settings saved');
+    } catch (error) {
+      console.error('[SETTINGS] Error saving inventory settings:', error);
+      toast.error('Failed to save inventory settings');
+    }
+  };
+
+  const updateRentalSettings = async (settings: Partial<RentalSettings>) => {
+    if (!companyId) return;
+    
+    const updated = { ...rentalSettings, ...settings };
+    setRentalSettings(updated);
+    
+    try {
+      await settingsService.setSetting(companyId, 'rental_settings', updated, 'rental', 'Rental module settings');
+      toast.success('Rental settings saved');
+    } catch (error) {
+      console.error('[SETTINGS] Error saving rental settings:', error);
+      toast.error('Failed to save rental settings');
+    }
+  };
+
+  const updateAccountingSettings = async (settings: Partial<AccountingSettings>) => {
+    if (!companyId) return;
+    
+    const updated = { ...accountingSettings, ...settings };
+    setAccountingSettings(updated);
+    
+    try {
+      await settingsService.setSetting(companyId, 'accounting_settings', updated, 'accounting', 'Accounting module settings');
+      toast.success('Accounting settings saved');
+    } catch (error) {
+      console.error('[SETTINGS] Error saving accounting settings:', error);
+      toast.error('Failed to save accounting settings');
+    }
+  };
+
+  const updateDefaultAccounts = async (accounts: Partial<DefaultAccounts>) => {
+    if (!companyId) return;
+    
+    const updated = { ...defaultAccounts, ...accounts };
+    setDefaultAccounts(updated);
+    
+    try {
+      await settingsService.setSetting(companyId, 'default_accounts', updated, 'accounts', 'Default payment accounts');
+      toast.success('Default accounts saved');
+    } catch (error) {
+      console.error('[SETTINGS] Error saving default accounts:', error);
+      toast.error('Failed to save default accounts');
+    }
+  };
+
+  const updateNumberingRules = async (rules: Partial<NumberingRules>) => {
+    if (!companyId) return;
+    
+    const updated = { ...numberingRules, ...rules };
+    setNumberingRules(updated);
+    
+    try {
+      // Map numbering rules to document sequences
+      const documentTypeMap: Record<string, { prefix: string; nextNumber: number }> = {
+        sale: { prefix: updated.salePrefix, nextNumber: updated.saleNextNumber },
+        purchase: { prefix: updated.purchasePrefix, nextNumber: updated.purchaseNextNumber },
+        rental: { prefix: updated.rentalPrefix, nextNumber: updated.rentalNextNumber },
+        expense: { prefix: updated.expensePrefix, nextNumber: updated.expenseNextNumber },
+        product: { prefix: updated.productPrefix, nextNumber: updated.productNextNumber },
+        studio: { prefix: updated.studioPrefix, nextNumber: updated.studioNextNumber },
+        pos: { prefix: updated.posPrefix, nextNumber: updated.posNextNumber },
+      };
+
+      // Save each document sequence
+      for (const [docType, { prefix, nextNumber }] of Object.entries(documentTypeMap)) {
+        await settingsService.setDocumentSequence(companyId, branchId || undefined, docType, prefix, nextNumber, 4);
+      }
+      
+      toast.success('Numbering rules saved');
+    } catch (error) {
+      console.error('[SETTINGS] Error saving numbering rules:', error);
+      toast.error('Failed to save numbering rules');
+    }
+  };
+
+  const getNextNumber = async (module: keyof NumberingRules): Promise<string> => {
+    if (!companyId) {
+      // Fallback to local increment if no company
+      const prefixKey = module.replace('NextNumber', 'Prefix') as keyof NumberingRules;
+      const prefix = numberingRules[prefixKey] as string;
+      const nextNum = numberingRules[module] as number;
+      setNumberingRules(prev => ({
+        ...prev,
+        [module]: nextNum + 1,
+      }));
+      return `${prefix}${String(nextNum).padStart(4, '0')}`;
+    }
+
+    // Map module to document type
+    const docTypeMap: Record<string, string> = {
+      saleNextNumber: 'sale',
+      purchaseNextNumber: 'purchase',
+      rentalNextNumber: 'rental',
+      expenseNextNumber: 'expense',
+      productNextNumber: 'product',
+      studioNextNumber: 'studio',
+      posNextNumber: 'pos',
+    };
+
+    const docType = docTypeMap[module];
+    if (!docType) {
+      throw new Error(`Unknown module: ${module}`);
+    }
+
+    try {
+      const nextNumber = await settingsService.getNextDocumentNumber(companyId, branchId || undefined, docType);
+      // Update local state
+      const prefixKey = module.replace('NextNumber', 'Prefix') as keyof NumberingRules;
+      const prefix = numberingRules[prefixKey] as string;
+      const currentNum = parseInt(nextNumber.replace(prefix, '')) || 0;
+      setNumberingRules(prev => ({
+        ...prev,
+        [module]: currentNum + 1,
+      }));
+      return nextNumber;
+    } catch (error) {
+      console.error('[SETTINGS] Error getting next number:', error);
+      // Fallback to local increment
+      const prefixKey = module.replace('NextNumber', 'Prefix') as keyof NumberingRules;
+      const prefix = numberingRules[prefixKey] as string;
+      const nextNum = numberingRules[module] as number;
+      setNumberingRules(prev => ({
+        ...prev,
+        [module]: nextNum + 1,
+      }));
+      return `${prefix}${String(nextNum).padStart(4, '0')}`;
+    }
+  };
+
+  const updatePermissions = async (permissions: Partial<UserPermissions>) => {
+    if (!companyId) return;
+    
+    const updated = { ...currentUser, ...permissions };
+    setCurrentUser(updated);
+    
+    try {
+      await settingsService.setSetting(companyId, 'user_permissions', updated, 'permissions', 'User permissions');
+      toast.success('Permissions saved');
+    } catch (error) {
+      console.error('[SETTINGS] Error saving permissions:', error);
+      toast.error('Failed to save permissions');
+    }
+  };
+
+  const updateModules = async (newModules: Partial<ModuleToggles>) => {
+    if (!companyId) return;
+    
+    const updated = { ...modules, ...newModules };
+    setModules(updated);
+    
+    try {
+      // Save each module toggle
+      const moduleNameMap: Record<keyof ModuleToggles, string> = {
+        rentalModuleEnabled: 'rentals',
+        studioModuleEnabled: 'studio',
+        accountingModuleEnabled: 'accounting',
+        productionModuleEnabled: 'production',
+        posModuleEnabled: 'pos',
+      };
+
+      for (const [key, moduleName] of Object.entries(moduleNameMap)) {
+        if (key in newModules) {
+          await settingsService.setModuleEnabled(companyId, moduleName, updated[key as keyof ModuleToggles] as boolean);
+        }
+      }
+      
+      toast.success('Module toggles saved');
+    } catch (error) {
+      console.error('[SETTINGS] Error saving module toggles:', error);
+      toast.error('Failed to save module toggles');
+    }
   };
 
   const value: SettingsContextType = {
+    loading,
     company,
     updateCompanySettings,
     branches,
@@ -454,6 +849,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
     updatePermissions,
     modules,
     updateModules,
+    refreshSettings: loadAllSettings,
   };
 
   return (

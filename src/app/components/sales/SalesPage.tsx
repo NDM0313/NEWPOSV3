@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import { 
   Plus, ShoppingCart, DollarSign, TrendingUp, 
   MoreVertical, Eye, Edit, Trash2, FileText, Phone, MapPin,
@@ -35,6 +35,7 @@ import { cn } from "@/app/components/ui/utils";
 import { useNavigation } from '@/app/context/NavigationContext';
 import { useSales } from '@/app/context/SalesContext';
 import { useSupabase } from '@/app/context/SupabaseContext';
+import { useDateRange } from '@/app/context/DateRangeContext';
 import { saleService } from '@/app/services/saleService';
 import { Pagination } from '@/app/components/ui/pagination';
 import { ListToolbar } from '@/app/components/ui/list-toolbar';
@@ -170,6 +171,7 @@ export const SalesPage = () => {
   const { openDrawer, setCurrentView } = useNavigation();
   const { sales, deleteSale, updateSale, recordPayment, updateShippingStatus, refreshSales, loading } = useSales();
   const { companyId, branchId } = useSupabase();
+  const { startDate, endDate } = useDateRange();
   const [searchTerm, setSearchTerm] = useState('');
   const [filterOpen, setFilterOpen] = useState(false);
   const [hoveredRow, setHoveredRow] = useState<string | null>(null);
@@ -376,6 +378,9 @@ export const SalesPage = () => {
   // Filtered sales - Use real data from context
   const filteredSales = useMemo(() => {
     return sales.filter((sale: Sale) => {
+      // Date range filter (from global date range context)
+      if (!filterByDateRange(sale.date)) return false;
+
       // Search filter
       if (searchTerm) {
         const search = searchTerm.toLowerCase();
@@ -388,7 +393,7 @@ export const SalesPage = () => {
         if (!matchesSearch) return false;
       }
 
-      // Date filter
+      // Date filter (local filter - can be removed if using global date range only)
       if (dateFilter !== 'all') {
         // Add date filter logic here
       }

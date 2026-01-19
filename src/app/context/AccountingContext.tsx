@@ -1,4 +1,9 @@
-import React, { createContext, useContext, useState, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
+import { useSupabase } from '@/app/context/SupabaseContext';
+import { useDateRange } from '@/app/context/DateRangeContext';
+import { accountService, Account as SupabaseAccount } from '@/app/services/accountService';
+import { accountingService, JournalEntryWithLines, JournalEntryLine } from '@/app/services/accountingService';
+import { toast } from 'sonner';
 
 // ============================================
 // 🎯 TYPES & INTERFACES
@@ -67,9 +72,11 @@ export interface AccountBalance {
 interface AccountingContextType {
   entries: AccountingEntry[];
   balances: Map<AccountType, number>;
+  loading: boolean;
   
   // Core functions
-  createEntry: (entry: Omit<AccountingEntry, 'id' | 'date' | 'createdBy'>) => boolean;
+  createEntry: (entry: Omit<AccountingEntry, 'id' | 'date' | 'createdBy'>) => Promise<boolean>;
+  refreshEntries: () => Promise<void>;
   getEntriesByReference: (referenceNo: string) => AccountingEntry[];
   getEntriesBySource: (source: TransactionSource) => AccountingEntry[];
   getAccountBalance: (accountType: AccountType) => number;
@@ -83,17 +90,17 @@ interface AccountingContextType {
   getWorkerBalance: (workerName: string, workerId?: string) => number;
   
   // Module-specific functions
-  recordSale: (params: SaleAccountingParams) => boolean;
-  recordSalePayment: (params: SalePaymentParams) => boolean;
-  recordRentalBooking: (params: RentalBookingParams) => boolean;
-  recordRentalDelivery: (params: RentalDeliveryParams) => boolean;
-  recordRentalReturn: (params: RentalReturnParams) => boolean;
-  recordStudioSale: (params: StudioSaleParams) => boolean;
-  recordWorkerJobCompletion: (params: WorkerJobParams) => boolean;
-  recordWorkerPayment: (params: WorkerPaymentParams) => boolean;
-  recordExpense: (params: ExpenseParams) => boolean;
-  recordPurchase: (params: PurchaseParams) => boolean;
-  recordSupplierPayment: (params: SupplierPaymentParams) => boolean;
+  recordSale: (params: SaleAccountingParams) => Promise<boolean>;
+  recordSalePayment: (params: SalePaymentParams) => Promise<boolean>;
+  recordRentalBooking: (params: RentalBookingParams) => Promise<boolean>;
+  recordRentalDelivery: (params: RentalDeliveryParams) => Promise<boolean>;
+  recordRentalReturn: (params: RentalReturnParams) => Promise<boolean>;
+  recordStudioSale: (params: StudioSaleParams) => Promise<boolean>;
+  recordWorkerJobCompletion: (params: WorkerJobParams) => Promise<boolean>;
+  recordWorkerPayment: (params: WorkerPaymentParams) => Promise<boolean>;
+  recordExpense: (params: ExpenseParams) => Promise<boolean>;
+  recordPurchase: (params: PurchaseParams) => Promise<boolean>;
+  recordSupplierPayment: (params: SupplierPaymentParams) => Promise<boolean>;
   
   // Account management
   accounts: Account[];
@@ -231,319 +238,143 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
   const [entries, setEntries] = useState<AccountingEntry[]>([]);
   const [balances, setBalances] = useState<Map<AccountType, number>>(new Map());
   const [accounts, setAccounts] = useState<Account[]>([]);
+  const [loading, setLoading] = useState<boolean>(true);
+  const { companyId, branchId, user } = useSupabase();
+  const { startDate, endDate } = useDateRange();
 
-  // Current user (from auth context in real app)
-  const currentUser = 'Admin';
-  
-  // ============================================
-  // 🎯 DEMO DATA: Initialize Accounts
-  // ============================================
-  React.useEffect(() => {
-    if (accounts.length === 0) {
-      const demoAccounts: Account[] = [
-        // Cash Accounts
-        { id: 'cash-001', name: 'Cash - Main Counter', type: 'Cash', accountType: 'Cash', balance: 150000, branch: 'Main Branch (HQ)', isActive: true },
-        { id: 'cash-002', name: 'Cash - Petty Cash', type: 'Cash', accountType: 'Cash', balance: 25000, branch: 'Main Branch (HQ)', isActive: true },
-        { id: 'cash-003', name: 'Cash - Mall Outlet', type: 'Cash', accountType: 'Cash', balance: 75000, branch: 'Mall Outlet', isActive: true },
-        
-        // Bank Accounts
-        { id: 'bank-001', name: 'HBL - Business Account', type: 'Bank', accountType: 'Bank', balance: 2500000, branch: 'Main Branch (HQ)', isActive: true },
-        { id: 'bank-002', name: 'MCB - Current Account', type: 'Bank', accountType: 'Bank', balance: 1800000, branch: 'Main Branch (HQ)', isActive: true },
-        { id: 'bank-003', name: 'Meezan Bank - Islamic', type: 'Bank', accountType: 'Bank', balance: 950000, branch: 'Main Branch (HQ)', isActive: true },
-        { id: 'bank-004', name: 'Allied Bank - Outlet', type: 'Bank', accountType: 'Bank', balance: 450000, branch: 'Mall Outlet', isActive: true },
-        
-        // Mobile Wallet Accounts
-        { id: 'wallet-001', name: 'JazzCash - Business', type: 'Mobile Wallet', accountType: 'Mobile Wallet', balance: 45000, branch: 'Main Branch (HQ)', isActive: true },
-        { id: 'wallet-002', name: 'Easypaisa - Store', type: 'Mobile Wallet', accountType: 'Mobile Wallet', balance: 32000, branch: 'Mall Outlet', isActive: true },
-        { id: 'wallet-003', name: 'SadaPay - Digital', type: 'Mobile Wallet', accountType: 'Mobile Wallet', balance: 18000, branch: 'Main Branch (HQ)', isActive: true },
-      ];
-      
-      setAccounts(demoAccounts);
-      console.log('✅ Demo accounts initialized:', demoAccounts.length);
-    }
+  // Current user (from auth context)
+  const currentUser = user?.email || 'Admin';
+  const currentUserId = user?.id;
+
+  // Convert Supabase account format to app format
+  const convertFromSupabaseAccount = useCallback((supabaseAccount: any): Account => {
+    return {
+      id: supabaseAccount.id,
+      name: supabaseAccount.name || '',
+      type: (supabaseAccount.type || 'Cash') as PaymentMethod,
+      accountType: supabaseAccount.account_type || supabaseAccount.type || 'Cash',
+      balance: parseFloat(supabaseAccount.balance || supabaseAccount.current_balance || 0),
+      branch: supabaseAccount.branch_name || supabaseAccount.branch_id || '',
+      isActive: supabaseAccount.is_active !== false,
+    };
   }, []);
   
-  // ============================================
-  // 🎯 DEMO DATA: Initialize Transactions
-  // ============================================
-  React.useEffect(() => {
-    if (entries.length === 0) {
-      const demoEntries: AccountingEntry[] = [
-        // 1. Sale Transaction - Full Payment
-        {
-          id: 'TXN-001',
-          date: new Date('2024-01-18'),
-          source: 'Sale',
-          referenceNo: 'INV-001',
-          debitAccount: 'Cash',
-          creditAccount: 'Sales Income',
-          amount: 45500,
-          description: 'Sale to Ahmed Ali - Wedding Dress Collection - Full Payment',
-          createdBy: 'Admin',
-          module: 'Sales',
-          metadata: { customerName: 'Ahmed Ali', invoiceId: 'INV-001' }
-        },
-        
-        // 2. Sale Transaction - Credit Sale (Receivable)
-        {
-          id: 'TXN-002',
-          date: new Date('2024-01-18'),
-          source: 'Sale',
-          referenceNo: 'INV-002',
-          debitAccount: 'Accounts Receivable',
-          creditAccount: 'Sales Income',
-          amount: 78000,
-          description: 'Sale to Sara Khan - Premium Bridal Dress - Credit Sale',
-          createdBy: 'Admin',
-          module: 'Sales',
-          metadata: { customerName: 'Sara Khan', invoiceId: 'INV-002' }
-        },
-        
-        // 3. Purchase Transaction - Credit Purchase
-        {
-          id: 'TXN-003',
-          date: new Date('2024-01-17'),
-          source: 'Purchase',
-          referenceNo: 'PO-001',
-          debitAccount: 'Inventory',
-          creditAccount: 'Accounts Payable',
-          amount: 150000,
-          description: 'Purchase from Bilal Fabrics - Raw Materials - Credit',
-          createdBy: 'Admin',
-          module: 'Purchases',
-          metadata: { supplierName: 'Bilal Fabrics', purchaseId: 'PO-001' }
-        },
-        
-        // 4. Supplier Payment
-        {
-          id: 'TXN-004',
-          date: new Date('2024-01-17'),
-          source: 'Payment',
-          referenceNo: 'PAY-001',
-          debitAccount: 'Accounts Payable',
-          creditAccount: 'Bank',
-          amount: 50000,
-          description: 'Partial payment to Bilal Fabrics via HBL Bank',
-          createdBy: 'Admin',
-          module: 'Purchases',
-          metadata: { supplierName: 'Bilal Fabrics', purchaseId: 'PO-001' }
-        },
-        
-        // 5. Rental Booking - Advance Payment
-        {
-          id: 'TXN-005',
-          date: new Date('2024-01-16'),
-          source: 'Rental',
-          referenceNo: 'RENT-001',
-          debitAccount: 'Cash',
-          creditAccount: 'Rental Advance',
-          amount: 15000,
-          description: 'Rental booking advance - Ayesha Malik - Wedding on Feb 5',
-          createdBy: 'Admin',
-          module: 'Rental',
-          metadata: { customerName: 'Ayesha Malik', bookingId: 'RENT-001' }
-        },
-        
-        // 6. Rental Delivery - Security Deposit
-        {
-          id: 'TXN-006',
-          date: new Date('2024-01-16'),
-          source: 'Rental',
-          referenceNo: 'RENT-001',
-          debitAccount: 'Cash',
-          creditAccount: 'Security Deposit',
-          amount: 25000,
-          description: 'Security deposit collected - Ayesha Malik rental',
-          createdBy: 'Admin',
-          module: 'Rental',
-          metadata: { customerName: 'Ayesha Malik', bookingId: 'RENT-001' }
-        },
-        
-        // 7. Rental Delivery - Remaining Payment
-        {
-          id: 'TXN-007',
-          date: new Date('2024-01-16'),
-          source: 'Rental',
-          referenceNo: 'RENT-001',
-          debitAccount: 'Bank',
-          creditAccount: 'Rental Income',
-          amount: 35000,
-          description: 'Remaining rental payment - Ayesha Malik - Bank transfer',
-          createdBy: 'Admin',
-          module: 'Rental',
-          metadata: { customerName: 'Ayesha Malik', bookingId: 'RENT-001' }
-        },
-        
-        // 8. Expense - Office Supplies
-        {
-          id: 'TXN-008',
-          date: new Date('2024-01-15'),
-          source: 'Expense',
-          referenceNo: 'EXP-001',
-          debitAccount: 'Expense',
-          creditAccount: 'Cash',
-          amount: 8500,
-          description: 'Office supplies - Stationery, printing materials',
-          createdBy: 'Admin',
-          module: 'Expenses',
-          metadata: {}
-        },
-        
-        // 9. Expense - Utilities
-        {
-          id: 'TXN-009',
-          date: new Date('2024-01-15'),
-          source: 'Expense',
-          referenceNo: 'EXP-002',
-          debitAccount: 'Expense',
-          creditAccount: 'Bank',
-          amount: 25000,
-          description: 'Monthly utilities - Electricity and gas bills',
-          createdBy: 'Admin',
-          module: 'Expenses',
-          metadata: {}
-        },
-        
-        // 10. Studio Sale - Custom Order
-        {
-          id: 'TXN-010',
-          date: new Date('2024-01-14'),
-          source: 'Studio',
-          referenceNo: 'STUDIO-001',
-          debitAccount: 'Mobile Wallet',
-          creditAccount: 'Studio Sales Income',
-          amount: 125000,
-          description: 'Custom bridal dress order - Zara Ahmed - JazzCash payment',
-          createdBy: 'Admin',
-          module: 'Studio',
-          metadata: { customerName: 'Zara Ahmed' }
-        },
-        
-        // 11. Studio Production Cost - Worker Job
-        {
-          id: 'TXN-011',
-          date: new Date('2024-01-14'),
-          source: 'Studio',
-          referenceNo: 'JOB-001',
-          debitAccount: 'Cost of Production',
-          creditAccount: 'Worker Payable',
-          amount: 35000,
-          description: 'Embroidery work completed - Master Khalid - Job STUDIO-001',
-          createdBy: 'Admin',
-          module: 'Studio',
-          metadata: { workerName: 'Master Khalid', stage: 'Embroidery' }
-        },
-        
-        // 12. Worker Payment
-        {
-          id: 'TXN-012',
-          date: new Date('2024-01-13'),
-          source: 'Payment',
-          referenceNo: 'WPAY-001',
-          debitAccount: 'Worker Payable',
-          creditAccount: 'Cash',
-          amount: 35000,
-          description: 'Payment to Master Khalid - Embroidery work',
-          createdBy: 'Admin',
-          module: 'Studio',
-          metadata: { workerName: 'Master Khalid' }
-        },
-        
-        // 13. Customer Payment (Receivable)
-        {
-          id: 'TXN-013',
-          date: new Date('2024-01-12'),
-          source: 'Payment',
-          referenceNo: 'CPAY-001',
-          debitAccount: 'Bank',
-          creditAccount: 'Accounts Receivable',
-          amount: 40000,
-          description: 'Partial payment received from Sara Khan - Invoice INV-002',
-          createdBy: 'Admin',
-          module: 'Sales',
-          metadata: { customerName: 'Sara Khan', invoiceId: 'INV-002' }
-        },
-        
-        // 14. Purchase - Cash Purchase
-        {
-          id: 'TXN-014',
-          date: new Date('2024-01-12'),
-          source: 'Purchase',
-          referenceNo: 'PO-002',
-          debitAccount: 'Inventory',
-          creditAccount: 'Cash',
-          amount: 45000,
-          description: 'Cash purchase - Accessories from Local Supplier',
-          createdBy: 'Admin',
-          module: 'Purchases',
-          metadata: { supplierName: 'Local Supplier', purchaseId: 'PO-002' }
-        },
-        
-        // 15. Rental Return - Damage Charge
-        {
-          id: 'TXN-015',
-          date: new Date('2024-01-11'),
-          source: 'Rental',
-          referenceNo: 'RENT-RETURN-001',
-          debitAccount: 'Security Deposit',
-          creditAccount: 'Rental Damage Income',
-          amount: 5000,
-          description: 'Damage charge deducted - Minor stain on dress',
-          createdBy: 'Admin',
-          module: 'Rental',
-          metadata: { customerName: 'Previous Customer', bookingId: 'RENT-OLD-001' }
-        },
-        
-        // 16. Rental Return - Security Refund
-        {
-          id: 'TXN-016',
-          date: new Date('2024-01-11'),
-          source: 'Rental',
-          referenceNo: 'RENT-RETURN-001',
-          debitAccount: 'Security Deposit',
-          creditAccount: 'Cash',
-          amount: 20000,
-          description: 'Security deposit refunded - After damage deduction',
-          createdBy: 'Admin',
-          module: 'Rental',
-          metadata: { customerName: 'Previous Customer', bookingId: 'RENT-OLD-001' }
-        },
-        
-        // 17. Sale - Mixed Payment
-        {
-          id: 'TXN-017',
-          date: new Date('2024-01-10'),
-          source: 'Sale',
-          referenceNo: 'INV-003',
-          debitAccount: 'Cash',
-          creditAccount: 'Sales Income',
-          amount: 25000,
-          description: 'Sale to Fatima Ali - Cash portion',
-          createdBy: 'Admin',
-          module: 'Sales',
-          metadata: { customerName: 'Fatima Ali', invoiceId: 'INV-003' }
-        },
-        
-        // 18. Sale - Card Payment portion
-        {
-          id: 'TXN-018',
-          date: new Date('2024-01-10'),
-          source: 'Sale',
-          referenceNo: 'INV-003',
-          debitAccount: 'Bank',
-          creditAccount: 'Sales Income',
-          amount: 30000,
-          description: 'Sale to Fatima Ali - Card payment portion',
-          createdBy: 'Admin',
-          module: 'Sales',
-          metadata: { customerName: 'Fatima Ali', invoiceId: 'INV-003' }
-        },
-      ];
-      
-      setEntries(demoEntries);
-      console.log('✅ Demo transactions initialized:', demoEntries.length);
+  // Convert journal entry from Supabase to AccountingEntry format
+  const convertFromJournalEntry = useCallback((journalEntry: JournalEntryWithLines): AccountingEntry => {
+    // Find debit and credit lines
+    const debitLine = journalEntry.lines?.find(line => line.debit > 0);
+    const creditLine = journalEntry.lines?.find(line => line.credit > 0);
+
+    // Determine source from reference_type
+    const sourceMap: Record<string, TransactionSource> = {
+      'sale': 'Sale',
+      'purchase': 'Purchase',
+      'expense': 'Expense',
+      'rental': 'Rental',
+      'studio': 'Studio',
+      'payment': 'Payment',
+      'manual': 'Manual',
+    };
+
+    const source = sourceMap[journalEntry.reference_type || 'manual'] || 'Manual';
+
+    // Extract metadata from description or reference
+    const metadata: AccountingEntry['metadata'] = {};
+    if (journalEntry.reference_id) {
+      if (source === 'Sale') metadata.invoiceId = journalEntry.reference_id;
+      if (source === 'Purchase') metadata.purchaseId = journalEntry.reference_id;
+      if (source === 'Expense') metadata.expenseId = journalEntry.reference_id;
     }
+
+    return {
+      id: journalEntry.id || '',
+      date: new Date(journalEntry.entry_date),
+      source,
+      referenceNo: journalEntry.entry_no,
+      debitAccount: (debitLine?.account_name || 'Expense') as AccountType,
+      creditAccount: (creditLine?.account_name || 'Cash') as AccountType,
+      amount: debitLine?.debit || creditLine?.credit || 0,
+      description: journalEntry.description,
+      createdBy: journalEntry.created_by || 'System',
+      module: source === 'Sale' ? 'Sales' : source === 'Purchase' ? 'Purchases' : source === 'Expense' ? 'Expenses' : source === 'Rental' ? 'Rental' : source === 'Studio' ? 'Studio' : 'Accounting',
+      metadata,
+    };
   }, []);
+
+  // Load accounts from database
+  const loadAccounts = useCallback(async () => {
+    if (!companyId) return;
+    
+    try {
+      const data = await accountService.getAllAccounts(companyId, branchId || undefined);
+      const convertedAccounts = data.map(convertFromSupabaseAccount);
+      setAccounts(convertedAccounts);
+      console.log('✅ Accounts loaded from database:', convertedAccounts.length);
+    } catch (error) {
+      console.error('[ACCOUNTING CONTEXT] Error loading accounts:', error);
+      setAccounts([]);
+    }
+  }, [companyId, branchId, convertFromSupabaseAccount]);
+
+  // Load journal entries from database
+  const loadEntries = useCallback(async () => {
+    if (!companyId) {
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const data = await accountingService.getAllEntries(
+        companyId, 
+        branchId || undefined,
+        startDate,
+        endDate
+      );
+      const convertedEntries = data.map(convertFromJournalEntry);
+      setEntries(convertedEntries);
+      console.log('✅ Journal entries loaded from database:', convertedEntries.length);
+      
+      // Recalculate balances from real entries
+      recalculateBalances(convertedEntries);
+    } catch (error) {
+      console.error('[ACCOUNTING CONTEXT] Error loading journal entries:', error);
+      setEntries([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [companyId, branchId, startDate, endDate, convertFromJournalEntry]);
+
+  // Recalculate balances from entries
+  const recalculateBalances = useCallback((entriesToUse: AccountingEntry[]) => {
+    const newBalances = new Map<AccountType, number>();
+    
+    entriesToUse.forEach(entry => {
+      // Update debit account
+      const currentDebit = newBalances.get(entry.debitAccount) || 0;
+      newBalances.set(entry.debitAccount, currentDebit + entry.amount);
+      
+      // Update credit account
+      const currentCredit = newBalances.get(entry.creditAccount) || 0;
+      newBalances.set(entry.creditAccount, currentCredit + entry.amount);
+    });
+    
+    setBalances(newBalances);
+  }, []);
+
+  // Load accounts and entries on mount and when company/branch/date range changes
+  useEffect(() => {
+    if (companyId) {
+      loadAccounts();
+      loadEntries();
+    }
+  }, [companyId, branchId, startDate, endDate, loadAccounts, loadEntries]);
+  
+  // ============================================
+  // 🎯 REAL DATA LOADING (NO DEMO DATA)
+  // ============================================
+  // All data is now loaded from database via loadEntries() and loadAccounts()
+  // No demo/static initialization - all entries come from journal_entries table
 
   // ============================================
   // 🔧 HELPER: Generate unique ID
@@ -585,25 +416,86 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
   };
 
   // ============================================
-  // 🎯 CORE: Create Entry
+  // 🎯 CORE: Create Entry (SAVES TO DATABASE)
   // ============================================
-  const createEntry = (entry: Omit<AccountingEntry, 'id' | 'date' | 'createdBy'>): boolean => {
+  const createEntry = async (entry: Omit<AccountingEntry, 'id' | 'date' | 'createdBy'>): Promise<boolean> => {
+    if (!companyId || !branchId) {
+      console.error('[ACCOUNTING] Cannot create entry: companyId or branchId missing');
+      toast.error('Cannot create entry: Company or branch not set');
+      return false;
+    }
+
     if (!validateEntry(entry.debitAccount, entry.creditAccount, entry.amount)) {
       return false;
     }
 
-    const newEntry: AccountingEntry = {
-      ...entry,
-      id: generateId(),
-      date: new Date(),
-      createdBy: currentUser
-    };
+    try {
+      // Generate entry number
+      const entryNo = `JE-${Date.now()}-${Math.random().toString(36).substr(2, 5).toUpperCase()}`;
+      const entryDate = new Date().toISOString().split('T')[0];
 
-    setEntries(prev => [newEntry, ...prev]);
+      // Find account IDs for debit and credit
+      const debitAccountObj = accounts.find(acc => acc.accountType === entry.debitAccount || acc.name === entry.debitAccount);
+      const creditAccountObj = accounts.find(acc => acc.accountType === entry.creditAccount || acc.name === entry.creditAccount);
+
+      if (!debitAccountObj || !creditAccountObj) {
+        console.error('[ACCOUNTING] Account not found:', { debitAccount: entry.debitAccount, creditAccount: entry.creditAccount });
+        toast.error('Account not found. Please create accounts first.');
+        return false;
+      }
+
+      // Create journal entry
+      const journalEntry: any = {
+        company_id: companyId,
+        branch_id: branchId,
+        entry_no: entryNo,
+        entry_date: entryDate,
+        description: entry.description,
+        reference_type: entry.source.toLowerCase(),
+        reference_id: entry.metadata?.invoiceId || entry.metadata?.purchaseId || entry.metadata?.expenseId || null,
+        total_debit: entry.amount,
+        total_credit: entry.amount,
+        is_posted: true,
+        is_manual: entry.source === 'Manual',
+        created_by: currentUserId || null,
+      };
+
+      // Create journal entry lines
+      const lines: JournalEntryLine[] = [
+        {
+          account_id: debitAccountObj.id,
+          account_name: entry.debitAccount,
+          debit: entry.amount,
+          credit: 0,
+          description: entry.description,
+        },
+        {
+          account_id: creditAccountObj.id,
+          account_name: entry.creditAccount,
+          debit: 0,
+          credit: entry.amount,
+          description: entry.description,
+        },
+      ];
+
+      // Save to database
+      const savedEntry = await accountingService.createEntry(journalEntry, lines);
+      
+      // Convert and add to local state
+      const convertedEntry = convertFromJournalEntry(savedEntry as JournalEntryWithLines);
+      setEntries(prev => [convertedEntry, ...prev]);
+      
+      // Update balances
     updateBalances(entry.debitAccount, entry.creditAccount, entry.amount);
 
-    console.log('✅ Accounting Entry Created:', newEntry);
+      console.log('✅ Accounting Entry Created and Saved:', convertedEntry);
+      toast.success('Accounting entry created successfully');
     return true;
+    } catch (error: any) {
+      console.error('[ACCOUNTING] Error creating entry:', error);
+      toast.error(error.message || 'Failed to create accounting entry');
+      return false;
+    }
   };
 
   // ============================================
@@ -693,12 +585,12 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
   // 💰 SALES MODULE → ACCOUNTING
   // ============================================
   
-  const recordSale = (params: SaleAccountingParams): boolean => {
+  const recordSale = async (params: SaleAccountingParams): Promise<boolean> => {
     const { invoiceNo, customerName, customerId, amount, paymentMethod, paidAmount, module } = params;
 
     // Full payment
     if (paidAmount >= amount) {
-      return createEntry({
+      return await createEntry({
         source: 'Sale',
         referenceNo: invoiceNo,
         debitAccount: paymentMethod as AccountType,
@@ -713,7 +605,7 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
     // Partial or credit sale
     if (paidAmount > 0) {
       // Record payment
-      createEntry({
+      await createEntry({
         source: 'Sale',
         referenceNo: invoiceNo,
         debitAccount: paymentMethod as AccountType,
@@ -725,7 +617,7 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
       });
 
       // Record receivable
-      return createEntry({
+      return await createEntry({
         source: 'Sale',
         referenceNo: invoiceNo,
         debitAccount: 'Accounts Receivable',
@@ -738,7 +630,7 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
     }
 
     // Full credit
-    return createEntry({
+    return await createEntry({
       source: 'Sale',
       referenceNo: invoiceNo,
       debitAccount: 'Accounts Receivable',
@@ -750,10 +642,10 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
     });
   };
 
-  const recordSalePayment = (params: SalePaymentParams): boolean => {
+  const recordSalePayment = async (params: SalePaymentParams): Promise<boolean> => {
     const { invoiceNo, customerName, customerId, amount, paymentMethod } = params;
 
-    return createEntry({
+    return await createEntry({
       source: 'Payment',
       referenceNo: invoiceNo,
       debitAccount: paymentMethod as AccountType,
@@ -769,11 +661,11 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
   // 🏠 RENTAL MODULE → ACCOUNTING
   // ============================================
 
-  const recordRentalBooking = (params: RentalBookingParams): boolean => {
+  const recordRentalBooking = async (params: RentalBookingParams): Promise<boolean> => {
     const { bookingId, customerName, customerId, advanceAmount, securityDepositAmount, securityDepositType, paymentMethod } = params;
 
     // Record advance
-    const advanceSuccess = createEntry({
+    const advanceSuccess = await createEntry({
       source: 'Rental',
       referenceNo: bookingId,
       debitAccount: paymentMethod as AccountType,
@@ -786,7 +678,7 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
 
     // Record security deposit (only if cash)
     if (securityDepositType === 'Cash' && securityDepositAmount > 0) {
-      createEntry({
+      await createEntry({
         source: 'Rental',
         referenceNo: bookingId,
         debitAccount: paymentMethod as AccountType,
@@ -801,10 +693,10 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
     return advanceSuccess;
   };
 
-  const recordRentalDelivery = (params: RentalDeliveryParams): boolean => {
+  const recordRentalDelivery = async (params: RentalDeliveryParams): Promise<boolean> => {
     const { bookingId, customerName, customerId, remainingAmount, paymentMethod } = params;
 
-    return createEntry({
+    return await createEntry({
       source: 'Rental',
       referenceNo: bookingId,
       debitAccount: paymentMethod as AccountType,
@@ -816,12 +708,12 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
     });
   };
 
-  const recordRentalReturn = (params: RentalReturnParams): boolean => {
+  const recordRentalReturn = async (params: RentalReturnParams): Promise<boolean> => {
     const { bookingId, customerName, customerId, securityDepositAmount, damageCharge, paymentMethod } = params;
 
     if (damageCharge && damageCharge > 0) {
       // Damage charge recorded
-      createEntry({
+      await createEntry({
         source: 'Rental',
         referenceNo: bookingId,
         debitAccount: (paymentMethod || 'Cash') as AccountType,
@@ -835,7 +727,7 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
 
     // Release security deposit
     if (securityDepositAmount > 0) {
-      return createEntry({
+      return await createEntry({
         source: 'Rental',
         referenceNo: bookingId,
         debitAccount: 'Security Deposit',
@@ -854,12 +746,12 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
   // 🎨 STUDIO MODULE → ACCOUNTING
   // ============================================
 
-  const recordStudioSale = (params: StudioSaleParams): boolean => {
+  const recordStudioSale = async (params: StudioSaleParams): Promise<boolean> => {
     const { invoiceNo, customerName, customerId, amount, paymentMethod, paidAmount } = params;
 
     // Full payment
     if (paidAmount >= amount) {
-      return createEntry({
+      return await createEntry({
         source: 'Studio',
         referenceNo: invoiceNo,
         debitAccount: paymentMethod as AccountType,
@@ -873,7 +765,7 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
 
     // Partial or credit
     if (paidAmount > 0) {
-      createEntry({
+      await createEntry({
         source: 'Studio',
         referenceNo: invoiceNo,
         debitAccount: paymentMethod as AccountType,
@@ -884,7 +776,7 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
         metadata: { customerId, customerName, invoiceId: invoiceNo }
       });
 
-      return createEntry({
+      return await createEntry({
         source: 'Studio',
         referenceNo: invoiceNo,
         debitAccount: 'Accounts Receivable',
@@ -897,7 +789,7 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
     }
 
     // Full credit
-    return createEntry({
+    return await createEntry({
       source: 'Studio',
       referenceNo: invoiceNo,
       debitAccount: 'Accounts Receivable',
@@ -909,10 +801,10 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
     });
   };
 
-  const recordWorkerJobCompletion = (params: WorkerJobParams): boolean => {
+  const recordWorkerJobCompletion = async (params: WorkerJobParams): Promise<boolean> => {
     const { invoiceNo, workerName, workerId, stage, cost } = params;
 
-    return createEntry({
+    return await createEntry({
       source: 'Studio',
       referenceNo: invoiceNo,
       debitAccount: 'Cost of Production',
@@ -924,10 +816,10 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
     });
   };
 
-  const recordWorkerPayment = (params: WorkerPaymentParams): boolean => {
+  const recordWorkerPayment = async (params: WorkerPaymentParams): Promise<boolean> => {
     const { workerName, workerId, amount, paymentMethod, referenceNo } = params;
 
-    return createEntry({
+    return await createEntry({
       source: 'Payment',
       referenceNo: referenceNo,
       debitAccount: 'Worker Payable',
@@ -943,10 +835,10 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
   // 💸 EXPENSE MODULE → ACCOUNTING
   // ============================================
 
-  const recordExpense = (params: ExpenseParams): boolean => {
+  const recordExpense = async (params: ExpenseParams): Promise<boolean> => {
     const { expenseId, category, amount, paymentMethod, description } = params;
 
-    return createEntry({
+    return await createEntry({
       source: 'Expense',
       referenceNo: expenseId,
       debitAccount: 'Expense',
@@ -958,12 +850,12 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
     });
   };
 
-  const recordPurchase = (params: PurchaseParams): boolean => {
+  const recordPurchase = async (params: PurchaseParams): Promise<boolean> => {
     const { purchaseId, supplierName, supplierId, amount, purchaseType, paidAmount, paymentMethod, description } = params;
 
     // Full payment
     if (paidAmount && paidAmount >= amount) {
-      return createEntry({
+      return await createEntry({
         source: 'Purchase',
         referenceNo: purchaseId,
         debitAccount: paymentMethod as AccountType,
@@ -978,7 +870,7 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
     // Partial or credit purchase
     if (paidAmount && paidAmount > 0) {
       // Record payment
-      createEntry({
+      await createEntry({
         source: 'Purchase',
         referenceNo: purchaseId,
         debitAccount: paymentMethod as AccountType,
@@ -990,7 +882,7 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
       });
 
       // Record payable
-      return createEntry({
+      return await createEntry({
         source: 'Purchase',
         referenceNo: purchaseId,
         debitAccount: 'Accounts Payable',
@@ -1003,7 +895,7 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
     }
 
     // Full credit
-    return createEntry({
+    return await createEntry({
       source: 'Purchase',
       referenceNo: purchaseId,
       debitAccount: 'Accounts Payable',
@@ -1015,10 +907,10 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
     });
   };
 
-  const recordSupplierPayment = (params: SupplierPaymentParams): boolean => {
+  const recordSupplierPayment = async (params: SupplierPaymentParams): Promise<boolean> => {
     const { purchaseId, supplierName, supplierId, amount, paymentMethod, referenceNo } = params;
 
-    return createEntry({
+    return await createEntry({
       source: 'Payment',
       referenceNo: referenceNo,
       debitAccount: 'Accounts Payable',
@@ -1037,7 +929,9 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
   const value: AccountingContextType = {
     entries,
     balances,
+    loading,
     createEntry,
+    refreshEntries: loadEntries,
     getEntriesByReference,
     getEntriesBySource,
     getAccountBalance,

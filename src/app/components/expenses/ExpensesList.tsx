@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   MoreVertical,
   Eye,
@@ -17,7 +17,8 @@ import {
   Repeat,
   CheckCircle2,
   XCircle,
-  Clock
+  Clock,
+  Loader2
 } from 'lucide-react';
 import { Button } from "../ui/button";
 import { Badge } from "../ui/badge";
@@ -29,6 +30,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "../ui/dropdown-menu";
+import { useExpenses, type Expense as ExpenseContextExpense } from '../../context/ExpenseContext';
 
 interface Expense {
   id: string;
@@ -161,8 +163,30 @@ const mockExpenses: Expense[] = [
 ];
 
 export const ExpensesList = () => {
-  const [expenses, setExpenses] = useState<Expense[]>(mockExpenses);
+  const { expenses: contextExpenses, loading, deleteExpense, refreshExpenses, createExpense } = useExpenses();
   const [filters, setFilters] = useState<any>({});
+
+  // Convert ExpenseContext format to ExpensesList format
+  const expenses = useMemo(() => {
+    return contextExpenses.map((exp: ExpenseContextExpense) => ({
+      id: exp.id,
+      date: new Date(exp.date),
+      referenceNo: exp.expenseNo,
+      recurringDetails: 'One-time', // TODO: Add recurring support
+      expenseCategory: exp.category,
+      subcategory: exp.category, // Use category as subcategory for now
+      location: exp.location,
+      paymentMethod: exp.paymentMethod,
+      tax: 0, // TODO: Add tax support
+      status: exp.status as 'pending' | 'approved' | 'paid' | 'rejected',
+      totalAmount: exp.amount,
+      paymentDue: exp.status === 'approved' ? new Date() : null,
+      expenseFor: exp.description,
+      contact: exp.payeeName,
+      expenseNote: exp.notes || '',
+      addedBy: exp.submittedBy,
+    }));
+  }, [contextExpenses]);
   const [columnVisibility, setColumnVisibility] = useState([
     { key: 'action', label: 'Action', visible: true },
     { key: 'date', label: 'Date', visible: true },
@@ -242,21 +266,43 @@ export const ExpensesList = () => {
     console.log('Edit expense:', expense);
   };
 
-  const handleDelete = (expense: Expense) => {
+  const handleDelete = async (expense: Expense) => {
     if (confirm(`Are you sure you want to delete expense ${expense.referenceNo}?`)) {
-      setExpenses(expenses.filter(e => e.id !== expense.id));
+      try {
+        await deleteExpense(expense.id);
+        await refreshExpenses();
+      } catch (error: any) {
+        console.error('[EXPENSES LIST] Error deleting expense:', error);
+        alert('Failed to delete expense: ' + (error.message || 'Unknown error'));
+      }
     }
   };
 
-  const handleDuplicate = (expense: Expense) => {
-    const newExpense: Expense = {
-      ...expense,
-      id: `EXP-${String(expenses.length + 1).padStart(3, '0')}`,
-      referenceNo: `REF-2026-${String(expenses.length + 1).padStart(3, '0')}`,
-      date: new Date(),
-      status: 'pending',
-    };
-    setExpenses([newExpense, ...expenses]);
+  const handleDuplicate = async (expense: Expense) => {
+    try {
+      // Find the original expense in context
+      const originalExpense = contextExpenses.find(e => e.id === expense.id);
+      if (!originalExpense) return;
+
+      // Create duplicate using ExpenseContext
+      await createExpense({
+        category: originalExpense.category,
+        description: originalExpense.description,
+        amount: originalExpense.amount,
+        date: new Date().toISOString().split('T')[0],
+        paymentMethod: originalExpense.paymentMethod,
+        payeeName: originalExpense.payeeName,
+        location: originalExpense.location,
+        status: 'pending' as any,
+        submittedBy: originalExpense.submittedBy,
+        receiptAttached: false,
+        notes: originalExpense.notes,
+      });
+      await refreshExpenses();
+    } catch (error: any) {
+      console.error('[EXPENSES LIST] Error duplicating expense:', error);
+      alert('Failed to duplicate expense: ' + (error.message || 'Unknown error'));
+    }
   };
 
   const getStatusBadge = (status: Expense['status']) => {

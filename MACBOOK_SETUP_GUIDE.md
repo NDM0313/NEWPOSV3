@@ -401,13 +401,93 @@ Output will be in `dist/` folder.
 ## 🆘 Getting Help
 
 1. Check [README.md](./README.md) for general info
-2. Check module-specific guides:
+2. Check [WINDOWS_SETUP_GUIDE.md](./WINDOWS_SETUP_GUIDE.md) for Windows-specific tips (if working cross-platform)
+3. Check module-specific guides:
    - `PRODUCTS_MODULE_COMPLETE.md`
    - `PURCHASES_MODULE_COMPLETE.md`
    - `SALES_MODULE_COMPLETE.md`
-3. Check [GitHub Issues](https://github.com/NDM0313/NEWPOSV3/issues)
-4. Review error messages in browser console
-5. Check Supabase logs in dashboard
+4. Check [GitHub Issues](https://github.com/NDM0313/NEWPOSV3/issues)
+5. Review error messages in browser console
+6. Check Supabase logs in dashboard
+7. Check [QUICK_SETUP_GUIDE.md](./QUICK_SETUP_GUIDE.md) for quick troubleshooting
+
+---
+
+## 🎯 Next Steps
+
+After setup is complete:
+
+### Step 1: Database Setup
+
+Run all SQL scripts in `supabase-extract/` folder using Supabase Dashboard:
+
+1. Go to [Supabase Dashboard](https://app.supabase.com/) → SQL Editor
+2. Run scripts in this order:
+   - `supabase-extract/schema.sql` - Creates all tables
+   - `supabase-extract/functions.sql` - Creates functions & triggers
+   - `supabase-extract/rls-policies.sql` - Sets up Row Level Security
+   - `supabase-extract/seed.sql` - (Optional) Demo data
+
+### Step 2: Create Demo User
+
+**Using Node.js Script:**
+
+```bash
+# Make sure .env.local has SUPABASE_SERVICE_ROLE_KEY
+# Then run:
+node create-user-simple.mjs
+```
+
+**Or use SQL in Supabase SQL Editor:**
+
+```sql
+-- Run create-demo-user-simple.sql
+-- This creates a demo user with email: demo@example.com
+```
+
+**Manual Method:**
+
+1. Go to Supabase Dashboard → Authentication → Users
+2. Click "Add User" → "Create new user"
+3. Enter email and password
+4. User will be created
+
+### Step 3: Test Modules
+
+1. Start dev server: `npm run dev`
+2. Open browser: `http://localhost:5173`
+3. Login with demo user credentials
+4. Test each module:
+   - ✅ Products module - Create, edit, delete products
+   - ✅ Purchases module - Create purchase orders
+   - ✅ Sales module - Create sales invoices
+
+### Step 4: Configure Settings
+
+1. Go to Settings module
+2. Set up:
+   - Company information
+   - Branches
+   - Accounts (Cash, Bank, etc.)
+   - Numbering rules
+
+### Step 5: Add Data
+
+1. Create products
+2. Add contacts (suppliers, customers)
+3. Create purchase orders
+4. Create sales invoices
+
+### Step 6: Start Development
+
+Begin working on remaining modules:
+- Contacts Module
+- Inventory Module
+- Rentals Module
+- Studio Production Module
+- Expenses Module
+- Accounting Module
+- Reports Module
 
 ---
 

@@ -15,6 +15,7 @@ import { PurchaseList } from './components/purchases/PurchaseList';
 import { AccountingDashboard } from './components/accounting/AccountingDashboard';
 import { UserDashboard } from './components/users/UserDashboard';
 import { RolesDashboard } from './components/users/RolesDashboard';
+import { UserProfilePage } from './components/users/UserProfilePage';
 import { PurchasesPage } from './components/purchases/PurchasesPage';
 import { SalesPage } from './components/sales/SalesPage';
 import { RentalDashboard } from './components/rentals/RentalDashboard';
@@ -60,14 +61,70 @@ import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { KeyboardShortcutsModal } from './components/shared/KeyboardShortcutsModal';
 import { SupabaseProvider } from './context/SupabaseContext';
 import { ProtectedRoute } from './components/auth/ProtectedRoute';
+import { useSettings } from './context/SettingsContext';
+import { DateRangeProvider } from './context/DateRangeContext';
 
 // v1.0.1 - Enhanced Product Form with SKU auto-generation and global access
 
 const AppContent = () => {
   const { currentView } = useNavigation();
+  const { modules } = useSettings();
   
   // 🎯 Enable global keyboard shortcuts
   useKeyboardShortcuts();
+
+  // Route protection based on module toggles
+  if (currentView === 'pos' && !modules.posModuleEnabled) {
+    return (
+      <Layout>
+        <div className="flex items-center justify-center h-full">
+          <div className="text-center">
+            <h2 className="text-2xl font-bold text-white mb-2">POS Module Disabled</h2>
+            <p className="text-gray-400">Please enable POS module in Settings to access this page.</p>
+          </div>
+        </div>
+      </Layout>
+    );
+  }
+
+  if (currentView === 'rentals' && !modules.rentalModuleEnabled) {
+    return (
+      <Layout>
+        <div className="flex items-center justify-center h-full">
+          <div className="text-center">
+            <h2 className="text-2xl font-bold text-white mb-2">Rental Module Disabled</h2>
+            <p className="text-gray-400">Please enable Rental module in Settings to access this page.</p>
+          </div>
+        </div>
+      </Layout>
+    );
+  }
+
+  if ((currentView === 'studio' || currentView === 'studio-dashboard-new' || currentView === 'studio-workflow') && !modules.studioModuleEnabled) {
+    return (
+      <Layout>
+        <div className="flex items-center justify-center h-full">
+          <div className="text-center">
+            <h2 className="text-2xl font-bold text-white mb-2">Studio Module Disabled</h2>
+            <p className="text-gray-400">Please enable Studio module in Settings to access this page.</p>
+          </div>
+        </div>
+      </Layout>
+    );
+  }
+
+  if (currentView === 'accounting' && !modules.accountingModuleEnabled) {
+    return (
+      <Layout>
+        <div className="flex items-center justify-center h-full">
+          <div className="text-center">
+            <h2 className="text-2xl font-bold text-white mb-2">Accounting Module Disabled</h2>
+            <p className="text-gray-400">Please enable Accounting module in Settings to access this page.</p>
+          </div>
+        </div>
+      </Layout>
+    );
+  }
 
   if (currentView === 'pos') {
     return (
@@ -107,6 +164,7 @@ const AppContent = () => {
       {/* Placeholders for new modules */}
       {currentView === 'reports' && <ReportsDashboardEnhanced />}
       {currentView === 'settings' && <SettingsPageNew />}
+      {currentView === 'user-profile' && <UserProfilePage />}
       {currentView === 'contact-profile' && <ViewContactProfile />}
       {currentView === 'item-report' && <ItemLifecycleReport />}
       {currentView === 'production-detail' && <ProductionOrderDetail />}
@@ -123,23 +181,25 @@ export default function App() {
     <ThemeProvider attribute="class" defaultTheme="dark" enableSystem={false}>
       <SupabaseProvider>
         <ProtectedRoute>
-          <ModuleProvider>
-            <AccountingProvider>
-              <SettingsProvider>
-                <SalesProvider>
-                  <PurchaseProvider>
-                    <ExpenseProvider>
-                      <NavigationProvider>
-                        <AppContent />
-                        <Toaster position="bottom-right" theme="dark" />
-                        <KeyboardShortcutsModal />
-                      </NavigationProvider>
-                    </ExpenseProvider>
-                  </PurchaseProvider>
-                </SalesProvider>
-              </SettingsProvider>
-            </AccountingProvider>
-          </ModuleProvider>
+          <DateRangeProvider>
+            <ModuleProvider>
+              <AccountingProvider>
+                <SettingsProvider>
+                  <SalesProvider>
+                    <PurchaseProvider>
+                      <ExpenseProvider>
+                        <NavigationProvider>
+                          <AppContent />
+                          <Toaster position="bottom-right" theme="dark" />
+                          <KeyboardShortcutsModal />
+                        </NavigationProvider>
+                      </ExpenseProvider>
+                    </PurchaseProvider>
+                  </SalesProvider>
+                </SettingsProvider>
+              </AccountingProvider>
+            </ModuleProvider>
+          </DateRangeProvider>
         </ProtectedRoute>
       </SupabaseProvider>
     </ThemeProvider>

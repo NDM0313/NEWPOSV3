@@ -1,4 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { useSupabase } from '@/app/context/SupabaseContext';
+import { productService } from '@/app/services/productService';
+import { contactService } from '@/app/services/contactService';
+import { rentalService } from '@/app/services/rentalService';
+import { toast } from 'sonner';
 import {
   Calendar,
   Search,
@@ -64,74 +69,7 @@ interface SelectedItem {
   customPrice?: number;
 }
 
-const mockProducts: RentalProduct[] = [
-  {
-    id: 'P1',
-    sku: 'BRD-RED-001',
-    name: 'Royal Red Bridal Lehenga with Heavy Embroidery',
-    category: 'bridal',
-    image: 'https://images.unsplash.com/photo-1617627143750-d86bc21e42bb?w=400',
-    retailValue: 85000,
-    rentPrice: 12000,
-    perDayPrice: 2500,
-    stock: 1,
-    bookings: [
-      {
-        pickupDate: new Date('2026-02-15'),
-        returnDate: new Date('2026-02-18'),
-        invoiceNo: 'RENT-0998'
-      }
-    ]
-  },
-  {
-    id: 'P2',
-    sku: 'BRD-MAR-002',
-    name: 'Maroon Velvet Bridal Dress',
-    category: 'bridal',
-    image: 'https://images.unsplash.com/photo-1595777457583-95e059d581b8?w=400',
-    retailValue: 65000,
-    rentPrice: 9000,
-    perDayPrice: 2000,
-    stock: 1,
-    bookings: []
-  },
-  {
-    id: 'P3',
-    sku: 'GRM-BLK-003',
-    name: 'Black Sherwani with Gold Embroidery',
-    category: 'groom',
-    image: 'https://images.unsplash.com/photo-1622122201714-77da0ca8e5d2?w=400',
-    retailValue: 45000,
-    rentPrice: 6000,
-    perDayPrice: 1500,
-    stock: 2,
-    bookings: []
-  },
-  {
-    id: 'P4',
-    sku: 'BRD-GRN-004',
-    name: 'Emerald Green Mehndi Dress',
-    category: 'bridal',
-    image: 'https://images.unsplash.com/photo-1610030469983-98e550d6193c?w=400',
-    retailValue: 55000,
-    rentPrice: 7500,
-    perDayPrice: 1800,
-    stock: 1,
-    bookings: [
-      {
-        pickupDate: new Date('2026-01-20'),
-        returnDate: new Date('2026-01-23'),
-        invoiceNo: 'RENT-1000'
-      }
-    ]
-  }
-];
-
-const mockCustomers: Customer[] = [
-  { id: 'WALK', name: 'Walk-in Customer', phone: '', type: 'walk-in' },
-  { id: 'C1', name: 'Ayesha Khan', phone: '+92 300 1234567', type: 'registered', cnic: '42101-1234567-8' },
-  { id: 'C2', name: 'Fatima Ahmed', phone: '+92 301 9876543', type: 'registered', cnic: '42201-9876543-2' },
-];
+// Products and customers will be loaded from Supabase
 
 export const NewRentalBooking = () => {
   // Step A: Date Selection (Priority)
@@ -191,10 +129,103 @@ export const NewRentalBooking = () => {
   };
   
   // Filter products based on search
-  const filteredProducts = mockProducts.filter(p =>
+  const filteredProducts = products.filter(p =>
     p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     p.sku.toLowerCase().includes(searchTerm.toLowerCase())
   );
+  
+  // Handle save booking
+  const handleSaveBooking = async () => {
+    if (!companyId || !branchId || !user || !selectedCustomer || !pickupDate || !returnDate) {
+      toast.error('Please fill all required fields');
+      return;
+    }
+
+    if (selectedItems.length === 0) {
+      toast.error('Please select at least one product');
+      return;
+    }
+
+    try {
+      setSaving(true);
+
+      // Determine customer ID
+      let customerId = selectedCustomer.id;
+      let customerNameValue = selectedCustomer.name;
+
+      // If walk-in customer, create contact first
+      if (selectedCustomer && selectedCustomer.type === 'walk-in') {
+        if (!customerName || !customerPhone) {
+          toast.error('Please enter customer name and phone');
+          setSaving(false);
+          return;
+        }
+
+        const newContact = await contactService.createContact({
+          company_id: companyId,
+          name: customerName,
+          phone: customerPhone,
+          type: 'customer',
+          is_active: true,
+        });
+        customerId = newContact.id;
+        customerNameValue = customerName;
+      }
+
+      // Convert items to rental items format
+      const rentalItems = selectedItems.map(item => ({
+        product_id: item.product.id,
+        product_name: item.product.name,
+        quantity: item.quantity,
+        rate_per_day: item.product.perDayPrice,
+        duration_days: rentalDays,
+        total: (item.customPrice || item.product.rentPrice) + (Math.max(0, rentalDays - 3) * item.product.perDayPrice),
+      }));
+
+      // Calculate totals
+      const rentalCharges = totalRent;
+      const totalAmount = rentalCharges + securityAmount;
+
+      // Create rental
+      const rental = await rentalService.createRental({
+        company_id: companyId,
+        branch_id: branchId,
+        booking_date: bookingDate.toISOString().split('T')[0],
+        customer_id: customerId,
+        customer_name: customerNameValue,
+        status: 'booked',
+        pickup_date: pickupDate.toISOString().split('T')[0],
+        return_date: returnDate.toISOString().split('T')[0],
+        duration_days: rentalDays,
+        rental_charges: rentalCharges,
+        security_deposit: securityAmount,
+        total_amount: totalAmount,
+        paid_amount: advanceAmount,
+        notes: bookingNotes,
+        created_by: user.id,
+      }, rentalItems);
+
+      toast.success(`Rental booking ${rental.booking_no || rental.id} created successfully!`);
+      
+      // Reset form
+      setSelectedItems([]);
+      setPickupDate(undefined);
+      setReturnDate(undefined);
+      setDatesLocked(false);
+      setAdvanceAmount(0);
+      setSecurityAmount(0);
+      setBookingNotes('');
+      setDocumentReceived(false);
+      
+      // Reload data
+      await loadData();
+    } catch (error: any) {
+      console.error('[NEW RENTAL BOOKING] Error saving booking:', error);
+      toast.error('Failed to create booking: ' + (error.message || 'Unknown error'));
+    } finally {
+      setSaving(false);
+    }
+  };
   
   // Calculate totals
   const calculateTotalRent = () => {
@@ -290,7 +321,7 @@ export const NewRentalBooking = () => {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent className="bg-[#1a1a1a] border-gray-700">
-                    {mockCustomers.map(customer => (
+                    {customers.map(customer => (
                       <SelectItem key={customer.id} value={customer.id} className="text-white hover:bg-gray-800">
                         {customer.name} {customer.type === 'registered' && `(${customer.phone})`}
                       </SelectItem>
@@ -299,7 +330,7 @@ export const NewRentalBooking = () => {
                 </Select>
               </div>
               
-              {selectedCustomer.type === 'walk-in' && (
+              {selectedCustomer && selectedCustomer.type === 'walk-in' && (
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <Label className="text-gray-400 mb-2 block">Customer Name *</Label>
@@ -447,7 +478,16 @@ export const NewRentalBooking = () => {
 
             {/* Product Cards */}
             <div className="space-y-3 max-h-[600px] overflow-y-auto">
-              {filteredProducts.map(product => {
+              {loading ? (
+                <div className="text-center py-8 text-gray-500">
+                  <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-[#800020]"></div>
+                  <p className="mt-2">Loading products...</p>
+                </div>
+              ) : filteredProducts.length === 0 ? (
+                <div className="text-center py-8 text-gray-500">
+                  No rentable products found
+                </div>
+              ) : filteredProducts.map(product => {
                 const availability = isProductAvailable(product);
                 const isSelected = selectedItems.some(item => item.product.id === product.id);
                 
@@ -730,11 +770,12 @@ export const NewRentalBooking = () => {
           {/* Footer Actions */}
           <div className="space-y-3">
             <Button
-              disabled={selectedItems.length === 0 || !documentReceived || !datesLocked}
+              onClick={handleSaveBooking}
+              disabled={selectedItems.length === 0 || !documentReceived || !datesLocked || saving || loading}
               className="w-full bg-[#800020] hover:bg-[#600018] text-white font-bold py-6 text-lg shadow-lg shadow-[#800020]/20 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <CheckCircle2 size={20} className="mr-2" />
-              Confirm Booking
+              {saving ? 'Saving...' : 'Confirm Booking'}
             </Button>
             
             <Button

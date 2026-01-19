@@ -27,6 +27,7 @@ import { cn } from "@/app/components/ui/utils";
 import { useNavigation } from '@/app/context/NavigationContext';
 import { usePurchases } from '@/app/context/PurchaseContext';
 import { useSupabase } from '@/app/context/SupabaseContext';
+import { useDateRange } from '@/app/context/DateRangeContext';
 import { purchaseService } from '@/app/services/purchaseService';
 import { Pagination } from '@/app/components/ui/pagination';
 import { ListToolbar } from '@/app/components/ui/list-toolbar';
@@ -138,6 +139,7 @@ const mockPurchases: Purchase[] = [
 export const PurchasesPage = () => {
   const { openDrawer } = useNavigation();
   const { companyId, branchId } = useSupabase();
+  const { startDate, endDate } = useDateRange();
   const [purchases, setPurchases] = useState<Purchase[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -328,7 +330,7 @@ export const PurchasesPage = () => {
 
       return true;
     });
-  }, [searchTerm, dateFilter, supplierFilter, statusFilter, paymentStatusFilter, branchFilter]);
+  }, [purchases, searchTerm, dateFilter, supplierFilter, statusFilter, paymentStatusFilter, branchFilter, filterByDateRange]);
 
   // Calculate summary
   const summary = useMemo(() => ({

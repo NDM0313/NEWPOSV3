@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { 
   Bell, 
   Menu, 
@@ -15,10 +15,16 @@ import {
   Users,
   Calendar,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  Loader2
 } from 'lucide-react';
 import { useNavigation } from '../../context/NavigationContext';
 import { useSupabase } from '../../context/SupabaseContext';
+import { useSales } from '../../context/SalesContext';
+import { usePurchases } from '../../context/PurchaseContext';
+import { useExpenses } from '../../context/ExpenseContext';
+import { useDateRange } from '../../context/DateRangeContext';
+import { branchService, Branch } from '../../services/branchService';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -28,32 +34,104 @@ import {
 } from "../ui/dropdown-menu";
 import { Button } from "../ui/button";
 import { Badge } from "../ui/badge";
+import { Input } from "../ui/input";
+import { Label } from "../ui/label";
 import { cn } from "../ui/utils";
 import { toast } from 'sonner';
+import { UserProfilePage } from '../users/UserProfilePage';
+import { ChangePasswordDialog } from '../auth/ChangePasswordDialog';
 
 export const TopHeader = () => {
   const { toggleSidebar, openDrawer, setCurrentView } = useNavigation();
-  const { signOut, user } = useSupabase();
-  const [branch, setBranch] = useState("Main Branch (HQ)");
-  const [dateRange, setDateRange] = useState<'today' | 'week' | 'custom'>('today');
-  const [notificationCount, setNotificationCount] = useState(3);
+  const { signOut, user, companyId, branchId, defaultBranchId, setBranchId } = useSupabase();
+  const sales = useSales();
+  const purchases = usePurchases();
+  const expenses = useExpenses();
+  const [branches, setBranches] = useState<Branch[]>([]);
+  const [loadingBranches, setLoadingBranches] = useState(false);
+  const { dateRange, setDateRangeType, setCustomDateRange } = useDateRange();
   const [showNotifications, setShowNotifications] = useState(false);
+  const [showCustomDatePicker, setShowCustomDatePicker] = useState(false);
 
-  const branches = [
-    { id: 1, name: "Main Branch (HQ)", location: "Downtown", active: true },
-    { id: 2, name: "Mall Outlet", location: "City Center", active: true },
-    { id: 3, name: "Warehouse", location: "Industrial Area", active: true },
-    { id: 4, name: "Online Store", location: "E-Commerce", active: false },
-  ];
+  // Load branches from Supabase
+  const loadBranches = useCallback(async () => {
+    if (!companyId) return;
+    
+    try {
+      setLoadingBranches(true);
+      const branchesData = await branchService.getAllBranches(companyId);
+      setBranches(branchesData);
+    } catch (error) {
+      console.error('[TOP HEADER] Error loading branches:', error);
+      toast.error('Failed to load branches');
+    } finally {
+      setLoadingBranches(false);
+    }
+  }, [companyId]);
+
+  useEffect(() => {
+    loadBranches();
+  }, [loadBranches]);
+
+  // Get current branch name
+  const currentBranch = useMemo(() => {
+    if (!branchId) return 'Select Branch';
+    const branch = branches.find(b => b.id === branchId);
+    return branch?.name || 'Select Branch';
+  }, [branchId, branches]);
+
+  // Calculate notification count from real data
+  const notificationCount = useMemo(() => {
+    let count = 0;
+    
+    // Low stock items (if we had products context, we'd check here)
+    // For now, we'll use sales/purchases/expenses notifications
+    
+    // Unpaid sales (receivables)
+    const unpaidSales = sales.sales.filter(s => s.type === 'invoice' && s.due > 0).length;
+    if (unpaidSales > 0) count += unpaidSales;
+    
+    // Unpaid purchases (payables)
+    const unpaidPurchases = purchases.purchases.filter(p => p.due > 0).length;
+    if (unpaidPurchases > 0) count += unpaidPurchases;
+    
+    // Pending expenses
+    const pendingExpenses = expenses.expenses.filter(e => e.status === 'pending').length;
+    if (pendingExpenses > 0) count += pendingExpenses;
+    
+    return count;
+  }, [sales.sales, purchases.purchases, expenses.expenses]);
+
+  // Handle branch change
+  const handleBranchChange = (branchId: string) => {
+    setBranchId(branchId);
+    toast.success('Branch switched successfully');
+    // Reload data for new branch
+    window.location.reload();
+  };
 
   const getDateRangeLabel = () => {
-    const today = new Date();
-    if (dateRange === 'today') {
-      return today.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-    } else if (dateRange === 'week') {
+    if (dateRange.type === 'today') {
+      return 'Today';
+    } else if (dateRange.type === 'last7days') {
+      return 'Last 7 Days';
+    } else if (dateRange.type === 'last15days') {
+      return 'Last 15 Days';
+    } else if (dateRange.type === 'last30days') {
+      return 'Last 30 Days';
+    } else if (dateRange.type === 'week') {
       return 'This Week';
+    } else if (dateRange.type === 'month') {
+      return 'This Month';
+    } else if (dateRange.type === 'custom') {
+      if (dateRange.startDate && dateRange.endDate) {
+        const start = dateRange.startDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        const end = dateRange.endDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        return `${start} - ${end}`;
+      }
+      return 'Custom Range';
     }
-    return 'Custom Range';
+    return 'Today';
   };
 
   const handleLogout = async () => {
@@ -68,9 +146,11 @@ export const TopHeader = () => {
     }
   };
 
+  const [showProfile, setShowProfile] = useState(false);
+  const [showChangePassword, setShowChangePassword] = useState(false);
+
   const handleViewProfile = () => {
-    // TODO: Navigate to user profile page when implemented
-    toast.info('Profile page coming soon');
+    setShowProfile(true);
   };
 
   const handleSettings = () => {
@@ -78,15 +158,59 @@ export const TopHeader = () => {
   };
 
   const handleChangePassword = () => {
-    // TODO: Open change password dialog when implemented
-    toast.info('Change password feature coming soon');
+    setShowChangePassword(true);
   };
 
   const handleNotifications = () => {
     setShowNotifications(!showNotifications);
-    // TODO: Show notifications panel when implemented
-    toast.info('Notifications panel coming soon');
+    // Show notifications dropdown
   };
+
+  // Get notifications list
+  const notifications = useMemo(() => {
+    const notifs: Array<{ id: string; type: string; message: string; time: string }> = [];
+    
+    // Unpaid sales
+    sales.sales
+      .filter(s => s.type === 'invoice' && s.due > 0)
+      .slice(0, 5)
+      .forEach(sale => {
+        notifs.push({
+          id: `sale-${sale.id}`,
+          type: 'receivable',
+          message: `Unpaid invoice: ${sale.invoiceNo} - Rs ${sale.due.toLocaleString()}`,
+          time: sale.date || new Date().toISOString().split('T')[0],
+        });
+      });
+    
+    // Unpaid purchases
+    purchases.purchases
+      .filter(p => p.due > 0)
+      .slice(0, 5)
+      .forEach(purchase => {
+        notifs.push({
+          id: `purchase-${purchase.id}`,
+          type: 'payable',
+          message: `Unpaid purchase: ${purchase.purchaseNo} - Rs ${purchase.due.toLocaleString()}`,
+          time: purchase.date || new Date().toISOString().split('T')[0],
+        });
+      });
+    
+    // Pending expenses
+    expenses.expenses
+      .filter(e => e.status === 'pending')
+      .slice(0, 5)
+      .forEach(expense => {
+        notifs.push({
+          id: `expense-${expense.id}`,
+          type: 'expense',
+          message: `Pending expense: ${expense.expenseNo} - Rs ${expense.amount.toLocaleString()}`,
+          time: expense.date || new Date().toISOString().split('T')[0],
+        });
+      });
+    
+    return notifs.slice(0, 10); // Limit to 10 notifications
+  }, [sales.sales, purchases.purchases, expenses.expenses]);
 
   // Get user display info
   const userDisplayName = user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Admin';
@@ -94,7 +218,7 @@ export const TopHeader = () => {
   const userInitial = userDisplayName.charAt(0).toUpperCase();
 
   return (
-    <header className="h-16 bg-header-background border-b border-header-border flex items-center justify-between px-6 sticky top-0 z-50 shadow-sm">
+    <header className="h-16 bg-gray-900/95 backdrop-blur-sm border-b border-gray-800 flex items-center justify-between px-6 sticky top-0 z-50 shadow-sm">
       {/* LEFT SECTION: Mobile Menu + Branch Selector */}
       <div className="flex items-center gap-4">
         {/* Mobile Menu Toggle */}
@@ -111,11 +235,18 @@ export const TopHeader = () => {
             <Button 
               variant="ghost" 
               className="hidden lg:flex items-center gap-2 px-4 py-2 h-10 bg-accent hover:bg-muted border border-border text-foreground rounded-lg transition-all"
+              disabled={loadingBranches}
             >
-              <div className="w-2 h-2 rounded-full bg-emerald-500 shadow-lg shadow-emerald-500/50 animate-pulse"></div>
-              <MapPin size={16} className="text-blue-500" />
-              <span className="font-medium">{branch}</span>
-              <ChevronDown size={16} className="text-muted-foreground" />
+              {loadingBranches ? (
+                <Loader2 size={16} className="animate-spin text-muted-foreground" />
+              ) : (
+                <>
+                  <div className="w-2 h-2 rounded-full bg-emerald-500 shadow-lg shadow-emerald-500/50 animate-pulse"></div>
+                  <MapPin size={16} className="text-blue-500" />
+                  <span className="font-medium">{currentBranch}</span>
+                  <ChevronDown size={16} className="text-muted-foreground" />
+                </>
+              )}
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent 
@@ -125,30 +256,41 @@ export const TopHeader = () => {
             <div className="px-3 py-2 mb-2">
               <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Select Location</p>
             </div>
-            {branches.map((b) => (
-              <DropdownMenuItem
-                key={b.id}
-                onClick={() => setBranch(b.name)}
-                className={cn(
-                  "flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer transition-all",
-                  branch === b.name 
-                    ? "bg-primary/10 text-primary" 
-                    : "text-foreground hover:bg-accent"
-                )}
-              >
-                <div className={cn(
-                  "w-2 h-2 rounded-full",
-                  b.active ? "bg-emerald-500" : "bg-gray-600"
-                )}></div>
-                <div className="flex-1">
-                  <div className="font-medium">{b.name}</div>
-                  <div className="text-xs text-muted-foreground">{b.location}</div>
-                </div>
-                {branch === b.name && (
-                  <div className="w-1.5 h-1.5 rounded-full bg-primary"></div>
-                )}
-              </DropdownMenuItem>
-            ))}
+            {loadingBranches ? (
+              <div className="px-3 py-4 text-center text-muted-foreground">
+                <Loader2 size={16} className="animate-spin mx-auto mb-2" />
+                <p className="text-xs">Loading branches...</p>
+              </div>
+            ) : branches.length === 0 ? (
+              <div className="px-3 py-4 text-center text-muted-foreground">
+                <p className="text-xs">No branches found</p>
+              </div>
+            ) : (
+              branches.map((b) => (
+                <DropdownMenuItem
+                  key={b.id}
+                  onClick={() => handleBranchChange(b.id)}
+                  className={cn(
+                    "flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer transition-all",
+                    branchId === b.id 
+                      ? "bg-primary/10 text-primary" 
+                      : "text-foreground hover:bg-accent"
+                  )}
+                >
+                  <div className={cn(
+                    "w-2 h-2 rounded-full",
+                    b.is_active ? "bg-emerald-500" : "bg-gray-600"
+                  )}></div>
+                  <div className="flex-1">
+                    <div className="font-medium">{b.name}</div>
+                    <div className="text-xs text-muted-foreground">{b.address || b.city || 'No address'}</div>
+                  </div>
+                  {branchId === b.id && (
+                    <div className="w-1.5 h-1.5 rounded-full bg-primary"></div>
+                  )}
+                </DropdownMenuItem>
+              ))
+            )}
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
@@ -224,10 +366,10 @@ export const TopHeader = () => {
             className="w-48 bg-card border-border shadow-2xl rounded-lg p-2"
           >
             <DropdownMenuItem
-              onClick={() => setDateRange('today')}
+              onClick={() => setDateRangeType('today')}
               className={cn(
                 "px-3 py-2 rounded-lg cursor-pointer",
-                dateRange === 'today' 
+                dateRange.type === 'today' 
                   ? "bg-primary/10 text-primary" 
                   : "text-foreground hover:bg-accent"
               )}
@@ -235,10 +377,43 @@ export const TopHeader = () => {
               Today
             </DropdownMenuItem>
             <DropdownMenuItem
-              onClick={() => setDateRange('week')}
+              onClick={() => setDateRangeType('last7days')}
               className={cn(
                 "px-3 py-2 rounded-lg cursor-pointer",
-                dateRange === 'week' 
+                dateRange.type === 'last7days' 
+                  ? "bg-primary/10 text-primary" 
+                  : "text-foreground hover:bg-accent"
+              )}
+            >
+              Last 7 Days
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={() => setDateRangeType('last15days')}
+              className={cn(
+                "px-3 py-2 rounded-lg cursor-pointer",
+                dateRange.type === 'last15days' 
+                  ? "bg-primary/10 text-primary" 
+                  : "text-foreground hover:bg-accent"
+              )}
+            >
+              Last 15 Days
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={() => setDateRangeType('last30days')}
+              className={cn(
+                "px-3 py-2 rounded-lg cursor-pointer",
+                dateRange.type === 'last30days' 
+                  ? "bg-primary/10 text-primary" 
+                  : "text-foreground hover:bg-accent"
+              )}
+            >
+              Last 30 Days
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={() => setDateRangeType('week')}
+              className={cn(
+                "px-3 py-2 rounded-lg cursor-pointer",
+                dateRange.type === 'week' 
                   ? "bg-primary/10 text-primary" 
                   : "text-foreground hover:bg-accent"
               )}
@@ -246,10 +421,25 @@ export const TopHeader = () => {
               This Week
             </DropdownMenuItem>
             <DropdownMenuItem
-              onClick={() => setDateRange('custom')}
+              onClick={() => setDateRangeType('month')}
               className={cn(
                 "px-3 py-2 rounded-lg cursor-pointer",
-                dateRange === 'custom' 
+                dateRange.type === 'month' 
+                  ? "bg-primary/10 text-primary" 
+                  : "text-foreground hover:bg-accent"
+              )}
+            >
+              This Month
+            </DropdownMenuItem>
+            <DropdownMenuSeparator className="bg-border my-2" />
+            <DropdownMenuItem
+              onClick={() => {
+                setShowCustomDatePicker(true);
+                setDateRangeType('custom');
+              }}
+              className={cn(
+                "px-3 py-2 rounded-lg cursor-pointer",
+                dateRange.type === 'custom' 
                   ? "bg-primary/10 text-primary" 
                   : "text-foreground hover:bg-accent"
               )}
@@ -260,20 +450,59 @@ export const TopHeader = () => {
         </DropdownMenu>
 
         {/* Notifications */}
-        <button 
-          onClick={handleNotifications}
-          className="relative p-2.5 rounded-lg transition-all bg-accent hover:bg-muted border border-border text-muted-foreground hover:text-foreground"
-          title="Notifications"
-        >
-          <Bell size={20} />
-          {notificationCount > 0 && (
-            <Badge 
-              className="absolute -top-1 -right-1 h-5 w-5 flex items-center justify-center p-0 bg-destructive text-destructive-foreground border-2 border-header-background text-xs font-bold shadow-sm"
+        <DropdownMenu open={showNotifications} onOpenChange={setShowNotifications}>
+          <DropdownMenuTrigger asChild>
+            <button 
+              className="relative p-2.5 rounded-lg transition-all bg-accent hover:bg-muted border border-border text-muted-foreground hover:text-foreground"
+              title="Notifications"
             >
-              {notificationCount}
-            </Badge>
-          )}
-        </button>
+              <Bell size={20} />
+              {notificationCount > 0 && (
+                <Badge 
+                  className="absolute -top-1 -right-1 h-5 w-5 flex items-center justify-center p-0 bg-destructive text-destructive-foreground border-2 border-header-background text-xs font-bold shadow-sm"
+                >
+                  {notificationCount}
+                </Badge>
+              )}
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent 
+            align="end" 
+            className="w-80 bg-card border-border shadow-2xl rounded-lg p-2 max-h-[400px] overflow-y-auto"
+          >
+            <div className="px-3 py-2 mb-2 border-b border-border">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Notifications</p>
+            </div>
+            {notifications.length === 0 ? (
+              <div className="px-3 py-8 text-center text-muted-foreground">
+                <Bell size={32} className="mx-auto mb-2 opacity-50" />
+                <p className="text-sm">No notifications</p>
+              </div>
+            ) : (
+              notifications.map((notif) => (
+                <DropdownMenuItem
+                  key={notif.id}
+                  className="flex flex-col items-start gap-1 px-3 py-2.5 rounded-lg cursor-pointer hover:bg-accent transition-all"
+                  onClick={() => {
+                    if (notif.type === 'receivable') {
+                      setCurrentView('sales');
+                    } else if (notif.type === 'payable') {
+                      setCurrentView('purchases');
+                    } else if (notif.type === 'expense') {
+                      setCurrentView('expenses');
+                    }
+                    setShowNotifications(false);
+                  }}
+                >
+                  <div className="flex items-start justify-between w-full">
+                    <p className="text-sm font-medium text-foreground">{notif.message}</p>
+                  </div>
+                  <p className="text-xs text-muted-foreground">{notif.time}</p>
+                </DropdownMenuItem>
+              ))
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
 
         {/* User Profile Dropdown */}
         <DropdownMenu>
@@ -345,6 +574,86 @@ export const TopHeader = () => {
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
+
+      {/* User Profile Modal */}
+      {showProfile && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm">
+          <div className="bg-gray-900 border border-gray-800 rounded-xl p-6 max-w-4xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+            <UserProfilePage onClose={() => setShowProfile(false)} />
+          </div>
+        </div>
+      )}
+
+      {/* Change Password Dialog */}
+      <ChangePasswordDialog
+        isOpen={showChangePassword}
+        onClose={() => setShowChangePassword(false)}
+      />
+
+      {/* Custom Date Range Picker */}
+      {showCustomDatePicker && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm">
+          <div className="bg-gray-900 border border-gray-800 rounded-xl p-6 max-w-md w-full mx-4">
+            <h3 className="text-lg font-semibold text-white mb-4">Select Custom Date Range</h3>
+            <div className="space-y-4">
+              <div>
+                <Label className="text-gray-300 mb-2 block">Start Date</Label>
+                <Input
+                  type="date"
+                  value={dateRange.startDate ? dateRange.startDate.toISOString().split('T')[0] : ''}
+                  onChange={(e) => {
+                    const start = new Date(e.target.value);
+                    if (dateRange.endDate) {
+                      setCustomDateRange(start, dateRange.endDate);
+                    } else {
+                      setCustomDateRange(start, start);
+                    }
+                  }}
+                  className="bg-gray-950 border-gray-700 text-white"
+                />
+              </div>
+              <div>
+                <Label className="text-gray-300 mb-2 block">End Date</Label>
+                <Input
+                  type="date"
+                  value={dateRange.endDate ? dateRange.endDate.toISOString().split('T')[0] : ''}
+                  onChange={(e) => {
+                    const end = new Date(e.target.value);
+                    if (dateRange.startDate) {
+                      setCustomDateRange(dateRange.startDate, end);
+                    } else {
+                      setCustomDateRange(end, end);
+                    }
+                  }}
+                  className="bg-gray-950 border-gray-700 text-white"
+                />
+              </div>
+              <div className="flex gap-3 pt-4">
+                <Button
+                  onClick={() => {
+                    if (dateRange.startDate && dateRange.endDate) {
+                      setShowCustomDatePicker(false);
+                      toast.success('Date range updated');
+                    } else {
+                      toast.error('Please select both start and end dates');
+                    }
+                  }}
+                  className="flex-1 bg-blue-600 hover:bg-blue-500 text-white"
+                >
+                  Apply
+                </Button>
+                <Button
+                  variant="ghost"
+                  onClick={() => setShowCustomDatePicker(false)}
+                  className="text-gray-400 hover:text-white"
+                >
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </header>
   );
 };

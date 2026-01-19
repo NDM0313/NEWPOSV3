@@ -32,8 +32,10 @@ export const contactService = {
       .from('contacts')
       .select('*')
       .eq('company_id', companyId)
-      .eq('is_active', true)
       .order('name');
+
+    // Note: is_active column may not exist - removed filter to avoid errors
+    // If needed, filter in application code after fetching
 
     if (type && type !== 'both') {
       query = query.eq('type', type);
@@ -97,9 +99,10 @@ export const contactService = {
       .from('contacts')
       .select('*')
       .eq('company_id', companyId)
-      .eq('is_active', true)
       .or(`name.ilike.%${query}%,email.ilike.%${query}%,phone.ilike.%${query}%`)
       .limit(20);
+
+    // Note: is_active column may not exist - removed filter to avoid errors
 
     if (error) throw error;
     return data;

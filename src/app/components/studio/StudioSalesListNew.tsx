@@ -1,10 +1,11 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { 
   MoreVertical,
   ExternalLink,
   AlertTriangle,
   Clock,
-  Filter
+  Filter,
+  Loader2
 } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
@@ -18,6 +19,8 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "../ui/dropdown-menu";
+import { useSupabase } from '@/app/context/SupabaseContext';
+import { studioService, type StudioOrder } from '@/app/services/studioService';
 
 type ProductionStatus = 'Not Started' | 'In Progress' | 'Completed';
 
@@ -36,86 +39,76 @@ interface StudioSale {
   productionStatus: ProductionStatus;
 }
 
-// Mock data
-const mockSales: StudioSale[] = [
-  {
-    id: "1",
-    invoiceNo: "INV-2026-0015",
-    customerName: "Ayesha Khan",
-    customerPhone: "+92 300 1234567",
-    fabricSummary: "Silk Lawn - Red",
-    meters: 5,
-    saleDate: "2026-01-03",
-    deliveryDeadline: "2026-01-20",
-    totalAmount: 15000,
-    paidAmount: 10000,
-    balanceDue: 5000,
-    productionStatus: "In Progress"
-  },
-  {
-    id: "2",
-    invoiceNo: "INV-2026-0018",
-    customerName: "Fatima Ahmed",
-    customerPhone: "+92 301 9876543",
-    fabricSummary: "Cotton Lawn - Blue",
-    meters: 8,
-    saleDate: "2026-01-04",
-    deliveryDeadline: "2026-01-25",
-    totalAmount: 22000,
-    paidAmount: 22000,
-    balanceDue: 0,
-    productionStatus: "In Progress"
-  },
-  {
-    id: "3",
-    invoiceNo: "INV-2026-0020",
-    customerName: "Sara Malik",
-    customerPhone: "+92 333 5551234",
-    fabricSummary: "Chiffon - Green",
-    meters: 3,
-    saleDate: "2026-01-10",
-    deliveryDeadline: "2026-01-30",
-    totalAmount: 8500,
-    paidAmount: 3000,
-    balanceDue: 5500,
-    productionStatus: "Not Started"
-  },
-  {
-    id: "4",
-    invoiceNo: "INV-2026-0012",
-    customerName: "Zainab Ali",
-    customerPhone: "+92 321 4445678",
-    fabricSummary: "Lawn - White",
-    meters: 4,
-    saleDate: "2025-12-28",
-    deliveryDeadline: "2026-01-15",
-    totalAmount: 12000,
-    paidAmount: 12000,
-    balanceDue: 0,
-    productionStatus: "Completed"
-  },
-  {
-    id: "5",
-    invoiceNo: "INV-2026-0008",
-    customerName: "Maria Hassan",
-    customerPhone: "+92 345 9998877",
-    fabricSummary: "Velvet - Maroon",
-    meters: 6,
-    saleDate: "2025-12-20",
-    deliveryDeadline: "2026-01-18",
-    totalAmount: 28000,
-    paidAmount: 15000,
-    balanceDue: 13000,
-    productionStatus: "In Progress"
-  }
-];
-
 export const StudioSalesListNew = () => {
   const { setCurrentView, setSelectedStudioSaleId } = useNavigation();
+  const { companyId, branchId } = useSupabase();
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState<'all' | ProductionStatus>('all');
   const [filterOpen, setFilterOpen] = useState(false);
   const [rowsPerPage, setRowsPerPage] = useState(25);
+  const [sales, setSales] = useState<StudioSale[]>([]);
+  const [loading, setLoading] = useState<boolean>(true);
+
+  // Convert Supabase StudioOrder to StudioSale interface
+  const convertFromSupabaseOrder = useCallback((order: any): StudioSale => {
+    const statusMap: Record<string, ProductionStatus> = {
+      'pending': 'Not Started',
+      'in_progress': 'In Progress',
+      'completed': 'Completed',
+      'cancelled': 'Not Started'
+    };
+
+    // Get customer info
+    const customer = order.customer || {};
+    const customerName = customer.name || order.customer_name || 'Unknown';
+    const customerPhone = customer.phone || '';
+
+    // Get fabric summary from items or notes
+    const items = order.items || [];
+    const fabricSummary = items.length > 0 
+      ? items[0].item_description || 'N/A'
+      : 'N/A';
+    const meters = items.reduce((sum: number, item: any) => sum + (item.quantity || 0), 0);
+
+    return {
+      id: order.id || '',
+      invoiceNo: order.order_no || `ORD-${order.id?.slice(0, 8)}`,
+      customerName,
+      customerPhone,
+      fabricSummary,
+      meters,
+      saleDate: order.order_date || new Date().toISOString().split('T')[0],
+      deliveryDeadline: order.delivery_date || order.actual_delivery_date || '',
+      totalAmount: order.total_cost || 0,
+      paidAmount: order.advance_paid || 0,
+      balanceDue: order.balance_due || 0,
+      productionStatus: statusMap[order.status] || 'Not Started'
+    };
+  }, []);
+
+  // Load studio orders from Supabase
+  const loadStudioOrders = useCallback(async () => {
+    if (!companyId) {
+      setLoading(false);
+      return;
+    }
+
+    try {
+      setLoading(true);
+      const orders = await studioService.getAllStudioOrders(companyId, branchId || undefined);
+      const convertedSales = orders.map(convertFromSupabaseOrder);
+      setSales(convertedSales);
+    } catch (error) {
+      console.error('Error loading studio orders:', error);
+      setSales([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [companyId, branchId, convertFromSupabaseOrder]);
+
+  useEffect(() => {
+    loadStudioOrders();
+  }, [loadStudioOrders]);
 
   // Calculate deadline alerts
   const getDeadlineAlert = (deadline: string, status: ProductionStatus) => {
@@ -136,12 +129,12 @@ export const StudioSalesListNew = () => {
 
   // Apply search and filters
   const filteredSales = useMemo(() => {
-    let sales = [...mockSales];
+    let filtered = [...sales];
 
     // Search
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase();
-      sales = sales.filter(s => 
+      filtered = filtered.filter(s => 
         s.invoiceNo.toLowerCase().includes(query) || 
         s.customerName.toLowerCase().includes(query) ||
         s.customerPhone.includes(query) ||
@@ -151,11 +144,11 @@ export const StudioSalesListNew = () => {
 
     // Status filter
     if (filterStatus !== 'all') {
-      sales = sales.filter(s => s.productionStatus === filterStatus);
+      filtered = filtered.filter(s => s.productionStatus === filterStatus);
     }
 
     // Auto-sort: Overdue → Near → Normal
-    sales.sort((a, b) => {
+    filtered.sort((a, b) => {
       const alertA = getDeadlineAlert(a.deliveryDeadline, a.productionStatus);
       const alertB = getDeadlineAlert(b.deliveryDeadline, b.productionStatus);
       
@@ -163,8 +156,8 @@ export const StudioSalesListNew = () => {
       return (priority[alertA as keyof typeof priority] || 2) - (priority[alertB as keyof typeof priority] || 2);
     });
 
-    return sales;
-  }, [searchQuery, filterStatus]);
+    return filtered;
+  }, [sales, searchQuery, filterStatus]);
 
   // Pagination
   const displayedSales = rowsPerPage === 0 ? filteredSales : filteredSales.slice(0, rowsPerPage);
@@ -208,6 +201,14 @@ export const StudioSalesListNew = () => {
   const handleExportPDF = () => {
     console.log('Export PDF');
   };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 p-6">

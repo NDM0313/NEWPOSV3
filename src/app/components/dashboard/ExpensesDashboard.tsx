@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts';
 import { 
   Receipt, 
@@ -12,7 +12,9 @@ import {
   Pencil,
   Trash,
   LayoutGrid,
-  List as ListIcon
+  List as ListIcon,
+  Loader2,
+  Clock
 } from 'lucide-react';
 import { Button } from "../ui/button";
 import { cn } from "../ui/utils";
@@ -29,34 +31,8 @@ import {
 import { toast } from "sonner";
 import { Building2, Zap, Users, ShoppingCart, Briefcase, Utensils } from 'lucide-react';
 import { ListToolbar } from '../ui/list-toolbar';
-
-// Mock Data for Charts
-const chartData = [
-  { name: 'Rent', value: 40000, color: '#3B82F6' },
-  { name: 'Salaries', value: 30000, color: '#8B5CF6' },
-  { name: 'Utilities', value: 20000, color: '#F97316' },
-  { name: 'Misc', value: 10000, color: '#9CA3AF' },
-];
-
-// Mock Data for Expenses List
-const expenses = [
-  { id: 1, date: 'Oct 24, 2023', ref: 'EXP-001', category: 'Rent', expenseFor: 'Shop Premises', account: 'Meezan Bank', amount: 40000, status: 'Paid' },
-  { id: 2, date: 'Oct 22, 2023', ref: 'EXP-002', category: 'Salaries', expenseFor: 'All Staff', account: 'Meezan Bank', amount: 30000, status: 'Paid' },
-  { id: 3, date: 'Oct 20, 2023', ref: 'EXP-003', category: 'Stitching', expenseFor: 'Batch #44', account: 'Cash Drawer', amount: 12500, status: 'Pending' },
-  { id: 4, date: 'Oct 18, 2023', ref: 'EXP-004', category: 'Utilities', expenseFor: 'Electricity Bill', account: 'JazzCash', amount: 4200, status: 'Paid' },
-  { id: 5, date: 'Oct 15, 2023', ref: 'EXP-005', category: 'Misc', expenseFor: 'Office Supplies', account: 'Cash Drawer', amount: 1500, status: 'Paid' },
-  { id: 6, date: 'Oct 12, 2023', ref: 'EXP-006', category: 'Utilities', expenseFor: 'Internet Bill', account: 'JazzCash', amount: 3500, status: 'Paid' },
-];
-
-// Mock Data for Categories
-const categoriesList = [
-  { id: 1, name: 'Rent', icon: Building2, color: 'bg-blue-500', count: 50 },
-  { id: 2, name: 'Salaries', icon: Users, color: 'bg-purple-500', count: 12 },
-  { id: 3, name: 'Utilities', icon: Zap, color: 'bg-orange-500', count: 24 },
-  { id: 4, name: 'Stitching', icon: ShoppingCart, color: 'bg-yellow-500', count: 5 },
-  { id: 5, name: 'Office Supplies', icon: Briefcase, color: 'bg-gray-500', count: 0 },
-  { id: 6, name: 'Food & Meals', icon: Utensils, color: 'bg-red-500', count: 8 },
-];
+import { useExpenses } from '../../context/ExpenseContext';
+import { useAccounting } from '../../context/AccountingContext';
 
 const getCategoryBadgeStyle = (category: string) => {
   switch (category) {
@@ -69,6 +45,8 @@ const getCategoryBadgeStyle = (category: string) => {
 };
 
 export const ExpensesDashboard = () => {
+  const { expenses, loading, deleteExpense, refreshExpenses } = useExpenses();
+  const { accounts } = useAccounting();
   const [activeTab, setActiveTab] = useState<'overview' | 'list' | 'categories'>('overview');
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
@@ -107,12 +85,17 @@ export const ExpensesDashboard = () => {
     }
   };
   
-  const handleDeleteExpense = () => {
+  const handleDeleteExpense = async () => {
     if (selectedExpense) {
-      console.log('Delete expense:', selectedExpense.id);
-      toast.success(`Expense "${selectedExpense.ref}" deleted successfully.`);
-      setDeleteAlertOpen(false);
-      setSelectedExpense(null);
+      try {
+        await deleteExpense(selectedExpense.id);
+        toast.success(`Expense "${selectedExpense.expense_no || selectedExpense.id}" deleted successfully.`);
+        setDeleteAlertOpen(false);
+        setSelectedExpense(null);
+      } catch (error: any) {
+        console.error('[EXPENSES DASHBOARD] Error deleting expense:', error);
+        toast.error('Failed to delete expense: ' + (error.message || 'Unknown error'));
+      }
     }
   };
 
@@ -137,28 +120,79 @@ export const ExpensesDashboard = () => {
     setIsCategoryModalOpen(true);
   };
 
+  // Calculate chart data from real expenses
+  const chartData = useMemo(() => {
+    const categoryTotals: Record<string, number> = {};
+    expenses.forEach(exp => {
+      const cat = exp.category || 'Other';
+      categoryTotals[cat] = (categoryTotals[cat] || 0) + (exp.amount || 0);
+    });
+    
+    const colors = ['#3B82F6', '#8B5CF6', '#F97316', '#9CA3AF', '#10B981', '#EF4444'];
+    return Object.entries(categoryTotals).map(([name, value], index) => ({
+      name,
+      value,
+      color: colors[index % colors.length],
+    }));
+  }, [expenses]);
+
+  // Calculate categories list from real expenses
+  const categoriesList = useMemo(() => {
+    const categoryCounts: Record<string, number> = {};
+    expenses.forEach(exp => {
+      const cat = exp.category || 'Other';
+      categoryCounts[cat] = (categoryCounts[cat] || 0) + 1;
+    });
+    
+    const iconMap: Record<string, any> = {
+      'Rent': Building2,
+      'Salaries': Users,
+      'Utilities': Zap,
+      'Stitching': ShoppingCart,
+      'Office Supplies': Briefcase,
+      'Food & Meals': Utensils,
+    };
+    
+    const colorMap: Record<string, string> = {
+      'Rent': 'bg-blue-500',
+      'Salaries': 'bg-purple-500',
+      'Utilities': 'bg-orange-500',
+      'Stitching': 'bg-yellow-500',
+      'Office Supplies': 'bg-gray-500',
+      'Food & Meals': 'bg-red-500',
+    };
+    
+    return Object.entries(categoryCounts).map(([name, count], index) => ({
+      id: index + 1,
+      name,
+      icon: iconMap[name] || Receipt,
+      color: colorMap[name] || 'bg-gray-500',
+      count,
+    }));
+  }, [expenses]);
+
   // Filtered expenses
   const filteredExpenses = useMemo(() => {
     return expenses.filter(expense => {
       // Search filter
       if (searchTerm) {
         const search = searchTerm.toLowerCase();
-        const matchesSearch = expense.ref.toLowerCase().includes(search) ||
-               expense.category.toLowerCase().includes(search) ||
-               expense.expenseFor.toLowerCase().includes(search) ||
-               expense.account.toLowerCase().includes(search);
+        const matchesSearch = (expense.expenseNo || '').toLowerCase().includes(search) ||
+               (expense.category || '').toLowerCase().includes(search) ||
+               (expense.description || '').toLowerCase().includes(search) ||
+               (expense.payeeName || '').toLowerCase().includes(search);
         if (!matchesSearch) return false;
       }
 
       // Category filter
-      if (categoryFilter !== 'all' && expense.category !== categoryFilter) return false;
+      if (categoryFilter !== 'all' && (expense.category || '') !== categoryFilter) return false;
 
       // Account filter
-      if (accountFilter !== 'all' && expense.account !== accountFilter) return false;
+      if (accountFilter !== 'all' && (expense.paymentMethod || '') !== accountFilter) return false;
 
       return true;
     });
-  }, [searchTerm, categoryFilter, accountFilter]);
+  }, [expenses, searchTerm, categoryFilter, accountFilter]);
 
   // Pagination
   const paginatedExpenses = useMemo(() => {
@@ -288,7 +322,11 @@ export const ExpensesDashboard = () => {
       </div>
 
       {/* Content Area */}
-      {activeTab === 'overview' ? (
+      {loading ? (
+        <div className="flex items-center justify-center h-96">
+          <Loader2 size={48} className="text-blue-500 animate-spin" />
+        </div>
+      ) : activeTab === 'overview' ? (
         <div className="space-y-6 animate-in slide-in-from-bottom-2 duration-300">
           {/* Top Cards */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -296,35 +334,33 @@ export const ExpensesDashboard = () => {
               <div className="flex justify-between items-start">
                 <div>
                   <p className="text-gray-400 text-sm font-medium">Total Monthly Expense</p>
-                  <h3 className="text-2xl font-bold text-white mt-2">$91,700</h3>
+                  <h3 className="text-2xl font-bold text-white mt-2">
+                    Rs {expenses.reduce((sum, e) => sum + (e.amount || 0), 0).toLocaleString()}
+                  </h3>
                 </div>
                 <div className="bg-red-500/10 p-2 rounded-lg">
                   <TrendingUp className="text-red-500" size={20} />
                 </div>
               </div>
               <div className="mt-4 flex items-center gap-2 text-xs">
-                <span className="text-red-400 font-medium flex items-center gap-1">
-                   <TrendingUp size={12} /> +12%
-                </span>
-                <span className="text-gray-500">vs last month</span>
+                <span className="text-gray-500">{expenses.length} expenses this month</span>
               </div>
             </div>
 
             <div className="bg-gray-900/50 border border-gray-800 p-6 rounded-xl flex flex-col justify-between">
               <div className="flex justify-between items-start">
                 <div>
-                  <p className="text-gray-400 text-sm font-medium">Last Month Comparison</p>
-                  <h3 className="text-2xl font-bold text-white mt-2">$81,200</h3>
+                  <p className="text-gray-400 text-sm font-medium">Pending Expenses</p>
+                  <h3 className="text-2xl font-bold text-white mt-2">
+                    {expenses.filter(e => e.status === 'pending').length}
+                  </h3>
                 </div>
-                <div className="bg-green-500/10 p-2 rounded-lg">
-                  <TrendingDown className="text-green-500" size={20} />
+                <div className="bg-yellow-500/10 p-2 rounded-lg">
+                  <Clock className="text-yellow-500" size={20} />
                 </div>
               </div>
               <div className="mt-4 flex items-center gap-2 text-xs">
-                <span className="text-green-400 font-medium flex items-center gap-1">
-                   <TrendingDown size={12} /> -5%
-                </span>
-                <span className="text-gray-500">budget utilization</span>
+                <span className="text-gray-500">Require approval</span>
               </div>
             </div>
 
@@ -332,17 +368,25 @@ export const ExpensesDashboard = () => {
               <div className="flex justify-between items-start">
                 <div>
                   <p className="text-gray-400 text-sm font-medium">Highest Category</p>
-                  <h3 className="text-2xl font-bold text-white mt-2">Rent</h3>
+                  <h3 className="text-2xl font-bold text-white mt-2">
+                    {chartData.length > 0 ? chartData[0].name : 'N/A'}
+                  </h3>
                 </div>
                 <div className="bg-blue-500/10 p-2 rounded-lg">
                   <DollarSign className="text-blue-500" size={20} />
                 </div>
               </div>
               <div className="mt-4">
-                 <div className="w-full bg-gray-800 h-1.5 rounded-full overflow-hidden">
-                    <div className="bg-blue-500 h-full rounded-full" style={{ width: '45%' }}></div>
-                 </div>
-                 <p className="text-gray-500 text-xs mt-2">45% of total expenses</p>
+                 {chartData.length > 0 && (
+                   <>
+                     <div className="w-full bg-gray-800 h-1.5 rounded-full overflow-hidden">
+                        <div className="bg-blue-500 h-full rounded-full" style={{ width: `${(chartData[0].value / expenses.reduce((sum, e) => sum + (e.amount || 0), 0)) * 100}%` }}></div>
+                     </div>
+                     <p className="text-gray-500 text-xs mt-2">
+                       {((chartData[0].value / expenses.reduce((sum, e) => sum + (e.amount || 0), 0)) * 100).toFixed(1)}% of total expenses
+                     </p>
+                   </>
+                 )}
               </div>
             </div>
           </div>
@@ -482,16 +526,32 @@ export const ExpensesDashboard = () => {
                     </tr>
                  </thead>
                  <tbody className="divide-y divide-gray-800">
-                    {paginatedExpenses.map((expense) => (
+                    {loading ? (
+                      <tr>
+                        <td colSpan={7} className="px-6 py-12 text-center">
+                          <Loader2 size={48} className="mx-auto text-blue-500 mb-3 animate-spin" />
+                          <p className="text-gray-400 text-sm">Loading expenses...</p>
+                        </td>
+                      </tr>
+                    ) : paginatedExpenses.length === 0 ? (
+                      <tr>
+                        <td colSpan={7} className="px-6 py-12 text-center">
+                          <Receipt size={48} className="mx-auto text-gray-600 mb-3" />
+                          <p className="text-gray-400 text-sm">No expenses found</p>
+                          <p className="text-gray-600 text-xs mt-1">Try adjusting your search or filters</p>
+                        </td>
+                      </tr>
+                    ) : (
+                      paginatedExpenses.map((expense) => (
                        <tr key={expense.id} className="group hover:bg-gray-800/30 transition-colors">
                           <td className="px-6 py-4 font-medium text-gray-300">
                              <div className="flex items-center gap-2">
                                 <Calendar size={14} className="text-gray-500" />
-                                {expense.date}
+                                {new Date(expense.date).toLocaleDateString()}
                              </div>
                           </td>
                           <td className="px-6 py-4 text-gray-500 font-mono text-xs">
-                             {expense.ref}
+                             {expense.expenseNo}
                           </td>
                           <td className="px-6 py-4">
                              <Badge variant="outline" className={cn("font-normal", getCategoryBadgeStyle(expense.category))}>
@@ -499,13 +559,13 @@ export const ExpensesDashboard = () => {
                              </Badge>
                           </td>
                           <td className="px-6 py-4 text-white">
-                             {expense.expenseFor}
+                             {expense.description}
                           </td>
                           <td className="px-6 py-4 text-gray-400">
-                             {expense.account}
+                             {expense.paymentMethod}
                           </td>
                           <td className="px-6 py-4 text-right font-bold text-red-500">
-                             -${expense.amount.toLocaleString()}
+                             -Rs {expense.amount.toLocaleString()}
                           </td>
                           <td className="px-6 py-4 text-center">
                              <DropdownMenu>
@@ -532,7 +592,8 @@ export const ExpensesDashboard = () => {
                              </DropdownMenu>
                           </td>
                        </tr>
-                    ))}
+                      ))
+                    )}
                  </tbody>
               </table>
            </div>

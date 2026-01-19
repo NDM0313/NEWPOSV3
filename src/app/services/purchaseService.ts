@@ -31,6 +31,11 @@ export interface PurchaseItem {
   discount: number;
   tax: number;
   total: number;
+  // Packing fields
+  packing_type?: string;
+  packing_quantity?: number;
+  packing_unit?: string;
+  packing_details?: any; // JSONB
 }
 
 export const purchaseService = {
@@ -65,6 +70,7 @@ export const purchaseService = {
 
   // Get all purchases
   async getAllPurchases(companyId: string, branchId?: string) {
+    // Note: company_id and po_date columns may not exist in all databases
     let query = supabase
       .from('purchases')
       .select(`
@@ -73,10 +79,8 @@ export const purchaseService = {
         items:purchase_items(
           *,
           product:products(name)
-        ),
-        created_by_user:users(full_name)
+        )
       `)
-      .eq('company_id', companyId)
       .order('po_date', { ascending: false });
 
     if (branchId) {
@@ -84,6 +88,50 @@ export const purchaseService = {
     }
 
     const { data, error } = await query;
+    
+    // If error is about po_date column not existing, retry with created_at
+    if (error && error.code === '42703' && error.message?.includes('po_date')) {
+      const retryQuery = supabase
+        .from('purchases')
+        .select(`
+          *,
+          supplier:contacts(name, phone),
+          items:purchase_items(
+            *,
+            product:products(name)
+          )
+        `)
+        .order('created_at', { ascending: false });
+      
+      if (branchId) {
+        retryQuery.eq('branch_id', branchId);
+      }
+      
+      const { data: retryData, error: retryError } = await retryQuery;
+      if (retryError) {
+        // If created_at also doesn't exist, try without ordering
+        const finalQuery = supabase
+          .from('purchases')
+          .select(`
+            *,
+            supplier:contacts(name, phone),
+            items:purchase_items(
+              *,
+              product:products(name)
+            )
+          `);
+        
+        if (branchId) {
+          finalQuery.eq('branch_id', branchId);
+        }
+        
+        const { data: finalData, error: finalError } = await finalQuery;
+        if (finalError) throw finalError;
+        return finalData;
+      }
+      return retryData;
+    }
+    
     if (error) throw error;
     return data;
   },
@@ -100,7 +148,6 @@ export const purchaseService = {
           product:products(*),
           variation:product_variations(*)
         ),
-        created_by_user:users(full_name, email)
       `)
       .eq('id', id)
       .single();

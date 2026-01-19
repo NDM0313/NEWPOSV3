@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { 
   Search, 
   ShoppingCart, 
@@ -25,10 +25,15 @@ import {
   Tag,
   ChevronDown,
   Hash,
-  Edit2
+  Edit2,
+  Loader2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useNavigation } from '../../context/NavigationContext';
+import { useSupabase } from '../../context/SupabaseContext';
+import { productService } from '../../services/productService';
+import { contactService } from '../../services/contactService';
+import { useSales } from '../../context/SalesContext';
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Badge } from "../ui/badge";
@@ -37,50 +42,42 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, Command
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 import { Check, ChevronsUpDown } from "lucide-react";
 import { Label } from "../ui/label";
+import { toast } from 'sonner';
 
-const categories = [
-  { id: "All", label: "All Items", icon: Zap },
-  { id: "Coffee", label: "Coffee", icon: Coffee },
-  { id: "Bakery", label: "Bakery", icon: Cookie },
-  { id: "Food", label: "Food", icon: UtensilsCrossed },
-  { id: "Drinks", label: "Drinks", icon: Wine },
-];
+interface POSProduct {
+  id: string;
+  name: string;
+  retailPrice: number;
+  wholesalePrice: number;
+  category: string;
+  stock: number;
+  color: string;
+}
 
-const products = [
-  { id: 1, name: 'Espresso', retailPrice: 3.50, wholesalePrice: 2.80, category: 'Coffee', color: 'from-orange-600/20 to-orange-900/20', stock: 45 },
-  { id: 2, name: 'Cappuccino', retailPrice: 4.50, wholesalePrice: 3.60, category: 'Coffee', color: 'from-amber-600/20 to-amber-900/20', stock: 32 },
-  { id: 3, name: 'Latte', retailPrice: 4.75, wholesalePrice: 3.80, category: 'Coffee', color: 'from-yellow-600/20 to-yellow-900/20', stock: 28 },
-  { id: 4, name: 'Mocha', retailPrice: 5.00, wholesalePrice: 4.00, category: 'Coffee', color: 'from-yellow-700/20 to-orange-900/20', stock: 18 },
-  { id: 5, name: 'Americano', retailPrice: 3.00, wholesalePrice: 2.40, category: 'Coffee', color: 'from-stone-600/20 to-stone-900/20', stock: 50 },
-  { id: 6, name: 'Croissant', retailPrice: 3.25, wholesalePrice: 2.50, category: 'Bakery', color: 'from-yellow-500/20 to-yellow-700/20', stock: 22 },
-  { id: 7, name: 'Muffin', retailPrice: 2.75, wholesalePrice: 2.20, category: 'Bakery', color: 'from-pink-600/20 to-pink-900/20', stock: 15 },
-  { id: 8, name: 'Bagel', retailPrice: 2.50, wholesalePrice: 2.00, category: 'Bakery', color: 'from-orange-500/20 to-orange-700/20', stock: 30 },
-  { id: 9, name: 'Sandwich', retailPrice: 8.50, wholesalePrice: 6.80, category: 'Food', color: 'from-green-600/20 to-green-900/20', stock: 12 },
-  { id: 10, name: 'Salad', retailPrice: 9.00, wholesalePrice: 7.20, category: 'Food', color: 'from-emerald-600/20 to-emerald-900/20', stock: 8 },
-  { id: 11, name: 'Iced Tea', retailPrice: 3.00, wholesalePrice: 2.40, category: 'Drinks', color: 'from-teal-600/20 to-teal-900/20', stock: 40 },
-  { id: 12, name: 'Smoothie', retailPrice: 6.50, wholesalePrice: 5.20, category: 'Drinks', color: 'from-purple-600/20 to-purple-900/20', stock: 25 },
-];
-
-// Mock customers (same as Sale page)
-const mockCustomers = [
-  { id: "1", name: "Walk-in Customer" },
-  { id: "2", name: "Sarah Khan" },
-  { id: "3", name: "Fatima Ali" },
-  { id: "4", name: "Ahmed Hassan" },
-  { id: "5", name: "Zara Ahmed" },
-];
+interface POSCustomer {
+  id: string;
+  name: string;
+}
 
 interface CartItem {
-  id: number;
+  id: string;
   name: string;
   retailPrice: number;
   wholesalePrice: number;
   qty: number;
-  customPrice?: number; // NEW: Custom editable price
+  customPrice?: number;
+  productId: string; // Supabase product ID
 }
 
 export const POS = () => {
   const { setCurrentView } = useNavigation();
+  const { companyId, branchId, user } = useSupabase();
+  const { createSale } = useSales();
+  const [products, setProducts] = useState<POSProduct[]>([]);
+  const [customers, setCustomers] = useState<POSCustomer[]>([
+    { id: "walk-in", name: "Walk-in Customer" }
+  ]);
+  const [loading, setLoading] = useState(true);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [search, setSearch] = useState('');
   const [activeCategory, setActiveCategory] = useState("All");
@@ -88,7 +85,7 @@ export const POS = () => {
   
   // Customer selection state
   const [customerOpen, setCustomerOpen] = useState(false);
-  const [selectedCustomer, setSelectedCustomer] = useState("1"); // Default: Walk-in
+  const [selectedCustomer, setSelectedCustomer] = useState("walk-in"); // Default: Walk-in
 
   // Discount state
   const [discountType, setDiscountType] = useState<'percentage' | 'amount'>('percentage');
@@ -102,17 +99,84 @@ export const POS = () => {
     return `INV-${dateStr}-${randomNum}`;
   });
 
-  const addToCart = (product: any) => {
+  // Load products and customers from Supabase
+  const loadData = useCallback(async () => {
+    if (!companyId) return;
+    
+    try {
+      setLoading(true);
+      
+      // Load products
+      const productsData = await productService.getAllProducts(companyId);
+      const convertedProducts: POSProduct[] = productsData
+        .filter((p: any) => p.is_sellable && p.is_active)
+        .map((p: any) => ({
+          id: p.id,
+          name: p.name || '',
+          retailPrice: p.retail_price || 0,
+          wholesalePrice: p.wholesale_price || p.retail_price || 0,
+          category: p.category?.name || 'Uncategorized',
+          stock: p.current_stock || 0,
+          color: 'from-blue-600/20 to-blue-900/20', // Default color
+        }));
+      setProducts(convertedProducts);
+      
+      // Load customers
+      const contactsData = await contactService.getAllContacts(companyId);
+      const convertedCustomers: POSCustomer[] = [
+        { id: "walk-in", name: "Walk-in Customer" },
+        ...contactsData
+          .filter((c: any) => c.type === 'customer' && c.is_active)
+          .map((c: any) => ({
+            id: c.id,
+            name: c.name || '',
+          }))
+      ];
+      setCustomers(convertedCustomers);
+    } catch (error: any) {
+      console.error('[POS] Error loading data:', error);
+      toast.error('Failed to load POS data: ' + (error.message || 'Unknown error'));
+    } finally {
+      setLoading(false);
+    }
+  }, [companyId]);
+
+  useEffect(() => {
+    if (companyId) {
+      loadData();
+    } else {
+      setLoading(false);
+    }
+  }, [companyId, loadData]);
+
+  // Get unique categories from products
+  const categories = useMemo(() => {
+    const uniqueCategories = Array.from(new Set(products.map(p => p.category)));
+    return [
+      { id: "All", label: "All Items", icon: Zap },
+      ...uniqueCategories.map(cat => ({
+        id: cat,
+        label: cat,
+        icon: Package,
+      })),
+    ];
+  }, [products]);
+
+  const addToCart = (product: POSProduct) => {
     setCart(prev => {
       const existing = prev.find(p => p.id === product.id);
       if (existing) {
         return prev.map(p => p.id === product.id ? { ...p, qty: p.qty + 1 } : p);
       }
-      return [...prev, { ...product, qty: 1 }];
+      return [...prev, { 
+        ...product, 
+        qty: 1,
+        productId: product.id,
+      }];
     });
   };
 
-  const updateQty = (id: number, delta: number) => {
+  const updateQty = (id: string, delta: number) => {
     setCart(prev => prev.map(p => {
       if (p.id === id) {
         const newQty = Math.max(0, p.qty + delta);
@@ -123,7 +187,7 @@ export const POS = () => {
   };
 
   // NEW: Update custom price
-  const updateCustomPrice = (id: number, price: string) => {
+  const updateCustomPrice = (id: string, price: string) => {
     const priceValue = parseFloat(price);
     setCart(prev => prev.map(p => 
       p.id === id 
@@ -132,13 +196,13 @@ export const POS = () => {
     ));
   };
 
-  const removeItem = (id: number) => {
+  const removeItem = (id: string) => {
     setCart(prev => prev.filter(p => p.id !== id));
   };
 
   const clearCart = () => {
     setCart([]);
-    setSelectedCustomer("1");
+    setSelectedCustomer("walk-in");
     setDiscountValue('');
   };
 
@@ -174,7 +238,58 @@ export const POS = () => {
   const currentDate = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
   const currentTime = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
 
-  const selectedCustomerData = mockCustomers.find(c => c.id === selectedCustomer);
+  const selectedCustomerData = customers.find(c => c.id === selectedCustomer);
+
+  // Handle checkout
+  const handleCheckout = async (paymentMethod: 'cash' | 'card', totalAmount: number) => {
+    if (!companyId || !user || cart.length === 0) {
+      toast.error('Missing required information');
+      return;
+    }
+
+    try {
+      // Get customer ID (or null for walk-in)
+      const customerId = selectedCustomer === 'walk-in' ? null : selectedCustomer;
+      const customerName = selectedCustomerData?.name || 'Walk-in Customer';
+
+      // Convert cart items to sale items
+      const saleItems = cart.map(item => ({
+        productId: item.productId,
+        productName: item.name,
+        quantity: item.qty,
+        unitPrice: item.customPrice !== undefined ? item.customPrice : getPrice(item),
+        total: (item.customPrice !== undefined ? item.customPrice : getPrice(item)) * item.qty,
+      }));
+
+      // Create sale
+      const saleData = {
+        companyId,
+        branchId: branchId || undefined,
+        customerId: customerId || undefined,
+        customerName,
+        date: new Date().toISOString().split('T')[0],
+        type: 'invoice' as const,
+        status: 'final' as const,
+        paymentStatus: 'paid' as const,
+        subtotal,
+        discount: discountAmount,
+        tax: tax,
+        expenses: 0,
+        total: totalAmount,
+        paid: totalAmount,
+        due: 0,
+        items: saleItems,
+      };
+
+      await createSale(saleData);
+      
+      toast.success(`Sale completed! Invoice: ${invoiceNumber}`);
+      clearCart();
+    } catch (error: any) {
+      console.error('[POS] Error processing checkout:', error);
+      toast.error('Failed to process payment: ' + (error.message || 'Unknown error'));
+    }
+  };
 
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-[#111827] text-white">
@@ -299,7 +414,7 @@ export const POS = () => {
                   <CommandList>
                     <CommandEmpty className="py-6 text-center text-sm text-gray-500">No customer found.</CommandEmpty>
                     <CommandGroup>
-                      {mockCustomers.map((customer) => (
+                      {customers.map((customer) => (
                         <CommandItem
                           key={customer.id}
                           value={customer.name}
@@ -353,9 +468,21 @@ export const POS = () => {
 
         {/* Products Grid */}
         <div className="flex-1 overflow-y-auto p-6 bg-[#111827]">
+          {loading ? (
+            <div className="flex items-center justify-center h-full">
+              <Loader2 size={48} className="text-blue-500 animate-spin" />
+            </div>
+          ) : (
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-4 pb-8">
             <AnimatePresence>
-              {filteredProducts.map((product) => (
+                {filteredProducts.length === 0 ? (
+                  <div className="col-span-full text-center py-12">
+                    <Package size={48} className="mx-auto text-gray-600 mb-3" />
+                    <p className="text-gray-400 text-sm">No products found</p>
+                    <p className="text-gray-600 text-xs mt-1">Try adjusting your search or category</p>
+                  </div>
+                ) : (
+                  filteredProducts.map((product) => (
                 <motion.button
                   key={product.id}
                   layout
@@ -403,9 +530,11 @@ export const POS = () => {
                   {/* Gradient Overlay */}
                   <div className="absolute inset-0 bg-gradient-to-t from-black/30 to-transparent pointer-events-none" />
                 </motion.button>
-              ))}
+                  ))
+                )}
             </AnimatePresence>
           </div>
+          )}
         </div>
       </div>
 
@@ -614,20 +743,20 @@ export const POS = () => {
             <div className="px-5 py-4 grid grid-cols-2 gap-3">
               <Button 
                 className="bg-green-600 hover:bg-green-500 text-white font-semibold h-12 rounded-xl shadow-lg shadow-green-900/30"
-                onClick={() => {
-                  alert('Cash Payment - Total: $' + total.toFixed(2));
-                  clearCart();
+                onClick={async () => {
+                  await handleCheckout('cash', total);
                 }}
+                disabled={loading || !companyId || !user}
               >
                 <Banknote size={18} className="mr-2" />
                 Cash Payment
               </Button>
               <Button 
                 className="bg-blue-600 hover:bg-blue-500 text-white font-semibold h-12 rounded-xl shadow-lg shadow-blue-900/30"
-                onClick={() => {
-                  alert('Card Payment - Total: $' + total.toFixed(2));
-                  clearCart();
+                onClick={async () => {
+                  await handleCheckout('card', total);
                 }}
+                disabled={loading || !companyId || !user}
               >
                 <CreditCard size={18} className="mr-2" />
                 Card Payment

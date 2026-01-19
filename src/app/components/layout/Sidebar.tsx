@@ -26,6 +26,7 @@ import {
 } from 'lucide-react';
 import { useNavigation } from '../../context/NavigationContext';
 import { useModules } from '../../context/ModuleContext';
+import { useSettings } from '../../context/SettingsContext';
 import { clsx } from 'clsx';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -39,7 +40,8 @@ type NavItem = {
 
 export const Sidebar = () => {
   const { currentView, setCurrentView, isSidebarOpen, toggleSidebar } = useNavigation();
-  const { modules } = useModules();
+  const { modules: moduleContextModules } = useModules();
+  const { modules: settingsModules } = useSettings();
   const [expandedItems, setExpandedItems] = useState<string[]>([]);
 
   const toggleExpand = (id: string) => {
@@ -55,12 +57,13 @@ export const Sidebar = () => {
     { id: 'inventory', label: 'Inventory', icon: Warehouse },
     { id: 'purchases', label: 'Purchases', icon: ShoppingBag },
     { id: 'sales', label: 'Sales', icon: ShoppingCart },
-    { id: 'rentals', label: 'Rentals', icon: Shirt, isHidden: !modules.rentals?.isEnabled },
-    { id: 'pos', label: 'POS System', icon: Store },
+    { id: 'rentals', label: 'Rentals', icon: Shirt, isHidden: !settingsModules.rentalModuleEnabled },
+    { id: 'pos', label: 'POS System', icon: Store, isHidden: !settingsModules.posModuleEnabled },
     { 
       id: 'studio-group', 
       label: 'Studio Production', 
       icon: Factory,
+      isHidden: !settingsModules.studioModuleEnabled,
       children: [
         { id: 'studio-dashboard-new', label: 'Dashboard' },
         { id: 'studio', label: 'Studio Sales' },
@@ -68,7 +71,7 @@ export const Sidebar = () => {
       ]
     },
     { id: 'expenses', label: 'Expenses', icon: Receipt },
-    { id: 'accounting', label: 'Accounting', icon: Calculator, isHidden: !modules.accounting?.isEnabled },
+    { id: 'accounting', label: 'Accounting', icon: Calculator, isHidden: !settingsModules.accountingModuleEnabled },
     { id: 'reports', label: 'Reports', icon: PieChart },
     { id: 'settings', label: 'Settings', icon: Settings },
   ];

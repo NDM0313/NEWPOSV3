@@ -1,132 +1,153 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { 
   Package, TrendingDown, Clock, DollarSign, AlertTriangle, 
-  BarChart3, Search, Filter, Download, Archive, Warehouse 
+  BarChart3, Search, Filter, Download, Archive, Warehouse, Loader2 
 } from 'lucide-react';
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Badge } from "../ui/badge";
 import { cn } from "../ui/utils";
+import { useSupabase } from '../../context/SupabaseContext';
+import { productService } from '../../services/productService';
+import { saleService } from '../../services/saleService';
+import { purchaseService } from '../../services/purchaseService';
+import { toast } from 'sonner';
 
 type InventoryTab = 'overview' | 'analytics';
 
-// Mock product data for inventory
-const inventoryProducts = [
-  { 
-    id: '1', 
-    sku: 'BRD-001', 
-    name: 'Red Velvet Bridal Lehenga', 
-    category: 'Bridal',
-    stock: 5,
-    reorderLevel: 3,
-    purchasePrice: 45000,
-    sellingPrice: 125000,
-    lastPurchase: '2024-01-15',
-    lastSale: '2024-01-20',
-    daysInStock: 25,
-    movement: 'Fast'
-  },
-  { 
-    id: '2', 
-    sku: 'LWN-101', 
-    name: 'Embroidered Lawn Suit Vol 1', 
-    category: 'Lawn',
-    stock: 12,
-    reorderLevel: 5,
-    purchasePrice: 2500,
-    sellingPrice: 5500,
-    lastPurchase: '2024-01-10',
-    lastSale: '2024-01-22',
-    daysInStock: 18,
-    movement: 'Fast'
-  },
-  { 
-    id: '3', 
-    sku: 'ACC-045', 
-    name: 'Gold Clutch Premium', 
-    category: 'Accessories',
-    stock: 3,
-    reorderLevel: 5,
-    purchasePrice: 1200,
-    sellingPrice: 2800,
-    lastPurchase: '2023-12-20',
-    lastSale: '2024-01-05',
-    daysInStock: 38,
-    movement: 'Slow'
-  },
-  { 
-    id: '4', 
-    sku: 'SHR-012', 
-    name: 'Black Mens Sherwani', 
-    category: 'Groom',
-    stock: 2,
-    reorderLevel: 3,
-    purchasePrice: 12000,
-    sellingPrice: 28000,
-    lastPurchase: '2023-11-15',
-    lastSale: '2023-12-28',
-    daysInStock: 72,
-    movement: 'Dead'
-  },
-  { 
-    id: '5', 
-    sku: 'JWL-089', 
-    name: 'Pearl Necklace Set', 
-    category: 'Jewelry',
-    stock: 1,
-    reorderLevel: 2,
-    purchasePrice: 8500,
-    sellingPrice: 18000,
-    lastPurchase: '2023-12-01',
-    lastSale: '2024-01-18',
-    daysInStock: 55,
-    movement: 'Slow'
-  },
-  { 
-    id: '6', 
-    sku: 'BRD-012', 
-    name: 'Pink Bridal Lehenga Deluxe', 
-    category: 'Bridal',
-    stock: 8,
-    reorderLevel: 4,
-    purchasePrice: 52000,
-    sellingPrice: 145000,
-    lastPurchase: '2024-01-08',
-    lastSale: '2024-01-21',
-    daysInStock: 15,
-    movement: 'Fast'
-  },
-  { 
-    id: '7', 
-    sku: 'FTW-023', 
-    name: 'Bridal Heels Gold', 
-    category: 'Footwear',
-    stock: 4,
-    reorderLevel: 3,
-    purchasePrice: 3500,
-    sellingPrice: 7500,
-    lastPurchase: '2023-12-15',
-    lastSale: '2024-01-12',
-    daysInStock: 42,
-    movement: 'Medium'
-  },
-];
+interface InventoryProduct {
+  id: string;
+  sku: string;
+  name: string;
+  category: string;
+  stock: number;
+  reorderLevel: number;
+  purchasePrice: number;
+  sellingPrice: number;
+  lastPurchase?: string;
+  lastSale?: string;
+  daysInStock: number;
+  movement: 'Fast' | 'Medium' | 'Slow' | 'Dead';
+}
 
 export const InventoryDashboardNew = () => {
+  const { companyId, branchId } = useSupabase();
   const [activeTab, setActiveTab] = useState<InventoryTab>('overview');
   const [searchTerm, setSearchTerm] = useState('');
+  const [inventoryProducts, setInventoryProducts] = useState<InventoryProduct[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const lowStockItems = inventoryProducts.filter(p => p.stock <= p.reorderLevel);
-  const slowMovingItems = inventoryProducts.filter(p => p.movement === 'Slow' || p.movement === 'Dead');
-  const agingItems = inventoryProducts.filter(p => p.daysInStock > 60);
+  // Load products from Supabase
+  const loadProducts = useCallback(async () => {
+    if (!companyId) return;
+    
+    try {
+      setLoading(true);
+      
+      // Load products
+      const productsData = await productService.getAllProducts(companyId);
+      
+      // Load sales and purchases to calculate movement
+      const [salesData, purchasesData] = await Promise.all([
+        saleService.getAllSales(companyId, branchId || undefined).catch(() => []),
+        purchaseService.getAllPurchases(companyId, branchId || undefined).catch(() => []),
+      ]);
+      
+      // Convert to inventory format
+      const convertedProducts: InventoryProduct[] = productsData.map((p: any) => {
+        // Find last purchase date
+        const lastPurchase = purchasesData
+          .filter((pur: any) => pur.items?.some((item: any) => item.product_id === p.id))
+          .sort((a: any, b: any) => new Date(b.purchase_date || b.created_at).getTime() - new Date(a.purchase_date || a.created_at).getTime())[0];
+        
+        // Find last sale date
+        const lastSale = salesData
+          .filter((s: any) => s.items?.some((item: any) => item.product_id === p.id))
+          .sort((a: any, b: any) => new Date(b.invoice_date || b.created_at).getTime() - new Date(a.invoice_date || a.created_at).getTime())[0];
+        
+        // Calculate days in stock (from last purchase or creation)
+        const lastPurchaseDate = lastPurchase 
+          ? new Date(lastPurchase.purchase_date || lastPurchase.created_at)
+          : new Date(p.created_at);
+        const daysInStock = Math.floor((Date.now() - lastPurchaseDate.getTime()) / (1000 * 60 * 60 * 24));
+        
+        // Determine movement based on days in stock and stock level
+        let movement: 'Fast' | 'Medium' | 'Slow' | 'Dead' = 'Medium';
+        if (daysInStock < 30 && p.current_stock < p.min_stock * 2) {
+          movement = 'Fast';
+        } else if (daysInStock > 60 && p.current_stock > p.min_stock * 3) {
+          movement = 'Slow';
+        } else if (daysInStock > 90) {
+          movement = 'Dead';
+        }
+        
+        return {
+          id: p.id,
+          sku: p.sku || '',
+          name: p.name || '',
+          category: p.category?.name || 'Uncategorized',
+          stock: p.current_stock || 0,
+          reorderLevel: p.min_stock || 0,
+          purchasePrice: p.cost_price || 0,
+          sellingPrice: p.retail_price || 0,
+          lastPurchase: lastPurchase ? (lastPurchase.purchase_date || lastPurchase.created_at) : undefined,
+          lastSale: lastSale ? (lastSale.invoice_date || lastSale.created_at) : undefined,
+          daysInStock,
+          movement,
+        };
+      });
+      
+      setInventoryProducts(convertedProducts);
+    } catch (error: any) {
+      console.error('[INVENTORY DASHBOARD] Error loading products:', error);
+      toast.error('Failed to load inventory: ' + (error.message || 'Unknown error'));
+      setInventoryProducts([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [companyId, branchId]);
 
-  const totalStockValue = inventoryProducts.reduce((sum, p) => sum + (p.stock * p.purchasePrice), 0);
-  const potentialProfit = inventoryProducts.reduce((sum, p) => sum + (p.stock * (p.sellingPrice - p.purchasePrice)), 0);
+  // Load products on mount
+  useEffect(() => {
+    if (companyId) {
+      loadProducts();
+    } else {
+      setLoading(false);
+    }
+  }, [companyId, loadProducts]);
 
-  const filteredProducts = inventoryProducts.filter(p => 
-    p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    p.sku.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    p.category.toLowerCase().includes(searchTerm.toLowerCase())
+  const lowStockItems = useMemo(() => 
+    inventoryProducts.filter(p => p.stock <= p.reorderLevel),
+    [inventoryProducts]
+  );
+  
+  const slowMovingItems = useMemo(() => 
+    inventoryProducts.filter(p => p.movement === 'Slow' || p.movement === 'Dead'),
+    [inventoryProducts]
+  );
+  
+  const agingItems = useMemo(() => 
+    inventoryProducts.filter(p => p.daysInStock > 60),
+    [inventoryProducts]
+  );
+
+  const totalStockValue = useMemo(() => 
+    inventoryProducts.reduce((sum, p) => sum + (p.stock * p.purchasePrice), 0),
+    [inventoryProducts]
+  );
+  
+  const potentialProfit = useMemo(() => 
+    inventoryProducts.reduce((sum, p) => sum + (p.stock * (p.sellingPrice - p.purchasePrice)), 0),
+    [inventoryProducts]
+  );
+
+  const filteredProducts = useMemo(() => 
+    inventoryProducts.filter(p => 
+      p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      p.sku.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      p.category.toLowerCase().includes(searchTerm.toLowerCase())
+    ),
+    [inventoryProducts, searchTerm]
   );
 
   const getMovementBadge = (movement: string) => {
@@ -276,7 +297,23 @@ export const InventoryDashboardNew = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-800">
-                {filteredProducts.map((product) => (
+                {loading ? (
+                  <tr>
+                    <td colSpan={8} className="px-6 py-12 text-center">
+                      <Loader2 size={48} className="mx-auto text-blue-500 mb-3 animate-spin" />
+                      <p className="text-gray-400 text-sm">Loading inventory...</p>
+                    </td>
+                  </tr>
+                ) : filteredProducts.length === 0 ? (
+                  <tr>
+                    <td colSpan={8} className="px-6 py-12 text-center">
+                      <Package size={48} className="mx-auto text-gray-600 mb-3" />
+                      <p className="text-gray-400 text-sm">No products found</p>
+                      <p className="text-gray-600 text-xs mt-1">Try adjusting your search</p>
+                    </td>
+                  </tr>
+                ) : (
+                  filteredProducts.map((product) => (
                   <tr key={product.id} className="hover:bg-gray-800/30 transition-colors">
                     <td className="px-6 py-4">
                       <div className="font-medium text-white">{product.name}</div>
@@ -319,7 +356,8 @@ export const InventoryDashboardNew = () => {
                       )}
                     </td>
                   </tr>
-                ))}
+                  ))
+                )}
               </tbody>
             </table>
           </div>

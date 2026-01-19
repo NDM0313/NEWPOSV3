@@ -83,29 +83,11 @@ import { toast } from "sonner";
 import { BranchSelector, currentUser } from '@/app/components/layout/BranchSelector';
 import { SaleItemsSection } from './SaleItemsSection';
 import { PaymentAttachments, PaymentAttachment } from '../payments/PaymentAttachments';
-
-// Mock Data
-const customers = [
-  { id: 1, name: "Walk-in Customer", dueBalance: 0 },
-  { id: 2, name: "Ahmed Khan", dueBalance: 15000 },
-  { id: 3, name: "Fatima Ali", dueBalance: 8500 },
-  { id: 4, name: "Bilal Textiles Ltd", dueBalance: 45000 },
-];
-
-const salesmen = [
-  { id: 1, name: "No Salesman" },
-  { id: 2, name: "Ali Hassan" },
-  { id: 3, name: "Muhammad Bilal" },
-  { id: 4, name: "Sara Khan" },
-];
-
-const productsMock = [
-    { id: 1, name: "Premium Cotton Fabric", sku: "FAB-001", price: 850, stock: 50, lastPurchasePrice: 720, lastSupplier: "Sapphire Textiles", hasVariations: false, needsPacking: true },
-    { id: 2, name: "Lawn Print Floral", sku: "LWN-045", price: 1250, stock: 120, lastPurchasePrice: 980, lastSupplier: "Al-Karam Fabrics", hasVariations: false, needsPacking: true },
-    { id: 3, name: "Silk Dupatta", sku: "SLK-022", price: 1800, stock: 35, lastPurchasePrice: 1450, lastSupplier: "Gul Ahmed", hasVariations: true, needsPacking: false },
-    { id: 4, name: "Unstitched 3-Pc Suit", sku: "SUIT-103", price: 4500, stock: 18, lastPurchasePrice: 3800, lastSupplier: "Khaadi Suppliers", hasVariations: true, needsPacking: false },
-    { id: 5, name: "Chiffon Fabric", sku: "CHF-078", price: 950, stock: 65, lastPurchasePrice: 750, lastSupplier: "Sapphire Textiles", hasVariations: false, needsPacking: true },
-];
+import { useSupabase } from '@/app/context/SupabaseContext';
+import { contactService } from '@/app/services/contactService';
+import { productService } from '@/app/services/productService';
+import { useSales } from '@/app/context/SalesContext';
+import { Loader2 } from 'lucide-react';
 
 // Mock variations for products that have them
 const productVariations: Record<number, Array<{ size: string; color: string }>> = {
@@ -175,6 +157,24 @@ interface SaleFormProps {
 }
 
 export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
+    // Supabase & Context
+    const { companyId, branchId: contextBranchId } = useSupabase();
+    const { createSale } = useSales();
+    
+    // Data State
+    const [customers, setCustomers] = useState<Array<{ id: number | string; name: string; dueBalance: number }>>([]);
+    const [products, setProducts] = useState<Array<{ id: number | string; name: string; sku: string; price: number; stock: number; lastPurchasePrice?: number; lastSupplier?: string; hasVariations: boolean; needsPacking: boolean }>>([]);
+    const [loading, setLoading] = useState(true);
+    const [saving, setSaving] = useState(false);
+    
+    // Mock salesmen (can be enhanced later to fetch from contacts with type='worker' or separate table)
+    const salesmen = [
+        { id: 1, name: "No Salesman" },
+        { id: 2, name: "Ali Hassan" },
+        { id: 3, name: "Muhammad Bilal" },
+        { id: 4, name: "Sara Khan" },
+    ];
+    
     // Header State
     const [customerId, setCustomerId] = useState("");
     const [customerSearchOpen, setCustomerSearchOpen] = useState(false);
@@ -183,7 +183,7 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
     const [invoiceNumber, setInvoiceNumber] = useState("");
     
     // Branch State - Locked for regular users, open for admin
-    const [branchId, setBranchId] = useState<string>(currentUser.assignedBranchId.toString());
+    const [branchId, setBranchId] = useState<string>(contextBranchId || '');
     
     // Items List State
     const [items, setItems] = useState<SaleItem[]>([]);
@@ -295,10 +295,59 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
     const getSalesmanName = () => salesmen.find(s => s.id.toString() === salesmanId)?.name || "No Salesman";
 
     // Filtered products for search
-    const filteredProducts = productsMock.filter(p => 
+    const filteredProducts = products.filter(p => 
         p.name.toLowerCase().includes(productSearchTerm.toLowerCase()) || 
         p.sku.toLowerCase().includes(productSearchTerm.toLowerCase())
     );
+    
+    // Load data from Supabase
+    useEffect(() => {
+        const loadData = async () => {
+            if (!companyId) return;
+            
+            try {
+                setLoading(true);
+                
+                // Load customers (contacts with type='customer')
+                const contactsData = await contactService.getAllContacts(companyId);
+                const customerContacts = contactsData
+                    .filter(c => c.type === 'customer' || c.type === 'both')
+                    .map(c => ({
+                        id: c.id || c.uuid || '',
+                        name: c.name || '',
+                        dueBalance: c.receivables || 0
+                    }));
+                
+                // Add walk-in customer option
+                setCustomers([
+                    { id: 'walk-in', name: "Walk-in Customer", dueBalance: 0 },
+                    ...customerContacts
+                ]);
+                
+                // Load products
+                const productsData = await productService.getAllProducts(companyId);
+                const productsList = productsData.map(p => ({
+                    id: p.id || p.uuid || '',
+                    name: p.name || '',
+                    sku: p.sku || '',
+                    price: p.salePrice || p.price || 0,
+                    stock: p.stock || 0,
+                    lastPurchasePrice: p.costPrice || undefined,
+                    lastSupplier: undefined, // Can be enhanced later
+                    hasVariations: (p.variations && p.variations.length > 0) || false,
+                    needsPacking: false // Can be enhanced based on product type
+                }));
+                setProducts(productsList);
+            } catch (error) {
+                console.error('[SALE FORM] Error loading data:', error);
+                toast.error('Failed to load data');
+            } finally {
+                setLoading(false);
+            }
+        };
+        
+        loadData();
+    }, [companyId]);
 
     // Status helper functions
     const getStatusColor = () => {
@@ -512,6 +561,89 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
     };
 
     const getCustomerName = () => customers.find(c => c.id.toString() === customerId)?.name || "Select Customer";
+    
+    // Handle Save
+    const handleSave = async (print: boolean = false) => {
+        if (!customerId || customerId === '') {
+            toast.error('Please select a customer');
+            return;
+        }
+        
+        if (items.length === 0) {
+            toast.error('Please add at least one item');
+            return;
+        }
+        
+        try {
+            setSaving(true);
+            
+            const selectedCustomer = customers.find(c => c.id.toString() === customerId);
+            const customerName = selectedCustomer?.name || 'Walk-in Customer';
+            const customerUuid = customerId === 'walk-in' ? undefined : customerId.toString();
+            
+            // Convert items to SaleItem format
+            const saleItems = items.map(item => ({
+                id: item.id.toString(),
+                productId: item.productId.toString(),
+                productName: item.name,
+                sku: item.sku,
+                quantity: item.qty,
+                price: item.price,
+                discount: 0, // Can be enhanced later
+                tax: 0, // Can be enhanced later
+                total: item.price * item.qty,
+                // Include packing data if available
+                packingDetails: item.packingDetails,
+                thaans: item.thaans,
+                meters: item.meters
+            }));
+            
+            // Determine sale type based on status
+            const saleType: 'invoice' | 'quotation' = saleStatus === 'quotation' ? 'quotation' : 'invoice';
+            
+            // Create sale data
+            const saleData = {
+                type: saleType,
+                customer: customerUuid || '',
+                customerName: customerName,
+                contactNumber: '', // Can be enhanced to get from customer
+                date: format(saleDate, 'yyyy-MM-dd'),
+                location: branchId || '',
+                items: saleItems,
+                itemsCount: items.length,
+                subtotal: subtotal,
+                discount: discountAmount,
+                tax: 0, // Can be enhanced later
+                expenses: expensesTotal + finalShippingCharges,
+                total: totalAmount,
+                paid: totalPaid,
+                due: balanceDue,
+                returnDue: 0,
+                paymentStatus: paymentStatus as 'paid' | 'partial' | 'unpaid',
+                paymentMethod: partialPayments.length > 0 ? partialPayments[0].method : 'cash',
+                shippingStatus: shippingEnabled ? 'pending' as const : 'pending' as const,
+                notes: studioNotes || refNumber || undefined
+            };
+            
+            // Create sale via context
+            await createSale(saleData);
+            
+            toast.success(`${saleType === 'invoice' ? 'Invoice' : 'Quotation'} created successfully!`);
+            
+            if (print) {
+                // TODO: Implement print functionality
+                toast.info('Print functionality coming soon');
+            }
+            
+            // Close form
+            onClose();
+        } catch (error: any) {
+            console.error('[SALE FORM] Error saving sale:', error);
+            toast.error(`Failed to save sale: ${error.message || 'Unknown error'}`);
+        } finally {
+            setSaving(false);
+        }
+    };
 
     // Keyboard navigation: Auto-focus after item is added
     useEffect(() => {
@@ -551,6 +683,15 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
         }
     };
 
+    // Show loader while loading data
+    if (loading) {
+        return (
+            <div className="flex items-center justify-center h-screen bg-[#111827]">
+                <Loader2 size={48} className="text-blue-500 animate-spin" />
+            </div>
+        );
+    }
+    
     return (
         <div className="flex flex-col h-screen bg-[#111827] text-white overflow-hidden">
             {/* ============ LAYER 1: FIXED HEADER ============ */}
@@ -1245,16 +1386,20 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                                 type="button"
                                 variant="outline"
                                 className="h-10 bg-transparent border border-gray-700 hover:border-gray-600 hover:bg-gray-800 text-white text-sm font-semibold"
+                                onClick={() => handleSave(false)}
+                                disabled={saving}
                             >
                                 <Save size={15} className="mr-1.5" />
-                                Save
+                                {saving ? 'Saving...' : 'Save'}
                             </Button>
                             <Button 
                                 type="button"
                                 className="h-10 bg-blue-600 hover:bg-blue-500 text-white text-sm font-bold shadow-lg shadow-blue-900/20"
+                                onClick={() => handleSave(true)}
+                                disabled={saving}
                             >
                                 <Printer size={15} className="mr-1.5" />
-                                Save & Print
+                                {saving ? 'Saving...' : 'Save & Print'}
                             </Button>
                         </div>
                     </div>

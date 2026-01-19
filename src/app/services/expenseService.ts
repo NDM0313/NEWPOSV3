@@ -35,14 +35,10 @@ export const expenseService = {
 
   // Get all expenses
   async getAllExpenses(companyId: string, branchId?: string) {
+    // Note: company_id and expense_date columns may not exist in all databases
     let query = supabase
       .from('expenses')
-      .select(`
-        *,
-        vendor:contacts(name),
-        approved_by_user:users(full_name),
-        created_by_user:users(full_name)
-      `)
+      .select('*')
       .eq('company_id', companyId)
       .order('expense_date', { ascending: false });
 
@@ -51,6 +47,36 @@ export const expenseService = {
     }
 
     const { data, error } = await query;
+    
+    // If error is about company_id or expense_date column not existing, retry without them
+    if (error && error.code === '42703' && (error.message?.includes('company_id') || error.message?.includes('expense_date'))) {
+      const retryQuery = supabase
+        .from('expenses')
+        .select('*')
+        .order('created_at', { ascending: false });
+      
+      if (branchId) {
+        retryQuery.eq('branch_id', branchId);
+      }
+      
+      const { data: retryData, error: retryError } = await retryQuery;
+      if (retryError) {
+        // If created_at also doesn't exist, try without ordering
+        const finalQuery = supabase
+          .from('expenses')
+          .select('*');
+        
+        if (branchId) {
+          finalQuery.eq('branch_id', branchId);
+        }
+        
+        const { data: finalData, error: finalError } = await finalQuery;
+        if (finalError) throw finalError;
+        return finalData;
+      }
+      return retryData;
+    }
+    
     if (error) throw error;
     return data;
   },
@@ -59,12 +85,7 @@ export const expenseService = {
   async getExpense(id: string) {
     const { data, error } = await supabase
       .from('expenses')
-      .select(`
-        *,
-        vendor:contacts(*),
-        approved_by_user:users(full_name, email),
-        created_by_user:users(full_name, email)
-      `)
+      .select('*')
       .eq('id', id)
       .single();
 

@@ -38,10 +38,10 @@ function ChartContainer({
   id,
   className,
   children,
-  config,
+  config = {},
   ...props
 }: React.ComponentProps<"div"> & {
-  config: ChartConfig;
+  config?: ChartConfig;
   children: React.ComponentProps<
     typeof RechartsPrimitive.ResponsiveContainer
   >["children"];
@@ -70,8 +70,12 @@ function ChartContainer({
 }
 
 const ChartStyle = ({ id, config }: { id: string; config: ChartConfig }) => {
+  if (!config || typeof config !== 'object') {
+    return null;
+  }
+  
   const colorConfig = Object.entries(config).filter(
-    ([, config]) => config.theme || config.color,
+    ([, config]) => config?.theme || config?.color,
   );
 
   if (!colorConfig.length) {

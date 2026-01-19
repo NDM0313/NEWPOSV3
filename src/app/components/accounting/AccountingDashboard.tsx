@@ -27,11 +27,17 @@ import { ListToolbar } from '@/app/components/ui/list-toolbar';
 import { cn } from '@/app/components/ui/utils';
 import { useAccounting } from '@/app/context/AccountingContext';
 import { useNavigation } from '@/app/context/NavigationContext';
+import { useSales } from '@/app/context/SalesContext';
+import { usePurchases } from '@/app/context/PurchaseContext';
+import { useExpenses } from '@/app/context/ExpenseContext';
 import type { AccountingEntry } from '@/app/context/AccountingContext';
 import { ManualEntryDialog } from './ManualEntryDialog';
 
 export const AccountingDashboard = () => {
   const accounting = useAccounting();
+  const sales = useSales();
+  const purchases = usePurchases();
+  const expenses = useExpenses();
   const { openDrawer } = useNavigation();
   const [activeTab, setActiveTab] = useState<'transactions' | 'accounts' | 'receivables' | 'payables' | 'deposits' | 'studio' | 'reports'>('transactions');
   const [searchTerm, setSearchTerm] = useState('');
@@ -93,10 +99,41 @@ export const AccountingDashboard = () => {
     { key: 'reports', label: 'Reports', icon: BarChart3 },
   ];
 
+  // Filter transactions based on search and filters
+  const filteredTransactions = useMemo(() => {
+    let filtered = transactions;
+
+    // Search filter
+    if (searchTerm) {
+      const search = searchTerm.toLowerCase();
+      filtered = filtered.filter(txn =>
+        txn.referenceNo.toLowerCase().includes(search) ||
+        txn.description.toLowerCase().includes(search) ||
+        txn.module.toLowerCase().includes(search) ||
+        txn.debitAccount.toLowerCase().includes(search) ||
+        txn.creditAccount.toLowerCase().includes(search) ||
+        txn.createdBy.toLowerCase().includes(search)
+      );
+    }
+
+    // Type filter
+    if (typeFilter !== 'all') {
+      filtered = filtered.filter(txn => {
+        if (typeFilter === 'expense') return txn.source === 'Expense';
+        if (typeFilter === 'sale') return txn.source === 'Sale';
+        if (typeFilter === 'purchase') return txn.source === 'Purchase';
+        if (typeFilter === 'payment') return txn.source === 'Payment';
+        return true;
+      });
+    }
+
+    return filtered;
+  }, [transactions, searchTerm, typeFilter]);
+
   return (
-    <div className="h-screen flex flex-col bg-[#0B0F19]">
+    <div className="h-screen flex flex-col bg-[#0B0F19] overflow-hidden">
       {/* Page Header */}
-      <div className="shrink-0 px-6 py-4 border-b border-gray-800">
+      <div className="shrink-0 px-6 py-4 border-b border-gray-800 bg-[#0F1419]">
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold text-white">Accounting</h1>
@@ -105,7 +142,7 @@ export const AccountingDashboard = () => {
           {userRole === 'Admin' && activeTab === 'transactions' && (
             <Button 
               onClick={() => setManualEntryOpen(true)}
-              className="bg-blue-600 hover:bg-blue-500 text-white h-10 gap-2"
+              className="bg-blue-600 hover:bg-blue-500 text-white h-10 gap-2 shadow-lg shadow-blue-900/30"
             >
               <Plus size={16} />
               Manual Entry
@@ -220,100 +257,337 @@ export const AccountingDashboard = () => {
       </div>
 
       {/* Tab Content */}
-      <div className="flex-1 overflow-auto px-6 py-4">
+      <div className="flex-1 overflow-auto px-6 py-4 bg-[#0B0F19]">
         {activeTab === 'transactions' && (
-          <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead className="bg-gray-900 border-b border-gray-800">
-                  <tr className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                    <th className="px-4 py-3 text-left">Date</th>
-                    <th className="px-4 py-3 text-left">Reference</th>
-                    <th className="px-4 py-3 text-left">Module</th>
-                    <th className="px-4 py-3 text-left">Description</th>
-                    <th className="px-4 py-3 text-left">Debit Account</th>
-                    <th className="px-4 py-3 text-left">Credit Account</th>
-                    <th className="px-4 py-3 text-right">Amount</th>
-                    <th className="px-4 py-3 text-left">By</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {transactions.length === 0 ? (
-                    <tr>
-                      <td colSpan={8} className="px-4 py-12 text-center">
-                        <Receipt size={48} className="mx-auto text-gray-600 mb-3" />
-                        <p className="text-gray-400 text-sm">No transactions yet</p>
-                        <p className="text-gray-600 text-xs mt-1">Transactions will appear here</p>
-                      </td>
+          <div className="space-y-4">
+            {/* Search and Filter Bar */}
+            <div className="flex items-center gap-4">
+              <div className="flex-1 relative">
+                <input
+                  type="text"
+                  placeholder="Search transactions..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="w-full bg-gray-900/50 border border-gray-800 rounded-lg px-4 py-2 pl-10 text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all"
+                />
+                <Filter size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none" />
+              </div>
+              <Button
+                variant="outline"
+                onClick={() => setFilterOpen(!filterOpen)}
+                className={cn(
+                  "border-gray-800 text-gray-300 hover:bg-gray-800 transition-all",
+                  filterOpen && "bg-gray-800 border-blue-500"
+                )}
+              >
+                <Filter size={16} className="mr-2" />
+                Filter
+              </Button>
+            </div>
+
+            {/* Filter Panel */}
+            {filterOpen && (
+              <div className="bg-gray-900/50 border border-gray-800 rounded-lg p-4">
+                <div className="grid grid-cols-4 gap-4">
+                  <div>
+                    <label className="text-xs text-gray-500 uppercase tracking-wide mb-2 block">Type</label>
+                    <select
+                      value={typeFilter}
+                      onChange={(e) => setTypeFilter(e.target.value)}
+                      className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500"
+                    >
+                      <option value="all">All Types</option>
+                      <option value="expense">Expense</option>
+                      <option value="sale">Sale</option>
+                      <option value="purchase">Purchase</option>
+                      <option value="payment">Payment</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Transactions Table */}
+            <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-gray-900/70 border-b border-gray-800 sticky top-0 z-10">
+                    <tr className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                      <th className="px-4 py-3 text-left">Date</th>
+                      <th className="px-4 py-3 text-left">Reference</th>
+                      <th className="px-4 py-3 text-left">Category</th>
+                      <th className="px-4 py-3 text-left">Description</th>
+                      <th className="px-4 py-3 text-left">Type</th>
+                      <th className="px-4 py-3 text-left">Account</th>
+                      <th className="px-4 py-3 text-right">Amount</th>
+                      <th className="px-4 py-3 text-left">By</th>
                     </tr>
-                  ) : (
-                    transactions.map((txn) => (
-                      <tr 
-                        key={txn.id} 
-                        className="border-b border-gray-800 hover:bg-gray-800/30 transition-colors"
-                      >
-                        <td className="px-4 py-3 text-sm text-gray-400">
-                          {txn.date.toLocaleDateString()}
-                        </td>
-                        <td className="px-4 py-3 text-sm text-blue-400 font-mono">
-                          {txn.referenceNo}
-                        </td>
-                        <td className="px-4 py-3 text-xs">
-                          <Badge className="bg-gray-800 text-gray-300 border-gray-700">
-                            {txn.module}
-                          </Badge>
-                        </td>
-                        <td className="px-4 py-3 text-sm text-gray-300">
-                          {txn.description}
-                        </td>
-                        <td className="px-4 py-3 text-sm text-green-400">
-                          {txn.debitAccount}
-                        </td>
-                        <td className="px-4 py-3 text-sm text-red-400">
-                          {txn.creditAccount}
-                        </td>
-                        <td className="px-4 py-3 text-sm text-white font-semibold text-right tabular-nums">
-                          ${txn.amount.toLocaleString()}
-                        </td>
-                        <td className="px-4 py-3 text-xs text-gray-500">
-                          {txn.createdBy}
+                  </thead>
+                  <tbody>
+                    {transactions.length === 0 ? (
+                      <tr>
+                        <td colSpan={8} className="px-4 py-12 text-center">
+                          <Receipt size={48} className="mx-auto text-gray-600 mb-3" />
+                          <p className="text-gray-400 text-sm">No transactions yet</p>
+                          <p className="text-gray-600 text-xs mt-1">Transactions will appear here</p>
                         </td>
                       </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
+                    ) : (
+                      filteredTransactions
+                        .map((txn) => {
+                          // Determine transaction type based on source and accounts
+                          const getTransactionType = () => {
+                            if (txn.source === 'Expense') return 'Expense';
+                            if (txn.source === 'Sale') return 'Income';
+                            if (txn.source === 'Purchase') return 'Purchase';
+                            if (txn.debitAccount === 'Accounts Receivable') return 'Receivable';
+                            if (txn.creditAccount === 'Accounts Payable') return 'Payable';
+                            return 'Transfer';
+                          };
+
+                          const transactionType = getTransactionType();
+                          const accountName = txn.debitAccount !== 'Expense' && txn.debitAccount !== 'Accounts Receivable' 
+                            ? txn.debitAccount 
+                            : txn.creditAccount;
+
+                          return (
+                            <tr 
+                              key={txn.id} 
+                              className="border-b border-gray-800/50 hover:bg-gray-800/30 transition-colors cursor-pointer"
+                            >
+                              <td className="px-4 py-3 text-sm text-gray-400">
+                                {new Date(txn.date).toLocaleDateString('en-US', { month: 'numeric', day: 'numeric', year: 'numeric' })}
+                              </td>
+                              <td className="px-4 py-3 text-sm text-blue-400 font-mono">
+                                {txn.referenceNo}
+                              </td>
+                              <td className="px-4 py-3 text-xs">
+                                <Badge className="bg-gray-800/50 text-gray-300 border-gray-700/50">
+                                  {txn.module}
+                                </Badge>
+                              </td>
+                              <td className="px-4 py-3 text-sm text-gray-300 max-w-md">
+                                {txn.description}
+                              </td>
+                              <td className="px-4 py-3 text-sm text-green-400 font-medium">
+                                {transactionType}
+                              </td>
+                              <td className="px-4 py-3 text-sm text-red-400">
+                                {accountName}
+                              </td>
+                              <td className="px-4 py-3 text-sm text-white font-semibold text-right tabular-nums">
+                                ${txn.amount.toLocaleString()}
+                              </td>
+                              <td className="px-4 py-3 text-xs text-gray-500">
+                                {txn.createdBy}
+                              </td>
+                            </tr>
+                          );
+                        })
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
         )}
 
         {activeTab === 'accounts' && (
-          <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-6">
-            <div className="text-center py-12">
-              <Wallet size={48} className="mx-auto text-gray-600 mb-3" />
-              <p className="text-gray-400 text-sm">Accounts Overview</p>
-              <p className="text-gray-600 text-xs mt-1">Account balances and management</p>
-            </div>
+          <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden">
+            {accounting.accounts.length === 0 ? (
+              <div className="text-center py-12">
+                <Wallet size={48} className="mx-auto text-gray-600 mb-3" />
+                <p className="text-gray-400 text-sm">No accounts found</p>
+                <p className="text-gray-600 text-xs mt-1">Accounts will appear here once created</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-gray-900 border-b border-gray-800">
+                    <tr className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                      <th className="px-4 py-3 text-left">Account Name</th>
+                      <th className="px-4 py-3 text-left">Type</th>
+                      <th className="px-4 py-3 text-left">Branch</th>
+                      <th className="px-4 py-3 text-right">Balance</th>
+                      <th className="px-4 py-3 text-left">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {accounting.accounts.map((account) => (
+                      <tr 
+                        key={account.id} 
+                        className="border-b border-gray-800 hover:bg-gray-800/30 transition-colors"
+                      >
+                        <td className="px-4 py-3 text-sm text-gray-300 font-medium">
+                          {account.name}
+                        </td>
+                        <td className="px-4 py-3 text-xs">
+                          <Badge className="bg-gray-800 text-gray-300 border-gray-700">
+                            {account.type}
+                          </Badge>
+                        </td>
+                        <td className="px-4 py-3 text-sm text-gray-400">
+                          {account.branch || 'N/A'}
+                        </td>
+                        <td className={cn(
+                          "px-4 py-3 text-sm font-semibold text-right tabular-nums",
+                          account.balance >= 0 ? "text-green-400" : "text-red-400"
+                        )}>
+                          ${account.balance.toLocaleString()}
+                        </td>
+                        <td className="px-4 py-3 text-xs">
+                          {account.isActive ? (
+                            <Badge className="bg-green-500/10 text-green-400 border-green-500/30">
+                              Active
+                            </Badge>
+                          ) : (
+                            <Badge className="bg-gray-500/10 text-gray-400 border-gray-500/30">
+                              Inactive
+                            </Badge>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         )}
 
         {activeTab === 'receivables' && (
-          <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-6">
-            <div className="text-center py-12">
-              <TrendingUp size={48} className="mx-auto text-gray-600 mb-3" />
-              <p className="text-gray-400 text-sm">Accounts Receivable</p>
-              <p className="text-gray-600 text-xs mt-1">Customer outstanding balances</p>
-            </div>
+          <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden">
+            {sales.sales.filter(s => s.due > 0).length === 0 ? (
+              <div className="text-center py-12">
+                <TrendingUp size={48} className="mx-auto text-gray-600 mb-3" />
+                <p className="text-gray-400 text-sm">No receivables</p>
+                <p className="text-gray-600 text-xs mt-1">All customers are paid up</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-gray-900 border-b border-gray-800">
+                    <tr className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                      <th className="px-4 py-3 text-left">Customer</th>
+                      <th className="px-4 py-3 text-left">Invoice No</th>
+                      <th className="px-4 py-3 text-left">Date</th>
+                      <th className="px-4 py-3 text-right">Total Amount</th>
+                      <th className="px-4 py-3 text-right">Paid</th>
+                      <th className="px-4 py-3 text-right">Due</th>
+                      <th className="px-4 py-3 text-left">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {sales.sales
+                      .filter(s => s.due > 0)
+                      .map((sale) => (
+                        <tr 
+                          key={sale.id} 
+                          className="border-b border-gray-800 hover:bg-gray-800/30 transition-colors"
+                        >
+                          <td className="px-4 py-3 text-sm text-gray-300 font-medium">
+                            {sale.customerName}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-blue-400 font-mono">
+                            {sale.invoiceNo}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-gray-400">
+                            {new Date(sale.date).toLocaleDateString()}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-gray-300 text-right">
+                            ${sale.total.toLocaleString()}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-green-400 text-right">
+                            ${sale.paid.toLocaleString()}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-red-400 font-semibold text-right">
+                            ${sale.due.toLocaleString()}
+                          </td>
+                          <td className="px-4 py-3 text-xs">
+                            <Badge className={
+                              sale.paymentStatus === 'paid' 
+                                ? 'bg-green-500/10 text-green-400 border-green-500/30'
+                                : sale.paymentStatus === 'partial'
+                                ? 'bg-yellow-500/10 text-yellow-400 border-yellow-500/30'
+                                : 'bg-red-500/10 text-red-400 border-red-500/30'
+                            }>
+                              {sale.paymentStatus}
+                            </Badge>
+                          </td>
+                        </tr>
+                      ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         )}
 
         {activeTab === 'payables' && (
-          <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-6">
-            <div className="text-center py-12">
-              <TrendingDown size={48} className="mx-auto text-gray-600 mb-3" />
-              <p className="text-gray-400 text-sm">Accounts Payable</p>
-              <p className="text-gray-600 text-xs mt-1">Supplier outstanding balances</p>
-            </div>
+          <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden">
+            {purchases.purchases.filter(p => p.due > 0).length === 0 ? (
+              <div className="text-center py-12">
+                <TrendingDown size={48} className="mx-auto text-gray-600 mb-3" />
+                <p className="text-gray-400 text-sm">No payables</p>
+                <p className="text-gray-600 text-xs mt-1">All suppliers are paid up</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-gray-900 border-b border-gray-800">
+                    <tr className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                      <th className="px-4 py-3 text-left">Supplier</th>
+                      <th className="px-4 py-3 text-left">PO No</th>
+                      <th className="px-4 py-3 text-left">Date</th>
+                      <th className="px-4 py-3 text-right">Total Amount</th>
+                      <th className="px-4 py-3 text-right">Paid</th>
+                      <th className="px-4 py-3 text-right">Due</th>
+                      <th className="px-4 py-3 text-left">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {purchases.purchases
+                      .filter(p => p.due > 0)
+                      .map((purchase) => (
+                        <tr 
+                          key={purchase.id} 
+                          className="border-b border-gray-800 hover:bg-gray-800/30 transition-colors"
+                        >
+                          <td className="px-4 py-3 text-sm text-gray-300 font-medium">
+                            {purchase.supplierName}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-blue-400 font-mono">
+                            {purchase.purchaseNo}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-gray-400">
+                            {new Date(purchase.date).toLocaleDateString()}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-gray-300 text-right">
+                            ${purchase.total.toLocaleString()}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-green-400 text-right">
+                            ${purchase.paid.toLocaleString()}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-red-400 font-semibold text-right">
+                            ${purchase.due.toLocaleString()}
+                          </td>
+                          <td className="px-4 py-3 text-xs">
+                            <Badge className={
+                              purchase.paymentStatus === 'paid' 
+                                ? 'bg-green-500/10 text-green-400 border-green-500/30'
+                                : purchase.paymentStatus === 'partial'
+                                ? 'bg-yellow-500/10 text-yellow-400 border-yellow-500/30'
+                                : 'bg-red-500/10 text-red-400 border-red-500/30'
+                            }>
+                              {purchase.paymentStatus}
+                            </Badge>
+                          </td>
+                        </tr>
+                      ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         )}
 
@@ -323,6 +597,7 @@ export const AccountingDashboard = () => {
               <Shield size={48} className="mx-auto text-gray-600 mb-3" />
               <p className="text-gray-400 text-sm">Security Deposits</p>
               <p className="text-gray-600 text-xs mt-1">Rental security deposits tracking</p>
+              <p className="text-gray-500 text-xs mt-2">Feature coming soon - Rental module integration</p>
             </div>
           </div>
         )}
@@ -333,16 +608,94 @@ export const AccountingDashboard = () => {
               <Wrench size={48} className="mx-auto text-gray-600 mb-3" />
               <p className="text-gray-400 text-sm">Studio Production Costs</p>
               <p className="text-gray-600 text-xs mt-1">Worker payments and job costs</p>
+              <p className="text-gray-500 text-xs mt-2">Feature coming soon - Studio module integration</p>
             </div>
           </div>
         )}
 
         {activeTab === 'reports' && (
-          <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-6">
-            <div className="text-center py-12">
-              <BarChart3 size={48} className="mx-auto text-gray-600 mb-3" />
-              <p className="text-gray-400 text-sm">Financial Reports</p>
-              <p className="text-gray-600 text-xs mt-1">P&L, Balance Sheet, Cash Flow</p>
+          <div className="space-y-4">
+            {/* Summary Cards */}
+            <div className="grid grid-cols-3 gap-4">
+              <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <div>
+                    <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold mb-1">Total Income</p>
+                    <p className="text-2xl font-bold text-green-400">${summary.totalIncome.toLocaleString()}</p>
+                  </div>
+                  <TrendingUp size={32} className="text-green-500/50" />
+                </div>
+              </div>
+              <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <div>
+                    <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold mb-1">Total Expense</p>
+                    <p className="text-2xl font-bold text-red-400">${summary.totalExpense.toLocaleString()}</p>
+                  </div>
+                  <TrendingDown size={32} className="text-red-500/50" />
+                </div>
+              </div>
+              <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <div>
+                    <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold mb-1">Net Profit</p>
+                    <p className={cn(
+                      "text-2xl font-bold",
+                      summary.netProfit >= 0 ? "text-green-400" : "text-red-400"
+                    )}>
+                      ${summary.netProfit.toLocaleString()}
+                    </p>
+                  </div>
+                  <DollarSign size={32} className={summary.netProfit >= 0 ? "text-green-500/50" : "text-red-500/50"} />
+                </div>
+              </div>
+            </div>
+
+            {/* Account Balances */}
+            <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-6">
+              <h3 className="text-lg font-semibold text-white mb-4">Account Balances</h3>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                {Array.from(accounting.balances.entries()).map(([accountType, balance]) => (
+                  <div key={accountType} className="bg-gray-950/50 border border-gray-800 rounded-lg p-4">
+                    <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">{accountType}</p>
+                    <p className={cn(
+                      "text-xl font-bold",
+                      balance >= 0 ? "text-green-400" : "text-red-400"
+                    )}>
+                      ${balance.toLocaleString()}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Transaction Summary */}
+            <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-6">
+              <h3 className="text-lg font-semibold text-white mb-4">Transaction Summary</h3>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between py-2 border-b border-gray-800">
+                  <span className="text-sm text-gray-400">Total Transactions</span>
+                  <span className="text-sm font-semibold text-white">{transactions.length}</span>
+                </div>
+                <div className="flex items-center justify-between py-2 border-b border-gray-800">
+                  <span className="text-sm text-gray-400">Sales Transactions</span>
+                  <span className="text-sm font-semibold text-white">
+                    {transactions.filter(t => t.source === 'Sale').length}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between py-2 border-b border-gray-800">
+                  <span className="text-sm text-gray-400">Purchase Transactions</span>
+                  <span className="text-sm font-semibold text-white">
+                    {transactions.filter(t => t.source === 'Purchase').length}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between py-2 border-b border-gray-800">
+                  <span className="text-sm text-gray-400">Expense Transactions</span>
+                  <span className="text-sm font-semibold text-white">
+                    {transactions.filter(t => t.source === 'Expense').length}
+                  </span>
+                </div>
+              </div>
             </div>
           </div>
         )}

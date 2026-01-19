@@ -73,22 +73,12 @@ import { BranchSelector, currentUser } from '@/app/components/layout/BranchSelec
 import { PurchaseItemsSection } from './PurchaseItemsSection';
 import { AddSupplierModal } from './AddSupplierModal';
 import { PaymentAttachments, PaymentAttachment } from '../payments/PaymentAttachments';
-
-// Mock Data - Moved to state to allow dynamic updates
-const initialSuppliers = [
-  { id: 1, name: "Bilal Fabrics", dueBalance: 25000 },
-  { id: 2, name: "ChenOne Mills", dueBalance: 0 },
-  { id: 3, name: "Sapphire Textiles", dueBalance: 12500 },
-  { id: 4, name: "Local Supplier", dueBalance: 5000 },
-];
-
-const productsMock = [
-    { id: 1, name: "Premium Cotton Fabric", sku: "FAB-001", price: 850, stock: 50, lastPurchasePrice: 720, lastSupplier: "Sapphire Textiles", hasVariations: false, needsPacking: true },
-    { id: 2, name: "Lawn Print Floral", sku: "LWN-045", price: 1250, stock: 120, lastPurchasePrice: 980, lastSupplier: "Al-Karam Fabrics", hasVariations: false, needsPacking: true },
-    { id: 3, name: "Silk Dupatta", sku: "SLK-022", price: 1800, stock: 35, lastPurchasePrice: 1450, lastSupplier: "Gul Ahmed", hasVariations: true, needsPacking: false },
-    { id: 4, name: "Unstitched 3-Pc Suit", sku: "SUIT-103", price: 4500, stock: 18, lastPurchasePrice: 3800, lastSupplier: "Khaadi Suppliers", hasVariations: true, needsPacking: false },
-    { id: 5, name: "Chiffon Fabric", sku: "CHF-078", price: 950, stock: 65, lastPurchasePrice: 750, lastSupplier: "Sapphire Textiles", hasVariations: false, needsPacking: true },
-];
+import { useSupabase } from '@/app/context/SupabaseContext';
+import { contactService } from '@/app/services/contactService';
+import { productService } from '@/app/services/productService';
+import { usePurchases } from '@/app/context/PurchaseContext';
+import { Loader2 } from 'lucide-react';
+import { format } from "date-fns";
 
 // Mock variations for products that have them
 const productVariations: Record<number, Array<{ size: string; color: string }>> = {
@@ -158,20 +148,27 @@ interface PurchaseFormProps {
 }
 
 export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFormProps) => {
+    // Supabase & Context
+    const { companyId, branchId: contextBranchId } = useSupabase();
+    const { createPurchase } = usePurchases();
+    
+    // Data State
+    const [suppliers, setSuppliers] = useState<Array<{ id: number | string; name: string; dueBalance: number }>>([]);
+    const [products, setProducts] = useState<Array<{ id: number | string; name: string; sku: string; price: number; stock: number; lastPurchasePrice?: number; lastSupplier?: string; hasVariations: boolean; needsPacking: boolean }>>([]);
+    const [loading, setLoading] = useState(true);
+    const [saving, setSaving] = useState(false);
+    
     // Header State
     const [supplierId, setSupplierId] = useState("");
     const [supplierSearchOpen, setSupplierSearchOpen] = useState(false);
     const [purchaseDate, setPurchaseDate] = useState<Date>(new Date());
     const [refNumber, setRefNumber] = useState("");
     
-    // Dynamic suppliers list (starts with initial suppliers)
-    const [suppliers, setSuppliers] = useState(initialSuppliers);
-    
     // Add Supplier Modal State
     const [addSupplierModalOpen, setAddSupplierModalOpen] = useState(false);
     
     // Branch State
-    const [branchId, setBranchId] = useState<string>(currentUser.assignedBranchId.toString());
+    const [branchId, setBranchId] = useState<string>(contextBranchId || '');
     
     // Items List State
     const [items, setItems] = useState<PurchaseItem[]>([]);
@@ -471,10 +468,134 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
         toast.success("Expense added!");
     };
 
-    const filteredProducts = productsMock.filter(p => 
+    const filteredProducts = products.filter(p => 
         p.name.toLowerCase().includes(productSearchTerm.toLowerCase()) ||
         p.sku.toLowerCase().includes(productSearchTerm.toLowerCase())
     );
+    
+    // Load data from Supabase
+    useEffect(() => {
+        const loadData = async () => {
+            if (!companyId) return;
+            
+            try {
+                setLoading(true);
+                
+                // Load suppliers (contacts with type='supplier')
+                const contactsData = await contactService.getAllContacts(companyId);
+                const supplierContacts = contactsData
+                    .filter(c => c.type === 'supplier' || c.type === 'both')
+                    .map(c => ({
+                        id: c.id || c.uuid || '',
+                        name: c.name || '',
+                        dueBalance: c.payables || 0
+                    }));
+                setSuppliers(supplierContacts);
+                
+                // Load products
+                const productsData = await productService.getAllProducts(companyId);
+                const productsList = productsData.map(p => ({
+                    id: p.id || p.uuid || '',
+                    name: p.name || '',
+                    sku: p.sku || '',
+                    price: p.costPrice || p.price || 0,
+                    stock: p.stock || 0,
+                    lastPurchasePrice: p.costPrice || undefined,
+                    lastSupplier: undefined, // Can be enhanced later
+                    hasVariations: (p.variations && p.variations.length > 0) || false,
+                    needsPacking: false // Can be enhanced based on product type
+                }));
+                setProducts(productsList);
+            } catch (error) {
+                console.error('[PURCHASE FORM] Error loading data:', error);
+                toast.error('Failed to load data');
+            } finally {
+                setLoading(false);
+            }
+        };
+        
+        loadData();
+    }, [companyId]);
+    
+    // Handle Save
+    const handleSave = async (print: boolean = false) => {
+        if (!supplierId || supplierId === '') {
+            toast.error('Please select a supplier');
+            return;
+        }
+        
+        if (items.length === 0) {
+            toast.error('Please add at least one item');
+            return;
+        }
+        
+        try {
+            setSaving(true);
+            
+            const selectedSupplier = suppliers.find(s => s.id.toString() === supplierId);
+            const supplierName = selectedSupplier?.name || '';
+            const supplierUuid = supplierId.toString();
+            
+            // Convert items to PurchaseItem format
+            const purchaseItems = items.map(item => ({
+                id: item.id.toString(),
+                productId: item.productId.toString(),
+                productName: item.name,
+                sku: item.sku,
+                quantity: item.qty,
+                receivedQty: 0, // Will be updated when received
+                price: item.price,
+                discount: 0, // Can be enhanced later
+                tax: 0, // Can be enhanced later
+                total: item.price * item.qty,
+                // Include packing data if available
+                packingDetails: item.packingDetails,
+                thaans: item.thaans,
+                meters: item.meters
+            }));
+            
+            // Create purchase data
+            const purchaseData = {
+                supplier: supplierUuid,
+                supplierName: supplierName,
+                contactNumber: '', // Can be enhanced to get from supplier
+                date: format(purchaseDate, 'yyyy-MM-dd'),
+                expectedDelivery: undefined,
+                location: branchId || '',
+                status: purchaseStatus as 'draft' | 'ordered' | 'received' | 'final',
+                items: purchaseItems,
+                itemsCount: items.length,
+                subtotal: subtotal,
+                discount: discountAmount,
+                tax: 0, // Can be enhanced later
+                shippingCost: expensesTotal,
+                total: totalAmount,
+                paid: totalPaid,
+                due: balanceDue,
+                paymentStatus: paymentStatus as 'paid' | 'partial' | 'unpaid',
+                paymentMethod: partialPayments.length > 0 ? partialPayments[0].method : 'cash',
+                notes: refNumber || undefined
+            };
+            
+            // Create purchase via context
+            await createPurchase(purchaseData);
+            
+            toast.success('Purchase order created successfully!');
+            
+            if (print) {
+                // TODO: Implement print functionality
+                toast.info('Print functionality coming soon');
+            }
+            
+            // Close form
+            onClose();
+        } catch (error: any) {
+            console.error('[PURCHASE FORM] Error saving purchase:', error);
+            toast.error(`Failed to save purchase: ${error.message || 'Unknown error'}`);
+        } finally {
+            setSaving(false);
+        }
+    };
 
     // Keyboard navigation: Auto-focus after item is added
     useEffect(() => {
@@ -514,6 +635,15 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
         }
     };
 
+    // Show loader while loading data
+    if (loading) {
+        return (
+            <div className="flex items-center justify-center h-screen bg-[#111827]">
+                <Loader2 size={48} className="text-blue-500 animate-spin" />
+            </div>
+        );
+    }
+    
     return (
         <div className="flex flex-col h-screen bg-[#111827] text-white overflow-hidden">
             {/* ============ LAYER 1: FIXED HEADER ============ */}
@@ -1023,18 +1153,20 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                                 type="button"
                                 variant="outline"
                                 className="h-10 bg-transparent border border-gray-700 hover:border-gray-600 hover:bg-gray-800 text-white text-sm font-semibold"
-                                onClick={() => toast.success("Purchase order saved!")}
+                                onClick={() => handleSave(false)}
+                                disabled={saving}
                             >
                                 <Save size={15} className="mr-1.5" />
-                                Save
+                                {saving ? 'Saving...' : 'Save'}
                             </Button>
                             <Button 
                                 type="button"
                                 className="h-10 bg-orange-600 hover:bg-orange-500 text-white text-sm font-bold shadow-lg shadow-orange-900/20"
-                                onClick={() => toast.success("Purchase order saved and printing!")}
+                                onClick={() => handleSave(true)}
+                                disabled={saving}
                             >
                                 <Printer size={15} className="mr-1.5" />
-                                Save & Print
+                                {saving ? 'Saving...' : 'Save & Print'}
                             </Button>
                         </div>
                     </div>

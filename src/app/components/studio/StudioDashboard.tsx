@@ -1,4 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { useSupabase } from '@/app/context/SupabaseContext';
+import { studioService } from '@/app/services/studioService';
+import { toast } from 'sonner';
 import { Card } from '../ui/card';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';

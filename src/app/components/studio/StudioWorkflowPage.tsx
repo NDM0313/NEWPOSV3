@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { 
   Users,
   Search,
@@ -19,6 +19,10 @@ import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
 import { Input } from '../ui/input';
 import { useNavigation } from '../../context/NavigationContext';
+import { useSupabase } from '../../context/SupabaseContext';
+import { studioService, Worker as SupabaseWorker } from '../../services/studioService';
+import { Loader2 } from 'lucide-react';
+import { toast } from 'sonner';
 
 // ============================================
 // 🎯 TYPES & INTERFACES
@@ -43,81 +47,8 @@ interface Worker {
 }
 
 // ============================================
-// 🎨 MOCK DATA
+// 🎨 DATA LOADING
 // ============================================
-
-const mockWorkers: Worker[] = [
-  {
-    id: 'W001',
-    name: 'Ahmed Ali',
-    phone: '+92 300 1111111',
-    department: 'Dyeing',
-    activeJobs: 3,
-    pendingJobs: 2,
-    completedJobs: 45,
-    pendingAmount: 12500,
-    totalEarnings: 145000,
-    status: 'Busy',
-    rating: 4.5,
-    joinedDate: new Date('2025-06-15')
-  },
-  {
-    id: 'W002',
-    name: 'Hassan Raza',
-    phone: '+92 300 2222222',
-    department: 'Stitching',
-    activeJobs: 0,
-    pendingJobs: 0,
-    completedJobs: 67,
-    pendingAmount: 0,
-    totalEarnings: 234000,
-    status: 'Available',
-    rating: 4.8,
-    joinedDate: new Date('2025-03-20')
-  },
-  {
-    id: 'W003',
-    name: 'Bilal Shah',
-    phone: '+92 300 3333333',
-    department: 'Handwork',
-    activeJobs: 5,
-    pendingJobs: 3,
-    completedJobs: 28,
-    pendingAmount: 18000,
-    totalEarnings: 89000,
-    status: 'Overloaded',
-    rating: 4.2,
-    joinedDate: new Date('2025-09-10')
-  },
-  {
-    id: 'W004',
-    name: 'Zain Abbas',
-    phone: '+92 300 4444444',
-    department: 'Dyeing',
-    activeJobs: 2,
-    pendingJobs: 1,
-    completedJobs: 52,
-    pendingAmount: 8500,
-    totalEarnings: 178000,
-    status: 'Busy',
-    rating: 4.6,
-    joinedDate: new Date('2025-04-05')
-  },
-  {
-    id: 'W005',
-    name: 'Usman Khan',
-    phone: '+92 300 5555555',
-    department: 'Stitching',
-    activeJobs: 1,
-    pendingJobs: 1,
-    completedJobs: 41,
-    pendingAmount: 5000,
-    totalEarnings: 156000,
-    status: 'Available',
-    rating: 4.4,
-    joinedDate: new Date('2025-07-18')
-  }
-];
 
 // ============================================
 // 🎨 HELPER FUNCTIONS
@@ -161,16 +92,76 @@ const getStatusIcon = (status: WorkerStatus) => {
 
 export const StudioWorkflowPage: React.FC = () => {
   const { setCurrentView, openDrawer } = useNavigation();
+  const { companyId } = useSupabase();
+  const [workers, setWorkers] = useState<Worker[]>([]);
+  const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [pageSize, setPageSize] = useState(25);
   const [currentPage, setCurrentPage] = useState(1);
   const [departmentFilter, setDepartmentFilter] = useState<string>('all');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [filterOpen, setFilterOpen] = useState(false);
+  
+  // Load workers from Supabase
+  const loadWorkers = useCallback(async () => {
+    if (!companyId) return;
+    
+    try {
+      setLoading(true);
+      const supabaseWorkers = await studioService.getAllWorkers(companyId);
+      
+      // Map Supabase Worker to component Worker format
+      const mappedWorkers: Worker[] = supabaseWorkers.map((w: SupabaseWorker) => {
+        // Map worker_type to department
+        let department: DepartmentType = 'Stitching';
+        if (w.worker_type === 'tailor' || w.worker_type === 'cutter') {
+          department = 'Stitching';
+        } else if (w.worker_type === 'finisher') {
+          department = 'Handwork';
+        } else if (w.worker_type === 'embroidery') {
+          department = 'Handwork';
+        }
+        
+        // Determine status based on current_balance and active status
+        let status: WorkerStatus = 'Available';
+        if (w.current_balance > 5000) {
+          status = 'Overloaded';
+        } else if (w.current_balance > 0) {
+          status = 'Busy';
+        }
+        
+        return {
+          id: w.id || '',
+          name: w.name || '',
+          phone: w.phone || '',
+          department: department,
+          activeJobs: 0, // TODO: Calculate from job_cards
+          pendingJobs: 0, // TODO: Calculate from job_cards
+          completedJobs: 0, // TODO: Calculate from job_cards
+          pendingAmount: w.current_balance || 0,
+          totalEarnings: 0, // TODO: Calculate from payment history
+          status: status,
+          rating: 4.5, // Default rating
+          joinedDate: new Date() // TODO: Get from created_at
+        };
+      });
+      
+      setWorkers(mappedWorkers);
+    } catch (error) {
+      console.error('[STUDIO WORKFLOW] Error loading workers:', error);
+      toast.error('Failed to load workers');
+    } finally {
+      setLoading(false);
+    }
+  }, [companyId]);
+  
+  useEffect(() => {
+    loadWorkers();
+  }, [loadWorkers]);
 
   // Filtered workers
   const filteredWorkers = useMemo(() => {
-    return mockWorkers.filter(worker => {
+    return workers.filter(worker => {
       // Search filter
       if (searchTerm) {
         const search = searchTerm.toLowerCase();
@@ -233,11 +224,11 @@ export const StudioWorkflowPage: React.FC = () => {
 
   // Summary stats
   const stats = useMemo(() => ({
-    totalWorkers: mockWorkers.length,
-    activeWorkers: mockWorkers.filter(w => w.activeJobs > 0).length,
-    availableWorkers: mockWorkers.filter(w => w.status === 'Available').length,
-    totalPendingAmount: mockWorkers.reduce((sum, w) => sum + w.pendingAmount, 0)
-  }), []);
+    totalWorkers: workers.length,
+    activeWorkers: workers.filter(w => w.activeJobs > 0).length,
+    availableWorkers: workers.filter(w => w.status === 'Available').length,
+    totalPendingAmount: workers.reduce((sum, w) => sum + w.pendingAmount, 0)
+  }), [workers]);
 
   // Active filter count
   const activeFilterCount = [
@@ -263,6 +254,15 @@ export const StudioWorkflowPage: React.FC = () => {
   const handleExportPDF = () => {
     console.log('Export Workers PDF');
   };
+  
+  // Show loader while loading
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <Loader2 size={48} className="text-blue-500 animate-spin" />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500">

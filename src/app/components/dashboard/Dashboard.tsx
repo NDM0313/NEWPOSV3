@@ -1,74 +1,211 @@
-import React from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts';
-import { DollarSign, ShoppingBag, TrendingUp, ArrowDownRight, ArrowUpRight, AlertTriangle, ArrowRight, Scissors } from 'lucide-react';
+import { DollarSign, ShoppingBag, TrendingUp, ArrowDownRight, ArrowUpRight, AlertTriangle, ArrowRight, Scissors, Loader2 } from 'lucide-react';
 import { useNavigation } from '../../context/NavigationContext';
+import { useSales } from '../../context/SalesContext';
+import { usePurchases } from '../../context/PurchaseContext';
+import { useExpenses } from '../../context/ExpenseContext';
+import { useSupabase } from '../../context/SupabaseContext';
+import { useDateRange } from '../../context/DateRangeContext';
+import { productService } from '../../services/productService';
+import { formatCurrency } from '../../utils/formatCurrency';
 
-const data = [
-  { name: 'Mon', sales: 4000, profit: 2400 },
-  { name: 'Tue', sales: 3000, profit: 1398 },
-  { name: 'Wed', sales: 2000, profit: 9800 },
-  { name: 'Thu', sales: 2780, profit: 3908 },
-  { name: 'Fri', sales: 1890, profit: 4800 },
-  { name: 'Sat', sales: 2390, profit: 3800 },
-  { name: 'Sun', sales: 3490, profit: 4300 },
-];
-
-const lowStockItems = [
-  { id: 1, name: 'Wireless Mouse Gen 2', sku: 'WM-002', stock: 2, min: 10 },
-  { id: 2, name: 'USB-C Cable 2m', sku: 'CB-005', stock: 5, min: 20 },
-  { id: 3, name: 'Mechanical Keyboard Switch', sku: 'KB-SW-01', stock: 12, min: 50 },
-];
+interface Product {
+  id: string;
+  name: string;
+  sku: string;
+  current_stock: number;
+  min_stock: number;
+}
 
 export const Dashboard = () => {
   const { setCurrentView } = useNavigation();
+  const sales = useSales();
+  const purchases = usePurchases();
+  const expenses = useExpenses();
+  const { companyId } = useSupabase();
+  const { startDate, endDate } = useDateRange();
+  const [products, setProducts] = useState<Product[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  // Load products for low stock items
+  const loadProducts = useCallback(async () => {
+    if (!companyId) return;
+    
+    try {
+      setLoading(true);
+      const productsData = await productService.getAllProducts(companyId);
+      setProducts(productsData as Product[]);
+    } catch (error) {
+      console.error('[DASHBOARD] Error loading products:', error);
+    } finally {
+      setLoading(false);
+    }
+  }, [companyId]);
+
+  useEffect(() => {
+    loadProducts();
+  }, [loadProducts]);
+
+  // Filter data by date range
+  const filterByDateRange = useCallback((dateStr: string | undefined): boolean => {
+    if (!startDate && !endDate) return true;
+    if (!dateStr) return false;
+    
+    const date = new Date(dateStr);
+    if (startDate && date < new Date(startDate)) return false;
+    if (endDate && date > new Date(endDate + 'T23:59:59')) return false;
+    return true;
+  }, [startDate, endDate]);
+
+  // Calculate metrics from real data (filtered by date range)
+  const metrics = useMemo(() => {
+    const filteredSales = sales.sales.filter(sale => filterByDateRange(sale.date));
+    const filteredPurchases = purchases.purchases.filter(purchase => filterByDateRange(purchase.poDate));
+    const filteredExpenses = expenses.expenses.filter(expense => filterByDateRange(expense.expenseDate));
+
+    const totalSales = filteredSales.reduce((sum, sale) => 
+      sale.type === 'invoice' ? sum + sale.total : sum, 0
+    );
+    
+    const totalPurchases = filteredPurchases.reduce((sum, purchase) => 
+      sum + purchase.total, 0
+    );
+    
+    const totalExpenses = filteredExpenses
+      .filter(e => e.status === 'paid')
+      .reduce((sum, expense) => sum + expense.amount, 0);
+    
+    const totalReceivables = sales.sales.reduce((sum, sale) => 
+      sale.type === 'invoice' ? sum + sale.due : sum, 0
+    );
+    
+    const totalPayables = purchases.purchases.reduce((sum, purchase) => 
+      sum + purchase.due, 0
+    );
+    
+    const netProfit = totalSales - totalPurchases - totalExpenses;
+
+    return {
+      totalSales,
+      totalPurchases,
+      totalExpenses,
+      totalReceivables,
+      totalPayables,
+      netProfit,
+    };
+  }, [sales.sales, purchases.purchases, expenses.expenses, filterByDateRange]);
+
+  // Get low stock items
+  const lowStockItems = useMemo(() => {
+    return products
+      .filter(p => p.current_stock < p.min_stock)
+      .slice(0, 5)
+      .map(p => ({
+        id: p.id,
+        name: p.name,
+        sku: p.sku,
+        stock: p.current_stock,
+        min: p.min_stock,
+      }));
+  }, [products]);
+
+  // Generate chart data from date range (or last 7 days if no range)
+  const chartData = useMemo(() => {
+    const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    const today = new Date();
+    const data = days.map((day, index) => {
+      const date = new Date(today);
+      date.setDate(date.getDate() - (6 - index));
+      const dateStr = date.toISOString().split('T')[0];
+      
+      // Filter by date range if set
+      const daySales = sales.sales
+        .filter(s => {
+          if (!s.date?.startsWith(dateStr)) return false;
+          return filterByDateRange(s.date);
+        })
+        .reduce((sum, sale) => sum + (sale.type === 'invoice' ? sale.total : 0), 0);
+      
+      const dayPurchases = purchases.purchases
+        .filter(p => {
+          if (!p.poDate?.startsWith(dateStr)) return false;
+          return filterByDateRange(p.poDate);
+        })
+        .reduce((sum, purchase) => sum + purchase.total, 0);
+      
+      const dayProfit = daySales - dayPurchases;
+      
+      return {
+        name: day,
+        sales: daySales,
+        profit: dayProfit,
+      };
+    });
+    
+    return data;
+  }, [sales.sales, purchases.purchases]);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-96">
+        <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
       {/* Low Stock Alert Banner */}
-      <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-4 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="p-2 bg-red-500/20 rounded-lg text-red-500">
-            <AlertTriangle size={24} />
+      {lowStockItems.length > 0 && (
+        <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-4 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-red-500/20 rounded-lg text-red-500">
+              <AlertTriangle size={24} />
+            </div>
+            <div>
+              <h3 className="text-red-500 font-bold">Low Stock Alert</h3>
+              <p className="text-red-400 text-sm">{lowStockItems.length} items are below minimum stock level</p>
+            </div>
           </div>
-          <div>
-            <h3 className="text-red-500 font-bold">Low Stock Alert</h3>
-            <p className="text-red-400 text-sm">{lowStockItems.length} items are below minimum stock level</p>
-          </div>
+          <button 
+            onClick={() => setCurrentView('inventory')}
+            className="text-sm font-medium text-red-500 hover:text-red-400 flex items-center gap-1"
+          >
+            View Inventory <ArrowRight size={16} />
+          </button>
         </div>
-        <button className="text-sm font-medium text-red-500 hover:text-red-400 flex items-center gap-1">
-          View Inventory <ArrowRight size={16} />
-        </button>
-      </div>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard 
           title="Total Due (Receivables)" 
-          value="$12,450.00" 
-          change="+4.5%" 
+          value={formatCurrency(metrics.totalReceivables)} 
+          change="—" 
           icon={ArrowDownRight} 
           trend="up"
           iconColor="text-blue-500"
         />
         <StatCard 
           title="Supplier Due (Payables)" 
-          value="$4,200.50" 
-          change="-2.1%" 
+          value={formatCurrency(metrics.totalPayables)} 
+          change="—" 
           icon={ArrowUpRight} 
           trend="down"
           iconColor="text-orange-500"
         />
         <StatCard 
           title="Net Profit" 
-          value="$48,200.00" 
-          change="+14.2%" 
+          value={formatCurrency(metrics.netProfit)} 
+          change={metrics.netProfit >= 0 ? "—" : "—"} 
           icon={DollarSign} 
-          trend="up"
+          trend={metrics.netProfit >= 0 ? "up" : "down"}
           iconColor="text-green-500"
         />
         <StatCard 
           title="Total Sales" 
-          value="$124,592.00" 
-          change="+12.5%" 
+          value={formatCurrency(metrics.totalSales)} 
+          change="—" 
           icon={ShoppingBag} 
           trend="up"
           iconColor="text-purple-500"
@@ -80,7 +217,7 @@ export const Dashboard = () => {
           <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-6">Revenue & Profit</h3>
           <div className="w-full h-[320px] min-h-[320px]">
             <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={320}>
-              <AreaChart data={data}>
+              <AreaChart data={chartData}>
                 <defs>
                   <linearGradient id="colorSales" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="5%" stopColor="#3B82F6" stopOpacity={0.3}/>
@@ -97,6 +234,7 @@ export const Dashboard = () => {
                 <Tooltip 
                   contentStyle={{ backgroundColor: '#1F2937', borderColor: '#374151', color: '#F3F4F6' }}
                   itemStyle={{ color: '#F3F4F6' }}
+                  formatter={(value: number) => formatCurrency(value)}
                 />
                 <Area type="monotone" dataKey="sales" stroke="#3B82F6" fillOpacity={1} fill="url(#colorSales)" />
                 <Area type="monotone" dataKey="profit" stroke="#10B981" fillOpacity={1} fill="url(#colorProfit)" />
@@ -112,23 +250,34 @@ export const Dashboard = () => {
               <AlertTriangle size={18} className="text-red-500" />
               Critical Stock
             </h3>
-            <div className="space-y-4">
-              {lowStockItems.map(item => (
-                <div key={item.id} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800/50 rounded-lg border border-gray-100 dark:border-gray-800">
-                  <div>
-                    <p className="font-medium text-gray-900 dark:text-white text-sm">{item.name}</p>
-                    <p className="text-xs text-gray-500">SKU: {item.sku}</p>
-                  </div>
-                  <div className="text-right">
-                    <p className="font-bold text-red-500">{item.stock}</p>
-                    <p className="text-xs text-gray-500">Min: {item.min}</p>
-                  </div>
+            {lowStockItems.length > 0 ? (
+              <>
+                <div className="space-y-4">
+                  {lowStockItems.map(item => (
+                    <div key={item.id} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800/50 rounded-lg border border-gray-100 dark:border-gray-800">
+                      <div>
+                        <p className="font-medium text-gray-900 dark:text-white text-sm">{item.name}</p>
+                        <p className="text-xs text-gray-500">SKU: {item.sku}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="font-bold text-red-500">{item.stock}</p>
+                        <p className="text-xs text-gray-500">Min: {item.min}</p>
+                      </div>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
-            <button className="w-full mt-4 py-2 text-sm text-center text-blue-500 hover:text-blue-400">
-              View All Low Stock
-            </button>
+                <button 
+                  onClick={() => setCurrentView('inventory')}
+                  className="w-full mt-4 py-2 text-sm text-center text-blue-500 hover:text-blue-400"
+                >
+                  View All Low Stock
+                </button>
+              </>
+            ) : (
+              <div className="text-center py-8 text-gray-500">
+                <p className="text-sm">No low stock items</p>
+              </div>
+            )}
           </div>
 
           <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 p-6 rounded-xl">

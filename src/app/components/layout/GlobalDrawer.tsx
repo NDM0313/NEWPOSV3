@@ -265,8 +265,11 @@ export const GlobalDrawer = () => {
 // Contact Form Component
 const ContactFormContent = ({ onClose }: { onClose: () => void }) => {
   const { drawerContactType } = useNavigation();
+  const { companyId, branchId, user } = useSupabase();
   const [contactType, setContactType] = useState<'customer' | 'supplier' | 'worker'>(drawerContactType || 'customer');
   const [workerType, setWorkerType] = useState<string>('dyer');
+  const [saving, setSaving] = useState(false);
+  const [country, setCountry] = useState<string>('pk');
   
   // Update contactType when drawerContactType changes
   React.useEffect(() => {
@@ -274,6 +277,48 @@ const ContactFormContent = ({ onClose }: { onClose: () => void }) => {
       setContactType(drawerContactType);
     }
   }, [drawerContactType]);
+
+  // Handle form submission
+  const handleContactSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    
+    if (!companyId || !user) {
+      toast.error('Company ID or user not found. Please login again.');
+      return;
+    }
+
+    setSaving(true);
+
+    try {
+      const formData = new FormData(e.currentTarget);
+      const contactData = {
+        company_id: companyId,
+        branch_id: branchId || undefined,
+        type: contactType,
+        name: formData.get('business-name') as string,
+        phone: formData.get('mobile') as string,
+        email: formData.get('email') as string || undefined,
+        address: formData.get('address') as string || undefined,
+        city: formData.get('city') as string || undefined,
+        country: country === 'pk' ? 'Pakistan' : country === 'in' ? 'India' : country === 'bd' ? 'Bangladesh' : 'Pakistan',
+        opening_balance: parseFloat(formData.get('opening-balance') as string) || 0,
+        credit_limit: parseFloat(formData.get('credit-limit') as string) || 0,
+        payment_terms: parseInt(formData.get('pay-term') as string) || 0,
+        tax_number: formData.get('tax-id') as string || undefined,
+        notes: formData.get('notes') as string || undefined,
+        created_by: user.id,
+      };
+
+      await contactService.createContact(contactData);
+      toast.success('Contact created successfully!');
+      onClose();
+    } catch (error: any) {
+      console.error('Error creating contact:', error);
+      toast.error(error.message || 'Failed to create contact. Please try again.');
+    } finally {
+      setSaving(false);
+    }
+  };
   
   return (
     <div className="flex flex-col h-full">
@@ -329,7 +374,8 @@ const ContactFormContent = ({ onClose }: { onClose: () => void }) => {
               {contactType === 'worker' ? 'Worker Name *' : 'Business Name *'}
             </Label>
             <Input 
-              id="business-name" 
+              id="business-name"
+              name="business-name"
               placeholder={contactType === 'worker' ? 'e.g. Ahmed Ali' : 'e.g. Ahmed Retailers'} 
               className="bg-gray-900 border-gray-800 text-white" 
               required 
@@ -339,7 +385,8 @@ const ContactFormContent = ({ onClose }: { onClose: () => void }) => {
           <div className="space-y-2">
             <Label htmlFor="mobile" className="text-gray-200">Mobile Number *</Label>
             <Input 
-              id="mobile" 
+              id="mobile"
+              name="mobile"
               placeholder="+92 300 1234567" 
               className="bg-gray-900 border-gray-800 text-white" 
               required 
@@ -349,7 +396,8 @@ const ContactFormContent = ({ onClose }: { onClose: () => void }) => {
           <div className="space-y-2">
             <Label htmlFor="email" className="text-gray-200">Email Address</Label>
             <Input 
-              id="email" 
+              id="email"
+              name="email"
               type="email"
               placeholder="contact@business.com" 
               className="bg-gray-900 border-gray-800 text-white" 
@@ -420,7 +468,8 @@ const ContactFormContent = ({ onClose }: { onClose: () => void }) => {
                   <div className="space-y-2">
                     <Label htmlFor="opening-balance" className="text-gray-200">Opening Balance</Label>
                     <Input 
-                      id="opening-balance" 
+                      id="opening-balance"
+                      name="opening-balance"
                       type="number"
                       placeholder="0.00" 
                       className="bg-gray-900 border-gray-800 text-white" 
@@ -429,7 +478,8 @@ const ContactFormContent = ({ onClose }: { onClose: () => void }) => {
                   <div className="space-y-2">
                     <Label htmlFor="credit-limit" className="text-gray-200">Credit Limit</Label>
                     <Input 
-                      id="credit-limit" 
+                      id="credit-limit"
+                      name="credit-limit"
                       type="number"
                       placeholder="0.00" 
                       className="bg-gray-900 border-gray-800 text-white" 
@@ -440,11 +490,12 @@ const ContactFormContent = ({ onClose }: { onClose: () => void }) => {
                 <div className="space-y-2">
                   <Label htmlFor="pay-term" className="text-gray-200">Payment Terms (Days)</Label>
                   <Input 
-                    id="pay-term" 
+                    id="pay-term"
+                    name="pay-term"
                     type="number"
                     placeholder="30" 
                     className="bg-gray-900 border-gray-800 text-white" 
-                  />
+                    />
                   <p className="text-xs text-gray-500">Number of days to settle payments</p>
                 </div>
               </div>
@@ -460,7 +511,8 @@ const ContactFormContent = ({ onClose }: { onClose: () => void }) => {
                 <div className="space-y-2">
                   <Label htmlFor="tax-id" className="text-gray-200">Tax / VAT ID</Label>
                   <Input 
-                    id="tax-id" 
+                    id="tax-id"
+                    name="tax-id"
                     placeholder="NTN-1234567" 
                     className="bg-gray-900 border-gray-800 text-white" 
                   />
@@ -468,7 +520,8 @@ const ContactFormContent = ({ onClose }: { onClose: () => void }) => {
                 <div className="space-y-2">
                   <Label htmlFor="gst" className="text-gray-200">GST Number</Label>
                   <Input 
-                    id="gst" 
+                    id="gst"
+                    name="gst"
                     placeholder="GST-1234567890" 
                     className="bg-gray-900 border-gray-800 text-white" 
                   />
@@ -486,7 +539,8 @@ const ContactFormContent = ({ onClose }: { onClose: () => void }) => {
                 <div className="space-y-2">
                   <Label htmlFor="address" className="text-gray-200">Street Address</Label>
                   <Textarea 
-                    id="address" 
+                    id="address"
+                    name="address"
                     placeholder="Enter full address"
                     className="bg-gray-900 border-gray-800 text-white min-h-[80px]" 
                   />
@@ -495,14 +549,15 @@ const ContactFormContent = ({ onClose }: { onClose: () => void }) => {
                   <div className="space-y-2">
                     <Label htmlFor="city" className="text-gray-200">City</Label>
                     <Input 
-                      id="city" 
+                      id="city"
+                      name="city"
                       placeholder="Karachi" 
                       className="bg-gray-900 border-gray-800 text-white" 
                     />
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="country" className="text-gray-200">Country</Label>
-                    <Select>
+                    <Select value={country} onValueChange={setCountry}>
                       <SelectTrigger className="bg-gray-900 border-gray-800 text-white">
                         <SelectValue placeholder="Pakistan" />
                       </SelectTrigger>
@@ -518,25 +573,25 @@ const ContactFormContent = ({ onClose }: { onClose: () => void }) => {
             </AccordionContent>
           </AccordionItem>
         </Accordion>
-      </form>
 
-      <div className="p-6 border-t border-gray-800 bg-gray-950 sticky bottom-0 z-10 flex gap-4">
-        <Button 
-          type="button" 
-          variant="outline" 
-          onClick={onClose}
-          className="flex-1 border-gray-700 text-gray-300"
-        >
-          Cancel
-        </Button>
-        <Button 
-          type="submit" 
-          disabled={saving}
-          className="flex-1 bg-blue-600 hover:bg-blue-500 text-white disabled:opacity-50"
-        >
-          {saving ? 'Saving...' : 'Save Contact'}
-        </Button>
-      </div>
+        <div className="p-6 border-t border-gray-800 bg-gray-950 sticky bottom-0 z-10 flex gap-4">
+          <Button 
+            type="button" 
+            variant="outline" 
+            onClick={onClose}
+            className="flex-1 border-gray-700 text-gray-300"
+          >
+            Cancel
+          </Button>
+          <Button 
+            type="submit" 
+            disabled={saving}
+            className="flex-1 bg-blue-600 hover:bg-blue-500 text-white disabled:opacity-50"
+          >
+            {saving ? 'Saving...' : 'Save Contact'}
+          </Button>
+        </div>
+      </form>
     </div>
   );
 };

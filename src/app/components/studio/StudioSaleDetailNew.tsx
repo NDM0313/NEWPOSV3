@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { 
   ArrowLeft,
   Calendar,
@@ -50,7 +50,10 @@ import { Input } from '../ui/input';
 import { Badge } from '../ui/badge';
 import { format } from 'date-fns';
 import { useNavigation } from '@/app/context/NavigationContext';
+import { useSupabase } from '@/app/context/SupabaseContext';
+import { studioService } from '@/app/services/studioService';
 import { cn } from '../ui/utils';
+import { Loader2 } from 'lucide-react';
 
 type SaleStatus = 'Draft' | 'In Progress' | 'Completed';
 type StepStatus = 'Pending' | 'In Progress' | 'Completed';
@@ -336,12 +339,10 @@ const mockWorkers: Worker[] = [
 ];
 
 export const StudioSaleDetailNew = () => {
-  const { setCurrentView } = useNavigation();
-  const [saleDetail, setSaleDetail] = useState<StudioSaleDetail>({
-    ...mockSaleDetail,
-    shipments: mockSaleDetail.shipments || [],
-    payments: mockSaleDetail.payments || []
-  });
+  const { setCurrentView, selectedStudioSaleId } = useNavigation();
+  const { companyId } = useSupabase();
+  const [saleDetail, setSaleDetail] = useState<StudioSaleDetail | null>(null);
+  const [loading, setLoading] = useState<boolean>(true);
   const [editMode, setEditMode] = useState(false);
   const [showCostBreakdown, setShowCostBreakdown] = useState(false);
   const [showAccessoryModal, setShowAccessoryModal] = useState(false);
@@ -394,8 +395,108 @@ export const StudioSaleDetailNew = () => {
   const [newCustomTaskName, setNewCustomTaskName] = useState('');
   const [selectedTasksForModal, setSelectedTasksForModal] = useState<string[]>([]);
 
+  // Convert Supabase StudioOrder to StudioSaleDetail interface
+  const convertFromSupabaseOrder = useCallback((order: any): StudioSaleDetail => {
+    const statusMap: Record<string, SaleStatus> = {
+      'pending': 'Draft',
+      'in_progress': 'In Progress',
+      'completed': 'Completed',
+      'cancelled': 'Draft'
+    };
+
+    const stepStatusMap: Record<string, StepStatus> = {
+      'pending': 'Pending',
+      'in_progress': 'In Progress',
+      'completed': 'Completed'
+    };
+
+    // Get customer info
+    const customer = order.customer || {};
+    const customerName = customer.name || order.customer_name || 'Unknown';
+    const customerPhone = customer.phone || '';
+
+    // Get items
+    const items = order.items || [];
+    const fabricName = items.length > 0 ? items[0].item_description || 'N/A' : 'N/A';
+    const meters = items.reduce((sum: number, item: any) => sum + (item.quantity || 0), 0);
+    const fabricCost = items.reduce((sum: number, item: any) => sum + (item.total || 0), 0);
+
+    // Get job cards and convert to production steps
+    const jobCards = order.job_cards || [];
+    const productionSteps: ProductionStep[] = jobCards.map((card: any, index: number) => ({
+      id: card.id || `step-${index}`,
+      name: card.task_type || 'Unknown Task',
+      icon: Scissors, // Default icon
+      order: index + 1,
+      assignedWorker: card.worker?.name || '',
+      workerId: card.assigned_worker_id,
+      assignedWorkers: card.assigned_worker_id ? [{
+        id: `aw-${index}`,
+        workerId: card.assigned_worker_id,
+        workerName: card.worker?.name || 'Unknown',
+        role: card.task_type || 'Worker',
+        cost: card.payment_amount || 0
+      }] : [],
+      assignedDate: card.start_date || '',
+      expectedCompletionDate: card.end_date || '',
+      actualCompletionDate: card.end_date || undefined,
+      workerCost: card.payment_amount || 0,
+      workerPaymentStatus: card.is_paid ? 'Paid' : 'Payable' as 'Payable' | 'Pending' | 'Paid',
+      status: stepStatusMap[card.status] || 'Pending',
+      notes: card.notes || ''
+    }));
+
+    return {
+      id: order.id || '',
+      invoiceNo: order.order_no || `ORD-${order.id?.slice(0, 8)}`,
+      customerName,
+      customerPhone,
+      saleDate: order.order_date || new Date().toISOString().split('T')[0],
+      expectedDeliveryDate: order.delivery_date || order.actual_delivery_date || '',
+      saleStatus: statusMap[order.status] || 'Draft',
+      fabricName,
+      meters,
+      fabricCost,
+      productionSteps,
+      accessories: [], // TODO: Add accessories support
+      shipments: [], // TODO: Add shipments support
+      payments: [], // TODO: Add payments support
+      baseAmount: order.total_cost || 0,
+      shipmentCharges: 0,
+      totalAmount: order.total_cost || 0,
+      paidAmount: order.advance_paid || 0,
+      balanceDue: order.balance_due || 0,
+      fabricPurchaseCost: fabricCost
+    };
+  }, []);
+
+  // Load studio order from Supabase
+  const loadStudioOrder = useCallback(async () => {
+    if (!selectedStudioSaleId) {
+      setLoading(false);
+      return;
+    }
+
+    try {
+      setLoading(true);
+      const order = await studioService.getStudioOrder(selectedStudioSaleId);
+      const convertedDetail = convertFromSupabaseOrder(order);
+      setSaleDetail(convertedDetail);
+    } catch (error) {
+      console.error('Error loading studio order:', error);
+      setSaleDetail(null);
+    } finally {
+      setLoading(false);
+    }
+  }, [selectedStudioSaleId, convertFromSupabaseOrder]);
+
+  useEffect(() => {
+    loadStudioOrder();
+  }, [loadStudioOrder]);
+
   // Calculate costs
   const calculateInternalCosts = () => {
+    if (!saleDetail) return { fabricCost: 0, productionCost: 0, accessoriesCost: 0, shippingCost: 0, totalCost: 0, profit: 0, margin: 0 };
     const fabricCost = saleDetail.fabricPurchaseCost;
     const productionCost = saleDetail.productionSteps.reduce((sum, step) => sum + step.workerCost, 0);
     const accessoriesCost = saleDetail.accessories.reduce((sum, acc) => sum + acc.totalCost, 0);
@@ -411,30 +512,34 @@ export const StudioSaleDetailNew = () => {
   const costs = calculateInternalCosts();
 
   // Check if all production tasks are completed
-  const allTasksCompleted = saleDetail.productionSteps.length > 0 && 
-    saleDetail.productionSteps.every(step => step.status === 'Completed');
+  const allTasksCompleted = saleDetail ? (saleDetail.productionSteps.length > 0 && 
+    saleDetail.productionSteps.every(step => step.status === 'Completed')) : false;
 
   const isStepLocked = (stepOrder: number): boolean => {
-    if (stepOrder === 1) return false;
+    if (!saleDetail || stepOrder === 1) return false;
     const previousStep = saleDetail.productionSteps.find(s => s.order === stepOrder - 1);
     return previousStep?.status !== 'Completed';
   };
 
   const updateStepStatus = (stepId: string, newStatus: StepStatus) => {
-    setSaleDetail(prev => ({
-      ...prev,
-      productionSteps: prev.productionSteps.map(step => 
-        step.id === stepId ? { 
-          ...step, 
-          status: newStatus,
-          actualCompletionDate: newStatus === 'Completed' ? new Date().toISOString().split('T')[0] : step.actualCompletionDate,
-          // ERP Rule: When task completed, worker payment becomes "Payable" (handled in Accounting)
-          workerPaymentStatus: newStatus === 'Completed' && step.assignedWorker 
-            ? (step.workerPaymentStatus || 'Payable') 
-            : step.workerPaymentStatus
-        } : step
-      )
-    }));
+    if (!saleDetail) return;
+    setSaleDetail(prev => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        productionSteps: prev.productionSteps.map(step => 
+          step.id === stepId ? { 
+            ...step, 
+            status: newStatus,
+            actualCompletionDate: newStatus === 'Completed' ? new Date().toISOString().split('T')[0] : step.actualCompletionDate,
+            // ERP Rule: When task completed, worker payment becomes "Payable" (handled in Accounting)
+            workerPaymentStatus: newStatus === 'Completed' && step.assignedWorker 
+              ? (step.workerPaymentStatus || 'Payable') 
+              : step.workerPaymentStatus
+          } : step
+        )
+      };
+    });
   };
 
   const handleAddAccessory = () => {
@@ -503,6 +608,7 @@ export const StudioSaleDetailNew = () => {
   };
 
   const handleDeleteShipment = (shipmentId: string) => {
+    if (!saleDetail) return;
     const shipment = saleDetail.shipments.find(s => s.id === shipmentId);
     if (!shipment) return;
 
@@ -777,9 +883,32 @@ export const StudioSaleDetailNew = () => {
   };
 
   const canDeleteAccessory = () => {
+    if (!saleDetail) return false;
     if (saleDetail.saleStatus === 'Completed') return false;
     return !saleDetail.productionSteps.some(step => step.status === 'In Progress' || step.status === 'Completed');
   };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
+      </div>
+    );
+  }
+
+  if (!saleDetail) {
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <div className="text-center">
+          <p className="text-gray-400 mb-4">Studio order not found</p>
+          <Button onClick={() => setCurrentView('studio')} variant="outline">
+            <ArrowLeft size={16} className="mr-2" />
+            Back to Studio Sales
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col h-screen bg-[#111827] text-white overflow-hidden">
