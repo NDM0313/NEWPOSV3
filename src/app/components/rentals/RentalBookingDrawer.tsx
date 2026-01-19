@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from 'react';
+import { useSupabase } from '@/app/context/SupabaseContext';
+import { rentalService } from '@/app/services/rentalService';
 import { 
   Calendar as CalendarIcon, 
   Search, 
@@ -130,40 +132,7 @@ const customers = [
     { id: 3, name: "Fatima Ali" },
   ];
 
-// --- MOCK EXISTING BOOKINGS (For Conflict Detection) ---
-const mockExistingBookings: RentalBooking[] = [
-  {
-    id: "RB-001",
-    invoiceNumber: "RENT-1000",
-    customerId: "2",
-    customerName: "Sarah Khan",
-    productId: "P-101", // Red Bridal Lehenga
-    productName: "Red Bridal Baraat Lehenga (Handwork)",
-    productSku: "BRD-RED-001",
-    productImage: "https://images.unsplash.com/photo-1595777457583-95e059d581b8?auto=format&fit=crop&w=200",
-    bookingDate: new Date('2026-01-15'),
-    pickupDate: new Date('2026-01-25'),
-    returnDate: new Date('2026-01-28'),
-    totalDays: 3,
-    rentAmount: 35000,
-    advancePaid: 15000,
-    balanceDue: 20000,
-    damageCharges: 0,
-    lateCharges: 0,
-    extraDays: 0,
-    securityDetails: {
-      type: 'id_card',
-      reference: 'ABC-1234567',
-      heldByShop: true
-    },
-    status: 'reserved' as RentalStatus,
-    createdBy: 'Admin',
-    createdAt: new Date('2026-01-15'),
-    updatedAt: new Date('2026-01-15'),
-    branchId: 'BR-001',
-    branchName: 'Main Branch'
-  }
-];
+// Existing bookings will be loaded from Supabase
 
 interface RentalBookingDrawerProps {
     isOpen: boolean;
@@ -171,6 +140,64 @@ interface RentalBookingDrawerProps {
 }
 
 export const RentalBookingDrawer = ({ isOpen, onClose }: RentalBookingDrawerProps) => {
+  const { companyId, branchId } = useSupabase();
+  const [existingBookings, setExistingBookings] = useState<RentalBooking[]>([]);
+  const [loadingBookings, setLoadingBookings] = useState(false);
+  
+  // Load existing bookings for conflict detection
+  useEffect(() => {
+    if (isOpen && companyId) {
+      loadExistingBookings();
+    }
+  }, [isOpen, companyId]);
+  
+  const loadExistingBookings = async () => {
+    try {
+      setLoadingBookings(true);
+      const rentals = await rentalService.getAllRentals(companyId, branchId || undefined);
+      // Convert to RentalBooking format for conflict detection
+      const bookings: RentalBooking[] = rentals
+        .filter(r => r.status !== 'cancelled' && r.status !== 'closed')
+        .map(r => ({
+          id: r.id || '',
+          invoiceNumber: r.booking_no || '',
+          customerId: r.customer_id,
+          customerName: r.customer_name,
+          productId: r.items?.[0]?.product_id || '',
+          productName: r.items?.[0]?.product_name || '',
+          productSku: '',
+          productImage: '',
+          bookingDate: new Date(r.booking_date),
+          pickupDate: new Date(r.pickup_date),
+          returnDate: new Date(r.return_date),
+          totalDays: r.duration_days,
+          rentAmount: r.rental_charges,
+          advancePaid: r.paid_amount,
+          balanceDue: r.total_amount - r.paid_amount,
+          damageCharges: r.damage_charges || 0,
+          lateCharges: r.late_fee || 0,
+          extraDays: 0,
+          securityDetails: {
+            type: 'id_card',
+            reference: '',
+            heldByShop: true
+          },
+          status: r.status as RentalStatus,
+          createdBy: r.created_by,
+          createdAt: new Date(r.booking_date),
+          updatedAt: new Date(r.booking_date),
+          branchId: r.branch_id,
+          branchName: ''
+        }));
+      setExistingBookings(bookings);
+    } catch (error) {
+      console.error('[RENTAL BOOKING DRAWER] Error loading bookings:', error);
+      setExistingBookings([]);
+    } finally {
+      setLoadingBookings(false);
+    }
+  };
+  
   // Context State
   const [bookingDate, setBookingDate] = useState<Date>(new Date());
   const [pickupDate, setPickupDate] = useState<Date | undefined>(new Date());
@@ -260,7 +287,7 @@ export const RentalBookingDrawer = ({ isOpen, onClose }: RentalBookingDrawerProp
         selectedProduct.id,
         pickupDate,
         returnDate,
-        mockExistingBookings
+        existingBookings
       )
     : { hasConflict: false };
 

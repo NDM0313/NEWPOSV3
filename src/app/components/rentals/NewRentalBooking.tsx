@@ -72,19 +72,88 @@ interface SelectedItem {
 // Products and customers will be loaded from Supabase
 
 export const NewRentalBooking = () => {
+  const { companyId, branchId, user } = useSupabase();
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  
+  // Data states
+  const [products, setProducts] = useState<RentalProduct[]>([]);
+  const [customers, setCustomers] = useState<Customer[]>([]);
+  
   // Step A: Date Selection (Priority)
   const [pickupDate, setPickupDate] = useState<Date | undefined>(undefined);
   const [returnDate, setReturnDate] = useState<Date | undefined>(undefined);
   const [datesLocked, setDatesLocked] = useState(false);
   
   // Customer
-  const [selectedCustomer, setSelectedCustomer] = useState<Customer>(mockCustomers[0]);
+  const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
   
   // Product Selection
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedItems, setSelectedItems] = useState<SelectedItem[]>([]);
+  
+  // Load products and customers from Supabase
+  const loadData = useCallback(async () => {
+    if (!companyId) {
+      setLoading(false);
+      return;
+    }
+
+    try {
+      setLoading(true);
+      
+      // Load products (rentable only)
+      const allProducts = await productService.getAllProducts(companyId);
+      const rentableProducts: RentalProduct[] = allProducts
+        .filter(p => p.is_rentable)
+        .map(p => ({
+          id: p.id,
+          sku: p.sku || '',
+          name: p.name,
+          category: (p.category?.name?.toLowerCase() || 'bridal') as 'bridal' | 'groom' | 'accessories',
+          image: p.image_url || '/placeholder-product.jpg',
+          retailValue: p.retail_price || 0,
+          rentPrice: p.rental_price_daily ? p.rental_price_daily * 3 : 0,
+          perDayPrice: p.rental_price_daily || 0,
+          stock: p.current_stock || 0,
+          bookings: [] // Will be loaded from rentals if needed
+        }));
+      setProducts(rentableProducts);
+      
+      // Load customers
+      const allContacts = await contactService.getAllContacts(companyId);
+      const customerList: Customer[] = [
+        { id: 'WALK', name: 'Walk-in Customer', phone: '', type: 'walk-in' },
+        ...allContacts
+          .filter(c => c.type === 'customer' && c.is_active)
+          .map(c => ({
+            id: c.id,
+            name: c.name,
+            phone: c.phone || '',
+            type: 'registered' as const,
+            cnic: c.cnic
+          }))
+      ];
+      setCustomers(customerList);
+      
+      // Set default customer
+      if (customerList.length > 0 && !selectedCustomer) {
+        setSelectedCustomer(customerList[0]);
+      }
+    } catch (error: any) {
+      console.error('[NEW RENTAL BOOKING] Error loading data:', error);
+      toast.error('Failed to load data: ' + (error.message || 'Unknown error'));
+    } finally {
+      setLoading(false);
+    }
+  }, [companyId, selectedCustomer]);
+
+  // Load data on mount
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
   
   // Security & Documents
   const [securityType, setSecurityType] = useState<'id-card' | 'passport' | 'cash'>('id-card');
@@ -136,7 +205,12 @@ export const NewRentalBooking = () => {
   
   // Handle save booking
   const handleSaveBooking = async () => {
-    if (!companyId || !branchId || !user || !selectedCustomer || !pickupDate || !returnDate) {
+    if (!companyId || !branchId || !user) {
+      toast.error('System error: Missing company or user information');
+      return;
+    }
+    
+    if (!selectedCustomer || !pickupDate || !returnDate) {
       toast.error('Please fill all required fields');
       return;
     }
@@ -309,7 +383,7 @@ export const NewRentalBooking = () => {
                 <Select
                   value={selectedCustomer.id}
                   onValueChange={(value) => {
-                    const customer = mockCustomers.find(c => c.id === value);
+                    const customer = customers.find(c => c.id === value);
                     if (customer) {
                       setSelectedCustomer(customer);
                       setCustomerName(customer.name);
@@ -318,12 +392,12 @@ export const NewRentalBooking = () => {
                   }}
                 >
                   <SelectTrigger className="bg-[#121212] border-gray-700 text-white">
-                    <SelectValue />
+                    <SelectValue placeholder="Select customer" />
                   </SelectTrigger>
                   <SelectContent className="bg-[#1a1a1a] border-gray-700">
                     {customers.map(customer => (
                       <SelectItem key={customer.id} value={customer.id} className="text-white hover:bg-gray-800">
-                        {customer.name} {customer.type === 'registered' && `(${customer.phone})`}
+                        {customer.name} {customer.type === 'registered' && customer.phone && `(${customer.phone})`}
                       </SelectItem>
                     ))}
                   </SelectContent>

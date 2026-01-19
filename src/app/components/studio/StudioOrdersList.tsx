@@ -1,4 +1,7 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import { useSupabase } from '@/app/context/SupabaseContext';
+import { studioService } from '@/app/services/studioService';
+import { toast } from 'sonner';
 import { 
   Search, 
   Filter, 
@@ -62,84 +65,7 @@ interface StudioJob {
   createdDate: string;
 }
 
-// Mock data
-const mockJobs: StudioJob[] = [
-  {
-    id: "1",
-    jobId: "STU-0001",
-    linkedInvoice: "INV-2045",
-    customerName: "Ayesha Malik",
-    customerMobile: "+92 345 1122334",
-    productName: "Royal Red Bridal Lehenga",
-    productCode: "RBL-001",
-    productImage: "https://images.unsplash.com/photo-1595777457583-95e059d581b8?w=800&q=80",
-    priority: "Urgent",
-    expectedDelivery: "2026-01-25",
-    currentStep: "Handwork",
-    assignedWorker: "Ahmed (Handwork)",
-    status: "In Production",
-    subStatus: "At Handwork",
-    internalCost: 3500,
-    customerBilling: 5500,
-    createdDate: "2026-01-18",
-  },
-  {
-    id: "2",
-    jobId: "STU-0002",
-    linkedInvoice: "INV-2046",
-    customerName: "Sarah Khan",
-    customerMobile: "+92 300 1234567",
-    productName: "Emerald Green Sharara",
-    productCode: "EGS-002",
-    productImage: "https://images.unsplash.com/photo-1583391725988-e3eefa84d0f7?w=800&q=80",
-    priority: "Normal",
-    expectedDelivery: "2026-02-05",
-    currentStep: "Dyeing",
-    assignedWorker: "Ali Dyer",
-    status: "In Production",
-    subStatus: "At Dyer",
-    internalCost: 2800,
-    customerBilling: 4200,
-    createdDate: "2026-01-17",
-  },
-  {
-    id: "3",
-    jobId: "STU-0003",
-    linkedInvoice: "INV-2047",
-    customerName: "Zara Ahmed",
-    customerMobile: "+92 333 4567890",
-    productName: "Ivory Gold Gown",
-    productCode: "IGG-003",
-    productImage: "https://images.unsplash.com/photo-1566174053879-31528523f8ae?w=800&q=80",
-    priority: "Urgent",
-    expectedDelivery: new Date().toISOString().split('T')[0], // Today - URGENT!
-    currentStep: "Quality Check",
-    assignedWorker: "QC Team",
-    status: "Waiting",
-    subStatus: "Quality Check",
-    internalCost: 4500,
-    customerBilling: 6800,
-    createdDate: "2026-01-10",
-  },
-  {
-    id: "4",
-    jobId: "STU-0004",
-    linkedInvoice: "INV-2048",
-    customerName: "Fatima Ali",
-    customerMobile: "+92 321 9876543",
-    productName: "Peach Walima Dress",
-    productCode: "PWD-004",
-    productImage: "https://images.unsplash.com/photo-1518049362260-00ac5bf47086?w=800&q=80",
-    priority: "Normal",
-    expectedDelivery: "2026-01-30",
-    currentStep: "Ready",
-    assignedWorker: "-",
-    status: "Ready",
-    internalCost: 3200,
-    customerBilling: 4900,
-    createdDate: "2026-01-15",
-  },
-];
+// Studio jobs will be loaded from Supabase
 
 // Column visibility options
 const allColumns = [
@@ -156,6 +82,66 @@ const allColumns = [
 ];
 
 export const StudioOrdersList = () => {
+  const { companyId, branchId } = useSupabase();
+  const [jobs, setJobs] = useState<StudioJob[]>([]);
+  const [loading, setLoading] = useState(true);
+  
+  // Load studio orders from Supabase
+  const loadJobs = useCallback(async () => {
+    if (!companyId) {
+      setLoading(false);
+      return;
+    }
+
+    try {
+      setLoading(true);
+      const orders = await studioService.getAllStudioOrders(companyId, branchId || undefined);
+      
+      // Convert to StudioJob format
+      const convertedJobs: StudioJob[] = orders.map(order => {
+        const firstItem = order.items?.[0];
+        const statusMap: Record<string, StudioStatus> = {
+          'pending': 'Draft',
+          'in_progress': 'In Production',
+          'completed': 'Delivered',
+          'cancelled': 'Closed'
+        };
+        
+        return {
+          id: order.id || '',
+          jobId: order.order_no || '',
+          linkedInvoice: order.order_no || '',
+          customerName: order.customer_name || '',
+          customerMobile: '',
+          productName: firstItem?.item_description || '',
+          productCode: '',
+          productImage: '/placeholder-product.jpg',
+          priority: 'Normal' as Priority,
+          expectedDelivery: order.delivery_date || order.order_date,
+          currentStep: order.order_type || 'Stitching',
+          assignedWorker: '-',
+          status: statusMap[order.status] || 'Draft',
+          internalCost: 0,
+          customerBilling: order.total_cost || 0,
+          createdDate: order.order_date
+        };
+      });
+      
+      setJobs(convertedJobs);
+    } catch (error: any) {
+      console.error('[STUDIO ORDERS LIST] Error loading jobs:', error);
+      toast.error('Failed to load studio orders: ' + (error.message || 'Unknown error'));
+      setJobs([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [companyId, branchId]);
+
+  // Load jobs on mount
+  useEffect(() => {
+    loadJobs();
+  }, [loadJobs]);
+
   // Search & Filter State
   const [searchQuery, setSearchQuery] = useState('');
   const [filterOpen, setFilterOpen] = useState(false);
@@ -174,15 +160,15 @@ export const StudioOrdersList = () => {
 
   // Calculate dashboard stats
   const stats = useMemo(() => {
-    const dyeingJobs = mockJobs.filter(j => j.currentStep === 'Dyeing' && j.status === 'In Production').length;
-    const handworkJobs = mockJobs.filter(j => j.currentStep === 'Handwork' && j.status === 'In Production').length;
-    const stitchingJobs = mockJobs.filter(j => j.currentStep === 'Stitching' && j.status === 'In Production').length;
-    const overdueJobs = mockJobs.filter(j => {
+    const dyeingJobs = jobs.filter(j => j.currentStep === 'Dyeing' && j.status === 'In Production').length;
+    const handworkJobs = jobs.filter(j => j.currentStep === 'Handwork' && j.status === 'In Production').length;
+    const stitchingJobs = jobs.filter(j => j.currentStep === 'Stitching' && j.status === 'In Production').length;
+    const overdueJobs = jobs.filter(j => {
       const today = new Date();
       const deliveryDate = new Date(j.expectedDelivery);
       return deliveryDate < today && j.status !== 'Delivered' && j.status !== 'Closed';
     }).length;
-    const completedJobs = mockJobs.filter(j => j.status === 'Delivered' || j.status === 'Closed').length;
+    const completedJobs = jobs.filter(j => j.status === 'Delivered' || j.status === 'Closed').length;
 
     return {
       dyeingJobs,
@@ -191,7 +177,7 @@ export const StudioOrdersList = () => {
       overdueJobs,
       completedJobs
     };
-  }, []);
+  }, [jobs]);
 
   // Get delivery date status
   const getDeliveryStatus = (deliveryDate: string, status: StudioStatus) => {
@@ -213,12 +199,12 @@ export const StudioOrdersList = () => {
 
   // Apply search and filters with auto-sort
   const filteredJobs = useMemo(() => {
-    let jobs = [...mockJobs];
+    let filtered = [...jobs];
 
     // Search filter
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase();
-      jobs = jobs.filter(j => 
+      filtered = filtered.filter(j => 
         j.jobId.toLowerCase().includes(query) || 
         j.linkedInvoice.toLowerCase().includes(query) ||
         j.customerName.toLowerCase().includes(query) ||
@@ -231,17 +217,17 @@ export const StudioOrdersList = () => {
 
     // Status filter
     if (filterStatus !== 'all') {
-      jobs = jobs.filter(j => j.status === filterStatus);
+      filtered = filtered.filter(j => j.status === filterStatus);
     }
 
     // Priority filter
     if (filterPriority !== 'all') {
-      jobs = jobs.filter(j => j.priority === filterPriority);
+      filtered = filtered.filter(j => j.priority === filterPriority);
     }
 
     // Date range filter
     if (filterDateRange.from || filterDateRange.to) {
-      jobs = jobs.filter(j => {
+      filtered = filtered.filter(j => {
         const deliveryDate = new Date(j.expectedDelivery);
         if (filterDateRange.from && deliveryDate < filterDateRange.from) return false;
         if (filterDateRange.to && deliveryDate > filterDateRange.to) return false;
@@ -250,7 +236,7 @@ export const StudioOrdersList = () => {
     }
 
     // AUTO-SORT: Delayed first, then urgent, then normal
-    jobs.sort((a, b) => {
+    filtered.sort((a, b) => {
       const statusA = getDeliveryStatus(a.expectedDelivery, a.status);
       const statusB = getDeliveryStatus(b.expectedDelivery, b.status);
       
@@ -266,7 +252,7 @@ export const StudioOrdersList = () => {
       return priority[statusA] - priority[statusB];
     });
 
-    return jobs;
+    return filtered;
   }, [searchQuery, filterStatus, filterPriority, filterDateRange]);
 
   // Paginated jobs
