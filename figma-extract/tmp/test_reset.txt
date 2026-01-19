@@ -1,0 +1,4 @@
+        setPendingThaans(0);
+        setPendingMeters(0);
+        
+        // Open search and move focus back to search input

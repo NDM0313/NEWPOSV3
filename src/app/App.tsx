@@ -9,37 +9,65 @@ import { StockDashboard } from './components/dashboard/StockDashboard';
 import { ExpensesDashboard } from './components/dashboard/ExpensesDashboard';
 import { GlobalDrawer } from './components/layout/GlobalDrawer';
 import { ContactList } from './components/contacts/ContactList';
+import { ContactsPage } from './components/contacts/ContactsPage';
+import { ProductsPage } from './components/products/ProductsPage';
 import { PurchaseList } from './components/purchases/PurchaseList';
 import { AccountingDashboard } from './components/accounting/AccountingDashboard';
 import { UserDashboard } from './components/users/UserDashboard';
 import { RolesDashboard } from './components/users/RolesDashboard';
-import { PurchaseDashboard } from './components/purchases/PurchaseDashboard';
-import { SalesDashboard } from './components/sales/SalesDashboard';
+import { PurchasesPage } from './components/purchases/PurchasesPage';
+import { SalesPage } from './components/sales/SalesPage';
 import { RentalDashboard } from './components/rentals/RentalDashboard';
+import { NewRentalBooking } from './components/rentals/NewRentalBooking';
 import { PaymentFooterDemo } from './components/demo/PaymentFooterDemo';
 import { UXImprovementsDemo } from './components/demo/UXImprovementsDemo';
 import { InteractiveFeedbackDemo } from './components/demo/InteractiveFeedbackDemo';
 import { ThemeProvider } from 'next-themes';
 import { Toaster } from 'sonner';
 import { ModuleProvider } from './context/ModuleContext';
+import { AccountingProvider } from './context/AccountingContext';
+import { SettingsProvider } from './context/SettingsContext';
+import { SalesProvider } from './context/SalesContext';
+import { PurchaseProvider } from './context/PurchaseContext';
+import { ExpenseProvider } from './context/ExpenseContext';
 import { ModuleSettings } from './components/settings/ModuleSettings';
 import { ReportsDashboard } from './components/reports/ReportsDashboard';
+import { ReportsDashboardEnhanced } from './components/reports/ReportsDashboardEnhanced';
 import { ViewContactProfile } from './components/contacts/ViewContactProfile';
 import { ItemLifecycleReport } from './components/reports/ItemLifecycleReport';
 import { ProductionOrderDetail } from './components/production/ProductionOrderDetail';
 import { CustomerOrderTracking } from './components/tracking/CustomerOrderTracking';
-import { NewCustomOrder } from './components/custom-studio/NewCustomOrder';
-import { PipelineBoard } from './components/custom-studio/PipelineBoard';
-import { VendorList } from './components/custom-studio/VendorList';
 import { InventoryDashboard } from './components/inventory/InventoryDashboard';
-import { CustomizeStudio } from './components/customize/CustomizeStudio';
+import { InventoryDashboardNew } from './components/inventory/InventoryDashboardNew';
 import { StudioDashboard } from './components/studio/StudioDashboard';
 import { SettingsPage } from './components/settings/SettingsPage';
+import { SettingsPageNew } from './components/settings/SettingsPageNew';
+import { SettingsPageComplete } from './components/settings/SettingsPageComplete';
+import { SettingsPageClean } from './components/settings/SettingsPageClean';
 import { StudioWorkflowPage } from './components/studio/StudioWorkflowPage';
 import { PackingEntryPage } from './components/packing/PackingEntryPage';
+import { StudioOrdersList } from './components/studio/StudioOrdersList';
+import { StudioJobCard } from './components/studio/StudioJobCard';
+import { StudioSalesList } from './components/studio/StudioSalesList';
+import { StudioSaleDetail } from './components/studio/StudioSaleDetail';
+import { StudioSalesListNew } from './components/studio/StudioSalesListNew';
+import { StudioSaleDetailNew } from './components/studio/StudioSaleDetailNew';
+import { StudioDashboardNew } from './components/studio/StudioDashboardNew';
+import { WorkerDetailPage } from './components/studio/WorkerDetailPage';
+import { AccountingIntegrationDemo } from './components/accounting/AccountingIntegrationDemo';
+import { PurchaseListExample } from './components/purchases/PurchaseListExample';
+import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
+import { KeyboardShortcutsModal } from './components/shared/KeyboardShortcutsModal';
+import { SupabaseProvider } from './context/SupabaseContext';
+import { ProtectedRoute } from './components/auth/ProtectedRoute';
+
+// v1.0.1 - Enhanced Product Form with SKU auto-generation and global access
 
 const AppContent = () => {
   const { currentView } = useNavigation();
+  
+  // 🎯 Enable global keyboard shortcuts
+  useKeyboardShortcuts();
 
   if (currentView === 'pos') {
     return (
@@ -53,32 +81,36 @@ const AppContent = () => {
   return (
     <Layout>
       {currentView === 'dashboard' && <Dashboard />}
-      {currentView === 'products' && <ProductList />}
-      {currentView === 'sales' && <SalesDashboard />}
+      {currentView === 'products' && <ProductsPage />}
+      {currentView === 'sales' && <SalesPage />}
       {currentView === 'rentals' && <RentalDashboard />}
+      {currentView === 'rental-booking' && <NewRentalBooking />}
       {currentView === 'stock' && <StockDashboard />}
-      {currentView === 'inventory' && <InventoryDashboard />}
-      {currentView === 'customize' && <CustomizeStudio />}
-      {currentView === 'studio' && <StudioDashboard />}
+      {currentView === 'inventory' && <InventoryDashboardNew />}
+      {currentView === 'studio' && <StudioSalesListNew />}
+      {currentView === 'studio-dashboard-new' && <StudioDashboardNew />}
+      {currentView === 'studio-sales-list-new' && <StudioSalesListNew />}
+      {currentView === 'studio-sale-detail' && <StudioSaleDetailNew />}
+      {currentView === 'studio-sale-detail-new' && <StudioSaleDetailNew />}
+      {currentView === 'studio-job' && <StudioJobCard />}
       {currentView === 'studio-workflow' && <StudioWorkflowPage />}
       {currentView === 'expenses' && <ExpensesDashboard />}
       {currentView === 'customers' && <ContactList />}
-      {currentView === 'contacts' && <ContactList />}
-      {currentView === 'purchases' && <PurchaseDashboard />}
+      {currentView === 'contacts' && <ContactsPage />}
+      {currentView === 'purchases' && <PurchasesPage />}
+      {currentView === 'purchase-example' && <PurchaseListExample />}
       {currentView === 'accounting' && <AccountingDashboard />}
+      {currentView === 'accounting-demo' && <AccountingIntegrationDemo />}
       {currentView === 'users' && <UserDashboard />}
       {currentView === 'roles' && <RolesDashboard />}
       
       {/* Placeholders for new modules */}
-      {currentView === 'reports' && <ReportsDashboard />}
-      {currentView === 'settings' && <SettingsPage />}
+      {currentView === 'reports' && <ReportsDashboardEnhanced />}
+      {currentView === 'settings' && <SettingsPageNew />}
       {currentView === 'contact-profile' && <ViewContactProfile />}
       {currentView === 'item-report' && <ItemLifecycleReport />}
       {currentView === 'production-detail' && <ProductionOrderDetail />}
       {currentView === 'customer-tracking' && <CustomerOrderTracking />}
-      {currentView === 'custom-new-order' && <NewCustomOrder />}
-      {currentView === 'custom-pipeline' && <PipelineBoard />}
-      {currentView === 'custom-vendors' && <VendorList />}
       {currentView === 'packing' && <PackingEntryPage />}
       
       <GlobalDrawer />
@@ -89,12 +121,27 @@ const AppContent = () => {
 export default function App() {
   return (
     <ThemeProvider attribute="class" defaultTheme="dark" enableSystem={false}>
-      <ModuleProvider>
-        <NavigationProvider>
-          <AppContent />
-          <Toaster position="bottom-right" theme="dark" />
-        </NavigationProvider>
-      </ModuleProvider>
+      <SupabaseProvider>
+        <ProtectedRoute>
+          <ModuleProvider>
+            <AccountingProvider>
+              <SettingsProvider>
+                <SalesProvider>
+                  <PurchaseProvider>
+                    <ExpenseProvider>
+                      <NavigationProvider>
+                        <AppContent />
+                        <Toaster position="bottom-right" theme="dark" />
+                        <KeyboardShortcutsModal />
+                      </NavigationProvider>
+                    </ExpenseProvider>
+                  </PurchaseProvider>
+                </SalesProvider>
+              </SettingsProvider>
+            </AccountingProvider>
+          </ModuleProvider>
+        </ProtectedRoute>
+      </SupabaseProvider>
     </ThemeProvider>
   );
 }
