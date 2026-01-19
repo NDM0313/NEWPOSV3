@@ -2,7 +2,8 @@ import React, { useState } from 'react';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
-import { Lock, Mail, AlertCircle } from 'lucide-react';
+import { Lock, Mail, AlertCircle, Building2 } from 'lucide-react';
+import { CreateBusinessForm } from './CreateBusinessForm';
 
 export const LoginPage: React.FC = () => {
   const { signIn } = useSupabase();
@@ -11,6 +12,8 @@ export const LoginPage: React.FC = () => {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [showCreateBusiness, setShowCreateBusiness] = useState(false);
+  const [createBusinessSuccess, setCreateBusinessSuccess] = useState(false);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -20,54 +23,53 @@ export const LoginPage: React.FC = () => {
     const { data, error: signInError } = await signIn(email, password);
 
     if (signInError) {
-      // Better error messages
       let errorMessage = signInError.message;
       if (signInError.message.includes('Invalid login credentials')) {
         errorMessage = 'Invalid email or password. Please check your credentials.';
       } else if (signInError.message.includes('Email not confirmed')) {
         errorMessage = 'Please confirm your email address first.';
       } else if (signInError.message.includes('User not found')) {
-        errorMessage = 'User does not exist. Please contact administrator.';
+        errorMessage = 'User does not exist. Please create a business first.';
       }
       setError(errorMessage);
       setLoading(false);
     } else if (data?.user) {
-      // Success - page will auto-reload and show dashboard
+      // Success - reload page to trigger ProtectedRoute re-evaluation
       setTimeout(() => {
         window.location.reload();
       }, 500);
     }
   };
 
-  const handleDemoLogin = async () => {
-    setLoading(true);
+  const handleCreateBusinessSuccess = async (email: string, password: string) => {
+    setCreateBusinessSuccess(true);
+    setShowCreateBusiness(false);
     setError('');
     
-    // Set demo credentials
-    setEmail('admin@dincollection.com');
-    setPassword('admin123');
-
-    const { data, error: signInError } = await signIn('admin@dincollection.com', 'admin123');
-
-    if (signInError) {
-      // Better error messages
-      let errorMessage = signInError.message;
-      if (signInError.message.includes('Invalid login credentials') || signInError.message.includes('400')) {
-        errorMessage = 'Demo user not found. Please create user in Supabase Dashboard first.';
-      } else if (signInError.message.includes('Email not confirmed')) {
-        errorMessage = 'Please confirm your email address first.';
-      } else if (signInError.message.includes('User not found')) {
-        errorMessage = 'Demo user does not exist. Please create user in Supabase Dashboard.';
-      }
-      setError(errorMessage);
-      setLoading(false);
-    } else if (data?.user) {
-      // Success - page will auto-reload and show dashboard
+    // Auto-login after business creation
+    const { error: signInError } = await signIn(email, password);
+    if (!signInError) {
       setTimeout(() => {
         window.location.reload();
       }, 500);
+    } else {
+      setError('Business created but login failed. Please login manually.');
+      setCreateBusinessSuccess(false);
     }
   };
+
+  // Show create business form
+  if (showCreateBusiness) {
+    return (
+      <CreateBusinessForm
+        onSuccess={(email, password) => handleCreateBusinessSuccess(email, password)}
+        onCancel={() => {
+          setShowCreateBusiness(false);
+          setError('');
+        }}
+      />
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[#111827] flex items-center justify-center p-4">
@@ -89,6 +91,12 @@ export const LoginPage: React.FC = () => {
             </div>
           )}
 
+          {createBusinessSuccess && (
+            <div className="mb-4 p-3 bg-green-500/10 border border-green-500/30 rounded-lg text-green-400 text-sm text-center">
+              Business created successfully! Logging you in...
+            </div>
+          )}
+
           <form onSubmit={handleLogin} className="space-y-4">
             {/* Email */}
             <div>
@@ -99,9 +107,10 @@ export const LoginPage: React.FC = () => {
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="admin@dincollection.com"
+                  placeholder="your@email.com"
                   className="pl-10 bg-gray-800 border-gray-700 text-white"
                   required
+                  disabled={loading}
                 />
               </div>
             </div>
@@ -118,6 +127,7 @@ export const LoginPage: React.FC = () => {
                   placeholder="••••••••"
                   className="pl-10 bg-gray-800 border-gray-700 text-white"
                   required
+                  disabled={loading}
                 />
               </div>
             </div>
@@ -132,56 +142,27 @@ export const LoginPage: React.FC = () => {
             </Button>
           </form>
 
-                  {/* Demo Account Button */}
-                  <div className="mt-6">
-                    <Button
-                      type="button"
-                      onClick={handleDemoLogin}
-                      disabled={loading}
-                      className="w-full bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white h-12 text-base font-semibold shadow-lg"
-                    >
-                      {loading ? 'Signing in...' : '🚀 Demo Account (Admin Full Access)'}
-                    </Button>
-                    <p className="text-xs text-gray-400 text-center mt-2">
-                      Click to login as demo admin with full access
-                    </p>
-                    {error && (
-                      <div className="mt-3 p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-lg">
-                        <p className="text-xs text-yellow-400 font-semibold mb-1">⚠️ User Not Created Yet</p>
-                        <p className="text-xs text-gray-400 mb-2">Create user in Supabase Dashboard first:</p>
-                        <ol className="text-xs text-gray-400 list-decimal list-inside space-y-1 mb-2">
-                          <li>Go to <a href="https://supabase.com/dashboard/project/pcxfwmbcjrkgzibgdrlz/auth/users" target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">Supabase Dashboard</a></li>
-                          <li>Authentication → Users → Add user</li>
-                          <li>Email: admin@dincollection.com</li>
-                          <li>Password: admin123</li>
-                          <li>Auto Confirm: Yes</li>
-                        </ol>
-                        <p className="text-xs text-gray-500">Or run: <code className="bg-gray-800 px-1 rounded">node create-user-simple.mjs</code></p>
-                      </div>
-                    )}
-                  </div>
+          {/* Divider */}
+          <div className="my-6 flex items-center">
+            <div className="flex-1 border-t border-gray-700"></div>
+            <span className="px-4 text-sm text-gray-400">OR</span>
+            <div className="flex-1 border-t border-gray-700"></div>
+          </div>
 
-                  {/* Demo Credentials Info */}
-                  <div className="mt-4 p-4 bg-gray-800/50 rounded-lg border border-gray-700">
-                    <p className="text-xs text-gray-400 mb-2">Manual Login Credentials:</p>
-                    <p className="text-sm text-white">Email: admin@dincollection.com</p>
-                    <p className="text-sm text-white">Password: admin123</p>
-                    {error && error.includes('not found') && (
-                      <div className="mt-3 pt-3 border-t border-gray-700">
-                        <p className="text-xs text-yellow-400 mb-2">⚠️ User not created yet!</p>
-                        <p className="text-xs text-gray-400 mb-2">Create user in Supabase Dashboard:</p>
-                        <a 
-                          href="https://supabase.com/dashboard/project/pcxfwmbcjrkgzibgdrlz/auth/users" 
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-xs text-blue-400 hover:text-blue-300 underline"
-                        >
-                          → Open Supabase Dashboard
-                        </a>
-                        <p className="text-xs text-gray-500 mt-1">Or run: node create-user-simple.mjs</p>
-                      </div>
-                    )}
-                  </div>
+          {/* Create Business Button */}
+          <Button
+            type="button"
+            onClick={() => setShowCreateBusiness(true)}
+            disabled={loading}
+            variant="outline"
+            className="w-full bg-gray-800 border-gray-700 text-white hover:bg-gray-700 h-12 text-base font-semibold flex items-center justify-center gap-2"
+          >
+            <Building2 size={18} />
+            Create New Business
+          </Button>
+          <p className="text-xs text-gray-400 text-center mt-2">
+            Don't have an account? Create your business to get started
+          </p>
         </div>
       </div>
     </div>

@@ -152,7 +152,12 @@ interface ExtraExpense {
     notes?: string;
 }
 
-export const PurchaseForm = ({ onClose }: { onClose: () => void }) => {
+interface PurchaseFormProps {
+  purchase?: any; // Purchase data for edit mode
+  onClose: () => void;
+}
+
+export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFormProps) => {
     // Header State
     const [supplierId, setSupplierId] = useState("");
     const [supplierSearchOpen, setSupplierSearchOpen] = useState(false);

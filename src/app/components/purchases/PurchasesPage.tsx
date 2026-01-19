@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { 
   Plus, ShoppingBag, DollarSign, AlertCircle, 
   MoreVertical, Eye, Edit, Trash2, FileText, Phone, MapPin,
@@ -25,18 +25,23 @@ import {
 } from "@/app/components/ui/alert-dialog";
 import { cn } from "@/app/components/ui/utils";
 import { useNavigation } from '@/app/context/NavigationContext';
+import { usePurchases } from '@/app/context/PurchaseContext';
+import { useSupabase } from '@/app/context/SupabaseContext';
+import { purchaseService } from '@/app/services/purchaseService';
 import { Pagination } from '@/app/components/ui/pagination';
 import { ListToolbar } from '@/app/components/ui/list-toolbar';
 import { formatLongDate } from '@/app/components/ui/utils';
 import { UnifiedPaymentDialog } from '@/app/components/shared/UnifiedPaymentDialog';
 import { UnifiedLedgerView } from '@/app/components/shared/UnifiedLedgerView';
+import { ViewPurchaseDetailsDrawer } from './ViewPurchaseDetailsDrawer';
 import { toast } from 'sonner';
 
 type PurchaseStatus = 'received' | 'ordered' | 'pending';
 type PaymentStatus = 'paid' | 'partial' | 'unpaid';
 
 interface Purchase {
-  id: number;
+  id: number; // Display ID (index-based for UI compatibility)
+  uuid: string; // Actual Supabase UUID for database operations
   poNo: string;
   supplier: string;
   supplierContact: string;
@@ -132,6 +137,9 @@ const mockPurchases: Purchase[] = [
 
 export const PurchasesPage = () => {
   const { openDrawer } = useNavigation();
+  const { companyId, branchId } = useSupabase();
+  const [purchases, setPurchases] = useState<Purchase[]>([]);
+  const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterOpen, setFilterOpen] = useState(false);
   const [hoveredRow, setHoveredRow] = useState<number | null>(null);
@@ -147,6 +155,8 @@ export const PurchasesPage = () => {
   const [selectedPurchase, setSelectedPurchase] = useState<Purchase | null>(null);
   const [isPaymentDialogOpen, setIsPaymentDialogOpen] = useState(false);
   const [isLedgerOpen, setIsLedgerOpen] = useState(false);
+  const [viewDetailsOpen, setViewDetailsOpen] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
 
   // Column visibility state
   const [visibleColumns, setVisibleColumns] = useState({
@@ -178,23 +188,93 @@ export const PurchasesPage = () => {
     setIsLedgerOpen(true);
   };
 
-  const handlePaymentComplete = (paymentData: any) => {
-    toast.success(`Payment of $${paymentData.amount.toLocaleString()} recorded successfully`);
+  const handlePaymentComplete = async () => {
     setIsPaymentDialogOpen(false);
-    // Update purchase data here in real app
+    setSelectedPurchase(null);
+    await loadPurchases(); // Refresh purchases list
   };
 
   const handlePrintPO = (purchase: Purchase) => {
-    toast.success(`Printing PO ${purchase.poNo}`);
     window.print();
+    toast.info(`Printing PO ${purchase.poNo}`);
   };
 
   const handleDelete = (purchase: Purchase) => {
-    if (confirm(`Delete purchase ${purchase.poNo}?`)) {
-      toast.success(`Purchase ${purchase.poNo} deleted`);
-      // Delete logic here
+    setSelectedPurchase(purchase);
+    setDeleteDialogOpen(true);
+  };
+
+  const confirmDelete = async () => {
+    if (!selectedPurchase || !selectedPurchase.uuid) {
+      toast.error('Purchase ID not found');
+      return;
+    }
+    
+    try {
+      await purchaseService.deletePurchase(selectedPurchase.uuid);
+      toast.success(`Purchase ${selectedPurchase.poNo} deleted successfully`);
+      setDeleteDialogOpen(false);
+      setSelectedPurchase(null);
+      await loadPurchases();
+    } catch (error: any) {
+      console.error('[PURCHASES PAGE] Error deleting purchase:', error);
+      toast.error('Failed to delete purchase: ' + (error.message || 'Unknown error'));
     }
   };
+
+  const handleViewDetails = (purchase: Purchase) => {
+    setSelectedPurchase(purchase);
+    setViewDetailsOpen(true);
+  };
+
+  const handleEdit = (purchase: Purchase) => {
+    openDrawer('edit-purchase', undefined, { purchase });
+  };
+
+  // Load purchases from Supabase
+  const loadPurchases = useCallback(async () => {
+    if (!companyId) return;
+    
+    try {
+      setLoading(true);
+      const data = await purchaseService.getAllPurchases(companyId, branchId || undefined);
+      
+      // Convert Supabase format to app format
+      const convertedPurchases: Purchase[] = data.map((p: any, index: number) => ({
+        id: index + 1, // Use index-based ID for compatibility with existing UI
+        uuid: p.id, // Store actual Supabase UUID for database operations
+        poNo: p.po_no || `PO-${String(index + 1).padStart(3, '0')}`,
+        supplier: p.supplier?.name || p.supplier_name || 'Unknown Supplier',
+        supplierContact: p.supplier?.phone || '',
+        date: p.po_date || new Date().toISOString().split('T')[0],
+        reference: p.reference || '',
+        location: p.branch_name || 'Main Branch (HQ)',
+        items: p.items?.length || 0,
+        grandTotal: p.total || 0,
+        paymentDue: p.due_amount || 0,
+        status: p.status === 'received' ? 'received' : p.status === 'ordered' ? 'ordered' : 'pending',
+        paymentStatus: p.payment_status || 'unpaid',
+        addedBy: p.created_by_user?.full_name || 'Unknown',
+      }));
+      
+      setPurchases(convertedPurchases);
+    } catch (error: any) {
+      console.error('[PURCHASES PAGE] Error loading purchases:', error);
+      toast.error('Failed to load purchases: ' + (error.message || 'Unknown error'));
+      setPurchases([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [companyId, branchId]);
+
+  // Load purchases on mount
+  useEffect(() => {
+    if (companyId) {
+      loadPurchases();
+    } else {
+      setLoading(false);
+    }
+  }, [companyId, branchId, loadPurchases]);
 
   // Columns configuration for Column Manager
   const columns = [
@@ -217,7 +297,7 @@ export const PurchasesPage = () => {
 
   // Filtered purchases
   const filteredPurchases = useMemo(() => {
-    return mockPurchases.filter(purchase => {
+    return purchases.filter(purchase => {
       // Search filter
       if (searchTerm) {
         const search = searchTerm.toLowerCase();
@@ -730,11 +810,17 @@ export const PurchasesPage = () => {
                             </button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end" className="bg-gray-900 border-gray-700 text-white w-52">
-                            <DropdownMenuItem className="hover:bg-gray-800 cursor-pointer">
+                            <DropdownMenuItem 
+                              onClick={() => handleViewDetails(purchase)}
+                              className="hover:bg-gray-800 cursor-pointer"
+                            >
                               <Eye size={14} className="mr-2 text-blue-400" />
                               View Details
                             </DropdownMenuItem>
-                            <DropdownMenuItem className="hover:bg-gray-800 cursor-pointer">
+                            <DropdownMenuItem 
+                              onClick={() => handleEdit(purchase)}
+                              className="hover:bg-gray-800 cursor-pointer"
+                            >
                               <Edit size={14} className="mr-2 text-green-400" />
                               Edit Purchase
                             </DropdownMenuItem>
@@ -786,25 +872,73 @@ export const PurchasesPage = () => {
       />
 
       {/* Unified Payment Dialog */}
-      <UnifiedPaymentDialog
-        isOpen={isPaymentDialogOpen}
-        onClose={() => setIsPaymentDialogOpen(false)}
-        context="supplier"
-        entityName={selectedPurchase?.supplier || ''}
-        entityId={selectedPurchase?.id?.toString()}
-        outstandingAmount={selectedPurchase?.paymentDue || 0}
-        referenceNo={selectedPurchase?.poNo}
-        onSuccess={handlePaymentComplete}
-      />
+      {selectedPurchase && (
+        <UnifiedPaymentDialog
+          isOpen={isPaymentDialogOpen}
+          onClose={() => {
+            setIsPaymentDialogOpen(false);
+            setSelectedPurchase(null);
+          }}
+          context="supplier"
+          entityName={selectedPurchase.supplier}
+          entityId={selectedPurchase.uuid}
+          outstandingAmount={selectedPurchase.paymentDue}
+          referenceNo={selectedPurchase.poNo}
+          onSuccess={handlePaymentComplete}
+        />
+      )}
+
+      {/* View Purchase Details Drawer */}
+      {selectedPurchase && (
+        <ViewPurchaseDetailsDrawer
+          isOpen={viewDetailsOpen}
+          onClose={() => {
+            setViewDetailsOpen(false);
+            setSelectedPurchase(null);
+          }}
+          purchase={selectedPurchase}
+        />
+      )}
 
       {/* Unified Ledger View */}
-      <UnifiedLedgerView
-        isOpen={isLedgerOpen}
-        onClose={() => setIsLedgerOpen(false)}
-        entityType="supplier"
-        entityName={selectedPurchase?.supplier || ''}
-        entityId={selectedPurchase?.id?.toString()}
-      />
+      {selectedPurchase && (
+        <UnifiedLedgerView
+          isOpen={isLedgerOpen}
+          onClose={() => {
+            setIsLedgerOpen(false);
+            setSelectedPurchase(null);
+          }}
+          entityType="supplier"
+          entityName={selectedPurchase.supplier}
+          entityId={selectedPurchase.uuid}
+        />
+      )}
+
+      {/* Delete Confirmation Dialog */}
+      {selectedPurchase && (
+        <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+          <AlertDialogContent className="bg-gray-900 border-gray-700 text-white">
+            <AlertDialogHeader>
+              <AlertDialogTitle>Delete Purchase Order</AlertDialogTitle>
+              <AlertDialogDescription className="text-gray-400">
+                Are you sure you want to delete <strong>{selectedPurchase.poNo}</strong>? 
+                This action cannot be undone.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel className="bg-gray-800 border-gray-700 text-white hover:bg-gray-700">
+                Cancel
+              </AlertDialogCancel>
+              <AlertDialogAction
+                onClick={confirmDelete}
+                className="bg-red-600 hover:bg-red-700 text-white"
+              >
+                Delete
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      )}
     </div>
   );
 };

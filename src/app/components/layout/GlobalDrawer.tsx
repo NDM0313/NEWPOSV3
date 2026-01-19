@@ -5,6 +5,8 @@ import { SaleForm } from '../sales/SaleForm';
 import { EnhancedProductForm } from '../products/EnhancedProductForm';
 import React, { useState } from 'react';
 import { useNavigation } from '../../context/NavigationContext';
+import { useSupabase } from '../../context/SupabaseContext';
+import { contactService } from '../../services/contactService';
 import {
   Sheet,
   SheetContent,
@@ -29,23 +31,51 @@ import { Checkbox } from "../ui/checkbox";
 import { Switch } from "../ui/switch";
 
 export const GlobalDrawer = () => {
-  const { activeDrawer, openDrawer, closeDrawer } = useNavigation();
+  const { activeDrawer, openDrawer, closeDrawer, drawerData } = useNavigation();
+  const { companyId, user } = useSupabase();
   const isMobile = useMediaQuery('(max-width: 768px)');
+  const [saving, setSaving] = useState(false);
 
   const isOpen = activeDrawer !== 'none';
   const handleOpenChange = (open: boolean) => {
     if (!open) closeDrawer();
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const action = activeDrawer === 'addUser' ? 'User' : activeDrawer === 'addContact' ? 'Contact' : 'Product';
-    toast.success(`${action} created successfully`);
-    closeDrawer();
+    
+    if (!companyId || !user) {
+      toast.error('Company ID or user not found. Please login again.');
+      return;
+    }
+
+    setSaving(true);
+
+    try {
+      if (activeDrawer === 'addContact') {
+        // Contact form submission is handled in ContactFormContent
+        // This is just a fallback
+        toast.success('Contact created successfully');
+        closeDrawer();
+      } else if (activeDrawer === 'addUser') {
+        // User form submission is handled separately
+        toast.success('User created successfully');
+        closeDrawer();
+      } else {
+        const action = activeDrawer === 'addUser' ? 'User' : 'Product';
+        toast.success(`${action} created successfully`);
+        closeDrawer();
+      }
+    } catch (error: any) {
+      console.error('Submit error:', error);
+      toast.error(error.message || 'Failed to save. Please try again.');
+    } finally {
+      setSaving(false);
+    }
   };
 
   // Determine width and side based on content type and device
-  const isSale = activeDrawer === 'addSale';
+  const isSale = activeDrawer === 'addSale' || activeDrawer === 'edit-sale';
   const isPurchase = activeDrawer === 'addPurchase';
   const isProduct = activeDrawer === 'addProduct';
   const side = isMobile ? "bottom" : "right";
@@ -71,30 +101,54 @@ export const GlobalDrawer = () => {
     // Render all forms but hide inactive ones - this preserves state
     return (
       <>
-        {/* Sale Form - Always mounted to preserve state */}
+        {/* Sale Form - Add */}
         <div style={{ display: activeDrawer === 'addSale' ? 'block' : 'none' }}>
           <SaleForm onClose={() => closeDrawer()} />
         </div>
 
-        {/* Purchase Form - Always mounted to preserve state */}
+        {/* Sale Form - Edit */}
+        <div style={{ display: activeDrawer === 'edit-sale' ? 'block' : 'none' }}>
+          <SaleForm sale={drawerData?.sale} onClose={() => closeDrawer()} />
+        </div>
+
+        {/* Purchase Form - Add */}
         <div style={{ display: activeDrawer === 'addPurchase' ? 'block' : 'none' }}>
           <PurchaseForm onClose={() => closeDrawer()} />
         </div>
 
-        {/* Product Form - Only mount when active */}
+        {/* Purchase Form - Edit */}
+        <div style={{ display: activeDrawer === 'edit-purchase' ? 'block' : 'none' }}>
+          <PurchaseForm purchase={drawerData?.purchase} onClose={() => closeDrawer()} />
+        </div>
+
+        {/* Product Form - Add */}
         {activeDrawer === 'addProduct' && (
           <EnhancedProductForm 
             onCancel={() => closeDrawer()}
             onSave={() => {
               toast.success('Product created successfully');
               closeDrawer();
+              window.location.reload();
+            }}
+          />
+        )}
+
+        {/* Product Form - Edit */}
+        {activeDrawer === 'edit-product' && (
+          <EnhancedProductForm 
+            product={drawerData?.product}
+            onCancel={() => closeDrawer()}
+            onSave={() => {
+              toast.success('Product updated successfully');
+              closeDrawer();
+              window.location.reload();
             }}
           />
         )}
 
         {/* Contact Form - Only mount when active */}
         {activeDrawer === 'addContact' && (
-          <ContactFormContent onSubmit={handleSubmit} onClose={() => closeDrawer()} />
+          <ContactFormContent onClose={() => closeDrawer()} />
         )}
 
         {/* User Form - Only mount when active */}
@@ -209,7 +263,7 @@ export const GlobalDrawer = () => {
 };
 
 // Contact Form Component
-const ContactFormContent = ({ onSubmit, onClose }: { onSubmit: (e: React.FormEvent) => void, onClose: () => void }) => {
+const ContactFormContent = ({ onClose }: { onClose: () => void }) => {
   const { drawerContactType } = useNavigation();
   const [contactType, setContactType] = useState<'customer' | 'supplier' | 'worker'>(drawerContactType || 'customer');
   const [workerType, setWorkerType] = useState<string>('dyer');
@@ -265,7 +319,7 @@ const ContactFormContent = ({ onSubmit, onClose }: { onSubmit: (e: React.FormEve
         </div>
       </div>
 
-      <form onSubmit={onSubmit} className="flex-1 overflow-y-auto p-6 space-y-6">
+      <form onSubmit={handleContactSubmit} className="flex-1 overflow-y-auto p-6 space-y-6">
         {/* Basic Info */}
         <div className="space-y-4">
           <h3 className="text-sm font-semibold text-blue-400 uppercase tracking-wider">Basic Information</h3>
@@ -477,10 +531,10 @@ const ContactFormContent = ({ onSubmit, onClose }: { onSubmit: (e: React.FormEve
         </Button>
         <Button 
           type="submit" 
-          onClick={onSubmit}
-          className="flex-1 bg-blue-600 hover:bg-blue-500 text-white"
+          disabled={saving}
+          className="flex-1 bg-blue-600 hover:bg-blue-500 text-white disabled:opacity-50"
         >
-          Save Contact
+          {saving ? 'Saving...' : 'Save Contact'}
         </Button>
       </div>
     </div>

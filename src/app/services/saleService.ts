@@ -121,6 +121,29 @@ export const saleService = {
     return data;
   },
 
+  // Update sale (full update)
+  async updateSale(id: string, updates: Partial<Sale>) {
+    const { data, error } = await supabase
+      .from('sales')
+      .update(updates)
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
+  },
+
+  // Delete sale (soft delete by setting status to cancelled)
+  async deleteSale(id: string) {
+    const { error } = await supabase
+      .from('sales')
+      .update({ status: 'cancelled' })
+      .eq('id', id);
+
+    if (error) throw error;
+  },
+
   // Record payment
   async recordPayment(saleId: string, amount: number, paymentMethod: string, accountId: string, companyId: string, branchId: string) {
     const { data, error } = await supabase

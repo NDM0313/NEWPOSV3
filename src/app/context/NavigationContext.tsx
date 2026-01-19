@@ -34,7 +34,7 @@ type View =
   | 'custom-vendors'
   | 'packing';
 
-type DrawerType = 'none' | 'addUser' | 'addProduct' | 'addSale' | 'addPurchase' | 'addContact';
+type DrawerType = 'none' | 'addUser' | 'addProduct' | 'edit-product' | 'addSale' | 'edit-sale' | 'addPurchase' | 'edit-purchase' | 'addContact';
 
 interface NavigationContextType {
   currentView: View;
@@ -42,12 +42,13 @@ interface NavigationContextType {
   isSidebarOpen: boolean;
   toggleSidebar: () => void;
   activeDrawer: DrawerType;
-  openDrawer: (drawer: DrawerType, parentDrawer?: DrawerType, options?: { contactType?: 'customer' | 'supplier' | 'worker' }) => void;
+  openDrawer: (drawer: DrawerType, parentDrawer?: DrawerType, options?: { contactType?: 'customer' | 'supplier' | 'worker'; product?: any }) => void;
   closeDrawer: () => void;
   parentDrawer: DrawerType | null;
   selectedStudioSaleId?: string;
   setSelectedStudioSaleId?: (id: string) => void;
   drawerContactType?: 'customer' | 'supplier' | 'worker';
+  drawerData?: any; // For passing data to drawers (e.g., product for edit)
 }
 
 const NavigationContext = createContext<NavigationContextType | undefined>(undefined);
@@ -59,15 +60,23 @@ export const NavigationProvider = ({ children }: { children: ReactNode }) => {
   const [parentDrawer, setParentDrawer] = useState<DrawerType | null>(null);
   const [selectedStudioSaleId, setSelectedStudioSaleId] = useState<string | undefined>(undefined);
   const [drawerContactType, setDrawerContactType] = useState<'customer' | 'supplier' | 'worker' | undefined>(undefined);
+  const [drawerData, setDrawerData] = useState<any>(undefined);
 
   const toggleSidebar = () => setIsSidebarOpen(!isSidebarOpen);
   
-  const openDrawer = (drawer: DrawerType, parent?: DrawerType, options?: { contactType?: 'customer' | 'supplier' | 'worker' }) => {
+  const openDrawer = (drawer: DrawerType, parent?: DrawerType, options?: { contactType?: 'customer' | 'supplier' | 'worker'; product?: any }) => {
     // Set contact type if provided
     if (options?.contactType) {
       setDrawerContactType(options.contactType);
     } else {
       setDrawerContactType(undefined);
+    }
+    
+    // Set drawer data if provided (e.g., product for edit)
+    if (options?.product) {
+      setDrawerData({ product: options.product });
+    } else {
+      setDrawerData(undefined);
     }
     
     // If opening a child drawer (like addProduct from addSale), store the parent
@@ -81,8 +90,9 @@ export const NavigationProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const closeDrawer = () => {
-    // Clear contact type when closing
+    // Clear contact type and data when closing
     setDrawerContactType(undefined);
+    setDrawerData(undefined);
     
     // If there's a parent drawer, return to it
     if (parentDrawer) {
@@ -102,11 +112,12 @@ export const NavigationProvider = ({ children }: { children: ReactNode }) => {
       toggleSidebar, 
       activeDrawer, 
       openDrawer, 
-      closeDrawer,
+      closeDrawer, 
       parentDrawer,
       selectedStudioSaleId,
       setSelectedStudioSaleId,
-      drawerContactType
+      drawerContactType,
+      drawerData
     }}>
       {children}
     </NavigationContext.Provider>

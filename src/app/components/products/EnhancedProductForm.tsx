@@ -3,6 +3,9 @@ import { useDropzone } from "react-dropzone";
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
+import { useSupabase } from '@/app/context/SupabaseContext';
+import { productService } from '@/app/services/productService';
+import { toast } from 'sonner';
 import {
   X,
   Upload,
@@ -82,16 +85,20 @@ const productSchema = z.object({
 type ProductFormValues = z.infer<typeof productSchema>;
 
 interface EnhancedProductFormProps {
+  product?: any; // Product data for edit mode
   onCancel: () => void;
   onSave: (product?: any) => void;
   onSaveAndAdd?: (product: any) => void;
 }
 
 export const EnhancedProductForm = ({
+  product: initialProduct,
   onCancel,
   onSave,
   onSaveAndAdd,
 }: EnhancedProductFormProps) => {
+  const { companyId, branchId } = useSupabase();
+  const [saving, setSaving] = useState(false);
   const [images, setImages] = useState<File[]>([]);
   const [isRentalOptionsOpen, setIsRentalOptionsOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<'basic' | 'pricing' | 'inventory' | 'media' | 'details' | 'variations' | 'combos'>('basic');
@@ -315,27 +322,70 @@ export const EnhancedProductForm = ({
     setCombos(combos.filter(combo => combo.id !== id));
   };
 
-  const onSubmit = (
+  const onSubmit = async (
     data: ProductFormValues,
     action: "save" | "saveAndAdd",
   ) => {
-    // Auto-generate SKU if empty
-    const finalSKU = data.sku && data.sku.trim() !== '' ? data.sku : generateSKU();
+    const finalCompanyId = companyId || '00000000-0000-0000-0000-000000000001';
     
-    const payload = {
-      ...data,
-      sku: finalSKU,
-      id: Date.now(),
-      isSellable: true,
-      isRentable: (data.rentalPrice || 0) > 0,
-      variations: generatedVariations,
-      combos: combos,
-    };
+    if (!finalCompanyId) {
+      toast.error('Company information required. Please login again.');
+      return;
+    }
+    
+    try {
+      setSaving(true);
+      // Auto-generate SKU if empty
+      const finalSKU = data.sku && data.sku.trim() !== '' ? data.sku : generateSKU();
+      
+      // Convert to Supabase format
+      const productData = {
+        company_id: finalCompanyId,
+        category_id: data.category || null, // Will need to get category ID from name
+        name: data.name,
+        sku: finalSKU,
+        barcode: data.barcode || null,
+        description: data.description || null,
+        cost_price: data.purchasePrice || 0,
+        retail_price: data.sellingPrice,
+        wholesale_price: data.wholesalePrice || data.sellingPrice,
+        rental_price_daily: data.rentalPrice || null,
+        current_stock: data.stock || 0,
+        min_stock: data.lowStockThreshold || 0,
+        max_stock: data.maxStock || 1000,
+        has_variations: generatedVariations.length > 0,
+        is_rentable: (data.rentalPrice || 0) > 0,
+        is_sellable: true,
+        track_stock: data.stockManagement !== false,
+        is_active: true,
+      };
 
-    if (action === "saveAndAdd" && onSaveAndAdd) {
-      onSaveAndAdd(payload);
-    } else {
-      onSave(payload);
+      // Save to Supabase
+      const result = await productService.createProduct(productData);
+      
+      // Convert back to app format for callback
+      const payload = {
+        ...data,
+        sku: finalSKU,
+        id: result.id,
+        isSellable: true,
+        isRentable: (data.rentalPrice || 0) > 0,
+        variations: generatedVariations,
+        combos: combos,
+      };
+
+      toast.success('Product created successfully!');
+      
+      if (action === "saveAndAdd" && onSaveAndAdd) {
+        onSaveAndAdd(payload);
+      } else {
+        onSave(payload);
+      }
+    } catch (error: any) {
+      console.error('[PRODUCT FORM] Error creating product:', error);
+      toast.error('Failed to create product: ' + (error.message || 'Unknown error'));
+    } finally {
+      setSaving(false);
     }
   };
 

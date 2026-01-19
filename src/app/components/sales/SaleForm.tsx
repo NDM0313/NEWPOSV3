@@ -169,7 +169,12 @@ interface ExtraExpense {
     notes?: string;
 }
 
-export const SaleForm = ({ onClose }: { onClose: () => void }) => {
+interface SaleFormProps {
+  sale?: any; // Sale data for edit mode
+  onClose: () => void;
+}
+
+export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
     // Header State
     const [customerId, setCustomerId] = useState("");
     const [customerSearchOpen, setCustomerSearchOpen] = useState(false);

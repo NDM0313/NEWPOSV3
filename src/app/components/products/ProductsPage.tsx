@@ -1,8 +1,8 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { 
   Search, Filter, Download, Upload, Package, DollarSign, AlertCircle, 
   MoreVertical, Eye, Edit, Trash2, FileText, X, ShoppingCart, Tag, Building2, Columns3,
-  CheckCircle, TrendingDown, AlertTriangle, ImageIcon, Box, Check
+  CheckCircle, TrendingDown, AlertTriangle, ImageIcon, Box, Check, Loader2
 } from 'lucide-react';
 import { Button } from "@/app/components/ui/button";
 import { Input } from "@/app/components/ui/input";
@@ -16,16 +16,34 @@ import {
 } from "@/app/components/ui/dropdown-menu";
 import { cn } from "@/app/components/ui/utils";
 import { useNavigation } from '@/app/context/NavigationContext';
+import { useSupabase } from '@/app/context/SupabaseContext';
+import { productService } from '@/app/services/productService';
 import { Pagination } from '@/app/components/ui/pagination';
 import { ImportProductsModal } from './ImportProductsModal';
 import { CustomSelect } from '@/app/components/ui/custom-select';
 import { ListToolbar } from '@/app/components/ui/list-toolbar';
+import { ProductStockHistoryDrawer } from './ProductStockHistoryDrawer';
+import { ViewProductDetailsDrawer } from './ViewProductDetailsDrawer';
+import { AdjustPriceDialog } from './AdjustPriceDialog';
+import { AdjustStockDialog } from './AdjustStockDialog';
+import { toast } from 'sonner';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/app/components/ui/alert-dialog";
 
 type ProductType = 'simple' | 'variable';
 type StockStatus = 'in-stock' | 'low-stock' | 'out-of-stock';
 
 interface Product {
-  id: number;
+  id: number; // Display ID (index-based for UI compatibility)
+  uuid: string; // Actual Supabase UUID for database operations
   sku: string;
   name: string;
   image?: string;
@@ -41,25 +59,59 @@ interface Product {
   lowStockThreshold: number;
 }
 
-// Mock Data
-const mockProducts: Product[] = [
-  { id: 1, sku: 'PRD-0001', name: 'Premium Bridal Lehenga - Red', image: undefined, branch: 'Main Branch (HQ)', unit: 'Piece', purchasePrice: 15000, sellingPrice: 25000, stock: 5, type: 'simple', category: 'Bridal', brand: 'Din Collection', status: 'active', lowStockThreshold: 2 },
-  { id: 2, sku: 'PRD-0002', name: 'Designer Embroidered Suit', image: undefined, branch: 'Mall Outlet', unit: 'Piece', purchasePrice: 8000, sellingPrice: 14000, stock: 12, type: 'variable', category: 'Party Wear', brand: 'Din Collection', status: 'active', lowStockThreshold: 5 },
-  { id: 3, sku: 'PRD-0003', name: 'Casual Lawn Collection', image: undefined, branch: 'Main Branch (HQ)', unit: 'Piece', purchasePrice: 2500, sellingPrice: 4500, stock: 0, type: 'simple', category: 'Casual', brand: 'Sapphire', status: 'active', lowStockThreshold: 10 },
-  { id: 4, sku: 'PRD-0004', name: 'Wedding Sherwani - Gold', image: undefined, branch: 'Warehouse', unit: 'Piece', purchasePrice: 18000, sellingPrice: 30000, stock: 3, type: 'simple', category: 'Bridal', brand: 'Din Collection', status: 'active', lowStockThreshold: 2 },
-  { id: 5, sku: 'PRD-0005', name: 'Silk Dupatta - Peach', image: undefined, branch: 'Main Branch (HQ)', unit: 'Piece', purchasePrice: 1200, sellingPrice: 2200, stock: 25, type: 'simple', category: 'Accessories', brand: 'ChenOne', status: 'active', lowStockThreshold: 5 },
-  { id: 6, sku: 'PRD-0006', name: 'Cotton Kurta Set', image: undefined, branch: 'Mall Outlet', unit: 'Piece', purchasePrice: 1500, sellingPrice: 2800, stock: 8, type: 'variable', category: 'Casual', brand: 'Khaadi', status: 'active', lowStockThreshold: 5 },
-  { id: 7, sku: 'PRD-0007', name: 'Formal Trouser - Black', image: undefined, branch: 'Main Branch (HQ)', unit: 'Piece', purchasePrice: 800, sellingPrice: 1500, stock: 1, type: 'simple', category: 'Formal', brand: 'Bonanza', status: 'active', lowStockThreshold: 3 },
-  { id: 8, sku: 'PRD-0008', name: 'Evening Gown - Navy Blue', image: undefined, branch: 'Mall Outlet', unit: 'Piece', purchasePrice: 12000, sellingPrice: 20000, stock: 4, type: 'simple', category: 'Party Wear', brand: 'Din Collection', status: 'active', lowStockThreshold: 2 },
-  { id: 9, sku: 'PRD-0009', name: 'Embroidery Thread Set', image: undefined, branch: 'Warehouse', unit: 'Box', purchasePrice: 500, sellingPrice: 900, stock: 50, type: 'simple', category: 'Raw Material', brand: 'Madeira', status: 'active', lowStockThreshold: 10 },
-  { id: 10, sku: 'PRD-0010', name: 'Sequin Work Fabric', image: undefined, branch: 'Warehouse', unit: 'Meter', purchasePrice: 350, sellingPrice: 650, stock: 120, type: 'simple', category: 'Raw Material', brand: 'Local', status: 'active', lowStockThreshold: 20 },
-];
-
 export const ProductsPage = () => {
   const { openDrawer } = useNavigation();
+  const { companyId } = useSupabase();
+  const [products, setProducts] = useState<Product[]>([]);
+  const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterOpen, setFilterOpen] = useState(false);
   const [hoveredRow, setHoveredRow] = useState<number | null>(null);
+
+  const loadProducts = useCallback(async () => {
+    if (!companyId) return;
+    
+    try {
+      setLoading(true);
+      const data = await productService.getAllProducts(companyId);
+      
+      // Convert Supabase format to app format
+      const convertedProducts: Product[] = data.map((p: any, index: number) => ({
+        id: index + 1, // Use index-based ID for compatibility with existing UI
+        uuid: p.id, // Store actual Supabase UUID for database operations
+        sku: p.sku || '',
+        name: p.name || '',
+        image: p.thumbnail || undefined,
+        branch: p.branch_name || 'Main Branch (HQ)',
+        unit: p.unit || 'Piece',
+        purchasePrice: p.cost_price || 0,
+        sellingPrice: p.retail_price || 0,
+        stock: p.current_stock || 0,
+        type: p.has_variations ? 'variable' : 'simple',
+        category: p.category?.name || 'Uncategorized',
+        brand: p.brand || '',
+        status: p.is_active ? 'active' : 'inactive',
+        lowStockThreshold: p.min_stock || 0,
+      }));
+      
+      setProducts(convertedProducts);
+    } catch (error: any) {
+      console.error('[PRODUCTS PAGE] Error loading products:', error);
+      toast.error('Failed to load products: ' + (error.message || 'Unknown error'));
+      setProducts([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [companyId]);
+
+  // Load products from Supabase
+  useEffect(() => {
+    if (companyId) {
+      loadProducts();
+    } else {
+      setLoading(false);
+    }
+  }, [companyId, loadProducts]);
   
   // 🎯 NEW: Action States
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
@@ -86,7 +138,7 @@ export const ProductsPage = () => {
         setViewDetailsOpen(true);
         break;
       case 'edit':
-        openDrawer('edit-product', { product });
+        openDrawer('edit-product', undefined, { product });
         break;
       case 'stock-history':
         setStockHistoryOpen(true);
@@ -105,12 +157,22 @@ export const ProductsPage = () => {
     }
   };
   
-  const handleDelete = () => {
-    if (selectedProduct) {
-      console.log('Delete product:', selectedProduct.id);
-      // In real app: API call to delete
+  const handleDelete = async () => {
+    if (!selectedProduct || !selectedProduct.uuid) {
+      toast.error('Product ID not found');
+      return;
+    }
+    
+    try {
+      await productService.deleteProduct(selectedProduct.uuid);
+      toast.success('Product deleted successfully');
       setDeleteAlertOpen(false);
       setSelectedProduct(null);
+      // Reload products from database
+      await loadProducts();
+    } catch (error: any) {
+      console.error('[PRODUCTS PAGE] Error deleting product:', error);
+      toast.error('Failed to delete product: ' + (error.message || 'Unknown error'));
     }
   };
 
@@ -123,7 +185,7 @@ export const ProductsPage = () => {
 
   // Filtered products
   const filteredProducts = useMemo(() => {
-    return mockProducts.filter(product => {
+    return products.filter(product => {
       // Search filter
       if (searchTerm) {
         const search = searchTerm.toLowerCase();
@@ -161,12 +223,12 @@ export const ProductsPage = () => {
   // Calculate summary
   const summary = useMemo(() => {
     return {
-      totalProducts: mockProducts.length,
-      totalValue: mockProducts.reduce((sum, p) => sum + (p.stock * p.sellingPrice), 0),
-      lowStock: mockProducts.filter(p => getStockStatus(p) === 'low-stock').length,
-      outOfStock: mockProducts.filter(p => getStockStatus(p) === 'out-of-stock').length,
+      totalProducts: products.length,
+      totalValue: products.reduce((sum, p) => sum + (p.stock * p.sellingPrice), 0),
+      lowStock: products.filter(p => getStockStatus(p) === 'low-stock').length,
+      outOfStock: products.filter(p => getStockStatus(p) === 'out-of-stock').length,
     };
-  }, []);
+  }, [products]);
 
   const clearAllFilters = () => {
     setBranchFilter('all');
@@ -595,7 +657,12 @@ export const ProductsPage = () => {
 
               {/* Table Body */}
               <div>
-                {paginatedProducts.length === 0 ? (
+                {loading ? (
+                  <div className="py-12 text-center">
+                    <Loader2 size={48} className="mx-auto text-blue-500 mb-3 animate-spin" />
+                    <p className="text-gray-400 text-sm">Loading products...</p>
+                  </div>
+                ) : paginatedProducts.length === 0 ? (
                   <div className="py-12 text-center">
                     <Package size={48} className="mx-auto text-gray-600 mb-3" />
                     <p className="text-gray-400 text-sm">No products found</p>
@@ -794,6 +861,89 @@ export const ProductsPage = () => {
         isOpen={importModalOpen}
         onClose={() => setImportModalOpen(false)}
       />
+
+      {/* View Product Details Drawer */}
+      {selectedProduct && (
+        <ViewProductDetailsDrawer
+          isOpen={viewDetailsOpen}
+          onClose={() => {
+            setViewDetailsOpen(false);
+            setSelectedProduct(null);
+          }}
+          product={selectedProduct}
+        />
+      )}
+
+      {/* Stock History Drawer */}
+      {selectedProduct && (
+        <ProductStockHistoryDrawer
+          isOpen={stockHistoryOpen}
+          onClose={() => {
+            setStockHistoryOpen(false);
+            setSelectedProduct(null);
+          }}
+          productName={selectedProduct.name}
+          totalSold={0} // TODO: Calculate from sales data
+          totalPurchased={0} // TODO: Calculate from purchase data
+          currentStock={selectedProduct.stock}
+        />
+      )}
+
+      {/* Adjust Price Dialog */}
+      {selectedProduct && (
+        <AdjustPriceDialog
+          isOpen={adjustPriceOpen}
+          onClose={() => {
+            setAdjustPriceOpen(false);
+            setSelectedProduct(null);
+          }}
+          product={selectedProduct}
+          onSuccess={() => {
+            loadProducts();
+          }}
+        />
+      )}
+
+      {/* Adjust Stock Dialog */}
+      {selectedProduct && (
+        <AdjustStockDialog
+          isOpen={adjustStockOpen}
+          onClose={() => {
+            setAdjustStockOpen(false);
+            setSelectedProduct(null);
+          }}
+          product={selectedProduct}
+          onSuccess={() => {
+            loadProducts();
+          }}
+        />
+      )}
+
+      {/* Delete Confirmation Dialog */}
+      {selectedProduct && (
+        <AlertDialog open={deleteAlertOpen} onOpenChange={setDeleteAlertOpen}>
+          <AlertDialogContent className="bg-gray-900 border-gray-700 text-white">
+            <AlertDialogHeader>
+              <AlertDialogTitle>Delete Product</AlertDialogTitle>
+              <AlertDialogDescription className="text-gray-400">
+                Are you sure you want to delete <strong>{selectedProduct.name}</strong> (SKU: {selectedProduct.sku})? 
+                This action cannot be undone.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel className="bg-gray-800 border-gray-700 text-white hover:bg-gray-700">
+                Cancel
+              </AlertDialogCancel>
+              <AlertDialogAction
+                onClick={handleDelete}
+                className="bg-red-600 hover:bg-red-700 text-white"
+              >
+                Delete
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      )}
     </div>
   );
 };

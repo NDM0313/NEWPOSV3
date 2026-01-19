@@ -3,7 +3,7 @@ import {
   Plus, ShoppingCart, DollarSign, TrendingUp, 
   MoreVertical, Eye, Edit, Trash2, FileText, Phone, MapPin,
   Package, Truck, CheckCircle, Clock, XCircle, AlertCircle,
-  UserCheck, Receipt
+  UserCheck, Receipt, Loader2
 } from 'lucide-react';
 import { Button } from "@/app/components/ui/button";
 import { Badge } from "@/app/components/ui/badge";
@@ -33,17 +33,22 @@ import {
 } from "@/app/components/ui/dialog";
 import { cn } from "@/app/components/ui/utils";
 import { useNavigation } from '@/app/context/NavigationContext';
+import { useSales } from '@/app/context/SalesContext';
+import { useSupabase } from '@/app/context/SupabaseContext';
+import { saleService } from '@/app/services/saleService';
 import { Pagination } from '@/app/components/ui/pagination';
 import { ListToolbar } from '@/app/components/ui/list-toolbar';
 import { formatLongDate } from '@/app/components/ui/utils';
 import { UnifiedPaymentDialog } from '@/app/components/shared/UnifiedPaymentDialog';
 import { UnifiedLedgerView } from '@/app/components/shared/UnifiedLedgerView';
+import { ViewSaleDetailsDrawer } from './ViewSaleDetailsDrawer';
+import { toast } from 'sonner';
 
 type PaymentStatus = 'paid' | 'partial' | 'unpaid';
 type ShippingStatus = 'delivered' | 'processing' | 'pending' | 'cancelled';
 
 interface Sale {
-  id: number;
+  id: string; // UUID from Supabase
   invoiceNo: string;
   customer: string;
   customerName: string;
@@ -162,15 +167,18 @@ const mockSales: Sale[] = [
 ];
 
 export const SalesPage = () => {
-  const { openDrawer } = useNavigation();
+  const { openDrawer, setCurrentView } = useNavigation();
+  const { sales, deleteSale, updateSale, recordPayment, updateShippingStatus, refreshSales, loading } = useSales();
+  const { companyId, branchId } = useSupabase();
   const [searchTerm, setSearchTerm] = useState('');
   const [filterOpen, setFilterOpen] = useState(false);
-  const [hoveredRow, setHoveredRow] = useState<number | null>(null);
+  const [hoveredRow, setHoveredRow] = useState<string | null>(null);
   
   // 🎯 Payment Dialog & Ledger states
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
   const [ledgerOpen, setLedgerOpen] = useState(false);
   const [selectedSale, setSelectedSale] = useState<Sale | null>(null);
+  const [viewDetailsOpen, setViewDetailsOpen] = useState(false);
   
   // 🎯 NEW: Additional dialog states
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -185,74 +193,76 @@ export const SalesPage = () => {
   const [paymentMethodFilter, setPaymentMethodFilter] = useState('all');
   
   // 🎯 UNIFIED ACTION HANDLER
-  const handleSaleAction = (action: string, sale: Sale) => {
-    console.log(`🎯 Action: ${action}`, sale);
+  const handleSaleAction = async (action: string, sale: Sale) => {
+    setSelectedSale(sale);
     
     switch (action) {
       case 'view_details':
-        // Navigate to detail view
-        console.log('Opening sale details:', sale.invoiceNo);
-        // TODO: Implement detail view navigation
-        alert(`View Details for ${sale.invoiceNo}\n(Detail view will be implemented)`);
+        setViewDetailsOpen(true);
         break;
         
       case 'edit':
-        // Open edit drawer
-        console.log('Opening edit drawer for:', sale.invoiceNo);
-        openDrawer('editSale', { saleId: sale.id });
+        // Open edit drawer with sale data
+        openDrawer('edit-sale', undefined, { sale });
         break;
         
       case 'print_invoice':
         // Print invoice
-        console.log('Printing invoice:', sale.invoiceNo);
         window.print();
-        // TODO: Implement proper invoice print template
+        toast.success('Print dialog opened');
         break;
         
       case 'receive_payment':
-        setSelectedSale(sale);
         setPaymentDialogOpen(true);
         break;
         
       case 'view_ledger':
-        setSelectedSale(sale);
         setLedgerOpen(true);
         break;
         
       case 'update_shipping':
-        setSelectedSale(sale);
         setShippingDialogOpen(true);
         break;
         
       case 'delete':
-        setSelectedSale(sale);
         setDeleteDialogOpen(true);
         break;
         
       default:
         console.warn('Unknown action:', action);
+        toast.error('Unknown action');
     }
   };
   
   // 🎯 DELETE HANDLER
-  const handleDelete = () => {
-    if (selectedSale) {
-      console.log('🗑️ Deleting sale:', selectedSale.invoiceNo);
-      // TODO: Implement actual delete logic
-      alert(`Sale ${selectedSale.invoiceNo} deleted successfully!`);
+  const handleDelete = async () => {
+    if (!selectedSale) return;
+    
+    try {
+      await deleteSale(selectedSale.id);
+      toast.success(`Sale ${selectedSale.invoiceNo} deleted successfully`);
       setDeleteDialogOpen(false);
       setSelectedSale(null);
+      await refreshSales();
+    } catch (error: any) {
+      console.error('Delete error:', error);
+      toast.error(error.message || 'Failed to delete sale');
     }
   };
   
   // 🎯 SHIPPING UPDATE HANDLER
-  const handleShippingUpdate = (newStatus: ShippingStatus) => {
-    if (selectedSale) {
-      console.log('📦 Updating shipping status:', selectedSale.invoiceNo, '->', newStatus);
-      // TODO: Implement actual shipping update logic
-      alert(`Shipping status updated to ${newStatus} for ${selectedSale.invoiceNo}`);
+  const handleShippingUpdate = async (newStatus: ShippingStatus) => {
+    if (!selectedSale) return;
+    
+    try {
+      await updateShippingStatus(selectedSale.id, newStatus);
+      toast.success(`Shipping status updated to ${newStatus}`);
       setShippingDialogOpen(false);
       setSelectedSale(null);
+      await refreshSales();
+    } catch (error: any) {
+      console.error('Shipping update error:', error);
+      toast.error(error.message || 'Failed to update shipping status');
     }
   };
   
@@ -363,9 +373,9 @@ export const SalesPage = () => {
     return `${columns} 60px`.trim(); // 60px for Actions column
   }, [columnOrder, visibleColumns]);
 
-  // Filtered sales
+  // Filtered sales - Use real data from context
   const filteredSales = useMemo(() => {
-    return mockSales.filter(sale => {
+    return sales.filter((sale: Sale) => {
       // Search filter
       if (searchTerm) {
         const search = searchTerm.toLowerCase();
@@ -915,7 +925,12 @@ export const SalesPage = () => {
 
               {/* Table Body */}
               <div>
-                {paginatedSales.length === 0 ? (
+                {loading ? (
+                  <div className="py-12 text-center">
+                    <Loader2 size={48} className="mx-auto text-blue-500 mb-3 animate-spin" />
+                    <p className="text-gray-400 text-sm">Loading sales...</p>
+                  </div>
+                ) : paginatedSales.length === 0 ? (
                   <div className="py-12 text-center">
                     <ShoppingCart size={48} className="mx-auto text-gray-600 mb-3" />
                     <p className="text-gray-400 text-sm">No sales found</p>
@@ -925,7 +940,7 @@ export const SalesPage = () => {
                   paginatedSales.map((sale) => (
                     <div
                       key={sale.id}
-                      onMouseEnter={() => setHoveredRow(sale.id)}
+                      onMouseEnter={() => setHoveredRow(sale.id || sale.invoiceNo)}
                       onMouseLeave={() => setHoveredRow(null)}
                       className="relative grid gap-3 px-4 h-16 hover:bg-gray-800/30 transition-colors items-center after:absolute after:bottom-0 after:left-0 after:right-0 after:h-px after:bg-gray-700 last:after:hidden"
                       style={{
@@ -945,7 +960,7 @@ export const SalesPage = () => {
                             <button 
                               className={cn(
                                 "w-8 h-8 rounded-lg bg-gray-800/50 hover:bg-gray-700 transition-all flex items-center justify-center text-gray-400 hover:text-white",
-                                hoveredRow === sale.id ? "opacity-100" : "opacity-0"
+                                hoveredRow === (sale.id || sale.invoiceNo) ? "opacity-100" : "opacity-0"
                               )}
                             >
                               <MoreVertical size={16} />
@@ -1042,12 +1057,14 @@ export const SalesPage = () => {
           }}
           context="customer"
           entityName={selectedSale.customerName}
-          entityId={String(selectedSale.id)}
+          entityId={selectedSale.id}
           outstandingAmount={selectedSale.due}
           referenceNo={selectedSale.invoiceNo}
-          onSuccess={() => {
-            // In real app, refresh sales list here
-            console.log('Payment received! Refresh list.');
+          onSuccess={async () => {
+            toast.success('Payment recorded successfully');
+            await refreshSales();
+            setPaymentDialogOpen(false);
+            setSelectedSale(null);
           }}
         />
       )}
@@ -1062,7 +1079,7 @@ export const SalesPage = () => {
           }}
           entityType="customer"
           entityName={selectedSale.customerName}
-          entityId={String(selectedSale.id)}
+          entityId={selectedSale.id}
         />
       )}
       
@@ -1095,6 +1112,30 @@ export const SalesPage = () => {
         </AlertDialogContent>
       </AlertDialog>
       
+      {/* 🎯 VIEW SALE DETAILS DRAWER */}
+      {selectedSale && (
+        <ViewSaleDetailsDrawer
+          isOpen={viewDetailsOpen}
+          onClose={() => {
+            setViewDetailsOpen(false);
+            setSelectedSale(null);
+          }}
+          saleId={selectedSale.id}
+          onEdit={() => {
+            setViewDetailsOpen(false);
+            handleSaleAction('edit', selectedSale);
+          }}
+          onDelete={() => {
+            setViewDetailsOpen(false);
+            handleSaleAction('delete', selectedSale);
+          }}
+          onAddPayment={() => {
+            setViewDetailsOpen(false);
+            handleSaleAction('receive_payment', selectedSale);
+          }}
+        />
+      )}
+
       {/* 🎯 SHIPPING UPDATE DIALOG */}
       <Dialog open={shippingDialogOpen} onOpenChange={setShippingDialogOpen}>
         <DialogContent className="bg-gray-900 border-gray-700 text-white">

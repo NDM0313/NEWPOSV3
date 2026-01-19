@@ -17,9 +17,27 @@ import {
 } from "@/app/components/ui/dropdown-menu";
 import { cn } from "@/app/components/ui/utils";
 import { useNavigation } from '@/app/context/NavigationContext';
+import { useSupabase } from '@/app/context/SupabaseContext';
+import { contactService } from '@/app/services/contactService';
+import { saleService } from '@/app/services/saleService';
+import { purchaseService } from '@/app/services/purchaseService';
+import { UnifiedPaymentDialog } from '@/app/components/shared/UnifiedPaymentDialog';
+import { UnifiedLedgerView } from '@/app/components/shared/UnifiedLedgerView';
+import { ViewContactProfile } from './ViewContactProfile';
+import { toast } from 'sonner';
 import { Pagination } from '@/app/components/ui/pagination';
 import { CustomSelect } from '@/app/components/ui/custom-select';
 import { ListToolbar } from '@/app/components/ui/list-toolbar';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/app/components/ui/alert-dialog";
 
 type ContactType = 'all' | 'customers' | 'suppliers' | 'workers';
 type WorkerRole = 'tailor' | 'stitching-master' | 'cutter' | 'hand-worker' | 'dyer' | 'helper';
@@ -68,11 +86,20 @@ const workerRoleLabels: Record<WorkerRole, string> = {
 };
 
 export const ContactsPage = () => {
-  const { openDrawer } = useNavigation();
+  const { openDrawer, setCurrentView } = useNavigation();
+  const { companyId, branchId } = useSupabase();
   const [activeTab, setActiveTab] = useState<ContactType>('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [filterOpen, setFilterOpen] = useState(false);
   const [hoveredRow, setHoveredRow] = useState<number | null>(null);
+  
+  // Action states
+  const [selectedContact, setSelectedContact] = useState<Contact | null>(null);
+  const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
+  const [ledgerOpen, setLedgerOpen] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [editContactOpen, setEditContactOpen] = useState(false);
+  const [viewProfileOpen, setViewProfileOpen] = useState(false);
   
   // Filter states
   const [typeFilter, setTypeFilter] = useState<string[]>([]);
@@ -230,6 +257,31 @@ export const ContactsPage = () => {
   const handlePageSizeChange = (size: number) => {
     setPageSize(size);
     setCurrentPage(1);
+  };
+
+  // Action handlers
+  const handleDeleteContact = async () => {
+    if (!selectedContact) return;
+    
+    try {
+      const result = await contactService.deleteContact(selectedContact.id.toString());
+      if (result.success) {
+        toast.success('Contact deleted successfully');
+        setDeleteDialogOpen(false);
+        setSelectedContact(null);
+        // Reload page to refresh list
+        window.location.reload();
+      } else {
+        toast.error(result.error || 'Failed to delete contact');
+      }
+    } catch (error: any) {
+      toast.error('Failed to delete contact: ' + (error.message || 'Unknown error'));
+    }
+  };
+
+  const refreshContacts = () => {
+    // Reload page to refresh list
+    window.location.reload();
   };
 
   return (
@@ -708,24 +760,55 @@ export const ContactsPage = () => {
                             {/* Customer Actions */}
                             {contact.type === 'customer' && (
                               <>
-                                <DropdownMenuItem className="hover:bg-gray-800 cursor-pointer">
+                                <DropdownMenuItem 
+                                  onClick={() => {
+                                    setCurrentView('sales');
+                                    // TODO: Filter sales by this customer
+                                    toast.info('Sales filtered by customer');
+                                  }}
+                                  className="hover:bg-gray-800 cursor-pointer"
+                                >
                                   <FileText size={14} className="mr-2 text-blue-400" />
                                   View Sales
                                 </DropdownMenuItem>
-                                <DropdownMenuItem className="hover:bg-gray-800 cursor-pointer">
+                                <DropdownMenuItem 
+                                  onClick={() => {
+                                    setSelectedContact(contact);
+                                    setPaymentDialogOpen(true);
+                                  }}
+                                  className="hover:bg-gray-800 cursor-pointer"
+                                >
                                   <DollarSign size={14} className="mr-2 text-green-400" />
                                   Receive Payment
                                 </DropdownMenuItem>
-                                <DropdownMenuItem className="hover:bg-gray-800 cursor-pointer">
+                                <DropdownMenuItem 
+                                  onClick={() => {
+                                    setSelectedContact(contact);
+                                    setLedgerOpen(true);
+                                  }}
+                                  className="hover:bg-gray-800 cursor-pointer"
+                                >
                                   <FileText size={14} className="mr-2 text-purple-400" />
                                   Ledger / Transactions
                                 </DropdownMenuItem>
                                 <DropdownMenuSeparator className="bg-gray-700" />
-                                <DropdownMenuItem className="hover:bg-gray-800 cursor-pointer">
+                                <DropdownMenuItem 
+                                  onClick={() => {
+                                    setSelectedContact(contact);
+                                    setEditContactOpen(true);
+                                  }}
+                                  className="hover:bg-gray-800 cursor-pointer"
+                                >
                                   <Edit size={14} className="mr-2 text-gray-400" />
                                   Edit Contact
                                 </DropdownMenuItem>
-                                <DropdownMenuItem className="hover:bg-gray-800 cursor-pointer text-red-400">
+                                <DropdownMenuItem 
+                                  onClick={() => {
+                                    setSelectedContact(contact);
+                                    setDeleteDialogOpen(true);
+                                  }}
+                                  className="hover:bg-gray-800 cursor-pointer text-red-400"
+                                >
                                   <Trash2 size={14} className="mr-2" />
                                   Delete
                                 </DropdownMenuItem>
@@ -735,24 +818,55 @@ export const ContactsPage = () => {
                             {/* Supplier Actions */}
                             {contact.type === 'supplier' && (
                               <>
-                                <DropdownMenuItem className="hover:bg-gray-800 cursor-pointer">
+                                <DropdownMenuItem 
+                                  onClick={() => {
+                                    setCurrentView('purchases');
+                                    // TODO: Filter purchases by this supplier
+                                    toast.info('Purchases filtered by supplier');
+                                  }}
+                                  className="hover:bg-gray-800 cursor-pointer"
+                                >
                                   <FileText size={14} className="mr-2 text-purple-400" />
                                   View Purchases
                                 </DropdownMenuItem>
-                                <DropdownMenuItem className="hover:bg-gray-800 cursor-pointer">
+                                <DropdownMenuItem 
+                                  onClick={() => {
+                                    setSelectedContact(contact);
+                                    setPaymentDialogOpen(true);
+                                  }}
+                                  className="hover:bg-gray-800 cursor-pointer"
+                                >
                                   <DollarSign size={14} className="mr-2 text-red-400" />
                                   Make Payment
                                 </DropdownMenuItem>
-                                <DropdownMenuItem className="hover:bg-gray-800 cursor-pointer">
+                                <DropdownMenuItem 
+                                  onClick={() => {
+                                    setSelectedContact(contact);
+                                    setLedgerOpen(true);
+                                  }}
+                                  className="hover:bg-gray-800 cursor-pointer"
+                                >
                                   <FileText size={14} className="mr-2 text-blue-400" />
                                   Ledger / Transactions
                                 </DropdownMenuItem>
                                 <DropdownMenuSeparator className="bg-gray-700" />
-                                <DropdownMenuItem className="hover:bg-gray-800 cursor-pointer">
+                                <DropdownMenuItem 
+                                  onClick={() => {
+                                    setSelectedContact(contact);
+                                    setEditContactOpen(true);
+                                  }}
+                                  className="hover:bg-gray-800 cursor-pointer"
+                                >
                                   <Edit size={14} className="mr-2 text-gray-400" />
                                   Edit Contact
                                 </DropdownMenuItem>
-                                <DropdownMenuItem className="hover:bg-gray-800 cursor-pointer text-red-400">
+                                <DropdownMenuItem 
+                                  onClick={() => {
+                                    setSelectedContact(contact);
+                                    setDeleteDialogOpen(true);
+                                  }}
+                                  className="hover:bg-gray-800 cursor-pointer text-red-400"
+                                >
                                   <Trash2 size={14} className="mr-2" />
                                   Delete
                                 </DropdownMenuItem>
@@ -762,24 +876,55 @@ export const ContactsPage = () => {
                             {/* Worker Actions */}
                             {contact.type === 'worker' && (
                               <>
-                                <DropdownMenuItem className="hover:bg-gray-800 cursor-pointer">
+                                <DropdownMenuItem 
+                                  onClick={() => {
+                                    setCurrentView('studio-workflow');
+                                    // TODO: Filter by worker
+                                    toast.info('Work history for worker');
+                                  }}
+                                  className="hover:bg-gray-800 cursor-pointer"
+                                >
                                   <FileText size={14} className="mr-2 text-orange-400" />
                                   Work History
                                 </DropdownMenuItem>
-                                <DropdownMenuItem className="hover:bg-gray-800 cursor-pointer">
+                                <DropdownMenuItem 
+                                  onClick={() => {
+                                    setCurrentView('studio-workflow');
+                                    toast.info('Assign job to worker');
+                                  }}
+                                  className="hover:bg-gray-800 cursor-pointer"
+                                >
                                   <Users size={14} className="mr-2 text-blue-400" />
                                   Assign Job
                                 </DropdownMenuItem>
-                                <DropdownMenuItem className="hover:bg-gray-800 cursor-pointer">
+                                <DropdownMenuItem 
+                                  onClick={() => {
+                                    setSelectedContact(contact);
+                                    setPaymentDialogOpen(true);
+                                  }}
+                                  className="hover:bg-gray-800 cursor-pointer"
+                                >
                                   <DollarSign size={14} className="mr-2 text-green-400" />
                                   Payments
                                 </DropdownMenuItem>
                                 <DropdownMenuSeparator className="bg-gray-700" />
-                                <DropdownMenuItem className="hover:bg-gray-800 cursor-pointer">
+                                <DropdownMenuItem 
+                                  onClick={() => {
+                                    setSelectedContact(contact);
+                                    setEditContactOpen(true);
+                                  }}
+                                  className="hover:bg-gray-800 cursor-pointer"
+                                >
                                   <Edit size={14} className="mr-2 text-gray-400" />
                                   Edit Contact
                                 </DropdownMenuItem>
-                                <DropdownMenuItem className="hover:bg-gray-800 cursor-pointer text-red-400">
+                                <DropdownMenuItem 
+                                  onClick={() => {
+                                    setSelectedContact(contact);
+                                    setDeleteDialogOpen(true);
+                                  }}
+                                  className="hover:bg-gray-800 cursor-pointer text-red-400"
+                                >
                                   <Trash2 size={14} className="mr-2" />
                                   Delete
                                 </DropdownMenuItem>
@@ -806,6 +951,91 @@ export const ContactsPage = () => {
         onPageChange={handlePageChange}
         onPageSizeChange={handlePageSizeChange}
       />
+
+      {/* Unified Payment Dialog */}
+      {selectedContact && (
+        <UnifiedPaymentDialog
+          isOpen={paymentDialogOpen}
+          onClose={() => {
+            setPaymentDialogOpen(false);
+            setSelectedContact(null);
+          }}
+          context={selectedContact.type === 'customer' ? 'customer' : 'supplier'}
+          entityName={selectedContact.name}
+          entityId={selectedContact.id.toString()}
+          outstandingAmount={
+            selectedContact.type === 'customer' 
+              ? selectedContact.receivables 
+              : selectedContact.payables
+          }
+          referenceNo={selectedContact.code}
+          onSuccess={async () => {
+            toast.success('Payment recorded successfully');
+            setPaymentDialogOpen(false);
+            setSelectedContact(null);
+            refreshContacts();
+          }}
+        />
+      )}
+
+      {/* Unified Ledger View */}
+      {selectedContact && (
+        <UnifiedLedgerView
+          isOpen={ledgerOpen}
+          onClose={() => {
+            setLedgerOpen(false);
+            setSelectedContact(null);
+          }}
+          entityType={selectedContact.type === 'customer' ? 'customer' : selectedContact.type === 'supplier' ? 'supplier' : 'worker'}
+          entityName={selectedContact.name}
+          entityId={selectedContact.id.toString()}
+        />
+      )}
+
+      {/* View Contact Profile */}
+      {selectedContact && (
+        <ViewContactProfile
+          isOpen={viewProfileOpen}
+          onClose={() => {
+            setViewProfileOpen(false);
+            setSelectedContact(null);
+          }}
+          contact={selectedContact}
+        />
+      )}
+
+      {/* Delete Confirmation Dialog */}
+      {selectedContact && (
+        <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+          <AlertDialogContent className="bg-gray-900 border-gray-700 text-white">
+            <AlertDialogHeader>
+              <AlertDialogTitle>Delete Contact</AlertDialogTitle>
+              <AlertDialogDescription className="text-gray-400">
+                Are you sure you want to delete {selectedContact.name}? This action cannot be undone.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setDeleteDialogOpen(false);
+                  setSelectedContact(null);
+                }}
+                className="bg-gray-800 border-gray-700 text-white hover:bg-gray-700"
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={handleDeleteContact}
+                className="bg-red-600 hover:bg-red-700"
+              >
+                Delete
+              </Button>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      )}
     </div>
   );
 };

@@ -18,6 +18,7 @@ import {
   ChevronRight
 } from 'lucide-react';
 import { useNavigation } from '../../context/NavigationContext';
+import { useSupabase } from '../../context/SupabaseContext';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -28,12 +29,15 @@ import {
 import { Button } from "../ui/button";
 import { Badge } from "../ui/badge";
 import { cn } from "../ui/utils";
+import { toast } from 'sonner';
 
 export const TopHeader = () => {
-  const { toggleSidebar, openDrawer } = useNavigation();
+  const { toggleSidebar, openDrawer, setCurrentView } = useNavigation();
+  const { signOut, user } = useSupabase();
   const [branch, setBranch] = useState("Main Branch (HQ)");
   const [dateRange, setDateRange] = useState<'today' | 'week' | 'custom'>('today');
   const [notificationCount, setNotificationCount] = useState(3);
+  const [showNotifications, setShowNotifications] = useState(false);
 
   const branches = [
     { id: 1, name: "Main Branch (HQ)", location: "Downtown", active: true },
@@ -51,6 +55,43 @@ export const TopHeader = () => {
     }
     return 'Custom Range';
   };
+
+  const handleLogout = async () => {
+    try {
+      await signOut();
+      toast.success('Logged out successfully');
+      // Redirect will happen automatically via ProtectedRoute
+      window.location.reload();
+    } catch (error) {
+      console.error('Logout error:', error);
+      toast.error('Failed to logout. Please try again.');
+    }
+  };
+
+  const handleViewProfile = () => {
+    // TODO: Navigate to user profile page when implemented
+    toast.info('Profile page coming soon');
+  };
+
+  const handleSettings = () => {
+    setCurrentView('settings');
+  };
+
+  const handleChangePassword = () => {
+    // TODO: Open change password dialog when implemented
+    toast.info('Change password feature coming soon');
+  };
+
+  const handleNotifications = () => {
+    setShowNotifications(!showNotifications);
+    // TODO: Show notifications panel when implemented
+    toast.info('Notifications panel coming soon');
+  };
+
+  // Get user display info
+  const userDisplayName = user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Admin';
+  const userEmail = user?.email || 'admin@dinbridal.com';
+  const userInitial = userDisplayName.charAt(0).toUpperCase();
 
   return (
     <header className="h-16 bg-header-background border-b border-header-border flex items-center justify-between px-6 sticky top-0 z-50 shadow-sm">
@@ -220,6 +261,7 @@ export const TopHeader = () => {
 
         {/* Notifications */}
         <button 
+          onClick={handleNotifications}
           className="relative p-2.5 rounded-lg transition-all bg-accent hover:bg-muted border border-border text-muted-foreground hover:text-foreground"
           title="Notifications"
         >
@@ -241,10 +283,10 @@ export const TopHeader = () => {
               className="flex items-center gap-2 px-3 py-2 h-10 bg-accent hover:bg-muted border border-border rounded-lg transition-all"
             >
               <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-purple-500 via-blue-500 to-emerald-500 flex items-center justify-center text-white font-bold text-sm shadow-sm">
-                A
+                {userInitial}
               </div>
               <div className="hidden xl:flex flex-col items-start">
-                <span className="text-sm font-semibold text-foreground leading-tight">Admin</span>
+                <span className="text-sm font-semibold text-foreground leading-tight">{userDisplayName}</span>
                 <span className="text-xs text-muted-foreground leading-tight">Super Admin</span>
               </div>
               <ChevronDown size={16} className="text-muted-foreground hidden xl:block" />
@@ -258,16 +300,17 @@ export const TopHeader = () => {
             <div className="px-3 py-3 mb-2 bg-accent rounded-lg border border-border">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-purple-500 via-blue-500 to-emerald-500 flex items-center justify-center text-white font-bold shadow-sm">
-                  A
+                  {userInitial}
                 </div>
                 <div>
-                  <div className="font-semibold text-foreground">Admin User</div>
-                  <div className="text-xs text-muted-foreground">admin@dinbridal.com</div>
+                  <div className="font-semibold text-foreground">{userDisplayName}</div>
+                  <div className="text-xs text-muted-foreground">{userEmail}</div>
                 </div>
               </div>
             </div>
 
             <DropdownMenuItem 
+              onClick={handleViewProfile}
               className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-foreground hover:bg-accent cursor-pointer transition-all"
             >
               <User size={16} className="text-blue-500" />
@@ -275,6 +318,7 @@ export const TopHeader = () => {
             </DropdownMenuItem>
             
             <DropdownMenuItem 
+              onClick={handleSettings}
               className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-foreground hover:bg-accent cursor-pointer transition-all"
             >
               <Settings size={16} className="text-muted-foreground" />
@@ -282,6 +326,7 @@ export const TopHeader = () => {
             </DropdownMenuItem>
             
             <DropdownMenuItem 
+              onClick={handleChangePassword}
               className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-foreground hover:bg-accent cursor-pointer transition-all"
             >
               <Lock size={16} className="text-orange-500" />
@@ -291,6 +336,7 @@ export const TopHeader = () => {
             <DropdownMenuSeparator className="bg-border my-2" />
             
             <DropdownMenuItem 
+              onClick={handleLogout}
               className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-destructive hover:bg-destructive/10 cursor-pointer transition-all"
             >
               <LogOut size={16} />
