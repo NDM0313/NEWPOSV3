@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useSales, Sale } from '@/app/context/SalesContext';
 import { 
   X, 
   Calendar, 
@@ -97,80 +98,12 @@ interface SaleDetails {
 interface ViewSaleDetailsDrawerProps {
   isOpen: boolean;
   onClose: () => void;
-  saleId: number | null;
-  onEdit?: (id: number) => void;
-  onDelete?: (id: number) => void;
-  onAddPayment?: (id: number) => void;
-  onPrint?: (id: number) => void;
+  saleId: string | null; // Changed to string (UUID)
+  onEdit?: (id: string) => void;
+  onDelete?: (id: string) => void;
+  onAddPayment?: (id: string) => void;
+  onPrint?: (id: string) => void;
 }
-
-// Mock sale data - in real app, this would come from API/state
-const mockSaleDetails: Record<number, SaleDetails> = {
-  1: {
-    id: 1,
-    invoiceNo: 'INV-001',
-    date: '2024-01-15',
-    customer: 'Ahmed Retailers',
-    customerName: 'Ahmed Ali',
-    contactNumber: '+92-300-1234567',
-    address: '123 Main Street, Karachi',
-    location: 'Main Branch',
-    salesman: 'Ali Hassan',
-    items: [
-      { id: 1, productId: 101, name: 'Premium Lawn Fabric', sku: 'FAB-001', price: 1500, qty: 10, size: 'Standard', color: 'Blue', stock: 50 },
-      { id: 2, productId: 102, name: 'Cotton Silk', sku: 'FAB-002', price: 2200, qty: 5, size: 'Standard', color: 'Red', thaans: 2, meters: 40, stock: 30 },
-      { id: 3, productId: 103, name: 'Chiffon Dupatta', sku: 'DUP-001', price: 800, qty: 15, stock: 100 },
-    ],
-    subtotal: 42000,
-    discount: 2000,
-    tax: 3000,
-    shippingCharges: 500,
-    otherCharges: 2000,
-    total: 45500,
-    paid: 45500,
-    due: 0,
-    returnDue: 0,
-    paymentStatus: 'Paid',
-    shippingStatus: 'Delivered',
-    status: 'Final',
-    payments: [
-      { id: 1, date: '2024-01-15', amount: 25000, method: 'Cash', reference: 'CASH-001' },
-      { id: 2, date: '2024-01-15', amount: 20500, method: 'Bank Transfer', reference: 'TXN-987654', note: 'Transferred to account ending 1234' },
-    ],
-    notes: 'Customer requested express delivery. Handle with care.',
-    createdBy: 'Admin User',
-    createdAt: '2024-01-15 10:30 AM',
-    updatedAt: '2024-01-15 02:45 PM',
-  },
-  2: {
-    id: 2,
-    invoiceNo: 'INV-002',
-    date: '2024-01-15',
-    customer: 'Walk-in Customer',
-    customerName: 'Sara Khan',
-    contactNumber: '+92-321-9876543',
-    location: 'Branch 2',
-    items: [
-      { id: 4, productId: 104, name: 'Designer Suit', sku: 'SUI-001', price: 4500, qty: 1, size: 'M', color: 'Green', stock: 5 },
-      { id: 5, productId: 105, name: 'Embroidered Dupatta', sku: 'DUP-002', price: 1200, qty: 2, stock: 20 },
-    ],
-    subtotal: 6900,
-    discount: 900,
-    shippingCharges: 200,
-    total: 8200,
-    paid: 5000,
-    due: 3200,
-    returnDue: 0,
-    paymentStatus: 'Partial',
-    shippingStatus: 'Pending',
-    status: 'Order',
-    payments: [
-      { id: 3, date: '2024-01-15', amount: 5000, method: 'Card', reference: 'CARD-123456' },
-    ],
-    createdBy: 'Sara Ali',
-    createdAt: '2024-01-15 03:15 PM',
-  },
-};
 
 export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
   isOpen,
@@ -182,13 +115,40 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
   onPrint,
 }) => {
   const [activeTab, setActiveTab] = useState<'details' | 'payments' | 'history'>('details');
+  const { getSaleById } = useSales();
+  const [sale, setSale] = useState<Sale | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  // Load sale data from context (TASK 2 & 3 FIX - Real data instead of mock)
+  useEffect(() => {
+    if (isOpen && saleId) {
+      const saleData = getSaleById(saleId);
+      if (saleData) {
+        setSale(saleData);
+      }
+      setLoading(false);
+    } else {
+      setLoading(false);
+    }
+  }, [isOpen, saleId, getSaleById]);
 
   if (!isOpen || !saleId) return null;
 
-  const sale = mockSaleDetails[saleId];
+  if (loading) {
+    return (
+      <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center">
+        <div className="text-white">Loading sale details...</div>
+      </div>
+    );
+  }
 
   if (!sale) {
-    return null;
+    return (
+      <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center">
+        <div className="text-white">Sale not found</div>
+        <Button onClick={onClose} className="ml-4">Close</Button>
+      </div>
+    );
   }
 
   const getStatusColor = (status: string) => {
@@ -390,27 +350,14 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
                         {sale.location}
                       </span>
                     </div>
-                    {sale.salesman && (
-                      <div className="flex justify-between">
-                        <span className="text-xs text-gray-500">Salesman</span>
-                        <span className="text-white flex items-center gap-2">
-                          <UserCheck size={14} className="text-gray-500" />
-                          {sale.salesman}
-                        </span>
-                      </div>
-                    )}
-                    <div className="flex justify-between">
-                      <span className="text-xs text-gray-500">Created By</span>
-                      <span className="text-white">{sale.createdBy}</span>
-                    </div>
                     <div className="flex justify-between">
                       <span className="text-xs text-gray-500">Created At</span>
-                      <span className="text-white">{sale.createdAt}</span>
+                      <span className="text-white">{new Date(sale.createdAt).toLocaleString()}</span>
                     </div>
                     {sale.updatedAt && (
                       <div className="flex justify-between">
                         <span className="text-xs text-gray-500">Last Updated</span>
-                        <span className="text-white">{sale.updatedAt}</span>
+                        <span className="text-white">{new Date(sale.updatedAt).toLocaleString()}</span>
                       </div>
                     )}
                   </div>

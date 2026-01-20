@@ -263,18 +263,60 @@ export const RentalOrdersList = () => {
   };
 
   const handleAction = (order: RentalOrder, action: string) => {
-    if (action === 'return') {
-      setSelectedOrder(order);
-      setReturnModalOpen(true);
-    } else if (action === 'payment') {
-      setSelectedOrder(order);
-      setPaymentDialogOpen(true);
-    } else if (action === 'ledger') {
-      setSelectedOrder(order);
-      setLedgerOpen(true);
-    } else {
-      console.log(action, order.id);
+    setSelectedOrder(order);
+    
+    switch (action) {
+      case 'view':
+        // Open view details drawer (TASK 4 FIX)
+        // TODO: Create ViewRentalDetailsDrawer component
+        toast.info(`View details for ${order.id}`);
+        break;
+      case 'edit':
+        // Open edit drawer (TASK 4 FIX)
+        // TODO: Open RentalBookingDrawer in edit mode
+        toast.info(`Edit booking ${order.id}`);
+        break;
+      case 'return':
+        setReturnModalOpen(true);
+        break;
+      case 'payment':
+        setPaymentDialogOpen(true);
+        break;
+      case 'ledger':
+        setLedgerOpen(true);
+        break;
+      case 'dispatch':
+        // Update status to dispatched
+        toast.info(`Dispatching order ${order.id}`);
+        // TODO: Implement dispatch logic
+        break;
+      case 'document':
+        toast.info(`Upload document for ${order.id}`);
+        // TODO: Implement document upload
+        break;
+      case 'extend':
+        toast.info(`Extend return date for ${order.id}`);
+        // TODO: Implement extend date logic
+        break;
+      case 'latefee':
+        toast.info(`Apply late fee for ${order.id}`);
+        // TODO: Implement late fee logic
+        break;
+      case 'cancel':
+        toast.info(`Cancel booking ${order.id}`);
+        // TODO: Implement cancel logic with confirmation
+        break;
+      default:
+        console.log('Unknown action:', action, order.id);
     }
+  };
+
+  // Handle row click to view details (TASK 4 FIX)
+  const handleRowClick = (order: RentalOrder) => {
+    setSelectedOrder(order);
+    // Open view details - for now show toast, later implement drawer
+    toast.info(`Viewing details for ${order.id}`);
+    // TODO: Open ViewRentalDetailsDrawer
   };
 
   return (
@@ -518,8 +560,9 @@ export const RentalOrdersList = () => {
                 return (
                   <tr 
                     key={order.id} 
+                    onClick={() => handleRowClick(order)}
                     className={cn(
-                      "hover:bg-gray-800/50 transition-colors",
+                      "hover:bg-gray-800/50 transition-colors cursor-pointer",
                       isOverdue && "bg-red-900/10",
                       isNearDue && !isOverdue && "bg-orange-900/10"
                     )}
