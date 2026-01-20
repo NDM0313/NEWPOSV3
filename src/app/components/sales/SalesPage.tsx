@@ -312,7 +312,7 @@ export const SalesPage = () => {
 
       return true;
     });
-  }, [searchTerm, dateFilter, customerFilter, paymentStatusFilter, shippingStatusFilter, branchFilter, paymentMethodFilter]);
+  }, [sales, startDate, endDate, searchTerm, dateFilter, customerFilter, paymentStatusFilter, shippingStatusFilter, branchFilter, paymentMethodFilter]);
 
   // Calculate summary
   const summary = useMemo(() => ({

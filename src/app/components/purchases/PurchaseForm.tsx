@@ -516,6 +516,75 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
         
         loadData();
     }, [companyId]);
+
+    // Pre-populate form when editing (TASK 3 FIX)
+    useEffect(() => {
+        if (initialPurchase) {
+            // Pre-fill header fields
+            setSupplierId(initialPurchase.supplier || '');
+            setPurchaseDate(initialPurchase.date ? new Date(initialPurchase.date) : new Date());
+            setRefNumber('');
+            
+            // Pre-fill items
+            if (initialPurchase.items && initialPurchase.items.length > 0) {
+                const convertedItems: PurchaseItem[] = initialPurchase.items.map((item: any, index: number) => ({
+                    id: Date.now() + index, // Generate unique ID
+                    productId: item.productId || '',
+                    name: item.productName || '',
+                    sku: item.sku || '',
+                    price: item.price || 0,
+                    qty: item.quantity || 0,
+                    receivedQty: item.receivedQty || item.quantity || 0,
+                    size: item.size,
+                    color: item.color,
+                    stock: 0, // Will be loaded from product if needed
+                    lastPurchasePrice: undefined,
+                    lastSupplier: undefined,
+                    showVariations: false,
+                    packingDetails: item.packingDetails,
+                    thaans: item.packingDetails?.total_boxes,
+                    meters: item.packingDetails?.total_meters,
+                }));
+                setItems(convertedItems);
+            }
+            
+            // Pre-fill payments if any
+            if (initialPurchase.paid > 0) {
+                setPartialPayments([{
+                    id: '1',
+                    method: (initialPurchase.paymentMethod || 'cash') as 'cash' | 'bank' | 'other',
+                    amount: initialPurchase.paid,
+                    reference: '',
+                    attachments: []
+                }]);
+            }
+            
+            // Pre-fill expenses
+            if (initialPurchase.shippingCost > 0) {
+                setExtraExpenses([{
+                    id: '1',
+                    type: 'freight',
+                    amount: initialPurchase.shippingCost,
+                    notes: 'Shipping charges'
+                }]);
+            }
+            
+            // Pre-fill discount
+            if (initialPurchase.discount > 0) {
+                setDiscountValue(initialPurchase.discount);
+                setDiscountType('fixed'); // Default to fixed, can be enhanced
+            }
+            
+            // Pre-fill status
+            if (initialPurchase.status === 'ordered') {
+                setPurchaseStatus('ordered');
+            } else if (initialPurchase.status === 'received') {
+                setPurchaseStatus('received');
+            } else {
+                setPurchaseStatus('draft');
+            }
+        }
+    }, [initialPurchase]);
     
     // Handle Save
     const handleSave = async (print: boolean = false) => {

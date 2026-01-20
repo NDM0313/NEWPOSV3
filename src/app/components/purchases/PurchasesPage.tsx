@@ -63,6 +63,7 @@ export const PurchasesPage = () => {
   const { openDrawer } = useNavigation();
   const { companyId, branchId } = useSupabase();
   const { startDate, endDate } = useDateRange();
+  const { purchases: contextPurchases, loading: contextLoading, refreshPurchases } = usePurchases();
   const [purchases, setPurchases] = useState<Purchase[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -206,14 +207,34 @@ export const PurchasesPage = () => {
     }
   }, [companyId, branchId]);
 
-  // Load purchases on mount
+  // Sync context purchases to local state for filtering
   useEffect(() => {
-    if (companyId) {
+    if (contextPurchases.length > 0) {
+      const convertedPurchases: Purchase[] = contextPurchases.map((p: any, index: number) => ({
+        id: index + 1,
+        uuid: p.id,
+        poNo: p.purchaseNo || `PO-${String(index + 1).padStart(3, '0')}`,
+        supplier: p.supplierName || 'Unknown Supplier',
+        supplierContact: p.contactNumber || '',
+        date: p.date || new Date().toISOString().split('T')[0],
+        reference: '',
+        location: p.location || 'Main Branch (HQ)',
+        items: p.itemsCount || 0,
+        grandTotal: p.total || 0,
+        paymentDue: p.due || 0,
+        status: p.status === 'received' ? 'received' : p.status === 'ordered' ? 'ordered' : 'pending',
+        paymentStatus: p.paymentStatus || 'unpaid',
+        addedBy: 'Unknown',
+      }));
+      setPurchases(convertedPurchases);
+      setLoading(contextLoading);
+    } else if (!contextLoading && companyId) {
+      // Fallback: load directly if context is empty
       loadPurchases();
     } else {
-      setLoading(false);
+      setLoading(contextLoading);
     }
-  }, [companyId, branchId, loadPurchases]);
+  }, [contextPurchases, contextLoading, companyId, loadPurchases]);
 
   // Columns configuration for Column Manager
   const columns = [

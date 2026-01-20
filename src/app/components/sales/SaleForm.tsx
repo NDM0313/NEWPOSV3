@@ -349,6 +349,75 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
         loadData();
     }, [companyId]);
 
+    // Pre-populate form when editing (TASK 3 FIX)
+    useEffect(() => {
+        if (initialSale) {
+            // Pre-fill header fields
+            setCustomerId(initialSale.customer || '');
+            setSaleDate(initialSale.date ? new Date(initialSale.date) : new Date());
+            setInvoiceNumber(initialSale.invoiceNo || '');
+            setRefNumber('');
+            
+            // Pre-fill items
+            if (initialSale.items && initialSale.items.length > 0) {
+                const convertedItems: SaleItem[] = initialSale.items.map((item: any, index: number) => ({
+                    id: Date.now() + index, // Generate unique ID
+                    productId: item.productId || '',
+                    name: item.productName || '',
+                    sku: item.sku || '',
+                    price: item.price || 0,
+                    qty: item.quantity || 0,
+                    size: item.size,
+                    color: item.color,
+                    stock: 0, // Will be loaded from product if needed
+                    lastPurchasePrice: undefined,
+                    lastSupplier: undefined,
+                    showVariations: false,
+                    packingDetails: item.packingDetails,
+                    thaans: item.packingDetails?.total_boxes,
+                    meters: item.packingDetails?.total_meters,
+                }));
+                setItems(convertedItems);
+            }
+            
+            // Pre-fill payments if any
+            if (initialSale.paid > 0) {
+                setPartialPayments([{
+                    id: '1',
+                    method: (initialSale.paymentMethod || 'cash') as 'cash' | 'bank' | 'other',
+                    amount: initialSale.paid,
+                    reference: '',
+                    attachments: []
+                }]);
+            }
+            
+            // Pre-fill expenses
+            if (initialSale.expenses > 0) {
+                setExtraExpenses([{
+                    id: '1',
+                    type: 'other',
+                    amount: initialSale.expenses,
+                    notes: 'Shipping/Other charges'
+                }]);
+                setShippingCharges(initialSale.expenses);
+                setShippingEnabled(true);
+            }
+            
+            // Pre-fill discount
+            if (initialSale.discount > 0) {
+                setDiscountValue(initialSale.discount);
+                setDiscountType('fixed'); // Default to fixed, can be enhanced
+            }
+            
+            // Pre-fill status
+            if (initialSale.type === 'quotation') {
+                setSaleStatus('quotation');
+            } else {
+                setSaleStatus('final');
+            }
+        }
+    }, [initialSale]);
+
     // Status helper functions
     const getStatusColor = () => {
         switch(saleStatus) {
