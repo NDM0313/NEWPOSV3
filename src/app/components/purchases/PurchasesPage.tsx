@@ -265,8 +265,9 @@ export const PurchasesPage = () => {
     setVisibleColumns(prev => ({ ...prev, [key]: !prev[key as keyof typeof visibleColumns] }));
   };
 
-  // Filter data by date range
+  // Filter data by date range (TASK 1 FIX - "All" means no date filter)
   const filterByDateRange = useCallback((dateStr: string | undefined): boolean => {
+    // TASK 1 FIX - If no date range selected, show all (no filter)
     if (!startDate && !endDate) return true;
     if (!dateStr) return false;
     

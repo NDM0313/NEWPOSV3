@@ -276,14 +276,15 @@ export const SalesPage = () => {
     return `${columns} 60px`.trim(); // 60px for Actions column
   }, [columnOrder, visibleColumns]);
 
-  // Filtered sales - Use real data from context
+  // Filtered sales - Use real data from context (TASK 1 FIX - "All" means no filter)
   const filteredSales = useMemo(() => {
     return sales.filter((sale: Sale) => {
-      // Date range filter (from global date range context)
+      // Date range filter (from global date range context) - TASK 1 FIX: Only filter if dates are set
       if (startDate && endDate) {
         const saleDate = new Date(sale.date);
         if (saleDate < startDate || saleDate > endDate) return false;
       }
+      // If no date range, show all (no filter applied)
 
       // Search filter
       if (searchTerm) {

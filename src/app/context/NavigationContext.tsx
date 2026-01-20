@@ -42,7 +42,7 @@ interface NavigationContextType {
   isSidebarOpen: boolean;
   toggleSidebar: () => void;
   activeDrawer: DrawerType;
-  openDrawer: (drawer: DrawerType, parentDrawer?: DrawerType, options?: { contactType?: 'customer' | 'supplier' | 'worker'; product?: any }) => void;
+  openDrawer: (drawer: DrawerType, parentDrawer?: DrawerType, options?: { contactType?: 'customer' | 'supplier' | 'worker'; product?: any; sale?: any; purchase?: any }) => void;
   closeDrawer: () => void;
   parentDrawer: DrawerType | null;
   selectedStudioSaleId?: string;
@@ -64,7 +64,7 @@ export const NavigationProvider = ({ children }: { children: ReactNode }) => {
 
   const toggleSidebar = () => setIsSidebarOpen(!isSidebarOpen);
   
-  const openDrawer = (drawer: DrawerType, parent?: DrawerType, options?: { contactType?: 'customer' | 'supplier' | 'worker'; product?: any }) => {
+  const openDrawer = (drawer: DrawerType, parent?: DrawerType, options?: { contactType?: 'customer' | 'supplier' | 'worker'; product?: any; sale?: any; purchase?: any }) => {
     // Set contact type if provided
     if (options?.contactType) {
       setDrawerContactType(options.contactType);
@@ -72,8 +72,12 @@ export const NavigationProvider = ({ children }: { children: ReactNode }) => {
       setDrawerContactType(undefined);
     }
     
-    // Set drawer data if provided (e.g., product for edit)
-    if (options?.product) {
+    // Set drawer data if provided (TASK 3 FIX - Support sale, purchase, product for edit)
+    if (options?.sale) {
+      setDrawerData({ sale: options.sale });
+    } else if (options?.purchase) {
+      setDrawerData({ purchase: options.purchase });
+    } else if (options?.product) {
       setDrawerData({ product: options.product });
     } else {
       setDrawerData(undefined);
