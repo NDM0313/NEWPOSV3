@@ -33,7 +33,7 @@ import {
 } from "@/app/components/ui/dialog";
 import { cn } from "@/app/components/ui/utils";
 import { useNavigation } from '@/app/context/NavigationContext';
-import { useSales } from '@/app/context/SalesContext';
+import { useSales, Sale } from '@/app/context/SalesContext';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { useDateRange } from '@/app/context/DateRangeContext';
 import { saleService } from '@/app/services/saleService';
@@ -44,29 +44,6 @@ import { UnifiedPaymentDialog } from '@/app/components/shared/UnifiedPaymentDial
 import { UnifiedLedgerView } from '@/app/components/shared/UnifiedLedgerView';
 import { ViewSaleDetailsDrawer } from './ViewSaleDetailsDrawer';
 import { toast } from 'sonner';
-
-type PaymentStatus = 'paid' | 'partial' | 'unpaid';
-type ShippingStatus = 'delivered' | 'processing' | 'pending' | 'cancelled';
-
-interface Sale {
-  id: string; // UUID from Supabase
-  invoiceNo: string;
-  customer: string;
-  customerName: string;
-  contactNumber: string;
-  date: string;
-  location: string;
-  items: number;
-  subtotal: number;
-  expenses: number;
-  total: number;
-  paid: number;
-  due: number;
-  returnDue: number;
-  paymentStatus: PaymentStatus;
-  paymentMethod: string;
-  shippingStatus: ShippingStatus;
-}
 
 // Mock data removed - using SalesContext which loads from Supabase
 
@@ -519,10 +496,12 @@ export const SalesPage = () => {
         );
       
       case 'items':
+        // Handle both array and number types for items
+        const itemsCount = Array.isArray(sale.items) ? sale.items.length : (sale.itemsCount || sale.items || 0);
         return (
           <div className="flex items-center justify-center gap-1 text-gray-300">
             <Package size={12} className="text-gray-500" />
-            <span className="text-sm font-medium">{sale.items}</span>
+            <span className="text-sm font-medium">{itemsCount}</span>
           </div>
         );
       
