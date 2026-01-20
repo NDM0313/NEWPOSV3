@@ -135,8 +135,10 @@ export const PurchasesPage = () => {
   };
 
   const handlePrintPO = (purchase: Purchase) => {
-    window.print();
-    toast.info(`Printing PO ${purchase.poNo}`);
+    // Open view details drawer which has print layout
+    setSelectedPurchase(purchase);
+    setViewDetailsOpen(true);
+    toast.info(`Opening PO ${purchase.poNo} for printing`);
   };
 
   const handleDelete = (purchase: Purchase) => {

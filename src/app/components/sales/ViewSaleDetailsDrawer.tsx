@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useSales, Sale } from '@/app/context/SalesContext';
+import { InvoicePrintLayout } from '../shared/InvoicePrintLayout';
 import { 
   X, 
   Calendar, 
@@ -118,6 +119,7 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
   const { getSaleById } = useSales();
   const [sale, setSale] = useState<Sale | null>(null);
   const [loading, setLoading] = useState(true);
+  const [showPrintLayout, setShowPrintLayout] = useState(false);
 
   // Load sale data from context (TASK 2 & 3 FIX - Real data instead of mock)
   useEffect(() => {
@@ -196,8 +198,8 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
             <div>
               <h2 className="text-xl font-bold text-white flex items-center gap-3">
                 {sale.invoiceNo}
-                <Badge className={cn("text-xs font-semibold border", getStatusColor(sale.status))}>
-                  {sale.status}
+                <Badge className={cn("text-xs font-semibold border", getStatusColor(sale.type === 'invoice' ? 'Final' : 'Quotation'))}>
+                  {sale.type === 'invoice' ? 'Final' : 'Quotation'}
                 </Badge>
               </h2>
               <p className="text-sm text-gray-400 mt-0.5">
@@ -212,7 +214,10 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
               variant="ghost"
               size="sm"
               className="text-gray-400 hover:text-white hover:bg-gray-800"
-              onClick={() => onPrint?.(sale.id)}
+              onClick={() => {
+                setShowPrintLayout(true);
+                onPrint?.(sale.id);
+              }}
             >
               <Printer size={16} className="mr-2" />
               Print
@@ -317,15 +322,6 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
                         {sale.contactNumber}
                       </p>
                     </div>
-                    {sale.address && (
-                      <div>
-                        <p className="text-xs text-gray-500 mb-1">Address</p>
-                        <p className="text-white flex items-center gap-2">
-                          <MapPin size={14} className="text-gray-500" />
-                          {sale.address}
-                        </p>
-                      </div>
-                    )}
                   </div>
                 </div>
 
@@ -368,15 +364,15 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
                   <p className="text-xs text-gray-500 mb-2">Payment Status</p>
-                  <Badge className={cn("text-sm font-semibold", getPaymentStatusColor(sale.paymentStatus))}>
-                    {sale.paymentStatus}
+                  <Badge className={cn("text-sm font-semibold", getPaymentStatusColor(sale.paymentStatus === 'paid' ? 'Paid' : sale.paymentStatus === 'partial' ? 'Partial' : 'Unpaid'))}>
+                    {sale.paymentStatus === 'paid' ? 'Paid' : sale.paymentStatus === 'partial' ? 'Partial' : 'Unpaid'}
                   </Badge>
                 </div>
                 <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
                   <p className="text-xs text-gray-500 mb-2">Shipping Status</p>
-                  <Badge className={cn("text-sm font-semibold", getShippingStatusColor(sale.shippingStatus))}>
+                  <Badge className={cn("text-sm font-semibold", getShippingStatusColor(sale.shippingStatus === 'delivered' ? 'Delivered' : sale.shippingStatus === 'processing' ? 'Processing' : sale.shippingStatus === 'cancelled' ? 'Cancelled' : 'Pending'))}>
                     <Truck size={14} className="mr-1" />
-                    {sale.shippingStatus}
+                    {sale.shippingStatus === 'delivered' ? 'Delivered' : sale.shippingStatus === 'processing' ? 'Processing' : sale.shippingStatus === 'cancelled' ? 'Cancelled' : 'Pending'}
                   </Badge>
                 </div>
               </div>
@@ -439,10 +435,10 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
                             Rs. {item.price.toLocaleString()}
                           </TableCell>
                           <TableCell className="text-center text-white font-medium">
-                            {item.qty}
+                            {item.quantity || (item as any).qty || 0}
                           </TableCell>
                           <TableCell className="text-right text-white font-medium">
-                            Rs. {(item.price * item.qty).toLocaleString()}
+                            Rs. {(item.price * (item.quantity || (item as any).qty || 0)).toLocaleString()}
                           </TableCell>
                         </TableRow>
                       ))}
@@ -547,47 +543,47 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
                 )}
               </div>
 
-              {/* Payments List */}
-              {sale.payments.length > 0 ? (
+              {/* Payment Summary - Sale type doesn't have payments array */}
+              {sale.paid > 0 ? (
                 <div className="space-y-3">
-                  {sale.payments.map((payment) => (
-                    <div 
-                      key={payment.id}
-                      className="bg-gray-900/50 border border-gray-800 rounded-xl p-5"
-                    >
-                      <div className="flex justify-between items-start mb-3">
-                        <div>
-                          <p className="text-white font-semibold text-lg">
-                            Rs. {payment.amount.toLocaleString()}
-                          </p>
-                          <p className="text-sm text-gray-400 mt-1">
-                            {new Date(payment.date).toLocaleDateString('en-US', { 
-                              month: 'short', 
-                              day: 'numeric', 
-                              year: 'numeric',
-                              hour: '2-digit',
-                              minute: '2-digit'
-                            })}
-                          </p>
-                        </div>
-                        <Badge className="bg-blue-500/10 text-blue-400 border-blue-500/20">
-                          <CheckCircle2 size={12} className="mr-1" />
-                          {payment.method}
-                        </Badge>
+                  <div 
+                    className="bg-gray-900/50 border border-gray-800 rounded-xl p-5"
+                  >
+                    <div className="flex justify-between items-start mb-3">
+                      <div>
+                        <p className="text-white font-semibold text-lg">
+                          Rs. {sale.paid.toLocaleString()}
+                        </p>
+                        <p className="text-sm text-gray-400 mt-1">
+                          Total paid amount
+                        </p>
                       </div>
-                      
-                      {payment.reference && (
-                        <div className="text-sm">
-                          <span className="text-gray-500">Reference: </span>
-                          <span className="text-gray-300 font-mono">{payment.reference}</span>
+                      <Badge className="bg-blue-500/10 text-blue-400 border-blue-500/20">
+                        <CheckCircle2 size={12} className="mr-1" />
+                        {sale.paymentMethod || 'Cash'}
+                      </Badge>
+                    </div>
+                    
+                    <div className="text-sm space-y-2">
+                      <div className="flex justify-between">
+                        <span className="text-gray-500">Payment Status:</span>
+                        <span className={sale.paymentStatus === 'paid' ? "text-green-400" : sale.paymentStatus === 'partial' ? "text-yellow-400" : "text-red-400"}>
+                          {sale.paymentStatus === 'paid' ? 'Paid' : sale.paymentStatus === 'partial' ? 'Partial' : 'Unpaid'}
+                        </span>
+                      </div>
+                      {sale.due > 0 && (
+                        <div className="flex justify-between">
+                          <span className="text-gray-500">Amount Due:</span>
+                          <span className="text-red-400 font-medium">
+                            Rs. {sale.due.toLocaleString()}
+                          </span>
                         </div>
-                      )}
-                      
-                      {payment.note && (
-                        <p className="text-sm text-gray-400 mt-2">{payment.note}</p>
                       )}
                     </div>
-                  ))}
+                    <p className="text-xs text-gray-500 mt-3">
+                      Note: Detailed payment history can be viewed in the Ledger tab
+                    </p>
+                  </div>
                 </div>
               ) : (
                 <div className="text-center py-12">
@@ -628,7 +624,7 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
                   <div className="flex-1 pb-6">
                     <p className="text-white font-medium">Payment Received</p>
                     <p className="text-sm text-gray-400 mt-1">{sale.createdAt}</p>
-                    <p className="text-sm text-gray-500 mt-1">Rs. {sale.paid.toLocaleString()} received via {sale.payments[0]?.method}</p>
+                    <p className="text-sm text-gray-500 mt-1">Rs. {sale.paid.toLocaleString()} received via {sale.paymentMethod || 'Cash'}</p>
                   </div>
                 </div>
 
@@ -641,7 +637,7 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
                   <div className="flex-1">
                     <p className="text-white font-medium">Sale Created</p>
                     <p className="text-sm text-gray-400 mt-1">{sale.createdAt}</p>
-                    <p className="text-sm text-gray-500 mt-1">Created by {sale.createdBy}</p>
+                    <p className="text-sm text-gray-500 mt-1">Sale created on {new Date(sale.createdAt).toLocaleString()}</p>
                   </div>
                 </div>
               </div>
@@ -668,6 +664,18 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
           </div>
         )}
       </div>
+
+      {/* Print Layout Modal */}
+      {showPrintLayout && sale && (
+        <div className="fixed inset-0 z-[100] bg-black/80 flex items-center justify-center p-4">
+          <div className="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-auto">
+            <InvoicePrintLayout 
+              sale={sale} 
+              onClose={() => setShowPrintLayout(false)}
+            />
+          </div>
+        </div>
+      )}
     </>
   );
 };

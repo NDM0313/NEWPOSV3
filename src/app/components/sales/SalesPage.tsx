@@ -103,9 +103,9 @@ export const SalesPage = () => {
         break;
         
       case 'print_invoice':
-        // Print invoice
-        window.print();
-        toast.success('Print dialog opened');
+        // Print invoice - opens print layout in ViewSaleDetailsDrawer
+        setViewDetailsOpen(true);
+        toast.success('Opening invoice for printing');
         break;
         
       case 'receive_payment':

@@ -2,6 +2,16 @@ import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { rentalService } from '@/app/services/rentalService';
 import { toast } from 'sonner';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "../ui/alert-dialog";
 import { 
   Search, 
   Calendar, 
@@ -94,6 +104,12 @@ export const RentalOrdersList = () => {
   // 🎯 Payment & Ledger States
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
   const [ledgerOpen, setLedgerOpen] = useState(false);
+  
+  // 🎯 Action Dialogs (TASK 4 FIX)
+  const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
+  const [extendDialogOpen, setExtendDialogOpen] = useState(false);
+  const [lateFeeDialogOpen, setLateFeeDialogOpen] = useState(false);
+  const [dispatchDialogOpen, setDispatchDialogOpen] = useState(false);
 
   // Search & Filter State
   const [searchQuery, setSearchQuery] = useState('');
@@ -172,6 +188,78 @@ export const RentalOrdersList = () => {
   useEffect(() => {
     loadRentals();
   }, [loadRentals]);
+
+  // Action Handlers (TASK 4 FIX - Complete implementation)
+  const handleDispatch = async () => {
+    if (!selectedOrder) return;
+    
+    try {
+      await rentalService.updateRental(selectedOrder.id, { status: 'picked_up' });
+      toast.success(`Order ${selectedOrder.id} dispatched successfully`);
+      setDispatchDialogOpen(false);
+      setSelectedOrder(null);
+      await loadRentals();
+    } catch (error: any) {
+      console.error('[RENTAL] Error dispatching:', error);
+      toast.error('Failed to dispatch order: ' + (error.message || 'Unknown error'));
+    }
+  };
+
+  const handleCancel = async () => {
+    if (!selectedOrder) return;
+    
+    try {
+      await rentalService.updateRental(selectedOrder.id, { status: 'cancelled' });
+      toast.success(`Order ${selectedOrder.id} cancelled successfully`);
+      setCancelDialogOpen(false);
+      setSelectedOrder(null);
+      await loadRentals();
+    } catch (error: any) {
+      console.error('[RENTAL] Error cancelling:', error);
+      toast.error('Failed to cancel order: ' + (error.message || 'Unknown error'));
+    }
+  };
+
+  const handleExtend = async (newReturnDate: string) => {
+    if (!selectedOrder) return;
+    
+    try {
+      const pickupDate = new Date(selectedOrder.pickupDate);
+      const returnDate = new Date(newReturnDate);
+      const durationDays = Math.ceil((returnDate.getTime() - pickupDate.getTime()) / (1000 * 60 * 60 * 24));
+      
+      await rentalService.updateRental(selectedOrder.id, { 
+        return_date: newReturnDate,
+        duration_days: durationDays
+      });
+      toast.success(`Return date extended to ${newReturnDate}`);
+      setExtendDialogOpen(false);
+      setSelectedOrder(null);
+      await loadRentals();
+    } catch (error: any) {
+      console.error('[RENTAL] Error extending date:', error);
+      toast.error('Failed to extend return date: ' + (error.message || 'Unknown error'));
+    }
+  };
+
+  const handleLateFee = async (feeAmount: number) => {
+    if (!selectedOrder) return;
+    
+    try {
+      const currentTotal = selectedOrder.rentalAmount;
+      await rentalService.updateRental(selectedOrder.id, { 
+        late_fee: feeAmount,
+        total_amount: currentTotal + feeAmount
+      });
+      toast.success(`Late fee of Rs. ${feeAmount} applied`);
+      setLateFeeDialogOpen(false);
+      setSelectedOrder(null);
+      await loadRentals();
+    } catch (error: any) {
+      console.error('[RENTAL] Error applying late fee:', error);
+      toast.error('Failed to apply late fee: ' + (error.message || 'Unknown error'));
+    }
+  };
 
   // Calculate dashboard stats
   const stats = useMemo(() => {
@@ -286,25 +374,20 @@ export const RentalOrdersList = () => {
         setLedgerOpen(true);
         break;
       case 'dispatch':
-        // Update status to dispatched
-        toast.info(`Dispatching order ${order.id}`);
-        // TODO: Implement dispatch logic
+        setDispatchDialogOpen(true);
         break;
       case 'document':
         toast.info(`Upload document for ${order.id}`);
         // TODO: Implement document upload
         break;
       case 'extend':
-        toast.info(`Extend return date for ${order.id}`);
-        // TODO: Implement extend date logic
+        setExtendDialogOpen(true);
         break;
       case 'latefee':
-        toast.info(`Apply late fee for ${order.id}`);
-        // TODO: Implement late fee logic
+        setLateFeeDialogOpen(true);
         break;
       case 'cancel':
-        toast.info(`Cancel booking ${order.id}`);
-        // TODO: Implement cancel logic with confirmation
+        setCancelDialogOpen(true);
         break;
       default:
         console.log('Unknown action:', action, order.id);
@@ -834,6 +917,132 @@ export const RentalOrdersList = () => {
           entityId={selectedOrder.id}
         />
       )}
+
+      {/* Cancel Dialog */}
+      <AlertDialog open={cancelDialogOpen} onOpenChange={setCancelDialogOpen}>
+        <AlertDialogContent className="bg-gray-900 border-gray-800 text-white">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Cancel Rental Booking</AlertDialogTitle>
+            <AlertDialogDescription className="text-gray-400">
+              Are you sure you want to cancel booking {selectedOrder?.id}? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="bg-gray-800 border-gray-700 text-white hover:bg-gray-700">
+              No, Keep Booking
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleCancel}
+              className="bg-red-600 hover:bg-red-700 text-white"
+            >
+              Yes, Cancel Booking
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Dispatch Dialog */}
+      <AlertDialog open={dispatchDialogOpen} onOpenChange={setDispatchDialogOpen}>
+        <AlertDialogContent className="bg-gray-900 border-gray-800 text-white">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Dispatch Rental Order</AlertDialogTitle>
+            <AlertDialogDescription className="text-gray-400">
+              Mark order {selectedOrder?.id} as dispatched? This will update the status to "Dispatched".
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="bg-gray-800 border-gray-700 text-white hover:bg-gray-700">
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDispatch}
+              className="bg-blue-600 hover:bg-blue-700 text-white"
+            >
+              Dispatch Order
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Extend Date Dialog */}
+      <AlertDialog open={extendDialogOpen} onOpenChange={setExtendDialogOpen}>
+        <AlertDialogContent className="bg-gray-900 border-gray-800 text-white">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Extend Return Date</AlertDialogTitle>
+            <AlertDialogDescription className="text-gray-400">
+              Extend return date for order {selectedOrder?.id}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="py-4">
+            <Label className="text-gray-300">New Return Date</Label>
+            <Input
+              type="date"
+              id="newReturnDate"
+              className="bg-gray-800 border-gray-700 text-white mt-2"
+              defaultValue={selectedOrder?.returnDate}
+              min={selectedOrder?.returnDate}
+            />
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="bg-gray-800 border-gray-700 text-white hover:bg-gray-700">
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                const input = document.getElementById('newReturnDate') as HTMLInputElement;
+                if (input?.value) {
+                  handleExtend(input.value);
+                }
+              }}
+              className="bg-blue-600 hover:bg-blue-700 text-white"
+            >
+              Extend Date
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Late Fee Dialog */}
+      <AlertDialog open={lateFeeDialogOpen} onOpenChange={setLateFeeDialogOpen}>
+        <AlertDialogContent className="bg-gray-900 border-gray-800 text-white">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Apply Late Fee</AlertDialogTitle>
+            <AlertDialogDescription className="text-gray-400">
+              Apply late fee for order {selectedOrder?.id}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="py-4">
+            <Label className="text-gray-300">Late Fee Amount (Rs.)</Label>
+            <Input
+              type="number"
+              id="lateFeeAmount"
+              className="bg-gray-800 border-gray-700 text-white mt-2"
+              placeholder="Enter late fee amount"
+              min="0"
+              step="0.01"
+            />
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="bg-gray-800 border-gray-700 text-white hover:bg-gray-700">
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                const input = document.getElementById('lateFeeAmount') as HTMLInputElement;
+                const amount = parseFloat(input?.value || '0');
+                if (amount > 0) {
+                  handleLateFee(amount);
+                } else {
+                  toast.error('Please enter a valid late fee amount');
+                }
+              }}
+              className="bg-yellow-600 hover:bg-yellow-700 text-white"
+            >
+              Apply Late Fee
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };

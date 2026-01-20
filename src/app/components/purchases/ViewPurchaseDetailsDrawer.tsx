@@ -1,11 +1,13 @@
 import React, { useEffect, useState } from 'react';
-import { X, ShoppingBag, DollarSign, Package, User, Calendar, FileText, Receipt, Truck, CheckCircle, Clock, XCircle } from 'lucide-react';
+import { X, ShoppingBag, DollarSign, Package, User, Calendar, FileText, Receipt, Truck, CheckCircle, Clock, XCircle, Printer } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
 import { ScrollArea } from '../ui/scroll-area';
 import { purchaseService } from '@/app/services/purchaseService';
 import { toast } from 'sonner';
 import { Loader2 } from 'lucide-react';
+import { PurchaseOrderPrintLayout } from '../shared/PurchaseOrderPrintLayout';
+import { usePurchases, Purchase as PurchaseContextPurchase } from '@/app/context/PurchaseContext';
 
 interface Purchase {
   id: number;
@@ -35,14 +37,22 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
   onClose,
   purchase,
 }) => {
+  const { getPurchaseById } = usePurchases();
   const [purchaseDetails, setPurchaseDetails] = useState<any>(null);
+  const [purchaseContextData, setPurchaseContextData] = useState<PurchaseContextPurchase | null>(null);
   const [loading, setLoading] = useState(false);
+  const [showPrintLayout, setShowPrintLayout] = useState(false);
 
   useEffect(() => {
     if (isOpen && purchase?.uuid) {
       loadPurchaseDetails();
+      // Also try to get from context
+      const contextPurchase = getPurchaseById(purchase.uuid);
+      if (contextPurchase) {
+        setPurchaseContextData(contextPurchase);
+      }
     }
-  }, [isOpen, purchase?.uuid]);
+  }, [isOpen, purchase?.uuid, getPurchaseById]);
 
   const loadPurchaseDetails = async () => {
     if (!purchase?.uuid) return;
@@ -101,14 +111,27 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
               <p className="text-xs text-gray-400">{purchase.poNo}</p>
             </div>
           </div>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={onClose}
-            className="text-gray-400 hover:text-white hover:bg-gray-800"
-          >
-            <X size={20} />
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-gray-400 hover:text-white hover:bg-gray-800"
+              onClick={() => {
+                setShowPrintLayout(true);
+              }}
+            >
+              <Printer size={16} className="mr-2" />
+              Print
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={onClose}
+              className="text-gray-400 hover:text-white hover:bg-gray-800"
+            >
+              <X size={20} />
+            </Button>
+          </div>
         </div>
 
         {/* Content */}
@@ -284,6 +307,18 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
           </Button>
         </div>
       </div>
+
+      {/* Print Layout Modal */}
+      {showPrintLayout && purchaseContextData && (
+        <div className="fixed inset-0 z-[100] bg-black/80 flex items-center justify-center p-4">
+          <div className="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-auto">
+            <PurchaseOrderPrintLayout 
+              purchase={purchaseContextData} 
+              onClose={() => setShowPrintLayout(false)}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 };

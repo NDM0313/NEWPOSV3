@@ -259,11 +259,13 @@ export const ExpensesList = () => {
   };
 
   const handleView = (expense: Expense) => {
-    console.log('View expense:', expense);
+    // TODO: Open expense detail drawer/modal
+    toast.info(`Viewing expense ${expense.referenceNo}`);
   };
 
   const handleEdit = (expense: Expense) => {
-    console.log('Edit expense:', expense);
+    // TODO: Open expense edit form
+    toast.info(`Editing expense ${expense.referenceNo}`);
   };
 
   const handleDelete = async (expense: Expense) => {
