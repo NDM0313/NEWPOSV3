@@ -120,6 +120,7 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const loadUserBranch = async (userId: string, companyId: string) => {
     try {
       // First, try to get user's default branch (table may not exist)
+      // Suppress 404 errors as this table is optional
       const { data: userBranch, error: branchError } = await supabase
         .from('user_branches')
         .select('branch_id')
@@ -136,8 +137,13 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       }
       
       // If error is 404 (Not Found) or 406 (Not Acceptable), table doesn't exist - skip silently
+      // Don't log these errors as they're expected when table doesn't exist
       if (branchError && (branchError.code === 'PGRST301' || branchError.code === 'PGRST116' || branchError.status === 404 || branchError.status === 406)) {
         // Table doesn't exist, continue to company branch lookup (silent)
+        // This is expected behavior - user_branches is optional
+      } else if (branchError) {
+        // Only log unexpected errors
+        console.warn('[BRANCH LOAD] Unexpected error (non-blocking):', branchError);
       }
 
       // If no default branch, get first branch for company
