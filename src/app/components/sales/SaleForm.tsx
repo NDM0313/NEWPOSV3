@@ -158,8 +158,11 @@ interface SaleFormProps {
 
 export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
     // Supabase & Context
-    const { companyId, branchId: contextBranchId } = useSupabase();
+    const { companyId, branchId: contextBranchId, user, userRole } = useSupabase();
     const { createSale } = useSales();
+    
+    // TASK 4 FIX - Check if user is admin
+    const isAdmin = userRole === 'admin' || userRole === 'Admin';
     
     // Data State
     const [customers, setCustomers] = useState<Array<{ id: number | string; name: string; dueBalance: number }>>([]);
@@ -240,10 +243,35 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
     const [discountType, setDiscountType] = useState<'percentage' | 'fixed'>('percentage');
     const [discountValue, setDiscountValue] = useState<number>(0);
 
-    // Salesman State (moved to header)
-    const [salesmanId, setSalesmanId] = useState<string>("1"); // Default to "No Salesman"
+    // Salesman State (moved to header) - TASK 4 FIX
+    // For normal users: auto-assign to logged-in user
+    // For admin: allow selection
+    const [salesmanId, setSalesmanId] = useState<string>(() => {
+      // TASK 4 FIX - Auto-assign to logged-in user if not admin
+      if (!isAdmin && user) {
+        // Find user in salesmen list or add them
+        const userSalesman = salesmen.find(s => s.name === user.email || s.name === (user.user_metadata?.full_name || ''));
+        return userSalesman ? userSalesman.id.toString() : "1"; // Default to "No Salesman" if not found
+      }
+      return "1"; // Default to "No Salesman" for admin
+    });
     const [commissionType, setCommissionType] = useState<'percentage' | 'fixed'>('percentage');
     const [commissionValue, setCommissionValue] = useState<number>(0);
+    
+    // TASK 4 FIX - Auto-assign salesman for normal users on mount
+    useEffect(() => {
+      if (!isAdmin && user && salesmanId === "1") {
+        // Try to find user in salesmen list
+        const userSalesman = salesmen.find(s => 
+          s.name === user.email || 
+          s.name === (user.user_metadata?.full_name || '') ||
+          s.name === (user.user_metadata?.name || '')
+        );
+        if (userSalesman) {
+          setSalesmanId(userSalesman.id.toString());
+        }
+      }
+    }, [isAdmin, user, salesmanId]);
 
     // Shipping State (Optional - enabled via checkbox)
     const [shippingEnabled, setShippingEnabled] = useState<boolean>(false);
@@ -890,9 +918,15 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                             </div>
 
                             <div className="flex flex-col">
-                                <Label className="text-green-500 font-medium text-xs uppercase tracking-wide h-[14px] mb-1.5">Salesman</Label>
-                                <Select value={salesmanId} onValueChange={setSalesmanId}>
-                                    <SelectTrigger className="bg-gray-950 border-gray-700 text-white h-10">
+                                <Label className="text-green-500 font-medium text-xs uppercase tracking-wide h-[14px] mb-1.5">
+                                    Salesman {!isAdmin && <span className="text-xs text-gray-500">(Auto-assigned)</span>}
+                                </Label>
+                                <Select 
+                                    value={salesmanId} 
+                                    onValueChange={setSalesmanId}
+                                    disabled={!isAdmin} // TASK 4 FIX - Disable for non-admin users
+                                >
+                                    <SelectTrigger className={`bg-gray-950 border-gray-700 text-white h-10 ${!isAdmin ? 'opacity-60 cursor-not-allowed' : ''}`}>
                                         <div className="flex items-center gap-2">
                                             <UserCheck size={14} className="text-gray-400 shrink-0" />
                                             <span className="truncate text-sm">{getSalesmanName()}</span>

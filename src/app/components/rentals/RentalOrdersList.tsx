@@ -184,10 +184,21 @@ export const RentalOrdersList = () => {
     }
   }, [companyId, branchId, convertFromSupabaseRental]);
 
-  // Load rentals on mount
+  // Load rentals on mount (TASK 1 FIX - Ensure data loads on mount)
   useEffect(() => {
-    loadRentals();
-  }, [loadRentals]);
+    if (companyId) {
+      loadRentals();
+    } else {
+      setLoading(false);
+    }
+  }, [companyId, loadRentals]);
+  
+  // TASK 1 FIX - Force reload if no data and not loading
+  useEffect(() => {
+    if (companyId && orders.length === 0 && !loading) {
+      loadRentals();
+    }
+  }, [companyId, orders.length, loading, loadRentals]);
 
   // Action Handlers (TASK 4 FIX - Complete implementation)
   const handleDispatch = async () => {

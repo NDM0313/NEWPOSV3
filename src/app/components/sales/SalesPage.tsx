@@ -56,6 +56,13 @@ export const SalesPage = () => {
   const [filterOpen, setFilterOpen] = useState(false);
   const [hoveredRow, setHoveredRow] = useState<string | null>(null);
   
+  // TASK 1 FIX - Ensure data loads on mount
+  useEffect(() => {
+    if (companyId && sales.length === 0 && !loading) {
+      refreshSales();
+    }
+  }, [companyId, sales.length, loading, refreshSales]);
+  
   // 🎯 Payment Dialog & Ledger states
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
   const [ledgerOpen, setLedgerOpen] = useState(false);

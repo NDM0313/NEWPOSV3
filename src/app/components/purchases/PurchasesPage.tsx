@@ -209,7 +209,7 @@ export const PurchasesPage = () => {
     }
   }, [companyId, branchId]);
 
-  // Sync context purchases to local state for filtering
+  // Sync context purchases to local state for filtering (TASK 1 FIX - Ensure data loads on mount)
   useEffect(() => {
     if (contextPurchases.length > 0) {
       const convertedPurchases: Purchase[] = contextPurchases.map((p: any, index: number) => ({
@@ -231,12 +231,20 @@ export const PurchasesPage = () => {
       setPurchases(convertedPurchases);
       setLoading(contextLoading);
     } else if (!contextLoading && companyId) {
-      // Fallback: load directly if context is empty
+      // Fallback: load directly if context is empty (TASK 1 FIX)
       loadPurchases();
     } else {
       setLoading(contextLoading);
     }
   }, [contextPurchases, contextLoading, companyId, loadPurchases]);
+
+  // TASK 1 FIX - Ensure initial load happens even if context is empty
+  useEffect(() => {
+    if (companyId && purchases.length === 0 && !loading && !contextLoading) {
+      // Force load if no data and not loading
+      loadPurchases();
+    }
+  }, [companyId, purchases.length, loading, contextLoading, loadPurchases]);
 
   // Columns configuration for Column Manager
   const columns = [
@@ -290,8 +298,8 @@ export const PurchasesPage = () => {
         // Add date filter logic here
       }
 
-      // Supplier filter
-      if (supplierFilter !== 'all' && purchase.supplier !== supplierFilter) return false;
+      // Supplier filter (TASK 2 FIX - "all" means no filter)
+      if (supplierFilter !== 'all' && purchase.supplier !== supplierFilter && purchase.uuid !== supplierFilter) return false;
 
       // Status filter
       if (statusFilter !== 'all' && purchase.status !== statusFilter) return false;

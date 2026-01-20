@@ -175,7 +175,7 @@ export const ContactsPage = () => {
     }
   }, [companyId, branchId, convertFromSupabaseContact]);
 
-  // Load contacts on mount
+  // Load contacts on mount (TASK 1 FIX - Ensure data loads on mount)
   useEffect(() => {
     if (companyId) {
       loadContacts();
@@ -183,6 +183,13 @@ export const ContactsPage = () => {
       setLoading(false);
     }
   }, [companyId, loadContacts]);
+  
+  // TASK 1 FIX - Force reload if no data and not loading
+  useEffect(() => {
+    if (companyId && contacts.length === 0 && !loading) {
+      loadContacts();
+    }
+  }, [companyId, contacts.length, loading, loadContacts]);
   
   // Filter states
   const [typeFilter, setTypeFilter] = useState<string[]>([]);
