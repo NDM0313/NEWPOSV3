@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { X, MoveHorizontal, MapPin, Calendar, FileText, Save, AlertCircle, ArrowRight } from 'lucide-react';
+import { toast } from 'sonner';
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
@@ -80,22 +81,22 @@ export const StockTransferDrawer: React.FC<StockTransferDrawerProps> = ({
     e.preventDefault();
     
     if (quantity <= 0) {
-      alert('Please enter a valid quantity');
+      toast.error('Please enter a valid quantity');
       return;
     }
 
     if (quantity > product.currentStock) {
-      alert('Cannot transfer more than current stock');
+      toast.error('Cannot transfer more than current stock');
       return;
     }
 
     if (sourceLocation === destinationLocation) {
-      alert('Source and destination locations must be different');
+      toast.error('Source and destination locations must be different');
       return;
     }
 
     if (!destinationLocation) {
-      alert('Please select a destination location');
+      toast.error('Please select a destination location');
       return;
     }
 

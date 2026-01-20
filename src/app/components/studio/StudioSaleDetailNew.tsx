@@ -179,170 +179,14 @@ interface StudioSaleDetail {
   fabricPurchaseCost: number;
 }
 
-// Mock data
-const mockSaleDetail: StudioSaleDetail = {
-  id: "1",
-  invoiceNo: "INV-2026-0015",
-  customerName: "Ayesha Khan",
-  customerPhone: "+92 300 1234567",
-  saleDate: "2026-01-03",
-  expectedDeliveryDate: "2026-01-20",
-  saleStatus: "In Progress",
-  
-  fabricName: "Silk Lawn - Red",
-  meters: 5,
-  fabricCost: 2500,
-  
-  productionSteps: [
-    {
-      id: "dyeing",
-      name: "Dyeing",
-      icon: Palette,
-      order: 1,
-      assignedWorker: "Ali Raza + 1 more",
-      workerId: "W001",
-      assignedWorkers: [
-        { id: "AW1", workerId: "W001", workerName: "Ali Raza", role: "Main Dyeing", cost: 2000 },
-        { id: "AW2", workerId: "W004", workerName: "Hassan Ali", role: "Assistant", cost: 800 }
-      ],
-      assignedDate: "2026-01-04",
-      expectedCompletionDate: "2026-01-08",
-      actualCompletionDate: "2026-01-07",
-      workerCost: 2800,
-      workerPaymentStatus: "Paid",
-      status: "Completed",
-      notes: "Deep red color - customer approved sample"
-    },
-    {
-      id: "handwork",
-      name: "Handwork / Embroidery",
-      icon: Sparkles,
-      order: 2,
-      assignedWorker: "Ahmed Hussain",
-      workerId: "W002",
-      assignedWorkers: [
-        { id: "AW3", workerId: "W002", workerName: "Ahmed Hussain", role: "Embroidery Expert", cost: 3500 }
-      ],
-      assignedDate: "2026-01-09",
-      expectedCompletionDate: "2026-01-15",
-      workerCost: 3500,
-      workerPaymentStatus: "Pending",
-      status: "In Progress",
-      notes: "Golden thread embroidery - border + dupatta"
-    },
-    {
-      id: "stitching",
-      name: "Stitching",
-      icon: Scissors,
-      order: 3,
-      assignedWorker: "",
-      assignedDate: "",
-      expectedCompletionDate: "",
-      workerCost: 0,
-      assignedWorkers: [],
-      status: "Pending",
-      notes: ""
-    },
-    {
-      id: "custom-1737158400000",
-      name: "Quality Check",
-      icon: MoreHorizontal,
-      order: 4,
-      assignedWorker: "",
-      assignedDate: "",
-      expectedCompletionDate: "",
-      workerCost: 0,
-      assignedWorkers: [],
-      status: "Pending",
-      notes: ""
-    }
-  ],
-  
-  accessories: [
-    {
-      id: "A1",
-      itemName: "Golden Lace (Border)",
-      quantity: 5,
-      unitCost: 100,
-      totalCost: 500,
-      dateAdded: "2026-01-05",
-      inventoryItemId: "INV-LACE-001"
-    },
-    {
-      id: "A2",
-      itemName: "Buttons - Pearl",
-      quantity: 12,
-      unitCost: 25,
-      totalCost: 300,
-      dateAdded: "2026-01-10",
-      inventoryItemId: "INV-BTN-002"
-    }
-  ],
-  
-  shipments: [
-    {
-      id: 'SHP-001',
-      shipmentType: 'Courier',
-      courierName: 'DHL Express',
-      shipmentStatus: 'Dispatched',
-      trackingId: 'DHL-987654321',
-      trackingUrl: 'https://www.dhl.com/pk-en/home/tracking.html?tracking-id=DHL-987654321',
-      trackingDocuments: [
-        {
-          id: 'DOC-001',
-          name: 'Shipping Label.pdf',
-          type: 'pdf',
-          url: '#',
-          uploadedAt: '2026-01-15T10:30:00'
-        }
-      ],
-      bookingDate: '2026-01-15',
-      expectedDeliveryDate: '2026-01-20',
-      actualCost: 1500,
-      chargedToCustomer: 2000,
-      currency: 'PKR',
-      notes: 'International shipment - Final DHL charges pending'
-    }
-  ],
-  
-  payments: [
-    {
-      id: 'PAY-001',
-      date: '2026-01-05',
-      amount: 5000,
-      method: 'Cash',
-      notes: 'Advance payment'
-    },
-    {
-      id: 'PAY-002',
-      date: '2026-01-10',
-      amount: 5000,
-      method: 'Bank Transfer',
-      reference: 'TXN-123456',
-      notes: 'Second installment'
-    }
-  ],
-  
-  baseAmount: 13000, // Fabric + Production + Accessories
-  shipmentCharges: 2000, // Customer charged for shipment
-  totalAmount: 15000, // 13000 + 2000
-  paidAmount: 10000,
-  balanceDue: 5000,
-  
-  fabricPurchaseCost: 2000
-};
-
-const mockWorkers: Worker[] = [
-  { id: 'W001', name: 'Ali Raza', department: 'Dyeing', phone: '+92 300 1111111', isActive: true },
-  { id: 'W002', name: 'Ahmed Hussain', department: 'Handwork', phone: '+92 301 2222222', isActive: true },
-  { id: 'W003', name: 'Fatima Bibi', department: 'Stitching', phone: '+92 302 3333333', isActive: true },
-];
+// Mock data removed - data is loaded from Supabase via loadStudioOrder()
 
 export const StudioSaleDetailNew = () => {
   const { setCurrentView, selectedStudioSaleId } = useNavigation();
   const { companyId } = useSupabase();
   const [saleDetail, setSaleDetail] = useState<StudioSaleDetail | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
+  const [workers, setWorkers] = useState<Worker[]>([]);
   const [editMode, setEditMode] = useState(false);
   const [showCostBreakdown, setShowCostBreakdown] = useState(false);
   const [showAccessoryModal, setShowAccessoryModal] = useState(false);
@@ -490,9 +334,31 @@ export const StudioSaleDetailNew = () => {
     }
   }, [selectedStudioSaleId, convertFromSupabaseOrder]);
 
+  // Load workers from Supabase
+  const loadWorkers = useCallback(async () => {
+    if (!companyId) return;
+    
+    try {
+      const workersData = await studioService.getAllWorkers(companyId);
+      // Convert to Worker interface format
+      const convertedWorkers: Worker[] = workersData.map((w: any) => ({
+        id: w.id,
+        name: w.name,
+        department: w.worker_type || 'General',
+        phone: w.phone || '',
+        isActive: w.is_active !== false
+      }));
+      setWorkers(convertedWorkers);
+    } catch (error) {
+      console.error('Error loading workers:', error);
+      setWorkers([]);
+    }
+  }, [companyId]);
+
   useEffect(() => {
     loadStudioOrder();
-  }, [loadStudioOrder]);
+    loadWorkers();
+  }, [loadStudioOrder, loadWorkers]);
 
   // Calculate costs
   const calculateInternalCosts = () => {
@@ -2185,14 +2051,14 @@ export const StudioSaleDetailNew = () => {
                                 <select
                                   value={worker.workerId}
                                   onChange={(e) => {
-                                    const selectedWorker = mockWorkers.find(w => w.id === e.target.value);
+                                    const selectedWorker = workers.find(w => w.id === e.target.value);
                                     handleUpdateWorker(worker.id, 'workerId', e.target.value);
                                     handleUpdateWorker(worker.id, 'workerName', selectedWorker?.name || '');
                                   }}
                                   className="w-full bg-gray-900 border border-gray-700 rounded-lg text-white text-sm h-9 px-2"
                                 >
                                   <option value="">Select...</option>
-                                  {mockWorkers.map(w => (
+                                  {workers.map(w => (
                                     <option key={w.id} value={w.id}>{w.name}</option>
                                   ))}
                                 </select>

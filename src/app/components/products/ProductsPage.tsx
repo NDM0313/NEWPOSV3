@@ -17,6 +17,8 @@ import {
 import { cn } from "@/app/components/ui/utils";
 import { useNavigation } from '@/app/context/NavigationContext';
 import { useSupabase } from '@/app/context/SupabaseContext';
+import { useSales } from '@/app/context/SalesContext';
+import { usePurchases } from '@/app/context/PurchaseContext';
 import { productService } from '@/app/services/productService';
 import { Pagination } from '@/app/components/ui/pagination';
 import { ImportProductsModal } from './ImportProductsModal';
@@ -62,6 +64,8 @@ interface Product {
 export const ProductsPage = () => {
   const { openDrawer } = useNavigation();
   const { companyId } = useSupabase();
+  const { sales } = useSales();
+  const { purchases } = usePurchases();
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -875,19 +879,37 @@ export const ProductsPage = () => {
       )}
 
       {/* Stock History Drawer */}
-      {selectedProduct && (
-        <ProductStockHistoryDrawer
-          isOpen={stockHistoryOpen}
-          onClose={() => {
-            setStockHistoryOpen(false);
-            setSelectedProduct(null);
-          }}
-          productName={selectedProduct.name}
-          totalSold={0} // TODO: Calculate from sales data
-          totalPurchased={0} // TODO: Calculate from purchase data
-          currentStock={selectedProduct.stock}
-        />
-      )}
+      {selectedProduct && (() => {
+        // Calculate total sold from sales items
+        const totalSold = sales.sales.reduce((total, sale) => {
+          const saleItems = sale.items || [];
+          return total + saleItems
+            .filter(item => item.productId === selectedProduct.uuid)
+            .reduce((sum, item) => sum + (item.quantity || 0), 0);
+        }, 0);
+
+        // Calculate total purchased from purchase items
+        const totalPurchased = purchases.purchases.reduce((total, purchase) => {
+          const purchaseItems = purchase.items || [];
+          return total + purchaseItems
+            .filter(item => item.productId === selectedProduct.uuid)
+            .reduce((sum, item) => sum + (item.quantity || 0), 0);
+        }, 0);
+
+        return (
+          <ProductStockHistoryDrawer
+            isOpen={stockHistoryOpen}
+            onClose={() => {
+              setStockHistoryOpen(false);
+              setSelectedProduct(null);
+            }}
+            productName={selectedProduct.name}
+            totalSold={totalSold}
+            totalPurchased={totalPurchased}
+            currentStock={selectedProduct.stock}
+          />
+        );
+      })()}
 
       {/* Adjust Price Dialog */}
       {selectedProduct && (

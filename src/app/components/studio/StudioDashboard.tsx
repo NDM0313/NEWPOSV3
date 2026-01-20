@@ -26,8 +26,9 @@ import {
     AlertTriangle
 } from 'lucide-react';
 
-// Mock data
-const productionJobs = [
+// Mock data removed - loading from Supabase via studioService
+// Legacy mock data structure kept for reference only
+const _legacyProductionJobs = [
     {
         id: 'JC-001',
         saleNumber: 'SALE-2547',
@@ -238,22 +239,87 @@ const productionJobs = [
     }
 ];
 
-const statusCards = [
-    { title: 'Dyeing (Dahair)', count: 1, icon: Palette, color: 'purple', status: 'dyeing' },
-    { title: 'Handwork', count: 1, icon: Sparkles, color: 'pink', status: 'handwork' },
-    { title: 'Stitching (Tailor)', count: 1, icon: Scissors, color: 'blue', status: 'stitching' },
-    { title: 'Completed', count: 1, icon: CheckCircle, color: 'green', status: 'completed' }
-];
+    // Calculate status counts from real data
+    const statusCards = [
+        { title: 'Dyeing (Dahair)', count: productionJobs.filter(j => j.status === 'dyeing').length, icon: Palette, color: 'purple', status: 'dyeing' },
+        { title: 'Handwork', count: productionJobs.filter(j => j.status === 'handwork').length, icon: Sparkles, color: 'pink', status: 'handwork' },
+        { title: 'Stitching (Tailor)', count: productionJobs.filter(j => j.status === 'stitching').length, icon: Scissors, color: 'blue', status: 'stitching' },
+        { title: 'Completed', count: productionJobs.filter(j => j.status === 'completed').length, icon: CheckCircle, color: 'green', status: 'completed' }
+    ];
 
 export function StudioDashboard() {
+    const { companyId, branchId } = useSupabase();
     const [selectedJob, setSelectedJob] = useState<string | null>(null);
     const [filterStatus, setFilterStatus] = useState<string>('all');
+    const [productionJobs, setProductionJobs] = useState<any[]>([]);
+    const [loading, setLoading] = useState(true);
+
+    // Load production jobs from Supabase
+    const loadProductionJobs = useCallback(async () => {
+        if (!companyId) {
+            setLoading(false);
+            return;
+        }
+
+        try {
+            setLoading(true);
+            const orders = await studioService.getAllStudioOrders(companyId, branchId || undefined);
+            
+            // Convert to production jobs format
+            const jobs = orders.map(order => {
+                const jobCards = order.job_cards || [];
+                const activeJob = jobCards.find((jc: any) => jc.status === 'in_progress');
+                const status = activeJob ? activeJob.task_type : 
+                              (order.status === 'completed' ? 'completed' : 
+                              (order.status === 'pending' ? 'pending' : 'dyeing'));
+                
+                return {
+                    id: order.id,
+                    saleNumber: order.order_no || `ORD-${order.id?.slice(0, 8)}`,
+                    customer: order.customer_name || 'Unknown',
+                    fabricType: order.items?.[0]?.item_description || 'N/A',
+                    status,
+                    progress: order.status === 'completed' ? 100 : 
+                             (order.status === 'in_progress' ? 50 : 0),
+                    deadline: order.delivery_date || '',
+                    priority: 'normal',
+                    branchId: order.branch_id,
+                    branchName: '',
+                    createdAt: order.order_date,
+                    daysInStage: 0,
+                    stages: {}
+                };
+            });
+            
+            setProductionJobs(jobs);
+        } catch (error) {
+            console.error('[STUDIO DASHBOARD] Error loading production jobs:', error);
+            toast.error('Failed to load production jobs');
+            setProductionJobs([]);
+        } finally {
+            setLoading(false);
+        }
+    }, [companyId, branchId]);
+
+    useEffect(() => {
+        loadProductionJobs();
+    }, [loadProductionJobs]);
 
     const filteredJobs = filterStatus === 'all' 
         ? productionJobs 
         : productionJobs.filter(j => j.status === filterStatus);
 
     const selectedJobData = productionJobs.find(j => j.id === selectedJob);
+
+    if (loading) {
+        return (
+            <div className="min-h-screen bg-gray-950 text-white p-6 flex items-center justify-center">
+                <div className="text-center">
+                    <div className="text-lg text-gray-400">Loading production jobs...</div>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className="min-h-screen bg-gray-950 text-white p-6 space-y-6">

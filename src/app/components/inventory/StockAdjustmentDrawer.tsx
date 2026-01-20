@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { X, Plus, Minus, AlertCircle, Calendar, FileText, Save } from 'lucide-react';
+import { toast } from 'sonner';
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
@@ -72,12 +73,12 @@ export const StockAdjustmentDrawer: React.FC<StockAdjustmentDrawerProps> = ({
     e.preventDefault();
     
     if (quantity <= 0) {
-      alert('Please enter a valid quantity');
+      toast.error('Please enter a valid quantity');
       return;
     }
 
     if (type === 'subtract' && quantity > product.currentStock) {
-      alert('Cannot subtract more than current stock');
+      toast.error('Cannot subtract more than current stock');
       return;
     }
 

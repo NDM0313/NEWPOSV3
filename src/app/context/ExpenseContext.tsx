@@ -211,6 +211,20 @@ export const ExpenseProvider = ({ children }: { children: ReactNode }) => {
       // Update local state
       setExpenses(prev => [newExpense, ...prev]);
 
+      // Auto-post to accounting if paid
+      if (newExpense.status === 'paid') {
+        accounting.recordExpense({
+          expenseId: newExpense.id,
+          expenseNo: newExpense.expenseNo,
+          category: newExpense.category,
+          amount: newExpense.amount,
+          paymentMethod: newExpense.paymentMethod,
+          payeeName: newExpense.payeeName,
+          date: newExpense.date,
+          description: newExpense.description,
+        });
+      }
+
       toast.success(`Expense ${expenseNo} created successfully!`);
       
       return newExpense;

@@ -57,84 +57,7 @@ interface Purchase {
   addedBy: string;
 }
 
-// Mock Data
-const mockPurchases: Purchase[] = [
-  { 
-    id: 1, 
-    poNo: 'PO-001', 
-    supplier: 'Bilal Fabrics',
-    supplierContact: '+92-300-1234567',
-    date: '2024-01-15', 
-    reference: 'REF-001',
-    location: 'Main Branch (HQ)',
-    items: 24, 
-    grandTotal: 15000, 
-    paymentDue: 5000,
-    status: 'received',
-    paymentStatus: 'partial',
-    addedBy: 'Ahmad Khan'
-  },
-  { 
-    id: 2, 
-    poNo: 'PO-002', 
-    supplier: 'ChenOne',
-    supplierContact: '+92-42-111-222',
-    date: '2024-01-14', 
-    reference: 'REF-002',
-    location: 'Warehouse',
-    items: 50, 
-    grandTotal: 120000, 
-    paymentDue: 120000,
-    status: 'received',
-    paymentStatus: 'unpaid',
-    addedBy: 'Sara Ali'
-  },
-  { 
-    id: 3, 
-    poNo: 'PO-003', 
-    supplier: 'Sapphire Mills',
-    supplierContact: '+92-300-9876543',
-    date: '2024-01-13', 
-    reference: 'REF-003',
-    location: 'Main Branch (HQ)',
-    items: 12, 
-    grandTotal: 45000, 
-    paymentDue: 45000,
-    status: 'ordered',
-    paymentStatus: 'unpaid',
-    addedBy: 'Bilal Ahmed'
-  },
-  { 
-    id: 4, 
-    poNo: 'PO-004', 
-    supplier: 'Premium Fabrics Ltd',
-    supplierContact: '+92-321-5555555',
-    date: '2024-01-12', 
-    reference: 'REF-004',
-    location: 'Mall Outlet',
-    items: 30, 
-    grandTotal: 85000, 
-    paymentDue: 0,
-    status: 'received',
-    paymentStatus: 'paid',
-    addedBy: 'Ahmad Khan'
-  },
-  { 
-    id: 5, 
-    poNo: 'PO-005', 
-    supplier: 'Local Supplier',
-    supplierContact: '+92-333-7777777',
-    date: '2024-01-11', 
-    reference: '',
-    location: 'Warehouse',
-    items: 18, 
-    grandTotal: 32000, 
-    paymentDue: 15000,
-    status: 'received',
-    paymentStatus: 'partial',
-    addedBy: 'Sara Ali'
-  },
-];
+// Mock data removed - using purchaseService which loads from Supabase
 
 export const PurchasesPage = () => {
   const { openDrawer } = useNavigation();
@@ -149,6 +72,20 @@ export const PurchasesPage = () => {
   // Filter states
   const [dateFilter, setDateFilter] = useState('all');
   const [supplierFilter, setSupplierFilter] = useState('all');
+
+  // Check for supplier filter from ContactsPage
+  useEffect(() => {
+    const supplierId = sessionStorage.getItem('purchasesFilter_supplierId');
+    const supplierName = sessionStorage.getItem('purchasesFilter_supplierName');
+    if (supplierId) {
+      setSupplierFilter(supplierId);
+      sessionStorage.removeItem('purchasesFilter_supplierId');
+      sessionStorage.removeItem('purchasesFilter_supplierName');
+      if (supplierName) {
+        toast.info(`Filtering purchases for ${supplierName}`);
+      }
+    }
+  }, []);
   const [statusFilter, setStatusFilter] = useState<'all' | PurchaseStatus>('all');
   const [paymentStatusFilter, setPaymentStatusFilter] = useState<'all' | PaymentStatus>('all');
   const [branchFilter, setBranchFilter] = useState('all');
@@ -297,9 +234,23 @@ export const PurchasesPage = () => {
     setVisibleColumns(prev => ({ ...prev, [key]: !prev[key as keyof typeof visibleColumns] }));
   };
 
+  // Filter data by date range
+  const filterByDateRange = useCallback((dateStr: string | undefined): boolean => {
+    if (!startDate && !endDate) return true;
+    if (!dateStr) return false;
+    
+    const date = new Date(dateStr);
+    if (startDate && date < new Date(startDate)) return false;
+    if (endDate && date > new Date(endDate + 'T23:59:59')) return false;
+    return true;
+  }, [startDate, endDate]);
+
   // Filtered purchases
   const filteredPurchases = useMemo(() => {
     return purchases.filter(purchase => {
+      // Date range filter (from global date range context)
+      if (!filterByDateRange(purchase.date)) return false;
+
       // Search filter
       if (searchTerm) {
         const search = searchTerm.toLowerCase();
@@ -311,7 +262,7 @@ export const PurchasesPage = () => {
         if (!matchesSearch) return false;
       }
 
-      // Date filter
+      // Date filter (local filter - can be removed if using global date range only)
       if (dateFilter !== 'all') {
         // Add date filter logic here
       }

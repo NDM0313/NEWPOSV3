@@ -89,24 +89,41 @@ export const studioService = {
 
   // Get all studio orders
   async getAllStudioOrders(companyId: string, branchId?: string) {
-    let query = supabase
-      .from('studio_orders')
-      .select(`
-        *,
-        customer:contacts(name, phone),
-        items:studio_order_items(*),
-        created_by:users(full_name)
-      `)
-      .eq('company_id', companyId)
-      .order('order_date', { ascending: false });
+    // Handle missing table gracefully
+    try {
+      let query = supabase
+        .from('studio_orders')
+        .select(`
+          *,
+          customer:contacts(name, phone),
+          items:studio_order_items(*),
+          created_by:users(full_name)
+        `)
+        .eq('company_id', companyId)
+        .order('order_date', { ascending: false });
 
-    if (branchId) {
-      query = query.eq('branch_id', branchId);
+      if (branchId) {
+        query = query.eq('branch_id', branchId);
+      }
+
+      const { data, error } = await query;
+      
+      // If table doesn't exist (PGRST205), return empty array
+      if (error && (error.code === 'PGRST205' || error.message?.includes('Could not find the table'))) {
+        console.warn('[STUDIO SERVICE] studio_orders table not found, returning empty array');
+        return [];
+      }
+      
+      if (error) throw error;
+      return data || [];
+    } catch (error: any) {
+      // If table doesn't exist, return empty array instead of throwing
+      if (error?.code === 'PGRST205' || error?.message?.includes('Could not find the table')) {
+        console.warn('[STUDIO SERVICE] studio_orders table not found, returning empty array');
+        return [];
+      }
+      throw error;
     }
-
-    const { data, error } = await query;
-    if (error) throw error;
-    return data;
   },
 
   // Get single studio order
@@ -155,15 +172,31 @@ export const studioService = {
 
   // Get workers
   async getAllWorkers(companyId: string) {
-    const { data, error } = await supabase
-      .from('workers')
-      .select('*')
-      .eq('company_id', companyId)
-      .eq('is_active', true)
-      .order('name');
+    // Handle missing table gracefully
+    try {
+      const { data, error } = await supabase
+        .from('workers')
+        .select('*')
+        .eq('company_id', companyId)
+        .eq('is_active', true)
+        .order('name');
 
-    if (error) throw error;
-    return data;
+      // If table doesn't exist (PGRST205), return empty array
+      if (error && (error.code === 'PGRST205' || error.message?.includes('Could not find the table'))) {
+        console.warn('[STUDIO SERVICE] workers table not found, returning empty array');
+        return [];
+      }
+
+      if (error) throw error;
+      return data || [];
+    } catch (error: any) {
+      // If table doesn't exist, return empty array instead of throwing
+      if (error?.code === 'PGRST205' || error?.message?.includes('Could not find the table')) {
+        console.warn('[STUDIO SERVICE] workers table not found, returning empty array');
+        return [];
+      }
+      throw error;
+    }
   },
 
   // Create worker

@@ -65,94 +65,58 @@ export const businessService = {
 
       const userId = authUser.user.id;
 
-      // Step 2: Create company
-      const { data: company, error: companyError } = await supabaseAdmin
-        .from('companies')
-        .insert({
-          name: data.businessName,
-          email: data.email,
-          is_active: true,
-        })
-        .select()
-        .single();
+      // Step 2: Use database transaction function to create company, branch, and user
+      // This ensures all-or-nothing: if any step fails, everything rolls back
+      const { data: transactionResult, error: transactionError } = await supabaseAdmin
+        .rpc('create_business_transaction', {
+          p_business_name: data.businessName,
+          p_owner_name: data.ownerName,
+          p_email: data.email,
+          p_user_id: userId,
+        });
 
-      if (companyError || !company) {
+      if (transactionError) {
         // Rollback: Delete auth user
         await supabaseAdmin.auth.admin.deleteUser(userId);
         return {
           success: false,
-          error: companyError?.message || 'Failed to create company',
+          error: transactionError.message || 'Failed to create business in database',
         };
       }
 
-      const companyId = company.id;
+      // Parse transaction result
+      const result = transactionResult as any;
+      
+      if (!result || !result.success) {
+        // Rollback: Delete auth user
+        await supabaseAdmin.auth.admin.deleteUser(userId);
+        return {
+          success: false,
+          error: result?.error || 'Failed to create business in database',
+        };
+      }
 
-      // Step 3: Create default branch
-      const { data: branch, error: branchError } = await supabaseAdmin
-        .from('branches')
-        .insert({
-          company_id: companyId,
-          name: 'Main Branch',
-          code: 'HQ',
-          is_active: true,
-        })
-        .select()
+      // Verify data was actually created in database
+      const { data: verifyCompany, error: verifyError } = await supabaseAdmin
+        .from('companies')
+        .select('id, name, email')
+        .eq('id', result.companyId)
         .single();
 
-      if (branchError || !branch) {
-        // Rollback: Delete company and auth user
-        await supabaseAdmin.from('companies').delete().eq('id', companyId);
+      if (verifyError || !verifyCompany) {
+        // Data not found - transaction may have failed silently
         await supabaseAdmin.auth.admin.deleteUser(userId);
         return {
           success: false,
-          error: branchError?.message || 'Failed to create branch',
+          error: 'Business created but verification failed. Please try again.',
         };
-      }
-
-      const branchId = branch.id;
-
-      // Step 4: Create user entry in public.users
-      const { error: userError } = await supabaseAdmin
-        .from('users')
-        .insert({
-          id: userId,
-          company_id: companyId,
-          email: data.email,
-          full_name: data.ownerName,
-          role: 'admin',
-          is_active: true,
-        });
-
-      if (userError) {
-        // Rollback: Delete branch, company, and auth user
-        await supabaseAdmin.from('branches').delete().eq('id', branchId);
-        await supabaseAdmin.from('companies').delete().eq('id', companyId);
-        await supabaseAdmin.auth.admin.deleteUser(userId);
-        return {
-          success: false,
-          error: userError.message || 'Failed to create user entry',
-        };
-      }
-
-      // Step 5: Link user to branch
-      const { error: userBranchError } = await supabaseAdmin
-        .from('user_branches')
-        .insert({
-          user_id: userId,
-          branch_id: branchId,
-          is_default: true,
-        });
-
-      if (userBranchError) {
-        // Non-critical - log but don't fail
-        console.warn('Failed to link user to branch:', userBranchError);
       }
 
       return {
         success: true,
-        userId,
-        companyId,
-        branchId,
+        userId: result.userId,
+        companyId: result.companyId,
+        branchId: result.branchId,
       };
     } catch (error: any) {
       return {

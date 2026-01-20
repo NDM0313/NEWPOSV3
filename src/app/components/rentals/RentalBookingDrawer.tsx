@@ -1,6 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { rentalService } from '@/app/services/rentalService';
+import { productService } from '@/app/services/productService';
+import { contactService } from '@/app/services/contactService';
 import { 
   Calendar as CalendarIcon, 
   Search, 
@@ -62,75 +64,7 @@ import {
   generateRentalInvoice
 } from '@/app/utils/rentalUtils';
 
-// --- NEW ROBUST MOCK DATA ---
-export const demoProducts = [
-  {
-    id: "P-101",
-    name: "Red Bridal Baraat Lehenga (Handwork)",
-    sku: "BRD-RED-001",
-    category: "Bridal",
-    brand: "Sana Safinaz",
-    image: "https://images.unsplash.com/photo-1595777457583-95e059d581b8?auto=format&fit=crop&w=200", 
-    isSellable: true,
-    isRentable: true,
-    sellingPrice: 150000,
-    rentalPrice: 35000,
-    securityDeposit: 10000,
-    status: "AVAILABLE",
-    stock: 1
-  },
-  {
-    id: "P-102",
-    name: "Gul Ahmed 3-Pc Lawn Suit (Unstitched)",
-    sku: "LWN-SUM-2025",
-    category: "Unstitched",
-    brand: "Gul Ahmed",
-    image: "https://images.unsplash.com/photo-1617112036732-47c3edae80ee?auto=format&fit=crop&w=200", 
-    isSellable: true,
-    isRentable: false, // Retail Only
-    sellingPrice: 4500,
-    rentalPrice: null, // Logic Test: System should prompt for Manual Price
-    securityDeposit: null,
-    status: "AVAILABLE",
-    stock: 50
-  },
-  {
-    id: "P-103",
-    name: "Groom Golden Sherwani (Premium)",
-    sku: "SHR-GLD-099",
-    category: "Groom Wear",
-    brand: "J. Junaid Jamshed",
-    image: "https://images.unsplash.com/photo-1596462502278-27bfdd403ea6?auto=format&fit=crop&w=200", 
-    isSellable: true,
-    isRentable: true,
-    sellingPrice: 65000,
-    rentalPrice: 12000,
-    securityDeposit: 5000,
-    status: "AVAILABLE",
-    stock: 2
-  },
-  {
-    id: "P-104",
-    name: "Silver Zircon Jewelry Set",
-    sku: "JWL-SIL-005",
-    category: "Accessories",
-    brand: "Local",
-    image: "https://images.unsplash.com/photo-1515562141207-7a88fb7ce338?auto=format&fit=crop&w=200", 
-    isSellable: false,
-    isRentable: true,
-    sellingPrice: 0,
-    rentalPrice: 5000,
-    securityDeposit: 15000,
-    status: "RENTED_OUT", // Logic Test: Should show as Unavailable
-    stock: 0
-  }
-];
-
-const customers = [
-    { id: 1, name: "Walk-in Customer" },
-    { id: 2, name: "Sarah Khan" },
-    { id: 3, name: "Fatima Ali" },
-  ];
+// Mock data removed - loading from Supabase via productService and contactService
 
 // Existing bookings will be loaded from Supabase
 
@@ -204,11 +138,13 @@ export const RentalBookingDrawer = ({ isOpen, onClose }: RentalBookingDrawerProp
   const [returnDate, setReturnDate] = useState<Date | undefined>(addDays(new Date(), 3));
   const [rentalStatus, setRentalStatus] = useState("booked");
 
-  const [selectedCustomer, setSelectedCustomer] = useState<string>("1");
+  const [selectedCustomer, setSelectedCustomer] = useState<string>("");
   const [customerSearchOpen, setCustomerSearchOpen] = useState(false);
   const [isQuickContactOpen, setIsQuickContactOpen] = useState(false);
   const [customerSearchTerm, setCustomerSearchTerm] = useState("");
-  const [customerList, setCustomerList] = useState(customers);
+  const [customerList, setCustomerList] = useState<Array<{id: string; name: string}>>([]);
+  const [products, setProducts] = useState<any[]>([]);
+  const [loadingProducts, setLoadingProducts] = useState(false);
 
   // Cart State
   const [selectedProduct, setSelectedProduct] = useState<SearchProduct | null>(null);
@@ -221,30 +157,68 @@ export const RentalBookingDrawer = ({ isOpen, onClose }: RentalBookingDrawerProp
   // Return Modal State
   const [showReturnModal, setShowReturnModal] = useState(false);
 
+  // Load products and customers from Supabase
+  const loadData = useCallback(async () => {
+    if (!companyId) return;
+
+    try {
+      setLoadingProducts(true);
+      
+      // Load products
+      const productsData = await productService.getAllProducts(companyId);
+      setProducts(productsData);
+
+      // Load customers
+      const contactsData = await contactService.getAllContacts(companyId);
+      const customersList = [
+        { id: 'walk-in', name: 'Walk-in Customer' },
+        ...contactsData.map(c => ({ id: c.id || '', name: c.name || '' }))
+      ];
+      setCustomerList(customersList);
+    } catch (error) {
+      console.error('[RENTAL BOOKING DRAWER] Error loading data:', error);
+      setProducts([]);
+      setCustomerList([{ id: 'walk-in', name: 'Walk-in Customer' }]);
+    } finally {
+      setLoadingProducts(false);
+    }
+  }, [companyId]);
+
+  useEffect(() => {
+    if (isOpen && companyId) {
+      loadData();
+    }
+  }, [isOpen, companyId, loadData]);
+
   // --- DATA MAPPING LOGIC ---
-  const mappedProducts: SearchProduct[] = demoProducts.map(p => {
+  const mappedProducts: SearchProduct[] = products.map(p => {
     let status: SearchProduct['status'] = 'available';
     let unavailableReason = undefined;
 
-    if (p.status === 'RENTED_OUT') {
-        status = 'unavailable';
-        unavailableReason = 'Rented Out';
-    } else if (!p.isRentable && p.isSellable) {
+    // Check if product is rentable
+    const isRentable = p.is_rentable !== false;
+    const isSellable = p.is_sellable !== false;
+    const currentStock = p.current_stock || 0;
+
+    if (!isRentable && isSellable) {
         status = 'retail_only';
+    } else if (currentStock <= 0) {
+        status = 'unavailable';
+        unavailableReason = 'Out of Stock';
     }
 
     return {
-        id: p.id,
-        name: p.name,
-        sku: p.sku,
-        image: p.image,
+        id: p.id || '',
+        name: p.name || '',
+        sku: p.sku || '',
+        image: p.image_url || '',
         status,
         unavailableReason,
-        rentPrice: p.rentalPrice,
-        retailPrice: p.sellingPrice,
-        category: p.category,
-        brand: p.brand,
-        securityDeposit: p.securityDeposit
+        rentPrice: p.rental_price_daily || 0,
+        retailPrice: p.retail_price || 0,
+        category: p.category?.name || '',
+        brand: '',
+        securityDeposit: 0 // TODO: Add security deposit field to products table
     };
   });
 

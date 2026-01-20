@@ -3,17 +3,12 @@ import { supabase } from '@/lib/supabase';
 export interface JournalEntry {
   id?: string;
   company_id: string;
-  branch_id: string;
+  branch_id?: string;
   entry_no: string;
   entry_date: string;
   description: string;
   reference_type?: string; // 'sale', 'purchase', 'expense', 'rental', 'manual'
   reference_id?: string;
-  total_debit: number;
-  total_credit: number;
-  is_posted?: boolean;
-  posted_at?: string;
-  is_manual?: boolean;
   created_by?: string;
   created_at?: string;
   updated_at?: string;
@@ -23,7 +18,6 @@ export interface JournalEntryLine {
   id?: string;
   journal_entry_id: string;
   account_id: string;
-  account_name: string;
   debit: number;
   credit: number;
   description?: string;
@@ -119,23 +113,31 @@ export const accountingService = {
       throw new Error(`Double-entry validation failed: Debit (${totalDebit}) must equal Credit (${totalCredit})`);
     }
 
-    // Create journal entry
+    // Create journal entry (database doesn't have total_debit/total_credit columns)
     const { data: entryData, error: entryError } = await supabase
       .from('journal_entries')
       .insert({
-        ...entry,
-        total_debit: totalDebit,
-        total_credit: totalCredit,
+        company_id: entry.company_id,
+        branch_id: entry.branch_id,
+        entry_no: entry.entry_no,
+        entry_date: entry.entry_date,
+        description: entry.description,
+        reference_type: entry.reference_type,
+        reference_id: entry.reference_id,
+        created_by: entry.created_by,
       })
       .select()
       .single();
 
     if (entryError) throw entryError;
 
-    // Create journal entry lines
+    // Create journal entry lines (database doesn't have account_name column)
     const linesWithEntryId = lines.map(line => ({
-      ...line,
       journal_entry_id: entryData.id,
+      account_id: line.account_id,
+      debit: line.debit || 0,
+      credit: line.credit || 0,
+      description: line.description || null,
     }));
 
     const { error: linesError } = await supabase
@@ -163,19 +165,19 @@ export const accountingService = {
         throw new Error(`Double-entry validation failed: Debit (${totalDebit}) must equal Credit (${totalCredit})`);
       }
 
-      entry.total_debit = totalDebit;
-      entry.total_credit = totalCredit;
-
       // Delete existing lines
       await supabase
         .from('journal_entry_lines')
         .delete()
         .eq('journal_entry_id', id);
 
-      // Insert new lines
+      // Insert new lines (without account_name)
       const linesWithEntryId = lines.map(line => ({
-        ...line,
         journal_entry_id: id,
+        account_id: line.account_id,
+        debit: line.debit || 0,
+        credit: line.credit || 0,
+        description: line.description || null,
       }));
 
       const { error: linesError } = await supabase
@@ -185,10 +187,16 @@ export const accountingService = {
       if (linesError) throw linesError;
     }
 
-    // Update entry
+    // Update entry (without total_debit/total_credit)
     const { data, error } = await supabase
       .from('journal_entries')
-      .update(entry)
+      .update({
+        entry_no: entry.entry_no,
+        entry_date: entry.entry_date,
+        description: entry.description,
+        reference_type: entry.reference_type,
+        reference_id: entry.reference_id,
+      })
       .eq('id', id)
       .select()
       .single();

@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
-import { Lock, Mail, AlertCircle, Building2 } from 'lucide-react';
+import { Lock, Mail, AlertCircle, Building2, User } from 'lucide-react';
 import { CreateBusinessForm } from './CreateBusinessForm';
 
 export const LoginPage: React.FC = () => {
@@ -55,6 +55,40 @@ export const LoginPage: React.FC = () => {
     } else {
       setError('Business created but login failed. Please login manually.');
       setCreateBusinessSuccess(false);
+    }
+  };
+
+  const handleDemoLogin = async () => {
+    setLoading(true);
+    setError('');
+    
+    // Demo credentials (from demo company)
+    const demoEmail = 'demo@dincollection.com';
+    const demoPassword = 'demo123';
+    
+    // Auto-fill form fields (for visual feedback)
+    setEmail(demoEmail);
+    setPassword(demoPassword);
+    
+    // Attempt login
+    const { data, error: signInError } = await signIn(demoEmail, demoPassword);
+    
+    if (signInError) {
+      let errorMessage = signInError.message;
+      if (signInError.message.includes('Invalid login credentials')) {
+        errorMessage = 'Demo account not found. Please contact administrator to set up demo account.';
+      } else if (signInError.message.includes('Email not confirmed')) {
+        errorMessage = 'Demo account email not confirmed. Please contact administrator.';
+      } else if (signInError.message.includes('User not found')) {
+        errorMessage = 'Demo account does not exist. Please contact administrator.';
+      }
+      setError(errorMessage);
+      setLoading(false);
+    } else if (data?.user) {
+      // Success - reload page to trigger ProtectedRoute re-evaluation
+      setTimeout(() => {
+        window.location.reload();
+      }, 500);
     }
   };
 
@@ -148,6 +182,20 @@ export const LoginPage: React.FC = () => {
             <span className="px-4 text-sm text-gray-400">OR</span>
             <div className="flex-1 border-t border-gray-700"></div>
           </div>
+
+          {/* Demo Login Button */}
+          <Button
+            type="button"
+            onClick={handleDemoLogin}
+            disabled={loading}
+            className="w-full bg-purple-600 hover:bg-purple-700 text-white h-12 text-base font-semibold flex items-center justify-center gap-2 mb-3"
+          >
+            <User size={18} />
+            {loading ? 'Logging in...' : 'Demo Login (Admin)'}
+          </Button>
+          <p className="text-xs text-gray-400 text-center mb-4">
+            Quick access with demo admin account
+          </p>
 
           {/* Create Business Button */}
           <Button

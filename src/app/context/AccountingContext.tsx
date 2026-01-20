@@ -444,34 +444,28 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
         return false;
       }
 
-      // Create journal entry
-      const journalEntry: any = {
+      // Create journal entry (matching database schema)
+      const journalEntry: JournalEntry = {
         company_id: companyId,
-        branch_id: branchId,
+        branch_id: branchId || undefined,
         entry_no: entryNo,
         entry_date: entryDate,
         description: entry.description,
         reference_type: entry.source.toLowerCase(),
-        reference_id: entry.metadata?.invoiceId || entry.metadata?.purchaseId || entry.metadata?.expenseId || null,
-        total_debit: entry.amount,
-        total_credit: entry.amount,
-        is_posted: true,
-        is_manual: entry.source === 'Manual',
-        created_by: currentUserId || null,
+        reference_id: entry.metadata?.invoiceId || entry.metadata?.purchaseId || entry.metadata?.expenseId || undefined,
+        created_by: currentUserId || undefined,
       };
 
-      // Create journal entry lines
+      // Create journal entry lines (matching database schema - no account_name)
       const lines: JournalEntryLine[] = [
         {
           account_id: debitAccountObj.id,
-          account_name: entry.debitAccount,
           debit: entry.amount,
           credit: 0,
           description: entry.description,
         },
         {
           account_id: creditAccountObj.id,
-          account_name: entry.creditAccount,
           debit: 0,
           credit: entry.amount,
           description: entry.description,

@@ -1,4 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useSettings } from '@/app/context/SettingsContext';
+import { toast } from 'sonner';
 import { 
   Settings as SettingsIcon,
   Palette,
@@ -215,6 +217,7 @@ interface Settings {
 }
 
 export const SettingsPage = () => {
+  const settingsContext = useSettings();
   const [activeTab, setActiveTab] = useState<SettingsTab>('general');
   const [settings, setSettings] = useState<Settings>({
     // General
@@ -377,6 +380,48 @@ export const SettingsPage = () => {
 
   const [hasChanges, setHasChanges] = useState(false);
 
+  // Load settings from context on mount
+  useEffect(() => {
+    if (settingsContext.company.businessName) {
+      setSettings(prev => ({
+        ...prev,
+        businessName: settingsContext.company.businessName,
+        businessAddress: settingsContext.company.businessAddress,
+        businessPhone: settingsContext.company.businessPhone,
+        businessEmail: settingsContext.company.businessEmail,
+        taxId: settingsContext.company.taxId,
+        currency: settingsContext.company.currency,
+        logoUrl: settingsContext.company.logoUrl || '',
+        // Module toggles
+        enablePOSModule: settingsContext.modules.pos,
+        enableInventoryModule: settingsContext.modules.inventory,
+        enableRentalModule: settingsContext.modules.rental,
+        enableStudioModule: settingsContext.modules.studio,
+        enableAccountingModule: settingsContext.modules.accounting,
+        enableExpensesModule: settingsContext.modules.expenses,
+        enableReportsModule: settingsContext.modules.reports,
+        // POS Settings
+        defaultTaxRate: settingsContext.posSettings.defaultTaxRate,
+        invoicePrefix: settingsContext.posSettings.invoicePrefix,
+        maxDiscountPercent: settingsContext.posSettings.maxDiscountPercent || 50,
+        // Sales Settings
+        partialPaymentAllowed: settingsContext.salesSettings.partialPaymentAllowed,
+        defaultPaymentMethod: settingsContext.salesSettings.defaultPaymentMethod || 'Cash',
+        autoLedgerEntry: settingsContext.salesSettings.autoLedgerEntry,
+        invoicePrefix: settingsContext.salesSettings.invoicePrefix,
+        autoDueDays: settingsContext.salesSettings.autoDueDays || 30,
+        allowCreditSale: settingsContext.salesSettings.allowCreditSale,
+        // Purchase Settings
+        purchaseOrderPrefix: settingsContext.purchaseSettings.poPrefix || 'PO',
+        defaultPurchaseTax: settingsContext.purchaseSettings.defaultTaxRate || 17,
+        // Numbering Rules
+        invoiceNumberFormat: settingsContext.numberingRules.salePrefix || 'INV',
+        purchaseOrderPrefix: settingsContext.numberingRules.purchasePrefix || 'PO',
+        rentalPrefix: settingsContext.numberingRules.rentalPrefix || 'RNT',
+      }));
+    }
+  }, [settingsContext]);
+
   const tabs = [
     { id: 'general', label: 'General', icon: Building2, color: 'blue' },
     { id: 'modules', label: 'Module Management', icon: Layers, color: 'emerald' },
@@ -397,11 +442,66 @@ export const SettingsPage = () => {
     setHasChanges(true);
   };
 
-  const handleSave = () => {
-    console.log('Saving settings:', settings);
-    localStorage.setItem('erp_settings', JSON.stringify(settings));
-    setHasChanges(false);
-    alert('Settings saved successfully!');
+  const handleSave = async () => {
+    try {
+      // Update company settings
+      await settingsContext.updateCompanySettings({
+        businessName: settings.businessName,
+        businessAddress: settings.businessAddress,
+        businessPhone: settings.businessPhone,
+        businessEmail: settings.businessEmail,
+        taxId: settings.taxId,
+        currency: settings.currency,
+        logoUrl: settings.logoUrl || undefined,
+      });
+
+      // Update module toggles
+      await settingsContext.updateModules({
+        pos: settings.enablePOSModule,
+        inventory: settings.enableInventoryModule,
+        rental: settings.enableRentalModule,
+        studio: settings.enableStudioModule,
+        accounting: settings.enableAccountingModule,
+        expenses: settings.enableExpensesModule,
+        reports: settings.enableReportsModule,
+      });
+
+      // Update POS settings
+      await settingsContext.updatePOSSettings({
+        defaultTaxRate: settings.defaultTaxRate,
+        invoicePrefix: settings.invoicePrefix,
+        maxDiscountPercent: settings.maxDiscountPercent,
+      });
+
+      // Update Sales settings
+      await settingsContext.updateSalesSettings({
+        partialPaymentAllowed: settings.partialPaymentAllowed,
+        defaultPaymentMethod: settings.defaultPaymentMethod as 'Cash' | 'Bank' | 'Mobile Wallet',
+        autoLedgerEntry: settings.autoLedgerEntry,
+        invoicePrefix: settings.invoicePrefix,
+        autoDueDays: settings.autoDueDays,
+        allowCreditSale: settings.allowCreditSale,
+      });
+
+      // Update Purchase settings
+      await settingsContext.updatePurchaseSettings({
+        poPrefix: settings.purchaseOrderPrefix,
+        defaultTaxRate: settings.defaultPurchaseTax,
+      });
+
+      // Update Numbering rules
+      await settingsContext.updateNumberingRules({
+        salePrefix: settings.invoicePrefix,
+        purchasePrefix: settings.purchaseOrderPrefix,
+        rentalPrefix: settings.rentalPrefix,
+      });
+
+      setHasChanges(false);
+      toast.success('Settings saved successfully!');
+    } catch (error) {
+      console.error('Error saving settings:', error);
+      toast.error('Failed to save settings');
+    }
   };
 
   const handleReset = () => {

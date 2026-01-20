@@ -77,17 +77,23 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           userId: userId
         });
         
-        // If user doesn't exist in public.users, create entry
+        // If user doesn't exist in public.users, log warning and clear state
         if (error.code === 'PGRST116' || error.message.includes('No rows')) {
-          console.warn('[FETCH USER DATA] User not found in public.users, attempting to create entry');
-          await createUserEntry(userId);
+          console.warn('[FETCH USER DATA] User not found in public.users. User must create a business first.');
+          setCompanyId(null);
+          setUserRole(null);
+          setBranchId(null);
+          setDefaultBranchId(null);
           return;
         }
         
-        // RLS policy violation - user might not have entry in public.users
-        if (error.code === '42501' || error.message.includes('permission denied') || error.status === 400) {
-          console.warn('[FETCH USER DATA] RLS policy violation - user entry missing in public.users');
-          await createUserEntry(userId);
+        // RLS policy violation or other errors - clear state
+        if (error.code === '42501' || error.message.includes('permission denied') || error.status === 400 || error.code === 'PGRST301') {
+          console.warn('[FETCH USER DATA] Error fetching user data. User may need to create a business first.');
+          setCompanyId(null);
+          setUserRole(null);
+          setBranchId(null);
+          setDefaultBranchId(null);
           return;
         }
       } else if (data) {
@@ -121,7 +127,7 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         .eq('is_default', true)
         .single();
 
-      // If table doesn't exist (406 error) or no data, skip to company branch
+      // If table doesn't exist (404/406 error) or no data, skip to company branch
       if (userBranch && !branchError) {
         setDefaultBranchId(userBranch.branch_id);
         setBranchId(userBranch.branch_id);
@@ -129,9 +135,9 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         return;
       }
       
-      // If error is 406 (Not Acceptable), table doesn't exist - skip to company branch
-      if (branchError && branchError.code === 'PGRST301') {
-        // Table doesn't exist, continue to company branch lookup
+      // If error is 404 (Not Found) or 406 (Not Acceptable), table doesn't exist - skip silently
+      if (branchError && (branchError.code === 'PGRST301' || branchError.code === 'PGRST116' || branchError.status === 404 || branchError.status === 406)) {
+        // Table doesn't exist, continue to company branch lookup (silent)
       }
 
       // If no default branch, get first branch for company
@@ -148,18 +154,16 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         setBranchId(companyBranch.id);
         console.log('[BRANCH LOADED] Default company branch:', companyBranch.id);
       } else {
-        // Fallback to default branch ID
-        const fallbackBranchId = '00000000-0000-0000-0000-000000000011';
-        setDefaultBranchId(fallbackBranchId);
-        setBranchId(fallbackBranchId);
-        console.log('[BRANCH LOADED] Using fallback branch ID');
+        // No branch found - don't set fallback, let user create branch
+        console.warn('[BRANCH LOADED] No branch found for company. User should create a branch.');
+        setDefaultBranchId(null);
+        setBranchId(null);
       }
     } catch (error) {
       console.error('[LOAD BRANCH ERROR]', error);
-      // Fallback to default branch ID
-      const fallbackBranchId = '00000000-0000-0000-0000-000000000011';
-      setDefaultBranchId(fallbackBranchId);
-      setBranchId(fallbackBranchId);
+      // Don't use fallback - let user create branch
+      setDefaultBranchId(null);
+      setBranchId(null);
     }
   };
 

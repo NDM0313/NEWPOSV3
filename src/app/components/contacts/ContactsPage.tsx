@@ -848,8 +848,10 @@ export const ContactsPage = () => {
                                 <DropdownMenuItem 
                                   onClick={() => {
                                     setCurrentView('sales');
-                                    // TODO: Filter sales by this customer
-                                    toast.info('Sales filtered by customer');
+                                    // Store customer filter in sessionStorage for SalesPage to read
+                                    sessionStorage.setItem('salesFilter_customerId', contact.id || '');
+                                    sessionStorage.setItem('salesFilter_customerName', contact.name || '');
+                                    toast.info(`Filtering sales for ${contact.name}`);
                                   }}
                                   className="hover:bg-gray-800 cursor-pointer"
                                 >
@@ -906,8 +908,10 @@ export const ContactsPage = () => {
                                 <DropdownMenuItem 
                                   onClick={() => {
                                     setCurrentView('purchases');
-                                    // TODO: Filter purchases by this supplier
-                                    toast.info('Purchases filtered by supplier');
+                                    // Store supplier filter in sessionStorage for PurchasesPage to read
+                                    sessionStorage.setItem('purchasesFilter_supplierId', contact.id || '');
+                                    sessionStorage.setItem('purchasesFilter_supplierName', contact.name || '');
+                                    toast.info(`Filtering purchases for ${contact.name}`);
                                   }}
                                   className="hover:bg-gray-800 cursor-pointer"
                                 >

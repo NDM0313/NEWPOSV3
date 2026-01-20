@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { 
   Plus, ShoppingCart, DollarSign, TrendingUp, 
   MoreVertical, Eye, Edit, Trash2, FileText, Phone, MapPin,
@@ -68,104 +68,7 @@ interface Sale {
   shippingStatus: ShippingStatus;
 }
 
-// Mock Data
-const mockSales: Sale[] = [
-  { 
-    id: 1, 
-    invoiceNo: 'INV-001', 
-    customer: 'Ahmed Retailers',
-    customerName: 'Ahmed Ali', 
-    contactNumber: '+92-300-1234567',
-    date: '2024-01-15', 
-    location: 'Main Branch (HQ)',
-    items: 12, 
-    subtotal: 45000, 
-    expenses: 500, 
-    total: 45500, 
-    paid: 45500, 
-    due: 0,
-    returnDue: 0,
-    paymentStatus: 'paid',
-    paymentMethod: 'Cash',
-    shippingStatus: 'delivered'
-  },
-  { 
-    id: 2, 
-    invoiceNo: 'INV-002', 
-    customer: 'Walk-in Customer',
-    customerName: 'Sara Khan',
-    contactNumber: '+92-321-9876543',
-    date: '2024-01-15', 
-    location: 'Mall Outlet',
-    items: 3, 
-    subtotal: 8000, 
-    expenses: 200, 
-    total: 8200, 
-    paid: 5000, 
-    due: 3200,
-    returnDue: 0,
-    paymentStatus: 'partial',
-    paymentMethod: 'Card',
-    shippingStatus: 'pending'
-  },
-  { 
-    id: 3, 
-    invoiceNo: 'INV-003', 
-    customer: 'Local Store',
-    customerName: 'Bilal Ahmed',
-    contactNumber: '+92-333-5555555',
-    date: '2024-01-14', 
-    location: 'Main Branch (HQ)',
-    items: 24, 
-    subtotal: 98000, 
-    expenses: 1200, 
-    total: 99200, 
-    paid: 0, 
-    due: 99200,
-    returnDue: 500,
-    paymentStatus: 'unpaid',
-    paymentMethod: 'Credit',
-    shippingStatus: 'processing'
-  },
-  { 
-    id: 4, 
-    invoiceNo: 'INV-004', 
-    customer: 'Fashion House Ltd',
-    customerName: 'Usman Malik',
-    contactNumber: '+92-345-7777777',
-    date: '2024-01-14', 
-    location: 'Mall Outlet',
-    items: 8, 
-    subtotal: 32000, 
-    expenses: 800, 
-    total: 32800, 
-    paid: 32800, 
-    due: 0,
-    returnDue: 0,
-    paymentStatus: 'paid',
-    paymentMethod: 'Bank Transfer',
-    shippingStatus: 'delivered'
-  },
-  { 
-    id: 5, 
-    invoiceNo: 'INV-005', 
-    customer: 'Premium Boutique',
-    customerName: 'Fatima Sheikh',
-    contactNumber: '+92-300-8888888',
-    date: '2024-01-13', 
-    location: 'Main Branch (HQ)',
-    items: 15, 
-    subtotal: 67000, 
-    expenses: 900, 
-    total: 67900, 
-    paid: 40000, 
-    due: 27900,
-    returnDue: 0,
-    paymentStatus: 'partial',
-    paymentMethod: 'Cash',
-    shippingStatus: 'processing'
-  },
-];
+// Mock data removed - using SalesContext which loads from Supabase
 
 export const SalesPage = () => {
   const { openDrawer, setCurrentView } = useNavigation();
@@ -189,6 +92,20 @@ export const SalesPage = () => {
   // Filter states
   const [dateFilter, setDateFilter] = useState('all');
   const [customerFilter, setCustomerFilter] = useState('all');
+
+  // Check for customer filter from ContactsPage
+  useEffect(() => {
+    const customerId = sessionStorage.getItem('salesFilter_customerId');
+    const customerName = sessionStorage.getItem('salesFilter_customerName');
+    if (customerId) {
+      setCustomerFilter(customerId);
+      sessionStorage.removeItem('salesFilter_customerId');
+      sessionStorage.removeItem('salesFilter_customerName');
+      if (customerName) {
+        toast.info(`Filtering sales for ${customerName}`);
+      }
+    }
+  }, []);
   const [paymentStatusFilter, setPaymentStatusFilter] = useState<'all' | PaymentStatus>('all');
   const [shippingStatusFilter, setShippingStatusFilter] = useState<'all' | ShippingStatus>('all');
   const [branchFilter, setBranchFilter] = useState('all');

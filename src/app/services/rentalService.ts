@@ -81,7 +81,7 @@ export const rentalService = {
         items:rental_items(
           *,
           product:products(name, sku)
-        ),
+        )
       `)
       .eq('company_id', companyId)
       .order('booking_date', { ascending: false });

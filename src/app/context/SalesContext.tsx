@@ -8,6 +8,7 @@ import { useDocumentNumbering } from '@/app/hooks/useDocumentNumbering';
 import { useAccounting } from '@/app/context/AccountingContext';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { saleService, Sale as SupabaseSale, SaleItem as SupabaseSaleItem } from '@/app/services/saleService';
+import { productService } from '@/app/services/productService';
 import { toast } from 'sonner';
 
 // ============================================
@@ -268,24 +269,34 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
         invoice_date: saleData.date,
         customer_id: saleData.customer || undefined,
         customer_name: saleData.customerName,
+        type: saleData.type === 'invoice' ? 'invoice' : 'quotation',
         status: saleData.type === 'invoice' ? 'final' : 'quotation',
         payment_status: saleData.paymentStatus,
+        payment_method: saleData.paymentMethod || undefined,
         subtotal: saleData.subtotal,
-        discount_amount: saleData.discount,
-        tax_amount: saleData.tax,
-        shipping_charges: saleData.expenses,
+        discount_amount: saleData.discount || 0,
+        tax_amount: saleData.tax || 0,
+        expenses: saleData.expenses || 0, // Database has 'expenses' not 'shipping_charges'
         total: saleData.total,
-        paid_amount: saleData.paid,
-        due_amount: saleData.due,
+        paid_amount: saleData.paid || 0,
+        due_amount: saleData.due || 0,
+        return_due: saleData.returnDue || 0,
         notes: saleData.notes,
         created_by: user.id,
       };
 
       const supabaseItems: SupabaseSaleItem[] = saleData.items.map(item => ({
         product_id: item.productId,
+        variation_id: item.variationId || undefined,
         product_name: item.productName,
+        sku: (item as any).sku || 'N/A', // Required in DB
         quantity: item.quantity,
+        unit: (item as any).unit || 'piece',
         unit_price: item.price,
+        discount_percentage: (item as any).discountPercentage || 0,
+        discount_amount: (item as any).discount || 0,
+        tax_percentage: (item as any).taxPercentage || 0,
+        tax_amount: (item as any).tax || 0,
         total: item.total,
         // Include packing data
         packing_type: (item as any).packingDetails?.packing_type || null,
@@ -305,6 +316,27 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
       
       // Update local state
       setSales(prev => [newSale, ...prev]);
+      
+      // If sale is invoice (status = final), decrement stock
+      if (newSale.type === 'invoice' && newSale.items && newSale.items.length > 0) {
+        try {
+          for (const item of newSale.items) {
+            if (item.productId && item.quantity > 0) {
+              const product = await productService.getProduct(item.productId);
+              if (product) {
+                // Decrement stock
+                const newStock = Math.max(0, (product.current_stock || 0) - item.quantity);
+                await productService.updateProduct(item.productId, {
+                  current_stock: newStock
+                });
+              }
+            }
+          }
+        } catch (stockError) {
+          console.warn('[SALES CONTEXT] Stock update warning (non-blocking):', stockError);
+          // Don't block sale creation if stock update fails
+        }
+      }
       
       // Auto-post to accounting if invoice and paid
       if (newSale.type === 'invoice' && newSale.paid > 0) {
@@ -339,6 +371,28 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
       if (updates.total !== undefined) supabaseUpdates.total = updates.total;
       if (updates.paid !== undefined) supabaseUpdates.paid_amount = updates.paid;
       if (updates.due !== undefined) supabaseUpdates.due_amount = updates.due;
+
+      // If status is changing to invoice (final), decrement stock
+      const sale = getSaleById(id);
+      if (sale && updates.status === 'invoice' && sale.type !== 'invoice' && sale.items) {
+        try {
+          for (const item of sale.items) {
+            if (item.productId && item.quantity > 0) {
+              const product = await productService.getProduct(item.productId);
+              if (product) {
+                // Decrement stock
+                const newStock = Math.max(0, (product.current_stock || 0) - item.quantity);
+                await productService.updateProduct(item.productId, {
+                  current_stock: newStock
+                });
+              }
+            }
+          }
+        } catch (stockError) {
+          console.warn('[SALES CONTEXT] Stock update warning (non-blocking):', stockError);
+          // Don't block update if stock update fails
+        }
+      }
 
       // Update in Supabase
       await saleService.updateSaleStatus(id, supabaseUpdates.status || 'final');
@@ -455,6 +509,27 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
     try {
       // Update status in Supabase
       await saleService.updateSaleStatus(quotationId, 'final');
+      
+      // Decrement stock when converting to invoice
+      if (quotation.items && quotation.items.length > 0) {
+        try {
+          for (const item of quotation.items) {
+            if (item.productId && item.quantity > 0) {
+              const product = await productService.getProduct(item.productId);
+              if (product) {
+                // Decrement stock
+                const newStock = Math.max(0, (product.current_stock || 0) - item.quantity);
+                await productService.updateProduct(item.productId, {
+                  current_stock: newStock
+                });
+              }
+            }
+          }
+        } catch (stockError) {
+          console.warn('[SALES CONTEXT] Stock update warning (non-blocking):', stockError);
+          // Don't block conversion if stock update fails
+        }
+      }
       
       // Generate new invoice number
       const invoiceNo = generateDocumentNumber('invoice');

@@ -66,6 +66,20 @@ export const contactService = {
       .select()
       .single();
 
+    // If error is about country column not found in schema cache (PGRST204), retry without it
+    if (error && (error.code === 'PGRST204' || error.message?.includes('country'))) {
+      console.warn('[CONTACT SERVICE] Country column not found in schema cache, retrying without it:', error);
+      const { country, ...contactWithoutCountry } = contact;
+      const { data: retryData, error: retryError } = await supabase
+        .from('contacts')
+        .insert(contactWithoutCountry)
+        .select()
+        .single();
+
+      if (retryError) throw retryError;
+      return retryData;
+    }
+
     if (error) throw error;
     return data;
   },

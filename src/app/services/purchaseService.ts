@@ -25,17 +25,21 @@ export interface PurchaseItem {
   product_id: string;
   variation_id?: string;
   product_name: string;
+  sku: string; // Required in DB
   quantity: number;
-  received_qty: number;
+  unit?: string;
   unit_price: number;
-  discount: number;
-  tax: number;
+  discount_percentage?: number;
+  discount_amount?: number;
+  tax_percentage?: number;
+  tax_amount?: number;
   total: number;
   // Packing fields
   packing_type?: string;
   packing_quantity?: number;
   packing_unit?: string;
   packing_details?: any; // JSONB
+  notes?: string;
 }
 
 export const purchaseService = {
@@ -130,6 +134,39 @@ export const purchaseService = {
         return finalData;
       }
       return retryData;
+    }
+    
+    // If error is about foreign key relationship or other issues, try without nested selects
+    if (error && (error.code === '42703' || error.code === '42P01' || error.code === 'PGRST116')) {
+      // Try simpler query without nested relationships
+      let simpleQuery = supabase
+        .from('purchases')
+        .select('*')
+        .order('created_at', { ascending: false });
+      
+      if (branchId) {
+        simpleQuery = simpleQuery.eq('branch_id', branchId);
+      }
+      
+      const { data: simpleData, error: simpleError } = await simpleQuery;
+      
+      // If created_at doesn't exist, try without ordering
+      if (simpleError && simpleError.code === '42703' && simpleError.message?.includes('created_at')) {
+        let noOrderQuery = supabase
+          .from('purchases')
+          .select('*');
+        
+        if (branchId) {
+          noOrderQuery = noOrderQuery.eq('branch_id', branchId);
+        }
+        
+        const { data: noOrderData, error: noOrderError } = await noOrderQuery;
+        if (noOrderError) throw noOrderError;
+        return noOrderData;
+      }
+      
+      if (simpleError) throw simpleError;
+      return simpleData;
     }
     
     if (error) throw error;

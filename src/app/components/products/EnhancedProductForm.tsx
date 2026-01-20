@@ -5,6 +5,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { productService } from '@/app/services/productService';
+import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
 import {
   X,
@@ -102,6 +103,8 @@ export const EnhancedProductForm = ({
   const [images, setImages] = useState<File[]>([]);
   const [isRentalOptionsOpen, setIsRentalOptionsOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<'basic' | 'pricing' | 'inventory' | 'media' | 'details' | 'variations' | 'combos'>('basic');
+  const [categories, setCategories] = useState<Array<{id: string; name: string}>>([]);
+  const [loadingCategories, setLoadingCategories] = useState(false);
   
   // Variations State
   const [variantAttributes, setVariantAttributes] = useState<Array<{
@@ -180,6 +183,57 @@ export const EnhancedProductForm = ({
   const stockManagement = watch("stockManagement");
   const purchasePrice = watch("purchasePrice");
   const margin = watch("margin");
+
+  // Load categories from database
+  useEffect(() => {
+    const loadCategories = async () => {
+      if (!companyId) return;
+      
+      try {
+        setLoadingCategories(true);
+        const { data, error } = await supabase
+          .from('product_categories')
+          .select('id, name')
+          .eq('company_id', companyId)
+          .eq('is_active', true)
+          .order('name');
+        
+        if (error) {
+          console.error('[PRODUCT FORM] Error loading categories:', error);
+          // Don't block - use empty array
+          setCategories([]);
+        } else {
+          setCategories(data || []);
+        }
+      } catch (error) {
+        console.error('[PRODUCT FORM] Error loading categories:', error);
+        setCategories([]);
+      } finally {
+        setLoadingCategories(false);
+      }
+    };
+
+    loadCategories();
+  }, [companyId]);
+
+  // Pre-populate form when editing
+  useEffect(() => {
+    if (initialProduct) {
+      setValue('name', initialProduct.name || '');
+      setValue('sku', initialProduct.sku || '');
+      setValue('purchasePrice', initialProduct.cost_price || 0);
+      setValue('sellingPrice', initialProduct.retail_price || 0);
+      setValue('rentalPrice', initialProduct.rental_price_daily || 0);
+      setValue('stock', initialProduct.current_stock || 0);
+      setValue('lowStockThreshold', initialProduct.min_stock || 0);
+      setValue('description', initialProduct.description || '');
+      setValue('category', initialProduct.category_id || '');
+      // Load variations if product has them
+      if (initialProduct.variations && initialProduct.variations.length > 0) {
+        // TODO: Load variations into state
+      }
+    }
+  }, [initialProduct, setValue]);
 
   // Auto-calculate selling price when purchase price or margin changes
   useEffect(() => {
@@ -326,7 +380,11 @@ export const EnhancedProductForm = ({
     data: ProductFormValues,
     action: "save" | "saveAndAdd",
   ) => {
-    const finalCompanyId = companyId || '00000000-0000-0000-0000-000000000001';
+    if (!companyId) {
+      toast.error('Company ID not found. Please login again.');
+      return;
+    }
+    const finalCompanyId = companyId;
     
     if (!finalCompanyId) {
       toast.error('Company information required. Please login again.');
@@ -338,13 +396,39 @@ export const EnhancedProductForm = ({
       // Auto-generate SKU if empty
       const finalSKU = data.sku && data.sku.trim() !== '' ? data.sku : generateSKU();
       
+      // Handle barcode - isolate errors, don't block
+      let barcodeValue: string | null = null;
+      try {
+        if (data.barcode && data.barcode.trim() !== '') {
+          barcodeValue = data.barcode.trim();
+        }
+      } catch (barcodeError) {
+        console.warn('[PRODUCT FORM] Barcode error (non-blocking):', barcodeError);
+        // Continue without barcode
+      }
+
+      // Get category ID from category name/ID
+      let categoryId: string | null = null;
+      if (data.category) {
+        // If it's already a UUID, use it directly
+        if (data.category.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)) {
+          categoryId = data.category;
+        } else {
+          // Try to find category by name
+          const foundCategory = categories.find(c => c.name === data.category || c.id === data.category);
+          if (foundCategory) {
+            categoryId = foundCategory.id;
+          }
+        }
+      }
+
       // Convert to Supabase format
       const productData = {
         company_id: finalCompanyId,
-        category_id: data.category || null, // Will need to get category ID from name
+        category_id: categoryId,
         name: data.name,
         sku: finalSKU,
-        barcode: data.barcode || null,
+        barcode: barcodeValue,
         description: data.description || null,
         cost_price: data.purchasePrice || 0,
         retail_price: data.sellingPrice,
@@ -363,6 +447,35 @@ export const EnhancedProductForm = ({
       // Save to Supabase
       const result = await productService.createProduct(productData);
       
+      // Save variations if any
+      if (generatedVariations.length > 0 && result.id) {
+        try {
+          const variationsToSave = generatedVariations.map(variation => ({
+            product_id: result.id,
+            sku: variation.sku,
+            barcode: variation.barcode || null,
+            attributes: variation.combination,
+            price: variation.price || null,
+            stock: variation.stock || 0,
+            is_active: true,
+          }));
+
+          const { error: variationsError } = await supabase
+            .from('product_variations')
+            .insert(variationsToSave);
+
+          if (variationsError) {
+            console.error('[PRODUCT FORM] Error saving variations:', variationsError);
+            toast.warning('Product saved but variations could not be saved. Please add them manually.');
+          } else {
+            toast.success(`Product created with ${generatedVariations.length} variations!`);
+          }
+        } catch (variationsError) {
+          console.error('[PRODUCT FORM] Error saving variations:', variationsError);
+          toast.warning('Product saved but variations could not be saved. Please add them manually.');
+        }
+      }
+      
       // Convert back to app format for callback
       const payload = {
         ...data,
@@ -374,7 +487,9 @@ export const EnhancedProductForm = ({
         combos: combos,
       };
 
-      toast.success('Product created successfully!');
+      if (generatedVariations.length === 0) {
+        toast.success('Product created successfully!');
+      }
       
       if (action === "saveAndAdd" && onSaveAndAdd) {
         onSaveAndAdd(payload);
@@ -633,18 +748,22 @@ export const EnhancedProductForm = ({
                           <SelectValue placeholder="Select Category" />
                         </SelectTrigger>
                         <SelectContent className="bg-gray-900 border-gray-800 text-white">
-                          <SelectItem value="unstitched">
-                            Unstitched
-                          </SelectItem>
-                          <SelectItem value="pret">
-                            Pret (Ready to Wear)
-                          </SelectItem>
-                          <SelectItem value="bedding">
-                            Bedding
-                          </SelectItem>
-                          <SelectItem value="fabric">
-                            Raw Fabric
-                          </SelectItem>
+                          {loadingCategories ? (
+                            <div className="px-2 py-1.5 text-sm text-gray-400">Loading categories...</div>
+                          ) : categories.length > 0 ? (
+                            categories.map(cat => (
+                              <SelectItem key={cat.id} value={cat.id}>
+                                {cat.name}
+                              </SelectItem>
+                            ))
+                          ) : (
+                            <>
+                              <SelectItem value="unstitched">Unstitched</SelectItem>
+                              <SelectItem value="pret">Pret (Ready to Wear)</SelectItem>
+                              <SelectItem value="bedding">Bedding</SelectItem>
+                              <SelectItem value="fabric">Raw Fabric</SelectItem>
+                            </>
+                          )}
                         </SelectContent>
                       </Select>
                     )}

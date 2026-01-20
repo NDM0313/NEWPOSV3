@@ -8,6 +8,7 @@ import { useDocumentNumbering } from '@/app/hooks/useDocumentNumbering';
 import { useAccounting } from '@/app/context/AccountingContext';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { purchaseService, Purchase as SupabasePurchase, PurchaseItem as SupabasePurchaseItem } from '@/app/services/purchaseService';
+import { productService } from '@/app/services/productService';
 import { toast } from 'sonner';
 
 // ============================================
@@ -199,12 +200,16 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
 
       const supabaseItems: SupabasePurchaseItem[] = purchaseData.items.map(item => ({
         product_id: item.productId,
+        variation_id: item.variationId || undefined,
         product_name: item.productName,
+        sku: (item as any).sku || 'N/A', // Required in DB
         quantity: item.quantity,
-        received_qty: item.receivedQty,
+        unit: (item as any).unit || 'piece',
         unit_price: item.price,
-        discount: item.discount,
-        tax: item.tax,
+        discount_percentage: (item as any).discountPercentage || 0,
+        discount_amount: item.discount || 0,
+        tax_percentage: (item as any).taxPercentage || 0,
+        tax_amount: item.tax || 0,
         total: item.total,
         // Include packing data
         packing_type: (item as any).packingDetails?.packing_type || null,
@@ -224,6 +229,26 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
       
       // Update local state
       setPurchases(prev => [newPurchase, ...prev]);
+      
+      // If purchase status is 'received' or 'completed', update stock
+      if ((newPurchase.status === 'received' || newPurchase.status === 'completed') && newPurchase.items && newPurchase.items.length > 0) {
+        try {
+          for (const item of newPurchase.items) {
+            if (item.productId && item.quantity > 0) {
+              const product = await productService.getProduct(item.productId);
+              if (product) {
+                const qtyToAdd = item.receivedQty > 0 ? item.receivedQty : item.quantity;
+                await productService.updateProduct(item.productId, {
+                  current_stock: (product.current_stock || 0) + qtyToAdd
+                });
+              }
+            }
+          }
+        } catch (stockError) {
+          console.warn('[PURCHASE CONTEXT] Stock update warning (non-blocking):', stockError);
+          // Don't block purchase creation if stock update fails
+        }
+      }
       
       // Auto-post to accounting if paid
       if (newPurchase.paid > 0) {
@@ -357,7 +382,33 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
     }
 
     try {
+      // If status is 'received' or 'completed', also set to 'final' in DB to trigger stock update
+      const dbStatus = (status === 'received' || status === 'completed') ? 'final' : status;
+      
       await updatePurchase(purchaseId, { status });
+      
+      // If status changed to received/completed, manually update stock (in case trigger doesn't fire)
+      if ((status === 'received' || status === 'completed') && purchase.items) {
+        try {
+          // Update stock for each item
+          for (const item of purchase.items) {
+            if (item.productId && item.quantity > 0) {
+              // Get current stock
+              const { data: product } = await productService.getProduct(item.productId);
+              if (product) {
+                // Update stock
+                await productService.updateProduct(item.productId, {
+                  current_stock: (product.current_stock || 0) + item.quantity
+                });
+              }
+            }
+          }
+        } catch (stockError) {
+          console.warn('[PURCHASE CONTEXT] Stock update warning (non-blocking):', stockError);
+          // Don't block status update if stock update fails
+        }
+      }
+      
       toast.success(`Purchase status updated to ${status}!`);
     } catch (error) {
       throw error;
@@ -382,8 +433,28 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
       const allReceived = updatedItems.every(item => item.receivedQty >= item.quantity);
       const newStatus: PurchaseStatus = allReceived ? 'completed' : 'received';
 
-      // Note: Items update would need to be handled via purchaseService if it supports item updates
-      // For now, update local state
+      // Update purchase status (this will trigger stock update via database trigger or manual update)
+      await updateStatus(purchaseId, newStatus);
+
+      // Update stock for the received item
+      const receivedItem = purchase.items.find(item => item.id === itemId);
+      if (receivedItem && receivedItem.productId && quantity > 0) {
+        try {
+          // Get current product stock
+          const { data: product } = await productService.getProduct(receivedItem.productId);
+          if (product) {
+            // Increment stock
+            await productService.updateProduct(receivedItem.productId, {
+              current_stock: (product.current_stock || 0) + quantity
+            });
+          }
+        } catch (stockError) {
+          console.warn('[PURCHASE CONTEXT] Stock update warning (non-blocking):', stockError);
+          // Don't block if stock update fails
+        }
+      }
+
+      // Update local state
       setPurchases(prev => prev.map(p => 
         p.id === purchaseId 
           ? { ...p, items: updatedItems, status: newStatus, updatedAt: new Date().toISOString() }

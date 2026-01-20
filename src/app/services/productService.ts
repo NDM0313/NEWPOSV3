@@ -41,6 +41,38 @@ export const productService = {
     
     const { data, error } = await query;
     
+    // If error is about foreign key relationship, try without explicit foreign key name
+    if (error && (error.code === '42703' || error.code === '42P01')) {
+      const retryQuery = supabase
+        .from('products')
+        .select(`
+          *,
+          category:product_categories(id, name),
+          variations:product_variations(*)
+        `)
+        .eq('company_id', companyId)
+        .eq('is_active', true)
+        .order('name', { ascending: true });
+      
+      const { data: retryData, error: retryError } = await retryQuery;
+      
+      // If still error, try without relationships
+      if (retryError) {
+        const simpleQuery = supabase
+          .from('products')
+          .select('*')
+          .eq('company_id', companyId)
+          .eq('is_active', true)
+          .order('name');
+        
+        const { data: simpleData, error: simpleError } = await simpleQuery;
+        if (simpleError) throw simpleError;
+        return simpleData;
+      }
+      
+      return retryData;
+    }
+    
     // If error is about is_active column not existing, retry without it
     if (error && error.code === '42703' && error.message?.includes('is_active')) {
       const { data: retryData, error: retryError } = await supabase
