@@ -277,7 +277,7 @@ export const RentalBookingDrawer = ({ isOpen, onClose }: RentalBookingDrawerProp
       product.id,
       pickupDate,
       returnDate,
-      mockExistingBookings
+      existingBookings
     );
     
     if (conflict.hasConflict) {
