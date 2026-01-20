@@ -881,7 +881,7 @@ export const ProductsPage = () => {
       {/* Stock History Drawer */}
       {selectedProduct && (() => {
         // Calculate total sold from sales items
-        const totalSold = sales.sales.reduce((total, sale) => {
+        const totalSold = (sales?.sales || []).reduce((total, sale) => {
           const saleItems = sale.items || [];
           return total + saleItems
             .filter(item => item.productId === selectedProduct.uuid)
@@ -889,7 +889,7 @@ export const ProductsPage = () => {
         }, 0);
 
         // Calculate total purchased from purchase items
-        const totalPurchased = purchases.purchases.reduce((total, purchase) => {
+        const totalPurchased = (purchases?.purchases || []).reduce((total, purchase) => {
           const purchaseItems = purchase.items || [];
           return total + purchaseItems
             .filter(item => item.productId === selectedProduct.uuid)

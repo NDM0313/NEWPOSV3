@@ -296,7 +296,10 @@ export const SalesPage = () => {
   const filteredSales = useMemo(() => {
     return sales.filter((sale: Sale) => {
       // Date range filter (from global date range context)
-      if (!filterByDateRange(sale.date)) return false;
+      if (startDate && endDate) {
+        const saleDate = new Date(sale.date);
+        if (saleDate < startDate || saleDate > endDate) return false;
+      }
 
       // Search filter
       if (searchTerm) {

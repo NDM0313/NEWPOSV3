@@ -184,7 +184,7 @@ export const purchaseService = {
           *,
           product:products(*),
           variation:product_variations(*)
-        ),
+        )
       `)
       .eq('id', id)
       .single();
