@@ -38,6 +38,7 @@ export const ViewProductDetailsDrawer: React.FC<ViewProductDetailsDrawerProps> =
 }) => {
   const [productDetails, setProductDetails] = useState<any>(null);
   const [loading, setLoading] = useState(false);
+  const drawerRef = React.useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (isOpen && product?.uuid) {
@@ -75,10 +76,19 @@ export const ViewProductDetailsDrawer: React.FC<ViewProductDetailsDrawerProps> =
 
   const stockStatus = getStockStatus();
 
-  // Prevent body scroll when drawer is open
+  // Prevent body scroll and focus trap when drawer is open
   React.useEffect(() => {
     if (isOpen) {
       document.body.style.overflow = 'hidden';
+      // Focus trap: focus first focusable element in drawer
+      setTimeout(() => {
+        if (drawerRef.current) {
+          const firstFocusable = drawerRef.current.querySelector<HTMLElement>(
+            'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+          );
+          firstFocusable?.focus();
+        }
+      }, 100);
     } else {
       document.body.style.overflow = '';
     }
@@ -89,7 +99,12 @@ export const ViewProductDetailsDrawer: React.FC<ViewProductDetailsDrawerProps> =
 
   return (
     <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex justify-end animate-in fade-in duration-200" onClick={onClose}>
-      <div className="w-full max-w-2xl bg-[#0B0F17] h-full shadow-2xl flex flex-col border-l border-gray-800 animate-in slide-in-from-right duration-300" onClick={(e) => e.stopPropagation()}>
+      <div 
+        ref={drawerRef}
+        className="w-full max-w-2xl bg-[#0B0F17] h-full shadow-2xl flex flex-col border-l border-gray-800 animate-in slide-in-from-right duration-300" 
+        onClick={(e) => e.stopPropagation()}
+        tabIndex={-1}
+      >
         {/* Header */}
         <div className="px-6 py-5 border-b border-gray-800 bg-[#111827] flex items-center justify-between shrink-0">
           <div className="flex items-center gap-3">

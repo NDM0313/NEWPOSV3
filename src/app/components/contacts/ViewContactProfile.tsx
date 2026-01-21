@@ -11,7 +11,8 @@ import {
   FileText, 
   FileSpreadsheet,
   ArrowUpRight,
-  ArrowDownRight
+  ArrowDownRight,
+  X
 } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from "../ui/avatar";
 import { Badge } from "../ui/badge";
@@ -240,6 +241,7 @@ export const ViewContactProfile: React.FC<ViewContactProfileProps> = ({ isOpen =
           <TabsContent value="documents" className="text-center text-gray-500 py-20">Documents content placeholder</TabsContent>
           <TabsContent value="payments" className="text-center text-gray-500 py-20">Payments content placeholder</TabsContent>
         </Tabs>
+      </div>
       </div>
       </div>
     </div>

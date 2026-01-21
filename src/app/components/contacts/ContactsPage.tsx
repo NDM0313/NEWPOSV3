@@ -240,7 +240,7 @@ export const ContactsPage = () => {
       
       return true;
     });
-  }, [activeTab, searchTerm, typeFilter, workerRoleFilter, statusFilter, balanceFilter, branchFilter, phoneFilter]);
+  }, [contacts, activeTab, searchTerm, typeFilter, workerRoleFilter, statusFilter, balanceFilter, branchFilter, phoneFilter]);
 
   // Calculate summary based on active tab
   const summary = useMemo(() => {
