@@ -77,7 +77,7 @@ export const GlobalDrawer = () => {
   // Determine width and side based on content type and device
   const isSale = activeDrawer === 'addSale' || activeDrawer === 'edit-sale';
   const isPurchase = activeDrawer === 'addPurchase';
-  const isProduct = activeDrawer === 'addProduct';
+  const isProduct = activeDrawer === 'addProduct' || activeDrawer === 'edit-product';
   const side = isMobile ? "bottom" : "right";
   
   // Custom classes for the sheet content
@@ -90,7 +90,7 @@ export const GlobalDrawer = () => {
     if (isSale || isPurchase) {
       contentClasses += "w-[1400px] sm:max-w-[1400px]"; // Extra wide for Sale/Purchase Form
     } else if (isProduct) {
-       contentClasses += "max-w-4xl w-full"; // Match ProductDrawer width (max-w-4xl = 896px)
+       contentClasses += "w-[800px]"; // Match ProductDrawer width (800px for comfortable form layout)
     } else {
       contentClasses += "w-[400px] sm:w-[540px]"; // Standard for simple forms
     }
