@@ -194,11 +194,14 @@ export const ProductsPage = () => {
     return 'in-stock';
   };
 
-  // Filtered products
+  // Filtered products (TASK 1 FIX - "All" means no filter)
   const filteredProducts = useMemo(() => {
+    // TASK 1 FIX - If no products loaded, return empty array
+    if (products.length === 0) return [];
+    
     return products.filter(product => {
-      // Search filter
-      if (searchTerm) {
+      // Search filter (only apply if search term exists)
+      if (searchTerm && searchTerm.trim()) {
         const search = searchTerm.toLowerCase();
         const matchesSearch = 
           product.name.toLowerCase().includes(search) ||
@@ -209,22 +212,22 @@ export const ProductsPage = () => {
         if (!matchesSearch) return false;
       }
 
-      // Branch filter
+      // Branch filter (TASK 1 FIX - "all" means no filter)
       if (branchFilter !== 'all' && product.branch !== branchFilter) return false;
       
-      // Category filter
+      // Category filter (TASK 1 FIX - "all" means no filter)
       if (categoryFilter !== 'all' && product.category !== categoryFilter) return false;
       
-      // Brand filter
+      // Brand filter (TASK 1 FIX - "all" means no filter)
       if (brandFilter !== 'all' && product.brand !== brandFilter) return false;
       
-      // Type filter
+      // Type filter (TASK 1 FIX - "all" means no filter)
       if (typeFilter !== 'all' && product.type !== typeFilter) return false;
       
-      // Status filter
+      // Status filter (TASK 1 FIX - "all" means no filter)
       if (statusFilter !== 'all' && product.status !== statusFilter) return false;
       
-      // Stock status filter
+      // Stock status filter (TASK 1 FIX - "all" means no filter)
       if (stockStatusFilter !== 'all' && getStockStatus(product) !== stockStatusFilter) return false;
       
       return true;
