@@ -222,7 +222,7 @@ export const ProductsPage = () => {
       
       return true;
     });
-  }, [searchTerm, branchFilter, categoryFilter, brandFilter, typeFilter, statusFilter, stockStatusFilter]);
+  }, [products, searchTerm, branchFilter, categoryFilter, brandFilter, typeFilter, statusFilter, stockStatusFilter]);
 
   // Calculate summary
   const summary = useMemo(() => {
