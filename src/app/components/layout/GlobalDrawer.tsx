@@ -90,7 +90,7 @@ export const GlobalDrawer = () => {
     if (isSale || isPurchase) {
       contentClasses += "w-[1400px] sm:max-w-[1400px]"; // Extra wide for Sale/Purchase Form
     } else if (isProduct) {
-       contentClasses += "w-[800px]"; // Match ProductDrawer width (800px for comfortable form layout)
+       contentClasses += "!w-[800px] !max-w-[800px] sm:!max-w-[800px]"; // Override Sheet default width (800px for comfortable form layout)
     } else {
       contentClasses += "w-[400px] sm:w-[540px]"; // Standard for simple forms
     }

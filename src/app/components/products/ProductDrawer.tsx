@@ -30,7 +30,7 @@ export const ProductDrawer = ({ isOpen, onClose, onSaveAndAdd }: ProductDrawerPr
               animate={{ x: 0 }}
               exit={{ x: '100%' }}
               transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-              className="fixed right-0 top-0 bottom-0 w-[800px] bg-gray-900 z-50 shadow-2xl border-l border-gray-800"
+              className="fixed right-0 top-0 bottom-0 w-[800px] max-w-[800px] bg-gray-900 z-50 shadow-2xl border-l border-gray-800"
             >
               <EnhancedProductForm 
                 onCancel={onClose} 
