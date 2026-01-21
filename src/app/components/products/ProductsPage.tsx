@@ -676,11 +676,30 @@ export const ProductsPage = () => {
                     <Loader2 size={48} className="mx-auto text-blue-500 mb-3 animate-spin" />
                     <p className="text-gray-400 text-sm">Loading products...</p>
                   </div>
+                ) : products.length === 0 ? (
+                  <div className="py-12 text-center">
+                    <Package size={48} className="mx-auto text-gray-600 mb-3" />
+                    <p className="text-gray-400 text-sm">No products available</p>
+                    <p className="text-gray-600 text-xs mt-1">Add your first product to get started</p>
+                  </div>
+                ) : filteredProducts.length === 0 ? (
+                  <div className="py-12 text-center">
+                    <Package size={48} className="mx-auto text-gray-600 mb-3" />
+                    <p className="text-gray-400 text-sm">No products match your filters</p>
+                    <p className="text-gray-600 text-xs mt-1">Try adjusting your search or filters</p>
+                    <Button 
+                      onClick={clearAllFilters}
+                      variant="outline"
+                      className="mt-4 text-xs"
+                    >
+                      Clear All Filters
+                    </Button>
+                  </div>
                 ) : paginatedProducts.length === 0 ? (
                   <div className="py-12 text-center">
                     <Package size={48} className="mx-auto text-gray-600 mb-3" />
-                    <p className="text-gray-400 text-sm">No products found</p>
-                    <p className="text-gray-600 text-xs mt-1">Try adjusting your search or filters</p>
+                    <p className="text-gray-400 text-sm">No products on this page</p>
+                    <p className="text-gray-600 text-xs mt-1">Go to page 1</p>
                   </div>
                 ) : (
                   paginatedProducts.map((product) => {
