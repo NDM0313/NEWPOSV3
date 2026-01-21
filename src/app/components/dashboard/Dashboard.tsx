@@ -24,7 +24,9 @@ export const Dashboard = () => {
   const purchases = usePurchases();
   const expenses = useExpenses();
   const { companyId } = useSupabase();
-  const { startDate, endDate } = useDateRange();
+  const { dateRange } = useDateRange();
+  const startDate = dateRange.startDate;
+  const endDate = dateRange.endDate;
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
 
