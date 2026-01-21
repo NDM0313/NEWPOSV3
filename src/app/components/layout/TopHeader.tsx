@@ -44,6 +44,9 @@ import { ChangePasswordDialog } from '../auth/ChangePasswordDialog';
 export const TopHeader = () => {
   const { toggleSidebar, openDrawer, setCurrentView } = useNavigation();
   const { signOut, user, companyId, branchId, defaultBranchId, setBranchId } = useSupabase();
+  
+  // Note: These hooks may throw during hot reload if providers aren't ready
+  // In production, providers are always available, so this is safe
   const sales = useSales();
   const purchases = usePurchases();
   const expenses = useExpenses();

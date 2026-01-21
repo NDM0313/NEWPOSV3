@@ -140,9 +140,7 @@ export const FullStockLedgerView: React.FC<FullStockLedgerViewProps> = ({
     return 'text-gray-400 bg-gray-900/20 border-gray-800';
   };
 
-  if (!isOpen) return null;
-
-  // Prevent body scroll
+  // Prevent body scroll - MUST be before early return to follow Rules of Hooks
   React.useEffect(() => {
     if (isOpen) {
       document.body.style.overflow = 'hidden';
@@ -153,6 +151,8 @@ export const FullStockLedgerView: React.FC<FullStockLedgerViewProps> = ({
       document.body.style.overflow = '';
     };
   }, [isOpen]);
+
+  if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-[60] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
