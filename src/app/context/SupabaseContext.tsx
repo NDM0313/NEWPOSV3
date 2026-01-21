@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useState, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 import { User, Session } from '@supabase/supabase-js';
 
@@ -26,6 +26,11 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const [userRole, setUserRole] = useState<string | null>(null);
   const [branchId, setBranchId] = useState<string | null>(null);
   const [defaultBranchId, setDefaultBranchId] = useState<string | null>(null);
+  
+  // Ref to track ongoing fetch operations (prevent duplicate calls)
+  const fetchingRef = useRef<Set<string>>(new Set());
+  const fetchedRef = useRef<Set<string>>(new Set());
+  const lastFetchedUserIdRef = useRef<string | null>(null);
 
   // Initialize user session
   useEffect(() => {
@@ -42,14 +47,25 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
-      setUser(session?.user ?? null);
-      if (session?.user) {
-        fetchUserData(session.user.id);
+      const newUser = session?.user ?? null;
+      setUser(newUser);
+      
+      if (newUser) {
+        // Clear cache if user changed
+        if (lastFetchedUserIdRef.current !== null && lastFetchedUserIdRef.current !== newUser.id) {
+          fetchedRef.current.clear();
+          fetchingRef.current.clear();
+        }
+        fetchUserData(newUser.id);
       } else {
         setCompanyId(null);
         setUserRole(null);
         setBranchId(null);
         setDefaultBranchId(null);
+        // Clear fetch tracking on sign out
+        fetchingRef.current.clear();
+        fetchedRef.current.clear();
+        lastFetchedUserIdRef.current = null;
       }
     });
 
@@ -58,8 +74,28 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   // Fetch user data (company, role)
   const fetchUserData = async (userId: string) => {
+    // Prevent duplicate concurrent calls for the same userId
+    if (fetchingRef.current.has(userId)) {
+      if (process.env.NODE_ENV === 'development') {
+        console.log('[FETCH USER DATA] Already fetching for user, skipping duplicate call:', { userId });
+      }
+      return;
+    }
+    
+    // If we already fetched this user and have data, skip (unless forced refresh needed)
+    if (fetchedRef.current.has(userId) && companyId) {
+      if (process.env.NODE_ENV === 'development') {
+        console.log('[FETCH USER DATA] Already fetched, using cached data:', { userId, companyId });
+      }
+      return;
+    }
+    
     try {
-      console.log('[FETCH USER DATA] Attempting to fetch user data:', { userId });
+      fetchingRef.current.add(userId);
+      
+      if (process.env.NODE_ENV === 'development') {
+        console.log('[FETCH USER DATA] Attempting to fetch user data:', { userId });
+      }
       
       const { data, error } = await supabase
         .from('users')
@@ -97,14 +133,18 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           return;
         }
       } else if (data) {
-        console.log('[FETCH USER DATA SUCCESS]', {
-          userId: userId,
-          companyId: data.company_id,
-          role: data.role,
-          isActive: data.is_active
-        });
+        if (process.env.NODE_ENV === 'development') {
+          console.log('[FETCH USER DATA SUCCESS]', {
+            userId: userId,
+            companyId: data.company_id,
+            role: data.role,
+            isActive: data.is_active
+          });
+        }
         setCompanyId(data.company_id);
         setUserRole(data.role);
+        fetchedRef.current.add(userId);
+        lastFetchedUserIdRef.current = userId;
         
         // Load user's default branch
         if (data.company_id) {
@@ -113,6 +153,8 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       }
     } catch (error) {
       console.error('[FETCH USER DATA EXCEPTION]', error);
+    } finally {
+      fetchingRef.current.delete(userId);
     }
   };
 
@@ -211,6 +253,10 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setUserRole(null);
     setBranchId(null);
     setDefaultBranchId(null);
+    // Clear fetch tracking on sign out
+    fetchingRef.current.clear();
+    fetchedRef.current.clear();
+    lastFetchedUserIdRef.current = null;
   };
 
   return (

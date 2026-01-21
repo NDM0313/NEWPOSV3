@@ -113,7 +113,8 @@ interface AccountingContextType {
 // ============================================
 
 export interface SaleAccountingParams {
-  invoiceNo: string;
+  saleId: string; // CRITICAL FIX: UUID of the sale (for reference_id)
+  invoiceNo: string; // Invoice number (for referenceNo)
   customerName: string;
   customerId?: string;
   amount: number;
@@ -123,7 +124,8 @@ export interface SaleAccountingParams {
 }
 
 export interface SalePaymentParams {
-  invoiceNo: string;
+  saleId: string; // CRITICAL FIX: UUID of the sale (for reference_id)
+  invoiceNo: string; // Invoice number (for referenceNo)
   customerName: string;
   customerId?: string;
   amount: number;
@@ -434,26 +436,58 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
       const entryNo = `JE-${Date.now()}-${Math.random().toString(36).substr(2, 5).toUpperCase()}`;
       const entryDate = new Date().toISOString().split('T')[0];
 
-      // Find account IDs for debit and credit
-      const debitAccountObj = accounts.find(acc => acc.accountType === entry.debitAccount || acc.name === entry.debitAccount);
-      const creditAccountObj = accounts.find(acc => acc.accountType === entry.creditAccount || acc.name === entry.creditAccount);
+      // CRITICAL FIX: Case-insensitive account lookup with fallback mapping
+      // Map common account name variations to actual account names
+      const accountNameMap: Record<string, string> = {
+        'cash': 'Cash',
+        'Cash': 'Cash',
+        'bank': 'Bank',
+        'Bank': 'Bank',
+        'accounts receivable': 'Accounts Receivable',
+        'Accounts Receivable': 'Accounts Receivable',
+        'sales income': 'Sales Revenue',
+        'Sales Income': 'Sales Revenue',
+        'Sales Revenue': 'Sales Revenue',
+      };
+
+      const normalizedDebitAccount = accountNameMap[entry.debitAccount] || entry.debitAccount;
+      const normalizedCreditAccount = accountNameMap[entry.creditAccount] || entry.creditAccount;
+
+      // Find account IDs for debit and credit (case-insensitive)
+      const debitAccountObj = accounts.find(acc => 
+        acc.accountType?.toLowerCase() === normalizedDebitAccount.toLowerCase() || 
+        acc.name?.toLowerCase() === normalizedDebitAccount.toLowerCase()
+      );
+      const creditAccountObj = accounts.find(acc => 
+        acc.accountType?.toLowerCase() === normalizedCreditAccount.toLowerCase() || 
+        acc.name?.toLowerCase() === normalizedCreditAccount.toLowerCase()
+      );
 
       if (!debitAccountObj || !creditAccountObj) {
-        console.error('[ACCOUNTING] Account not found:', { debitAccount: entry.debitAccount, creditAccount: entry.creditAccount });
-        toast.error('Account not found. Please create accounts first.');
+        console.error('[ACCOUNTING] Account not found:', { 
+          debitAccount: entry.debitAccount, 
+          normalizedDebit: normalizedDebitAccount,
+          creditAccount: entry.creditAccount,
+          normalizedCredit: normalizedCreditAccount,
+          availableAccounts: accounts.map(a => ({ name: a.name, type: a.accountType }))
+        });
+        toast.error(`Account not found: ${!debitAccountObj ? normalizedDebitAccount : normalizedCreditAccount}. Please create the account first.`);
         return false;
       }
 
       // Create journal entry (matching database schema)
+      // CRITICAL FIX: Use null instead of undefined for optional UUID fields to prevent "undefinedundefined" error
       const journalEntry: JournalEntry = {
         company_id: companyId,
-        branch_id: branchId || undefined,
+        branch_id: branchId || null,
         entry_no: entryNo,
         entry_date: entryDate,
         description: entry.description,
         reference_type: entry.source.toLowerCase(),
-        reference_id: entry.metadata?.invoiceId || entry.metadata?.purchaseId || entry.metadata?.expenseId || undefined,
-        created_by: currentUserId || undefined,
+        // CRITICAL FIX: reference_id must be UUID, not invoice number
+        // Use saleId/purchaseId/expenseId from metadata (UUIDs), not invoiceId (string)
+        reference_id: entry.metadata?.saleId || entry.metadata?.purchaseId || entry.metadata?.expenseId || entry.metadata?.bookingId || null,
+        created_by: currentUserId || null,
       };
 
       // Create journal entry lines (matching database schema - no account_name)
@@ -580,19 +614,30 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
   // ============================================
   
   const recordSale = async (params: SaleAccountingParams): Promise<boolean> => {
-    const { invoiceNo, customerName, customerId, amount, paymentMethod, paidAmount, module } = params;
+    const { saleId, invoiceNo, customerName, customerId, amount, paymentMethod, paidAmount, module } = params;
+
+    // CRITICAL FIX: Map paymentMethod to correct account name
+    const paymentAccountMap: Record<string, string> = {
+      'cash': 'Cash',
+      'Cash': 'Cash',
+      'bank': 'Bank',
+      'Bank': 'Bank',
+      'card': 'Bank', // Card payments go to bank account
+      'other': 'Bank',
+    };
+    const debitAccount = paymentAccountMap[paymentMethod as string] || paymentMethod || 'Cash';
 
     // Full payment
     if (paidAmount >= amount) {
       return await createEntry({
         source: 'Sale',
         referenceNo: invoiceNo,
-        debitAccount: paymentMethod as AccountType,
-        creditAccount: 'Sales Income',
+        debitAccount: debitAccount,
+        creditAccount: 'Sales Revenue', // CRITICAL FIX: Use "Sales Revenue" not "Sales Income"
         amount: amount,
         description: `Sale to ${customerName} - Full Payment`,
         module: module,
-        metadata: { customerId, customerName, invoiceId: invoiceNo }
+        metadata: { customerId, customerName, saleId, invoiceNo }
       });
     }
     
@@ -602,12 +647,12 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
       await createEntry({
         source: 'Sale',
         referenceNo: invoiceNo,
-        debitAccount: paymentMethod as AccountType,
-        creditAccount: 'Sales Income',
+        debitAccount: debitAccount,
+        creditAccount: 'Sales Revenue', // CRITICAL FIX: Use "Sales Revenue" not "Sales Income"
         amount: paidAmount,
         description: `Sale to ${customerName} - Partial Payment`,
         module: module,
-        metadata: { customerId, customerName, invoiceId: invoiceNo }
+        metadata: { customerId, customerName, saleId, invoiceNo }
       });
 
       // Record receivable
@@ -615,11 +660,11 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
         source: 'Sale',
         referenceNo: invoiceNo,
         debitAccount: 'Accounts Receivable',
-        creditAccount: 'Sales Income',
+        creditAccount: 'Sales Revenue', // CRITICAL FIX: Use "Sales Revenue" not "Sales Income"
         amount: amount - paidAmount,
         description: `Sale to ${customerName} - Credit`,
         module: module,
-        metadata: { customerId, customerName, invoiceId: invoiceNo }
+        metadata: { customerId, customerName, saleId, invoiceNo }
       });
     }
 
@@ -628,7 +673,7 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
       source: 'Sale',
       referenceNo: invoiceNo,
       debitAccount: 'Accounts Receivable',
-      creditAccount: 'Sales Income',
+      creditAccount: 'Sales Revenue', // CRITICAL FIX: Use "Sales Revenue" not "Sales Income"
       amount: amount,
       description: `Sale to ${customerName} - Credit`,
       module: module,
@@ -637,17 +682,73 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
   };
 
   const recordSalePayment = async (params: SalePaymentParams): Promise<boolean> => {
-    const { invoiceNo, customerName, customerId, amount, paymentMethod } = params;
+    const { saleId, invoiceNo, customerName, customerId, amount, paymentMethod } = params;
 
+    // CRITICAL FIX: Find default account based on payment method
+    // Map payment method to account type
+    const paymentMethodToType: Record<string, 'Cash' | 'Bank' | 'Mobile Wallet'> = {
+      'cash': 'Cash',
+      'Cash': 'Cash',
+      'bank': 'Bank',
+      'Bank': 'Bank',
+      'card': 'Bank', // Card payments go to bank account
+      'other': 'Bank',
+      'mobile wallet': 'Mobile Wallet',
+      'Mobile Wallet': 'Mobile Wallet',
+    };
+    
+    const accountType = paymentMethodToType[paymentMethod as string] || 'Cash';
+    
+    // Find default account for this type
+    let defaultAccount = null;
+    if (accountType === 'Cash') {
+      defaultAccount = accounts.find(acc => 
+        (acc.type === 'Cash' || acc.accountType === 'Cash') && 
+        (acc as any).is_default_cash && 
+        acc.isActive
+      );
+    } else if (accountType === 'Bank') {
+      defaultAccount = accounts.find(acc => 
+        (acc.type === 'Bank' || acc.accountType === 'Bank') && 
+        (acc as any).is_default_bank && 
+        acc.isActive
+      );
+    } else {
+      // For Mobile Wallet or other types, find first active account of that type
+      defaultAccount = accounts.find(acc => 
+        (acc.type === accountType || acc.accountType === accountType) && 
+        acc.isActive
+      );
+    }
+    
+    // If no default found, try to find any active account of that type
+    if (!defaultAccount) {
+      defaultAccount = accounts.find(acc => 
+        (acc.type === accountType || acc.accountType === accountType) && 
+        acc.isActive
+      );
+    }
+    
+    if (!defaultAccount) {
+      const errorMsg = `No ${accountType} account found. Please create and set a default ${accountType} account first.`;
+      console.error('[ACCOUNTING]', errorMsg);
+      toast.error(errorMsg);
+      return false;
+    }
+
+    // Use account name for createEntry (it will find the account by name/type)
+    // Fallback to accountType if name is not available
+    const debitAccountName = defaultAccount.name || accountType;
+    
     return await createEntry({
       source: 'Payment',
       referenceNo: invoiceNo,
-      debitAccount: paymentMethod as AccountType,
+      debitAccount: debitAccountName as AccountType,
       creditAccount: 'Accounts Receivable',
       amount: amount,
       description: `Payment received from ${customerName}`,
       module: 'Sales',
-      metadata: { customerId, customerName, invoiceId: invoiceNo }
+      metadata: { customerId, customerName, saleId, invoiceNo } // CRITICAL FIX: saleId (UUID) for reference_id, invoiceNo for display
     });
   };
 
@@ -753,7 +854,7 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
         amount: amount,
         description: `Studio sale to ${customerName} - Full Payment`,
         module: 'Studio',
-        metadata: { customerId, customerName, invoiceId: invoiceNo }
+        metadata: { customerId, customerName, saleId, invoiceNo }
       });
     }
 
@@ -767,7 +868,7 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
         amount: paidAmount,
         description: `Studio sale to ${customerName} - Partial Payment`,
         module: 'Studio',
-        metadata: { customerId, customerName, invoiceId: invoiceNo }
+        metadata: { customerId, customerName, saleId, invoiceNo }
       });
 
       return await createEntry({
@@ -778,7 +879,7 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
         amount: amount - paidAmount,
         description: `Studio sale to ${customerName} - Credit`,
         module: 'Studio',
-        metadata: { customerId, customerName, invoiceId: invoiceNo }
+        metadata: { customerId, customerName, saleId, invoiceNo }
       });
     }
 
@@ -920,12 +1021,17 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
   // 🎯 CONTEXT VALUE
   // ============================================
 
+  // Refresh both accounts and entries
+  const refreshEntries = useCallback(async () => {
+    await Promise.all([loadAccounts(), loadEntries()]);
+  }, [loadAccounts, loadEntries]);
+
   const value: AccountingContextType = {
     entries,
     balances,
     loading,
     createEntry,
-    refreshEntries: loadEntries,
+    refreshEntries,
     getEntriesByReference,
     getEntriesBySource,
     getAccountBalance,

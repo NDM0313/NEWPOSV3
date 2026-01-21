@@ -318,7 +318,8 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
     const balanceDue = totalAmount - totalPaid;
     
     // Auto-detect payment status
-    const paymentStatus = totalPaid === 0 ? 'credit' : totalPaid >= totalAmount ? 'paid' : 'partial';
+    // CRITICAL FIX: Use 'unpaid' instead of 'credit' to match database enum (paid, partial, unpaid)
+    const paymentStatus = totalPaid === 0 ? 'unpaid' : totalPaid >= totalAmount ? 'paid' : 'partial';
 
     const getSalesmanName = () => salesmen.find(s => s.id.toString() === salesmanId)?.name || "No Salesman";
 
@@ -352,19 +353,49 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                     ...customerContacts
                 ]);
                 
-                // Load products
+                // CRITICAL FIX: Load products with calculated stock from movements
+                // Instead of using products.current_stock, calculate from stock_movements
                 const productsData = await productService.getAllProducts(companyId);
-                const productsList = productsData.map(p => ({
-                    id: p.id || p.uuid || '',
-                    name: p.name || '',
-                    sku: p.sku || '',
-                    price: p.salePrice || p.price || 0,
-                    stock: p.stock || 0,
-                    lastPurchasePrice: p.costPrice || undefined,
-                    lastSupplier: undefined, // Can be enhanced later
-                    hasVariations: (p.variations && p.variations.length > 0) || false,
-                    needsPacking: false // Can be enhanced based on product type
-                }));
+                
+                // Calculate stock for each product from movements (async batch)
+                const productsList = await Promise.all(
+                  productsData.map(async (p) => {
+                    let calculatedStock = p.current_stock || 0; // Fallback to current_stock
+                    
+                    try {
+                      // Get stock movements for this product (branch-aware)
+                      const movements = await productService.getStockMovements(
+                        p.id,
+                        companyId,
+                        undefined, // No variation filter for product search
+                        contextBranchId || undefined // Use current branch if available
+                      );
+                      
+                      // Calculate stock from movements using unified calculation
+                      if (movements && movements.length > 0) {
+                        const { calculateStockFromMovements } = await import('@/app/utils/stockCalculation');
+                        const stockCalc = calculateStockFromMovements(movements);
+                        calculatedStock = Math.max(0, stockCalc.currentBalance); // Ensure non-negative
+                      }
+                    } catch (stockError) {
+                      console.warn(`[SALE FORM] Could not calculate stock for product ${p.id}, using current_stock:`, stockError);
+                      // Use current_stock as fallback
+                    }
+                    
+                    return {
+                      id: p.id || p.uuid || '',
+                      name: p.name || '',
+                      sku: p.sku || '',
+                      price: p.salePrice || p.price || 0,
+                      stock: calculatedStock,
+                      lastPurchasePrice: p.costPrice || undefined,
+                      lastSupplier: undefined, // Can be enhanced later
+                      hasVariations: (p.variations && p.variations.length > 0) || false,
+                      needsPacking: false // Can be enhanced based on product type
+                    };
+                  })
+                );
+                
                 setProducts(productsList);
             } catch (error) {
                 console.error('[SALE FORM] Error loading data:', error);
@@ -678,29 +709,72 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
             const customerName = selectedCustomer?.name || 'Walk-in Customer';
             const customerUuid = customerId === 'walk-in' ? undefined : customerId.toString();
             
-            // Convert items to SaleItem format
-            const saleItems = items.map(item => ({
-                id: item.id.toString(),
-                productId: item.productId.toString(),
-                productName: item.name,
-                sku: item.sku,
-                quantity: item.qty,
-                price: item.price,
-                discount: 0, // Can be enhanced later
-                tax: 0, // Can be enhanced later
-                total: item.price * item.qty,
-                // Include packing data if available
-                packingDetails: item.packingDetails,
-                thaans: item.thaans,
-                meters: item.meters
-            }));
+            // CRITICAL FIX: Convert items to SaleItem format with variationId
+            // Need to find variation_id from size/color if product has variations
+            const saleItems = await Promise.all(
+              items.map(async (item) => {
+                let variationId: string | undefined = undefined;
+                
+                // If product has variations and size/color are set, find the variation_id
+                if (item.size || item.color) {
+                  try {
+                    // Get product variations from database
+                    const product = await productService.getProduct(item.productId.toString());
+                    if (product && product.variations && product.variations.length > 0) {
+                      // Find matching variation by size and color
+                      const matchingVariation = product.variations.find((v: any) => {
+                        const vSize = v.size || v.attributes?.size;
+                        const vColor = v.color || v.attributes?.color;
+                        return vSize === item.size && vColor === item.color;
+                      });
+                      if (matchingVariation) {
+                        variationId = matchingVariation.id;
+                      }
+                    }
+                  } catch (variationError) {
+                    console.warn(`[SALE FORM] Could not find variation for item ${item.id}:`, variationError);
+                    // Continue without variation_id
+                  }
+                }
+                
+                return {
+                  id: item.id.toString(),
+                  productId: item.productId.toString(),
+                  productName: item.name,
+                  sku: item.sku,
+                  quantity: item.qty,
+                  price: item.price,
+                  discount: 0, // Can be enhanced later
+                  tax: 0, // Can be enhanced later
+                  total: item.price * item.qty,
+                  variationId: variationId, // CRITICAL FIX: Include variationId
+                  // Include packing data if available
+                  packingDetails: item.packingDetails,
+                  thaans: item.thaans,
+                  meters: item.meters
+                };
+              })
+            );
             
-            // Determine sale type based on status
-            const saleType: 'invoice' | 'quotation' = saleStatus === 'quotation' ? 'quotation' : 'invoice';
+            // CRITICAL FIX: Map sale status correctly
+            // Draft → status: 'draft', type: 'quotation'
+            // Quotation → status: 'quotation', type: 'quotation'
+            // Final → status: 'final', type: 'invoice'
+            const saleType: 'invoice' | 'quotation' = saleStatus === 'final' ? 'invoice' : 'quotation';
+            const mappedStatus: 'draft' | 'quotation' | 'final' = saleStatus === 'final' ? 'final' : saleStatus;
+            
+            // CRITICAL FIX: For draft/quotation, force payment to 0 and payment_status to 'unpaid'
+            // Payment should only be allowed for final sales
+            const finalPaid = (saleStatus === 'final') ? totalPaid : 0;
+            const finalDue = (saleStatus === 'final') ? balanceDue : totalAmount;
+            const finalPaymentStatus: 'paid' | 'partial' | 'unpaid' = (saleStatus === 'final') 
+                ? paymentStatus 
+                : 'unpaid';
             
             // Create sale data
             const saleData = {
                 type: saleType,
+                status: mappedStatus,
                 customer: customerUuid || '',
                 customerName: customerName,
                 contactNumber: '', // Can be enhanced to get from customer
@@ -713,11 +787,11 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                 tax: 0, // Can be enhanced later
                 expenses: expensesTotal + finalShippingCharges,
                 total: totalAmount,
-                paid: totalPaid,
-                due: balanceDue,
+                paid: finalPaid,
+                due: finalDue,
                 returnDue: 0,
-                paymentStatus: paymentStatus as 'paid' | 'partial' | 'unpaid',
-                paymentMethod: partialPayments.length > 0 ? partialPayments[0].method : 'cash',
+                paymentStatus: finalPaymentStatus,
+                paymentMethod: (saleStatus === 'final' && partialPayments.length > 0) ? partialPayments[0].method : 'cash',
                 shippingStatus: shippingEnabled ? 'pending' as const : 'pending' as const,
                 notes: studioNotes || refNumber || undefined
             };
@@ -1288,20 +1362,28 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                                 </div>
                             </div>
 
-                            {/* Payment Section */}
-                            <div className="bg-gray-900/50 border border-gray-800 rounded-lg p-4 shrink-0">
+                            {/* Payment Section - DISABLED for Draft/Quotation, ENABLED for Final */}
+                            <div className={cn(
+                                "bg-gray-900/50 border border-gray-800 rounded-lg p-4 shrink-0",
+                                (saleStatus === 'draft' || saleStatus === 'quotation') && "opacity-50 pointer-events-none"
+                            )}>
                                 {/* Header with Status Badge */}
                                 <div className="flex items-center justify-between mb-4">
-                                    <h3 className="text-sm font-semibold text-gray-300 uppercase tracking-wide">Payment</h3>
+                                    <h3 className="text-sm font-semibold text-gray-300 uppercase tracking-wide">
+                                        Payment
+                                        {(saleStatus === 'draft' || saleStatus === 'quotation') && (
+                                            <span className="ml-2 text-xs text-yellow-500">(Disabled for {saleStatus})</span>
+                                        )}
+                                    </h3>
                                     <Badge className={cn(
                                         "text-xs font-medium px-3 py-1",
                                         paymentStatus === 'paid' && "bg-green-600 text-white",
                                         paymentStatus === 'partial' && "bg-blue-600 text-white",
-                                        paymentStatus === 'credit' && "bg-orange-600 text-white"
+                                        paymentStatus === 'unpaid' && "bg-orange-600 text-white"
                                     )}>
                                         {paymentStatus === 'paid' && '✓ Paid'}
                                         {paymentStatus === 'partial' && '◐ Partial'}
-                                        {paymentStatus === 'credit' && '○ Credit'}
+                                        {paymentStatus === 'unpaid' && '○ Unpaid'}
                                     </Badge>
                                 </div>
 
@@ -1337,102 +1419,112 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                                 </div>
                                 </div>
 
-                                {/* Quick Payment Buttons */}
-                                <div className="space-y-2">
-                                <Label className="text-xs text-gray-500">Quick Pay</Label>
-                                <div className="grid grid-cols-4 gap-2">
-                                    <Button 
-                                        type="button"
-                                        onClick={() => setNewPaymentAmount(totalAmount * 0.25)}
-                                        className="h-9 bg-gray-800 hover:bg-gray-700 text-white text-xs border border-gray-700"
-                                    >
-                                        25%
-                                    </Button>
-                                    <Button 
-                                        type="button"
-                                        onClick={() => setNewPaymentAmount(totalAmount * 0.50)}
-                                        className="h-9 bg-gray-800 hover:bg-gray-700 text-white text-xs border border-gray-700"
-                                    >
-                                        50%
-                                    </Button>
-                                    <Button 
-                                        type="button"
-                                        onClick={() => setNewPaymentAmount(totalAmount * 0.75)}
-                                        className="h-9 bg-gray-800 hover:bg-gray-700 text-white text-xs border border-gray-700"
-                                    >
-                                        75%
-                                    </Button>
-                                    <Button 
-                                        type="button"
-                                        onClick={() => setNewPaymentAmount(totalAmount)}
-                                        className="h-9 bg-green-700 hover:bg-green-600 text-white text-xs border border-green-600"
-                                    >
-                                        100%
-                                    </Button>
-                                </div>
-                            </div>
-
-                                {/* Payment Entry Form */}
-                                <div className="space-y-2">
-                                    <Label className="text-xs text-gray-500">Add Payment</Label>
-                                    <div className="flex gap-2">
-                                    <Select value={newPaymentMethod} onValueChange={(v: any) => setNewPaymentMethod(v)}>
-                                        <SelectTrigger className="w-[110px] bg-gray-950 border-gray-700 text-white h-10 text-xs">
-                                            <SelectValue />
-                                        </SelectTrigger>
-                                        <SelectContent className="bg-gray-950 border-gray-800 text-white">
-                                            <SelectItem value="cash">Cash</SelectItem>
-                                            <SelectItem value="bank">Bank</SelectItem>
-                                            <SelectItem value="other">Other</SelectItem>
-                                        </SelectContent>
-                                    </Select>
-                                    <Input 
-                                        type="number" 
-                                        placeholder="Amount" 
-                                        className="bg-gray-950 border-gray-700 text-white h-10 flex-1"
-                                        value={newPaymentAmount > 0 ? newPaymentAmount : ''}
-                                        onChange={(e) => setNewPaymentAmount(parseFloat(e.target.value) || 0)}
-                                    />
-                                    <Button onClick={addPartialPayment} className="bg-blue-600 hover:bg-blue-500 h-10 w-10 p-0" >
-                                        <Plus size={16} />
-                                    </Button>
-                                </div>
-                                <Input 
-                                    type="text" 
-                                    placeholder="Reference (optional)" 
-                                    className="bg-gray-950 border-gray-700 text-white h-9 text-xs"
-                                    value={newPaymentReference}
-                                    onChange={(e) => setNewPaymentReference(e.target.value)}
-                                />
-                                <PaymentAttachments
-                                    attachments={paymentAttachments}
-                                    onAttachmentsChange={setPaymentAttachments}
-                                />
-                                </div>
-
-                                {/* Payments List */}
-                                <div className="bg-gray-950 rounded-lg border border-gray-800 p-3 space-y-2 min-h-[100px]">
-                                {partialPayments.length === 0 ? (
-                                    <div className="text-center text-gray-600 text-xs py-4">No payments added</div>
-                                ) : (
-                                    partialPayments.map((p) => (
-                                        <div key={p.id} className="flex justify-between items-center text-sm p-2 bg-gray-900 rounded border border-gray-800/50">
-                                            <div className="flex items-center gap-2">
-                                                {p.method === 'cash' && <Banknote size={14} className="text-green-500" />}
-                                                {p.method === 'bank' && <CreditCard size={14} className="text-blue-500" />}
-                                                {p.method === 'other' && <Wallet size={14} className="text-purple-500" />}
-                                                <span className="capitalize text-gray-300 text-xs">{p.method}</span>
-                                                {p.reference && <span className="text-gray-500 text-xs">({p.reference})</span>}
-                                            </div>
-                                            <div className="flex items-center gap-3">
-                                                <span className="font-medium text-white">${p.amount.toLocaleString()}</span>
-                                                <button onClick={() => removePartialPayment(p.id)} className="text-gray-500 hover:text-red-400">
-                                                    <X size={12} />
-                                                </button>
+                                {/* Quick Payment Buttons & Payment Entry - DISABLED for Draft/Quotation */}
+                                {saleStatus === 'final' ? (
+                                    <>
+                                        <div className="space-y-2">
+                                            <Label className="text-xs text-gray-500">Quick Pay</Label>
+                                            <div className="grid grid-cols-4 gap-2">
+                                                <Button 
+                                                    type="button"
+                                                    onClick={() => setNewPaymentAmount(totalAmount * 0.25)}
+                                                    className="h-9 bg-gray-800 hover:bg-gray-700 text-white text-xs border border-gray-700"
+                                                >
+                                                    25%
+                                                </Button>
+                                                <Button 
+                                                    type="button"
+                                                    onClick={() => setNewPaymentAmount(totalAmount * 0.50)}
+                                                    className="h-9 bg-gray-800 hover:bg-gray-700 text-white text-xs border border-gray-700"
+                                                >
+                                                    50%
+                                                </Button>
+                                                <Button 
+                                                    type="button"
+                                                    onClick={() => setNewPaymentAmount(totalAmount * 0.75)}
+                                                    className="h-9 bg-gray-800 hover:bg-gray-700 text-white text-xs border border-gray-700"
+                                                >
+                                                    75%
+                                                </Button>
+                                                <Button 
+                                                    type="button"
+                                                    onClick={() => setNewPaymentAmount(totalAmount)}
+                                                    className="h-9 bg-green-700 hover:bg-green-600 text-white text-xs border border-green-600"
+                                                >
+                                                    100%
+                                                </Button>
                                             </div>
                                         </div>
-                                    ))
+
+                                        {/* Payment Entry Form */}
+                                        <div className="space-y-2">
+                                            <Label className="text-xs text-gray-500">Add Payment</Label>
+                                            <div className="flex gap-2">
+                                                <Select value={newPaymentMethod} onValueChange={(v: any) => setNewPaymentMethod(v)}>
+                                                    <SelectTrigger className="w-[110px] bg-gray-950 border-gray-700 text-white h-10 text-xs">
+                                                        <SelectValue />
+                                                    </SelectTrigger>
+                                                    <SelectContent className="bg-gray-950 border-gray-800 text-white">
+                                                        <SelectItem value="cash">Cash</SelectItem>
+                                                        <SelectItem value="bank">Bank</SelectItem>
+                                                        <SelectItem value="other">Other</SelectItem>
+                                                    </SelectContent>
+                                                </Select>
+                                                <Input 
+                                                    type="number" 
+                                                    placeholder="Amount" 
+                                                    className="bg-gray-950 border-gray-700 text-white h-10 flex-1"
+                                                    value={newPaymentAmount > 0 ? newPaymentAmount : ''}
+                                                    onChange={(e) => setNewPaymentAmount(parseFloat(e.target.value) || 0)}
+                                                />
+                                                <Button onClick={addPartialPayment} className="bg-blue-600 hover:bg-blue-500 h-10 w-10 p-0" >
+                                                    <Plus size={16} />
+                                                </Button>
+                                            </div>
+                                            <Input 
+                                                type="text" 
+                                                placeholder="Reference (optional)" 
+                                                className="bg-gray-950 border-gray-700 text-white h-9 text-xs"
+                                                value={newPaymentReference}
+                                                onChange={(e) => setNewPaymentReference(e.target.value)}
+                                            />
+                                            <PaymentAttachments
+                                                attachments={paymentAttachments}
+                                                onAttachmentsChange={setPaymentAttachments}
+                                            />
+                                        </div>
+                                    </>
+                                ) : (
+                                    <div className="text-center py-4 text-xs text-gray-500">
+                                        Payment section is disabled for {saleStatus === 'draft' ? 'Draft' : 'Quotation'} sales.
+                                        <br />
+                                        Change status to "Final" to enable payment.
+                                    </div>
                                 )}
+
+                                {/* Payments List - Show for all statuses */}
+                                <div className="bg-gray-950 rounded-lg border border-gray-800 p-3 space-y-2 min-h-[100px] mt-4">
+                                    {partialPayments.length === 0 ? (
+                                        <div className="text-center text-gray-600 text-xs py-4">No payments added</div>
+                                    ) : (
+                                        partialPayments.map((p) => (
+                                            <div key={p.id} className="flex justify-between items-center text-sm p-2 bg-gray-900 rounded border border-gray-800/50">
+                                                <div className="flex items-center gap-2">
+                                                    {p.method === 'cash' && <Banknote size={14} className="text-green-500" />}
+                                                    {p.method === 'bank' && <CreditCard size={14} className="text-blue-500" />}
+                                                    {p.method === 'other' && <Wallet size={14} className="text-purple-500" />}
+                                                    <span className="capitalize text-gray-300 text-xs">{p.method}</span>
+                                                    {p.reference && <span className="text-gray-500 text-xs">({p.reference})</span>}
+                                                </div>
+                                                <div className="flex items-center gap-3">
+                                                    <span className="font-medium text-white">${p.amount.toLocaleString()}</span>
+                                                    <button onClick={() => removePartialPayment(p.id)} className="text-gray-500 hover:text-red-400">
+                                                        <X size={12} />
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        ))
+                                    )}
                                 </div>
                             </div>
                         </div>

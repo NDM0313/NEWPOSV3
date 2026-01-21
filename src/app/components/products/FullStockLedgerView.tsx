@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { X, Download, FileText, ArrowUpRight, ArrowDownRight, Loader2, ExternalLink, Filter } from 'lucide-react';
+import { X, Download, FileText, ArrowUpRight, ArrowDownRight, Loader2, ExternalLink, Filter, Package } from 'lucide-react';
 import { Button } from '../ui/button';
 import { ScrollArea } from '../ui/scroll-area';
 import { Badge } from '../ui/badge';
@@ -109,14 +109,18 @@ export const FullStockLedgerView: React.FC<FullStockLedgerViewProps> = ({
     }
   }, [productId, companyId]);
 
-  // Load branches
+  // Load branches - ISSUE 2 FIX: Remove duplicates by ID
   const loadBranches = useCallback(async () => {
     if (!companyId) return;
     
     try {
       setLoadingBranches(true);
       const branchesData = await branchService.getAllBranches(companyId);
-      setBranches(branchesData);
+      // Remove duplicates by ID (some branches may have same name)
+      const uniqueBranches = branchesData.filter((branch, index, self) =>
+        index === self.findIndex(b => b.id === branch.id)
+      );
+      setBranches(uniqueBranches);
     } catch (error) {
       console.error('[FULL LEDGER] Error loading branches:', error);
       setBranches([]);
@@ -157,7 +161,9 @@ export const FullStockLedgerView: React.FC<FullStockLedgerViewProps> = ({
 
     try {
       setLoading(true);
-      const data = await productService.getStockMovements(productId, companyId, selectedVariationId);
+      // Pass branchId only if explicitly selected (not 'all' or undefined)
+      const branchIdToFilter = selectedBranchId && selectedBranchId !== 'all' ? selectedBranchId : undefined;
+      const data = await productService.getStockMovements(productId, companyId, selectedVariationId, branchIdToFilter);
       
       console.log('[FULL LEDGER] Received data:', {
         dataCount: data?.length || 0,
@@ -353,29 +359,51 @@ export const FullStockLedgerView: React.FC<FullStockLedgerViewProps> = ({
   };
 
   // Calculate totals - Include ALL movement types (purchase, sale, adjustment, etc.)
+  // PART 1 FIX: Proper categorization of movements
   const totals = React.useMemo(() => {
-    let totalIn = 0;
-    let totalOut = 0;
+    let totalPurchased = 0; // PURCHASE movements (IN)
+    let totalSold = 0; // SALE movements (OUT)
+    let totalReturned = 0; // RETURN movements (IN)
+    let totalAdjustmentPositive = 0; // ADJUSTMENT positive (IN)
+    let totalAdjustmentNegative = 0; // ADJUSTMENT negative (OUT)
     let currentBalance = 0; // Start from 0 (opening balance)
 
     movements.forEach((movement) => {
       const qty = Number(movement.quantity || 0);
       const movementType = ((movement.movement_type || movement.type || '') as string).toLowerCase();
       
-      // Count IN movements (positive quantity)
-      if (qty > 0) {
-        totalIn += qty;
-      } else if (qty < 0) {
-        // Count OUT movements (negative quantity)
-        totalOut += Math.abs(qty);
+      // PART 1: Proper categorization
+      if (movementType === 'purchase') {
+        totalPurchased += qty; // Purchase is usually positive (IN)
+      } else if (movementType === 'sale') {
+        totalSold += Math.abs(qty); // Sale is usually negative, convert to positive (OUT)
+      } else if (movementType === 'return' || movementType === 'sell_return' || movementType === 'rental_return') {
+        totalReturned += qty; // Returns are usually positive (IN)
+      } else if (movementType === 'adjustment') {
+        if (qty > 0) {
+          totalAdjustmentPositive += qty; // Positive adjustment (IN)
+        } else if (qty < 0) {
+          totalAdjustmentNegative += Math.abs(qty); // Negative adjustment (OUT)
+        }
       }
       
       // Calculate running balance (0 + all movements)
       currentBalance += qty;
     });
 
+    // Calculate totals
+    const totalIn = totalPurchased + totalReturned + totalAdjustmentPositive;
+    const totalOut = totalSold + totalAdjustmentNegative;
+    const totalAdjustments = totalAdjustmentPositive - totalAdjustmentNegative; // Net adjustment
+
     // Log totals calculation for debugging
     console.log('[FULL LEDGER] Totals calculation:', {
+      totalPurchased,
+      totalSold,
+      totalReturned,
+      totalAdjustmentPositive,
+      totalAdjustmentNegative,
+      totalAdjustments,
       totalIn,
       totalOut,
       currentBalance,
@@ -387,7 +415,17 @@ export const FullStockLedgerView: React.FC<FullStockLedgerViewProps> = ({
       }, {})
     });
 
-    return { totalIn, totalOut, currentBalance };
+    return { 
+      totalPurchased, 
+      totalSold, 
+      totalReturned, 
+      totalAdjustmentPositive, 
+      totalAdjustmentNegative,
+      totalAdjustments,
+      totalIn, 
+      totalOut, 
+      currentBalance 
+    };
   }, [movements]);
 
   const formatDate = (dateString: string) => {
@@ -531,27 +569,90 @@ export const FullStockLedgerView: React.FC<FullStockLedgerViewProps> = ({
           </Button>
         </div>
 
-        {/* Summary Cards */}
-        <div className="p-6 grid grid-cols-3 gap-4 border-b border-gray-800 bg-[#1F2937]/30">
-          <div className="bg-gray-900 border border-gray-800 p-4 rounded-lg">
+        {/* PART 2: Branch & Variation Filters */}
+        {(variations.length > 0 || branches.length > 1) && (
+          <div className="px-6 py-4 border-b border-gray-800 bg-[#111827]/50 flex gap-4 shrink-0">
+            {variations.length > 0 && (
+              <div className="flex-1">
+                <Label className="text-xs text-gray-400 mb-1.5 block">Variation</Label>
+                <Select
+                  value={selectedVariationId || 'all'}
+                  onValueChange={(value) => setSelectedVariationId(value === 'all' ? undefined : value)}
+                >
+                  <SelectTrigger className="h-9 bg-gray-900 border-gray-700 text-white text-sm">
+                    <SelectValue placeholder="All Variations" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Variations</SelectItem>
+                    {variations.map((v) => (
+                      <SelectItem key={v.id} value={v.id}>
+                        {v.name} {v.sku ? `(${v.sku})` : ''}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+            {branches.length > 1 && (
+              <div className="flex-1">
+                <Label className="text-xs text-gray-400 mb-1.5 block">Branch / Location</Label>
+                <Select
+                  value={selectedBranchId || 'all'}
+                  onValueChange={(value) => setSelectedBranchId(value === 'all' ? undefined : value)}
+                >
+                  <SelectTrigger className="h-9 bg-gray-900 border-gray-700 text-white text-sm">
+                    <SelectValue placeholder="All Branches" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Branches</SelectItem>
+                    {branches.map((b) => (
+                      <SelectItem key={b.id} value={b.id}>
+                        {b.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* PART 3: Top Summary Cards - Updated with proper breakdown */}
+        <div className="p-6 grid grid-cols-4 gap-4 border-b border-gray-800 bg-[#1F2937]/30">
+          <div className="bg-gray-900 border border-green-800 p-4 rounded-lg">
             <div className="flex items-center gap-2 mb-2">
               <ArrowDownRight size={16} className="text-green-400" />
-              <span className="text-xs text-gray-500 uppercase font-bold tracking-wider">Quantity In</span>
+              <span className="text-xs text-gray-500 uppercase font-bold tracking-wider">Total Purchased</span>
             </div>
-            <span className="text-2xl font-bold text-green-400">{totals.totalIn.toFixed(2)}</span>
+            <span className="text-2xl font-bold text-green-400">{totals.totalPurchased.toFixed(2)}</span>
           </div>
-          <div className="bg-gray-900 border border-gray-800 p-4 rounded-lg">
+          <div className="bg-gray-900 border border-red-800 p-4 rounded-lg">
             <div className="flex items-center gap-2 mb-2">
               <ArrowUpRight size={16} className="text-red-400" />
-              <span className="text-xs text-gray-500 uppercase font-bold tracking-wider">Quantity Out</span>
+              <span className="text-xs text-gray-500 uppercase font-bold tracking-wider">Total Sold</span>
             </div>
-            <span className="text-2xl font-bold text-red-400">{totals.totalOut.toFixed(2)}</span>
+            <span className="text-2xl font-bold text-red-400">{totals.totalSold.toFixed(2)}</span>
+          </div>
+          <div className="bg-gray-900 border border-yellow-800 p-4 rounded-lg">
+            <div className="flex items-center gap-2 mb-2">
+              <Package size={16} className="text-yellow-400" />
+              <span className="text-xs text-gray-500 uppercase font-bold tracking-wider">Adjustments</span>
+            </div>
+            <span className={cn(
+              "text-2xl font-bold",
+              totals.totalAdjustments >= 0 ? "text-yellow-400" : "text-orange-400"
+            )}>
+              {totals.totalAdjustments >= 0 ? '+' : ''}{totals.totalAdjustments.toFixed(2)}
+            </span>
+            <div className="text-xs text-gray-500 mt-1">
+              +{totals.totalAdjustmentPositive.toFixed(2)} / -{totals.totalAdjustmentNegative.toFixed(2)}
+            </div>
           </div>
           <div className="bg-gray-900 border border-blue-800 p-4 rounded-lg relative overflow-hidden">
             <div className="absolute inset-0 bg-blue-900/10 z-0"></div>
             <div className="flex items-center gap-2 mb-2 relative z-10">
               <FileText size={16} className="text-blue-400" />
-              <span className="text-xs text-blue-300 uppercase font-bold tracking-wider">Current Balance</span>
+              <span className="text-xs text-blue-300 uppercase font-bold tracking-wider">Current Stock</span>
             </div>
             <span className="text-2xl font-bold text-blue-400 relative z-10">
               {totals.currentBalance.toFixed(2)}

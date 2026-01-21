@@ -969,9 +969,10 @@ export const SalesPage = () => {
           }}
           context="customer"
           entityName={selectedSale.customerName}
-          entityId={selectedSale.id}
+          entityId={selectedSale.customer}
           outstandingAmount={selectedSale.due}
           referenceNo={selectedSale.invoiceNo}
+          referenceId={selectedSale.id} // CRITICAL FIX: UUID for journal entry reference_id
           onSuccess={async () => {
             toast.success('Payment recorded successfully');
             await refreshSales();

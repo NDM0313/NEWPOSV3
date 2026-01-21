@@ -19,7 +19,11 @@ import {
   Wrench,
   FileText,
   BarChart3,
-  TestTube
+  TestTube,
+  Edit,
+  MoreVertical,
+  XCircle,
+  Star
 } from 'lucide-react';
 import { Button } from '@/app/components/ui/button';
 import { Badge } from '@/app/components/ui/badge';
@@ -32,6 +36,28 @@ import { usePurchases } from '@/app/context/PurchaseContext';
 import { useExpenses } from '@/app/context/ExpenseContext';
 import type { AccountingEntry } from '@/app/context/AccountingContext';
 import { ManualEntryDialog } from './ManualEntryDialog';
+import { AddAccountDrawer } from './AddAccountDrawer';
+import { useSupabase } from '@/app/context/SupabaseContext';
+import { accountService } from '@/app/services/accountService';
+import { toast } from 'sonner';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/app/components/ui/dropdown-menu';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/app/components/ui/dialog';
+import { Input } from '@/app/components/ui/input';
+import { Label } from '@/app/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/app/components/ui/select';
+import { Switch } from '@/app/components/ui/switch';
 
 export const AccountingDashboard = () => {
   const accounting = useAccounting();
@@ -39,6 +65,7 @@ export const AccountingDashboard = () => {
   const purchases = usePurchases();
   const expenses = useExpenses();
   const { openDrawer } = useNavigation();
+  const { companyId, branchId } = useSupabase();
   const [activeTab, setActiveTab] = useState<'transactions' | 'accounts' | 'receivables' | 'payables' | 'deposits' | 'studio' | 'reports'>('transactions');
   const [searchTerm, setSearchTerm] = useState('');
   const [pageSize, setPageSize] = useState(25);
@@ -47,6 +74,11 @@ export const AccountingDashboard = () => {
   
   // 🎯 Manual Entry Dialog State
   const [manualEntryOpen, setManualEntryOpen] = useState(false);
+  
+  // 🎯 Account Management State
+  const [isAddAccountOpen, setIsAddAccountOpen] = useState(false);
+  const [isEditAccountOpen, setIsEditAccountOpen] = useState(false);
+  const [editingAccount, setEditingAccount] = useState<any>(null);
   
   // Filters
   const [typeFilter, setTypeFilter] = useState<string>('all');
@@ -393,65 +425,193 @@ export const AccountingDashboard = () => {
         )}
 
         {activeTab === 'accounts' && (
-          <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden">
-            {accounting.accounts.length === 0 ? (
-              <div className="text-center py-12">
-                <Wallet size={48} className="mx-auto text-gray-600 mb-3" />
-                <p className="text-gray-400 text-sm">No accounts found</p>
-                <p className="text-gray-600 text-xs mt-1">Accounts will appear here once created</p>
+          <div className="space-y-4">
+            {/* Header with Create Button */}
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-bold text-white">Accounts</h3>
+                <p className="text-sm text-gray-400">Manage your financial accounts</p>
               </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead className="bg-gray-900 border-b border-gray-800">
-                    <tr className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                      <th className="px-4 py-3 text-left">Account Name</th>
-                      <th className="px-4 py-3 text-left">Type</th>
-                      <th className="px-4 py-3 text-left">Branch</th>
-                      <th className="px-4 py-3 text-right">Balance</th>
-                      <th className="px-4 py-3 text-left">Status</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {accounting.accounts.map((account) => (
-                      <tr 
-                        key={account.id} 
-                        className="border-b border-gray-800 hover:bg-gray-800/30 transition-colors"
-                      >
-                        <td className="px-4 py-3 text-sm text-gray-300 font-medium">
-                          {account.name}
-                        </td>
-                        <td className="px-4 py-3 text-xs">
-                          <Badge className="bg-gray-800 text-gray-300 border-gray-700">
-                            {account.type}
-                          </Badge>
-                        </td>
-                        <td className="px-4 py-3 text-sm text-gray-400">
-                          {account.branch || 'N/A'}
-                        </td>
-                        <td className={cn(
-                          "px-4 py-3 text-sm font-semibold text-right tabular-nums",
-                          account.balance >= 0 ? "text-green-400" : "text-red-400"
-                        )}>
-                          ${account.balance.toLocaleString()}
-                        </td>
-                        <td className="px-4 py-3 text-xs">
-                          {account.isActive ? (
-                            <Badge className="bg-green-500/10 text-green-400 border-green-500/30">
-                              Active
-                            </Badge>
-                          ) : (
-                            <Badge className="bg-gray-500/10 text-gray-400 border-gray-500/30">
-                              Inactive
-                            </Badge>
-                          )}
-                        </td>
+              <Button
+                onClick={() => setIsAddAccountOpen(true)}
+                className="bg-blue-600 hover:bg-blue-500 text-white gap-2"
+              >
+                <Plus size={16} /> Create New Account
+              </Button>
+            </div>
+
+            {/* Accounts Table */}
+            <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden">
+              {accounting.accounts.length === 0 ? (
+                <div className="text-center py-12">
+                  <Wallet size={48} className="mx-auto text-gray-600 mb-3" />
+                  <p className="text-gray-400 text-sm">No accounts found</p>
+                  <p className="text-gray-600 text-xs mt-1">Create your first account to get started</p>
+                  <Button
+                    onClick={() => setIsAddAccountOpen(true)}
+                    className="mt-4 bg-blue-600 hover:bg-blue-500 text-white"
+                  >
+                    <Plus size={16} className="mr-2" /> Create Account
+                  </Button>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead className="bg-gray-900 border-b border-gray-800">
+                      <tr className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                        <th className="px-4 py-3 text-left">Account Name</th>
+                        <th className="px-4 py-3 text-left">Type</th>
+                        <th className="px-4 py-3 text-left">Branch</th>
+                        <th className="px-4 py-3 text-right">Balance</th>
+                        <th className="px-4 py-3 text-left">Status</th>
+                        <th className="px-4 py-3 text-left">Actions</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
+                    </thead>
+                    <tbody>
+                      {accounting.accounts.map((account) => (
+                        <tr 
+                          key={account.id} 
+                          className="border-b border-gray-800 hover:bg-gray-800/30 transition-colors"
+                        >
+                          <td className="px-4 py-3 text-sm text-gray-300 font-medium">
+                            <div className="flex items-center gap-2">
+                              {account.name}
+                              {(account as any).is_default_cash && (
+                                <Badge className="bg-green-500/20 text-green-400 border-green-500/30 text-xs">
+                                  Default Cash
+                                </Badge>
+                              )}
+                              {(account as any).is_default_bank && (
+                                <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/30 text-xs">
+                                  Default Bank
+                                </Badge>
+                              )}
+                            </div>
+                          </td>
+                          <td className="px-4 py-3 text-xs">
+                            <Badge className="bg-gray-800 text-gray-300 border-gray-700">
+                              {account.type || account.accountType}
+                            </Badge>
+                          </td>
+                          <td className="px-4 py-3 text-sm text-gray-400">
+                            {account.branch || 'Global'}
+                          </td>
+                          <td className={cn(
+                            "px-4 py-3 text-sm font-semibold text-right tabular-nums",
+                            account.balance >= 0 ? "text-green-400" : "text-red-400"
+                          )}>
+                            ${account.balance.toLocaleString()}
+                          </td>
+                          <td className="px-4 py-3 text-xs">
+                            {account.isActive ? (
+                              <Badge className="bg-green-500/10 text-green-400 border-green-500/30">
+                                Active
+                              </Badge>
+                            ) : (
+                              <Badge className="bg-gray-500/10 text-gray-400 border-gray-500/30">
+                                Inactive
+                              </Badge>
+                            )}
+                          </td>
+                          <td className="px-4 py-3">
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                                  <MoreVertical size={16} className="text-gray-400" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end" className="bg-gray-900 border-gray-800">
+                                <DropdownMenuItem
+                                  onClick={() => {
+                                    setEditingAccount(account);
+                                    setIsEditAccountOpen(true);
+                                  }}
+                                  className="text-gray-300 hover:text-white hover:bg-gray-800"
+                                >
+                                  <Edit size={14} className="mr-2" /> Edit
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  onClick={async () => {
+                                    try {
+                                      await accountService.updateAccount(account.id!, {
+                                        is_active: !account.isActive
+                                      });
+                                      await accounting.refreshEntries();
+                                      toast.success(`Account ${account.isActive ? 'deactivated' : 'activated'}`);
+                                    } catch (error: any) {
+                                      toast.error(`Failed to update account: ${error.message}`);
+                                    }
+                                  }}
+                                  className="text-gray-300 hover:text-white hover:bg-gray-800"
+                                >
+                                  {account.isActive ? (
+                                    <>
+                                      <XCircle size={14} className="mr-2" /> Deactivate
+                                    </>
+                                  ) : (
+                                    <>
+                                      <CheckCircle2 size={14} className="mr-2" /> Activate
+                                    </>
+                                  )}
+                                </DropdownMenuItem>
+                                {(account.type === 'Cash' || account.accountType === 'Cash') && (
+                                  <DropdownMenuItem
+                                    onClick={async () => {
+                                      try {
+                                        // Unset other default cash accounts first
+                                        const cashAccounts = accounting.accounts.filter(
+                                          a => (a.type === 'Cash' || a.accountType === 'Cash') && a.id !== account.id
+                                        );
+                                        for (const acc of cashAccounts) {
+                                          await accountService.updateAccount(acc.id!, { is_default_cash: false });
+                                        }
+                                        // Set this as default
+                                        await accountService.updateAccount(account.id!, { is_default_cash: true });
+                                        await accounting.refreshEntries();
+                                        toast.success('Set as default Cash account');
+                                      } catch (error: any) {
+                                        toast.error(`Failed to set default: ${error.message}`);
+                                      }
+                                    }}
+                                    className="text-gray-300 hover:text-white hover:bg-gray-800"
+                                  >
+                                    <Star size={14} className="mr-2" /> Set as Default Cash
+                                  </DropdownMenuItem>
+                                )}
+                                {(account.type === 'Bank' || account.accountType === 'Bank') && (
+                                  <DropdownMenuItem
+                                    onClick={async () => {
+                                      try {
+                                        // Unset other default bank accounts first
+                                        const bankAccounts = accounting.accounts.filter(
+                                          a => (a.type === 'Bank' || a.accountType === 'Bank') && a.id !== account.id
+                                        );
+                                        for (const acc of bankAccounts) {
+                                          await accountService.updateAccount(acc.id!, { is_default_bank: false });
+                                        }
+                                        // Set this as default
+                                        await accountService.updateAccount(account.id!, { is_default_bank: true });
+                                        await accounting.refreshEntries();
+                                        toast.success('Set as default Bank account');
+                                      } catch (error: any) {
+                                        toast.error(`Failed to set default: ${error.message}`);
+                                      }
+                                    }}
+                                    className="text-gray-300 hover:text-white hover:bg-gray-800"
+                                  >
+                                    <Star size={14} className="mr-2" /> Set as Default Bank
+                                  </DropdownMenuItem>
+                                )}
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
           </div>
         )}
 
@@ -706,6 +866,167 @@ export const AccountingDashboard = () => {
         isOpen={manualEntryOpen}
         onClose={() => setManualEntryOpen(false)}
       />
+
+      {/* Add Account Drawer */}
+      <AddAccountDrawer 
+        isOpen={isAddAccountOpen} 
+        onClose={() => setIsAddAccountOpen(false)}
+        onSuccess={async () => {
+          await accounting.refreshEntries();
+          setIsAddAccountOpen(false);
+        }}
+      />
+
+      {/* Edit Account Dialog */}
+      <Dialog open={isEditAccountOpen} onOpenChange={setIsEditAccountOpen}>
+        <DialogContent className="bg-gray-950 border-gray-800 text-white max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Edit Account</DialogTitle>
+            <DialogDescription className="text-gray-400">
+              Update account information
+            </DialogDescription>
+          </DialogHeader>
+          {editingAccount && (
+            <AccountEditForm
+              account={editingAccount}
+              onSave={async (updates) => {
+                try {
+                  await accountService.updateAccount(editingAccount.id!, updates);
+                  await accounting.refreshEntries();
+                  toast.success('Account updated successfully');
+                  setIsEditAccountOpen(false);
+                  setEditingAccount(null);
+                } catch (error: any) {
+                  toast.error(`Failed to update account: ${error.message}`);
+                }
+              }}
+              onCancel={() => {
+                setIsEditAccountOpen(false);
+                setEditingAccount(null);
+              }}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
+  );
+};
+
+// Account Edit Form Component
+const AccountEditForm = ({ account, onSave, onCancel }: { account: any; onSave: (updates: any) => Promise<void>; onCancel: () => void }) => {
+  const [formData, setFormData] = useState({
+    name: account.name || '',
+    type: account.type || account.accountType || 'Cash',
+    account_type: account.account_type || 'Asset',
+    code: account.code || '',
+    is_active: account.isActive ?? true,
+    is_default_cash: account.is_default_cash ?? false,
+    is_default_bank: account.is_default_bank ?? false,
+    branch_id: account.branch_id || null,
+  });
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    await onSave({
+      name: formData.name,
+      type: formData.type,
+      account_type: formData.account_type,
+      code: formData.code,
+      is_active: formData.is_active,
+      is_default_cash: formData.is_default_cash,
+      is_default_bank: formData.is_default_bank,
+      branch_id: formData.branch_id || null,
+    });
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-4">
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <Label className="text-gray-300 mb-2 block">Account Name *</Label>
+          <Input
+            value={formData.name}
+            onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+            className="bg-gray-900 border-gray-700 text-white"
+            required
+          />
+        </div>
+        <div>
+          <Label className="text-gray-300 mb-2 block">Account Code</Label>
+          <Input
+            value={formData.code}
+            onChange={(e) => setFormData({ ...formData, code: e.target.value })}
+            className="bg-gray-900 border-gray-700 text-white"
+          />
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <Label className="text-gray-300 mb-2 block">Account Type *</Label>
+          <Select value={formData.type} onValueChange={(value) => setFormData({ ...formData, type: value })}>
+            <SelectTrigger className="bg-gray-900 border-gray-700 text-white">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent className="bg-gray-900 border-gray-700 text-white">
+              <SelectItem value="Cash">Cash</SelectItem>
+              <SelectItem value="Bank">Bank</SelectItem>
+              <SelectItem value="Mobile Wallet">Mobile Wallet</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <div>
+          <Label className="text-gray-300 mb-2 block">Category *</Label>
+          <Select value={formData.account_type} onValueChange={(value) => setFormData({ ...formData, account_type: value })}>
+            <SelectTrigger className="bg-gray-900 border-gray-700 text-white">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent className="bg-gray-900 border-gray-700 text-white">
+              <SelectItem value="Asset">Asset</SelectItem>
+              <SelectItem value="Liability">Liability</SelectItem>
+              <SelectItem value="Expense">Expense</SelectItem>
+              <SelectItem value="Revenue">Revenue</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+
+      <div className="flex items-center gap-6">
+        <div className="flex items-center gap-2">
+          <Switch
+            checked={formData.is_active}
+            onCheckedChange={(checked) => setFormData({ ...formData, is_active: checked })}
+          />
+          <Label className="text-gray-300">Active</Label>
+        </div>
+        {formData.type === 'Cash' && (
+          <div className="flex items-center gap-2">
+            <Switch
+              checked={formData.is_default_cash}
+              onCheckedChange={(checked) => setFormData({ ...formData, is_default_cash: checked })}
+            />
+            <Label className="text-gray-300">Default Cash</Label>
+          </div>
+        )}
+        {formData.type === 'Bank' && (
+          <div className="flex items-center gap-2">
+            <Switch
+              checked={formData.is_default_bank}
+              onCheckedChange={(checked) => setFormData({ ...formData, is_default_bank: checked })}
+            />
+            <Label className="text-gray-300">Default Bank</Label>
+          </div>
+        )}
+      </div>
+
+      <DialogFooter>
+        <Button type="button" variant="ghost" onClick={onCancel} className="text-gray-400 hover:text-white">
+          Cancel
+        </Button>
+        <Button type="submit" className="bg-blue-600 hover:bg-blue-500 text-white">
+          Save Changes
+        </Button>
+      </DialogFooter>
+    </form>
   );
 };

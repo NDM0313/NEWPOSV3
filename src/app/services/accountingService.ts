@@ -114,18 +114,29 @@ export const accountingService = {
     }
 
     // Create journal entry (database doesn't have total_debit/total_credit columns)
+    // CRITICAL FIX: Only include fields that are not null/undefined to prevent "undefinedundefined" UUID error
+    const insertData: any = {
+      company_id: entry.company_id,
+      entry_no: entry.entry_no,
+      entry_date: entry.entry_date,
+      description: entry.description,
+      reference_type: entry.reference_type,
+    };
+    
+    // Only add optional UUID fields if they have valid values (not null/undefined)
+    if (entry.branch_id) {
+      insertData.branch_id = entry.branch_id;
+    }
+    if (entry.reference_id) {
+      insertData.reference_id = entry.reference_id;
+    }
+    if (entry.created_by) {
+      insertData.created_by = entry.created_by;
+    }
+    
     const { data: entryData, error: entryError } = await supabase
       .from('journal_entries')
-      .insert({
-        company_id: entry.company_id,
-        branch_id: entry.branch_id,
-        entry_no: entry.entry_no,
-        entry_date: entry.entry_date,
-        description: entry.description,
-        reference_type: entry.reference_type,
-        reference_id: entry.reference_id,
-        created_by: entry.created_by,
-      })
+      .insert(insertData)
       .select()
       .single();
 

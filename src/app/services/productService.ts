@@ -240,29 +240,16 @@ export const productService = {
     return data;
   },
 
-  // Get stock movements for a product (optionally filtered by variation_id)
-  async getStockMovements(productId: string, companyId: string, variationId?: string) {
-    console.log('[STOCK MOVEMENTS QUERY] Starting fetch:', {
-      productId,
-      companyId,
-      timestamp: new Date().toISOString()
-    });
-
+  // Get stock movements for a product (optionally filtered by variation_id and branch_id)
+  async getStockMovements(productId: string, companyId: string, variationId?: string, branchId?: string) {
+    // Reduced logging - only log errors and warnings
     // Step 1: Try basic query first (no filters to see if ANY data exists)
-    console.log('[STOCK MOVEMENTS QUERY] Step 1: Checking if table has any data...');
     const { data: allData, error: allError } = await supabase
       .from('stock_movements')
       .select('id, product_id, company_id, branch_id')
       .limit(5);
 
-    console.log('[STOCK MOVEMENTS QUERY] Table check result:', {
-      totalRowsFound: allData?.length || 0,
-      error: allError,
-      sampleRow: allData?.[0] || null
-    });
-
     // Step 2: Try query with product_id only (no company_id filter)
-    console.log('[STOCK MOVEMENTS QUERY] Step 2: Querying by product_id only...');
     const { data: productData, error: productError } = await supabase
       .from('stock_movements')
       .select('*')
@@ -270,15 +257,7 @@ export const productService = {
       .order('created_at', { ascending: false })
       .limit(20);
 
-    console.log('[STOCK MOVEMENTS QUERY] Product-only query result:', {
-      dataCount: productData?.length || 0,
-      error: productError,
-      sampleData: productData?.[0] || null,
-      allProductIds: productData?.map(d => ({ id: d.id, product_id: d.product_id, company_id: d.company_id })) || []
-    });
-
     // Step 3: Now try with both filters (include ALL movement types: purchase, sale, adjustment, transfer, return, etc.)
-    console.log('[STOCK MOVEMENTS QUERY] Step 3: Querying with product_id + company_id (ALL movement types including adjustments)...');
     let query = supabase
       .from('stock_movements')
       .select('*')
@@ -288,47 +267,88 @@ export const productService = {
     // NO FILTER BY movement_type - we want ALL types (purchase, sale, adjustment, transfer, return, etc.)
     // This ensures adjustments are included
     
-    // Filter by variation_id ONLY if explicitly provided (for variable products)
-    // Note: Don't filter by variation_id if not provided, as column may not exist in all schemas
-    // and existing data may not have variation_id set
-    if (variationId) {
+    // PART 3 FIX: Filter by variation_id ONLY if explicitly provided AND not 'all'
+    // CRITICAL: If variationId is provided, filter by it. If NULL/undefined, show ALL movements (including those with NULL variation_id)
+    // This handles products without variations gracefully
+    if (variationId && variationId !== 'all') {
       try {
         query = query.eq('variation_id', variationId);
-        console.log('[STOCK MOVEMENTS QUERY] Filtering by variation_id:', variationId);
       } catch (err) {
-        console.warn('[STOCK MOVEMENTS QUERY] variation_id column may not exist, skipping filter:', err);
+        // Column may not exist - silently skip
       }
     }
-    // If variationId is not provided, don't filter by it - show all movements for the product
+    
+    // PART 2 FIX: Filter by branch_id ONLY if explicitly provided AND not 'all'
+    // If branchId is undefined/null/'all', don't filter - show all movements
+    if (branchId && branchId !== 'all') {
+      try {
+        query = query.eq('branch_id', branchId);
+      } catch (err) {
+        // Column may not exist - silently skip
+      }
+    }
     
     // Order by date DESC for initial fetch (will be sorted ASC for balance calculation)
     query = query.order('created_at', { ascending: false });
 
     const { data: basicData, error: basicError } = await query;
 
-    // Log detailed breakdown of movement types
-    const movementTypeBreakdown: Record<string, number> = {};
-    if (basicData && basicData.length > 0) {
-      basicData.forEach((m: any) => {
-        const type = (m.movement_type || m.type || 'unknown').toLowerCase();
-        movementTypeBreakdown[type] = (movementTypeBreakdown[type] || 0) + 1;
-      });
-    }
-
-    console.log('[STOCK MOVEMENTS QUERY] Filtered query result:', {
-      dataCount: basicData?.length || 0,
-      error: basicError,
-      sampleData: basicData?.[0] || null,
-      queryFilters: { productId, companyId },
-      movementTypeBreakdown,
-      adjustmentCount: movementTypeBreakdown['adjustment'] || 0,
-      allMovementTypes: Object.keys(movementTypeBreakdown)
-    });
-
     if (basicError) {
       console.error('[STOCK MOVEMENTS QUERY] Filtered query error:', basicError);
       // If table doesn't exist or column mismatch, return empty array
-      if (basicError.code === '42P01' || basicError.code === '42703') {
+      // Also handle 400 errors which may indicate column doesn't exist (e.g., variation_id, branch_id)
+      if (basicError.code === '42P01' || basicError.code === '42703' || basicError.code === 'PGRST116' || basicError.status === 400) {
+        // Check if error is about variation_id column
+        const isVariationError = basicError.message?.includes('variation_id');
+        const isBranchError = basicError.message?.includes('branch_id');
+        
+        // Column may not exist - retry intelligently
+        if (isVariationError || isBranchError) {
+          console.warn('[Stock Movements] Column may not exist, retrying without problematic filter(s)');
+          
+          // Retry query without the problematic filter(s)
+          let retryQuery = supabase
+            .from('stock_movements')
+            .select('*')
+            .eq('product_id', productId)
+            .eq('company_id', companyId);
+          
+          // Only apply branch_id filter if variation_id was the problem
+          if (isVariationError && branchId) {
+            retryQuery = retryQuery.eq('branch_id', branchId);
+            console.log('[Stock Movements] Retrying with branch_id filter only (variation_id column missing)');
+          }
+          // Only apply variation_id filter if branch_id was the problem (unlikely but handle it)
+          else if (isBranchError && variationId) {
+            retryQuery = retryQuery.eq('variation_id', variationId);
+            console.log('[Stock Movements] Retrying with variation_id filter only (branch_id column missing)');
+          }
+          // If both or unknown, retry without both
+          else {
+            console.log('[Stock Movements] Retrying without variation_id and branch_id filters');
+          }
+          
+          retryQuery = retryQuery.order('created_at', { ascending: false });
+          
+          const { data: retryData, error: retryError } = await retryQuery;
+          if (retryError) {
+            // If retry also fails, try completely unfiltered (except product_id and company_id)
+            console.warn('[Stock Movements] Retry query also failed, trying without all optional filters');
+            const { data: finalData, error: finalError } = await supabase
+              .from('stock_movements')
+              .select('*')
+              .eq('product_id', productId)
+              .eq('company_id', companyId)
+              .order('created_at', { ascending: false });
+            
+            if (finalError) {
+              console.warn('[Stock Movements] Final retry also failed, returning empty array');
+              return [];
+            }
+            return finalData || [];
+          }
+          return retryData || [];
+        }
         console.warn('[Stock Movements] Table or column not found, returning empty array');
         return [];
       }
@@ -352,13 +372,28 @@ export const productService = {
           .eq('product_id', productId)
           .eq('company_id', companyId);
         
-        // Apply variation_id filter ONLY if explicitly provided AND column exists
-        // Note: variation_id column may not exist in all schemas
-        // If variationId is not provided, don't filter - show all movements for the product
-        if (variationId) {
-          // Try to filter by variation_id, but don't fail if column doesn't exist
-          fullQuery = fullQuery.eq('variation_id', variationId);
-          console.log('[STOCK MOVEMENTS QUERY] Full query: Filtering by variation_id:', variationId);
+        // PART 2 FIX: Apply variation_id filter ONLY if explicitly provided AND not 'all'
+        if (variationId && variationId !== 'all') {
+          try {
+            fullQuery = fullQuery.eq('variation_id', variationId);
+            console.log('[STOCK MOVEMENTS QUERY] Full query: Filtering by variation_id:', variationId);
+          } catch (err) {
+            console.warn('[STOCK MOVEMENTS QUERY] variation_id filter failed, continuing without it:', err);
+          }
+        } else {
+          console.log('[STOCK MOVEMENTS QUERY] Full query: No variation_id filter (showing all variations)');
+        }
+        
+        // PART 2 FIX: Apply branch_id filter ONLY if explicitly provided AND not 'all'
+        if (branchId && branchId !== 'all') {
+          try {
+            fullQuery = fullQuery.eq('branch_id', branchId);
+            console.log('[STOCK MOVEMENTS QUERY] Full query: Filtering by branch_id:', branchId);
+          } catch (err) {
+            console.warn('[STOCK MOVEMENTS QUERY] branch_id filter failed, continuing without it:', err);
+          }
+        } else {
+          console.log('[STOCK MOVEMENTS QUERY] Full query: No branch_id filter (showing all branches)');
         }
         
         const { data: fullData, error: fullError } = await fullQuery.order('created_at', { ascending: false });
@@ -381,14 +416,17 @@ export const productService = {
     }
 
     // If no data found, check if product_id or company_id mismatch
-    if (productData && productData.length > 0) {
-      console.warn('[STOCK MOVEMENTS QUERY] Data exists for product but company_id mismatch!', {
-        foundCompanyIds: [...new Set(productData.map(d => d.company_id))],
-        requestedCompanyId: companyId
-      });
+    if (productData && productData.length > 0 && basicData && basicData.length === 0) {
+      // Only warn if we found data by product_id but not by company_id (mismatch)
+      const foundCompanyIds = [...new Set(productData.map(d => d.company_id))];
+      if (!foundCompanyIds.includes(companyId)) {
+        console.warn('[STOCK MOVEMENTS] company_id mismatch detected. Run migration: fix_stock_movements_company_id.sql', {
+          productId,
+          foundCompanyIds,
+          requestedCompanyId: companyId
+        });
+      }
     }
-
-    console.log('[STOCK MOVEMENTS QUERY] No data found for product:', productId);
     return basicData || [];
   },
 

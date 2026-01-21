@@ -29,12 +29,14 @@ export interface SaleItem {
   discount: number;
   tax: number;
   total: number;
+  variationId?: string; // CRITICAL FIX: Add variationId for variation tracking
 }
 
 export interface Sale {
   id: string;
   invoiceNo: string;
   type: SaleType;
+  status?: 'draft' | 'quotation' | 'order' | 'final'; // CRITICAL FIX: Add status field
   customer: string;
   customerName: string;
   contactNumber: string;
@@ -80,6 +82,24 @@ const SalesContext = createContext<SalesContextType | undefined>(undefined);
 export const useSales = () => {
   const context = useContext(SalesContext);
   if (!context) {
+    // During hot reload in development, context might not be available
+    // Return a safe default to prevent crashes
+    if (import.meta.env.DEV) {
+      console.warn('[SalesContext] useSales called outside SalesProvider, returning default context');
+      const defaultError = () => { throw new Error('SalesProvider not available'); };
+      return {
+        sales: [],
+        loading: false,
+        getSaleById: () => undefined,
+        createSale: defaultError,
+        updateSale: defaultError,
+        deleteSale: defaultError,
+        recordPayment: defaultError,
+        updateShippingStatus: defaultError,
+        convertQuotationToInvoice: defaultError,
+        refreshSales: async () => {},
+      } as SalesContextType;
+    }
     throw new Error('useSales must be used within SalesProvider');
   }
   return context;
@@ -184,6 +204,7 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
       id: supabaseSale.id,
       invoiceNo: supabaseSale.invoice_no || '',
       type: supabaseSale.status === 'quotation' ? 'quotation' : 'invoice',
+      status: supabaseSale.status || (supabaseSale.type === 'invoice' ? 'final' : 'quotation'), // CRITICAL FIX: Include status
       customer: supabaseSale.customer_id || '',
       customerName: supabaseSale.customer_name || '',
       contactNumber: supabaseSale.customer?.phone || '',
@@ -193,25 +214,26 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
         id: item.id || '',
         productId: item.product_id || '',
         productName: item.product_name || '',
-        sku: item.product?.sku || '',
+        sku: item.sku || item.product?.sku || 'N/A',
         quantity: item.quantity || 0,
         price: item.unit_price || 0,
-        discount: 0,
-        tax: 0,
+        discount: item.discount_amount || 0,
+        tax: item.tax_amount || 0,
         total: item.total || 0,
+        variationId: item.variation_id || undefined, // CRITICAL FIX: Include variationId
       })),
       itemsCount: supabaseSale.items?.length || 0,
       subtotal: supabaseSale.subtotal || 0,
       discount: supabaseSale.discount_amount || 0,
       tax: supabaseSale.tax_amount || 0,
-      expenses: supabaseSale.shipping_charges || 0,
+      expenses: supabaseSale.expenses || supabaseSale.shipping_charges || 0,
       total: supabaseSale.total || 0,
       paid: supabaseSale.paid_amount || 0,
       due: supabaseSale.due_amount || 0,
-      returnDue: 0,
+      returnDue: supabaseSale.return_due || 0,
       paymentStatus: supabaseSale.payment_status || 'unpaid',
-      paymentMethod: 'Cash',
-      shippingStatus: 'pending',
+      paymentMethod: supabaseSale.payment_method || 'Cash',
+      shippingStatus: supabaseSale.shipping_status || 'pending',
       notes: supabaseSale.notes,
       createdAt: supabaseSale.created_at || new Date().toISOString(),
       updatedAt: supabaseSale.updated_at || new Date().toISOString(),
@@ -257,9 +279,25 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
     }
 
     try {
-      // Generate document number based on type
-      const docType = saleData.type === 'invoice' ? 'invoice' : 'quotation';
+      // CRITICAL FIX: Generate document number based on sale status/type
+      // Draft → DRAFT-XXX, Quotation → QT-XXX, Order → SO-XXX, Final → INV-XXX
+      let docType: 'draft' | 'quotation' | 'order' | 'invoice' = 'invoice';
+      if (saleData.status === 'draft') {
+        docType = 'draft';
+      } else if (saleData.status === 'quotation') {
+        docType = 'quotation';
+      } else if (saleData.status === 'order') {
+        docType = 'order';
+      } else if (saleData.type === 'invoice' || saleData.status === 'final') {
+        docType = 'invoice';
+      }
+      
       const invoiceNo = generateDocumentNumber(docType);
+      
+      // Validate invoice number is not undefined
+      if (!invoiceNo || invoiceNo.includes('undefined') || invoiceNo.includes('NaN')) {
+        throw new Error(`Invalid invoice number generated: ${invoiceNo}. Check document numbering settings.`);
+      }
       
       // Convert to Supabase format
       const supabaseSale: SupabaseSale = {
@@ -270,7 +308,7 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
         customer_id: saleData.customer || undefined,
         customer_name: saleData.customerName,
         type: saleData.type === 'invoice' ? 'invoice' : 'quotation',
-        status: saleData.type === 'invoice' ? 'final' : 'quotation',
+        status: saleData.status || (saleData.type === 'invoice' ? 'final' : 'quotation'), // Use status from saleData if provided
         payment_status: saleData.paymentStatus,
         payment_method: saleData.paymentMethod || undefined,
         subtotal: saleData.subtotal,
@@ -338,17 +376,21 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
         }
       }
       
-      // Auto-post to accounting if invoice and paid
-      if (newSale.type === 'invoice' && newSale.paid > 0) {
-        accounting.recordSalePayment({
-          saleId: newSale.id,
-          invoiceNo: newSale.invoiceNo,
-          customerName: newSale.customerName,
-          amount: newSale.paid,
-          paymentMethod: newSale.paymentMethod as any,
-          date: new Date().toISOString(),
-          notes: `Payment for ${newSale.invoiceNo}`,
-        });
+      // CRITICAL FIX: Auto-post to accounting ONLY if invoice (final) and paid
+      // Draft/Quotation should NOT create accounting entries
+      if (newSale.type === 'invoice' && newSale.status === 'final' && newSale.paid > 0) {
+        try {
+          await accounting.recordSalePayment({
+            saleId: newSale.id, // CRITICAL FIX: UUID for reference_id
+            invoiceNo: newSale.invoiceNo, // Invoice number for referenceNo
+            customerName: newSale.customerName,
+            amount: newSale.paid,
+            paymentMethod: newSale.paymentMethod as any,
+          });
+        } catch (accountingError) {
+          console.warn('[SALES CONTEXT] Accounting entry creation warning (non-blocking):', accountingError);
+          // Don't block sale creation if accounting fails
+        }
       }
 
       toast.success(`${docType === 'invoice' ? 'Invoice' : 'Quotation'} ${invoiceNo} created successfully!`);
@@ -420,8 +462,9 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
     }
 
     try {
-      // Delete from Supabase (or soft delete by updating status)
-      await saleService.updateSaleStatus(id, 'cancelled' as any);
+      // CRITICAL FIX: Use hard delete since 'cancelled' status doesn't exist in enum
+      // sale_status enum only supports: draft, quotation, order, final
+      await saleService.deleteSale(id);
       
       // Update local state
       setSales(prev => prev.filter(s => s.id !== id));
@@ -467,13 +510,11 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
 
       // Auto-post to accounting
       accounting.recordSalePayment({
-        saleId: sale.id,
-        invoiceNo: sale.invoiceNo,
+        saleId: sale.id, // CRITICAL FIX: UUID for reference_id
+        invoiceNo: sale.invoiceNo, // Invoice number for referenceNo
         customerName: sale.customerName,
         amount,
         paymentMethod: method as any,
-        date: new Date().toISOString(),
-        notes: `Payment received for ${sale.invoiceNo}`,
       });
 
       toast.success(`Payment of Rs. ${amount.toLocaleString()} recorded!`);

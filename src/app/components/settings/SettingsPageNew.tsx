@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { 
   Building2, CreditCard, Hash, Shield, ToggleLeft, Save, 
   CheckCircle, Users, Lock, Key, Settings as SettingsIcon, AlertCircle, UserCog,
-  MapPin, Store, ShoppingCart, ShoppingBag, Package, Shirt, Calculator
+  MapPin, Store, ShoppingCart, ShoppingBag, Package, Shirt, Calculator, X, Edit
 } from 'lucide-react';
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
@@ -10,8 +10,19 @@ import { Label } from "../ui/label";
 import { Badge } from "../ui/badge";
 import { Switch } from "../ui/switch";
 import { cn } from "../ui/utils";
-import { useSettings } from '@/app/context/SettingsContext';
+import { useSettings, BranchSettings } from '@/app/context/SettingsContext';
+import { branchService } from '@/app/services/branchService';
+import { useSupabase } from '@/app/context/SupabaseContext';
 import { toast } from 'sonner';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "../ui/dialog";
+import { Textarea } from "../ui/textarea";
 
 type SettingsTab = 
   | 'company' 
@@ -30,8 +41,14 @@ type SettingsTab =
 
 export const SettingsPageNew = () => {
   const settings = useSettings();
+  const { companyId } = useSupabase();
   const [activeTab, setActiveTab] = useState<SettingsTab>('company');
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+
+  // Branch edit dialog state
+  const [isBranchDialogOpen, setIsBranchDialogOpen] = useState(false);
+  const [editingBranch, setEditingBranch] = useState<BranchSettings | null>(null);
+  const [branchForm, setBranchForm] = useState<Partial<BranchSettings>>({});
 
   // Local state for form editing
   const [companyForm, setCompanyForm] = useState(settings.company);
@@ -45,6 +62,53 @@ export const SettingsPageNew = () => {
   const [numberingForm, setNumberingForm] = useState(settings.numberingRules);
   const [permissionsForm, setPermissionsForm] = useState(settings.currentUser);
   const [modulesForm, setModulesForm] = useState(settings.modules);
+
+  // Handle branch edit
+  const handleEditBranch = (branch: BranchSettings) => {
+    setEditingBranch(branch);
+    setBranchForm({ ...branch });
+    setIsBranchDialogOpen(true);
+  };
+
+  // Handle branch save
+  const handleSaveBranch = async () => {
+    if (!editingBranch || !companyId) return;
+
+    try {
+      // Validate required fields
+      if (!branchForm.branchName || !branchForm.branchCode) {
+        toast.error('Branch name and code are required');
+        return;
+      }
+
+      // Map BranchSettings to Branch format for database
+      const branchUpdates = {
+        name: branchForm.branchName,
+        code: branchForm.branchCode,
+        address: branchForm.address || null,
+        phone: branchForm.phone || null,
+        is_active: branchForm.isActive ?? true,
+        is_default: branchForm.isDefault ?? false,
+      };
+
+      // Save to database
+      await branchService.updateBranch(editingBranch.id, branchUpdates);
+
+      // Update local state
+      const updatedBranches = settings.branches.map(b =>
+        b.id === editingBranch.id ? { ...b, ...branchForm } as BranchSettings : b
+      );
+      settings.updateBranches(updatedBranches);
+      
+      toast.success('Branch updated successfully');
+      setIsBranchDialogOpen(false);
+      setEditingBranch(null);
+      setBranchForm({});
+    } catch (error: any) {
+      console.error('[SETTINGS PAGE] Error saving branch:', error);
+      toast.error(`Failed to save branch: ${error.message || 'Unknown error'}`);
+    }
+  };
 
   const handleSave = async () => {
     try {
@@ -293,7 +357,14 @@ export const SettingsPageNew = () => {
                           <p className="text-sm text-gray-400">{branch.address}</p>
                           <p className="text-xs text-gray-500 mt-1">{branch.phone}</p>
                         </div>
-                        <Button variant="ghost" size="sm" className="text-gray-400 hover:text-white">Edit</Button>
+                        <Button 
+                          variant="ghost" 
+                          size="sm" 
+                          className="text-gray-400 hover:text-white"
+                          onClick={() => handleEditBranch(branch)}
+                        >
+                          <Edit size={14} className="mr-1" /> Edit
+                        </Button>
                       </div>
 
                       <div className="grid grid-cols-3 gap-3 mt-4">
@@ -1649,6 +1720,129 @@ export const SettingsPageNew = () => {
           </div>
         </div>
       </div>
+
+      {/* Branch Edit Dialog */}
+      <Dialog open={isBranchDialogOpen} onOpenChange={setIsBranchDialogOpen}>
+        <DialogContent className="bg-gray-950 border-gray-800 text-white max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-bold">Edit Branch</DialogTitle>
+            <DialogDescription className="text-gray-400">
+              Update branch information and settings
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label className="text-gray-300 mb-2 block">Branch Name *</Label>
+                <Input
+                  value={branchForm.branchName || ''}
+                  onChange={(e) => setBranchForm({ ...branchForm, branchName: e.target.value })}
+                  className="bg-gray-900 border-gray-700 text-white"
+                  placeholder="Main Branch"
+                />
+              </div>
+              <div>
+                <Label className="text-gray-300 mb-2 block">Branch Code *</Label>
+                <Input
+                  value={branchForm.branchCode || ''}
+                  onChange={(e) => setBranchForm({ ...branchForm, branchCode: e.target.value })}
+                  className="bg-gray-900 border-gray-700 text-white"
+                  placeholder="MB-001"
+                />
+              </div>
+            </div>
+
+            <div>
+              <Label className="text-gray-300 mb-2 block">Address</Label>
+              <Textarea
+                value={branchForm.address || ''}
+                onChange={(e) => setBranchForm({ ...branchForm, address: e.target.value })}
+                className="bg-gray-900 border-gray-700 text-white"
+                placeholder="Branch address"
+                rows={3}
+              />
+            </div>
+
+            <div>
+              <Label className="text-gray-300 mb-2 block">Phone</Label>
+              <Input
+                value={branchForm.phone || ''}
+                onChange={(e) => setBranchForm({ ...branchForm, phone: e.target.value })}
+                className="bg-gray-900 border-gray-700 text-white"
+                placeholder="+92 300 1234567"
+              />
+            </div>
+
+            <div className="grid grid-cols-3 gap-4">
+              <div>
+                <Label className="text-gray-300 mb-2 block">Cash Account</Label>
+                <Input
+                  value={branchForm.cashAccount || ''}
+                  onChange={(e) => setBranchForm({ ...branchForm, cashAccount: e.target.value })}
+                  className="bg-gray-900 border-gray-700 text-white"
+                  placeholder="Cash Account"
+                />
+              </div>
+              <div>
+                <Label className="text-gray-300 mb-2 block">Bank Account</Label>
+                <Input
+                  value={branchForm.bankAccount || ''}
+                  onChange={(e) => setBranchForm({ ...branchForm, bankAccount: e.target.value })}
+                  className="bg-gray-900 border-gray-700 text-white"
+                  placeholder="Bank Account"
+                />
+              </div>
+              <div>
+                <Label className="text-gray-300 mb-2 block">POS Drawer</Label>
+                <Input
+                  value={branchForm.posCashDrawer || ''}
+                  onChange={(e) => setBranchForm({ ...branchForm, posCashDrawer: e.target.value })}
+                  className="bg-gray-900 border-gray-700 text-white"
+                  placeholder="POS Drawer"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center gap-6 pt-2">
+              <div className="flex items-center gap-2">
+                <Switch
+                  checked={branchForm.isActive ?? true}
+                  onCheckedChange={(checked) => setBranchForm({ ...branchForm, isActive: checked })}
+                />
+                <Label className="text-gray-300">Active</Label>
+              </div>
+              <div className="flex items-center gap-2">
+                <Switch
+                  checked={branchForm.isDefault ?? false}
+                  onCheckedChange={(checked) => setBranchForm({ ...branchForm, isDefault: checked })}
+                />
+                <Label className="text-gray-300">Default Branch</Label>
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="ghost"
+              onClick={() => {
+                setIsBranchDialogOpen(false);
+                setEditingBranch(null);
+                setBranchForm({});
+              }}
+              className="text-gray-400 hover:text-white"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleSaveBranch}
+              className="bg-green-600 hover:bg-green-500 text-white"
+            >
+              Save Changes
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

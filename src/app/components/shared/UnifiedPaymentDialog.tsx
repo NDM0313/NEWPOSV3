@@ -19,7 +19,8 @@ export interface PaymentDialogProps {
   entityName: string;
   entityId?: string;
   outstandingAmount: number;
-  referenceNo?: string; // Purchase ID / Invoice ID / Worker ID
+  referenceNo?: string; // Invoice number (string) for display
+  referenceId?: string; // UUID of sale/purchase/rental (for journal entry reference_id)
   onSuccess?: () => void;
 }
 
@@ -35,6 +36,7 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
   entityId,
   outstandingAmount,
   referenceNo,
+  referenceId, // CRITICAL FIX: UUID for journal entry reference_id
   onSuccess
 }) => {
   const accounting = useAccounting();
@@ -202,8 +204,14 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
           break;
 
         case 'customer':
+          if (!referenceId) {
+            toast.error('Sale ID is required for payment recording');
+            setIsProcessing(false);
+            return;
+          }
           success = accounting.recordSalePayment({
-            invoiceNo: referenceNo || `INV-${Date.now()}`,
+            saleId: referenceId, // CRITICAL FIX: UUID for reference_id
+            invoiceNo: referenceNo || `INV-${Date.now()}`, // Invoice number for referenceNo
             customerName: entityName,
             customerId: entityId,
             amount,

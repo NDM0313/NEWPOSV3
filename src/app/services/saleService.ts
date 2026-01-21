@@ -65,17 +65,87 @@ export const saleService = {
       sale_id: saleData.id,
     }));
 
-    const { error: itemsError } = await supabase
-      .from('sale_items')
+    // CRITICAL FIX: Use sales_items table (created via migration)
+    // Try sales_items first, fallback to sale_items for backward compatibility
+    let itemsError: any = null;
+    const { error: salesItemsError } = await supabase
+      .from('sales_items')
       .insert(itemsWithSaleId);
-
-    if (itemsError) {
-      // Rollback: Delete sale
-      await supabase.from('sales').delete().eq('id', saleData.id);
-      throw itemsError;
+    
+    if (salesItemsError) {
+      // If table doesn't exist, try old table name
+      if (salesItemsError.code === '42P01' || salesItemsError.message?.includes('does not exist')) {
+        const { error: fallbackError } = await supabase
+          .from('sale_items')
+          .insert(itemsWithSaleId);
+        itemsError = fallbackError;
+      } else {
+        itemsError = salesItemsError;
+      }
     }
 
-    return saleData;
+    if (itemsError) {
+      // ROLLBACK: Delete sale if items insert fails
+      await supabase.from('sales').delete().eq('id', saleData.id);
+      throw new Error(`Failed to create sale items: ${itemsError.message}. Sale rolled back.`);
+    }
+
+    // CRITICAL FIX: Fetch the complete sale with items to return
+    // This ensures items are included in the response
+    let completeSale = null;
+    let fetchError = null;
+
+    // Try sales_items first
+    const { data: salesItemsData, error: fetchSalesItemsError } = await supabase
+      .from('sales')
+      .select(`
+        *,
+        customer:contacts(*),
+        items:sales_items(
+          *,
+          product:products(*),
+          variation:product_variations(*)
+        )
+      `)
+      .eq('id', saleData.id)
+      .single();
+
+    if (fetchSalesItemsError) {
+      // If sales_items fails, try sale_items (backward compatibility)
+      if (fetchSalesItemsError.code === '42P01' || fetchSalesItemsError.message?.includes('does not exist')) {
+        const { data: saleItemsData, error: fetchSaleItemsError } = await supabase
+          .from('sales')
+          .select(`
+            *,
+            customer:contacts(*),
+            items:sale_items(
+              *,
+              product:products(*),
+              variation:product_variations(*)
+            )
+          `)
+          .eq('id', saleData.id)
+          .single();
+        
+        if (!fetchSaleItemsError) {
+          completeSale = saleItemsData;
+        } else {
+          fetchError = fetchSaleItemsError;
+        }
+      } else {
+        fetchError = fetchSalesItemsError;
+      }
+    } else {
+      completeSale = salesItemsData;
+    }
+
+    if (fetchError || !completeSale) {
+      // If fetch fails, still return saleData (items will be fetched separately on refresh)
+      console.warn('[SALE SERVICE] Failed to fetch sale with items:', fetchError);
+      return saleData;
+    }
+
+    return completeSale;
   },
 
   // Get all sales
@@ -86,9 +156,9 @@ export const saleService = {
       .select(`
         *,
         customer:contacts(name, phone),
-        items:sale_items(
+        items:sales_items(
           *,
-          product:products(name)
+          product:products(name, sku)
         )
       `)
       .order('invoice_date', { ascending: false });
@@ -106,9 +176,9 @@ export const saleService = {
         .select(`
           *,
           customer:contacts(name, phone),
-          items:sale_items(
+          items:sales_items(
             *,
-            product:products(name)
+            product:products(name, sku)
           )
         `)
         .order('created_at', { ascending: false });
@@ -125,9 +195,9 @@ export const saleService = {
           .select(`
             *,
             customer:contacts(name, phone),
-            items:sale_items(
+            items:sales_items(
               *,
-              product:products(name)
+              product:products(name, sku)
             )
           `);
         
@@ -186,7 +256,7 @@ export const saleService = {
       .select(`
         *,
         customer:contacts(*),
-        items:sale_items(
+        items:sales_items(
           *,
           product:products(*),
           variation:product_variations(*)
@@ -226,11 +296,13 @@ export const saleService = {
     return data;
   },
 
-  // Delete sale (soft delete by setting status to cancelled)
+  // Delete sale (hard delete - removes sale and cascade deletes items)
   async deleteSale(id: string) {
+    // CRITICAL FIX: Use hard delete since 'cancelled' status doesn't exist in enum
+    // Cascade delete will automatically remove related sale_items/sales_items
     const { error } = await supabase
       .from('sales')
-      .update({ status: 'cancelled' })
+      .delete()
       .eq('id', id);
 
     if (error) throw error;

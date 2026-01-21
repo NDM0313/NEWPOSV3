@@ -8,7 +8,9 @@ import { useSettings } from '@/app/context/SettingsContext';
 
 export type DocumentType = 
   | 'invoice' 
-  | 'quotation' 
+  | 'quotation'
+  | 'draft'
+  | 'order'
   | 'purchase' 
   | 'rental' 
   | 'studio' 
@@ -30,15 +32,29 @@ export const useDocumentNumbering = () => {
     switch (type) {
       case 'invoice':
         return {
-          prefix: numbering.salesPrefix,
-          nextNumber: numbering.salesNextNumber,
+          prefix: numbering.salePrefix || 'INV-', // CRITICAL FIX: Use salePrefix (not salesPrefix)
+          nextNumber: numbering.saleNextNumber || 1, // CRITICAL FIX: Use saleNextNumber (not salesNextNumber)
           padding: 4
         };
       
       case 'quotation':
         return {
-          prefix: numbering.quotationPrefix,
-          nextNumber: numbering.quotationNextNumber,
+          prefix: numbering.quotationPrefix || 'QT',
+          nextNumber: numbering.quotationNextNumber || 1,
+          padding: 4
+        };
+      
+      case 'draft':
+        return {
+          prefix: 'DRAFT',
+          nextNumber: numbering.draftNextNumber || 1,
+          padding: 4
+        };
+      
+      case 'order':
+        return {
+          prefix: 'SO',
+          nextNumber: numbering.orderNextNumber || 1,
           padding: 4
         };
       
@@ -99,10 +115,16 @@ export const useDocumentNumbering = () => {
 
     switch (type) {
       case 'invoice':
-        updatedNumbering.salesNextNumber = config.nextNumber + 1;
+        updatedNumbering.saleNextNumber = (updatedNumbering.saleNextNumber || config.nextNumber || 1) + 1; // CRITICAL FIX: Use saleNextNumber (not salesNextNumber)
         break;
       case 'quotation':
         updatedNumbering.quotationNextNumber = config.nextNumber + 1;
+        break;
+      case 'draft':
+        updatedNumbering.draftNextNumber = (updatedNumbering.draftNextNumber || 1) + 1;
+        break;
+      case 'order':
+        updatedNumbering.orderNextNumber = (updatedNumbering.orderNextNumber || 1) + 1;
         break;
       case 'purchase':
         updatedNumbering.purchaseNextNumber = config.nextNumber + 1;

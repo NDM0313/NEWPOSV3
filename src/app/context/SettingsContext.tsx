@@ -23,6 +23,10 @@ export interface DefaultAccounts {
 export interface NumberingRules {
   salePrefix: string;
   saleNextNumber: number;
+  quotationPrefix?: string; // CRITICAL FIX: Add quotation prefix
+  quotationNextNumber?: number; // CRITICAL FIX: Add quotation next number
+  draftNextNumber?: number; // CRITICAL FIX: Add draft next number
+  orderNextNumber?: number; // CRITICAL FIX: Add order next number
   purchasePrefix: string;
   purchaseNextNumber: number;
   rentalPrefix: string;
@@ -318,8 +322,12 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
 
   // Numbering Rules
   const [numberingRules, setNumberingRules] = useState<NumberingRules>({
-    salePrefix: 'SAL-',
+    salePrefix: 'INV-', // CRITICAL FIX: Changed from SAL- to INV- for invoices
     saleNextNumber: 1,
+    quotationPrefix: 'QT-', // CRITICAL FIX: Add quotation prefix
+    quotationNextNumber: 1, // CRITICAL FIX: Add quotation next number
+    draftNextNumber: 1, // CRITICAL FIX: Add draft next number
+    orderNextNumber: 1, // CRITICAL FIX: Add order next number
     purchasePrefix: 'PO-',
     purchaseNextNumber: 1,
     rentalPrefix: 'RNT-',

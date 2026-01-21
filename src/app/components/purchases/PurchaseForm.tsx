@@ -251,7 +251,8 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
     const balanceDue = totalAmount - totalPaid;
     
     // Auto-detect payment status
-    const paymentStatus = totalPaid === 0 ? 'credit' : totalPaid >= totalAmount ? 'paid' : 'partial';
+    // CRITICAL FIX: Use 'unpaid' instead of 'credit' to match database enum (paid, partial, unpaid)
+    const paymentStatus = totalPaid === 0 ? 'unpaid' : totalPaid >= totalAmount ? 'paid' : 'partial';
 
     const getSupplierName = () => suppliers.find(s => s.id.toString() === supplierId)?.name || "Select Supplier";
 
@@ -1025,11 +1026,11 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                                     "text-xs font-medium px-3 py-1",
                                     paymentStatus === 'paid' && "bg-green-600 text-white",
                                     paymentStatus === 'partial' && "bg-blue-600 text-white",
-                                    paymentStatus === 'credit' && "bg-orange-600 text-white"
+                                    paymentStatus === 'unpaid' && "bg-orange-600 text-white"
                                 )}>
                                     {paymentStatus === 'paid' && '✓ Paid'}
                                     {paymentStatus === 'partial' && '◐ Partial'}
-                                    {paymentStatus === 'credit' && '○ Credit'}
+                                    {paymentStatus === 'unpaid' && '○ Unpaid'}
                                 </Badge>
                             </div>
 
