@@ -5,6 +5,7 @@ import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { Textarea } from '../ui/textarea';
 import { productService } from '@/app/services/productService';
+import { useSupabase } from '@/app/context/SupabaseContext';
 import { toast } from 'sonner';
 import { Loader2 } from 'lucide-react';
 
@@ -31,6 +32,7 @@ export const AdjustStockDialog: React.FC<AdjustStockDialogProps> = ({
   product,
   onSuccess,
 }) => {
+  const { companyId, branchId, user } = useSupabase();
   const [adjustmentType, setAdjustmentType] = useState<AdjustmentType>('increase');
   const [quantity, setQuantity] = useState<string>('');
   const [reason, setReason] = useState<string>('');
@@ -77,13 +79,78 @@ export const AdjustStockDialog: React.FC<AdjustStockDialogProps> = ({
       return;
     }
 
+    if (!companyId) {
+      toast.error('Company ID not found');
+      return;
+    }
+
     try {
       setSaving(true);
       const newStock = calculateNewStock();
       
+      // Calculate adjustment quantity
+      let adjustmentQuantity = 0;
+      if (adjustmentType === 'increase') {
+        adjustmentQuantity = qty; // Positive for increase
+      } else if (adjustmentType === 'decrease') {
+        adjustmentQuantity = -qty; // Negative for decrease
+      } else if (adjustmentType === 'set') {
+        // For 'set', calculate the difference
+        adjustmentQuantity = newStock - product.stock;
+      }
+
+      // Update product stock
       await productService.updateProduct(product.uuid, {
         current_stock: newStock,
       });
+
+      // Create stock movement record for the adjustment
+      try {
+        console.log('[ADJUST STOCK] Creating stock movement record:', {
+          product_id: product.uuid,
+          company_id: companyId,
+          branch_id: branchId,
+          movement_type: 'adjustment',
+          quantity: adjustmentQuantity,
+          adjustmentType,
+          previousStock: product.stock,
+          newStock
+        });
+
+        const movementResult = await productService.createStockMovement({
+          company_id: companyId,
+          branch_id: branchId || undefined,
+          product_id: product.uuid,
+          movement_type: 'adjustment',
+          quantity: adjustmentQuantity,
+          unit_cost: 0, // Adjustments typically don't have cost
+          total_cost: 0,
+          reference_type: 'adjustment',
+          notes: reason || `Stock ${adjustmentType === 'increase' ? 'increase' : adjustmentType === 'decrease' ? 'decrease' : 'set'} - ${adjustmentType === 'set' ? `Set to ${newStock}` : `${adjustmentType === 'increase' ? '+' : '-'}${qty}`}`,
+          created_by: user?.id || undefined,
+        });
+        
+        console.log('[ADJUST STOCK] Stock movement record created successfully:', {
+          movementId: movementResult.id,
+          quantity: movementResult.quantity,
+          movement_type: movementResult.movement_type || movementResult.type
+        });
+      } catch (movementError: any) {
+        console.error('[ADJUST STOCK] CRITICAL: Error creating stock movement:', {
+          error: movementError,
+          message: movementError.message,
+          code: movementError.code,
+          details: movementError.details,
+          hint: movementError.hint,
+          product_id: product.uuid,
+          company_id: companyId,
+          quantity: adjustmentQuantity
+        });
+        
+        // Show error to user but don't block the stock update
+        toast.error('Stock updated but movement record creation failed. Check console for details.');
+        // Don't throw - stock is already updated, movement can be created manually if needed
+      }
 
       toast.success(`Stock ${adjustmentType === 'increase' ? 'increased' : adjustmentType === 'decrease' ? 'decreased' : 'set'} successfully`);
       onSuccess?.();

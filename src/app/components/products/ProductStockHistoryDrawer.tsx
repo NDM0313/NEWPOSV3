@@ -163,9 +163,10 @@ export const ProductStockHistoryDrawer = ({
         <FullStockLedgerView
           isOpen={showFullLedger}
           onClose={() => setShowFullLedger(false)}
-          productId={productId}
+          productId={productId || ''}
           productName={productName}
           productSku={productSku}
+          currentStock={currentStock}
         />
       )}
     </div>
