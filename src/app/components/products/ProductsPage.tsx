@@ -117,6 +117,13 @@ export const ProductsPage = () => {
     }
   }, [companyId, loadProducts]);
   
+  // Force reload if no data and not loading (same pattern as ContactsPage)
+  useEffect(() => {
+    if (companyId && products.length === 0 && !loading) {
+      loadProducts();
+    }
+  }, [companyId, products.length, loading, loadProducts]);
+  
   // 🎯 NEW: Action States
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [viewDetailsOpen, setViewDetailsOpen] = useState(false);
