@@ -247,7 +247,7 @@ export const productService = {
       .select(`
         *,
         product:products(id, name, sku),
-        branch:branches(id, name)
+        branch:branches!stock_movements_branch_id_fkey(id, name)
       `)
       .eq('product_id', productId)
       .eq('company_id', companyId)
