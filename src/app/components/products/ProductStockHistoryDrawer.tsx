@@ -1,9 +1,10 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { X, ArrowUpRight, ArrowDownRight, Package, RefreshCw, ShoppingCart, Truck } from 'lucide-react';
 import { Button } from "../ui/button";
 import { ScrollArea } from "../ui/scroll-area";
 import { Badge } from "../ui/badge";
 import { cn } from "../ui/utils";
+import { FullStockLedgerView } from './FullStockLedgerView';
 
 interface StockMovement {
   id: string;
@@ -18,6 +19,8 @@ interface ProductStockHistoryDrawerProps {
   isOpen: boolean;
   onClose: () => void;
   productName: string;
+  productId?: string;
+  productSku?: string;
   totalSold: number;
   totalPurchased: number;
   currentStock: number;
@@ -36,10 +39,14 @@ export const ProductStockHistoryDrawer = ({
   isOpen,
   onClose,
   productName,
+  productId,
+  productSku,
   totalSold,
   totalPurchased,
   currentStock
 }: ProductStockHistoryDrawerProps) => {
+  const [showFullLedger, setShowFullLedger] = useState(false);
+
   if (!isOpen) return null;
 
   return (
@@ -138,10 +145,11 @@ export const ProductStockHistoryDrawer = ({
              variant="outline" 
              className="w-full border-gray-700 text-gray-300 hover:text-white hover:bg-gray-800"
              onClick={() => {
-               // Open product stock ledger view
-               // This will show full ledger with all stock movements
-               // For now, we'll show an alert - can be replaced with actual ledger drawer
-               alert('Full Stock Ledger View\n\nThis will show:\n- All stock movements (in/out)\n- Running stock balance\n- Reference numbers\n- Dates and times\n\nFeature coming soon!');
+               if (productId) {
+                 setShowFullLedger(true);
+               } else {
+                 alert('Product ID is required to view full ledger');
+               }
              }}
            >
              View Full Ledger
@@ -149,6 +157,17 @@ export const ProductStockHistoryDrawer = ({
         </div>
 
       </div>
+
+      {/* Full Stock Ledger View Modal */}
+      {productId && (
+        <FullStockLedgerView
+          isOpen={showFullLedger}
+          onClose={() => setShowFullLedger(false)}
+          productId={productId}
+          productName={productName}
+          productSku={productSku}
+        />
+      )}
     </div>
   );
 };

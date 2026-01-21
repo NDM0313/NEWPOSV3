@@ -911,6 +911,8 @@ export const ProductsPage = () => {
               setSelectedProduct(null);
             }}
             productName={selectedProduct.name}
+            productId={selectedProduct.uuid}
+            productSku={selectedProduct.sku}
             totalSold={totalSold}
             totalPurchased={totalPurchased}
             currentStock={selectedProduct.stock}

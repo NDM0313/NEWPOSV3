@@ -239,4 +239,28 @@ export const productService = {
     if (error) throw error;
     return data;
   },
+
+  // Get stock movements for a product
+  async getStockMovements(productId: string, companyId: string) {
+    const { data, error } = await supabase
+      .from('stock_movements')
+      .select(`
+        *,
+        product:products(id, name, sku),
+        branch:branches(id, name)
+      `)
+      .eq('product_id', productId)
+      .eq('company_id', companyId)
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      // If table doesn't exist or column mismatch, return empty array
+      if (error.code === '42P01' || error.code === '42703') {
+        console.warn('[Stock Movements] Table or column not found, returning empty array');
+        return [];
+      }
+      throw error;
+    }
+    return data || [];
+  },
 };
