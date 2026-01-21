@@ -150,7 +150,9 @@ export const TopHeader = () => {
   const [showChangePassword, setShowChangePassword] = useState(false);
 
   const handleViewProfile = () => {
-    setShowProfile(true);
+    // View Profile temporarily disabled (safety isolation)
+    toast.info('Profile management is temporarily disabled');
+    // setShowProfile(true); // Disabled
   };
 
   const handleSettings = () => {
@@ -575,14 +577,14 @@ export const TopHeader = () => {
         </DropdownMenu>
       </div>
 
-      {/* User Profile Modal */}
-      {showProfile && (
+      {/* User Profile Modal - TEMPORARILY DISABLED (safety isolation) */}
+      {/* {showProfile && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
           <div className="bg-gray-900 border border-gray-800 rounded-xl p-6 max-w-4xl w-full max-h-[90vh] overflow-y-auto">
             <UserProfilePage onClose={() => setShowProfile(false)} />
           </div>
         </div>
-      )}
+      )} */}
 
       {/* Change Password Dialog */}
       <ChangePasswordDialog
