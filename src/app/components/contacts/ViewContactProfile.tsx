@@ -56,9 +56,29 @@ const ledgerData = [
   { id: 5, date: "28-Dec-2025", ref: "INV-2023-090", description: "Purchase Invoice #590 - Bridal Sets", debit: 0, credit: 300000, balance: 450000 },
 ];
 
-export const ViewContactProfile = () => {
+interface ViewContactProfileProps {
+  isOpen?: boolean;
+  onClose?: () => void;
+  contact?: any;
+}
+
+export const ViewContactProfile: React.FC<ViewContactProfileProps> = ({ isOpen = true, onClose, contact }) => {
+  if (!isOpen) return null;
+
   return (
-    <div className="flex flex-col lg:flex-row gap-6 h-[calc(100vh-100px)] min-h-[600px] animate-in slide-in-from-bottom-2 duration-300">
+    <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
+      <div className="bg-[#0B0F17] rounded-xl border border-gray-800 w-full max-w-7xl max-h-[90vh] overflow-hidden flex flex-col shadow-2xl animate-in slide-in-from-bottom-4 duration-300">
+        {/* Close Button */}
+        {onClose && (
+          <button
+            onClick={onClose}
+            className="absolute top-4 right-4 z-10 p-2 rounded-lg bg-gray-900/80 hover:bg-gray-800 text-gray-400 hover:text-white transition-colors"
+          >
+            <X size={20} />
+          </button>
+        )}
+        
+        <div className="flex flex-col lg:flex-row gap-6 p-6 overflow-auto flex-1">
       
       {/* 1. Left Sidebar (Identity Card) */}
       <div className="w-full lg:w-1/4 bg-gray-900/50 border border-gray-800 rounded-xl p-6 flex flex-col items-center text-center h-fit sticky top-6">
@@ -220,6 +240,7 @@ export const ViewContactProfile = () => {
           <TabsContent value="documents" className="text-center text-gray-500 py-20">Documents content placeholder</TabsContent>
           <TabsContent value="payments" className="text-center text-gray-500 py-20">Payments content placeholder</TabsContent>
         </Tabs>
+      </div>
       </div>
     </div>
   );

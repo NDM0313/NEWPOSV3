@@ -112,14 +112,30 @@ export const Dashboard = () => {
 
   // Generate chart data from date range (or last 7 days if no range)
   const chartData = useMemo(() => {
-    const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-    const today = new Date();
-    const data = days.map((day, index) => {
-      const date = new Date(today);
-      date.setDate(date.getDate() - (6 - index));
-      const dateStr = date.toISOString().split('T')[0];
+    // Use date range if set, otherwise default to last 7 days
+    let start: Date;
+    let end: Date;
+    
+    if (startDate && endDate) {
+      start = new Date(startDate);
+      end = new Date(endDate);
+    } else {
+      // Default to last 7 days
+      end = new Date();
+      start = new Date();
+      start.setDate(end.getDate() - 6);
+    }
+    
+    // Generate days array based on date range
+    const days: string[] = [];
+    const data: Array<{ name: string; sales: number; profit: number }> = [];
+    const currentDate = new Date(start);
+    
+    while (currentDate <= end) {
+      const dayName = currentDate.toLocaleDateString('en-US', { weekday: 'short' });
+      const dateStr = currentDate.toISOString().split('T')[0];
       
-      // Filter by date range if set
+      // Filter by date range
       const daySales = sales.sales
         .filter(s => {
           if (!s.date?.startsWith(dateStr)) return false;
@@ -136,15 +152,17 @@ export const Dashboard = () => {
       
       const dayProfit = daySales - dayPurchases;
       
-      return {
-        name: day,
+      data.push({
+        name: dayName,
         sales: daySales,
         profit: dayProfit,
-      };
-    });
+      });
+      
+      currentDate.setDate(currentDate.getDate() + 1);
+    }
     
     return data;
-  }, [sales.sales, purchases.purchases]);
+  }, [sales.sales, purchases.purchases, startDate, endDate, filterByDateRange]);
 
   if (loading) {
     return (

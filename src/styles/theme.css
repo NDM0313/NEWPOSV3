@@ -251,4 +251,31 @@
     font-weight: var(--font-weight-normal);
     line-height: 1.5;
   }
+
+  /* Global Scrollbar Styling - Dark Theme */
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: #0B0F17;
+    border-radius: 5px;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: #374151;
+    border-radius: 5px;
+    border: 2px solid #0B0F17;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: #4B5563;
+  }
+
+  /* Firefox scrollbar */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: #374151 #0B0F17;
+  }
 }

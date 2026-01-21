@@ -134,7 +134,16 @@ export const ProductStockHistoryDrawer = ({
 
         {/* Footer */}
         <div className="p-5 border-t border-gray-800 bg-gray-950">
-           <Button variant="outline" className="w-full border-gray-700 text-gray-300 hover:text-white hover:bg-gray-800">
+           <Button 
+             variant="outline" 
+             className="w-full border-gray-700 text-gray-300 hover:text-white hover:bg-gray-800"
+             onClick={() => {
+               // Open product stock ledger view
+               // This will show full ledger with all stock movements
+               // For now, we'll show an alert - can be replaced with actual ledger drawer
+               alert('Full Stock Ledger View\n\nThis will show:\n- All stock movements (in/out)\n- Running stock balance\n- Reference numbers\n- Dates and times\n\nFeature coming soon!');
+             }}
+           >
              View Full Ledger
            </Button>
         </div>
