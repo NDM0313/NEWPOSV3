@@ -101,7 +101,7 @@ export const ViewProductDetailsDrawer: React.FC<ViewProductDetailsDrawerProps> =
     <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex justify-end animate-in fade-in duration-200" onClick={onClose}>
       <div 
         ref={drawerRef}
-        className="w-full max-w-2xl bg-[#0B0F17] h-full shadow-2xl flex flex-col border-l border-gray-800 animate-in slide-in-from-right duration-300" 
+        className="w-full max-w-2xl bg-[#0B0F17] h-screen shadow-2xl flex flex-col border-l border-gray-800 animate-in slide-in-from-right duration-300" 
         onClick={(e) => e.stopPropagation()}
         tabIndex={-1}
       >
@@ -127,7 +127,7 @@ export const ViewProductDetailsDrawer: React.FC<ViewProductDetailsDrawerProps> =
         </div>
 
         {/* Content */}
-        <ScrollArea className="flex-1">
+        <ScrollArea className="flex-1 overflow-y-auto">
           <div className="p-6 space-y-6">
             {loading ? (
               <div className="flex items-center justify-center py-12">
