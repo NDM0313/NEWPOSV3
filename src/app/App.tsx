@@ -59,6 +59,7 @@ import { AccountingIntegrationDemo } from './components/accounting/AccountingInt
 import { PurchaseListExample } from './components/purchases/PurchaseListExample';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { KeyboardShortcutsModal } from './components/shared/KeyboardShortcutsModal';
+import { ContactSearchTestPage } from './components/demo/ContactSearchTestPage';
 import { SupabaseProvider } from './context/SupabaseContext';
 import { ProtectedRoute } from './components/auth/ProtectedRoute';
 import { useSettings } from './context/SettingsContext';
@@ -170,6 +171,7 @@ const AppContent = () => {
       {currentView === 'production-detail' && <ProductionOrderDetail />}
       {currentView === 'customer-tracking' && <CustomerOrderTracking />}
       {currentView === 'packing' && <PackingEntryPage />}
+      {currentView === 'contact-search-test' && <ContactSearchTestPage />}
       
       <GlobalDrawer />
     </Layout>

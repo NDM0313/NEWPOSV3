@@ -22,7 +22,8 @@ import {
   Scissors,
   Warehouse,
   Sparkles,
-  Factory
+  Factory,
+  FlaskConical
 } from 'lucide-react';
 import { useNavigation } from '../../context/NavigationContext';
 import { useModules } from '../../context/ModuleContext';
@@ -74,6 +75,7 @@ export const Sidebar = () => {
     { id: 'accounting', label: 'Accounting', icon: Calculator, isHidden: !settingsModules.accountingModuleEnabled },
     { id: 'reports', label: 'Reports', icon: PieChart },
     { id: 'settings', label: 'Settings', icon: Settings },
+    { id: 'contact-search-test', label: 'Contact Test', icon: FlaskConical },
   ];
 
   const visibleNavItems = navItems.filter(item => !item.isHidden);

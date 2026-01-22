@@ -34,7 +34,7 @@ interface SearchableSelectProps {
   // Add New functionality
   enableAddNew?: boolean;
   addNewLabel?: string; // e.g., "Add New Supplier"
-  onAddNew?: () => void;
+  onAddNew?: (searchText?: string) => void; // Pass search text to prefill form
   // For custom rendering
   renderOption?: (option: SearchableSelectOption) => React.ReactNode;
   // For filtering search
@@ -76,9 +76,11 @@ export const SearchableSelect: React.FC<SearchableSelectProps> = ({
   const showAddNew = enableAddNew && searchTerm && filteredOptions.length === 0;
 
   const handleAddNew = () => {
+    const currentSearch = searchTerm;
     setOpen(false);
     setSearchTerm('');
-    onAddNew?.();
+    // Pass search text to onAddNew callback for prefilling
+    onAddNew?.(currentSearch);
   };
 
   return (
@@ -114,7 +116,16 @@ export const SearchableSelect: React.FC<SearchableSelectProps> = ({
           <ChevronsUpDown className="ml-2 h-3 w-3 opacity-50 shrink-0" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-[300px] p-0 bg-gray-950 border-gray-800 text-white">
+      <PopoverContent 
+        className="w-[300px] p-0 bg-gray-950 border-gray-800 text-white overflow-visible z-[80]"
+        align="start"
+        side="bottom"
+        sideOffset={4}
+        onWheel={(e) => {
+          // Prevent wheel events from propagating to parent
+          e.stopPropagation();
+        }}
+      >
         <Command className="bg-gray-950 text-white">
           <CommandInput
             placeholder={searchPlaceholder}
@@ -122,7 +133,13 @@ export const SearchableSelect: React.FC<SearchableSelectProps> = ({
             value={searchTerm}
             onValueChange={setSearchTerm}
           />
-          <CommandList>
+          <CommandList 
+            className="max-h-[280px] overflow-y-auto overscroll-behavior-contain"
+            onWheel={(e) => {
+              // Ensure wheel events work in the list
+              e.stopPropagation();
+            }}
+          >
             {!showAddNew && filteredOptions.length === 0 && (
               <CommandEmpty>{emptyText}</CommandEmpty>
             )}

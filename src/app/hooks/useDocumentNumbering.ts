@@ -98,8 +98,21 @@ export const useDocumentNumbering = () => {
   // Generate next document number
   const generateDocumentNumber = (type: DocumentType): string => {
     const config = getNumberingConfig(type);
-    const paddedNumber = String(config.nextNumber).padStart(config.padding, '0');
-    return `${config.prefix}${paddedNumber}`;
+    // Ensure nextNumber is a valid number
+    const nextNum = typeof config.nextNumber === 'number' && !isNaN(config.nextNumber) 
+      ? config.nextNumber 
+      : 1;
+    const paddedNumber = String(nextNum).padStart(config.padding, '0');
+    const prefix = config.prefix || 'DOC';
+    const result = `${prefix}${paddedNumber}`;
+    
+    // Validate result is not undefined or contains invalid values
+    if (!result || result.includes('undefined') || result.includes('NaN')) {
+      console.error('[DOCUMENT NUMBERING] Invalid document number generated:', { type, config, result });
+      return `${prefix}001`; // Fallback to safe default
+    }
+    
+    return result;
   };
 
   // Generate preview (for settings page)

@@ -32,7 +32,8 @@ type View =
   | 'custom-new-order'
   | 'custom-pipeline'
   | 'custom-vendors'
-  | 'packing';
+  | 'packing'
+  | 'contact-search-test';
 
 type DrawerType = 'none' | 'addUser' | 'addProduct' | 'edit-product' | 'addSale' | 'edit-sale' | 'addPurchase' | 'edit-purchase' | 'addContact';
 
@@ -42,13 +43,18 @@ interface NavigationContextType {
   isSidebarOpen: boolean;
   toggleSidebar: () => void;
   activeDrawer: DrawerType;
-  openDrawer: (drawer: DrawerType, parentDrawer?: DrawerType, options?: { contactType?: 'customer' | 'supplier' | 'worker'; product?: any; sale?: any; purchase?: any }) => void;
+  openDrawer: (drawer: DrawerType, parentDrawer?: DrawerType, options?: { contactType?: 'customer' | 'supplier' | 'worker'; product?: any; sale?: any; purchase?: any; prefillName?: string; prefillPhone?: string }) => void;
   closeDrawer: () => void;
   parentDrawer: DrawerType | null;
   selectedStudioSaleId?: string;
   setSelectedStudioSaleId?: (id: string) => void;
   drawerContactType?: 'customer' | 'supplier' | 'worker';
   drawerData?: any; // For passing data to drawers (e.g., product for edit)
+  drawerPrefillName?: string; // Prefill name when opening contact form
+  drawerPrefillPhone?: string; // Prefill phone when opening contact form
+  createdContactId?: string | null; // Store newly created contact ID for auto-selection
+  createdContactType?: 'customer' | 'supplier' | 'both' | null; // Store contact type for filtering
+  setCreatedContactId?: (id: string | null, type?: 'customer' | 'supplier' | 'both' | null) => void;
 }
 
 const NavigationContext = createContext<NavigationContextType | undefined>(undefined);
@@ -61,15 +67,38 @@ export const NavigationProvider = ({ children }: { children: ReactNode }) => {
   const [selectedStudioSaleId, setSelectedStudioSaleId] = useState<string | undefined>(undefined);
   const [drawerContactType, setDrawerContactType] = useState<'customer' | 'supplier' | 'worker' | undefined>(undefined);
   const [drawerData, setDrawerData] = useState<any>(undefined);
+  const [drawerPrefillName, setDrawerPrefillName] = useState<string | undefined>(undefined);
+  const [drawerPrefillPhone, setDrawerPrefillPhone] = useState<string | undefined>(undefined);
+  const [createdContactId, setCreatedContactIdState] = useState<string | null>(null);
+  const [createdContactType, setCreatedContactType] = useState<'customer' | 'supplier' | 'both' | null>(null);
+  
+  // Wrapper function to set both ID and type
+  const setCreatedContactId = (id: string | null, type?: 'customer' | 'supplier' | 'both' | null) => {
+    setCreatedContactIdState(id);
+    setCreatedContactType(type || null);
+  };
 
   const toggleSidebar = () => setIsSidebarOpen(!isSidebarOpen);
   
-  const openDrawer = (drawer: DrawerType, parent?: DrawerType, options?: { contactType?: 'customer' | 'supplier' | 'worker'; product?: any; sale?: any; purchase?: any }) => {
+  const openDrawer = (drawer: DrawerType, parent?: DrawerType, options?: { contactType?: 'customer' | 'supplier' | 'worker'; product?: any; sale?: any; purchase?: any; prefillName?: string; prefillPhone?: string }) => {
     // Set contact type if provided
     if (options?.contactType) {
       setDrawerContactType(options.contactType);
     } else {
       setDrawerContactType(undefined);
+    }
+    
+    // Set prefill data for contact form
+    if (options?.prefillName) {
+      setDrawerPrefillName(options.prefillName);
+    } else {
+      setDrawerPrefillName(undefined);
+    }
+    
+    if (options?.prefillPhone) {
+      setDrawerPrefillPhone(options.prefillPhone);
+    } else {
+      setDrawerPrefillPhone(undefined);
     }
     
     // Set drawer data if provided (TASK 3 FIX - Support sale, purchase, product for edit)
@@ -94,9 +123,11 @@ export const NavigationProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const closeDrawer = () => {
-    // Clear contact type and data when closing
+    // Clear contact type, data, and prefill when closing
     setDrawerContactType(undefined);
     setDrawerData(undefined);
+    setDrawerPrefillName(undefined);
+    setDrawerPrefillPhone(undefined);
     
     // If there's a parent drawer, return to it
     if (parentDrawer) {
@@ -106,6 +137,7 @@ export const NavigationProvider = ({ children }: { children: ReactNode }) => {
       // Otherwise close completely
       setActiveDrawer('none');
     }
+    // Note: Don't clear createdContactId here - let the parent form use it first
   };
 
   return (
@@ -121,7 +153,12 @@ export const NavigationProvider = ({ children }: { children: ReactNode }) => {
       selectedStudioSaleId,
       setSelectedStudioSaleId,
       drawerContactType,
-      drawerData
+      drawerData,
+      drawerPrefillName,
+      drawerPrefillPhone,
+      createdContactId,
+      createdContactType,
+      setCreatedContactId
     }}>
       {children}
     </NavigationContext.Provider>

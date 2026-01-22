@@ -71,12 +71,12 @@ import { PackingEntryModal, PackingDetails } from '../transactions/PackingEntryM
 import { toast } from "sonner";
 import { BranchSelector, currentUser } from '@/app/components/layout/BranchSelector';
 import { PurchaseItemsSection } from './PurchaseItemsSection';
-import { AddSupplierModal } from './AddSupplierModal';
 import { PaymentAttachments, PaymentAttachment } from '../payments/PaymentAttachments';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { contactService } from '@/app/services/contactService';
 import { productService } from '@/app/services/productService';
 import { usePurchases } from '@/app/context/PurchaseContext';
+import { useNavigation } from '@/app/context/NavigationContext';
 import { Loader2 } from 'lucide-react';
 import { format } from "date-fns";
 
@@ -151,6 +151,7 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
     // Supabase & Context
     const { companyId, branchId: contextBranchId } = useSupabase();
     const { createPurchase } = usePurchases();
+    const { openDrawer, activeDrawer, createdContactId, createdContactType, setCreatedContactId } = useNavigation();
     
     // Data State
     const [suppliers, setSuppliers] = useState<Array<{ id: number | string; name: string; dueBalance: number }>>([]);
@@ -164,8 +165,7 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
     const [purchaseDate, setPurchaseDate] = useState<Date>(new Date());
     const [refNumber, setRefNumber] = useState("");
     
-    // Add Supplier Modal State
-    const [addSupplierModalOpen, setAddSupplierModalOpen] = useState(false);
+    // Add Supplier Modal State - REMOVED (using GlobalDrawer contact form instead)
     
     // Branch State
     const [branchId, setBranchId] = useState<string>(contextBranchId || '');
@@ -518,6 +518,116 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
         loadData();
     }, [companyId]);
 
+    // Reload suppliers when contact drawer closes (in case a new contact was added)
+    useEffect(() => {
+        const reloadSuppliers = async () => {
+            // Only reload when:
+            // 1. Contact drawer was just closed (activeDrawer changed from 'addContact' to 'none')
+            // 2. AND a contact was actually created (createdContactId is not null)
+            // 3. AND the contact type is relevant (supplier or both)
+            // This prevents unnecessary reloads when other drawers close or when customer/worker is created
+            if (activeDrawer === 'none' && companyId && createdContactId !== null && 
+                (createdContactType === 'supplier' || createdContactType === 'both')) {
+                try {
+                    // Store the contact ID before clearing (for auto-selection)
+                    const contactIdToSelect = createdContactId;
+                    const contactTypeToSelect = createdContactType;
+                    
+                    // Clear immediately to prevent duplicate reloads
+                    if (setCreatedContactId) {
+                        setCreatedContactId(null, null);
+                    }
+                    
+                    // CRITICAL: Reload IMMEDIATELY when drawer closes
+                    console.log('[PURCHASE FORM] Reloading suppliers, createdContactId:', contactIdToSelect, 'Type:', contactTypeToSelect);
+                    
+                    // Small delay to ensure DB commit
+                    await new Promise(resolve => setTimeout(resolve, 200));
+                    
+                    const contactsData = await contactService.getAllContacts(companyId);
+                    const supplierContacts = contactsData
+                        .filter(c => c.type === 'supplier' || c.type === 'both')
+                        .map(c => ({
+                            id: c.id || c.uuid || '',
+                            name: c.name || '',
+                            dueBalance: c.payables || 0
+                        }));
+                    
+                    console.log('[PURCHASE FORM] Reloaded suppliers:', supplierContacts.length, 'IDs:', supplierContacts.map(c => c.id));
+                    
+                    setSuppliers(supplierContacts);
+                    
+                    // Auto-select newly created contact
+                    const contactIdStr = contactIdToSelect.toString();
+                    const foundContact = supplierContacts.find(c => {
+                        const cId = c.id?.toString() || '';
+                        // Exact match first
+                        if (cId === contactIdStr || c.id === contactIdToSelect) {
+                            return true;
+                        }
+                        // UUID format matching (handle with/without dashes)
+                        const normalizedCId = cId.replace(/-/g, '').toLowerCase();
+                        const normalizedCreatedId = contactIdStr.replace(/-/g, '').toLowerCase();
+                        if (normalizedCId === normalizedCreatedId) {
+                            return true;
+                        }
+                        return false;
+                    });
+                    
+                    if (foundContact) {
+                        const selectedId = foundContact.id.toString();
+                        // Force state update and component remount
+                        setSupplierId('');
+                        // Use setTimeout to ensure state update happens
+                        setTimeout(() => {
+                            setSupplierId(selectedId);
+                            toast.success(`Supplier "${foundContact.name}" selected`);
+                            console.log('[PURCHASE FORM] ✅ Auto-selected supplier:', selectedId, foundContact.name);
+                        }, 50);
+                    } else {
+                        console.warn('[PURCHASE FORM] ❌ Could not find created contact:', contactIdStr, 'Available IDs:', supplierContacts.map(c => c.id));
+                        // Try one more time after a longer delay (DB might need more time)
+                        setTimeout(async () => {
+                            const retryData = await contactService.getAllContacts(companyId);
+                            const retryContacts = retryData
+                                .filter(c => c.type === 'supplier' || c.type === 'both')
+                                .map(c => ({
+                                    id: c.id || c.uuid || '',
+                                    name: c.name || '',
+                                    dueBalance: c.payables || 0
+                                }));
+                            const retryFound = retryContacts.find(c => {
+                                const cId = c.id?.toString() || '';
+                                return cId === contactIdStr || c.id === contactIdToSelect;
+                            });
+                            if (retryFound) {
+                                setSuppliers(retryContacts);
+                                const retrySelectedId = retryFound.id.toString();
+                                // Force state update
+                                setSupplierId('');
+                                setTimeout(() => {
+                                    setSupplierId(retrySelectedId);
+                                    toast.success(`Supplier "${retryFound.name}" selected`);
+                                    console.log('[PURCHASE FORM] ✅ Retry successful - Auto-selected supplier');
+                                }, 50);
+                            }
+                        }, 1000);
+                    }
+                } catch (error) {
+                    console.error('[PURCHASE FORM] Error reloading suppliers:', error);
+                }
+            } else if (activeDrawer === 'none' && createdContactId !== null && 
+                       (createdContactType === 'customer' || createdContactType === 'worker')) {
+                // Clear the ID if customer/worker was created (no reload needed)
+                if (setCreatedContactId) {
+                    setCreatedContactId(null, null);
+                }
+            }
+        };
+        
+        reloadSuppliers();
+    }, [activeDrawer, companyId, createdContactId, createdContactType, setCreatedContactId]);
+
     // Pre-populate form when editing (TASK 3 FIX)
     useEffect(() => {
         if (initialPurchase) {
@@ -740,6 +850,7 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                                 <div className="flex flex-col">
                                     <Label className="text-orange-400 font-medium text-[10px] uppercase tracking-wide h-[14px] mb-1.5">Supplier</Label>
                                 <SearchableSelect
+                                    key={`supplier-select-${supplierId}-${suppliers.length}`}
                                     value={supplierId}
                                     onValueChange={setSupplierId}
                                     options={suppliers.map(s => ({ id: s.id.toString(), name: s.name, dueBalance: s.dueBalance }))}
@@ -748,8 +859,13 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                                     icon={<User size={14} className="text-gray-400 shrink-0" />}
                                     enableAddNew={true}
                                     addNewLabel="Add New Supplier"
-                                    onAddNew={() => {
-                                        setAddSupplierModalOpen(true);
+                                    onAddNew={(searchText) => {
+                                        // Open Add Contact drawer with Supplier role pre-selected and search text prefilled
+                                        console.log('[PURCHASE FORM] Opening Add Contact drawer, searchText:', searchText);
+                                        openDrawer('addContact', 'addPurchase', { 
+                                            contactType: 'supplier',
+                                            prefillName: searchText || undefined
+                                        });
                                     }}
                                     renderOption={(option) => (
                                         <div className="flex items-center justify-between w-full">
@@ -1259,16 +1375,7 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                 initialData={activePackingData}
             />
 
-            {/* Add Supplier Modal */}
-            <AddSupplierModal
-                open={addSupplierModalOpen}
-                onClose={() => setAddSupplierModalOpen(false)}
-                onSave={(newSupplier) => {
-                    setSuppliers(prev => [...prev, newSupplier]);
-                    setSupplierId(newSupplier.id.toString());
-                    setAddSupplierModalOpen(false);
-                }}
-            />
+            {/* Add Supplier Modal - REMOVED (using GlobalDrawer contact form instead) */}
         </div>
     );
 };

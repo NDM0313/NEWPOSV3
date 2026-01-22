@@ -87,6 +87,7 @@ import { useSupabase } from '@/app/context/SupabaseContext';
 import { contactService } from '@/app/services/contactService';
 import { productService } from '@/app/services/productService';
 import { useSales } from '@/app/context/SalesContext';
+import { useNavigation } from '@/app/context/NavigationContext';
 import { Loader2 } from 'lucide-react';
 
 // Mock variations for products that have them
@@ -160,6 +161,7 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
     // Supabase & Context
     const { companyId, branchId: contextBranchId, user, userRole } = useSupabase();
     const { createSale } = useSales();
+    const { openDrawer, closeDrawer, activeDrawer, createdContactId, createdContactType, setCreatedContactId } = useNavigation();
     
     // TASK 4 FIX - Check if user is admin
     const isAdmin = userRole === 'admin' || userRole === 'Admin';
@@ -364,10 +366,11 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                     
                     try {
                       // Get stock movements for this product (branch-aware)
+                      // For products with variations, calculate total stock across all variations
                       const movements = await productService.getStockMovements(
                         p.id,
                         companyId,
-                        undefined, // No variation filter for product search
+                        undefined, // No variation filter for product search - get all variations
                         contextBranchId || undefined // Use current branch if available
                       );
                       
@@ -376,10 +379,19 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                         const { calculateStockFromMovements } = await import('@/app/utils/stockCalculation');
                         const stockCalc = calculateStockFromMovements(movements);
                         calculatedStock = Math.max(0, stockCalc.currentBalance); // Ensure non-negative
+                      } else {
+                        // If no movements found, use current_stock if available
+                        // Don't default to 0 if current_stock exists
+                        if (p.current_stock !== null && p.current_stock !== undefined) {
+                          calculatedStock = Math.max(0, p.current_stock);
+                        }
                       }
                     } catch (stockError) {
                       console.warn(`[SALE FORM] Could not calculate stock for product ${p.id}, using current_stock:`, stockError);
-                      // Use current_stock as fallback
+                      // Use current_stock as fallback, but don't default to 0 if it's null
+                      if (p.current_stock !== null && p.current_stock !== undefined) {
+                        calculatedStock = Math.max(0, p.current_stock);
+                      }
                     }
                     
                     return {
@@ -387,7 +399,7 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                       name: p.name || '',
                       sku: p.sku || '',
                       price: p.salePrice || p.price || 0,
-                      stock: calculatedStock,
+                      stock: calculatedStock, // This will show actual stock or current_stock, not forced 0
                       lastPurchasePrice: p.costPrice || undefined,
                       lastSupplier: undefined, // Can be enhanced later
                       hasVariations: (p.variations && p.variations.length > 0) || false,
@@ -407,6 +419,122 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
         
         loadData();
     }, [companyId]);
+
+    // Reload customers when contact drawer closes (in case a new contact was added)
+    useEffect(() => {
+        const reloadCustomers = async () => {
+            // Only reload when:
+            // 1. Contact drawer was just closed (activeDrawer changed from 'addContact' to 'none')
+            // 2. AND a contact was actually created (createdContactId is not null)
+            // 3. AND the contact type is relevant (customer or both)
+            // This prevents unnecessary reloads when other drawers close or when supplier/worker is created
+            if (activeDrawer === 'none' && companyId && createdContactId !== null && 
+                (createdContactType === 'customer' || createdContactType === 'both')) {
+                try {
+                    // Store the contact ID before clearing (for auto-selection)
+                    const contactIdToSelect = createdContactId;
+                    const contactTypeToSelect = createdContactType;
+                    
+                    // Clear immediately to prevent duplicate reloads
+                    if (setCreatedContactId) {
+                        setCreatedContactId(null, null);
+                    }
+                    
+                    // CRITICAL: Reload IMMEDIATELY when drawer closes
+                    console.log('[SALE FORM] Reloading customers, createdContactId:', contactIdToSelect, 'Type:', contactTypeToSelect);
+                    
+                    // Small delay to ensure DB commit
+                    await new Promise(resolve => setTimeout(resolve, 200));
+                    
+                    const contactsData = await contactService.getAllContacts(companyId);
+                    const customerContacts = contactsData
+                        .filter(c => c.type === 'customer' || c.type === 'both')
+                        .map(c => ({
+                            id: c.id || c.uuid || '',
+                            name: c.name || '',
+                            dueBalance: c.receivables || 0
+                        }));
+                    
+                    console.log('[SALE FORM] Reloaded customers:', customerContacts.length, 'IDs:', customerContacts.map(c => c.id));
+                    
+                    setCustomers([
+                        { id: 'walk-in', name: "Walk-in Customer", dueBalance: 0 },
+                        ...customerContacts
+                    ]);
+                    
+                    // Auto-select newly created contact
+                    const contactIdStr = contactIdToSelect.toString();
+                    const foundContact = customerContacts.find(c => {
+                        const cId = c.id?.toString() || '';
+                        // Exact match first
+                        if (cId === contactIdStr || c.id === contactIdToSelect) {
+                            return true;
+                        }
+                        // UUID format matching (handle with/without dashes)
+                        const normalizedCId = cId.replace(/-/g, '').toLowerCase();
+                        const normalizedCreatedId = contactIdStr.replace(/-/g, '').toLowerCase();
+                        if (normalizedCId === normalizedCreatedId) {
+                            return true;
+                        }
+                        return false;
+                    });
+                    
+                    if (foundContact) {
+                        const selectedId = foundContact.id.toString();
+                        // Force state update and component remount for UI refresh
+                        setCustomerId('');
+                        // Use setTimeout to ensure state update happens
+                        setTimeout(() => {
+                            setCustomerId(selectedId);
+                            toast.success(`Customer "${foundContact.name}" selected`);
+                            console.log('[SALE FORM] ✅ Auto-selected customer:', selectedId, foundContact.name);
+                        }, 50);
+                    } else {
+                        console.warn('[SALE FORM] ❌ Could not find created contact:', contactIdStr, 'Available IDs:', customerContacts.map(c => c.id));
+                        // Try one more time after a longer delay (DB might need more time)
+                        setTimeout(async () => {
+                            const retryData = await contactService.getAllContacts(companyId);
+                            const retryContacts = retryData
+                                .filter(c => c.type === 'customer' || c.type === 'both')
+                                .map(c => ({
+                                    id: c.id || c.uuid || '',
+                                    name: c.name || '',
+                                    dueBalance: c.receivables || 0
+                                }));
+                            const retryFound = retryContacts.find(c => {
+                                const cId = c.id?.toString() || '';
+                                return cId === contactIdStr || c.id === contactIdToSelect;
+                            });
+                            if (retryFound) {
+                                setCustomers([
+                                    { id: 'walk-in', name: "Walk-in Customer", dueBalance: 0 },
+                                    ...retryContacts
+                                ]);
+                                const retrySelectedId = retryFound.id.toString();
+                                // Force state update
+                                setCustomerId('');
+                                setTimeout(() => {
+                                    setCustomerId(retrySelectedId);
+                                    toast.success(`Customer "${retryFound.name}" selected`);
+                                    console.log('[SALE FORM] ✅ Retry successful - Auto-selected customer');
+                                }, 50);
+                            }
+                        }, 1000);
+                    }
+                } catch (error) {
+                    console.error('[SALE FORM] Error reloading customers:', error);
+                }
+            } else if (activeDrawer === 'none' && createdContactId !== null && 
+                       (createdContactType === 'supplier' || createdContactType === 'worker')) {
+                // Clear the ID if supplier/worker was created (no reload needed)
+                if (setCreatedContactId) {
+                    setCreatedContactId(null, null);
+                }
+            }
+        };
+        
+        reloadCustomers();
+    }, [activeDrawer, companyId, createdContactId, createdContactType, setCreatedContactId]);
 
     // Pre-populate form when editing (TASK 3 FIX)
     useEffect(() => {
@@ -889,6 +1017,7 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                                 <div className="md:col-span-2 flex flex-col">
                                     <Label className="text-blue-400 font-medium text-[10px] uppercase tracking-wide h-[14px] mb-1.5">Customer</Label>
                                 <SearchableSelect
+                                    key={`customer-select-${customerId}-${customers.length}`}
                                     value={customerId}
                                     onValueChange={setCustomerId}
                                     options={customers.map(c => ({ id: c.id.toString(), name: c.name, dueBalance: c.dueBalance }))}
@@ -898,9 +1027,13 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                                     badgeColor="red"
                                     enableAddNew={true}
                                     addNewLabel="Add New Customer"
-                                    onAddNew={() => {
-                                        // This would open the Add Customer modal/drawer
-                                        alert('Add New Customer functionality - Opens Contact form with Customer type');
+                                    onAddNew={(searchText) => {
+                                        // Open Add Contact drawer with Customer role pre-selected and search text prefilled
+                                        console.log('[SALE FORM] Opening Add Contact drawer, searchText:', searchText);
+                                        openDrawer('addContact', 'addSale', { 
+                                            contactType: 'customer',
+                                            prefillName: searchText || undefined
+                                        });
                                     }}
                                     renderOption={(option) => (
                                         <div className="flex items-center justify-between w-full">

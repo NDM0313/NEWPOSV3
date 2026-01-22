@@ -66,18 +66,62 @@ export const contactService = {
       .select()
       .single();
 
-    // If error is about country column not found in schema cache (PGRST204), retry without it
-    if (error && (error.code === 'PGRST204' || error.message?.includes('country'))) {
-      console.warn('[CONTACT SERVICE] Country column not found in schema cache, retrying without it:', error);
-      const { country, ...contactWithoutCountry } = contact;
-      const { data: retryData, error: retryError } = await supabase
-        .from('contacts')
-        .insert(contactWithoutCountry)
-        .select()
-        .single();
+    // If error is about missing columns (PGRST204), retry without them
+    if (error && (error.code === 'PGRST204' || error.code === 'PGRST116' || error.status === 400)) {
+      const errorMessage = error.message || '';
+      const missingColumns: string[] = [];
+      
+      // Check which columns are missing
+      if (errorMessage.includes('country') || errorMessage.includes("'country'")) {
+        missingColumns.push('country');
+      }
+      if (errorMessage.includes('contact_person') || errorMessage.includes("'contact_person'")) {
+        missingColumns.push('contact_person');
+      }
+      if (errorMessage.includes('group_id') || errorMessage.includes("'group_id'")) {
+        missingColumns.push('group_id');
+      }
+      
+      if (missingColumns.length > 0) {
+        // Silently retry without missing columns (expected behavior when migration not run)
+        // Remove missing columns from contact data
+        const contactWithoutMissing = { ...contact };
+        missingColumns.forEach(col => {
+          delete (contactWithoutMissing as any)[col];
+        });
+        
+        const { data: retryData, error: retryError } = await supabase
+          .from('contacts')
+          .insert(contactWithoutMissing)
+          .select()
+          .single();
 
-      if (retryError) throw retryError;
-      return retryData;
+        if (retryError && retryError.code === 'PGRST204') {
+          // If still failing, try removing all optional fields that might not exist
+          const { 
+            country, 
+            contact_person, 
+            group_id, 
+            business_name,
+            payable_account_id,
+            supplier_opening_balance,
+            worker_role,
+            ...contactMinimal 
+          } = contactWithoutMissing;
+          
+          const { data: minimalData, error: minimalError } = await supabase
+            .from('contacts')
+            .insert(contactMinimal)
+            .select()
+            .single();
+          
+          if (minimalError) throw minimalError;
+          return minimalData;
+        }
+        
+        if (retryError) throw retryError;
+        return retryData;
+      }
     }
 
     if (error) throw error;

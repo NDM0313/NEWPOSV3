@@ -7,6 +7,7 @@ import React, { useState } from 'react';
 import { useNavigation } from '../../context/NavigationContext';
 import { useSupabase } from '../../context/SupabaseContext';
 import { contactService } from '../../services/contactService';
+import { contactGroupService } from '../../services/contactGroupService';
 import {
   Sheet,
   SheetContent,
@@ -31,7 +32,7 @@ import { Checkbox } from "../ui/checkbox";
 import { Switch } from "../ui/switch";
 
 export const GlobalDrawer = () => {
-  const { activeDrawer, openDrawer, closeDrawer, drawerData } = useNavigation();
+  const { activeDrawer, openDrawer, closeDrawer, drawerData, parentDrawer } = useNavigation();
   const { companyId, user } = useSupabase();
   const isMobile = useMediaQuery('(max-width: 768px)');
   const [saving, setSaving] = useState(false);
@@ -39,6 +40,12 @@ export const GlobalDrawer = () => {
   const isOpen = activeDrawer !== 'none';
   const handleOpenChange = (open: boolean) => {
     if (!open) closeDrawer();
+  };
+  
+  // Determine if we should show parent drawer (Sale/Purchase) when child drawer (Contact) is open
+  const shouldShowParentDrawer = (drawerType: 'addSale' | 'addPurchase' | 'edit-sale' | 'edit-purchase') => {
+    // Show if it's the active drawer OR if it's the parent of the current drawer
+    return activeDrawer === drawerType || parentDrawer === drawerType;
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -62,7 +69,8 @@ export const GlobalDrawer = () => {
         toast.success('User created successfully');
         closeDrawer();
       } else {
-        const action = activeDrawer === 'addUser' ? 'User' : 'Product';
+        // For other drawer types (Product, etc.)
+        const action = 'Product';
         toast.success(`${action} created successfully`);
         closeDrawer();
       }
@@ -78,9 +86,14 @@ export const GlobalDrawer = () => {
   const isSale = activeDrawer === 'addSale' || activeDrawer === 'edit-sale';
   const isPurchase = activeDrawer === 'addPurchase';
   const isProduct = activeDrawer === 'addProduct' || activeDrawer === 'edit-product';
+  const isContact = activeDrawer === 'addContact';
   const side = isMobile ? "bottom" : "right";
   
+  // Check if we have a nested drawer (Contact opened from Sale/Purchase)
+  const hasNestedDrawer = isContact && parentDrawer && (parentDrawer === 'addSale' || parentDrawer === 'addPurchase' || parentDrawer === 'edit-sale' || parentDrawer === 'edit-purchase');
+  
   // Custom classes for the sheet content
+  // IMPORTANT: Responsive widths, isolated from global layout
   let contentClasses = "border-l border-gray-800 bg-gray-950 text-white p-0 gap-0 "; 
   
   if (isMobile) {
@@ -88,13 +101,49 @@ export const GlobalDrawer = () => {
   } else {
     contentClasses += "h-full ";
     if (isSale || isPurchase) {
-      contentClasses += "w-[1400px] sm:max-w-[1400px]"; // Extra wide for Sale/Purchase Form
+      // Responsive width for Sale/Purchase: 80vw, max 1100px - isolated from global layout
+      contentClasses += "!w-[80vw] !max-w-[1100px]"; // Responsive width, no global pollution
     } else if (isProduct) {
        contentClasses += "!w-[800px] !max-w-[800px] sm:!max-w-[800px]"; // Override Sheet default width (800px for comfortable form layout)
+    } else if (isContact) {
+      // Contact form: Fixed 580-600px width
+      contentClasses += "!w-[580px] !max-w-[600px] sm:!max-w-[600px]"; // Contact form: 580-600px fixed width
     } else {
       contentClasses += "w-[400px] sm:w-[540px]"; // Standard for simple forms
     }
   }
+  
+  // For nested Contact drawer, ensure higher z-index and proper overflow
+  if (hasNestedDrawer) {
+    contentClasses += " !z-[70]"; // Higher z-index than parent drawer (z-50)
+  }
+
+  // Render parent drawer content (Sale/Purchase only)
+  const renderParentContent = () => {
+    return (
+      <>
+        {/* Sale Form - Add */}
+        {shouldShowParentDrawer('addSale') && (
+          <SaleForm onClose={() => closeDrawer()} />
+        )}
+
+        {/* Sale Form - Edit */}
+        {shouldShowParentDrawer('edit-sale') && (
+          <SaleForm sale={drawerData?.sale} onClose={() => closeDrawer()} />
+        )}
+
+        {/* Purchase Form - Add */}
+        {shouldShowParentDrawer('addPurchase') && (
+          <PurchaseForm onClose={() => closeDrawer()} />
+        )}
+
+        {/* Purchase Form - Edit */}
+        {shouldShowParentDrawer('edit-purchase') && (
+          <PurchaseForm purchase={drawerData?.purchase} onClose={() => closeDrawer()} />
+        )}
+      </>
+    );
+  };
 
   // Render content based on active drawer
   const renderContent = () => {
@@ -102,22 +151,22 @@ export const GlobalDrawer = () => {
     return (
       <>
         {/* Sale Form - Add */}
-        <div style={{ display: activeDrawer === 'addSale' ? 'block' : 'none' }}>
+        <div style={{ display: shouldShowParentDrawer('addSale') ? 'block' : 'none' }}>
           <SaleForm onClose={() => closeDrawer()} />
         </div>
 
         {/* Sale Form - Edit */}
-        <div style={{ display: activeDrawer === 'edit-sale' ? 'block' : 'none' }}>
+        <div style={{ display: shouldShowParentDrawer('edit-sale') ? 'block' : 'none' }}>
           <SaleForm sale={drawerData?.sale} onClose={() => closeDrawer()} />
         </div>
 
         {/* Purchase Form - Add */}
-        <div style={{ display: activeDrawer === 'addPurchase' ? 'block' : 'none' }}>
+        <div style={{ display: shouldShowParentDrawer('addPurchase') ? 'block' : 'none' }}>
           <PurchaseForm onClose={() => closeDrawer()} />
         </div>
 
         {/* Purchase Form - Edit */}
-        <div style={{ display: activeDrawer === 'edit-purchase' ? 'block' : 'none' }}>
+        <div style={{ display: shouldShowParentDrawer('edit-purchase') ? 'block' : 'none' }}>
           <PurchaseForm purchase={drawerData?.purchase} onClose={() => closeDrawer()} />
         </div>
 
@@ -245,17 +294,67 @@ export const GlobalDrawer = () => {
     );
   };
 
+  // Render nested drawers: When Contact is opened from Sale/Purchase, render both drawers
+  if (hasNestedDrawer) {
+    // Render parent drawer (Sale/Purchase) with lower z-index
+    const parentIsSale = parentDrawer === 'addSale' || parentDrawer === 'edit-sale';
+    const parentIsPurchase = parentDrawer === 'addPurchase';
+    const parentContentClasses = "border-l border-gray-800 bg-gray-950 text-white p-0 gap-0 h-full !w-[80vw] !max-w-[1100px] !z-[60] overflow-y-auto";
+    
+    return (
+      <>
+        {/* Parent Drawer (Sale/Purchase) - Lower z-index, stays open */}
+        <Sheet open={true} onOpenChange={() => {}}>
+          <SheetContent side={side} className={parentContentClasses}>
+            <SheetHeader className="sr-only">
+              <SheetTitle>
+                {parentIsSale ? 'Add Sale' : parentIsPurchase ? 'Add Purchase' : 'Drawer'}
+              </SheetTitle>
+              <SheetDescription className="sr-only">
+                {parentIsSale ? 'Create a new sale' : parentIsPurchase ? 'Create a new purchase' : 'Drawer content'}
+              </SheetDescription>
+            </SheetHeader>
+            {renderParentContent()}
+          </SheetContent>
+        </Sheet>
+        
+        {/* Child Drawer (Contact) - Higher z-index, appears on top, proper overflow */}
+        <Sheet open={isOpen} onOpenChange={handleOpenChange}>
+          <SheetContent side={side} className={contentClasses + " overflow-y-auto"}>
+            <SheetHeader className="sr-only">
+              <SheetTitle>Add Contact</SheetTitle>
+              <SheetDescription className="sr-only">Create a new contact</SheetDescription>
+            </SheetHeader>
+            {activeDrawer === 'addContact' && (
+              <ContactFormContent onClose={() => closeDrawer()} />
+            )}
+          </SheetContent>
+        </Sheet>
+      </>
+    );
+  }
+  
+  // Single drawer (normal case)
   return (
     <Sheet open={isOpen} onOpenChange={handleOpenChange}>
       <SheetContent side={side} className={contentClasses}>
         {/* Hidden title for accessibility */}
-        {(isSale || isPurchase || isProduct) && (
-          <SheetHeader className="sr-only">
-            <SheetTitle>
-              {isSale ? 'Add Sale' : isPurchase ? 'Add Purchase' : 'Add Product'}
-            </SheetTitle>
-          </SheetHeader>
-        )}
+        <SheetHeader className="sr-only">
+          <SheetTitle>
+            {isSale ? 'Add Sale' : 
+             isPurchase ? 'Add Purchase' : 
+             isProduct ? 'Add Product' : 
+             isContact ? 'Add Contact' : 
+             'Drawer'}
+          </SheetTitle>
+          <SheetDescription className="sr-only">
+            {isSale ? 'Create a new sale' : 
+             isPurchase ? 'Create a new purchase' : 
+             isProduct ? 'Create a new product' : 
+             isContact ? 'Create a new contact' : 
+             'Drawer content'}
+          </SheetDescription>
+        </SheetHeader>
         {renderContent()}
       </SheetContent>
     </Sheet>
@@ -264,19 +363,133 @@ export const GlobalDrawer = () => {
 
 // Contact Form Component
 const ContactFormContent = ({ onClose }: { onClose: () => void }) => {
-  const { drawerContactType } = useNavigation();
+  const { drawerContactType, setCreatedContactId, parentDrawer, drawerPrefillName, drawerPrefillPhone } = useNavigation();
   const { companyId, branchId, user } = useSupabase();
-  const [contactType, setContactType] = useState<'customer' | 'supplier' | 'worker'>(drawerContactType || 'customer');
+  const [contactRoles, setContactRoles] = useState<{
+    customer: boolean;
+    supplier: boolean;
+    worker: boolean;
+  }>({
+    // All roles initially UNSELECTED (no default selection)
+    customer: drawerContactType === 'customer' ? true : false,
+    supplier: drawerContactType === 'supplier' ? true : false,
+    worker: drawerContactType === 'worker' ? true : false,
+  });
   const [workerType, setWorkerType] = useState<string>('dyer');
   const [saving, setSaving] = useState(false);
   const [country, setCountry] = useState<string>('pk');
+  const [selectedGroupId, setSelectedGroupId] = useState<string>('none');
+  const [contactGroups, setContactGroups] = useState<any[]>([]);
+  const [loadingGroups, setLoadingGroups] = useState(false);
   
-  // Update contactType when drawerContactType changes
+  // Prefill name and phone from search text
+  const [prefillName, setPrefillName] = useState<string>(drawerPrefillName || '');
+  const [prefillPhone, setPrefillPhone] = useState<string>(drawerPrefillPhone || '');
+  
+  // Update prefill when drawerPrefillName changes
+  React.useEffect(() => {
+    if (drawerPrefillName) {
+      setPrefillName(drawerPrefillName);
+    }
+    if (drawerPrefillPhone) {
+      setPrefillPhone(drawerPrefillPhone);
+    }
+  }, [drawerPrefillName, drawerPrefillPhone]);
+  
+  // Update contactRoles when drawerContactType changes (only if explicitly set)
   React.useEffect(() => {
     if (drawerContactType) {
-      setContactType(drawerContactType);
+      setContactRoles({
+        customer: drawerContactType === 'customer' ? true : false,
+        supplier: drawerContactType === 'supplier' ? true : false,
+        worker: drawerContactType === 'worker' ? true : false,
+      });
+    } else {
+      // No drawerContactType means all roles should be unselected
+      setContactRoles({
+        customer: false,
+        supplier: false,
+        worker: false,
+      });
     }
   }, [drawerContactType]);
+
+  // Load contact groups based on selected roles
+  React.useEffect(() => {
+    const loadGroups = async () => {
+      if (!companyId) return;
+      
+      setLoadingGroups(true);
+      try {
+        // Load groups for Customer and Supplier only (Worker doesn't need groups)
+        const groupPromises: Promise<any[]>[] = [];
+        if (contactRoles.customer) {
+          groupPromises.push(contactGroupService.getAllGroups(companyId, 'customer'));
+        }
+        if (contactRoles.supplier) {
+          groupPromises.push(contactGroupService.getAllGroups(companyId, 'supplier'));
+        }
+        
+        // If no Customer/Supplier selected, don't load groups (Worker doesn't use groups)
+        if (groupPromises.length === 0) {
+          setContactGroups([]);
+          setLoadingGroups(false);
+          return;
+        }
+        
+        const groupsArrays = await Promise.all(groupPromises);
+        const allGroups = groupsArrays.flat();
+        console.log('[CONTACT FORM] Loaded contact groups:', allGroups.length, allGroups);
+        setContactGroups(allGroups);
+      } catch (error: any) {
+        // Service already handles 404/table not found gracefully
+        // Just set empty array, form will work without groups
+        setContactGroups([]);
+      } finally {
+        setLoadingGroups(false);
+      }
+    };
+    
+    loadGroups();
+  }, [companyId, contactRoles.customer, contactRoles.supplier]);
+  
+  // Role toggle logic: Customer/Supplier disable Worker, Worker only when both Customer/Supplier unselected
+  const handleRoleToggle = (role: 'customer' | 'supplier' | 'worker') => {
+    if (role === 'customer' || role === 'supplier') {
+      // If Customer or Supplier is being toggled ON, turn Worker OFF
+      const newValue = !contactRoles[role];
+      setContactRoles({
+        ...contactRoles,
+        [role]: newValue,
+        worker: false, // Auto-disable Worker when Customer/Supplier selected
+      });
+    } else if (role === 'worker') {
+      // Worker can only be ON when Customer AND Supplier both are OFF
+      const newWorkerValue = !contactRoles.worker;
+      if (newWorkerValue) {
+        // Turning Worker ON - ensure Customer and Supplier are OFF
+        setContactRoles({
+          customer: false,
+          supplier: false,
+          worker: true,
+        });
+      } else {
+        // Turning Worker OFF - just update worker
+        setContactRoles({
+          ...contactRoles,
+          worker: false,
+        });
+      }
+    }
+  };
+
+  // Determine primary type for database (backward compatibility)
+  const getPrimaryType = (): 'customer' | 'supplier' | 'worker' | 'both' => {
+    if (contactRoles.worker) return 'worker';
+    if (contactRoles.customer && contactRoles.supplier) return 'both';
+    if (contactRoles.supplier) return 'supplier';
+    return 'customer';
+  };
 
   // Handle form submission
   const handleContactSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -291,12 +504,31 @@ const ContactFormContent = ({ onClose }: { onClose: () => void }) => {
 
     try {
       const formData = new FormData(e.currentTarget);
-      const contactData = {
+      const primaryType = getPrimaryType();
+      
+      // Check for duplicate contact by phone number (mandatory check)
+      const existingContacts = await contactService.getAllContacts(companyId);
+      const phone = formData.get('mobile') as string;
+      const name = formData.get('business-name') as string;
+      
+      if (phone) {
+        const duplicateByPhone = existingContacts.find(
+          (c: any) => (c.phone === phone || c.mobile === phone) && phone.trim() !== ''
+        );
+        
+        if (duplicateByPhone) {
+          toast.error(`Ye number pehle se "${duplicateByPhone.name}" ke naam se save hai`);
+          setSaving(false);
+          return;
+        }
+      }
+      
+      const contactData: any = {
         company_id: companyId,
         branch_id: branchId || undefined,
-        type: contactType,
-        name: formData.get('business-name') as string,
-        phone: formData.get('mobile') as string,
+        type: primaryType === 'both' ? 'customer' : primaryType, // Fallback to 'customer' if 'both' not supported
+        name: name,
+        phone: phone,
         email: formData.get('email') as string || undefined,
         address: formData.get('address') as string || undefined,
         city: formData.get('city') as string || undefined,
@@ -308,10 +540,92 @@ const ContactFormContent = ({ onClose }: { onClose: () => void }) => {
         notes: formData.get('notes') as string || undefined,
         created_by: user.id,
       };
+      
+      // Add contact group if selected (skip if "none")
+      if (selectedGroupId && selectedGroupId !== 'none') {
+        contactData.group_id = selectedGroupId;
+      }
+      
+      // Add supplier-specific fields if supplier is selected
+      if (contactRoles.supplier) {
+        const supplierBusinessName = formData.get('supplier-business-name') as string;
+        const contactPerson = formData.get('contact-person') as string;
+        const ntn = formData.get('supplier-ntn') as string;
+        const payableAccount = formData.get('supplier-payable-account') as string;
+        const supplierOpeningBalance = formData.get('supplier-opening-balance') as string;
+        
+        if (supplierBusinessName) contactData.business_name = supplierBusinessName;
+        // Only add contact_person if it has a value (column may not exist in DB yet)
+        if (contactPerson && contactPerson.trim() !== '') {
+          contactData.contact_person = contactPerson;
+        }
+        if (ntn) contactData.ntn = ntn;
+        if (payableAccount) contactData.payable_account_id = payableAccount;
+        if (supplierOpeningBalance) contactData.supplier_opening_balance = parseFloat(supplierOpeningBalance) || 0;
+      }
+      
+      // Add worker-specific fields if worker is selected
+      if (contactRoles.worker) {
+        contactData.worker_role = workerType;
+      }
 
-      await contactService.createContact(contactData);
+      // Validate at least one role is selected
+      if (!contactRoles.customer && !contactRoles.supplier && !contactRoles.worker) {
+        toast.error('Please select at least one contact role');
+        setSaving(false);
+        return;
+      }
+
+      const createdContact = await contactService.createContact(contactData);
+      
+      // Store created contact ID and type for auto-selection in parent form (Sale/Purchase)
+      // Use the ID from the created contact (could be uuid or id field)
+      const contactId = createdContact?.id || createdContact?.uuid || createdContact?.id;
+      if (contactId && setCreatedContactId) {
+        // Determine the contact type for filtering
+        let contactTypeForFilter: 'customer' | 'supplier' | 'both' | null = null;
+        if (contactRoles.customer && contactRoles.supplier) {
+          contactTypeForFilter = 'both';
+        } else if (contactRoles.customer) {
+          contactTypeForFilter = 'customer';
+        } else if (contactRoles.supplier) {
+          contactTypeForFilter = 'supplier';
+        }
+        
+        setCreatedContactId(contactId, contactTypeForFilter);
+        console.log('[CONTACT FORM] Created contact ID stored:', contactId, 'Type:', contactTypeForFilter);
+      }
+      
+      // If both customer and supplier selected, create a second record for supplier (if 'both' type not supported)
+      // Note: This creates duplicate records but maintains backward compatibility
+      if (contactRoles.customer && contactRoles.supplier && primaryType !== 'both') {
+        try {
+          const supplierData = {
+            ...contactData,
+            type: 'supplier' as const,
+            name: (formData.get('supplier-business-name') as string) || contactData.name,
+          };
+          await contactService.createContact(supplierData);
+        } catch (supplierError: any) {
+          // If supplier record creation fails, log but don't fail the whole operation
+          console.warn('[CONTACT FORM] Failed to create supplier record:', supplierError);
+        }
+      }
+      
       toast.success('Contact created successfully!');
-      onClose();
+      
+      // CRITICAL FIX: If opened from Sale/Purchase, trigger immediate reload before closing
+      // This ensures the contact appears in the dropdown before auto-selection
+      if (parentDrawer === 'addSale' || parentDrawer === 'addPurchase') {
+        // Give a small delay for database to commit, then close
+        // The parent form's useEffect will detect activeDrawer === 'none' and reload
+        setTimeout(() => {
+          onClose();
+        }, 300); // Increased delay to ensure DB commit
+      } else {
+        // If not from Sale/Purchase, close immediately
+        onClose();
+      }
     } catch (error: any) {
       console.error('Error creating contact:', error);
       toast.error(error.message || 'Failed to create contact. Please try again.');
@@ -324,69 +638,178 @@ const ContactFormContent = ({ onClose }: { onClose: () => void }) => {
     <div className="flex flex-col h-full">
       <div className="p-6 border-b border-gray-800 bg-gray-950 sticky top-0 z-10">
         <h2 className="text-xl font-bold text-white">Add New Contact</h2>
-        <p className="text-sm text-gray-400 mt-1">Create a customer, supplier, or worker profile</p>
+        <p className="text-sm text-gray-400 mt-1">
+          {drawerContactType 
+            ? `Adding new ${drawerContactType}. Other roles disabled.`
+            : 'Select contact roles (Customer/Supplier can be combined, Worker is separate)'}
+        </p>
         
-        {/* Toggle Contact Type - 3 Options */}
-        <div className="grid grid-cols-3 gap-2 mt-4">
-          <button
-            type="button"
-            onClick={() => setContactType('customer')}
-            className={`py-2.5 px-4 rounded-lg font-medium transition-all text-sm ${
-              contactType === 'customer' 
-                ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/30' 
-                : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
-            }`}
-          >
-            Customer
-          </button>
-          <button
-            type="button"
-            onClick={() => setContactType('supplier')}
-            className={`py-2.5 px-4 rounded-lg font-medium transition-all text-sm ${
-              contactType === 'supplier' 
-                ? 'bg-purple-600 text-white shadow-lg shadow-purple-500/30' 
-                : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
-            }`}
-          >
-            Supplier
-          </button>
-          <button
-            type="button"
-            onClick={() => setContactType('worker')}
-            className={`py-2.5 px-4 rounded-lg font-medium transition-all text-sm ${
-              contactType === 'worker' 
-                ? 'bg-green-600 text-white shadow-lg shadow-green-500/30' 
-                : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
-            }`}
-          >
-            Worker
-          </button>
+        {/* Contact Roles - Segmented Buttons / Pills */}
+        <div className="mt-4">
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => handleRoleToggle('customer')}
+              disabled={drawerContactType && drawerContactType !== 'customer'}
+              className={`px-4 py-2 rounded-lg font-medium text-sm transition-all flex items-center gap-2 ${
+                contactRoles.customer
+                  ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/30 border-2 border-blue-500'
+                  : 'bg-gray-800 text-gray-400 hover:bg-gray-700 border-2 border-gray-700'
+              } ${
+                (drawerContactType && drawerContactType !== 'customer')
+                  ? 'opacity-50 cursor-not-allowed' 
+                  : ''
+              }`}
+              title={
+                (drawerContactType && drawerContactType !== 'customer')
+                  ? `Only ${drawerContactType} role allowed from this context`
+                  : 'Select Customer role'
+              }
+            >
+              <span className={`w-2 h-2 rounded-full ${contactRoles.customer ? 'bg-white' : 'bg-blue-500'}`}></span>
+              Customer
+            </button>
+            
+            <button
+              type="button"
+              onClick={() => handleRoleToggle('supplier')}
+              disabled={drawerContactType && drawerContactType !== 'supplier'}
+              className={`px-4 py-2 rounded-lg font-medium text-sm transition-all flex items-center gap-2 ${
+                contactRoles.supplier
+                  ? 'bg-purple-600 text-white shadow-lg shadow-purple-500/30 border-2 border-purple-500'
+                  : 'bg-gray-800 text-gray-400 hover:bg-gray-700 border-2 border-gray-700'
+              } ${
+                (drawerContactType && drawerContactType !== 'supplier')
+                  ? 'opacity-50 cursor-not-allowed' 
+                  : ''
+              }`}
+              title={
+                (drawerContactType && drawerContactType !== 'supplier')
+                  ? `Only ${drawerContactType} role allowed from this context`
+                  : 'Select Supplier role'
+              }
+            >
+              <span className={`w-2 h-2 rounded-full ${contactRoles.supplier ? 'bg-white' : 'bg-purple-500'}`}></span>
+              Supplier
+            </button>
+            
+            <button
+              type="button"
+              onClick={() => handleRoleToggle('worker')}
+              disabled={contactRoles.customer || contactRoles.supplier || (drawerContactType && drawerContactType !== 'worker')}
+              className={`px-4 py-2 rounded-lg font-medium text-sm transition-all flex items-center gap-2 ${
+                contactRoles.worker
+                  ? 'bg-green-600 text-white shadow-lg shadow-green-500/30 border-2 border-green-500'
+                  : 'bg-gray-800 text-gray-400 hover:bg-gray-700 border-2 border-gray-700'
+              } ${
+                (contactRoles.customer || contactRoles.supplier || (drawerContactType && drawerContactType !== 'worker'))
+                  ? 'opacity-50 cursor-not-allowed' 
+                  : ''
+              }`}
+              title={
+                (drawerContactType && drawerContactType !== 'worker')
+                  ? `Only ${drawerContactType} role allowed from this context`
+                  : (contactRoles.customer || contactRoles.supplier)
+                  ? 'Worker cannot be selected with Customer or Supplier'
+                  : 'Select Worker role'
+              }
+            >
+              <span className={`w-2 h-2 rounded-full ${contactRoles.worker ? 'bg-white' : 'bg-green-500'}`}></span>
+              Worker
+            </button>
+          </div>
+          
+          {!contactRoles.customer && !contactRoles.supplier && !contactRoles.worker && (
+            <p className="text-xs text-red-400 mt-2">Please select at least one role</p>
+          )}
+          
+          {(contactRoles.customer || contactRoles.supplier) && contactRoles.worker && (
+            <p className="text-xs text-amber-400 mt-2">Worker cannot be selected with Customer or Supplier</p>
+          )}
         </div>
       </div>
 
       <form onSubmit={handleContactSubmit} className="flex-1 overflow-y-auto p-6 space-y-6">
+        {/* Contact Group / Category - Show for Customer and Supplier, hide for Worker */}
+        {(contactRoles.customer || contactRoles.supplier) && (
+          <div className="space-y-2">
+            <Label htmlFor="contact-group" className="text-gray-200">Group / Category (Optional)</Label>
+            {loadingGroups ? (
+              <div className="text-sm text-gray-400 py-2">Loading groups...</div>
+            ) : contactGroups.length > 0 ? (
+              <Select value={selectedGroupId} onValueChange={setSelectedGroupId}>
+                <SelectTrigger className="bg-gray-900 border-gray-800 text-white">
+                  <SelectValue placeholder="Select a group (optional)" />
+                </SelectTrigger>
+                <SelectContent className="bg-gray-900 border-gray-800 text-white max-h-[280px] overflow-y-auto">
+                  <SelectItem value="none">None</SelectItem>
+                  {contactGroups.map((group) => (
+                    <SelectItem key={group.id} value={group.id}>
+                      {group.name} {group.type && `(${group.type})`}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            ) : (
+              <div className="text-sm text-gray-500 italic py-2 px-3 bg-gray-900/50 rounded border border-gray-800">
+                No groups available. Groups will appear here once created in settings.
+              </div>
+            )}
+            <p className="text-xs text-gray-500">Organize contacts into groups for easier management</p>
+          </div>
+        )}
+
         {/* Basic Info */}
         <div className="space-y-4">
           <h3 className="text-sm font-semibold text-blue-400 uppercase tracking-wider">Basic Information</h3>
           
+          {/* Name field - role-based labels */}
           <div className="space-y-2">
             <Label htmlFor="business-name" className="text-gray-200">
-              {contactType === 'worker' ? 'Worker Name *' : 'Business Name *'}
+              {contactRoles.worker 
+                ? 'Worker Name *' 
+                : contactRoles.customer && !contactRoles.supplier
+                ? 'Business / Person Name *'
+                : contactRoles.supplier && !contactRoles.customer
+                ? 'Business Name *'
+                : 'Business / Contact Name *'}
             </Label>
             <Input 
               id="business-name"
               name="business-name"
-              placeholder={contactType === 'worker' ? 'e.g. Ahmed Ali' : 'e.g. Ahmed Retailers'} 
+              defaultValue={prefillName}
+              placeholder={
+                contactRoles.worker 
+                  ? 'e.g. Ahmed Ali' 
+                  : contactRoles.supplier
+                  ? 'e.g. ABC Trading Company'
+                  : 'e.g. Ahmed Retailers'
+              } 
               className="bg-gray-900 border-gray-800 text-white" 
               required 
             />
           </div>
+
+          {/* Contact Person - Only for Suppliers */}
+          {contactRoles.supplier && (
+            <div className="space-y-2">
+              <Label htmlFor="contact-person" className="text-gray-200">Contact Person</Label>
+              <Input 
+                id="contact-person"
+                name="contact-person"
+                placeholder="e.g. John Doe (optional)" 
+                className="bg-gray-900 border-gray-800 text-white" 
+              />
+              <p className="text-xs text-gray-500">Primary contact person at supplier</p>
+            </div>
+          )}
 
           <div className="space-y-2">
             <Label htmlFor="mobile" className="text-gray-200">Mobile Number *</Label>
             <Input 
               id="mobile"
               name="mobile"
+              defaultValue={prefillPhone}
               placeholder="+92 300 1234567" 
               className="bg-gray-900 border-gray-800 text-white" 
               required 
@@ -405,8 +828,72 @@ const ContactFormContent = ({ onClose }: { onClose: () => void }) => {
           </div>
         </div>
 
+        {/* Supplier Extra Business Details - Collapsible */}
+        {contactRoles.supplier && (
+          <Accordion type="single" collapsible className="border border-purple-500/30 rounded-lg bg-purple-500/5">
+            <AccordionItem value="supplier-details" className="border-none">
+              <AccordionTrigger className="px-4 hover:bg-purple-500/10">
+                <span className="text-sm font-semibold text-purple-400 uppercase tracking-wider flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-purple-500"></span>
+                  Supplier Business Details (Optional)
+                </span>
+              </AccordionTrigger>
+              <AccordionContent className="px-4 pb-4">
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="supplier-business-name" className="text-gray-200">Business Name</Label>
+                    <Input 
+                      id="supplier-business-name"
+                      name="supplier-business-name"
+                      placeholder="e.g. ABC Trading Company" 
+                      className="bg-gray-900 border-gray-800 text-white" 
+                    />
+                    <p className="text-xs text-gray-500">Legal business name (if different from contact name)</p>
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <Label htmlFor="supplier-ntn" className="text-gray-200">NTN / Tax ID</Label>
+                    <Input 
+                      id="supplier-ntn"
+                      name="supplier-ntn"
+                      placeholder="NTN-1234567" 
+                      className="bg-gray-900 border-gray-800 text-white" 
+                    />
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <Label htmlFor="supplier-payable-account" className="text-gray-200">Payable Account</Label>
+                    <Select name="supplier-payable-account" defaultValue="">
+                      <SelectTrigger className="bg-gray-900 border-gray-800 text-white">
+                        <SelectValue placeholder="Select account (optional)" />
+                      </SelectTrigger>
+                      <SelectContent className="bg-gray-900 border-gray-800 text-white">
+                        {/* Accounts will be loaded dynamically if needed */}
+                        {/* Note: Empty Select will show placeholder when no value selected */}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-gray-500">Default account for supplier payments</p>
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <Label htmlFor="supplier-opening-balance" className="text-gray-200">Opening Balance (Payable)</Label>
+                    <Input 
+                      id="supplier-opening-balance"
+                      name="supplier-opening-balance"
+                      type="number"
+                      placeholder="0.00" 
+                      className="bg-gray-900 border-gray-800 text-white" 
+                    />
+                    <p className="text-xs text-gray-500">Initial amount owed to supplier</p>
+                  </div>
+                </div>
+              </AccordionContent>
+            </AccordionItem>
+          </Accordion>
+        )}
+
         {/* Worker Type Selection - Only for Workers */}
-        {contactType === 'worker' && (
+        {contactRoles.worker && (
           <div className="bg-green-500/10 border border-green-500/30 rounded-lg p-4 space-y-4">
             <h3 className="text-sm font-semibold text-green-400 uppercase tracking-wider flex items-center gap-2">
               <span className="w-2 h-2 rounded-full bg-green-500"></span>

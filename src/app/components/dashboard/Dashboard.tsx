@@ -175,7 +175,7 @@ export const Dashboard = () => {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 max-w-full overflow-x-hidden">
       {/* Low Stock Alert Banner */}
       {lowStockItems.length > 0 && (
         <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-4 flex items-center justify-between">

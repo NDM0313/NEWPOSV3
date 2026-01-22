@@ -90,9 +90,14 @@ function CommandList({
     <CommandPrimitive.List
       data-slot="command-list"
       className={cn(
-        "max-h-[300px] scroll-py-1 overflow-x-hidden overflow-y-auto",
+        "max-h-[280px] scroll-py-1 overflow-x-hidden overflow-y-auto overscroll-behavior-contain",
+        "[&>*]:pointer-events-auto",
         className,
       )}
+      style={{ 
+        scrollbarWidth: 'thin',
+        scrollbarColor: '#4b5563 #1f2937'
+      }}
       {...props}
     />
   );
