@@ -70,6 +70,24 @@ const ExpenseContext = createContext<ExpenseContextType | undefined>(undefined);
 export const useExpenses = () => {
   const context = useContext(ExpenseContext);
   if (!context) {
+    // During hot reload in development, context might not be available
+    // Return a safe default to prevent crashes
+    if (import.meta.env.DEV) {
+      console.warn('[ExpenseContext] useExpenses called outside ExpenseProvider, returning default context');
+      const defaultError = () => { throw new Error('ExpenseProvider not available'); };
+      return {
+        expenses: [],
+        loading: false,
+        getExpenseById: () => undefined,
+        createExpense: defaultError,
+        updateExpense: defaultError,
+        deleteExpense: defaultError,
+        recordPayment: defaultError,
+        getExpensesByDateRange: () => [],
+        getTotalByCategory: () => 0,
+        refreshExpenses: async () => {},
+      } as ExpenseContextType;
+    }
     throw new Error('useExpenses must be used within ExpenseProvider');
   }
   return context;

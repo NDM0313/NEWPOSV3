@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
-import { X, Wallet, Building2, CreditCard, AlertCircle, Check, ChevronDown, Upload, FileText, Calendar, Clock, Trash2 } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { X, Wallet, Building2, CreditCard, AlertCircle, Check, ChevronDown, Upload, FileText, Calendar, Clock, Trash2, History, Banknote } from 'lucide-react';
 import { Button } from '@/app/components/ui/button';
 import { Badge } from '@/app/components/ui/badge';
 import { useAccounting, type PaymentMethod, type Account } from '@/app/context/AccountingContext';
 import { useSettings } from '@/app/context/SettingsContext';
+import { useSupabase } from '@/app/context/SupabaseContext';
 import { toast } from 'sonner';
 
 // ============================================
@@ -12,6 +13,14 @@ import { toast } from 'sonner';
 
 export type PaymentContextType = 'supplier' | 'customer' | 'worker' | 'rental';
 
+export interface PreviousPayment {
+  id: string;
+  date: string;
+  amount: number;
+  method: string;
+  accountName?: string;
+}
+
 export interface PaymentDialogProps {
   isOpen: boolean;
   onClose: () => void;
@@ -19,6 +28,9 @@ export interface PaymentDialogProps {
   entityName: string;
   entityId?: string;
   outstandingAmount: number;
+  totalAmount?: number; // Total invoice amount (for showing payment progress)
+  paidAmount?: number; // Already paid amount
+  previousPayments?: PreviousPayment[]; // Payment history for this invoice
   referenceNo?: string; // Invoice number (string) for display
   referenceId?: string; // UUID of sale/purchase/rental (for journal entry reference_id)
   onSuccess?: () => void;
@@ -35,12 +47,16 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
   entityName,
   entityId,
   outstandingAmount,
+  totalAmount,
+  paidAmount = 0,
+  previousPayments = [],
   referenceNo,
   referenceId, // CRITICAL FIX: UUID for journal entry reference_id
   onSuccess
 }) => {
   const accounting = useAccounting();
   const settings = useSettings();
+  const { branchId } = useSupabase();
   const [amount, setAmount] = useState<number>(0);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('Cash');
   const [selectedAccount, setSelectedAccount] = useState<string>('');
@@ -79,9 +95,19 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
     }
   }, [isOpen]);
 
-  // 🎯 Filter accounts based on payment method
+  // 🎯 Filter accounts based on payment method AND branch
+  // Include: branch-specific accounts + global accounts
   const getFilteredAccounts = (): Account[] => {
-    return accounting.accounts.filter(account => account.type === paymentMethod);
+    return accounting.accounts.filter(account => {
+      // Filter by payment method type
+      if (account.type !== paymentMethod) return false;
+      
+      // Include if: no branch restriction (global) OR matches current branch
+      const isGlobal = !account.branchId || account.branchId === 'global' || account.branchId === '';
+      const isBranchSpecific = account.branchId === branchId;
+      
+      return isGlobal || isBranchSpecific;
+    });
   };
 
   // Reset account selection when payment method changes + Auto-select default account
@@ -320,8 +346,26 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
                       Ref: {referenceNo}
                     </p>
                   )}
-                  <div className="mt-4 pt-4 border-t border-gray-800">
-                    <div className="flex items-center justify-between">
+                  <div className="mt-4 pt-4 border-t border-gray-800 space-y-2">
+                    {/* Show total amount if provided */}
+                    {totalAmount !== undefined && totalAmount > 0 && (
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs text-gray-400">Total Amount</span>
+                        <span className="text-sm font-semibold text-white">
+                          Rs {totalAmount.toLocaleString()}
+                        </span>
+                      </div>
+                    )}
+                    {/* Show paid amount if any */}
+                    {paidAmount > 0 && (
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs text-gray-400">Already Paid</span>
+                        <span className="text-sm font-semibold text-green-400">
+                          Rs {paidAmount.toLocaleString()}
+                        </span>
+                      </div>
+                    )}
+                    <div className="flex items-center justify-between pt-2 border-t border-gray-800">
                       <span className="text-xs text-gray-400">Outstanding Amount</span>
                       <span className="text-xl font-bold text-yellow-400">
                         Rs {outstandingAmount.toLocaleString()}
@@ -329,6 +373,44 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
                     </div>
                   </div>
                 </div>
+                
+                {/* 🎯 Payment History Section (if previous payments exist) */}
+                {previousPayments.length > 0 && (
+                  <div className="bg-gradient-to-br from-green-950/20 to-gray-900/50 border border-green-900/30 rounded-xl p-4">
+                    <div className="flex items-center gap-2 mb-3">
+                      <History size={14} className="text-green-400" />
+                      <span className="text-xs font-semibold text-green-400 uppercase tracking-wide">
+                        Already Received Payments ({previousPayments.length})
+                      </span>
+                    </div>
+                    <div className="space-y-2 max-h-32 overflow-y-auto">
+                      {previousPayments.map((payment, index) => (
+                        <div key={payment.id || index} className="flex items-center justify-between bg-gray-900/50 rounded-lg px-3 py-2">
+                          <div className="flex items-center gap-3">
+                            <div className="w-7 h-7 rounded-full bg-green-500/20 flex items-center justify-center">
+                              <Banknote size={12} className="text-green-400" />
+                            </div>
+                            <div>
+                              <p className="text-xs text-gray-400">
+                                {new Date(payment.date).toLocaleDateString('en-GB', { 
+                                  day: '2-digit', 
+                                  month: 'short', 
+                                  year: 'numeric' 
+                                })}
+                              </p>
+                              {payment.accountName && (
+                                <p className="text-[10px] text-gray-500">{payment.method} • {payment.accountName}</p>
+                              )}
+                            </div>
+                          </div>
+                          <span className="text-sm font-semibold text-green-400">
+                            Rs {payment.amount.toLocaleString()}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 {/* Payment Amount */}
                 <div className="bg-gray-950/50 border border-gray-800 rounded-xl p-4">

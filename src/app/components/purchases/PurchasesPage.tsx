@@ -80,11 +80,10 @@ export const PurchasesPage = () => {
       try {
         const branchesData = await branchService.getAllBranches(companyId);
         setBranches(branchesData);
-        // Create mapping from branch_id to branch display (code | name)
+        // Create mapping from branch_id to branch NAME only (UI rule: no code, no UUID)
         const map = new Map<string, string>();
         branchesData.forEach(branch => {
-          const displayText = branch.code ? `${branch.code} | ${branch.name}` : branch.name;
-          map.set(branch.id, displayText);
+          map.set(branch.id, branch.name);
         });
         setBranchMap(map);
       } catch (error) {
@@ -207,9 +206,13 @@ export const PurchasesPage = () => {
       
       // Convert Supabase format to app format
       const convertedPurchases: Purchase[] = data.map((p: any, index: number) => {
-        // Resolve branch name from branch_id
-        const branchDisplay = p.branch_id ? branchMap.get(p.branch_id) : null;
-        const location = branchDisplay || p.branch?.name || p.branch_name || '—';
+        // Resolve branch NAME from branch_id (UI rule: name only, no code, no UUID)
+        let location = '';
+        if (p.branch?.name) {
+          location = p.branch.name;
+        } else if (p.branch_id && branchMap.size > 0) {
+          location = branchMap.get(p.branch_id) || '';
+        }
         
         return {
           id: index + 1, // Use index-based ID for compatibility with existing UI
@@ -242,22 +245,38 @@ export const PurchasesPage = () => {
   // Sync context purchases to local state for filtering (TASK 1 FIX - Ensure data loads on mount)
   useEffect(() => {
     if (contextPurchases.length > 0) {
-      const convertedPurchases: Purchase[] = contextPurchases.map((p: any, index: number) => ({
-        id: index + 1,
-        uuid: p.id,
-        poNo: p.purchaseNo || `PO-${String(index + 1).padStart(3, '0')}`,
-        supplier: p.supplierName || 'Unknown Supplier',
-        supplierContact: p.contactNumber || '',
-        date: p.date || new Date().toISOString().split('T')[0],
-        reference: '',
-        location: p.location || 'Main Branch (HQ)',
-        items: p.itemsCount || 0,
-        grandTotal: p.total || 0,
-        paymentDue: p.due || 0,
-        status: p.status === 'received' ? 'received' : p.status === 'ordered' ? 'ordered' : 'pending',
-        paymentStatus: p.paymentStatus || 'unpaid',
-        addedBy: 'Unknown',
-      }));
+      const convertedPurchases: Purchase[] = contextPurchases.map((p: any, index: number) => {
+        // UI Rule: Show branch NAME only (never UUID, never code)
+        // p.location from context should already be branch name
+        let locationDisplay = p.location || '';
+        
+        // Safety check: if somehow UUID got through, try to resolve it
+        const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(locationDisplay);
+        if (isUUID && branchMap.size > 0) {
+          locationDisplay = branchMap.get(locationDisplay) || '';
+        }
+        // Strip code prefix if present (e.g., "BR-001 | Name" -> "Name")
+        if (locationDisplay.includes('|')) {
+          locationDisplay = locationDisplay.split('|').pop()?.trim() || '';
+        }
+        
+        return {
+          id: index + 1,
+          uuid: p.id,
+          poNo: p.purchaseNo || `PO-${String(index + 1).padStart(3, '0')}`,
+          supplier: p.supplierName || 'Unknown Supplier',
+          supplierContact: p.contactNumber || '',
+          date: p.date || new Date().toISOString().split('T')[0],
+          reference: '',
+          location: locationDisplay,
+          items: p.itemsCount || 0,
+          grandTotal: p.total || 0,
+          paymentDue: p.due || 0,
+          status: p.status === 'received' ? 'received' : p.status === 'ordered' ? 'ordered' : 'pending',
+          paymentStatus: p.paymentStatus || 'unpaid',
+          addedBy: 'Unknown',
+        };
+      });
       setPurchases(convertedPurchases);
       setLoading(contextLoading);
     } else if (!contextLoading && companyId) {
@@ -266,7 +285,7 @@ export const PurchasesPage = () => {
     } else {
       setLoading(contextLoading);
     }
-  }, [contextPurchases, contextLoading, companyId, loadPurchases]);
+  }, [contextPurchases, contextLoading, companyId, loadPurchases, branchMap]);
 
   // TASK 1 FIX - Ensure initial load happens even if context is empty
   useEffect(() => {
@@ -755,12 +774,33 @@ export const PurchasesPage = () => {
                       )}
 
                       {/* Location */}
-                      {visibleColumns.location && (
-                        <div className="flex items-center gap-1.5 text-xs text-gray-400">
-                          <MapPin size={12} className="text-gray-600" />
-                          <span className="truncate">{purchase.location || '—'}</span>
-                        </div>
-                      )}
+                      {visibleColumns.location && (() => {
+                        // UI Rule: Show branch NAME only (not code, never UUID)
+                        let locationText = purchase.location || '';
+                        
+                        // If it looks like a UUID, try branchMap fallback
+                        const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(locationText);
+                        if (isUUID && branchMap.size > 0) {
+                          const resolved = branchMap.get(locationText);
+                          // Extract just the name if branchMap returns "BR-001 | Name" format
+                          if (resolved && resolved.includes('|')) {
+                            locationText = resolved.split('|').pop()?.trim() || '';
+                          } else {
+                            locationText = resolved || '';
+                          }
+                        }
+                        // If it contains '|' (old format), extract just the name
+                        if (locationText.includes('|')) {
+                          locationText = locationText.split('|').pop()?.trim() || '';
+                        }
+                        
+                        return (
+                          <div className="flex items-center gap-1.5 text-xs text-gray-400">
+                            <MapPin size={12} className="text-gray-600" />
+                            <span className="truncate">{locationText || '—'}</span>
+                          </div>
+                        );
+                      })()}
 
                       {/* Status */}
                       {visibleColumns.status && (

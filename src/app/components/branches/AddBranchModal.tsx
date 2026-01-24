@@ -54,20 +54,49 @@ export const AddBranchModal: React.FC<AddBranchModalProps> = ({
 
   // Load accounts
   const loadAccounts = useCallback(async () => {
-    if (!companyId) return;
+    if (!companyId) {
+      console.log('[ADD BRANCH MODAL] No companyId, skipping account load');
+      return;
+    }
     setLoadingAccounts(true);
     try {
       const allAccounts = await accountService.getAllAccounts(companyId);
-      setAccounts(allAccounts);
+      console.log('[ADD BRANCH MODAL] Loaded accounts:', allAccounts?.length || 0, 'accounts');
+      console.log('[ADD BRANCH MODAL] Account types:', allAccounts?.map(a => ({ name: a.name, type: a.type, account_type: a.account_type })));
+      setAccounts(allAccounts || []);
       
-      // Filter by type
-      const cash = allAccounts.filter(acc => acc.type === 'Cash' && acc.is_active);
-      const bank = allAccounts.filter(acc => acc.type === 'Bank' && acc.is_active);
+      // Filter by type - case-insensitive comparison with multiple variations
+      const cash = (allAccounts || []).filter(acc => {
+        const type = (acc.type || '').toLowerCase().trim();
+        const accountType = (acc.account_type || '').toLowerCase().trim();
+        const isActive = acc.is_active !== false; // Default to true if undefined
+        // Match various cash-related types
+        const isCashType = type === 'cash' || type === 'pos' || type === 'cash drawer' || 
+                          type.includes('cash') || accountType === 'cash' || accountType.includes('cash');
+        return isCashType && isActive;
+      });
+      const bank = (allAccounts || []).filter(acc => {
+        const type = (acc.type || '').toLowerCase().trim();
+        const accountType = (acc.account_type || '').toLowerCase().trim();
+        const isActive = acc.is_active !== false;
+        // Match various bank-related types
+        const isBankType = type === 'bank' || type.includes('bank') || 
+                          accountType === 'bank' || accountType.includes('bank');
+        return isBankType && isActive;
+      });
+      
+      console.log('[ADD BRANCH MODAL] Filtered - Cash accounts:', cash.length, 'Bank accounts:', bank.length);
+      if (cash.length > 0) console.log('[ADD BRANCH MODAL] Cash accounts:', cash.map(a => a.name));
+      if (bank.length > 0) console.log('[ADD BRANCH MODAL] Bank accounts:', bank.map(a => a.name));
+      
       setCashAccounts(cash);
       setBankAccounts(bank);
     } catch (error) {
       console.error('[ADD BRANCH MODAL] Error loading accounts:', error);
       toast.error('Failed to load accounts');
+      // Set empty arrays on error to prevent UI issues
+      setCashAccounts([]);
+      setBankAccounts([]);
     } finally {
       setLoadingAccounts(false);
     }
@@ -307,7 +336,12 @@ export const AddBranchModal: React.FC<AddBranchModalProps> = ({
 
           {/* Default Accounts */}
           <div className="space-y-4 pt-4 border-t border-gray-800">
-            <Label className="text-gray-200 font-medium">Default Accounts (Optional)</Label>
+            <div className="flex items-center justify-between">
+              <Label className="text-gray-200 font-medium">Default Accounts (Optional)</Label>
+              {loadingAccounts && (
+                <span className="text-xs text-gray-500">Loading accounts...</span>
+              )}
+            </div>
             
             {/* Cash Account */}
             <div className="space-y-2">
@@ -318,10 +352,12 @@ export const AddBranchModal: React.FC<AddBranchModalProps> = ({
                 disabled={loadingAccounts}
               >
                 <SelectTrigger className="bg-gray-900 border-gray-700 text-white">
-                  <SelectValue placeholder="Select cash account (optional)" />
+                  <SelectValue placeholder={loadingAccounts ? "Loading..." : "Select cash account (optional)"} />
                 </SelectTrigger>
                 <SelectContent className="bg-gray-900 border-gray-800 text-white">
-                  {cashAccounts.length === 0 ? (
+                  {loadingAccounts ? (
+                    <SelectItem value="loading" disabled>Loading accounts...</SelectItem>
+                  ) : cashAccounts.length === 0 ? (
                     <SelectItem value="no-accounts" disabled>No cash accounts available</SelectItem>
                   ) : (
                     cashAccounts.map((account) => (
@@ -343,10 +379,12 @@ export const AddBranchModal: React.FC<AddBranchModalProps> = ({
                 disabled={loadingAccounts}
               >
                 <SelectTrigger className="bg-gray-900 border-gray-700 text-white">
-                  <SelectValue placeholder="Select bank account (optional)" />
+                  <SelectValue placeholder={loadingAccounts ? "Loading..." : "Select bank account (optional)"} />
                 </SelectTrigger>
                 <SelectContent className="bg-gray-900 border-gray-800 text-white">
-                  {bankAccounts.length === 0 ? (
+                  {loadingAccounts ? (
+                    <SelectItem value="loading" disabled>Loading accounts...</SelectItem>
+                  ) : bankAccounts.length === 0 ? (
                     <SelectItem value="no-accounts" disabled>No bank accounts available</SelectItem>
                   ) : (
                     bankAccounts.map((account) => (
@@ -368,10 +406,12 @@ export const AddBranchModal: React.FC<AddBranchModalProps> = ({
                 disabled={loadingAccounts}
               >
                 <SelectTrigger className="bg-gray-900 border-gray-700 text-white">
-                  <SelectValue placeholder="Select POS drawer account (optional)" />
+                  <SelectValue placeholder={loadingAccounts ? "Loading..." : "Select POS drawer account (optional)"} />
                 </SelectTrigger>
                 <SelectContent className="bg-gray-900 border-gray-800 text-white">
-                  {cashAccounts.length === 0 ? (
+                  {loadingAccounts ? (
+                    <SelectItem value="loading" disabled>Loading accounts...</SelectItem>
+                  ) : cashAccounts.length === 0 ? (
                     <SelectItem value="no-accounts" disabled>No cash accounts available</SelectItem>
                   ) : (
                     cashAccounts.map((account) => (

@@ -64,6 +64,7 @@ import { SaleHeaderTestPage } from './components/test/SaleHeaderTestPage';
 import { TransactionHeaderTestPage } from './components/test/TransactionHeaderTestPage';
 import { UserManagementTestPage } from './components/test/UserManagementTestPage';
 import { BranchManagementTestPage } from './components/test/BranchManagementTestPage';
+import { AccountingChartTestPage } from './components/test/AccountingChartTestPage';
 import { SupabaseProvider } from './context/SupabaseContext';
 import { ProtectedRoute } from './components/auth/ProtectedRoute';
 import { useSettings } from './context/SettingsContext';
@@ -180,6 +181,7 @@ const AppContent = () => {
       {currentView === 'transaction-header-test' && <TransactionHeaderTestPage />}
       {currentView === 'user-management-test' && <UserManagementTestPage />}
       {currentView === 'branch-management-test' && <BranchManagementTestPage />}
+      {currentView === 'accounting-chart-test' && <AccountingChartTestPage />}
       
       <GlobalDrawer />
     </Layout>

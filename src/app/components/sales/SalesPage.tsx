@@ -3,10 +3,15 @@ import {
   Plus, ShoppingCart, DollarSign, TrendingUp, 
   MoreVertical, Eye, Edit, Trash2, FileText, Phone, MapPin,
   Package, Truck, CheckCircle, Clock, XCircle, AlertCircle,
-  UserCheck, Receipt, Loader2
+  UserCheck, Receipt, Loader2, PackageCheck, PackageX, ChevronDown
 } from 'lucide-react';
 import { Button } from "@/app/components/ui/button";
 import { Badge } from "@/app/components/ui/badge";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/app/components/ui/popover";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -44,6 +49,7 @@ import { formatLongDate } from '@/app/components/ui/utils';
 import { UnifiedPaymentDialog } from '@/app/components/shared/UnifiedPaymentDialog';
 import { UnifiedLedgerView } from '@/app/components/shared/UnifiedLedgerView';
 import { ViewSaleDetailsDrawer } from './ViewSaleDetailsDrawer';
+import { ViewPaymentsModal, type InvoiceDetails, type Payment } from './ViewPaymentsModal';
 import { toast } from 'sonner';
 
 // Mock data removed - using SalesContext which loads from Supabase
@@ -66,11 +72,10 @@ export const SalesPage = () => {
       try {
         const branchesData = await branchService.getAllBranches(companyId);
         setBranches(branchesData);
-        // Create mapping from branch_id to branch display (code | name)
+        // Create mapping from branch_id to branch NAME only (UI rule: no code, no UUID)
         const map = new Map<string, string>();
         branchesData.forEach(branch => {
-          const displayText = branch.code ? `${branch.code} | ${branch.name}` : branch.name;
-          map.set(branch.id, displayText);
+          map.set(branch.id, branch.name);
         });
         setBranchMap(map);
       } catch (error) {
@@ -92,6 +97,9 @@ export const SalesPage = () => {
   const [ledgerOpen, setLedgerOpen] = useState(false);
   const [selectedSale, setSelectedSale] = useState<Sale | null>(null);
   const [viewDetailsOpen, setViewDetailsOpen] = useState(false);
+  
+  // 🎯 View Payments Modal state
+  const [viewPaymentsOpen, setViewPaymentsOpen] = useState(false);
   
   // 🎯 NEW: Additional dialog states
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -137,6 +145,10 @@ export const SalesPage = () => {
         // Print invoice - opens print layout in ViewSaleDetailsDrawer
         setViewDetailsOpen(true);
         toast.success('Opening invoice for printing');
+        break;
+        
+      case 'view_payments':
+        setViewPaymentsOpen(true);
         break;
         
       case 'receive_payment':
@@ -194,14 +206,15 @@ export const SalesPage = () => {
   };
   
   // Column visibility state
+  // REMOVED: contact and paymentMethod columns per UX requirements
   const [visibleColumns, setVisibleColumns] = useState({
     date: true,
     invoiceNo: true,
     customer: true,
-    contact: true,
+    contact: false, // REMOVED from default view
     location: true,
     paymentStatus: true,
-    paymentMethod: true,
+    paymentMethod: false, // REMOVED from default view
     total: true,
     paid: true,
     due: true,
@@ -211,14 +224,13 @@ export const SalesPage = () => {
   });
 
   // Column order state - defines the order of columns
+  // REMOVED: contact and paymentMethod from default order
   const [columnOrder, setColumnOrder] = useState([
     'date',
     'invoiceNo',
     'customer',
-    'contact',
     'location',
     'paymentStatus',
-    'paymentMethod',
     'total',
     'paid',
     'due',
@@ -439,34 +451,76 @@ export const SalesPage = () => {
         return <div className="text-sm text-blue-400 font-mono font-semibold">{sale.invoiceNo}</div>;
       
       case 'customer':
+        // Customer column: Name + Phone (if exists)
+        // Same UX pattern as Supplier list
         return (
           <div className="min-w-0">
-            <div className="text-sm font-medium text-white truncate leading-[1.3]">{sale.customerName}</div>
-            <div className="text-xs text-gray-500 leading-[1.3] mt-0.5">{sale.customer}</div>
+            <div className="text-sm font-medium text-white truncate leading-[1.3]">
+              {sale.customerName || 'Walk-in Customer'}
+            </div>
+            {/* Show phone number if exists - no placeholder/icon/dash if empty */}
+            {sale.contactNumber && sale.contactNumber.trim() && (
+              <div className="flex items-center gap-1 text-xs text-gray-500 mt-0.5">
+                <Phone size={10} className="text-gray-600" />
+                <span className="truncate">{sale.contactNumber}</span>
+              </div>
+            )}
           </div>
         );
       
       case 'contact':
+        // Legacy column - kept for backwards compatibility but hidden by default
         return (
           <div className="flex items-center gap-1.5 text-xs text-gray-400">
             <Phone size={12} className="text-gray-600" />
-            <span className="truncate">{sale.contactNumber}</span>
+            <span className="truncate">{sale.contactNumber || '—'}</span>
           </div>
         );
       
       case 'location':
-        const branchDisplay = branchMap.get(sale.location);
+        // UI Rule: Show branch NAME only (not code, never UUID)
+        // sale.location now contains branch name from context (or empty)
+        // Fallback to branchMap for old data that might still have UUID
+        let locationText = sale.location || '';
+        
+        // If it looks like a UUID, try branchMap fallback, then show '—'
+        const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(locationText);
+        if (isUUID) {
+          const resolved = branchMap.get(locationText);
+          // Extract just the name if branchMap returns "BR-001 | Name" format
+          if (resolved && resolved.includes('|')) {
+            locationText = resolved.split('|').pop()?.trim() || '';
+          } else {
+            locationText = resolved || '';
+          }
+        }
+        // If it contains '|' (old format), extract just the name
+        if (locationText.includes('|')) {
+          locationText = locationText.split('|').pop()?.trim() || '';
+        }
+        
         return (
           <div className="flex items-center gap-1.5 text-xs text-gray-400">
             <MapPin size={12} className="text-gray-600" />
-            <span className="truncate">{branchDisplay || '—'}</span>
+            <span className="truncate">{locationText || '—'}</span>
           </div>
         );
       
       case 'paymentStatus':
+        // Payment status badge is clickable to open View Payments modal
         return (
           <div className="flex justify-center">
-            {getPaymentStatusBadge(sale.paymentStatus)}
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setSelectedSale(sale);
+                setViewPaymentsOpen(true);
+              }}
+              className="cursor-pointer hover:scale-105 transition-transform"
+              title="Click to view payments"
+            >
+              {getPaymentStatusBadge(sale.paymentStatus)}
+            </button>
           </div>
         );
       
@@ -522,9 +576,70 @@ export const SalesPage = () => {
         );
       
       case 'shipping':
+        // Shipping status is clickable with dropdown to change status
         return (
           <div className="flex justify-center">
-            {getShippingStatusBadge(sale.shippingStatus)}
+            <Popover>
+              <PopoverTrigger asChild>
+                <button 
+                  className="cursor-pointer hover:scale-105 transition-transform flex items-center gap-1"
+                  title="Click to change shipping status"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  {getShippingStatusBadge(sale.shippingStatus)}
+                  <ChevronDown size={12} className="text-gray-500" />
+                </button>
+              </PopoverTrigger>
+              <PopoverContent 
+                className="w-48 p-2 bg-gray-900 border-gray-700" 
+                align="center"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="space-y-1">
+                  <p className="text-xs text-gray-400 px-2 pb-2 border-b border-gray-800">Change Status</p>
+                  {(['pending', 'processing', 'delivered', 'cancelled'] as const).map(status => {
+                    const isActive = sale.shippingStatus === status;
+                    const statusConfig = {
+                      pending: { icon: Clock, color: 'text-yellow-400', bg: 'bg-yellow-500/10' },
+                      processing: { icon: Package, color: 'text-blue-400', bg: 'bg-blue-500/10' },
+                      delivered: { icon: CheckCircle, color: 'text-green-400', bg: 'bg-green-500/10' },
+                      cancelled: { icon: XCircle, color: 'text-red-400', bg: 'bg-red-500/10' },
+                    };
+                    const config = statusConfig[status];
+                    const Icon = config.icon;
+                    
+                    return (
+                      <button
+                        key={status}
+                        onClick={async (e) => {
+                          e.stopPropagation();
+                          if (!isActive) {
+                            try {
+                              await updateShippingStatus(sale.id, status);
+                              toast.success(`Shipping status updated to ${status}`);
+                              await refreshSales();
+                            } catch (error: any) {
+                              toast.error(error.message || 'Failed to update status');
+                            }
+                          }
+                        }}
+                        disabled={isActive}
+                        className={cn(
+                          "w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-all",
+                          isActive 
+                            ? `${config.bg} ${config.color} cursor-default` 
+                            : "text-gray-300 hover:bg-gray-800"
+                        )}
+                      >
+                        <Icon size={14} className={isActive ? config.color : 'text-gray-500'} />
+                        <span className="capitalize">{status}</span>
+                        {isActive && <CheckCircle size={12} className="ml-auto text-green-400" />}
+                      </button>
+                    );
+                  })}
+                </div>
+              </PopoverContent>
+            </Popover>
           </div>
         );
       
@@ -927,6 +1042,15 @@ export const SalesPage = () => {
                             </DropdownMenuItem>
                             <DropdownMenuSeparator className="bg-gray-700" />
                             
+                            {/* 🎯 VIEW PAYMENTS - View payment history */}
+                            <DropdownMenuItem 
+                              className="hover:bg-gray-800 cursor-pointer"
+                              onClick={() => handleSaleAction('view_payments', sale)}
+                            >
+                              <Receipt size={14} className="mr-2 text-blue-400" />
+                              View Payments
+                            </DropdownMenuItem>
+                            
                             {/* 🎯 RECEIVE PAYMENT - Only show if there's a due amount */}
                             {sale.due > 0 && (
                               <DropdownMenuItem 
@@ -934,7 +1058,7 @@ export const SalesPage = () => {
                                 onClick={() => handleSaleAction('receive_payment', sale)}
                               >
                                 <DollarSign size={14} className="mr-2 text-green-400" />
-                                Receive Payment
+                                Add Payment
                               </DropdownMenuItem>
                             )}
                             
@@ -984,25 +1108,68 @@ export const SalesPage = () => {
         onPageSizeChange={handlePageSizeChange}
       />
 
-      {/* 🎯 UNIFIED PAYMENT DIALOG */}
+      {/* 🎯 VIEW PAYMENTS MODAL */}
+      {selectedSale && (
+        <ViewPaymentsModal
+          isOpen={viewPaymentsOpen}
+          onClose={() => {
+            setViewPaymentsOpen(false);
+            setSelectedSale(null);
+          }}
+          invoice={{
+            id: selectedSale.id,
+            invoiceNo: selectedSale.invoiceNo,
+            date: selectedSale.date,
+            customerName: selectedSale.customerName,
+            customerId: selectedSale.customer,
+            total: selectedSale.total,
+            paid: selectedSale.paid,
+            due: selectedSale.due,
+            paymentStatus: selectedSale.paymentStatus,
+            payments: (selectedSale as any).payments || [],
+          }}
+          onAddPayment={() => {
+            // Close View Payments and open Receive Payment dialog
+            setViewPaymentsOpen(false);
+            setPaymentDialogOpen(true);
+          }}
+          onDeletePayment={async (paymentId: string) => {
+            // TODO: Implement payment deletion
+            console.log('Delete payment:', paymentId);
+            throw new Error('Payment deletion not yet implemented');
+          }}
+          onRefresh={async () => {
+            await refreshSales();
+          }}
+        />
+      )}
+
+      {/* 🎯 UNIFIED PAYMENT DIALOG (Receive Payment from Customer) */}
       {selectedSale && (
         <UnifiedPaymentDialog
           isOpen={paymentDialogOpen}
           onClose={() => {
             setPaymentDialogOpen(false);
-            setSelectedSale(null);
+            // Re-open View Payments modal after payment is cancelled
+            if (!viewPaymentsOpen) {
+              setViewPaymentsOpen(true);
+            }
           }}
           context="customer"
           entityName={selectedSale.customerName}
           entityId={selectedSale.customer}
           outstandingAmount={selectedSale.due}
+          totalAmount={selectedSale.total}
+          paidAmount={selectedSale.paid}
+          previousPayments={(selectedSale as any).payments || []}
           referenceNo={selectedSale.invoiceNo}
           referenceId={selectedSale.id} // CRITICAL FIX: UUID for journal entry reference_id
           onSuccess={async () => {
             toast.success('Payment recorded successfully');
             await refreshSales();
             setPaymentDialogOpen(false);
-            setSelectedSale(null);
+            // Re-open View Payments modal to show updated data
+            setViewPaymentsOpen(true);
           }}
         />
       )}

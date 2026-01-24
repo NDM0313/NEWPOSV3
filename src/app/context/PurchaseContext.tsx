@@ -79,6 +79,22 @@ const PurchaseContext = createContext<PurchaseContextType | undefined>(undefined
 export const usePurchases = () => {
   const context = useContext(PurchaseContext);
   if (!context) {
+    // During hot reload in development, context might not be available
+    // Return a safe default to prevent crashes
+    if (import.meta.env.DEV) {
+      console.warn('[PurchaseContext] usePurchases called outside PurchaseProvider, returning default context');
+      const defaultError = () => { throw new Error('PurchaseProvider not available'); };
+      return {
+        purchases: [],
+        loading: false,
+        getPurchaseById: () => undefined,
+        createPurchase: defaultError,
+        updatePurchase: defaultError,
+        deletePurchase: defaultError,
+        recordPayment: defaultError,
+        refreshPurchases: async () => {},
+      } as PurchaseContextType;
+    }
     throw new Error('usePurchases must be used within PurchaseProvider');
   }
   return context;
@@ -97,6 +113,15 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
 
   // Convert Supabase purchase format to app format
   const convertFromSupabasePurchase = useCallback((supabasePurchase: any): Purchase => {
+    // Resolve branch display: use joined branch data if available
+    // UI Rule: Show only branch NAME (not code, never UUID)
+    let locationDisplay = '';
+    if (supabasePurchase.branch) {
+      // Branch data joined from API - show NAME only
+      locationDisplay = supabasePurchase.branch.name || '';
+    }
+    // Note: Do NOT fallback to branch_id UUID - it should never appear in UI
+    
     return {
       id: supabasePurchase.id,
       purchaseNo: supabasePurchase.po_no || '',
@@ -105,7 +130,7 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
       contactNumber: supabasePurchase.supplier?.phone || '',
       date: supabasePurchase.po_date || new Date().toISOString().split('T')[0],
       expectedDelivery: supabasePurchase.expected_delivery_date,
-      location: supabasePurchase.branch_id || '',
+      location: locationDisplay, // NOW uses resolved branch name/code instead of raw UUID
       status: supabasePurchase.status || 'draft',
       items: (supabasePurchase.items || []).map((item: any) => ({
         id: item.id || '',

@@ -6,7 +6,7 @@ export interface Account {
   branch_id?: string;
   code?: string;
   name: string;
-  type: 'Cash' | 'Bank' | 'Mobile Wallet';
+  type: 'Cash' | 'Bank' | 'Mobile Wallet' | 'cash' | 'bank' | 'mobile_wallet';
   account_type: string;
   balance: number;
   branch_name?: string;
@@ -14,17 +14,43 @@ export interface Account {
 }
 
 export const accountService = {
-  // Get all accounts
+  // Get all accounts - with company_id filter
   async getAllAccounts(companyId: string, branchId?: string) {
-    // Note: company_id and is_active columns may not exist in all databases
-    // Fetch all accounts and filter in application code if needed
-    const { data, error } = await supabase
-      .from('accounts')
-      .select('*')
-      .order('name');
+    try {
+      // Try to fetch with company_id filter first
+      let query = supabase
+        .from('accounts')
+        .select('*')
+        .order('name');
 
-    if (error) throw error;
-    return data;
+      // Try to filter by company_id if column exists
+      if (companyId) {
+        query = query.eq('company_id', companyId);
+      }
+
+      const { data, error } = await query;
+
+      if (error) {
+        // If error related to company_id column, retry without it
+        if (error.message?.includes('company_id') || error.code === 'PGRST204') {
+          console.warn('[ACCOUNT SERVICE] company_id column not found, fetching all accounts');
+          const { data: allData, error: allError } = await supabase
+            .from('accounts')
+            .select('*')
+            .order('name');
+          
+          if (allError) throw allError;
+          return allData || [];
+        }
+        throw error;
+      }
+      
+      return data || [];
+    } catch (error) {
+      console.error('[ACCOUNT SERVICE] Error fetching accounts:', error);
+      // Final fallback - return empty array to prevent crashes
+      return [];
+    }
   },
 
   // Get single account
