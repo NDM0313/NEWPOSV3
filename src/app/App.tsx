@@ -60,6 +60,10 @@ import { PurchaseListExample } from './components/purchases/PurchaseListExample'
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { KeyboardShortcutsModal } from './components/shared/KeyboardShortcutsModal';
 import { ContactSearchTestPage } from './components/demo/ContactSearchTestPage';
+import { SaleHeaderTestPage } from './components/test/SaleHeaderTestPage';
+import { TransactionHeaderTestPage } from './components/test/TransactionHeaderTestPage';
+import { UserManagementTestPage } from './components/test/UserManagementTestPage';
+import { BranchManagementTestPage } from './components/test/BranchManagementTestPage';
 import { SupabaseProvider } from './context/SupabaseContext';
 import { ProtectedRoute } from './components/auth/ProtectedRoute';
 import { useSettings } from './context/SettingsContext';
@@ -172,6 +176,10 @@ const AppContent = () => {
       {currentView === 'customer-tracking' && <CustomerOrderTracking />}
       {currentView === 'packing' && <PackingEntryPage />}
       {currentView === 'contact-search-test' && <ContactSearchTestPage />}
+      {currentView === 'sale-header-test' && <SaleHeaderTestPage />}
+      {currentView === 'transaction-header-test' && <TransactionHeaderTestPage />}
+      {currentView === 'user-management-test' && <UserManagementTestPage />}
+      {currentView === 'branch-management-test' && <BranchManagementTestPage />}
       
       <GlobalDrawer />
     </Layout>

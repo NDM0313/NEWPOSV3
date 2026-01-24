@@ -60,7 +60,8 @@ export const BranchSelector: React.FC<BranchSelectorProps> = ({
   
   const getBranchName = () => {
     const branch = branches.find(b => b.id === branchId || b.id.toString() === branchId.toString());
-    return branch?.name || "Select Branch";
+    if (!branch) return "Select Branch";
+    return branch.code ? `${branch.code} | ${branch.name}` : branch.name;
   };
 
   if (variant === 'header') {
@@ -97,14 +98,14 @@ export const BranchSelector: React.FC<BranchSelectorProps> = ({
                 <p className="text-xs">No branches found</p>
               </div>
             ) : (
-              branches.map(b => (
-                <SelectItem key={b.id} value={b.id}>
-                  <div className="flex items-center gap-2">
-                    {b.code && <span className="text-xs text-gray-500">{b.code}</span>}
-                    <span>{b.name}</span>
-                  </div>
-                </SelectItem>
-              ))
+              branches.map(b => {
+                const displayText = b.code ? `${b.code} | ${b.name}` : b.name;
+                return (
+                  <SelectItem key={b.id} value={b.id}>
+                    {displayText}
+                  </SelectItem>
+                );
+              })
             )}
           </SelectContent>
         </Select>

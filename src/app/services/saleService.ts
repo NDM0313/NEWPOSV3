@@ -150,6 +150,58 @@ export const saleService = {
 
   // Get all sales
   async getAllSales(companyId: string, branchId?: string) {
+    // Join with branches table to get branch name and code
+    let query = supabase
+      .from('sales')
+      .select(`
+        *,
+        customer:contacts(*),
+        branch:branches(id, name, code),
+        items:sales_items(
+          *,
+          product:products(*),
+          variation:product_variations(*)
+        )
+      `)
+      .order('invoice_date', { ascending: false });
+    
+    if (branchId) {
+      query = query.eq('branch_id', branchId);
+    }
+    
+    const { data, error } = await query;
+    
+    // If error about sales_items, try sale_items (backward compatibility)
+    if (error && (error.code === '42P01' || error.message?.includes('sales_items'))) {
+      const retryQuery = supabase
+        .from('sales')
+        .select(`
+          *,
+          customer:contacts(*),
+          branch:branches(id, name, code),
+          items:sale_items(
+            *,
+            product:products(*),
+            variation:product_variations(*)
+          )
+        `)
+        .order('invoice_date', { ascending: false });
+      
+      if (branchId) {
+        retryQuery.eq('branch_id', branchId);
+      }
+      
+      const { data: retryData, error: retryError } = await retryQuery;
+      if (retryError) throw retryError;
+      return retryData;
+    }
+    
+    if (error) throw error;
+    return data;
+  },
+  
+  // Legacy getAllSales (keeping for backward compatibility)
+  async getAllSales_OLD(companyId: string, branchId?: string) {
     // Note: company_id and invoice_date columns may not exist in all databases
     let query = supabase
       .from('sales')
@@ -176,6 +228,7 @@ export const saleService = {
         .select(`
           *,
           customer:contacts(name, phone),
+          branch:branches(id, name, code),
           items:sales_items(
             *,
             product:products(name, sku)
@@ -195,6 +248,7 @@ export const saleService = {
           .select(`
             *,
             customer:contacts(name, phone),
+            branch:branches(id, name, code),
             items:sales_items(
               *,
               product:products(name, sku)

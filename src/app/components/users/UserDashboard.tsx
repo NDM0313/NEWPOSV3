@@ -32,7 +32,10 @@ export const UserDashboard = () => {
           <p className="text-gray-400 text-sm">Manage system users and their permissions.</p>
         </div>
         <Button 
-          onClick={() => openDrawer('addUser')}
+          onClick={() => {
+            // TODO: Replace with modal when UserDashboard is updated
+            toast.info('Please use Settings → User Management to add users');
+          }}
           className="bg-blue-600 hover:bg-blue-500 text-white gap-2 shadow-lg shadow-blue-500/20"
         >
           <Plus size={18} />

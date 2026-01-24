@@ -29,6 +29,7 @@ import { usePurchases } from '@/app/context/PurchaseContext';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { useDateRange } from '@/app/context/DateRangeContext';
 import { purchaseService } from '@/app/services/purchaseService';
+import { branchService, Branch } from '@/app/services/branchService';
 import { Pagination } from '@/app/components/ui/pagination';
 import { ListToolbar } from '@/app/components/ui/list-toolbar';
 import { formatLongDate } from '@/app/components/ui/utils';
@@ -69,6 +70,29 @@ export const PurchasesPage = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterOpen, setFilterOpen] = useState(false);
   const [hoveredRow, setHoveredRow] = useState<number | null>(null);
+  const [branches, setBranches] = useState<Branch[]>([]);
+  const [branchMap, setBranchMap] = useState<Map<string, string>>(new Map());
+  
+  // Load branches for location display
+  useEffect(() => {
+    const loadBranches = async () => {
+      if (!companyId) return;
+      try {
+        const branchesData = await branchService.getAllBranches(companyId);
+        setBranches(branchesData);
+        // Create mapping from branch_id to branch display (code | name)
+        const map = new Map<string, string>();
+        branchesData.forEach(branch => {
+          const displayText = branch.code ? `${branch.code} | ${branch.name}` : branch.name;
+          map.set(branch.id, displayText);
+        });
+        setBranchMap(map);
+      } catch (error) {
+        console.error('[PURCHASES PAGE] Error loading branches:', error);
+      }
+    };
+    loadBranches();
+  }, [companyId]);
   
   // Filter states
   const [dateFilter, setDateFilter] = useState('all');
@@ -182,22 +206,28 @@ export const PurchasesPage = () => {
       const data = await purchaseService.getAllPurchases(companyId, branchId || undefined);
       
       // Convert Supabase format to app format
-      const convertedPurchases: Purchase[] = data.map((p: any, index: number) => ({
-        id: index + 1, // Use index-based ID for compatibility with existing UI
-        uuid: p.id, // Store actual Supabase UUID for database operations
-        poNo: p.po_no || `PO-${String(index + 1).padStart(3, '0')}`,
-        supplier: p.supplier?.name || p.supplier_name || 'Unknown Supplier',
-        supplierContact: p.supplier?.phone || '',
-        date: p.po_date || new Date().toISOString().split('T')[0],
-        reference: p.reference || '',
-        location: p.branch_name || 'Main Branch (HQ)',
-        items: p.items?.length || 0,
-        grandTotal: p.total || 0,
-        paymentDue: p.due_amount || 0,
-        status: p.status === 'received' ? 'received' : p.status === 'ordered' ? 'ordered' : 'pending',
-        paymentStatus: p.payment_status || 'unpaid',
-        addedBy: p.created_by_user?.full_name || 'Unknown',
-      }));
+      const convertedPurchases: Purchase[] = data.map((p: any, index: number) => {
+        // Resolve branch name from branch_id
+        const branchDisplay = p.branch_id ? branchMap.get(p.branch_id) : null;
+        const location = branchDisplay || p.branch?.name || p.branch_name || '—';
+        
+        return {
+          id: index + 1, // Use index-based ID for compatibility with existing UI
+          uuid: p.id, // Store actual Supabase UUID for database operations
+          poNo: p.po_no || `PO-${String(index + 1).padStart(3, '0')}`,
+          supplier: p.supplier?.name || p.supplier_name || 'Unknown Supplier',
+          supplierContact: p.supplier?.phone || '',
+          date: p.po_date || new Date().toISOString().split('T')[0],
+          reference: p.reference || '',
+          location: location,
+          items: p.items?.length || 0,
+          grandTotal: p.total || 0,
+          paymentDue: p.due_amount || 0,
+          status: p.status === 'received' ? 'received' : p.status === 'ordered' ? 'ordered' : 'pending',
+          paymentStatus: p.payment_status || 'unpaid',
+          addedBy: p.created_by_user?.full_name || 'Unknown',
+        };
+      });
       
       setPurchases(convertedPurchases);
     } catch (error: any) {
@@ -207,7 +237,7 @@ export const PurchasesPage = () => {
     } finally {
       setLoading(false);
     }
-  }, [companyId, branchId]);
+  }, [companyId, branchId, branchMap]);
 
   // Sync context purchases to local state for filtering (TASK 1 FIX - Ensure data loads on mount)
   useEffect(() => {
@@ -728,7 +758,7 @@ export const PurchasesPage = () => {
                       {visibleColumns.location && (
                         <div className="flex items-center gap-1.5 text-xs text-gray-400">
                           <MapPin size={12} className="text-gray-600" />
-                          <span className="truncate">{purchase.location}</span>
+                          <span className="truncate">{purchase.location || '—'}</span>
                         </div>
                       )}
 

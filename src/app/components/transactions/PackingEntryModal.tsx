@@ -252,8 +252,9 @@ export const PackingEntryModal = ({
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[700px] bg-gray-900 border-gray-800 text-white max-h-[90vh] flex flex-col p-0">
+    <>
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className="sm:max-w-[700px] bg-gray-900 border-gray-800 text-white max-h-[90vh] flex flex-col p-0">
         <DialogHeader className="px-6 pt-6 pb-4 border-b border-gray-800">
           <DialogTitle className="flex items-center gap-3 text-white">
             <div className="p-2 rounded-lg bg-blue-500/20">
@@ -636,5 +637,6 @@ export const PackingEntryModal = ({
         </div>
       </DialogContent>
     </Dialog>
+    </>
   );
 };

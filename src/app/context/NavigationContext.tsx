@@ -33,7 +33,11 @@ type View =
   | 'custom-pipeline'
   | 'custom-vendors'
   | 'packing'
-  | 'contact-search-test';
+  | 'contact-search-test'
+  | 'sale-header-test'
+  | 'transaction-header-test'
+  | 'user-management-test'
+  | 'branch-management-test';
 
 type DrawerType = 'none' | 'addUser' | 'addProduct' | 'edit-product' | 'addSale' | 'edit-sale' | 'addPurchase' | 'edit-purchase' | 'addContact';
 
@@ -55,6 +59,11 @@ interface NavigationContextType {
   createdContactId?: string | null; // Store newly created contact ID for auto-selection
   createdContactType?: 'customer' | 'supplier' | 'both' | null; // Store contact type for filtering
   setCreatedContactId?: (id: string | null, type?: 'customer' | 'supplier' | 'both' | null) => void;
+  // Packing Modal State (Global)
+  packingModalOpen?: boolean;
+  openPackingModal?: (data: { itemId: number | string; productName: string; initialData?: any; onSave: (details: any) => void }) => void;
+  closePackingModal?: () => void;
+  packingModalData?: { itemId: number | string | null; productName: string; initialData?: any; onSave?: (details: any) => void } | null;
 }
 
 const NavigationContext = createContext<NavigationContextType | undefined>(undefined);
@@ -72,10 +81,33 @@ export const NavigationProvider = ({ children }: { children: ReactNode }) => {
   const [createdContactId, setCreatedContactIdState] = useState<string | null>(null);
   const [createdContactType, setCreatedContactType] = useState<'customer' | 'supplier' | 'both' | null>(null);
   
+  // Packing Modal State (Global)
+  const [packingModalOpen, setPackingModalOpen] = useState(false);
+  const [packingModalData, setPackingModalData] = useState<{ itemId: number | string | null; productName: string; initialData?: any; onSave?: (details: any) => void } | null>(null);
+  
   // Wrapper function to set both ID and type
   const setCreatedContactId = (id: string | null, type?: 'customer' | 'supplier' | 'both' | null) => {
     setCreatedContactIdState(id);
     setCreatedContactType(type || null);
+  };
+
+  // Packing Modal Functions
+  const openPackingModal = (data: { itemId: number | string; productName: string; initialData?: any; onSave: (details: any) => void }) => {
+    setPackingModalData({
+      itemId: data.itemId,
+      productName: data.productName,
+      initialData: data.initialData,
+      onSave: data.onSave
+    });
+    setPackingModalOpen(true);
+  };
+
+  const closePackingModal = () => {
+    setPackingModalOpen(false);
+    // Clear data after a short delay to allow modal to close smoothly
+    setTimeout(() => {
+      setPackingModalData(null);
+    }, 200);
   };
 
   const toggleSidebar = () => setIsSidebarOpen(!isSidebarOpen);
@@ -158,7 +190,11 @@ export const NavigationProvider = ({ children }: { children: ReactNode }) => {
       drawerPrefillPhone,
       createdContactId,
       createdContactType,
-      setCreatedContactId
+      setCreatedContactId,
+      packingModalOpen,
+      openPackingModal,
+      closePackingModal,
+      packingModalData
     }}>
       {children}
     </NavigationContext.Provider>

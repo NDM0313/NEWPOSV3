@@ -30,9 +30,10 @@ import {
 import { Textarea } from "../ui/textarea";
 import { Checkbox } from "../ui/checkbox";
 import { Switch } from "../ui/switch";
+import { PackingEntryModal } from '../transactions/PackingEntryModal';
 
 export const GlobalDrawer = () => {
-  const { activeDrawer, openDrawer, closeDrawer, drawerData, parentDrawer } = useNavigation();
+  const { activeDrawer, openDrawer, closeDrawer, drawerData, parentDrawer, packingModalOpen, closePackingModal, packingModalData } = useNavigation();
   const { companyId, user } = useSupabase();
   const isMobile = useMediaQuery('(max-width: 768px)');
   const [saving, setSaving] = useState(false);
@@ -63,10 +64,6 @@ export const GlobalDrawer = () => {
         // Contact form submission is handled in ContactFormContent
         // This is just a fallback
         toast.success('Contact created successfully');
-        closeDrawer();
-      } else if (activeDrawer === 'addUser') {
-        // User form submission is handled separately
-        toast.success('User created successfully');
         closeDrawer();
       } else {
         // For other drawer types (Product, etc.)
@@ -101,8 +98,8 @@ export const GlobalDrawer = () => {
   } else {
     contentClasses += "h-full ";
     if (isSale || isPurchase) {
-      // Responsive width for Sale/Purchase: 80vw, max 1100px - isolated from global layout
-      contentClasses += "!w-[80vw] !max-w-[1100px]"; // Responsive width, no global pollution
+      // Responsive width for Sale/Purchase: full width on mobile/tablet, 1100px on desktop (lg+)
+      contentClasses += "w-full lg:w-[1200px]"; // Desktop: 1180px, Mobile/Tablet: full width
     } else if (isProduct) {
        contentClasses += "!w-[800px] !max-w-[800px] sm:!max-w-[800px]"; // Override Sheet default width (800px for comfortable form layout)
     } else if (isContact) {
@@ -119,28 +116,30 @@ export const GlobalDrawer = () => {
   }
 
   // Render parent drawer content (Sale/Purchase only)
+  // CRITICAL: Use display: none/block instead of conditional rendering to prevent unmounting
+  // This preserves component state (like customerId) when contact drawer opens/closes
   const renderParentContent = () => {
     return (
       <>
         {/* Sale Form - Add */}
-        {shouldShowParentDrawer('addSale') && (
+        <div style={{ display: shouldShowParentDrawer('addSale') ? 'block' : 'none' }}>
           <SaleForm onClose={() => closeDrawer()} />
-        )}
+        </div>
 
         {/* Sale Form - Edit */}
-        {shouldShowParentDrawer('edit-sale') && (
+        <div style={{ display: shouldShowParentDrawer('edit-sale') ? 'block' : 'none' }}>
           <SaleForm sale={drawerData?.sale} onClose={() => closeDrawer()} />
-        )}
+        </div>
 
         {/* Purchase Form - Add */}
-        {shouldShowParentDrawer('addPurchase') && (
+        <div style={{ display: shouldShowParentDrawer('addPurchase') ? 'block' : 'none' }}>
           <PurchaseForm onClose={() => closeDrawer()} />
-        )}
+        </div>
 
         {/* Purchase Form - Edit */}
-        {shouldShowParentDrawer('edit-purchase') && (
+        <div style={{ display: shouldShowParentDrawer('edit-purchase') ? 'block' : 'none' }}>
           <PurchaseForm purchase={drawerData?.purchase} onClose={() => closeDrawer()} />
-        )}
+        </div>
       </>
     );
   };
@@ -200,96 +199,6 @@ export const GlobalDrawer = () => {
           <ContactFormContent onClose={() => closeDrawer()} />
         )}
 
-        {/* User Form - Only mount when active */}
-        {activeDrawer === 'addUser' && (
-          <div className="flex flex-col h-full p-6">
-            <SheetHeader>
-              <SheetTitle className="text-white text-xl">
-                Add New User
-              </SheetTitle>
-              <SheetDescription className="text-gray-400">
-                Create a new user account and assign roles.
-              </SheetDescription>
-            </SheetHeader>
-
-            <form onSubmit={handleSubmit} className="flex flex-col gap-6 mt-8 h-full">
-              {activeDrawer === 'addUser' && (
-                <div className="space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="name" className="text-gray-200">Full Name</Label>
-                    <Input id="name" placeholder="John Doe" className="bg-gray-900 border-gray-800 text-white" required />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="email" className="text-gray-200">Email Address</Label>
-                    <Input id="email" type="email" placeholder="john@example.com" className="bg-gray-900 border-gray-800 text-white" required />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="password" className="text-gray-200">Password</Label>
-                    <Input id="password" type="password" placeholder="••••••••" className="bg-gray-900 border-gray-800 text-white" required />
-                  </div>
-
-                  {/* Advanced Details Accordion */}
-                  <Accordion type="multiple" className="border border-gray-800 rounded-lg mt-4">
-                    <AccordionItem value="role" className="border-b border-gray-800">
-                      <AccordionTrigger className="px-4 hover:bg-gray-800/50">
-                        <span className="text-sm font-medium">Roles & Permissions</span>
-                      </AccordionTrigger>
-                      <AccordionContent className="px-4 pb-4">
-                        <div className="space-y-4">
-                          <div className="space-y-2">
-                            <Label htmlFor="role" className="text-gray-200">User Role</Label>
-                            <Select>
-                              <SelectTrigger className="bg-gray-900 border-gray-800 text-white">
-                                <SelectValue placeholder="Select role" />
-                              </SelectTrigger>
-                              <SelectContent className="bg-gray-900 border-gray-800 text-white">
-                                <SelectItem value="admin">Administrator</SelectItem>
-                                <SelectItem value="manager">Manager</SelectItem>
-                                <SelectItem value="cashier">Cashier</SelectItem>
-                                <SelectItem value="inventory">Inventory Clerk</SelectItem>
-                              </SelectContent>
-                            </Select>
-                          </div>
-                        </div>
-                      </AccordionContent>
-                    </AccordionItem>
-
-                    <AccordionItem value="access">
-                      <AccordionTrigger className="px-4 hover:bg-gray-800/50">
-                        <span className="text-sm font-medium">Access Locations</span>
-                      </AccordionTrigger>
-                      <AccordionContent className="px-4 pb-4">
-                        <div className="space-y-3">
-                          <div className="flex items-center gap-2">
-                            <Checkbox id="loc-karachi" className="border-gray-700" />
-                            <Label htmlFor="loc-karachi" className="text-gray-300 cursor-pointer">Karachi Store</Label>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <Checkbox id="loc-lahore" className="border-gray-700" />
-                            <Label htmlFor="loc-lahore" className="text-gray-300 cursor-pointer">Lahore Store</Label>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <Checkbox id="loc-islamabad" className="border-gray-700" />
-                            <Label htmlFor="loc-islamabad" className="text-gray-300 cursor-pointer">Islamabad Store</Label>
-                          </div>
-                        </div>
-                      </AccordionContent>
-                    </AccordionItem>
-                  </Accordion>
-                </div>
-              )}
-
-              <div className="mt-auto pt-6 flex gap-3">
-                <Button type="button" variant="outline" onClick={() => closeDrawer()} className="flex-1 border-gray-700 text-gray-300 hover:bg-gray-800 hover:text-white">
-                  Cancel
-                </Button>
-                <Button type="submit" className="flex-1 bg-blue-600 hover:bg-blue-500 text-white">
-                  Create User
-                </Button>
-              </div>
-            </form>
-          </div>
-        )}
       </>
     );
   };
@@ -299,7 +208,7 @@ export const GlobalDrawer = () => {
     // Render parent drawer (Sale/Purchase) with lower z-index
     const parentIsSale = parentDrawer === 'addSale' || parentDrawer === 'edit-sale';
     const parentIsPurchase = parentDrawer === 'addPurchase';
-    const parentContentClasses = "border-l border-gray-800 bg-gray-950 text-white p-0 gap-0 h-full !w-[80vw] !max-w-[1100px] !z-[60] overflow-y-auto";
+    const parentContentClasses = "border-l border-gray-800 bg-gray-950 text-white p-0 gap-0 h-full w-full lg:w-[1200px] !z-[60] overflow-y-auto";
     
     return (
       <>
@@ -330,34 +239,72 @@ export const GlobalDrawer = () => {
             )}
           </SheetContent>
         </Sheet>
+        
+        {/* Global Packing Modal - Rendered at root level, outside drawer */}
+        {packingModalData && (
+          <PackingEntryModal
+            open={packingModalOpen || false}
+            onOpenChange={(open) => {
+              if (!open) closePackingModal?.();
+            }}
+            onSave={(details) => {
+              if (packingModalData.onSave) {
+                packingModalData.onSave(details);
+              }
+              closePackingModal?.();
+            }}
+            initialData={packingModalData.initialData}
+            productName={packingModalData.productName}
+          />
+        )}
       </>
     );
   }
   
   // Single drawer (normal case)
   return (
-    <Sheet open={isOpen} onOpenChange={handleOpenChange}>
-      <SheetContent side={side} className={contentClasses}>
-        {/* Hidden title for accessibility */}
-        <SheetHeader className="sr-only">
-          <SheetTitle>
-            {isSale ? 'Add Sale' : 
-             isPurchase ? 'Add Purchase' : 
-             isProduct ? 'Add Product' : 
-             isContact ? 'Add Contact' : 
-             'Drawer'}
-          </SheetTitle>
-          <SheetDescription className="sr-only">
-            {isSale ? 'Create a new sale' : 
-             isPurchase ? 'Create a new purchase' : 
-             isProduct ? 'Create a new product' : 
-             isContact ? 'Create a new contact' : 
-             'Drawer content'}
-          </SheetDescription>
-        </SheetHeader>
-        {renderContent()}
-      </SheetContent>
-    </Sheet>
+    <>
+      <Sheet open={isOpen} onOpenChange={handleOpenChange}>
+        <SheetContent side={side} className={contentClasses}>
+          {/* Hidden title for accessibility */}
+          <SheetHeader className="sr-only">
+            <SheetTitle>
+              {isSale ? 'Add Sale' : 
+               isPurchase ? 'Add Purchase' : 
+               isProduct ? 'Add Product' : 
+               isContact ? 'Add Contact' : 
+               'Drawer'}
+            </SheetTitle>
+            <SheetDescription className="sr-only">
+              {isSale ? 'Create a new sale' : 
+               isPurchase ? 'Create a new purchase' : 
+               isProduct ? 'Create a new product' : 
+               isContact ? 'Create a new contact' : 
+               'Drawer content'}
+            </SheetDescription>
+          </SheetHeader>
+          {renderContent()}
+        </SheetContent>
+      </Sheet>
+      
+      {/* Global Packing Modal - Rendered at root level, outside drawer */}
+      {packingModalData && (
+        <PackingEntryModal
+          open={packingModalOpen || false}
+          onOpenChange={(open) => {
+            if (!open) closePackingModal?.();
+          }}
+          onSave={(details) => {
+            if (packingModalData.onSave) {
+              packingModalData.onSave(details);
+            }
+            closePackingModal?.();
+          }}
+          initialData={packingModalData.initialData}
+          productName={packingModalData.productName}
+        />
+      )}
+    </>
   );
 };
 
@@ -614,14 +561,14 @@ const ContactFormContent = ({ onClose }: { onClose: () => void }) => {
       
       toast.success('Contact created successfully!');
       
-      // CRITICAL FIX: If opened from Sale/Purchase, trigger immediate reload before closing
-      // This ensures the contact appears in the dropdown before auto-selection
+      // CRITICAL FIX: If opened from Sale/Purchase, keep drawer open briefly to allow auto-select
+      // The parent form's useEffect will detect createdContactId and reload immediately
       if (parentDrawer === 'addSale' || parentDrawer === 'addPurchase') {
-        // Give a small delay for database to commit, then close
-        // The parent form's useEffect will detect activeDrawer === 'none' and reload
+        // Keep drawer open for a moment to allow parent form to detect createdContactId
+        // Parent form will reload and auto-select, then we can close
         setTimeout(() => {
           onClose();
-        }, 300); // Increased delay to ensure DB commit
+        }, 500); // Delay to allow parent form to process createdContactId
       } else {
         // If not from Sale/Purchase, close immediately
         onClose();
@@ -1082,3 +1029,6 @@ const ContactFormContent = ({ onClose }: { onClose: () => void }) => {
     </div>
   );
 };
+
+// User Form Component - REBUILT FROM SCRATCH
+// UserFormContent removed - now using AddUserModal (centered modal) instead of drawer

@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { 
   X, 
   Search, 
@@ -32,7 +32,10 @@ import {
   Sparkles,
   Building2,
   Lock,
-  Edit
+  Edit,
+  ChevronRight,
+  Hash,
+  Tag
 } from 'lucide-react';
 import { format } from "date-fns";
 import { cn } from "../ui/utils";
@@ -78,7 +81,7 @@ import {
     PopoverContent,
     PopoverTrigger,
 } from "../ui/popover";
-import { PackingEntryModal, PackingDetails } from '../transactions/PackingEntryModal';
+import { PackingDetails } from '../transactions/PackingEntryModal';
 import { toast } from "sonner";
 import { BranchSelector, currentUser } from '@/app/components/layout/BranchSelector';
 import { SaleItemsSection } from './SaleItemsSection';
@@ -86,9 +89,12 @@ import { PaymentAttachments, PaymentAttachment } from '../payments/PaymentAttach
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { contactService } from '@/app/services/contactService';
 import { productService } from '@/app/services/productService';
+import { branchService, Branch } from '@/app/services/branchService';
 import { useSales } from '@/app/context/SalesContext';
 import { useNavigation } from '@/app/context/NavigationContext';
 import { Loader2 } from 'lucide-react';
+import { useDocumentNumbering } from '@/app/hooks/useDocumentNumbering';
+import { userService, User as UserType } from '@/app/services/userService';
 
 // Mock variations for products that have them
 const productVariations: Record<number, Array<{ size: string; color: string }>> = {
@@ -161,7 +167,7 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
     // Supabase & Context
     const { companyId, branchId: contextBranchId, user, userRole } = useSupabase();
     const { createSale } = useSales();
-    const { openDrawer, closeDrawer, activeDrawer, createdContactId, createdContactType, setCreatedContactId } = useNavigation();
+    const { openDrawer, closeDrawer, activeDrawer, createdContactId, createdContactType, setCreatedContactId, openPackingModal } = useNavigation();
     
     // TASK 4 FIX - Check if user is admin
     const isAdmin = userRole === 'admin' || userRole === 'Admin';
@@ -172,23 +178,27 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     
-    // Mock salesmen (can be enhanced later to fetch from contacts with type='worker' or separate table)
-    const salesmen = [
-        { id: 1, name: "No Salesman" },
-        { id: 2, name: "Ali Hassan" },
-        { id: 3, name: "Muhammad Bilal" },
-        { id: 4, name: "Sara Khan" },
-    ];
+    // Salesmen - Load from userService
+    const [salesmen, setSalesmen] = useState<Array<{ id: string; name: string; code?: string }>>([
+        { id: 'none', name: "No Salesman" }
+    ]);
     
     // Header State
     const [customerId, setCustomerId] = useState("");
     const [customerSearchOpen, setCustomerSearchOpen] = useState(false);
+    const [customerSearchTerm, setCustomerSearchTerm] = useState("");
+    const [pendingCustomerId, setPendingCustomerId] = useState<string | null>(null);
+    const dataLoadedRef = useRef(false); // Track if initial data load has completed
     const [saleDate, setSaleDate] = useState<Date>(new Date());
     const [refNumber, setRefNumber] = useState("");
     const [invoiceNumber, setInvoiceNumber] = useState("");
     
     // Branch State - Locked for regular users, open for admin
     const [branchId, setBranchId] = useState<string>(contextBranchId || '');
+    const [branches, setBranches] = useState<Branch[]>([]);
+    const [statusDropdownOpen, setStatusDropdownOpen] = useState(false);
+    const [salesmanDropdownOpen, setSalesmanDropdownOpen] = useState(false);
+    const [branchDropdownOpen, setBranchDropdownOpen] = useState(false);
     
     // Items List State
     const [items, setItems] = useState<SaleItem[]>([]);
@@ -288,11 +298,8 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
     const [saleStatus, setSaleStatus] = useState<'draft' | 'quotation' | 'order' | 'final'>('draft');
     const [studioDeadline, setStudioDeadline] = useState<Date | undefined>(undefined);
 
-    // Packing Modal State
-    const [packingModalOpen, setPackingModalOpen] = useState(false);
+    // Packing Modal State - Now using global modal via NavigationContext
     const [activePackingItemId, setActivePackingItemId] = useState<number | null>(null);
-    const [activeProductName, setActiveProductName] = useState("");
-    const [activePackingData, setActivePackingData] = useState<PackingDetails | undefined>(undefined);
 
     // Calculations
     const subtotal = items.reduce((sum, item) => sum + (item.price * item.qty), 0);
@@ -332,9 +339,18 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
     );
     
     // Load data from Supabase
+    // CRITICAL: Only load on initial mount, not on every companyId change
+    // This prevents remount/reload from resetting customer selection
     useEffect(() => {
         const loadData = async () => {
             if (!companyId) return;
+            
+            // CRITICAL: Don't reload if data has already been loaded (prevents state reset)
+            // This prevents remount/reload from resetting customer selection
+            if (dataLoadedRef.current) {
+                console.log('[SALE FORM] Skipping loadData - data already loaded (prevents state reset)');
+                return;
+            }
             
             try {
                 setLoading(true);
@@ -409,6 +425,10 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                 );
                 
                 setProducts(productsList);
+                
+                // Mark data as loaded to prevent future reloads
+                dataLoadedRef.current = true;
+                console.log('[SALE FORM] Initial data load completed');
             } catch (error) {
                 console.error('[SALE FORM] Error loading data:', error);
                 toast.error('Failed to load data');
@@ -418,17 +438,71 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
         };
         
         loadData();
+    }, [companyId]); // Only run on companyId change, but skip if data already loaded
+
+    // Load branches
+    useEffect(() => {
+        const loadBranches = async () => {
+            if (!companyId) return;
+            try {
+                const branchesData = await branchService.getAllBranches(companyId);
+                setBranches(branchesData);
+                
+                // Default to Main Branch (is_default = true) or first branch
+                if (!branchId) {
+                    if (contextBranchId) {
+                        setBranchId(contextBranchId);
+                    } else {
+                        // Find main branch (is_default = true) or use first branch
+                        const mainBranch = branchesData.find((b: Branch) => (b as any).is_default === true);
+                        if (mainBranch) {
+                            setBranchId(mainBranch.id);
+                        } else if (branchesData.length > 0) {
+                            setBranchId(branchesData[0].id);
+                        }
+                    }
+                }
+            } catch (error) {
+                console.error('[SALE FORM] Error loading branches:', error);
+            }
+        };
+        loadBranches();
+    }, [companyId, branchId, contextBranchId]);
+
+    // Load salesmen from userService
+    useEffect(() => {
+        const loadSalesmen = async () => {
+            if (!companyId) return;
+            
+            try {
+                const users = await userService.getSalesmen(companyId);
+                const salesmenList = [
+                    { id: 'none', name: "No Salesman", code: '' },
+                    ...users.map((user: UserType) => ({
+                        id: user.id,
+                        name: user.full_name || user.email,
+                        code: user.user_code || ''
+                    }))
+                ];
+                setSalesmen(salesmenList);
+            } catch (error) {
+                console.error('[SALE FORM] Error loading salesmen:', error);
+                // Keep default "No Salesman" option on error
+            }
+        };
+        
+        loadSalesmen();
     }, [companyId]);
 
-    // Reload customers when contact drawer closes (in case a new contact was added)
+    // Reload customers when contact is created (IMMEDIATELY, not waiting for drawer to close)
     useEffect(() => {
         const reloadCustomers = async () => {
-            // Only reload when:
-            // 1. Contact drawer was just closed (activeDrawer changed from 'addContact' to 'none')
-            // 2. AND a contact was actually created (createdContactId is not null)
-            // 3. AND the contact type is relevant (customer or both)
-            // This prevents unnecessary reloads when other drawers close or when supplier/worker is created
-            if (activeDrawer === 'none' && companyId && createdContactId !== null && 
+            // Reload when:
+            // 1. A contact was created (createdContactId is not null)
+            // 2. AND the contact type is relevant (customer or both)
+            // 3. AND we have companyId
+            // This triggers IMMEDIATELY when customer is created, without waiting for drawer to close
+            if (companyId && createdContactId !== null && 
                 (createdContactType === 'customer' || createdContactType === 'both')) {
                 try {
                     // Store the contact ID before clearing (for auto-selection)
@@ -441,10 +515,10 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                     }
                     
                     // CRITICAL: Reload IMMEDIATELY when drawer closes
-                    console.log('[SALE FORM] Reloading customers, createdContactId:', contactIdToSelect, 'Type:', contactTypeToSelect);
+                    console.log('[SALE FORM] Reloading customers IMMEDIATELY, createdContactId:', contactIdToSelect, 'Type:', contactTypeToSelect);
                     
-                    // Small delay to ensure DB commit
-                    await new Promise(resolve => setTimeout(resolve, 200));
+                    // Small delay to ensure DB commit (reduced since we're not waiting for drawer close)
+                    await new Promise(resolve => setTimeout(resolve, 300));
                     
                     const contactsData = await contactService.getAllContacts(companyId);
                     const customerContacts = contactsData
@@ -457,10 +531,11 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                     
                     console.log('[SALE FORM] Reloaded customers:', customerContacts.length, 'IDs:', customerContacts.map(c => c.id));
                     
-                    setCustomers([
+                    // Prepare updated customers list
+                    const updatedCustomers = [
                         { id: 'walk-in', name: "Walk-in Customer", dueBalance: 0 },
                         ...customerContacts
-                    ]);
+                    ];
                     
                     // Auto-select newly created contact
                     const contactIdStr = contactIdToSelect.toString();
@@ -481,14 +556,14 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                     
                     if (foundContact) {
                         const selectedId = foundContact.id.toString();
-                        // Force state update and component remount for UI refresh
-                        setCustomerId('');
-                        // Use setTimeout to ensure state update happens
-                        setTimeout(() => {
-                            setCustomerId(selectedId);
-                            toast.success(`Customer "${foundContact.name}" selected`);
-                            console.log('[SALE FORM] ✅ Auto-selected customer:', selectedId, foundContact.name);
-                        }, 50);
+                        
+                        // CRITICAL: Update customers array first
+                        setCustomers(updatedCustomers);
+                        
+                        // Store pending customer ID - separate useEffect will handle the selection
+                        // This ensures customers array is fully updated before we try to select
+                        setPendingCustomerId(selectedId);
+                        console.log('[SALE FORM] Set pending customer ID:', selectedId, foundContact.name);
                     } else {
                         console.warn('[SALE FORM] ❌ Could not find created contact:', contactIdStr, 'Available IDs:', customerContacts.map(c => c.id));
                         // Try one more time after a longer delay (DB might need more time)
@@ -511,20 +586,19 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                                     ...retryContacts
                                 ]);
                                 const retrySelectedId = retryFound.id.toString();
-                                // Force state update
-                                setCustomerId('');
-                                setTimeout(() => {
-                                    setCustomerId(retrySelectedId);
-                                    toast.success(`Customer "${retryFound.name}" selected`);
-                                    console.log('[SALE FORM] ✅ Retry successful - Auto-selected customer');
-                                }, 50);
+                                // Auto-select immediately
+                                setCustomerId(retrySelectedId);
+                                setCustomerSearchOpen(false);
+                                setCustomerSearchTerm('');
+                                toast.success(`Customer "${retryFound.name}" selected`);
+                                console.log('[SALE FORM] ✅ Retry successful - Auto-selected customer');
                             }
                         }, 1000);
                     }
                 } catch (error) {
                     console.error('[SALE FORM] Error reloading customers:', error);
                 }
-            } else if (activeDrawer === 'none' && createdContactId !== null && 
+            } else if (createdContactId !== null && 
                        (createdContactType === 'supplier' || createdContactType === 'worker')) {
                 // Clear the ID if supplier/worker was created (no reload needed)
                 if (setCreatedContactId) {
@@ -534,7 +608,66 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
         };
         
         reloadCustomers();
-    }, [activeDrawer, companyId, createdContactId, createdContactType, setCreatedContactId]);
+    }, [companyId, createdContactId, createdContactType, setCreatedContactId]);
+
+    // Separate useEffect to handle customer auto-selection AFTER customers array is updated
+    // This ensures proper state sequencing - customers array updates first, then customerId
+    useEffect(() => {
+        if (pendingCustomerId && customers.length > 0) {
+            // Find the customer in the updated array
+            const foundCustomer = customers.find(c => {
+                const cId = c.id?.toString() || '';
+                const pendingIdStr = pendingCustomerId.toString();
+                return cId === pendingIdStr || c.id === pendingCustomerId;
+            });
+            
+            if (foundCustomer) {
+                console.log('[SALE FORM] Found customer in array, setting customerId:', {
+                    pendingId: pendingCustomerId,
+                    foundId: foundCustomer.id,
+                    foundName: foundCustomer.name,
+                    customersCount: customers.length
+                });
+                
+                // CRITICAL: Use the exact ID from foundCustomer to ensure consistency
+                const customerIdToSet = foundCustomer.id.toString();
+                
+                // Set customerId - this will trigger selectedCustomer memo recalculation
+                setCustomerId(customerIdToSet);
+                
+                // Force close popover and clear search immediately
+                setCustomerSearchOpen(false);
+                setCustomerSearchTerm('');
+                
+                // Clear pending AFTER setting customerId
+                setPendingCustomerId(null);
+                
+                // Show toast
+                toast.success(`Customer "${foundCustomer.name}" selected`);
+                
+                console.log('[SALE FORM] ✅ Auto-selected customer (via useEffect):', customerIdToSet, foundCustomer.name);
+                
+                // CRITICAL: Force a re-render by using requestAnimationFrame
+                // This ensures React processes all state updates before next render
+                requestAnimationFrame(() => {
+                    // Verify state after React has processed updates
+                    console.log('[SALE FORM] State verification after auto-select (RAF):', {
+                        customerId,
+                        selectedCustomerName: selectedCustomer?.name,
+                        customersHasCustomer: customers.some(c => c.id.toString() === customerIdToSet),
+                        foundCustomerInMemo: selectedCustomer?.id === customerIdToSet
+                    });
+                });
+            } else {
+                // Customer not found yet, might need more time
+                console.warn('[SALE FORM] Pending customer not found in array yet:', {
+                    pendingId: pendingCustomerId,
+                    customersCount: customers.length,
+                    customerIds: customers.map(c => c.id)
+                });
+            }
+        }
+    }, [pendingCustomerId, customers]);
 
     // Pre-populate form when editing (TASK 3 FIX)
     useEffect(() => {
@@ -616,6 +749,17 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
         }
     };
 
+    // Chip-style status color for top header
+    const getStatusChipColor = () => {
+        switch(saleStatus) {
+            case 'draft': return 'bg-gray-500/20 text-gray-400 border-gray-600/50';
+            case 'quotation': return 'bg-yellow-500/20 text-yellow-400 border-yellow-600/50';
+            case 'order': return 'bg-blue-500/20 text-blue-400 border-blue-600/50';
+            case 'final': return 'bg-green-500/20 text-green-400 border-green-600/50';
+            default: return 'bg-gray-500/20 text-gray-400 border-gray-600/50';
+        }
+    };
+
     const getStatusIcon = () => {
         switch(saleStatus) {
             case 'draft': return <FileText size={14} />;
@@ -625,6 +769,55 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
             default: return <FileText size={14} />;
         }
     };
+
+    // Get branch display (code + name)
+    const getBranchName = () => {
+        const branch = branches.find(b => b.id === branchId || b.id.toString() === branchId.toString());
+        if (!branch) return "Select Branch";
+        return branch.code ? `${branch.code} | ${branch.name}` : branch.name;
+    };
+
+    // Get selected customer - memoized to ensure it updates when customers or customerId changes
+    // CRITICAL: This must update immediately when either customers array or customerId changes
+    // Using JSON.stringify for customers array to ensure deep equality check
+    const selectedCustomer = useMemo(() => {
+        if (!customerId || !customers.length) return null;
+        const customer = customers.find(c => {
+            const cId = c.id?.toString() || '';
+            const customerIdStr = customerId.toString();
+            return cId === customerIdStr || c.id === customerId;
+        });
+        console.log('[SALE FORM] selectedCustomer memo recalculated:', {
+            customerId,
+            customersCount: customers.length,
+            found: customer ? customer.name : 'NOT FOUND'
+        });
+        return customer || null;
+    }, [customers, customerId]);
+    
+    const getSelectedCustomer = () => selectedCustomer;
+
+    // Filter customers based on search term
+    const filteredCustomers = customers.filter(c =>
+        c.name.toLowerCase().includes(customerSearchTerm.toLowerCase())
+    );
+
+    // Helper to format due balance (compact for dropdown)
+    const formatDueBalanceCompact = (due: number) => {
+        if (due === 0) return '0';
+        if (due < 0) return `-${Math.abs(due).toLocaleString()}`;
+        return `+${due.toLocaleString()}`;
+    };
+
+    // Helper to get due balance color
+    const getDueBalanceColor = (due: number) => {
+        if (due < 0) return 'text-green-400'; // Credit/Advance (green)
+        if (due > 0) return 'text-red-400'; // Due amount (red)
+        return 'text-gray-500'; // Zero
+    };
+
+    // Get selected customer's due balance
+    const selectedCustomerDue = selectedCustomer?.dueBalance || 0;
 
     // --- Workflow Handlers ---
 
@@ -743,17 +936,23 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
     };
 
     // Packing Handlers - Open with existing data if available (for editing)
-    const openPackingModal = (item: SaleItem) => {
+    const openPackingModalLocal = (item: SaleItem) => {
         setActivePackingItemId(item.id);
-        setActiveProductName(item.name);
-        setActivePackingData(item.packingDetails); // Pre-fill with existing data if editing
-        setPackingModalOpen(true);
+        // Use global packing modal
+        if (openPackingModal) {
+            openPackingModal({
+                itemId: item.id,
+                productName: item.name,
+                initialData: item.packingDetails, // Pre-fill with existing data if editing
+                onSave: handleSavePacking
+            });
+        }
     };
 
     const handleOpenPackingModalById = (itemId: number) => {
         const item = items.find(i => i.id === itemId);
         if (item) {
-            openPackingModal(item);
+            openPackingModalLocal(item);
         }
     };
 
@@ -773,8 +972,8 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                 return item;
             }));
             toast.success("Packing details saved");
+            setActivePackingItemId(null);
         }
-        setPackingModalOpen(false);
     };
 
     // Payment Handlers
@@ -817,6 +1016,9 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
     };
 
     const getCustomerName = () => customers.find(c => c.id.toString() === customerId)?.name || "Select Customer";
+    
+    // Document numbering hook
+    const { generateDocumentNumber, incrementNextNumber } = useDocumentNumbering();
     
     // Handle Save
     const handleSave = async (print: boolean = false) => {
@@ -887,11 +1089,38 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
             // CRITICAL FIX: Map sale status correctly
             // Draft → status: 'draft', type: 'quotation'
             // Quotation → status: 'quotation', type: 'quotation'
+            // Order → status: 'order', type: 'quotation'
             // Final → status: 'final', type: 'invoice'
             const saleType: 'invoice' | 'quotation' = saleStatus === 'final' ? 'invoice' : 'quotation';
-            const mappedStatus: 'draft' | 'quotation' | 'final' = saleStatus === 'final' ? 'final' : saleStatus;
+            const mappedStatus: 'draft' | 'quotation' | 'order' | 'final' = saleStatus;
             
-            // CRITICAL FIX: For draft/quotation, force payment to 0 and payment_status to 'unpaid'
+            // CRITICAL: Generate invoice/document number based on status
+            let documentNumber: string;
+            let documentType: 'draft' | 'quotation' | 'order' | 'invoice';
+            
+            switch (saleStatus) {
+                case 'draft':
+                    documentType = 'draft';
+                    documentNumber = generateDocumentNumber('draft');
+                    break;
+                case 'quotation':
+                    documentType = 'quotation';
+                    documentNumber = generateDocumentNumber('quotation');
+                    break;
+                case 'order':
+                    documentType = 'order';
+                    documentNumber = generateDocumentNumber('order');
+                    break;
+                case 'final':
+                    documentType = 'invoice';
+                    documentNumber = generateDocumentNumber('invoice');
+                    break;
+                default:
+                    documentType = 'draft';
+                    documentNumber = generateDocumentNumber('draft');
+            }
+            
+            // CRITICAL FIX: For draft/quotation/order, force payment to 0 and payment_status to 'unpaid'
             // Payment should only be allowed for final sales
             const finalPaid = (saleStatus === 'final') ? totalPaid : 0;
             const finalDue = (saleStatus === 'final') ? balanceDue : totalAmount;
@@ -903,6 +1132,7 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
             const saleData = {
                 type: saleType,
                 status: mappedStatus,
+                invoiceNo: documentNumber, // Status-based document number
                 customer: customerUuid || '',
                 customerName: customerName,
                 contactNumber: '', // Can be enhanced to get from customer
@@ -926,6 +1156,9 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
             
             // Create sale via context
             await createSale(saleData);
+            
+            // Increment document number after successful save
+            incrementNextNumber(documentType);
             
             toast.success(`${saleType === 'invoice' ? 'Invoice' : 'Quotation'} created successfully!`);
             
@@ -990,12 +1223,12 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
             </div>
         );
     }
-    
+
     return (
         <div className="flex flex-col h-screen bg-[#111827] text-white overflow-hidden">
             {/* ============ LAYER 1: FIXED HEADER ============ */}
             <div className="shrink-0 bg-[#0B1019] border-b border-gray-800 z-20">
-                {/* Top Bar */}
+                {/* Top Bar - Single Row with Invoice, Status, Salesman, Branch */}
                 <div className="h-12 flex items-center justify-between px-6 border-b border-gray-800/50">
                     <div className="flex items-center gap-3">
                         <Button variant="ghost" size="icon" onClick={onClose} className="text-gray-400 hover:text-white h-8 w-8">
@@ -1005,179 +1238,339 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                             <h2 className="text-sm font-bold text-white">New Sale Invoice</h2>
                             <p className="text-[10px] text-gray-500">Standard Entry</p>
                         </div>
+                        {/* Invoice Number - Moved to LEFT side after title */}
+                        <div className="flex items-center gap-2 ml-4 pl-4 border-l border-gray-800">
+                            <Hash size={14} className="text-cyan-500" />
+                            <span className="text-sm font-mono text-cyan-400">{invoiceNumber || 'INV-001'}</span>
                     </div>
-                    <BranchSelector branchId={branchId} setBranchId={setBranchId} variant="header" />
                 </div>
 
-                {/* Customer & Invoice Info Row - FIXED ALIGNMENT */}
-                <div className="px-6 py-2.5 bg-[#0F1419]">
-                    <div className="invoice-container mx-auto w-full">
-                        <div className="bg-gray-900/30 border border-gray-800/50 rounded-lg p-3">
-                            <div className="grid grid-cols-1 md:grid-cols-8 gap-2.5 items-end">
-                                <div className="md:col-span-2 flex flex-col">
-                                    <Label className="text-blue-400 font-medium text-[10px] uppercase tracking-wide h-[14px] mb-1.5">Customer</Label>
-                                <SearchableSelect
-                                    key={`customer-select-${customerId}-${customers.length}`}
-                                    value={customerId}
-                                    onValueChange={setCustomerId}
-                                    options={customers.map(c => ({ id: c.id.toString(), name: c.name, dueBalance: c.dueBalance }))}
-                                    placeholder="Select Customer"
-                                    searchPlaceholder="Search customer..."
-                                    icon={<User size={14} className="text-gray-400 shrink-0" />}
-                                    badgeColor="red"
-                                    enableAddNew={true}
-                                    addNewLabel="Add New Customer"
-                                    onAddNew={(searchText) => {
-                                        // Open Add Contact drawer with Customer role pre-selected and search text prefilled
-                                        console.log('[SALE FORM] Opening Add Contact drawer, searchText:', searchText);
-                                        openDrawer('addContact', 'addSale', { 
-                                            contactType: 'customer',
-                                            prefillName: searchText || undefined
-                                        });
-                                    }}
-                                    renderOption={(option) => (
-                                        <div className="flex items-center justify-between w-full">
-                                            <span className="flex-1">{option.name}</span>
-                                            {option.dueBalance > 0 && (
-                                                <span className="text-xs font-medium px-2 py-0.5 rounded bg-red-500/20 text-red-400 ml-2">
-                                                    Due: ${option.dueBalance.toLocaleString()}
-                                                </span>
-                                            )}
-                                        </div>
+                    {/* Right side: Status, Salesman, Branch */}
+                    <div className="flex items-center gap-4">
+                        
+                        {/* Status - Chip Style */}
+                        <Popover open={statusDropdownOpen} onOpenChange={setStatusDropdownOpen}>
+                            <PopoverTrigger asChild>
+                                <button
+                                    type="button"
+                                    className={cn(
+                                        "px-3 py-1 rounded-lg text-xs font-medium border transition-all flex items-center gap-1.5",
+                                        getStatusChipColor(),
+                                        "hover:opacity-80 cursor-pointer"
                                     )}
-                                />
+                                >
+                                    <span className="w-1.5 h-1.5 rounded-full bg-current"></span>
+                                    {saleStatus.charAt(0).toUpperCase() + saleStatus.slice(1)}
+                                </button>
+                            </PopoverTrigger>
+                            <PopoverContent 
+                                className="w-48 bg-gray-900 border-gray-800 text-white p-2"
+                                align="start"
+                            >
+                                <div className="space-y-1">
+                                    {(['draft', 'quotation', 'order', 'final'] as const).map((s) => (
+                                        <button
+                                            key={s}
+                                            type="button"
+                                            onClick={() => {
+                                                setSaleStatus(s);
+                                                setStatusDropdownOpen(false);
+                                            }}
+                                            className={cn(
+                                                "w-full text-left px-3 py-2 rounded-md text-sm transition-all flex items-center gap-2",
+                                                saleStatus === s
+                                                    ? "bg-gray-800 text-white"
+                                                    : "text-gray-400 hover:bg-gray-800 hover:text-white"
+                                            )}
+                                        >
+                                            <span className={cn(
+                                                "w-1.5 h-1.5 rounded-full",
+                                                s === 'draft' && "bg-gray-500",
+                                                s === 'quotation' && "bg-yellow-500",
+                                                s === 'order' && "bg-blue-500",
+                                                s === 'final' && "bg-green-500"
+                                            )}></span>
+                                            {s.charAt(0).toUpperCase() + s.slice(1)}
+                                        </button>
+                                    ))}
+                                        </div>
+                            </PopoverContent>
+                        </Popover>
+
+                        {/* Salesman - Chip Style */}
+                        <Popover open={salesmanDropdownOpen} onOpenChange={setSalesmanDropdownOpen}>
+                            <PopoverTrigger asChild>
+                                <button
+                                    type="button"
+                                    disabled={!isAdmin}
+                                    className={cn(
+                                        "flex items-center gap-2 bg-gray-900/50 border border-gray-800 rounded-lg px-2.5 py-1 hover:bg-gray-800 transition-colors cursor-pointer",
+                                        !isAdmin && "opacity-60 cursor-not-allowed"
+                                    )}
+                                >
+                                    <div className="w-5 h-5 rounded-full bg-blue-600 flex items-center justify-center text-white text-[10px] font-semibold">
+                                        {getSalesmanName().charAt(0).toUpperCase()}
+                            </div>
+                                    <span className="text-xs text-white">{getSalesmanName()}</span>
+                                    {isAdmin && <ChevronRight size={12} className="text-gray-500 rotate-90" />}
+                                </button>
+                            </PopoverTrigger>
+                            {isAdmin && (
+                                <PopoverContent 
+                                    className="w-56 bg-gray-900 border-gray-800 text-white p-2"
+                                    align="start"
+                                >
+                                    <div className="space-y-1">
+                                        {salesmen.map((s) => (
+                                            <button
+                                                key={s.id}
+                                                type="button"
+                                                onClick={() => {
+                                                    setSalesmanId(s.id.toString());
+                                                    setSalesmanDropdownOpen(false);
+                                                }}
+                                                className={cn(
+                                                    "w-full text-left px-3 py-2 rounded-md text-sm transition-all flex items-center gap-2",
+                                                    salesmanId === s.id.toString()
+                                                        ? "bg-gray-800 text-white"
+                                                        : "text-gray-400 hover:bg-gray-800 hover:text-white"
+                                                )}
+                                            >
+                                                <div className={cn(
+                                                    "w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-semibold",
+                                                    salesmanId === s.id.toString() ? "bg-blue-600 text-white" : "bg-gray-700 text-gray-300"
+                                                )}>
+                                                    {s.name.charAt(0).toUpperCase()}
+                            </div>
+                                                <span>{s.code ? `${s.code} | ${s.name}` : s.name}</span>
+                                            </button>
+                                        ))}
+                                </div>
+                                </PopoverContent>
+                            )}
+                        </Popover>
+
+                        {/* Branch - Chip Style */}
+                        <Popover open={branchDropdownOpen} onOpenChange={setBranchDropdownOpen}>
+                            <PopoverTrigger asChild>
+                                <button
+                                    type="button"
+                                    className="flex items-center gap-2 bg-gray-900/50 border border-gray-800 rounded-lg px-2.5 py-1 hover:bg-gray-800 transition-colors cursor-pointer"
+                                >
+                                    <Building2 size={14} className="text-gray-500 shrink-0" />
+                                    <span className="text-xs text-white">{getBranchName()}</span>
+                                    <ChevronRight size={12} className="text-gray-500 rotate-90" />
+                                </button>
+                            </PopoverTrigger>
+                            <PopoverContent 
+                                className="w-56 bg-gray-900 border-gray-800 text-white p-2"
+                                align="end"
+                            >
+                                <div className="space-y-1">
+                                    {branches.map((b) => (
+                                        <button
+                                            key={b.id}
+                                            type="button"
+                                            onClick={() => {
+                                                setBranchId(b.id);
+                                                setBranchDropdownOpen(false);
+                                            }}
+                                            className={cn(
+                                                "w-full text-left px-3 py-2 rounded-md text-sm transition-all flex items-center gap-2",
+                                                branchId === b.id || branchId === b.id.toString()
+                                                    ? "bg-gray-800 text-white"
+                                                    : "text-gray-400 hover:bg-gray-800 hover:text-white"
+                                            )}
+                                        >
+                                            <Building2 size={16} className={cn(
+                                                branchId === b.id || branchId === b.id.toString() ? "text-blue-400" : "text-gray-500"
+                                            )} />
+                                            <span>{b.name}</span>
+                                        </button>
+                                    ))}
+                                </div>
+                            </PopoverContent>
+                        </Popover>
+                                </div>
                             </div>
 
-                            <div className="flex flex-col">
-                                <div className="h-[14px] mb-1.5"></div>
+                {/* FORM HEADER: Customer, Date, Ref #, Type */}
+                <div className="px-6 py-4 bg-[#0F1419]">
+                    <div className="flex items-center gap-3 w-full">
+                        {/* Customer - Chip Style with Search */}
+                        <div className="flex-1 min-w-0">
+                            {/* Label with Due Balance on Right Side */}
+                            <div className="flex items-center justify-between mb-1.5">
+                                <Label className="text-xs text-gray-500">Customer</Label>
+                                {/* Due Balance Display - Plain Text (Option A) */}
+                                {customerId && (
+                                    <span className={cn("text-[10px] font-medium tabular-nums", getDueBalanceColor(selectedCustomerDue))}>
+                                        {formatDueBalanceCompact(selectedCustomerDue)}
+                                    </span>
+                                )}
+                                        </div>
+                            <Popover 
+                                key={`customer-select-${customerId || 'none'}-${customers.length}-${selectedCustomer?.id || 'none'}`} 
+                                open={customerSearchOpen} 
+                                onOpenChange={setCustomerSearchOpen}
+                            >
+                                <PopoverTrigger asChild>
+                                    <div className="flex items-center gap-2 bg-gray-900/50 border border-gray-800 rounded-lg px-2.5 py-1 hover:bg-gray-800 transition-colors cursor-pointer w-full">
+                                        <User size={14} className="text-gray-500 shrink-0" />
+                                        <span 
+                                            className="text-xs text-white flex-1 truncate text-left"
+                                            key={`customer-name-display-${customerId || 'none'}-${selectedCustomer?.name || 'none'}`}
+                                        >
+                                            {selectedCustomer?.name || "Select Customer"}
+                                        </span>
+                                        {/* Plus icon inside search field - NOT a button to avoid nesting */}
+                                        <div
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                openDrawer('addContact', 'addSale', { 
+                                                    contactType: 'customer',
+                                                    prefillName: customerSearchTerm || undefined
+                                                });
+                                                setCustomerSearchOpen(false);
+                                                setCustomerSearchTerm('');
+                                            }}
+                                            className="p-0.5 hover:bg-gray-700 rounded transition-colors cursor-pointer"
+                                        >
+                                            <Plus size={12} className="text-gray-400 hover:text-blue-400" />
+                                            </div>
+                                        <ChevronRight size={12} className="text-gray-500 rotate-90 shrink-0" />
+                                            </div>
+                                </PopoverTrigger>
+                                <PopoverContent 
+                                    className="w-80 bg-gray-900 border-gray-800 text-white p-2"
+                                    align="start"
+                                >
+                                    <div className="space-y-2">
+                                        {/* Search Input */}
+                                        <Input
+                                            placeholder="Search customers..."
+                                            value={customerSearchTerm}
+                                            onChange={(e) => setCustomerSearchTerm(e.target.value)}
+                                            className="bg-gray-800 border-gray-700 text-white text-sm h-9"
+                                        />
+                                        {/* Customer List */}
+                                        <div className="space-y-1 max-h-64 overflow-y-auto">
+                                            {filteredCustomers.length === 0 ? (
+                                                <div className="px-3 py-2 text-sm text-gray-400 text-center">
+                                                    No customers found
+                                            </div>
+                                            ) : (
+                                                <>
+                                                    {filteredCustomers.map((cust) => (
+                                                        <button
+                                                            key={cust.id}
+                                                            type="button"
+                                                            onClick={() => {
+                                                                setCustomerId(cust.id.toString());
+                                                                setCustomerSearchOpen(false);
+                                                                setCustomerSearchTerm('');
+                                                            }}
+                                                            className={cn(
+                                                                "w-full text-left px-3 py-2 rounded-md text-sm transition-all flex items-center justify-between",
+                                                                customerId === cust.id.toString()
+                                                                    ? "bg-gray-800 text-white"
+                                                                    : "text-gray-400 hover:bg-gray-800 hover:text-white"
+                                                            )}
+                                                        >
+                                                            <span className="font-medium">{cust.name}</span>
+                                                            <span className={cn(
+                                                                "text-xs font-semibold tabular-nums ml-2",
+                                                                cust.dueBalance < 0 && "text-green-400",
+                                                                cust.dueBalance > 0 && "text-red-400",
+                                                                cust.dueBalance === 0 && "text-gray-500"
+                                                            )}>
+                                                                {formatDueBalanceCompact(cust.dueBalance)}
+                                                            </span>
+                                                        </button>
+                                                    ))}
+                                                </>
+                                            )}
+                                            </div>
+                                    </div>
+                                </PopoverContent>
+                            </Popover>
+                            </div>
+
+                        {/* Date - Soft Input Style */}
+                        <div className="w-32">
+                            <Label className="text-xs text-gray-500 mb-1.5 block">Date</Label>
+                            <div className="[&>div>button]:bg-gray-900/50 [&>div>button]:border-gray-800 [&>div>button]:text-white [&>div>button]:text-xs [&>div>button]:h-[28px] [&>div>button]:min-h-[28px] [&>div>button]:px-2.5 [&>div>button]:py-1 [&>div>button]:rounded-lg [&>div>button]:border [&>div>button]:hover:bg-gray-800 [&>div>button]:w-full [&>div>button]:justify-start [&>div>button>span]:text-xs [&>div>button>svg]:h-3 [&>div>button>svg]:w-3">
                                 <CalendarDatePicker
-                                    label="Date"
                                     value={saleDate}
                                     onChange={(date) => setSaleDate(date || new Date())}
                                     showTime={true}
                                     required
                                 />
-                            </div>
-
-                            <div className="flex flex-col">
-                                <Label className="text-gray-500 font-medium text-xs uppercase tracking-wide h-[14px] mb-1.5">Ref#</Label>
-                                <div className="relative">
-                                    <FileText className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-600" size={14} />
-                                    <Input 
-                                        value={refNumber}
-                                        onChange={(e) => setRefNumber(e.target.value)}
-                                        className="pl-9 bg-gray-950 border-gray-700 h-10 text-sm"
-                                        placeholder="SO-001"
-                                    />
-                                </div>
-                            </div>
-
-                            <div className="flex flex-col">
-                                <Label className="text-cyan-500 font-medium text-xs uppercase tracking-wide h-[14px] mb-1.5">Invoice#</Label>
-                                <div className="relative">
-                                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-cyan-500" size={14} />
-                                    <Input 
-                                        value="INV-001"
-                                        readOnly
-                                        disabled
-                                        className="pl-9 bg-gray-950/50 border-cyan-500/30 text-cyan-400 h-10 text-sm cursor-not-allowed font-mono"
-                                        placeholder="INV-001"
-                                    />
-                                </div>
-                            </div>
-
-                            <div className="flex flex-col">
-                                <Label className="text-cyan-500 font-medium text-xs uppercase tracking-wide h-[14px] mb-1.5">Status</Label>
-                                <Select value={saleStatus} onValueChange={(v: any) => setSaleStatus(v)}>
-                                    <SelectTrigger className={`h-10 border ${getStatusColor()}`}>
-                                        <div className="flex items-center gap-2">
-                                            {getStatusIcon()}
-                                            <SelectValue />
                                         </div>
-                                    </SelectTrigger>
-                                    <SelectContent className="bg-gray-950 border-gray-800 text-white">
-                                        <SelectItem value="draft">
-                                            <div className="flex items-center gap-2">
-                                                <span className="w-2 h-2 rounded-full bg-gray-500"></span>
-                                                Draft
-                                            </div>
-                                        </SelectItem>
-                                        <SelectItem value="quotation">
-                                            <div className="flex items-center gap-2">
-                                                <span className="w-2 h-2 rounded-full bg-yellow-500"></span>
-                                                Quotation
-                                            </div>
-                                        </SelectItem>
-                                        <SelectItem value="order">
-                                            <div className="flex items-center gap-2">
-                                                <span className="w-2 h-2 rounded-full bg-blue-500"></span>
-                                                Order
-                                            </div>
-                                        </SelectItem>
-                                        <SelectItem value="final">
-                                            <div className="flex items-center gap-2">
-                                                <span className="w-2 h-2 rounded-full bg-green-500"></span>
-                                                Final
-                                            </div>
-                                        </SelectItem>
-                                    </SelectContent>
-                                </Select>
                             </div>
 
-                            <div className="flex flex-col">
-                                <Label className="text-green-500 font-medium text-xs uppercase tracking-wide h-[14px] mb-1.5">
-                                    Salesman {!isAdmin && <span className="text-xs text-gray-500">(Auto-assigned)</span>}
-                                </Label>
-                                <Select 
-                                    value={salesmanId} 
-                                    onValueChange={setSalesmanId}
-                                    disabled={!isAdmin} // TASK 4 FIX - Disable for non-admin users
-                                >
-                                    <SelectTrigger className={`bg-gray-950 border-gray-700 text-white h-10 ${!isAdmin ? 'opacity-60 cursor-not-allowed' : ''}`}>
-                                        <div className="flex items-center gap-2">
-                                            <UserCheck size={14} className="text-gray-400 shrink-0" />
-                                            <span className="truncate text-sm">{getSalesmanName()}</span>
-                                        </div>
-                                    </SelectTrigger>
-                                    <SelectContent className="bg-gray-950 border-gray-800 text-white">
-                                        {salesmen.map(s => (
-                                            <SelectItem key={s.id} value={s.id.toString()}>{s.name}</SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
-                            </div>
+                        {/* Ref # - Soft Input Style */}
+                        <div className="w-24">
+                            <Label className="text-xs text-gray-500 mb-1.5 block">Ref #</Label>
+                            <Input
+                                value={refNumber}
+                                onChange={(e) => setRefNumber(e.target.value)}
+                                className="bg-gray-900/50 border border-gray-800 text-white text-xs h-[28px] px-2.5 py-1 rounded-lg focus-visible:ring-1 focus-visible:ring-gray-700 focus-visible:border-gray-700"
+                                placeholder="REF"
+                            />
+                        </div>
 
-                            <div className="flex flex-col">
-                                <Label className={`font-medium text-xs uppercase tracking-wide h-[14px] mb-1.5 ${isStudioSale ? 'text-purple-500' : 'text-gray-500'}`}>
-                                    Type {isStudioSale && <Badge className="ml-1 bg-purple-600 text-white text-[8px] px-1 py-0">ST</Badge>}
-                                </Label>
-                                <div className="flex gap-1">
-                                    <Select 
-                                        value={isStudioSale ? 'studio' : 'regular'} 
-                                        onValueChange={(v) => {
-                                            setIsStudioSale(v === 'studio');
-                                            if (v === 'studio') setShippingEnabled(false);
-                                        }}
+                        {/* Type - Chip Style */}
+                        <div className="w-auto">
+                            <Label className="text-xs text-gray-500 mb-1.5 block">Type</Label>
+                            <Popover>
+                                <PopoverTrigger asChild>
+                                    <button
+                                        type="button"
+                                        className="flex items-center gap-2 bg-gray-900/50 border border-gray-800 rounded-lg px-2.5 py-1 hover:bg-gray-800 transition-colors cursor-pointer"
                                     >
-                                        <SelectTrigger className={`bg-gray-950 h-10 flex-1 ${ 
-                                            isStudioSale 
-                                                ? 'border-purple-500/50 text-purple-400' 
-                                                : 'border-gray-700 text-white'
-                                        }`}>
-                                            <div className="flex items-center gap-2">
-                                                {isStudioSale ? <Palette size={14} /> : <ShoppingBag size={14} />}
-                                                <SelectValue />
+                                        <Tag size={14} className="text-gray-500 shrink-0" />
+                                        <span className="text-xs text-white capitalize">{isStudioSale ? 'studio' : 'regular'}</span>
+                                        <ChevronRight size={12} className="text-gray-500 rotate-90" />
+                                    </button>
+                                </PopoverTrigger>
+                                <PopoverContent 
+                                    className="w-48 bg-gray-900 border-gray-800 text-white p-2"
+                                    align="start"
+                                >
+                                    <div className="space-y-1">
+                                        {(['regular', 'studio'] as const).map((t) => (
+                                            <button
+                                                key={t}
+                                                type="button"
+                                                onClick={() => {
+                                                    setIsStudioSale(t === 'studio');
+                                                    if (t === 'studio') setShippingEnabled(false);
+                                                }}
+                                                className={cn(
+                                                    "w-full text-left px-3 py-2 rounded-md text-sm transition-all flex items-center gap-2",
+                                                    (isStudioSale ? 'studio' : 'regular') === t
+                                                        ? "bg-gray-800 text-white"
+                                                        : "text-gray-400 hover:bg-gray-800 hover:text-white"
+                                                )}
+                                            >
+                                                <Tag size={16} className={cn(
+                                                    (isStudioSale ? 'studio' : 'regular') === t ? "text-blue-400" : "text-gray-500"
+                                                )} />
+                                                <span className="capitalize">{t}</span>
+                                            </button>
+                                        ))}
                                             </div>
-                                        </SelectTrigger>
-                                        <SelectContent className="bg-gray-950 border-gray-800 text-white">
-                                            <SelectItem value="regular">Regular</SelectItem>
-                                            <SelectItem value="studio">Studio</SelectItem>
-                                        </SelectContent>
-                                    </Select>
+                                </PopoverContent>
+                            </Popover>
+                        </div>
+
+                        {/* Shipping Toggle (only for regular sales) */}
                                     {!isStudioSale && (
+                            <div className="w-auto flex items-end">
                                         <button
                                             onClick={() => setShippingEnabled(!shippingEnabled)}
-                                            className={`w-10 h-10 rounded-lg transition-all flex items-center justify-center shrink-0 ${ 
+                                    className={`w-[28px] h-[28px] rounded-lg transition-all flex items-center justify-center shrink-0 ${ 
                                                 shippingEnabled
                                                     ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30'
                                                     : 'bg-gray-800 text-gray-500 border border-gray-700 hover:bg-gray-750'
@@ -1186,10 +1579,8 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                                         >
                                             <Truck size={14} />
                                         </button>
-                                    )}
-                                </div>
                             </div>
-                        </div>
+                                    )}
                     </div>
 
                     {/* Studio Details - Inline when active */}
@@ -1216,7 +1607,6 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                             />
                         </div>
                     )}
-                </div>
             </div>
             </div>
 
@@ -1252,10 +1642,6 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                     handleSelectProduct={handleSelectProduct}
                     handleAddItem={commitPendingItem}
                     handleOpenPackingModal={handleOpenPackingModalById}
-                    setPackingModalOpen={setPackingModalOpen}
-                    setActiveProductName={setActiveProductName}
-                    setActivePackingData={setActivePackingData}
-                    setActivePackingItemId={setActivePackingItemId}
                     searchInputRef={searchInputRef}
                     qtyInputRef={qtyInputRef}
                     priceInputRef={priceInputRef}
@@ -1555,77 +1941,77 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                                 {/* Quick Payment Buttons & Payment Entry - DISABLED for Draft/Quotation */}
                                 {saleStatus === 'final' ? (
                                     <>
-                                        <div className="space-y-2">
-                                            <Label className="text-xs text-gray-500">Quick Pay</Label>
-                                            <div className="grid grid-cols-4 gap-2">
-                                                <Button 
-                                                    type="button"
-                                                    onClick={() => setNewPaymentAmount(totalAmount * 0.25)}
-                                                    className="h-9 bg-gray-800 hover:bg-gray-700 text-white text-xs border border-gray-700"
-                                                >
-                                                    25%
-                                                </Button>
-                                                <Button 
-                                                    type="button"
-                                                    onClick={() => setNewPaymentAmount(totalAmount * 0.50)}
-                                                    className="h-9 bg-gray-800 hover:bg-gray-700 text-white text-xs border border-gray-700"
-                                                >
-                                                    50%
-                                                </Button>
-                                                <Button 
-                                                    type="button"
-                                                    onClick={() => setNewPaymentAmount(totalAmount * 0.75)}
-                                                    className="h-9 bg-gray-800 hover:bg-gray-700 text-white text-xs border border-gray-700"
-                                                >
-                                                    75%
-                                                </Button>
-                                                <Button 
-                                                    type="button"
-                                                    onClick={() => setNewPaymentAmount(totalAmount)}
-                                                    className="h-9 bg-green-700 hover:bg-green-600 text-white text-xs border border-green-600"
-                                                >
-                                                    100%
-                                                </Button>
-                                            </div>
-                                        </div>
+                                <div className="space-y-2">
+                                <Label className="text-xs text-gray-500">Quick Pay</Label>
+                                <div className="grid grid-cols-4 gap-2">
+                                    <Button 
+                                        type="button"
+                                        onClick={() => setNewPaymentAmount(totalAmount * 0.25)}
+                                        className="h-9 bg-gray-800 hover:bg-gray-700 text-white text-xs border border-gray-700"
+                                    >
+                                        25%
+                                    </Button>
+                                    <Button 
+                                        type="button"
+                                        onClick={() => setNewPaymentAmount(totalAmount * 0.50)}
+                                        className="h-9 bg-gray-800 hover:bg-gray-700 text-white text-xs border border-gray-700"
+                                    >
+                                        50%
+                                    </Button>
+                                    <Button 
+                                        type="button"
+                                        onClick={() => setNewPaymentAmount(totalAmount * 0.75)}
+                                        className="h-9 bg-gray-800 hover:bg-gray-700 text-white text-xs border border-gray-700"
+                                    >
+                                        75%
+                                    </Button>
+                                    <Button 
+                                        type="button"
+                                        onClick={() => setNewPaymentAmount(totalAmount)}
+                                        className="h-9 bg-green-700 hover:bg-green-600 text-white text-xs border border-green-600"
+                                    >
+                                        100%
+                                    </Button>
+                                </div>
+                            </div>
 
-                                        {/* Payment Entry Form */}
-                                        <div className="space-y-2">
-                                            <Label className="text-xs text-gray-500">Add Payment</Label>
-                                            <div className="flex gap-2">
-                                                <Select value={newPaymentMethod} onValueChange={(v: any) => setNewPaymentMethod(v)}>
-                                                    <SelectTrigger className="w-[110px] bg-gray-950 border-gray-700 text-white h-10 text-xs">
-                                                        <SelectValue />
-                                                    </SelectTrigger>
-                                                    <SelectContent className="bg-gray-950 border-gray-800 text-white">
-                                                        <SelectItem value="cash">Cash</SelectItem>
-                                                        <SelectItem value="bank">Bank</SelectItem>
-                                                        <SelectItem value="other">Other</SelectItem>
-                                                    </SelectContent>
-                                                </Select>
-                                                <Input 
-                                                    type="number" 
-                                                    placeholder="Amount" 
-                                                    className="bg-gray-950 border-gray-700 text-white h-10 flex-1"
-                                                    value={newPaymentAmount > 0 ? newPaymentAmount : ''}
-                                                    onChange={(e) => setNewPaymentAmount(parseFloat(e.target.value) || 0)}
-                                                />
-                                                <Button onClick={addPartialPayment} className="bg-blue-600 hover:bg-blue-500 h-10 w-10 p-0" >
-                                                    <Plus size={16} />
-                                                </Button>
-                                            </div>
-                                            <Input 
-                                                type="text" 
-                                                placeholder="Reference (optional)" 
-                                                className="bg-gray-950 border-gray-700 text-white h-9 text-xs"
-                                                value={newPaymentReference}
-                                                onChange={(e) => setNewPaymentReference(e.target.value)}
-                                            />
-                                            <PaymentAttachments
-                                                attachments={paymentAttachments}
-                                                onAttachmentsChange={setPaymentAttachments}
-                                            />
-                                        </div>
+                                {/* Payment Entry Form */}
+                                <div className="space-y-2">
+                                    <Label className="text-xs text-gray-500">Add Payment</Label>
+                                    <div className="flex gap-2">
+                                    <Select value={newPaymentMethod} onValueChange={(v: any) => setNewPaymentMethod(v)}>
+                                        <SelectTrigger className="w-[110px] bg-gray-950 border-gray-700 text-white h-10 text-xs">
+                                            <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent className="bg-gray-950 border-gray-800 text-white">
+                                            <SelectItem value="cash">Cash</SelectItem>
+                                            <SelectItem value="bank">Bank</SelectItem>
+                                            <SelectItem value="other">Other</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                    <Input 
+                                        type="number" 
+                                        placeholder="Amount" 
+                                        className="bg-gray-950 border-gray-700 text-white h-10 flex-1"
+                                        value={newPaymentAmount > 0 ? newPaymentAmount : ''}
+                                        onChange={(e) => setNewPaymentAmount(parseFloat(e.target.value) || 0)}
+                                    />
+                                    <Button onClick={addPartialPayment} className="bg-blue-600 hover:bg-blue-500 h-10 w-10 p-0" >
+                                        <Plus size={16} />
+                                    </Button>
+                                </div>
+                                <Input 
+                                    type="text" 
+                                    placeholder="Reference (optional)" 
+                                    className="bg-gray-950 border-gray-700 text-white h-9 text-xs"
+                                    value={newPaymentReference}
+                                    onChange={(e) => setNewPaymentReference(e.target.value)}
+                                />
+                                <PaymentAttachments
+                                    attachments={paymentAttachments}
+                                    onAttachmentsChange={setPaymentAttachments}
+                                />
+                                </div>
                                     </>
                                 ) : (
                                     <div className="text-center py-4 text-xs text-gray-500">
@@ -1637,27 +2023,27 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
 
                                 {/* Payments List - Show for all statuses */}
                                 <div className="bg-gray-950 rounded-lg border border-gray-800 p-3 space-y-2 min-h-[100px] mt-4">
-                                    {partialPayments.length === 0 ? (
-                                        <div className="text-center text-gray-600 text-xs py-4">No payments added</div>
-                                    ) : (
-                                        partialPayments.map((p) => (
-                                            <div key={p.id} className="flex justify-between items-center text-sm p-2 bg-gray-900 rounded border border-gray-800/50">
-                                                <div className="flex items-center gap-2">
-                                                    {p.method === 'cash' && <Banknote size={14} className="text-green-500" />}
-                                                    {p.method === 'bank' && <CreditCard size={14} className="text-blue-500" />}
-                                                    {p.method === 'other' && <Wallet size={14} className="text-purple-500" />}
-                                                    <span className="capitalize text-gray-300 text-xs">{p.method}</span>
-                                                    {p.reference && <span className="text-gray-500 text-xs">({p.reference})</span>}
-                                                </div>
-                                                <div className="flex items-center gap-3">
-                                                    <span className="font-medium text-white">${p.amount.toLocaleString()}</span>
-                                                    <button onClick={() => removePartialPayment(p.id)} className="text-gray-500 hover:text-red-400">
-                                                        <X size={12} />
-                                                    </button>
-                                                </div>
+                                {partialPayments.length === 0 ? (
+                                    <div className="text-center text-gray-600 text-xs py-4">No payments added</div>
+                                ) : (
+                                    partialPayments.map((p) => (
+                                        <div key={p.id} className="flex justify-between items-center text-sm p-2 bg-gray-900 rounded border border-gray-800/50">
+                                            <div className="flex items-center gap-2">
+                                                {p.method === 'cash' && <Banknote size={14} className="text-green-500" />}
+                                                {p.method === 'bank' && <CreditCard size={14} className="text-blue-500" />}
+                                                {p.method === 'other' && <Wallet size={14} className="text-purple-500" />}
+                                                <span className="capitalize text-gray-300 text-xs">{p.method}</span>
+                                                {p.reference && <span className="text-gray-500 text-xs">({p.reference})</span>}
                                             </div>
-                                        ))
-                                    )}
+                                            <div className="flex items-center gap-3">
+                                                <span className="font-medium text-white">${p.amount.toLocaleString()}</span>
+                                                <button onClick={() => removePartialPayment(p.id)} className="text-gray-500 hover:text-red-400">
+                                                    <X size={12} />
+                                                </button>
+                                            </div>
+                                        </div>
+                                    ))
+                                )}
                                 </div>
                             </div>
                         </div>
@@ -1782,14 +2168,7 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                 </div>
             </div>
 
-            {/* Packing Modal */}
-            <PackingEntryModal 
-                open={packingModalOpen}
-                onOpenChange={setPackingModalOpen}
-                onSave={handleSavePacking}
-                initialData={activePackingData}
-                productName={activeProductName}
-            />
+            {/* Packing Modal - Now rendered globally in GlobalDrawer */}
         </div>
     );
 };

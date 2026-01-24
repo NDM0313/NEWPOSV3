@@ -200,6 +200,11 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
 
   // Convert Supabase sale format to app format
   const convertFromSupabaseSale = useCallback((supabaseSale: any): Sale => {
+    // Resolve branch display: use joined branch data if available, otherwise use branch_id
+    const branchDisplay = supabaseSale.branch 
+      ? (supabaseSale.branch.code ? `${supabaseSale.branch.code} | ${supabaseSale.branch.name}` : supabaseSale.branch.name)
+      : supabaseSale.branch_id || '';
+    
     return {
       id: supabaseSale.id,
       invoiceNo: supabaseSale.invoice_no || '',
@@ -209,7 +214,7 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
       customerName: supabaseSale.customer_name || '',
       contactNumber: supabaseSale.customer?.phone || '',
       date: supabaseSale.invoice_date || new Date().toISOString().split('T')[0],
-      location: supabaseSale.branch_id || '',
+      location: supabaseSale.branch_id || '', // Keep branch_id for mapping, but display will use branchMap
       items: (supabaseSale.items || []).map((item: any) => ({
         id: item.id || '',
         productId: item.product_id || '',

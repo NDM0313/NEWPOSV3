@@ -37,6 +37,7 @@ import { useSales, Sale } from '@/app/context/SalesContext';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { useDateRange } from '@/app/context/DateRangeContext';
 import { saleService } from '@/app/services/saleService';
+import { branchService, Branch } from '@/app/services/branchService';
 import { Pagination } from '@/app/components/ui/pagination';
 import { ListToolbar } from '@/app/components/ui/list-toolbar';
 import { formatLongDate } from '@/app/components/ui/utils';
@@ -55,7 +56,30 @@ export const SalesPage = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterOpen, setFilterOpen] = useState(false);
   const [hoveredRow, setHoveredRow] = useState<string | null>(null);
+  const [branches, setBranches] = useState<Branch[]>([]);
+  const [branchMap, setBranchMap] = useState<Map<string, string>>(new Map());
   
+  // Load branches for location display
+  useEffect(() => {
+    const loadBranches = async () => {
+      if (!companyId) return;
+      try {
+        const branchesData = await branchService.getAllBranches(companyId);
+        setBranches(branchesData);
+        // Create mapping from branch_id to branch display (code | name)
+        const map = new Map<string, string>();
+        branchesData.forEach(branch => {
+          const displayText = branch.code ? `${branch.code} | ${branch.name}` : branch.name;
+          map.set(branch.id, displayText);
+        });
+        setBranchMap(map);
+      } catch (error) {
+        console.error('[SALES PAGE] Error loading branches:', error);
+      }
+    };
+    loadBranches();
+  }, [companyId]);
+
   // TASK 1 FIX - Ensure data loads on mount
   useEffect(() => {
     if (companyId && sales.length === 0 && !loading) {
@@ -431,10 +455,11 @@ export const SalesPage = () => {
         );
       
       case 'location':
+        const branchDisplay = branchMap.get(sale.location);
         return (
           <div className="flex items-center gap-1.5 text-xs text-gray-400">
             <MapPin size={12} className="text-gray-600" />
-            <span className="truncate">{sale.location}</span>
+            <span className="truncate">{branchDisplay || '—'}</span>
           </div>
         );
       

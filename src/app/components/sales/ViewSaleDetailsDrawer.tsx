@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useSales, Sale } from '@/app/context/SalesContext';
+import { useSupabase } from '@/app/context/SupabaseContext';
+import { branchService, Branch } from '@/app/services/branchService';
 import { InvoicePrintLayout } from '../shared/InvoicePrintLayout';
 import { 
   X, 
@@ -117,9 +119,30 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
 }) => {
   const [activeTab, setActiveTab] = useState<'details' | 'payments' | 'history'>('details');
   const { getSaleById } = useSales();
+  const { companyId } = useSupabase();
   const [sale, setSale] = useState<Sale | null>(null);
   const [loading, setLoading] = useState(true);
   const [showPrintLayout, setShowPrintLayout] = useState(false);
+  const [branchMap, setBranchMap] = useState<Map<string, string>>(new Map());
+
+  // Load branches for location display
+  useEffect(() => {
+    const loadBranches = async () => {
+      if (!companyId) return;
+      try {
+        const branchesData = await branchService.getAllBranches(companyId);
+        // Create mapping from branch_id to branch name
+        const map = new Map<string, string>();
+        branchesData.forEach(branch => {
+          map.set(branch.id, branch.name);
+        });
+        setBranchMap(map);
+      } catch (error) {
+        console.error('[VIEW SALE DETAILS] Error loading branches:', error);
+      }
+    };
+    loadBranches();
+  }, [companyId]);
 
   // Load sale data from context (TASK 2 & 3 FIX - Real data instead of mock)
   useEffect(() => {
@@ -191,7 +214,7 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
       />
 
       {/* Drawer */}
-      <div className="fixed right-0 top-0 h-full w-full md:w-[900px] bg-gray-950 shadow-2xl z-50 overflow-hidden flex flex-col border-l border-gray-800">
+      <div className="fixed right-0 top-0 h-full w-full md:w-[1100px] bg-gray-950 shadow-2xl z-50 overflow-hidden flex flex-col border-l border-gray-800">
         {/* Header */}
         <div className="bg-gray-900/80 border-b border-gray-800 px-6 py-4 flex items-center justify-between shrink-0">
           <div className="flex items-center gap-4">
@@ -343,7 +366,7 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
                       <span className="text-xs text-gray-500">Location</span>
                       <span className="text-white flex items-center gap-2">
                         <Building2 size={14} className="text-gray-500" />
-                        {sale.location}
+                        {branchMap.get(sale.location) || sale.location}
                       </span>
                     </div>
                     <div className="flex justify-between">

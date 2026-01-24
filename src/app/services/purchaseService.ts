@@ -80,6 +80,7 @@ export const purchaseService = {
       .select(`
         *,
         supplier:contacts(name, phone),
+        branch:branches(id, name, code),
         items:purchase_items(
           *,
           product:products(name)
@@ -100,6 +101,7 @@ export const purchaseService = {
         .select(`
           *,
           supplier:contacts(name, phone),
+          branch:branches(id, name, code),
           items:purchase_items(
             *,
             product:products(name)
@@ -119,6 +121,7 @@ export const purchaseService = {
           .select(`
             *,
             supplier:contacts(name, phone),
+            branch:branches(id, name, code),
             items:purchase_items(
               *,
               product:products(name)

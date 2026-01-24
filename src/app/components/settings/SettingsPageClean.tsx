@@ -1,8 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
-  Building2, CreditCard, Hash, Shield, ToggleLeft, Save, 
+  Building2, CreditCard, Hash, ToggleLeft, Save, 
   Users, MapPin, Store, ShoppingCart, ShoppingBag, Package, 
-  Shirt, Calculator, Check
+  Shirt, Calculator, Check, Edit
 } from 'lucide-react';
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
@@ -12,7 +12,10 @@ import { Switch } from "../ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
 import { cn } from "../ui/utils";
 import { useSettings } from '@/app/context/SettingsContext';
+import { useSupabase } from '@/app/context/SupabaseContext';
+import { userService, User as UserType } from '@/app/services/userService';
 import { toast } from 'sonner';
+import { AddUserModal } from '../users/AddUserModal';
 
 type SettingsTab = 
   | 'company' 
@@ -26,13 +29,19 @@ type SettingsTab =
   | 'accounts'
   | 'numbering' 
   | 'users' 
-  | 'permissions' 
   | 'modules';
 
 export const SettingsPageClean = () => {
   const settings = useSettings();
+  const { companyId } = useSupabase();
   const [activeTab, setActiveTab] = useState<SettingsTab>('company');
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  
+  // Users state
+  const [users, setUsers] = useState<UserType[]>([]);
+  const [loadingUsers, setLoadingUsers] = useState(false);
+  const [addUserModalOpen, setAddUserModalOpen] = useState(false);
+  const [editingUser, setEditingUser] = useState<UserType | null>(null);
 
   // Local state for form editing
   const [companyForm, setCompanyForm] = useState(settings.company);
@@ -44,54 +53,92 @@ export const SettingsPageClean = () => {
   const [accountingForm, setAccountingForm] = useState(settings.accountingSettings);
   const [accountsForm, setAccountsForm] = useState(settings.defaultAccounts);
   const [numberingForm, setNumberingForm] = useState(settings.numberingRules);
-  const [permissionsForm, setPermissionsForm] = useState(settings.currentUser);
   const [modulesForm, setModulesForm] = useState(settings.modules);
 
-  const handleSave = () => {
-    switch(activeTab) {
-      case 'company':
-        settings.updateCompanySettings(companyForm);
-        break;
-      case 'pos':
-        settings.updatePOSSettings(posForm);
-        break;
-      case 'sales':
-        settings.updateSalesSettings(salesForm);
-        break;
-      case 'purchase':
-        settings.updatePurchaseSettings(purchaseForm);
-        break;
-      case 'inventory':
-        settings.updateInventorySettings(inventoryForm);
-        break;
-      case 'rental':
-        settings.updateRentalSettings(rentalForm);
-        break;
-      case 'accounting':
-        settings.updateAccountingSettings(accountingForm);
-        break;
-      case 'accounts':
-        settings.updateDefaultAccounts(accountsForm);
-        break;
-      case 'numbering':
-        settings.updateNumberingRules(numberingForm);
-        break;
-      case 'permissions':
-        settings.updatePermissions(permissionsForm);
-        break;
-      case 'modules':
-        settings.updateModules(modulesForm);
-        break;
+  // Load users function - REBUILT (Clean, reusable)
+  const loadUsers = React.useCallback(async () => {
+    if (!companyId) return;
+    
+    setLoadingUsers(true);
+    try {
+      const usersData = await userService.getAllUsers(companyId, { includeInactive: true });
+      setUsers(usersData);
+    } catch (error) {
+      console.error('[SETTINGS] Error loading users:', error);
+      toast.error('Failed to load users');
+    } finally {
+      setLoadingUsers(false);
     }
-    setHasUnsavedChanges(false);
-    toast.success('Settings saved successfully!');
+  }, [companyId]);
+
+  // Load users when users tab is active
+  useEffect(() => {
+    if (activeTab === 'users') {
+      loadUsers();
+    }
+  }, [activeTab, loadUsers]);
+
+  // Listen for userCreated event - Real-time update
+  useEffect(() => {
+    const handleUserCreated = () => {
+      if (activeTab === 'users') {
+        loadUsers();
+      }
+    };
+    
+    window.addEventListener('userCreated', handleUserCreated);
+    return () => {
+      window.removeEventListener('userCreated', handleUserCreated);
+    };
+  }, [activeTab, loadUsers]);
+
+
+  const handleSave = async () => {
+    try {
+      switch(activeTab) {
+        case 'company':
+          await settings.updateCompanySettings(companyForm);
+          break;
+        case 'pos':
+          await settings.updatePOSSettings(posForm);
+          break;
+        case 'sales':
+          await settings.updateSalesSettings(salesForm);
+          break;
+        case 'purchase':
+          await settings.updatePurchaseSettings(purchaseForm);
+          break;
+        case 'inventory':
+          await settings.updateInventorySettings(inventoryForm);
+          break;
+        case 'rental':
+          await settings.updateRentalSettings(rentalForm);
+          break;
+        case 'accounting':
+          await settings.updateAccountingSettings(accountingForm);
+          break;
+        case 'accounts':
+          await settings.updateDefaultAccounts(accountsForm);
+          break;
+        case 'numbering':
+          await settings.updateNumberingRules(numberingForm);
+          break;
+        case 'modules':
+          await settings.updateModules(modulesForm);
+          break;
+      }
+      setHasUnsavedChanges(false);
+      toast.success('Settings saved successfully!');
+    } catch (error: any) {
+      console.error('[SETTINGS] Error saving:', error);
+      toast.error(error.message || 'Failed to save settings');
+    }
   };
 
   const tabs = [
     { id: 'company', label: 'Company', icon: Building2 },
     { id: 'branches', label: 'Branches', icon: MapPin },
     { id: 'users', label: 'Users', icon: Users },
-    { id: 'permissions', label: 'Roles', icon: Shield },
     { id: 'accounts', label: 'Accounts', icon: CreditCard },
     { id: 'numbering', label: 'Numbering', icon: Hash },
     { id: 'pos', label: 'POS', icon: Store },
@@ -269,124 +316,139 @@ export const SettingsPageClean = () => {
             </div>
           )}
 
-          {/* USERS */}
+          {/* USER MANAGEMENT - CLEAN REBUILD */}
           {activeTab === 'users' && (
             <div className="space-y-6">
               <div className="flex items-center justify-between">
                 <div>
                   <h3 className="text-2xl font-bold text-white">User Management</h3>
-                  <p className="text-sm text-gray-400 mt-1">System users</p>
+                  <p className="text-sm text-gray-400 mt-1">Manage system users and their access</p>
                 </div>
-                <Button className="bg-blue-600 hover:bg-blue-500">
+                <Button 
+                  className="bg-blue-600 hover:bg-blue-500"
+                  onClick={() => {
+                    setEditingUser(null);
+                    setAddUserModalOpen(true);
+                  }}
+                >
                   <Users size={16} className="mr-2" /> Add User
                 </Button>
               </div>
 
+              {/* Users Table */}
               <div className="bg-gray-900 border border-gray-800 rounded-lg overflow-hidden">
-                <table className="w-full">
-                  <thead className="bg-gray-950 border-b border-gray-800">
-                    <tr>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase">User</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase">Email</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase">Role</th>
-                      <th className="px-4 py-3 text-center text-xs font-medium text-gray-400 uppercase">Status</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-800">
-                    <tr className="hover:bg-gray-800/50">
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 bg-red-500/20 rounded-full flex items-center justify-center">
-                            <span className="text-red-400 text-sm font-bold">A</span>
-                          </div>
-                          <span className="text-white text-sm">Admin User</span>
-                        </div>
-                      </td>
-                      <td className="px-4 py-3 text-gray-400 text-sm">admin@dincollection.com</td>
-                      <td className="px-4 py-3">
-                        <Badge className="bg-red-500/20 text-red-400 text-xs">Admin</Badge>
-                      </td>
-                      <td className="px-4 py-3 text-center">
-                        <Badge className="bg-green-500/20 text-green-400 text-xs">Active</Badge>
-                      </td>
-                    </tr>
-                    <tr className="hover:bg-gray-800/50">
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 bg-blue-500/20 rounded-full flex items-center justify-center">
-                            <span className="text-blue-400 text-sm font-bold">M</span>
-                          </div>
-                          <span className="text-white text-sm">Manager User</span>
-                        </div>
-                      </td>
-                      <td className="px-4 py-3 text-gray-400 text-sm">manager@dincollection.com</td>
-                      <td className="px-4 py-3">
-                        <Badge className="bg-blue-500/20 text-blue-400 text-xs">Manager</Badge>
-                      </td>
-                      <td className="px-4 py-3 text-center">
-                        <Badge className="bg-green-500/20 text-green-400 text-xs">Active</Badge>
-                      </td>
-                    </tr>
-                    <tr className="hover:bg-gray-800/50">
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 bg-gray-500/20 rounded-full flex items-center justify-center">
-                            <span className="text-gray-400 text-sm font-bold">S</span>
-                          </div>
-                          <span className="text-white text-sm">Staff User</span>
-                        </div>
-                      </td>
-                      <td className="px-4 py-3 text-gray-400 text-sm">staff@dincollection.com</td>
-                      <td className="px-4 py-3">
-                        <Badge className="bg-gray-500/20 text-gray-400 text-xs">Staff</Badge>
-                      </td>
-                      <td className="px-4 py-3 text-center">
-                        <Badge className="bg-green-500/20 text-green-400 text-xs">Active</Badge>
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
+                {loadingUsers ? (
+                  <div className="p-8 text-center text-gray-400">Loading users...</div>
+                ) : users.length === 0 ? (
+                  <div className="p-8 text-center text-gray-400">
+                    <Users size={48} className="mx-auto mb-4 text-gray-600" />
+                    <p className="text-gray-400 mb-2">No users found</p>
+                    <Button 
+                      variant="outline" 
+                      size="sm"
+                      onClick={() => {
+                        setEditingUser(null);
+                        setAddUserModalOpen(true);
+                      }}
+                      className="mt-2"
+                    >
+                      Create First User
+                    </Button>
+                  </div>
+                ) : (
+                  <table className="w-full">
+                    <thead className="bg-gray-950 border-b border-gray-800">
+                      <tr>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase">User</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase">Email</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase">Role</th>
+                        <th className="px-4 py-3 text-center text-xs font-medium text-gray-400 uppercase">Status</th>
+                        <th className="px-4 py-3 text-center text-xs font-medium text-gray-400 uppercase">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-800">
+                      {users.map((user) => (
+                        <tr key={user.id} className="hover:bg-gray-800/50 transition-colors">
+                          <td className="px-4 py-3">
+                            <div className="flex items-center gap-3">
+                              <div className="w-10 h-10 bg-blue-500/20 rounded-full flex items-center justify-center">
+                                <span className="text-blue-400 text-sm font-bold">
+                                  {user.full_name?.charAt(0).toUpperCase() || 'U'}
+                                </span>
+                              </div>
+                              <div>
+                                <span className="text-white text-sm font-medium">{user.full_name || 'No Name'}</span>
+                                {user.phone && (
+                                  <p className="text-xs text-gray-500">{user.phone}</p>
+                                )}
+                              </div>
+                            </div>
+                          </td>
+                          <td className="px-4 py-3">
+                            <span className="text-gray-300 text-sm">{user.email}</span>
+                          </td>
+                          <td className="px-4 py-3">
+                            <Badge className={cn(
+                              "text-xs font-medium",
+                              user.role === 'admin' && "bg-red-500/20 text-red-400 border-red-500/30",
+                              user.role === 'manager' && "bg-purple-500/20 text-purple-400 border-purple-500/30",
+                              user.role === 'salesman' && "bg-green-500/20 text-green-400 border-green-500/30",
+                              user.role === 'staff' && "bg-blue-500/20 text-blue-400 border-blue-500/30",
+                              "bg-gray-500/20 text-gray-400 border-gray-500/30"
+                            )}>
+                              {user.role ? user.role.charAt(0).toUpperCase() + user.role.slice(1) : 'Staff'}
+                            </Badge>
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            <Badge className={cn(
+                              "text-xs font-medium",
+                              user.is_active 
+                                ? "bg-green-500/20 text-green-400 border-green-500/30" 
+                                : "bg-gray-500/20 text-gray-400 border-gray-500/30"
+                            )}>
+                              {user.is_active ? 'Active' : 'Inactive'}
+                            </Badge>
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            <div className="flex items-center justify-center gap-2">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => {
+                                  setEditingUser(user);
+                                  setAddUserModalOpen(true);
+                                }}
+                                className="text-xs h-7"
+                              >
+                                <Edit size={14} className="mr-1" /> Edit
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={async () => {
+                                  try {
+                                    await userService.updateUser(user.id, { is_active: !user.is_active });
+                                    toast.success(`User ${user.is_active ? 'deactivated' : 'activated'}`);
+                                    loadUsers();
+                                  } catch (error: any) {
+                                    toast.error(`Failed to update user: ${error.message}`);
+                                  }
+                                }}
+                                className="text-xs h-7"
+                              >
+                                {user.is_active ? 'Deactivate' : 'Activate'}
+                              </Button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
               </div>
             </div>
           )}
 
-          {/* PERMISSIONS */}
-          {activeTab === 'permissions' && (
-            <div className="space-y-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="text-2xl font-bold text-white">Roles & Permissions</h3>
-                  <p className="text-sm text-gray-400 mt-1">Access control</p>
-                </div>
-              </div>
-
-              <div className="bg-gray-900 border border-gray-800 rounded-lg p-5">
-                <p className="text-sm text-gray-400 mb-4">Current Role: <span className="text-white font-bold">{permissionsForm.role}</span></p>
-                
-                <div className="grid grid-cols-2 gap-3">
-                  {[
-                    { key: 'canCreateSale', label: 'Create Sales' },
-                    { key: 'canEditSale', label: 'Edit Sales' },
-                    { key: 'canDeleteSale', label: 'Delete Sales' },
-                    { key: 'canViewReports', label: 'View Reports' },
-                    { key: 'canManageSettings', label: 'Manage Settings' },
-                    { key: 'canManageUsers', label: 'Manage Users' },
-                    { key: 'canAccessAccounting', label: 'Access Accounting' },
-                    { key: 'canMakePayments', label: 'Make Payments' },
-                  ].map((perm) => (
-                    <div key={perm.key} className="flex items-center justify-between bg-gray-950 p-3 rounded-lg">
-                      <span className="text-sm text-gray-300">{perm.label}</span>
-                      {permissionsForm[perm.key as keyof UserPermissions] ? (
-                        <Check size={16} className="text-green-400" />
-                      ) : (
-                        <div className="w-4 h-4 rounded border border-gray-700" />
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
 
           {/* DEFAULT ACCOUNTS */}
           {activeTab === 'accounts' && (
@@ -556,6 +618,19 @@ export const SettingsPageClean = () => {
 
         </div>
       </div>
+
+      {/* Add User Modal - Centered Dialog */}
+      <AddUserModal
+        open={addUserModalOpen}
+        onClose={() => {
+          setAddUserModalOpen(false);
+          setEditingUser(null);
+        }}
+        onSuccess={() => {
+          loadUsers();
+        }}
+        editingUser={editingUser}
+      />
     </div>
   );
 };

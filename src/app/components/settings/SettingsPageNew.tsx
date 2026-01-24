@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { 
-  Building2, CreditCard, Hash, Shield, ToggleLeft, Save, 
+  Building2, CreditCard, Hash, ToggleLeft, Save, 
   CheckCircle, Users, Lock, Key, Settings as SettingsIcon, AlertCircle, UserCog,
   MapPin, Store, ShoppingCart, ShoppingBag, Package, Shirt, Calculator, X, Edit
 } from 'lucide-react';
@@ -13,7 +13,10 @@ import { cn } from "../ui/utils";
 import { useSettings, BranchSettings } from '@/app/context/SettingsContext';
 import { branchService } from '@/app/services/branchService';
 import { useSupabase } from '@/app/context/SupabaseContext';
+import { userService, User as UserType } from '@/app/services/userService';
 import { toast } from 'sonner';
+import { AddUserModal } from '../users/AddUserModal';
+import { AddBranchModal } from '../branches/AddBranchModal';
 import {
   Dialog,
   DialogContent,
@@ -36,7 +39,6 @@ type SettingsTab =
   | 'accounts' 
   | 'numbering' 
   | 'users' 
-  | 'permissions' 
   | 'modules';
 
 export const SettingsPageNew = () => {
@@ -45,10 +47,20 @@ export const SettingsPageNew = () => {
   const [activeTab, setActiveTab] = useState<SettingsTab>('company');
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
 
-  // Branch edit dialog state
+  // Branch edit dialog state (OLD - keeping for backward compatibility)
   const [isBranchDialogOpen, setIsBranchDialogOpen] = useState(false);
   const [editingBranch, setEditingBranch] = useState<BranchSettings | null>(null);
   const [branchForm, setBranchForm] = useState<Partial<BranchSettings>>({});
+  
+  // Branch modal state (NEW - using AddBranchModal)
+  const [addBranchModalOpen, setAddBranchModalOpen] = useState(false);
+  const [editingBranchForModal, setEditingBranchForModal] = useState<any>(null);
+
+  // User Management state
+  const [users, setUsers] = useState<UserType[]>([]);
+  const [loadingUsers, setLoadingUsers] = useState(false);
+  const [addUserModalOpen, setAddUserModalOpen] = useState(false);
+  const [editingUser, setEditingUser] = useState<UserType | null>(null);
 
   // Local state for form editing
   const [companyForm, setCompanyForm] = useState(settings.company);
@@ -60,14 +72,93 @@ export const SettingsPageNew = () => {
   const [accountingForm, setAccountingForm] = useState(settings.accountingSettings);
   const [accountsForm, setAccountsForm] = useState(settings.defaultAccounts);
   const [numberingForm, setNumberingForm] = useState(settings.numberingRules);
-  const [permissionsForm, setPermissionsForm] = useState(settings.currentUser);
   const [modulesForm, setModulesForm] = useState(settings.modules);
 
-  // Handle branch edit
+  // Load users function
+  const loadUsers = useCallback(async () => {
+    if (!companyId) return;
+    
+    setLoadingUsers(true);
+    try {
+      const usersData = await userService.getAllUsers(companyId, { includeInactive: true });
+      setUsers(usersData);
+    } catch (error) {
+      console.error('[SETTINGS] Error loading users:', error);
+      toast.error('Failed to load users');
+    } finally {
+      setLoadingUsers(false);
+    }
+  }, [companyId]);
+
+  // Load branches from database
+  const loadBranches = useCallback(async () => {
+    if (!companyId) return;
+    try {
+      const branchesData = await branchService.getAllBranches(companyId);
+      // Convert Branch[] to BranchSettings[] format
+      const branchSettings: BranchSettings[] = branchesData.map(branch => ({
+        id: branch.id,
+        branchName: branch.name,
+        branchCode: branch.code || '',
+        address: branch.address || '',
+        phone: branch.phone || '',
+        isActive: branch.is_active ?? true,
+        isDefault: false, // You may need to add this to Branch interface
+        cashAccount: '', // These might need to be loaded separately
+        bankAccount: '',
+        posCashDrawer: '',
+      }));
+      settings.updateBranches(branchSettings);
+    } catch (error) {
+      console.error('[SETTINGS] Error loading branches:', error);
+      toast.error('Failed to load branches');
+    }
+  }, [companyId, settings]);
+
+  // Load users when users tab is active
+  useEffect(() => {
+    if (activeTab === 'users') {
+      loadUsers();
+    }
+  }, [activeTab, loadUsers]);
+
+  // Load branches when branches tab is active
+  useEffect(() => {
+    if (activeTab === 'branches') {
+      loadBranches();
+    }
+  }, [activeTab, loadBranches]);
+
+  // Listen for userCreated event - Real-time update
+  useEffect(() => {
+    const handleUserCreated = () => {
+      if (activeTab === 'users') {
+        loadUsers();
+      }
+    };
+    
+    window.addEventListener('userCreated', handleUserCreated);
+    return () => {
+      window.removeEventListener('userCreated', handleUserCreated);
+    };
+  }, [activeTab, loadUsers]);
+
+  // Handle branch edit (using new modal)
   const handleEditBranch = (branch: BranchSettings) => {
-    setEditingBranch(branch);
-    setBranchForm({ ...branch });
-    setIsBranchDialogOpen(true);
+    // Convert BranchSettings to Branch format for AddBranchModal
+    const branchForModal = {
+      id: branch.id,
+      company_id: companyId || '',
+      name: branch.branchName,
+      code: branch.branchCode,
+      phone: branch.phone,
+      address: branch.address,
+      city: undefined,
+      state: undefined,
+      is_active: branch.isActive ?? true,
+    };
+    setEditingBranchForModal(branchForModal);
+    setAddBranchModalOpen(true);
   };
 
   // Handle branch save
@@ -140,9 +231,6 @@ export const SettingsPageNew = () => {
         case 'numbering':
           await settings.updateNumberingRules(numberingForm);
           break;
-        case 'permissions':
-          await settings.updatePermissions(permissionsForm);
-          break;
         case 'modules':
           await settings.updateModules(modulesForm);
           break;
@@ -166,7 +254,7 @@ export const SettingsPageNew = () => {
     { id: 'accounts' as const, label: 'Default Accounts', icon: CreditCard },
     { id: 'numbering' as const, label: 'Numbering Rules', icon: Hash },
     { id: 'users' as const, label: 'User Management', icon: UserCog },
-    { id: 'permissions' as const, label: 'Roles & Permissions', icon: Shield },
+    // Permissions tab removed - permissions now managed per-user in User Management modal
     { id: 'modules' as const, label: 'Module Toggles', icon: ToggleLeft },
   ];
 
@@ -328,7 +416,13 @@ export const SettingsPageNew = () => {
                       <p className="text-sm text-gray-400">Manage multiple business locations</p>
                     </div>
                   </div>
-                  <Button className="bg-green-600 hover:bg-green-500 text-white gap-2">
+                  <Button 
+                    className="bg-green-600 hover:bg-green-500 text-white gap-2"
+                    onClick={() => {
+                      setEditingBranchForModal(null);
+                      setAddBranchModalOpen(true);
+                    }}
+                  >
                     <MapPin size={16} /> Add New Branch
                   </Button>
                 </div>
@@ -1467,164 +1561,141 @@ export const SettingsPageNew = () => {
                       <p className="text-sm text-gray-400">Manage system users and access</p>
                     </div>
                   </div>
-                  <Button className="bg-indigo-600 hover:bg-indigo-500 text-white gap-2">
+                  <Button 
+                    className="bg-indigo-600 hover:bg-indigo-500 text-white gap-2"
+                    onClick={() => {
+                      setEditingUser(null);
+                      setAddUserModalOpen(true);
+                    }}
+                  >
                     <Users size={16} /> Add User
                   </Button>
                 </div>
 
                 <div className="bg-gray-950 border border-gray-800 rounded-lg overflow-hidden">
-                  <table className="w-full">
-                    <thead className="bg-gray-900 border-b border-gray-800">
-                      <tr>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">User</th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Email</th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Role</th>
-                        <th className="px-4 py-3 text-center text-xs font-medium text-gray-400 uppercase tracking-wider">Status</th>
-                        <th className="px-4 py-3 text-center text-xs font-medium text-gray-400 uppercase tracking-wider">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-800">
-                      <tr className="hover:bg-gray-900/50 transition-colors">
-                        <td className="px-4 py-4">
-                          <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-full bg-red-500/20 flex items-center justify-center">
-                              <span className="text-red-400 font-bold">A</span>
-                            </div>
-                            <div>
-                              <p className="text-white font-medium">Admin User</p>
-                              <p className="text-xs text-gray-500">Created 6 months ago</p>
-                            </div>
-                          </div>
-                        </td>
-                        <td className="px-4 py-4 text-gray-400">admin@dincollection.com</td>
-                        <td className="px-4 py-4">
-                          <Badge className="bg-red-500/20 text-red-400 border-red-500/30">Admin</Badge>
-                        </td>
-                        <td className="px-4 py-4 text-center">
-                          <Badge className="bg-green-500/20 text-green-400 border-green-500/30">Active</Badge>
-                        </td>
-                        <td className="px-4 py-4 text-center">
-                          <Button variant="ghost" size="sm" className="text-blue-400 hover:text-blue-300">Edit</Button>
-                        </td>
-                      </tr>
-
-                      <tr className="hover:bg-gray-900/50 transition-colors">
-                        <td className="px-4 py-4">
-                          <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-full bg-blue-500/20 flex items-center justify-center">
-                              <span className="text-blue-400 font-bold">M</span>
-                            </div>
-                            <div>
-                              <p className="text-white font-medium">Manager User</p>
-                              <p className="text-xs text-gray-500">Created 3 months ago</p>
-                            </div>
-                          </div>
-                        </td>
-                        <td className="px-4 py-4 text-gray-400">manager@dincollection.com</td>
-                        <td className="px-4 py-4">
-                          <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/30">Manager</Badge>
-                        </td>
-                        <td className="px-4 py-4 text-center">
-                          <Badge className="bg-green-500/20 text-green-400 border-green-500/30">Active</Badge>
-                        </td>
-                        <td className="px-4 py-4 text-center">
-                          <Button variant="ghost" size="sm" className="text-blue-400 hover:text-blue-300">Edit</Button>
-                        </td>
-                      </tr>
-
-                      <tr className="hover:bg-gray-900/50 transition-colors">
-                        <td className="px-4 py-4">
-                          <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-full bg-gray-500/20 flex items-center justify-center">
-                              <span className="text-gray-400 font-bold">S</span>
-                            </div>
-                            <div>
-                              <p className="text-white font-medium">Staff User</p>
-                              <p className="text-xs text-gray-500">Created 1 month ago</p>
-                            </div>
-                          </div>
-                        </td>
-                        <td className="px-4 py-4 text-gray-400">staff@dincollection.com</td>
-                        <td className="px-4 py-4">
-                          <Badge className="bg-gray-500/20 text-gray-400 border-gray-500/30">Staff</Badge>
-                        </td>
-                        <td className="px-4 py-4 text-center">
-                          <Badge className="bg-green-500/20 text-green-400 border-green-500/30">Active</Badge>
-                        </td>
-                        <td className="px-4 py-4 text-center">
-                          <Button variant="ghost" size="sm" className="text-blue-400 hover:text-blue-300">Edit</Button>
-                        </td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )}
-
-            {/* PERMISSIONS TAB */}
-            {activeTab === 'permissions' && (
-              <div className="space-y-6">
-                <div className="flex items-center gap-3 mb-6">
-                  <div className="p-3 bg-amber-500/10 rounded-lg">
-                    <Shield className="text-amber-500" size={24} />
-                  </div>
-                  <div>
-                    <h3 className="text-xl font-bold text-white">Roles & Permissions</h3>
-                    <p className="text-sm text-gray-400">Current user: <span className="text-white font-semibold">{permissionsForm.role}</span></p>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  {[
-                    { key: 'canCreateSale', label: 'Create Sales', icon: ShoppingCart },
-                    { key: 'canEditSale', label: 'Edit Sales', icon: ShoppingCart },
-                    { key: 'canDeleteSale', label: 'Delete Sales', icon: ShoppingCart },
-                    { key: 'canViewReports', label: 'View Reports', icon: Calculator },
-                    { key: 'canManageSettings', label: 'Manage Settings', icon: SettingsIcon },
-                    { key: 'canManageUsers', label: 'Manage Users', icon: Users },
-                    { key: 'canAccessAccounting', label: 'Access Accounting', icon: Calculator },
-                    { key: 'canMakePayments', label: 'Make Payments', icon: CreditCard },
-                    { key: 'canReceivePayments', label: 'Receive Payments', icon: CreditCard },
-                    { key: 'canManageExpenses', label: 'Manage Expenses', icon: CreditCard },
-                    { key: 'canManageProducts', label: 'Manage Products', icon: Package },
-                    { key: 'canManagePurchases', label: 'Manage Purchases', icon: ShoppingBag },
-                    { key: 'canManageRentals', label: 'Manage Rentals', icon: Shirt },
-                  ].map((perm) => {
-                    const IconComponent = perm.icon;
-                    const isEnabled = permissionsForm[perm.key as keyof typeof permissionsForm];
-                    return (
-                      <div 
-                        key={perm.key} 
-                        className={cn(
-                          "flex items-center justify-between p-4 rounded-lg border transition-all",
-                          isEnabled 
-                            ? "bg-green-900/20 border-green-500/30" 
-                            : "bg-gray-950 border-gray-800"
-                        )}
+                  {loadingUsers ? (
+                    <div className="p-8 text-center text-gray-400">Loading users...</div>
+                  ) : users.length === 0 ? (
+                    <div className="p-8 text-center text-gray-400">
+                      <Users size={48} className="mx-auto mb-4 text-gray-600" />
+                      <p className="text-gray-400 mb-2">No users found</p>
+                      <Button 
+                        variant="outline" 
+                        size="sm"
+                        onClick={() => {
+                          setEditingUser(null);
+                          setAddUserModalOpen(true);
+                        }}
+                        className="mt-2"
                       >
-                        <div className="flex items-center gap-3">
-                          <IconComponent size={18} className={isEnabled ? "text-green-400" : "text-gray-500"} />
-                          <span className={cn("font-medium", isEnabled ? "text-white" : "text-gray-400")}>
-                            {perm.label}
-                          </span>
-                        </div>
-                        {isEnabled ? (
-                          <CheckCircle size={20} className="text-green-400" />
-                        ) : (
-                          <Lock size={20} className="text-gray-600" />
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-
-                <div className="bg-blue-900/10 border border-blue-500/20 rounded-lg p-4 mt-6">
-                  <p className="text-sm text-blue-300">
-                    ℹ️ <strong>Note:</strong> Permissions are role-based and controlled by system administrators.
-                  </p>
+                        Create First User
+                      </Button>
+                    </div>
+                  ) : (
+                    <table className="w-full">
+                      <thead className="bg-gray-900 border-b border-gray-800">
+                        <tr>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">User</th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Email</th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Role</th>
+                          <th className="px-4 py-3 text-center text-xs font-medium text-gray-400 uppercase tracking-wider">Status</th>
+                          <th className="px-4 py-3 text-center text-xs font-medium text-gray-400 uppercase tracking-wider">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-800">
+                        {users.map((user) => (
+                          <tr key={user.id} className="hover:bg-gray-900/50 transition-colors">
+                            <td className="px-4 py-4">
+                              <div className="flex items-center gap-3">
+                                <div className={cn(
+                                  "w-10 h-10 rounded-full flex items-center justify-center",
+                                  user.role === 'admin' && "bg-red-500/20",
+                                  user.role === 'manager' && "bg-blue-500/20",
+                                  user.role === 'salesman' && "bg-green-500/20",
+                                  user.role === 'staff' && "bg-gray-500/20",
+                                  "bg-gray-500/20"
+                                )}>
+                                  <span className={cn(
+                                    "font-bold text-sm",
+                                    user.role === 'admin' && "text-red-400",
+                                    user.role === 'manager' && "text-blue-400",
+                                    user.role === 'salesman' && "text-green-400",
+                                    "text-gray-400"
+                                  )}>
+                                    {user.full_name?.charAt(0).toUpperCase() || 'U'}
+                                  </span>
+                                </div>
+                                <div>
+                                  <p className="text-white font-medium">{user.full_name || 'No Name'}</p>
+                                  {user.phone && (
+                                    <p className="text-xs text-gray-500">{user.phone}</p>
+                                  )}
+                                </div>
+                              </div>
+                            </td>
+                            <td className="px-4 py-4 text-gray-400">{user.email}</td>
+                            <td className="px-4 py-4">
+                              <Badge className={cn(
+                                "text-xs",
+                                user.role === 'admin' && "bg-red-500/20 text-red-400 border-red-500/30",
+                                user.role === 'manager' && "bg-blue-500/20 text-blue-400 border-blue-500/30",
+                                user.role === 'salesman' && "bg-green-500/20 text-green-400 border-green-500/30",
+                                user.role === 'staff' && "bg-gray-500/20 text-gray-400 border-gray-500/30",
+                                "bg-gray-500/20 text-gray-400 border-gray-500/30"
+                              )}>
+                                {user.role ? user.role.charAt(0).toUpperCase() + user.role.slice(1) : 'Staff'}
+                              </Badge>
+                            </td>
+                            <td className="px-4 py-4 text-center">
+                              <Badge className={cn(
+                                "text-xs",
+                                user.is_active 
+                                  ? "bg-green-500/20 text-green-400 border-green-500/30" 
+                                  : "bg-gray-500/20 text-gray-400 border-gray-500/30"
+                              )}>
+                                {user.is_active ? 'Active' : 'Inactive'}
+                              </Badge>
+                            </td>
+                            <td className="px-4 py-4 text-center">
+                              <div className="flex items-center justify-center gap-2">
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => {
+                                    setEditingUser(user);
+                                    setAddUserModalOpen(true);
+                                  }}
+                                  className="text-xs h-7 text-blue-400 hover:text-blue-300"
+                                >
+                                  <Edit size={14} className="mr-1" /> Edit
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={async () => {
+                                    try {
+                                      await userService.updateUser(user.id, { is_active: !user.is_active });
+                                      toast.success(`User ${user.is_active ? 'deactivated' : 'activated'}`);
+                                      loadUsers();
+                                    } catch (error: any) {
+                                      toast.error(`Failed to update user: ${error.message}`);
+                                    }
+                                  }}
+                                  className="text-xs h-7"
+                                >
+                                  {user.is_active ? 'Deactivate' : 'Activate'}
+                                </Button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
                 </div>
               </div>
             )}
+
 
             {/* MODULE TOGGLES TAB */}
             {activeTab === 'modules' && (
@@ -1843,6 +1914,32 @@ export const SettingsPageNew = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Add User Modal - Centered Dialog */}
+      <AddUserModal
+        open={addUserModalOpen}
+        onClose={() => {
+          setAddUserModalOpen(false);
+          setEditingUser(null);
+        }}
+        onSuccess={() => {
+          loadUsers();
+        }}
+        editingUser={editingUser}
+      />
+
+      {/* Add Branch Modal - Centered Dialog */}
+      <AddBranchModal
+        open={addBranchModalOpen}
+        onClose={() => {
+          setAddBranchModalOpen(false);
+          setEditingBranchForModal(null);
+        }}
+        onSuccess={() => {
+          loadBranches();
+        }}
+        editingBranch={editingBranchForModal}
+      />
     </div>
   );
 };

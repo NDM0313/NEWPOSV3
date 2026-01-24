@@ -67,7 +67,7 @@ import {
     PopoverContent,
     PopoverTrigger,
 } from "../ui/popover";
-import { PackingEntryModal, PackingDetails } from '../transactions/PackingEntryModal';
+import { PackingDetails } from '../transactions/PackingEntryModal';
 import { toast } from "sonner";
 import { BranchSelector, currentUser } from '@/app/components/layout/BranchSelector';
 import { PurchaseItemsSection } from './PurchaseItemsSection';
@@ -75,6 +75,7 @@ import { PaymentAttachments, PaymentAttachment } from '../payments/PaymentAttach
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { contactService } from '@/app/services/contactService';
 import { productService } from '@/app/services/productService';
+import { branchService } from '@/app/services/branchService';
 import { usePurchases } from '@/app/context/PurchaseContext';
 import { useNavigation } from '@/app/context/NavigationContext';
 import { Loader2 } from 'lucide-react';
@@ -151,7 +152,7 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
     // Supabase & Context
     const { companyId, branchId: contextBranchId } = useSupabase();
     const { createPurchase } = usePurchases();
-    const { openDrawer, activeDrawer, createdContactId, createdContactType, setCreatedContactId } = useNavigation();
+    const { openDrawer, activeDrawer, createdContactId, createdContactType, setCreatedContactId, openPackingModal } = useNavigation();
     
     // Data State
     const [suppliers, setSuppliers] = useState<Array<{ id: number | string; name: string; dueBalance: number }>>([]);
@@ -162,6 +163,7 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
     // Header State
     const [supplierId, setSupplierId] = useState("");
     const [supplierSearchOpen, setSupplierSearchOpen] = useState(false);
+    const [supplierSearchTerm, setSupplierSearchTerm] = useState("");
     const [purchaseDate, setPurchaseDate] = useState<Date>(new Date());
     const [refNumber, setRefNumber] = useState("");
     
@@ -169,6 +171,8 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
     
     // Branch State
     const [branchId, setBranchId] = useState<string>(contextBranchId || '');
+    const [branches, setBranches] = useState<Branch[]>([]);
+    const [branchDropdownOpen, setBranchDropdownOpen] = useState(false);
     
     // Items List State
     const [items, setItems] = useState<PurchaseItem[]>([]);
@@ -227,11 +231,8 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
     // Status State
     const [purchaseStatus, setPurchaseStatus] = useState<'draft' | 'ordered' | 'received' | 'final'>('draft');
 
-    // Packing Modal State
-    const [packingModalOpen, setPackingModalOpen] = useState(false);
+    // Packing Modal State - Now using global modal via NavigationContext
     const [activePackingItemId, setActivePackingItemId] = useState<number | null>(null);
-    const [activeProductName, setActiveProductName] = useState("");
-    const [activePackingData, setActivePackingData] = useState<PackingDetails | undefined>(undefined);
 
     // Calculations
     const subtotal = items.reduce((sum, item) => sum + (item.price * item.qty), 0);
@@ -393,17 +394,23 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
     };
 
     // Packing Handlers - Open with existing data if available (for editing)
-    const openPackingModal = (item: PurchaseItem) => {
+    const openPackingModalLocal = (item: PurchaseItem) => {
         setActivePackingItemId(item.id);
-        setActiveProductName(item.name);
-        setActivePackingData(item.packingDetails); // Pre-fill with existing data if editing
-        setPackingModalOpen(true);
+        // Use global packing modal
+        if (openPackingModal) {
+            openPackingModal({
+                itemId: item.id,
+                productName: item.name,
+                initialData: item.packingDetails, // Pre-fill with existing data if editing
+                onSave: handleSavePacking
+            });
+        }
     };
 
     const handleOpenPackingModalById = (itemId: number) => {
         const item = items.find(i => i.id === itemId);
         if (item) {
-            openPackingModal(item);
+            openPackingModalLocal(item);
         }
     };
 
@@ -423,8 +430,8 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                 return item;
             }));
             toast.success("Packing details saved");
+            setActivePackingItemId(null);
         }
-        setPackingModalOpen(false);
     };
 
     // Add Payment
@@ -517,6 +524,35 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
         
         loadData();
     }, [companyId]);
+
+    // Load branches
+    useEffect(() => {
+        const loadBranches = async () => {
+            if (!companyId) return;
+            try {
+                const branchesData = await branchService.getAllBranches(companyId);
+                setBranches(branchesData);
+                
+                // Default to Main Branch (is_default = true) or first branch
+                if (!branchId) {
+                    if (contextBranchId) {
+                        setBranchId(contextBranchId);
+                    } else {
+                        // Find main branch (is_default = true) or use first branch
+                        const mainBranch = branchesData.find((b: Branch) => (b as any).is_default === true);
+                        if (mainBranch) {
+                            setBranchId(mainBranch.id);
+                        } else if (branchesData.length > 0) {
+                            setBranchId(branchesData[0].id);
+                        }
+                    }
+                }
+            } catch (error) {
+                console.error('[PURCHASE FORM] Error loading branches:', error);
+            }
+        };
+        loadBranches();
+    }, [companyId, branchId, contextBranchId]);
 
     // Reload suppliers when contact drawer closes (in case a new contact was added)
     useEffect(() => {
@@ -849,46 +885,46 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                             <div className="grid grid-cols-1 md:grid-cols-5 gap-2.5 items-end">
                                 <div className="flex flex-col">
                                     <Label className="text-orange-400 font-medium text-[10px] uppercase tracking-wide h-[14px] mb-1.5">Supplier</Label>
-                                <SearchableSelect
-                                    key={`supplier-select-${supplierId}-${suppliers.length}`}
-                                    value={supplierId}
-                                    onValueChange={setSupplierId}
-                                    options={suppliers.map(s => ({ id: s.id.toString(), name: s.name, dueBalance: s.dueBalance }))}
-                                    placeholder="Select Supplier"
-                                    searchPlaceholder="Search supplier..."
-                                    icon={<User size={14} className="text-gray-400 shrink-0" />}
-                                    enableAddNew={true}
-                                    addNewLabel="Add New Supplier"
-                                    onAddNew={(searchText) => {
-                                        // Open Add Contact drawer with Supplier role pre-selected and search text prefilled
-                                        console.log('[PURCHASE FORM] Opening Add Contact drawer, searchText:', searchText);
-                                        openDrawer('addContact', 'addPurchase', { 
-                                            contactType: 'supplier',
-                                            prefillName: searchText || undefined
-                                        });
-                                    }}
-                                    renderOption={(option) => (
-                                        <div className="flex items-center justify-between w-full">
-                                            <span className="flex-1">{option.name}</span>
-                                            {option.dueBalance > 0 && (
-                                                <span className="text-xs font-medium px-2 py-0.5 rounded bg-orange-500/20 text-orange-400 ml-2">
-                                                    Due: ${option.dueBalance.toLocaleString()}
-                                                </span>
-                                            )}
-                                        </div>
-                                    )}
-                                />
-                            </div>
+                                    <SearchableSelect
+                                        key={`supplier-select-${supplierId}-${suppliers.length}`}
+                                        value={supplierId}
+                                        onValueChange={setSupplierId}
+                                        options={suppliers.map(s => ({ id: s.id.toString(), name: s.name, dueBalance: s.dueBalance }))}
+                                        placeholder="Select Supplier"
+                                        searchPlaceholder="Search supplier..."
+                                        icon={<User size={14} className="text-gray-400 shrink-0" />}
+                                        enableAddNew={true}
+                                        addNewLabel="Add New Supplier"
+                                        onAddNew={(searchText) => {
+                                            // Open Add Contact drawer with Supplier role pre-selected and search text prefilled
+                                            console.log('[PURCHASE FORM] Opening Add Contact drawer, searchText:', searchText);
+                                            openDrawer('addContact', 'addPurchase', { 
+                                                contactType: 'supplier',
+                                                prefillName: searchText || undefined
+                                            });
+                                        }}
+                                        renderOption={(option) => (
+                                            <div className="flex items-center justify-between w-full">
+                                                <span className="flex-1">{option.name}</span>
+                                                {option.dueBalance > 0 && (
+                                                    <span className="text-xs font-medium px-2 py-0.5 rounded bg-orange-500/20 text-orange-400 ml-2">
+                                                        Due: ${option.dueBalance.toLocaleString()}
+                                                    </span>
+                                                )}
+                                            </div>
+                                        )}
+                                    />
+                                </div>
 
-                            <div className="space-y-1.5">
-                                <CalendarDatePicker
-                                    label="Date"
-                                    value={purchaseDate}
-                                    onChange={(date) => setPurchaseDate(date || new Date())}
-                                    showTime={true}
-                                    required
-                                />
-                            </div>
+                                <div className="flex flex-col">
+                                    <Label className="text-gray-500 font-medium text-xs uppercase tracking-wide h-[14px] mb-1.5">Date</Label>
+                                    <CalendarDatePicker
+                                        value={purchaseDate}
+                                        onChange={(date) => setPurchaseDate(date || new Date())}
+                                        showTime={true}
+                                        required
+                                    />
+                                </div>
 
                                 <div className="flex flex-col">
                                     <Label className="text-gray-500 font-medium text-xs uppercase tracking-wide h-[14px] mb-1.5">Ref#</Label>
@@ -967,57 +1003,53 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                         
                         {/* LEFT PANEL - Items Entry (Independent Scroll) */}
                         <div className="flex flex-col h-full overflow-hidden">
-                    {/* Items Table Section */}
-                    <PurchaseItemsSection
-                        items={items}
-                        setItems={setItems}
-                        productSearchOpen={productSearchOpen}
-                        setProductSearchOpen={setProductSearchOpen}
-                        productSearchTerm={productSearchTerm}
-                        setProductSearchTerm={setProductSearchTerm}
-                        pendingProduct={pendingProduct}
-                        setPendingProduct={setPendingProduct}
-                        pendingQty={pendingQty}
-                        setPendingQty={setPendingQty}
-                        pendingPrice={pendingPrice}
-                        setPendingPrice={setPendingPrice}
-                        pendingSize={pendingSize}
-                        setPendingSize={setPendingSize}
-                        pendingColor={pendingColor}
-                        setPendingColor={setPendingColor}
-                        pendingThaans={pendingThaans}
-                        setPendingThaans={setPendingThaans}
-                        pendingMeters={pendingMeters}
-                        setPendingMeters={setPendingMeters}
-                        filteredProducts={filteredProducts}
-                        handleSelectProduct={handleSelectProduct}
-                        handleAddItem={commitPendingItem}
-                        handleOpenPackingModal={handleOpenPackingModalById}
-                        setPackingModalOpen={setPackingModalOpen}
-                        setActiveProductName={setActiveProductName}
-                        setActivePackingData={setActivePackingData}
-                        setActivePackingItemId={setActivePackingItemId}
-                        searchInputRef={searchInputRef}
-                        qtyInputRef={qtyInputRef}
-                        priceInputRef={priceInputRef}
-                        addBtnRef={addBtnRef}
-                        // Inline variation selection
-                        showVariationSelector={showVariationSelector}
-                        selectedProductForVariation={selectedProductForVariation}
-                        productVariations={productVariations}
-                        handleVariationSelect={handleVariationSelect}
-                        setShowVariationSelector={setShowVariationSelector}
-                        setSelectedProductForVariation={setSelectedProductForVariation}
-                        handleInlineVariationSelect={handleInlineVariationSelect}
-                        // Update item
-                        updateItem={updateItem}
-                        // Keyboard navigation
-                        itemQtyRefs={itemQtyRefs}
-                        itemPriceRefs={itemPriceRefs}
-                        itemVariationRefs={itemVariationRefs}
-                        handleQtyKeyDown={handleQtyKeyDown}
-                        handlePriceKeyDown={handlePriceKeyDown}
-                    />
+                            {/* Items Table Section */}
+                            <PurchaseItemsSection
+                                items={items}
+                                setItems={setItems}
+                                productSearchOpen={productSearchOpen}
+                                setProductSearchOpen={setProductSearchOpen}
+                                productSearchTerm={productSearchTerm}
+                                setProductSearchTerm={setProductSearchTerm}
+                                pendingProduct={pendingProduct}
+                                setPendingProduct={setPendingProduct}
+                                pendingQty={pendingQty}
+                                setPendingQty={setPendingQty}
+                                pendingPrice={pendingPrice}
+                                setPendingPrice={setPendingPrice}
+                                pendingSize={pendingSize}
+                                setPendingSize={setPendingSize}
+                                pendingColor={pendingColor}
+                                setPendingColor={setPendingColor}
+                                pendingThaans={pendingThaans}
+                                setPendingThaans={setPendingThaans}
+                                pendingMeters={pendingMeters}
+                                setPendingMeters={setPendingMeters}
+                                filteredProducts={filteredProducts}
+                                handleSelectProduct={handleSelectProduct}
+                                handleAddItem={commitPendingItem}
+                                handleOpenPackingModal={handleOpenPackingModalById}
+                                searchInputRef={searchInputRef}
+                                qtyInputRef={qtyInputRef}
+                                priceInputRef={priceInputRef}
+                                addBtnRef={addBtnRef}
+                                // Inline variation selection
+                                showVariationSelector={showVariationSelector}
+                                selectedProductForVariation={selectedProductForVariation}
+                                productVariations={productVariations}
+                                handleVariationSelect={handleVariationSelect}
+                                setShowVariationSelector={setShowVariationSelector}
+                                setSelectedProductForVariation={setSelectedProductForVariation}
+                                handleInlineVariationSelect={handleInlineVariationSelect}
+                                // Update item
+                                updateItem={updateItem}
+                                // Keyboard navigation
+                                itemQtyRefs={itemQtyRefs}
+                                itemPriceRefs={itemPriceRefs}
+                                itemVariationRefs={itemVariationRefs}
+                                handleQtyKeyDown={handleQtyKeyDown}
+                                handlePriceKeyDown={handlePriceKeyDown}
+                            />
                         </div>
 
                         {/* RIGHT PANEL - Summary + Payment + Expenses (Independent Scroll) */}
@@ -1139,16 +1171,16 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                                 <div className="flex items-center justify-between">
                                     <h3 className="text-sm font-semibold text-gray-300 uppercase tracking-wide">Payment</h3>
                                     <Badge className={cn(
-                                    "text-xs font-medium px-3 py-1",
-                                    paymentStatus === 'paid' && "bg-green-600 text-white",
-                                    paymentStatus === 'partial' && "bg-blue-600 text-white",
-                                    paymentStatus === 'unpaid' && "bg-orange-600 text-white"
-                                )}>
-                                    {paymentStatus === 'paid' && '✓ Paid'}
-                                    {paymentStatus === 'partial' && '◐ Partial'}
-                                    {paymentStatus === 'unpaid' && '○ Unpaid'}
-                                </Badge>
-                            </div>
+                                        "text-xs font-medium px-3 py-1",
+                                        paymentStatus === 'paid' && "bg-green-600 text-white",
+                                        paymentStatus === 'partial' && "bg-blue-600 text-white",
+                                        paymentStatus === 'unpaid' && "bg-orange-600 text-white"
+                                    )}>
+                                        {paymentStatus === 'paid' && '✓ Paid'}
+                                        {paymentStatus === 'partial' && '◐ Partial'}
+                                        {paymentStatus === 'unpaid' && '○ Unpaid'}
+                                    </Badge>
+                                </div>
 
                             {/* 1. AMOUNT SUMMARY SECTION */}
                             <div className="bg-gray-950 border border-gray-800 rounded-lg p-4 space-y-3">
@@ -1288,7 +1320,6 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                                     </div>
                                 </div>
                             )}
-
                             </div>
                         </div>
                     </div>
@@ -1359,21 +1390,7 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                 </div>
             </div>
 
-            {/* Packing Modal */}
-            <PackingEntryModal
-                open={packingModalOpen}
-                onOpenChange={(open) => {
-                    setPackingModalOpen(open);
-                    if (!open) {
-                        setActivePackingItemId(null);
-                        setActiveProductName("");
-                        setActivePackingData(undefined);
-                    }
-                }}
-                productName={activeProductName}
-                onSave={handleSavePacking}
-                initialData={activePackingData}
-            />
+            {/* Packing Modal - Now rendered globally in GlobalDrawer */}
 
             {/* Add Supplier Modal - REMOVED (using GlobalDrawer contact form instead) */}
         </div>

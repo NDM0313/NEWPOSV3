@@ -76,6 +76,10 @@ export const Sidebar = () => {
     { id: 'reports', label: 'Reports', icon: PieChart },
     { id: 'settings', label: 'Settings', icon: Settings },
     { id: 'contact-search-test', label: 'Contact Test', icon: FlaskConical },
+    { id: 'sale-header-test', label: 'Header Test', icon: FlaskConical },
+    { id: 'transaction-header-test', label: 'Transaction Header', icon: FlaskConical },
+    { id: 'user-management-test', label: 'User Management Test', icon: FlaskConical },
+    { id: 'branch-management-test', label: 'Branch Management Test', icon: FlaskConical },
   ];
 
   const visibleNavItems = navItems.filter(item => !item.isHidden);
