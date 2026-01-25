@@ -5,6 +5,7 @@ import { Badge } from '@/app/components/ui/badge';
 import { useAccounting, type PaymentMethod, type Account } from '@/app/context/AccountingContext';
 import { useSettings } from '@/app/context/SettingsContext';
 import { useSupabase } from '@/app/context/SupabaseContext';
+import { accountHelperService } from '@/app/services/accountHelperService';
 import { toast } from 'sonner';
 
 // ============================================
@@ -56,7 +57,7 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
 }) => {
   const accounting = useAccounting();
   const settings = useSettings();
-  const { branchId } = useSupabase();
+  const { branchId, companyId } = useSupabase();
   const [amount, setAmount] = useState<number>(0);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('Cash');
   const [selectedAccount, setSelectedAccount] = useState<string>('');
@@ -235,13 +236,19 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
             setIsProcessing(false);
             return;
           }
+          if (!selectedAccount) {
+            toast.error('Please select an account for payment');
+            setIsProcessing(false);
+            return;
+          }
           success = accounting.recordSalePayment({
             saleId: referenceId, // CRITICAL FIX: UUID for reference_id
             invoiceNo: referenceNo || `INV-${Date.now()}`, // Invoice number for referenceNo
             customerName: entityName,
             customerId: entityId,
             amount,
-            paymentMethod
+            paymentMethod,
+            accountId: selectedAccount // CRITICAL FIX: Always pass account ID
           });
           break;
 

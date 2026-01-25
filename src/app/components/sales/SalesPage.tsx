@@ -1126,7 +1126,7 @@ export const SalesPage = () => {
             paid: selectedSale.paid,
             due: selectedSale.due,
             paymentStatus: selectedSale.paymentStatus,
-            payments: (selectedSale as any).payments || [],
+            payments: [], // Will be fetched dynamically in modal
           }}
           onAddPayment={() => {
             // Close View Payments and open Receive Payment dialog

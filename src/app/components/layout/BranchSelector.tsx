@@ -26,11 +26,13 @@ export const BranchSelector: React.FC<BranchSelectorProps> = ({
   variant = 'header',
   className = '' 
 }) => {
-  const { companyId, branchId: contextBranchId, user } = useSupabase();
+  const { companyId, branchId: contextBranchId, user, userRole } = useSupabase();
   const [branches, setBranches] = useState<Branch[]>([]);
   const [loading, setLoading] = useState(false);
   
-  const isBranchLocked = currentUser.role !== "admin";
+  // CRITICAL FIX: Use actual userRole from Supabase, fallback to currentUser for compatibility
+  const isAdmin = userRole === 'admin' || userRole === 'Admin' || currentUser.role === 'admin';
+  const isBranchLocked = !isAdmin; // Normal users = locked, Admin = can change
   
   // Load branches from Supabase
   const loadBranches = useCallback(async () => {

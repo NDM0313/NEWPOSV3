@@ -23,7 +23,8 @@ import {
   Edit,
   MoreVertical,
   XCircle,
-  Star
+  Star,
+  List
 } from 'lucide-react';
 import { Button } from '@/app/components/ui/button';
 import { Badge } from '@/app/components/ui/badge';
@@ -36,6 +37,8 @@ import { usePurchases } from '@/app/context/PurchaseContext';
 import { useExpenses } from '@/app/context/ExpenseContext';
 import type { AccountingEntry } from '@/app/context/AccountingContext';
 import { ManualEntryDialog } from './ManualEntryDialog';
+import { AccountLedgerView } from './AccountLedgerView';
+import { TransactionDetailModal } from './TransactionDetailModal';
 import { AddAccountDrawer } from './AddAccountDrawer';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { accountService } from '@/app/services/accountService';
@@ -79,6 +82,10 @@ export const AccountingDashboard = () => {
   const [isAddAccountOpen, setIsAddAccountOpen] = useState(false);
   const [isEditAccountOpen, setIsEditAccountOpen] = useState(false);
   const [editingAccount, setEditingAccount] = useState<any>(null);
+  
+  // 🎯 Ledger & Transaction State
+  const [ledgerAccount, setLedgerAccount] = useState<any>(null);
+  const [transactionReference, setTransactionReference] = useState<string | null>(null);
   
   // Filters
   const [typeFilter, setTypeFilter] = useState<string>('all');
@@ -292,6 +299,117 @@ export const AccountingDashboard = () => {
       <div className="flex-1 overflow-auto px-6 py-4 bg-[#0B0F19]">
         {activeTab === 'transactions' && (
           <div className="space-y-4">
+            {/* Header */}
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-bold text-white">Transactions</h3>
+                <p className="text-sm text-gray-400">All journal entries from accounting system</p>
+              </div>
+            </div>
+
+            {/* Transactions Table */}
+            <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden">
+              {accounting.entries.length === 0 ? (
+                <div className="text-center py-12">
+                  <FileText size={48} className="mx-auto text-gray-600 mb-3" />
+                  <p className="text-gray-400 text-sm">No transactions found</p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead className="bg-gray-900 border-b border-gray-800">
+                      <tr className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                        <th className="px-4 py-3 text-left">Date</th>
+                        <th className="px-4 py-3 text-left">Reference</th>
+                        <th className="px-4 py-3 text-left">Module</th>
+                        <th className="px-4 py-3 text-left">Description</th>
+                        <th className="px-4 py-3 text-left">Type</th>
+                        <th className="px-4 py-3 text-left">Payment Method</th>
+                        <th className="px-4 py-3 text-right">Amount</th>
+                        <th className="px-4 py-3 text-left">Source</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {accounting.entries.map((entry) => {
+                        // Get reference from metadata or generate from id
+                        const referenceNumber = entry.referenceNo || 
+                          (entry.metadata as any)?.paymentId?.substring(0, 8) || 
+                          entry.id?.substring(0, 8) || 
+                          'N/A';
+                        const module = entry.module || 'Accounting';
+                        const amount = entry.amount || 0;
+                        const paymentMethod = (entry.metadata as any)?.paymentMethod || 'N/A';
+                        const type = amount >= 0 ? 'Income' : 'Expense';
+                        
+                        return (
+                          <tr
+                            key={entry.id}
+                            className="border-b border-gray-800 hover:bg-gray-800/30 transition-colors cursor-pointer"
+                            onClick={() => setTransactionReference(referenceNumber)}
+                          >
+                            <td className="px-4 py-3 text-sm text-gray-300">
+                              {entry.date ? new Date(entry.date).toLocaleDateString('en-GB', {
+                                day: '2-digit',
+                                month: 'short',
+                                year: 'numeric'
+                              }) : 'N/A'}
+                            </td>
+                            <td className="px-4 py-3">
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setTransactionReference(referenceNumber);
+                                }}
+                                className="text-blue-400 hover:text-blue-300 hover:underline text-sm font-medium"
+                              >
+                                {referenceNumber}
+                              </button>
+                            </td>
+                            <td className="px-4 py-3">
+                              <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/30 text-xs">
+                                {module}
+                              </Badge>
+                            </td>
+                            <td className="px-4 py-3 text-sm text-gray-300 max-w-xs truncate">
+                              {entry.description || 'No description'}
+                            </td>
+                            <td className="px-4 py-3">
+                              <Badge className={
+                                type === 'Income'
+                                  ? 'bg-green-500/20 text-green-400 border-green-500/30'
+                                  : 'bg-red-500/20 text-red-400 border-red-500/30'
+                              }>
+                                {type}
+                              </Badge>
+                            </td>
+                            <td className="px-4 py-3 text-sm text-gray-400 capitalize">
+                              {paymentMethod}
+                            </td>
+                            <td className={cn(
+                              "px-4 py-3 text-sm font-semibold text-right tabular-nums",
+                              amount >= 0 ? "text-green-400" : "text-red-400"
+                            )}>
+                              {Math.abs(amount).toLocaleString('en-US', {
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 2,
+                              })}
+                            </td>
+                            <td className="px-4 py-3 text-xs text-gray-400">
+                              {entry.source || 'Manual'}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'transactions_old' && (
+          <div className="space-y-4">
             {/* Search and Filter Bar */}
             <div className="flex items-center gap-4">
               <div className="flex-1 relative">
@@ -460,8 +578,8 @@ export const AccountingDashboard = () => {
                     <thead className="bg-gray-900 border-b border-gray-800">
                       <tr className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
                         <th className="px-4 py-3 text-left">Account Name</th>
-                        <th className="px-4 py-3 text-left">Type</th>
-                        <th className="px-4 py-3 text-left">Branch</th>
+                        <th className="px-4 py-3 text-left">Account Type</th>
+                        <th className="px-4 py-3 text-left">Scope</th>
                         <th className="px-4 py-3 text-right">Balance</th>
                         <th className="px-4 py-3 text-left">Status</th>
                         <th className="px-4 py-3 text-left">Actions</th>
@@ -490,17 +608,20 @@ export const AccountingDashboard = () => {
                           </td>
                           <td className="px-4 py-3 text-xs">
                             <Badge className="bg-gray-800 text-gray-300 border-gray-700">
-                              {account.type || account.accountType}
+                              {account.type || account.accountType || 'Asset'}
                             </Badge>
                           </td>
                           <td className="px-4 py-3 text-sm text-gray-400">
-                            {account.branch || 'Global'}
+                            {account.branch ? 'Branch' : 'Global'}
                           </td>
                           <td className={cn(
                             "px-4 py-3 text-sm font-semibold text-right tabular-nums",
                             account.balance >= 0 ? "text-green-400" : "text-red-400"
                           )}>
-                            ${account.balance.toLocaleString()}
+                            Rs {account.balance.toLocaleString('en-US', {
+                              minimumFractionDigits: 2,
+                              maximumFractionDigits: 2,
+                            })}
                           </td>
                           <td className="px-4 py-3 text-xs">
                             {account.isActive ? (
@@ -523,12 +644,43 @@ export const AccountingDashboard = () => {
                               <DropdownMenuContent align="end" className="bg-gray-900 border-gray-800">
                                 <DropdownMenuItem
                                   onClick={() => {
+                                    setLedgerAccount({
+                                      id: account.id,
+                                      name: account.name,
+                                      code: (account as any).code,
+                                      type: account.type || account.accountType || 'Asset',
+                                    });
+                                  }}
+                                  className="text-gray-300 hover:text-white hover:bg-gray-800"
+                                >
+                                  <FileText size={14} className="mr-2" /> View Ledger
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  onClick={() => {
+                                    // TODO: Implement View Transactions
+                                    toast.info('View Transactions - Coming soon');
+                                  }}
+                                  className="text-gray-300 hover:text-white hover:bg-gray-800"
+                                >
+                                  <List size={14} className="mr-2" /> View Transactions
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  onClick={() => {
+                                    // TODO: Implement Account Summary
+                                    toast.info('Account Summary - Coming soon');
+                                  }}
+                                  className="text-gray-300 hover:text-white hover:bg-gray-800"
+                                >
+                                  <BarChart3 size={14} className="mr-2" /> Account Summary
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  onClick={() => {
                                     setEditingAccount(account);
                                     setIsEditAccountOpen(true);
                                   }}
                                   className="text-gray-300 hover:text-white hover:bg-gray-800"
                                 >
-                                  <Edit size={14} className="mr-2" /> Edit
+                                  <Edit size={14} className="mr-2" /> Edit Account
                                 </DropdownMenuItem>
                                 <DropdownMenuItem
                                   onClick={async () => {
@@ -546,11 +698,11 @@ export const AccountingDashboard = () => {
                                 >
                                   {account.isActive ? (
                                     <>
-                                      <XCircle size={14} className="mr-2" /> Deactivate
+                                      <XCircle size={14} className="mr-2" /> Deactivate Account
                                     </>
                                   ) : (
                                     <>
-                                      <CheckCircle2 size={14} className="mr-2" /> Activate
+                                      <CheckCircle2 size={14} className="mr-2" /> Activate Account
                                     </>
                                   )}
                                 </DropdownMenuItem>
@@ -905,11 +1057,55 @@ export const AccountingDashboard = () => {
                 setEditingAccount(null);
               }}
             />
-          )}
-        </DialogContent>
+        )}
+      </DialogContent>
       </Dialog>
+
+      {/* Account Ledger View Modal */}
+      {ledgerAccount && (
+        <AccountLedgerView
+          isOpen={!!ledgerAccount}
+          onClose={() => setLedgerAccount(null)}
+          accountId={ledgerAccount.id}
+          accountName={ledgerAccount.name}
+          accountCode={ledgerAccount.code}
+          accountType={ledgerAccount.type}
+        />
+      )}
+
+      {/* Transaction Detail Modal */}
+      {transactionReference && (
+        <TransactionDetailModal
+          isOpen={!!transactionReference}
+          onClose={() => setTransactionReference(null)}
+          referenceNumber={transactionReference}
+        />
+      )}
+
+      {/* Listen for transaction detail events */}
+      {typeof window !== 'undefined' && (
+        <TransactionDetailListener
+          onOpen={(referenceNumber) => setTransactionReference(referenceNumber)}
+        />
+      )}
     </div>
   );
+};
+
+// Component to listen for transaction detail events
+const TransactionDetailListener: React.FC<{ onOpen: (ref: string) => void }> = ({ onOpen }) => {
+  React.useEffect(() => {
+    const handleOpen = (event: CustomEvent) => {
+      onOpen(event.detail.referenceNumber);
+    };
+
+    window.addEventListener('openTransactionDetail' as any, handleOpen);
+    return () => {
+      window.removeEventListener('openTransactionDetail' as any, handleOpen);
+    };
+  }, [onOpen]);
+
+  return null;
 };
 
 // Account Edit Form Component

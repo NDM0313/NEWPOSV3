@@ -148,12 +148,35 @@ export const ViewPaymentsModal: React.FC<ViewPaymentsModalProps> = ({
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [paymentToDelete, setPaymentToDelete] = useState<Payment | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [payments, setPayments] = useState<Payment[]>([]);
+  const [loadingPayments, setLoadingPayments] = useState(false);
+
+  // Fetch payments when modal opens or refreshes
+  useEffect(() => {
+    if (isOpen && invoice?.id) {
+      const fetchPayments = async () => {
+        setLoadingPayments(true);
+        try {
+          const { saleService } = await import('@/app/services/saleService');
+          const fetchedPayments = await saleService.getSalePayments(invoice.id);
+          setPayments(fetchedPayments);
+        } catch (error: any) {
+          console.error('[VIEW PAYMENTS] Error fetching payments:', error);
+          setPayments(invoice.payments || []);
+        } finally {
+          setLoadingPayments(false);
+        }
+      };
+      fetchPayments();
+    } else {
+      setPayments(invoice?.payments || []);
+    }
+  }, [isOpen, invoice?.id, invoice?.payments]);
 
   if (!isOpen || !invoice) return null;
 
   const statusConfig = getPaymentStatusConfig(invoice.paymentStatus);
   const StatusIcon = statusConfig.icon;
-  const payments = invoice.payments || [];
   const progressPercent = invoice.total > 0 ? Math.min((invoice.paid / invoice.total) * 100, 100) : 0;
 
   const handleDeleteClick = (payment: Payment) => {
@@ -170,6 +193,12 @@ export const ViewPaymentsModal: React.FC<ViewPaymentsModalProps> = ({
       toast.success('Payment deleted successfully');
       setDeleteConfirmOpen(false);
       setPaymentToDelete(null);
+      // Refetch payments after deletion
+      if (invoice?.id) {
+        const { saleService } = await import('@/app/services/saleService');
+        const fetchedPayments = await saleService.getSalePayments(invoice.id);
+        setPayments(fetchedPayments);
+      }
       onRefresh?.();
     } catch (error: any) {
       toast.error(error.message || 'Failed to delete payment');
@@ -277,7 +306,12 @@ export const ViewPaymentsModal: React.FC<ViewPaymentsModalProps> = ({
                 )}
               </div>
 
-              {payments.length === 0 ? (
+              {loadingPayments ? (
+                <div className="p-8 text-center">
+                  <Loader2 className="w-8 h-8 animate-spin text-blue-400 mx-auto mb-3" />
+                  <p className="text-sm text-gray-400">Loading payment history...</p>
+                </div>
+              ) : payments.length === 0 ? (
                 <div className="p-8 text-center">
                   <div className="w-16 h-16 rounded-full bg-gray-800 flex items-center justify-center mx-auto mb-3">
                     <DollarSign size={24} className="text-gray-600" />

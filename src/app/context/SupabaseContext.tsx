@@ -146,8 +146,16 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         fetchedRef.current.add(userId);
         lastFetchedUserIdRef.current = userId;
         
-        // Load user's default branch
+        // CRITICAL: Ensure default accounts exist for this company
         if (data.company_id) {
+          // Initialize default accounts asynchronously (don't block login)
+          import('@/app/services/defaultAccountsService').then(({ defaultAccountsService }) => {
+            defaultAccountsService.ensureDefaultAccounts(data.company_id).catch((error: any) => {
+              console.error('[SUPABASE CONTEXT] Error ensuring default accounts:', error);
+            });
+          });
+          
+          // Load user's default branch
           loadUserBranch(userId, data.company_id);
         }
       }

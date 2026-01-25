@@ -150,7 +150,9 @@ interface PurchaseFormProps {
 
 export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFormProps) => {
     // Supabase & Context
-    const { companyId, branchId: contextBranchId } = useSupabase();
+    const { companyId, branchId: contextBranchId, userRole } = useSupabase();
+    // CRITICAL FIX: Check if user is admin
+    const isAdmin = userRole === 'admin' || userRole === 'Admin';
     const { createPurchase } = usePurchases();
     const { openDrawer, activeDrawer, createdContactId, createdContactType, setCreatedContactId, openPackingModal } = useNavigation();
     
@@ -770,6 +772,18 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                 meters: item.meters
             }));
             
+            // CRITICAL FIX: Branch validation
+            // Admin must select branch, normal user uses auto-selected branch
+            const finalBranchId = isAdmin 
+                ? (branchId || contextBranchId || '') // Admin can select or use context
+                : (contextBranchId || branchId || ''); // Normal user uses context (auto-selected)
+            
+            if (isAdmin && !finalBranchId) {
+                toast.error('Please select a branch');
+                setSaving(false);
+                return;
+            }
+            
             // Create purchase data
             const purchaseData = {
                 supplier: supplierUuid,
@@ -777,7 +791,7 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                 contactNumber: '', // Can be enhanced to get from supplier
                 date: format(purchaseDate, 'yyyy-MM-dd'),
                 expectedDelivery: undefined,
-                location: branchId || '',
+                location: finalBranchId, // CRITICAL: Always use validated branch ID
                 status: purchaseStatus as 'draft' | 'ordered' | 'received' | 'final',
                 items: purchaseItems,
                 itemsCount: items.length,

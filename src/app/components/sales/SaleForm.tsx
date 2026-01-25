@@ -1128,6 +1128,18 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                 ? paymentStatus 
                 : 'unpaid';
             
+            // CRITICAL FIX: Branch validation
+            // Admin must select branch, normal user uses auto-selected branch
+            const finalBranchId = isAdmin 
+                ? (branchId || contextBranchId || '') // Admin can select or use context
+                : (contextBranchId || branchId || ''); // Normal user uses context (auto-selected)
+            
+            if (isAdmin && !finalBranchId) {
+                toast.error('Please select a branch');
+                setSaving(false);
+                return;
+            }
+            
             // Create sale data
             const saleData = {
                 type: saleType,
@@ -1137,7 +1149,7 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                 customerName: customerName,
                 contactNumber: '', // Can be enhanced to get from customer
                 date: format(saleDate, 'yyyy-MM-dd'),
-                location: branchId || '',
+                location: finalBranchId, // CRITICAL: Always use validated branch ID
                 items: saleItems,
                 itemsCount: items.length,
                 subtotal: subtotal,
@@ -1151,7 +1163,11 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                 paymentStatus: finalPaymentStatus,
                 paymentMethod: (saleStatus === 'final' && partialPayments.length > 0) ? partialPayments[0].method : 'cash',
                 shippingStatus: shippingEnabled ? 'pending' as const : 'pending' as const,
-                notes: studioNotes || refNumber || undefined
+                notes: studioNotes || refNumber || undefined,
+                // CRITICAL: Include extra expenses, commission for accounting
+                extraExpenses: extraExpenses,
+                commissionAmount: commissionAmount,
+                salesmanId: salesmanId !== "1" ? salesmanId : null
             };
             
             // Create sale via context
@@ -1351,45 +1367,54 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                         </Popover>
 
                         {/* Branch - Chip Style */}
+                        {/* CRITICAL FIX: Normal user = auto-selected & disabled, Admin = mandatory selection */}
                         <Popover open={branchDropdownOpen} onOpenChange={setBranchDropdownOpen}>
                             <PopoverTrigger asChild>
                                 <button
                                     type="button"
-                                    className="flex items-center gap-2 bg-gray-900/50 border border-gray-800 rounded-lg px-2.5 py-1 hover:bg-gray-800 transition-colors cursor-pointer"
+                                    disabled={!isAdmin} // CRITICAL: Disabled for normal users
+                                    className={cn(
+                                        "flex items-center gap-2 bg-gray-900/50 border border-gray-800 rounded-lg px-2.5 py-1 transition-colors",
+                                        isAdmin 
+                                            ? "hover:bg-gray-800 cursor-pointer" 
+                                            : "opacity-60 cursor-not-allowed"
+                                    )}
                                 >
                                     <Building2 size={14} className="text-gray-500 shrink-0" />
                                     <span className="text-xs text-white">{getBranchName()}</span>
-                                    <ChevronRight size={12} className="text-gray-500 rotate-90" />
+                                    {isAdmin && <ChevronRight size={12} className="text-gray-500 rotate-90" />}
                                 </button>
                             </PopoverTrigger>
-                            <PopoverContent 
-                                className="w-56 bg-gray-900 border-gray-800 text-white p-2"
-                                align="end"
-                            >
-                                <div className="space-y-1">
-                                    {branches.map((b) => (
-                                        <button
-                                            key={b.id}
-                                            type="button"
-                                            onClick={() => {
-                                                setBranchId(b.id);
-                                                setBranchDropdownOpen(false);
-                                            }}
-                                            className={cn(
-                                                "w-full text-left px-3 py-2 rounded-md text-sm transition-all flex items-center gap-2",
-                                                branchId === b.id || branchId === b.id.toString()
-                                                    ? "bg-gray-800 text-white"
-                                                    : "text-gray-400 hover:bg-gray-800 hover:text-white"
-                                            )}
-                                        >
-                                            <Building2 size={16} className={cn(
-                                                branchId === b.id || branchId === b.id.toString() ? "text-blue-400" : "text-gray-500"
-                                            )} />
-                                            <span>{b.name}</span>
-                                        </button>
-                                    ))}
-                                </div>
-                            </PopoverContent>
+                            {isAdmin && ( // CRITICAL: Only show dropdown for admin
+                                <PopoverContent 
+                                    className="w-56 bg-gray-900 border-gray-800 text-white p-2"
+                                    align="end"
+                                >
+                                    <div className="space-y-1">
+                                        {branches.map((b) => (
+                                            <button
+                                                key={b.id}
+                                                type="button"
+                                                onClick={() => {
+                                                    setBranchId(b.id);
+                                                    setBranchDropdownOpen(false);
+                                                }}
+                                                className={cn(
+                                                    "w-full text-left px-3 py-2 rounded-md text-sm transition-all flex items-center gap-2",
+                                                    branchId === b.id || branchId === b.id.toString()
+                                                        ? "bg-gray-800 text-white"
+                                                        : "text-gray-400 hover:bg-gray-800 hover:text-white"
+                                                )}
+                                            >
+                                                <Building2 size={16} className={cn(
+                                                    branchId === b.id || branchId === b.id.toString() ? "text-blue-400" : "text-gray-500"
+                                                )} />
+                                                <span>{b.name}</span>
+                                            </button>
+                                        ))}
+                                    </div>
+                                </PopoverContent>
+                            )}
                         </Popover>
                                 </div>
                             </div>

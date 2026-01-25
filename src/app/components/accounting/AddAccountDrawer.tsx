@@ -42,38 +42,20 @@ export const AddAccountDrawer = ({ isOpen, onClose, onSuccess }: AddAccountDrawe
 
     setIsSaving(true);
     try {
-      // If setting as default, unset other defaults first
-      if (isDefaultCash && accountType === 'Cash') {
-        // Get all cash accounts and unset their default
-        const cashAccounts = await accountService.getAccountsByType(companyId, 'Cash');
-        for (const acc of cashAccounts) {
-          if (acc.id) {
-            await accountService.updateAccount(acc.id, { is_default_cash: false });
-          }
-        }
-      }
-      if (isDefaultBank && accountType === 'Bank') {
-        // Get all bank accounts and unset their default
-        const bankAccounts = await accountService.getAccountsByType(companyId, 'Bank');
-        for (const acc of bankAccounts) {
-          if (acc.id) {
-            await accountService.updateAccount(acc.id, { is_default_bank: false });
-          }
-        }
-      }
-
-      // Create account
+      // CRITICAL FIX: Remove non-existent fields (account_type, is_default_cash, is_default_bank)
+      // These fields don't exist in the actual accounts table schema
+      // Default account selection is handled by defaultAccountsService using account codes
+      
+      // Create account (only fields that exist in actual schema)
       await accountService.createAccount({
         company_id: companyId,
-        branch_id: branchId || null,
         name: accountName,
         code: accountCode || undefined,
-        type: accountType,
-        account_type: accountCategory,
+        type: accountType, // Use accountType (Cash/Bank/Mobile Wallet) as type
         balance: openingBalance,
         is_active: isActive,
-        is_default_cash: isDefaultCash && accountType === 'Cash',
-        is_default_bank: isDefaultBank && accountType === 'Bank',
+        // DO NOT include: account_type, branch_id, is_default_cash, is_default_bank
+        // These fields don't exist in the actual schema
       });
 
       toast.success('Account created successfully');

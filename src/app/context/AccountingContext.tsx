@@ -130,6 +130,7 @@ export interface SalePaymentParams {
   customerId?: string;
   amount: number;
   paymentMethod: PaymentMethod;
+  accountId?: string; // CRITICAL: Account ID for payment_account_id
 }
 
 export interface RentalBookingParams {
@@ -224,6 +225,7 @@ export interface Account {
   balance: number;
   branch?: string;
   isActive: boolean;
+  code?: string; // Add code for account lookup
 }
 
 // ============================================
@@ -250,11 +252,13 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
 
   // Convert Supabase account format to app format
   const convertFromSupabaseAccount = useCallback((supabaseAccount: any): Account => {
+    // CRITICAL FIX: account_type doesn't exist in actual schema, use type instead
+    const accountType = supabaseAccount.type || 'Cash';
     return {
       id: supabaseAccount.id,
       name: supabaseAccount.name || '',
-      type: (supabaseAccount.type || 'Cash') as PaymentMethod,
-      accountType: supabaseAccount.account_type || supabaseAccount.type || 'Cash',
+      type: accountType as PaymentMethod,
+      accountType: accountType, // Use type as accountType (no separate account_type column)
       balance: parseFloat(supabaseAccount.balance || supabaseAccount.current_balance || 0),
       branch: supabaseAccount.branch_name || supabaseAccount.branch_id || '',
       isActive: supabaseAccount.is_active !== false,
@@ -280,19 +284,34 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
 
     const source = sourceMap[journalEntry.reference_type || 'manual'] || 'Manual';
 
+    // Get payment reference if available
+    const payment = (journalEntry as any).payment;
+    const paymentRef = Array.isArray(payment) ? payment[0]?.reference_number : payment?.reference_number;
+    const paymentMethod = Array.isArray(payment) ? payment[0]?.payment_method : payment?.payment_method;
+
     // Extract metadata from description or reference
-    const metadata: AccountingEntry['metadata'] = {};
+    const metadata: AccountingEntry['metadata'] = {
+      journalEntryId: journalEntry.id,
+      referenceId: journalEntry.reference_id,
+      referenceType: journalEntry.reference_type,
+      paymentId: journalEntry.payment_id,
+      paymentMethod: paymentMethod,
+    };
+    
     if (journalEntry.reference_id) {
       if (source === 'Sale') metadata.invoiceId = journalEntry.reference_id;
       if (source === 'Purchase') metadata.purchaseId = journalEntry.reference_id;
       if (source === 'Expense') metadata.expenseId = journalEntry.reference_id;
     }
 
+    // Get reference number - prefer entry_no, then payment reference, then id
+    const referenceNo = journalEntry.entry_no || paymentRef || journalEntry.id?.substring(0, 8) || 'N/A';
+
     return {
       id: journalEntry.id || '',
       date: new Date(journalEntry.entry_date),
       source,
-      referenceNo: journalEntry.entry_no,
+      referenceNo: referenceNo,
       debitAccount: (debitLine?.account_name || 'Expense') as AccountType,
       creditAccount: (creditLine?.account_name || 'Cash') as AccountType,
       amount: debitLine?.debit || creditLine?.credit || 0,
@@ -431,12 +450,13 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
       return false;
     }
 
-    try {
-      // Generate entry number
-      const entryNo = `JE-${Date.now()}-${Math.random().toString(36).substr(2, 5).toUpperCase()}`;
-      const entryDate = new Date().toISOString().split('T')[0];
+    // CRITICAL FIX: Declare variables outside try block to fix scope error
+    let debitAccountObj: Account | undefined;
+    let creditAccountObj: Account | undefined;
+    let normalizedDebitAccount = '';
+    let normalizedCreditAccount = '';
 
-      // CRITICAL FIX: Case-insensitive account lookup with fallback mapping
+    try {
       // Map common account name variations to actual account names
       const accountNameMap: Record<string, string> = {
         'cash': 'Cash',
@@ -450,18 +470,42 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
         'Sales Revenue': 'Sales Revenue',
       };
 
-      const normalizedDebitAccount = accountNameMap[entry.debitAccount] || entry.debitAccount;
-      const normalizedCreditAccount = accountNameMap[entry.creditAccount] || entry.creditAccount;
+      normalizedDebitAccount = accountNameMap[entry.debitAccount] || entry.debitAccount;
+      normalizedCreditAccount = accountNameMap[entry.creditAccount] || entry.creditAccount;
+      // Generate entry number
+      const entryNo = `JE-${Date.now()}-${Math.random().toString(36).substr(2, 5).toUpperCase()}`;
+      const entryDate = new Date().toISOString().split('T')[0];
 
       // Find account IDs for debit and credit (case-insensitive)
-      const debitAccountObj = accounts.find(acc => 
-        acc.accountType?.toLowerCase() === normalizedDebitAccount.toLowerCase() || 
-        acc.name?.toLowerCase() === normalizedDebitAccount.toLowerCase()
-      );
-      const creditAccountObj = accounts.find(acc => 
-        acc.accountType?.toLowerCase() === normalizedCreditAccount.toLowerCase() || 
-        acc.name?.toLowerCase() === normalizedCreditAccount.toLowerCase()
-      );
+      // CRITICAL FIX: accountType might not exist, use type, name, and code for lookup
+      debitAccountObj = accounts.find(acc => {
+        const accType = acc.accountType || acc.type || '';
+        const accName = acc.name || '';
+        const accCode = acc.code || '';
+        return (
+          accType.toLowerCase() === normalizedDebitAccount.toLowerCase() || 
+          accName.toLowerCase() === normalizedDebitAccount.toLowerCase() ||
+          accName.toLowerCase().includes(normalizedDebitAccount.toLowerCase()) ||
+          // Match by code for default accounts
+          (normalizedDebitAccount === 'Cash' && accCode === '1000') ||
+          (normalizedDebitAccount === 'Bank' && accCode === '1010') ||
+          (normalizedDebitAccount === 'Accounts Receivable' && accCode === '1100')
+        );
+      });
+      creditAccountObj = accounts.find(acc => {
+        const accType = acc.accountType || acc.type || '';
+        const accName = acc.name || '';
+        const accCode = acc.code || '';
+        return (
+          accType.toLowerCase() === normalizedCreditAccount.toLowerCase() || 
+          accName.toLowerCase() === normalizedCreditAccount.toLowerCase() ||
+          accName.toLowerCase().includes(normalizedCreditAccount.toLowerCase()) ||
+          // Match by code for default accounts
+          (normalizedCreditAccount === 'Cash' && accCode === '1000') ||
+          (normalizedCreditAccount === 'Bank' && accCode === '1010') ||
+          (normalizedCreditAccount === 'Accounts Receivable' && accCode === '2000')
+        );
+      });
 
       if (!debitAccountObj || !creditAccountObj) {
         console.error('[ACCOUNTING] Account not found:', { 
@@ -469,8 +513,91 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
           normalizedDebit: normalizedDebitAccount,
           creditAccount: entry.creditAccount,
           normalizedCredit: normalizedCreditAccount,
-          availableAccounts: accounts.map(a => ({ name: a.name, type: a.accountType }))
+          availableAccounts: accounts.map(a => ({ 
+            id: a.id,
+            name: a.name, 
+            type: a.type,
+            accountType: a.accountType 
+          }))
         });
+        
+        // CRITICAL FIX: Ensure default accounts exist and reload
+        if (companyId) {
+          try {
+            const { defaultAccountsService } = await import('@/app/services/defaultAccountsService');
+            await defaultAccountsService.ensureDefaultAccounts(companyId);
+            
+            // Reload accounts
+            const refreshedData = await accountService.getAllAccounts(companyId, branchId || undefined);
+            const refreshedAccounts = refreshedData.map((acc: any) => ({
+              id: acc.id,
+              name: acc.name || '',
+              type: (acc.type || 'Cash') as PaymentMethod,
+              accountType: acc.type || 'Cash',
+              balance: parseFloat(acc.balance || 0),
+              branch: acc.branch_name || acc.branch_id || '',
+              isActive: acc.is_active !== false,
+            }));
+            setAccounts(refreshedAccounts);
+            
+            // Retry lookup with refreshed accounts (include code in search)
+            const retryDebit = refreshedAccounts.find(acc => {
+              const accType = acc.accountType || acc.type || '';
+              const accName = acc.name || '';
+              const accCode = acc.code || '';
+              return (
+                accType.toLowerCase() === normalizedDebitAccount.toLowerCase() || 
+                accName.toLowerCase() === normalizedDebitAccount.toLowerCase() ||
+                (normalizedDebitAccount === 'Cash' && (accCode === '1000' || accName.toLowerCase().includes('cash'))) ||
+                (normalizedDebitAccount === 'Bank' && (accCode === '1010' || accName.toLowerCase().includes('bank'))) ||
+                (normalizedDebitAccount === 'Accounts Receivable' && (accCode === '1100' || accName.toLowerCase().includes('receivable')))
+              );
+            });
+            const retryCredit = refreshedAccounts.find(acc => {
+              const accType = acc.accountType || acc.type || '';
+              const accName = acc.name || '';
+              const accCode = acc.code || '';
+              return (
+                accType.toLowerCase() === normalizedCreditAccount.toLowerCase() || 
+                accName.toLowerCase() === normalizedCreditAccount.toLowerCase() ||
+                (normalizedCreditAccount === 'Accounts Receivable' && (accCode === '2000' || accName.toLowerCase().includes('receivable')))
+              );
+            });
+            
+            if (retryDebit && retryCredit) {
+              // Update the account objects for use in journal entry creation
+              debitAccountObj = retryDebit;
+              creditAccountObj = retryCredit;
+              
+              // Use retry accounts - continue with journal entry creation
+              const journalEntry: JournalEntry = {
+                company_id: companyId,
+                branch_id: branchId || null,
+                entry_no: `JE-${Date.now()}-${Math.random().toString(36).substr(2, 5).toUpperCase()}`,
+                entry_date: new Date().toISOString().split('T')[0],
+                description: entry.description,
+                reference_type: entry.source.toLowerCase(),
+                reference_id: entry.metadata?.saleId || entry.metadata?.purchaseId || entry.metadata?.expenseId || entry.metadata?.bookingId || null,
+                created_by: currentUserId || null,
+              };
+              const lines: JournalEntryLine[] = [
+                { account_id: retryDebit.id, debit: entry.amount, credit: 0, description: entry.description },
+                { account_id: retryCredit.id, debit: 0, credit: entry.amount, description: entry.description },
+              ];
+              const paymentId = entry.metadata?.paymentId;
+              const savedEntry = await accountingService.createEntry(journalEntry, lines, paymentId);
+              const convertedEntry = convertFromJournalEntry(savedEntry as JournalEntryWithLines);
+              setEntries(prev => [convertedEntry, ...prev]);
+              updateBalances(entry.debitAccount, entry.creditAccount, entry.amount);
+              console.log('✅ Accounting Entry Created and Saved:', convertedEntry);
+              toast.success('Accounting entry created successfully');
+              return true;
+            }
+          } catch (ensureError: any) {
+            console.error('[ACCOUNTING] Error ensuring default accounts:', ensureError);
+          }
+        }
+        
         toast.error(`Account not found: ${!debitAccountObj ? normalizedDebitAccount : normalizedCreditAccount}. Please create the account first.`);
         return false;
       }
@@ -520,8 +647,27 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
       toast.success('Accounting entry created successfully');
     return true;
     } catch (error: any) {
-      console.error('[ACCOUNTING] Error creating entry:', error);
-      toast.error(error.message || 'Failed to create accounting entry');
+      console.error('[ACCOUNTING] Error creating entry:', {
+        error,
+        message: error?.message,
+        code: error?.code,
+        details: error?.details,
+        debitAccount: entry.debitAccount,
+        creditAccount: entry.creditAccount,
+        debitAccountObj: debitAccountObj?.id,
+        creditAccountObj: creditAccountObj?.id,
+        companyId,
+        branchId
+      });
+      
+      // Show user-friendly error message
+      if (error?.code === 'PGRST205' || error?.message?.includes('does not exist')) {
+        toast.error('Journal Entries table not found. Please run CREATE_JOURNAL_ENTRIES_TABLE.sql in Supabase SQL Editor.', {
+          duration: 10000,
+        });
+      } else {
+        toast.error(error?.message || 'Failed to create accounting entry');
+      }
       return false;
     }
   };
@@ -682,74 +828,94 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
   };
 
   const recordSalePayment = async (params: SalePaymentParams): Promise<boolean> => {
-    const { saleId, invoiceNo, customerName, customerId, amount, paymentMethod } = params;
+    const { saleId, invoiceNo, customerName, customerId, amount, paymentMethod, accountId } = params;
 
-    // CRITICAL FIX: Find default account based on payment method
-    // Map payment method to account type
-    const paymentMethodToType: Record<string, 'Cash' | 'Bank' | 'Mobile Wallet'> = {
-      'cash': 'Cash',
-      'Cash': 'Cash',
-      'bank': 'Bank',
-      'Bank': 'Bank',
-      'card': 'Bank', // Card payments go to bank account
-      'other': 'Bank',
-      'mobile wallet': 'Mobile Wallet',
-      'Mobile Wallet': 'Mobile Wallet',
-    };
+    // CRITICAL FIX: Use provided accountId or find default account based on payment method
+    let paymentAccountId = accountId;
     
-    const accountType = paymentMethodToType[paymentMethod as string] || 'Cash';
+    if (!paymentAccountId && companyId) {
+      // Try to get default account by payment method
+      const { accountHelperService } = await import('@/app/services/accountHelperService');
+      paymentAccountId = await accountHelperService.getDefaultAccountByPaymentMethod(
+        paymentMethod,
+        companyId
+      ) || null;
+    }
     
-    // Find default account for this type
-    let defaultAccount = null;
-    if (accountType === 'Cash') {
-      defaultAccount = accounts.find(acc => 
-        (acc.type === 'Cash' || acc.accountType === 'Cash') && 
-        (acc as any).is_default_cash && 
-        acc.isActive
-      );
-    } else if (accountType === 'Bank') {
-      defaultAccount = accounts.find(acc => 
-        (acc.type === 'Bank' || acc.accountType === 'Bank') && 
-        (acc as any).is_default_bank && 
-        acc.isActive
-      );
-    } else {
-      // For Mobile Wallet or other types, find first active account of that type
-      defaultAccount = accounts.find(acc => 
+    // If still no account, find from accounts list
+    if (!paymentAccountId) {
+      const paymentMethodToType: Record<string, 'Cash' | 'Bank' | 'Mobile Wallet'> = {
+        'cash': 'Cash',
+        'Cash': 'Cash',
+        'bank': 'Bank',
+        'Bank': 'Bank',
+        'card': 'Bank',
+        'cheque': 'Bank',
+        'other': 'Bank',
+        'mobile wallet': 'Mobile Wallet',
+        'Mobile Wallet': 'Mobile Wallet',
+      };
+      
+      const accountType = paymentMethodToType[paymentMethod as string] || 'Cash';
+      
+      const defaultAccount = accounts.find(acc => 
         (acc.type === accountType || acc.accountType === accountType) && 
         acc.isActive
       );
+      
+      if (defaultAccount) {
+        paymentAccountId = defaultAccount.id;
+      }
     }
     
-    // If no default found, try to find any active account of that type
-    if (!defaultAccount) {
-      defaultAccount = accounts.find(acc => 
-        (acc.type === accountType || acc.accountType === accountType) && 
-        acc.isActive
-      );
-    }
-    
-    if (!defaultAccount) {
-      const errorMsg = `No ${accountType} account found. Please create and set a default ${accountType} account first.`;
+    if (!paymentAccountId) {
+      const errorMsg = `No account found for ${paymentMethod} payment. Please select an account or create a default account.`;
       console.error('[ACCOUNTING]', errorMsg);
       toast.error(errorMsg);
       return false;
     }
 
-    // Use account name for createEntry (it will find the account by name/type)
-    // Fallback to accountType if name is not available
-    const debitAccountName = defaultAccount.name || accountType;
+    // CRITICAL FIX: Payment journal entry is now created automatically by database trigger
+    // DO NOT create duplicate journal entry here
+    // The trigger `trigger_auto_create_payment_journal` handles this automatically
+    // We only need to ensure the payment exists (which it does, from SalesContext.recordPayment)
     
-    return await createEntry({
-      source: 'Payment',
-      referenceNo: invoiceNo,
-      debitAccount: debitAccountName as AccountType,
-      creditAccount: 'Accounts Receivable',
-      amount: amount,
-      description: `Payment received from ${customerName}`,
-      module: 'Sales',
-      metadata: { customerId, customerName, saleId, invoiceNo } // CRITICAL FIX: saleId (UUID) for reference_id, invoiceNo for display
-    });
+    // Verify payment exists and trigger will create journal entry
+    try {
+      if (companyId && branchId) {
+        const { supabase } = await import('@/lib/supabase');
+        const { data: existingPayment } = await supabase
+          .from('payments')
+          .select('id')
+          .eq('reference_type', 'sale')
+          .eq('reference_id', saleId)
+          .eq('amount', amount)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        
+        if (!existingPayment) {
+          console.warn('[ACCOUNTING] Payment not found - trigger will create journal entry when payment is inserted');
+        } else {
+          // Check if journal entry already exists (from trigger)
+          const { data: existingJournal } = await supabase
+            .from('journal_entries')
+            .select('id')
+            .eq('payment_id', existingPayment.id)
+            .maybeSingle();
+          
+          if (!existingJournal) {
+            console.warn('[ACCOUNTING] Journal entry not yet created by trigger - it should be created automatically');
+          }
+        }
+      }
+    } catch (error: any) {
+      console.warn('[ACCOUNTING] Error verifying payment/journal entry (non-critical):', error);
+    }
+    
+    // DO NOT call createEntry() here - trigger handles it automatically
+    // This prevents duplicate journal entries
+    return true;
   };
 
   // ============================================
