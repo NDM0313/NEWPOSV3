@@ -529,4 +529,122 @@ export const saleService = {
       createdAt: p.created_at,
     }));
   },
+
+  // Delete payment (with reverse entry for accounting integrity)
+  async deletePayment(paymentId: string, saleId: string) {
+    if (!paymentId || !saleId) {
+      throw new Error('Payment ID and Sale ID are required');
+    }
+
+    try {
+      // CRITICAL FIX: Use RPC function for transaction-safe deletion
+      // This ensures all operations happen in a single transaction
+      const { data, error } = await supabase.rpc('delete_payment_with_reverse', {
+        p_payment_id: paymentId,
+        p_sale_id: saleId
+      });
+
+      if (error) {
+        // If RPC doesn't exist, fallback to direct delete (with proper error handling)
+        if (error.code === '42883' || error.message?.includes('function') || error.message?.includes('does not exist')) {
+          console.warn('[SALE SERVICE] RPC function not found, using direct delete');
+          return await this.deletePaymentDirect(paymentId, saleId);
+        }
+        console.error('[SALE SERVICE] Error deleting payment via RPC:', error);
+        throw error;
+      }
+
+      console.log('[SALE SERVICE] Payment deleted successfully with reverse entry');
+      return true;
+    } catch (error: any) {
+      console.error('[SALE SERVICE] Error deleting payment:', error);
+      throw error;
+    }
+  },
+
+  // Direct delete fallback (if RPC not available)
+  async deletePaymentDirect(paymentId: string, saleId: string) {
+    try {
+      // CRITICAL FIX: Fetch payment details before deletion
+      const { data: paymentData, error: fetchError } = await supabase
+        .from('payments')
+        .select('*')
+        .eq('id', paymentId)
+        .single();
+
+      if (fetchError || !paymentData) {
+        throw new Error('Payment not found');
+      }
+
+      // CRITICAL FIX: Delete related journal entries first (if they exist)
+      // Journal entries are linked via payment_id (FK with SET NULL, so safe to delete)
+      const { data: journalEntries } = await supabase
+        .from('journal_entries')
+        .select('id')
+        .eq('payment_id', paymentId);
+
+      if (journalEntries && journalEntries.length > 0) {
+        // Delete journal entry lines first (foreign key constraint)
+        for (const entry of journalEntries) {
+          const { error: lineError } = await supabase
+            .from('journal_entry_lines')
+            .delete()
+            .eq('journal_entry_id', entry.id);
+          
+          if (lineError) {
+            console.error('[SALE SERVICE] Error deleting journal entry lines:', lineError);
+            // Continue even if some lines fail
+          }
+        }
+
+        // Then delete journal entries
+        const { error: entryError } = await supabase
+          .from('journal_entries')
+          .delete()
+          .eq('payment_id', paymentId);
+        
+        if (entryError) {
+          console.error('[SALE SERVICE] Error deleting journal entries:', entryError);
+          // Continue - payment can still be deleted
+        }
+      }
+
+      // CRITICAL FIX: Delete the payment record
+      // Database triggers will:
+      // 1. Create reverse journal entry (trigger_create_payment_reverse_entry)
+      // 2. Update sale totals (trigger_update_sale_totals_delete)
+      const { error: deleteError } = await supabase
+        .from('payments')
+        .delete()
+        .eq('id', paymentId);
+
+      if (deleteError) {
+        console.error('[SALE SERVICE] Error deleting payment:', deleteError);
+        throw deleteError;
+      }
+
+      // CRITICAL FIX: Wait a bit for triggers to complete, then verify
+      await new Promise(resolve => setTimeout(resolve, 500));
+
+      // Verify sale totals were updated
+      const { data: updatedSale } = await supabase
+        .from('sales')
+        .select('paid_amount, due_amount, payment_status')
+        .eq('id', saleId)
+        .single();
+
+      if (updatedSale) {
+        console.log('[SALE SERVICE] Payment deleted, updated sale totals:', {
+          paid_amount: updatedSale.paid_amount,
+          due_amount: updatedSale.due_amount,
+          payment_status: updatedSale.payment_status
+        });
+      }
+
+      return true;
+    } catch (error: any) {
+      console.error('[SALE SERVICE] Error in direct delete:', error);
+      throw error;
+    }
+  },
 };

@@ -116,13 +116,25 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
                 <div>
                   <span className="text-gray-400">Module:</span>
                   <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/30 ml-2">
-                    {transaction.reference_type === 'sale' ? 'Sales' : 'Accounting'}
+                    {transaction.reference_type === 'sale' ? 'Sales' : 
+                     transaction.reference_type === 'expense' ? 'Expense' :
+                     transaction.reference_type === 'payment' ? 'Payment' : 'Accounting'}
                   </Badge>
                 </div>
                 <div>
                   <span className="text-gray-400">Created By:</span>
                   <p className="text-white">{transaction.created_by ? 'User' : 'System'}</p>
                 </div>
+                {(transaction as any).branch && (
+                  <div>
+                    <span className="text-gray-400">Branch:</span>
+                    <p className="text-white">
+                      {(transaction as any).branch.code 
+                        ? `${(transaction as any).branch.code} | ${(transaction as any).branch.name}`
+                        : (transaction as any).branch.name}
+                    </p>
+                  </div>
+                )}
                 <div className="col-span-2">
                   <span className="text-gray-400">Description:</span>
                   <p className="text-white">{transaction.description || 'No description'}</p>

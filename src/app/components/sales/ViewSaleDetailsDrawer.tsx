@@ -1,7 +1,9 @@
-import React, { useState, useEffect } from 'react';
-import { useSales, Sale } from '@/app/context/SalesContext';
+import React, { useState, useEffect, useCallback } from 'react';
+import { useSales, Sale, convertFromSupabaseSale } from '@/app/context/SalesContext';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { branchService, Branch } from '@/app/services/branchService';
+import { contactService } from '@/app/services/contactService';
+import { saleService } from '@/app/services/saleService';
 import { InvoicePrintLayout } from '../shared/InvoicePrintLayout';
 import { 
   X, 
@@ -29,6 +31,7 @@ import { Button } from "../ui/button";
 import { Badge } from "../ui/badge";
 import { Separator } from "../ui/separator";
 import { cn } from "../ui/utils";
+import { toast } from 'sonner';
 import {
   Table,
   TableBody,
@@ -124,6 +127,9 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
   const [loading, setLoading] = useState(true);
   const [showPrintLayout, setShowPrintLayout] = useState(false);
   const [branchMap, setBranchMap] = useState<Map<string, string>>(new Map());
+  const [customerCode, setCustomerCode] = useState<string | null>(null);
+  const [payments, setPayments] = useState<any[]>([]);
+  const [loadingPayments, setLoadingPayments] = useState(false);
 
   // Load branches for location display
   useEffect(() => {
@@ -147,15 +153,108 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
   // Load sale data from context (TASK 2 & 3 FIX - Real data instead of mock)
   useEffect(() => {
     if (isOpen && saleId) {
-      const saleData = getSaleById(saleId);
-      if (saleData) {
-        setSale(saleData);
-      }
-      setLoading(false);
+      const loadSaleData = async () => {
+        setLoading(true);
+        try {
+          // CRITICAL FIX: Fetch fresh sale data from database (not just context)
+          const saleData = await saleService.getSaleById(saleId);
+          if (saleData) {
+            const convertedSale = convertFromSupabaseSale(saleData);
+            setSale(convertedSale);
+            
+            // CRITICAL FIX: Load customer code if customer ID exists (not UUID display)
+            if (convertedSale.customer && companyId) {
+              contactService.getContact(convertedSale.customer)
+                .then(contact => {
+                  if (contact && (contact as any).code) {
+                    setCustomerCode((contact as any).code);
+                  } else {
+                    setCustomerCode(null);
+                  }
+                })
+                .catch(error => {
+                  console.error('[VIEW SALE] Error loading customer:', error);
+                  setCustomerCode(null);
+                });
+            } else {
+              setCustomerCode(null);
+            }
+            
+            // CRITICAL FIX: Load payments breakdown
+            loadPayments(saleId);
+          } else {
+            // Fallback to context
+            const contextSale = getSaleById(saleId);
+            if (contextSale) {
+              setSale(contextSale);
+              loadPayments(saleId);
+            }
+          }
+        } catch (error: any) {
+          console.error('[VIEW SALE] Error loading sale:', error?.message || error);
+          // Fallback to context
+          const contextSale = getSaleById(saleId);
+          if (contextSale) {
+            setSale(contextSale);
+            loadPayments(saleId);
+          } else {
+            // If context also doesn't have it, show error
+            console.error('[VIEW SALE] Sale not found in context either');
+          }
+        } finally {
+          setLoading(false);
+        }
+      };
+      
+      loadSaleData();
     } else {
       setLoading(false);
     }
-  }, [isOpen, saleId, getSaleById]);
+  }, [isOpen, saleId, getSaleById, companyId]);
+  
+  // CRITICAL FIX: Load payments breakdown
+  const loadPayments = useCallback(async (saleId: string) => {
+    setLoadingPayments(true);
+    try {
+      const fetchedPayments = await saleService.getSalePayments(saleId);
+      setPayments(fetchedPayments);
+    } catch (error) {
+      console.error('[VIEW SALE] Error loading payments:', error);
+      setPayments([]);
+    } finally {
+      setLoadingPayments(false);
+    }
+  }, []);
+  
+  // CRITICAL FIX: Reload sale data (called after payment is added)
+  const reloadSaleData = useCallback(async () => {
+    if (!saleId) return;
+    try {
+      const saleData = await saleService.getSaleById(saleId);
+      if (saleData) {
+        const convertedSale = convertFromSupabaseSale(saleData);
+        setSale(convertedSale);
+        // Reload payments
+        await loadPayments(saleId);
+      }
+    } catch (error: any) {
+      console.error('[VIEW SALE] Error reloading sale:', error?.message || error);
+    }
+  }, [saleId, loadPayments]);
+  
+  // CRITICAL FIX: Listen for payment added event
+  useEffect(() => {
+    const handlePaymentAdded = () => {
+      if (saleId) {
+        reloadSaleData();
+      }
+    };
+    
+    window.addEventListener('paymentAdded', handlePaymentAdded);
+    return () => {
+      window.removeEventListener('paymentAdded', handlePaymentAdded);
+    };
+  }, [saleId, reloadSaleData]);
 
   if (!isOpen || !saleId) return null;
 
@@ -336,7 +435,9 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
                     <div>
                       <p className="text-xs text-gray-500 mb-1">Customer Name</p>
                       <p className="text-white font-medium">{sale.customerName}</p>
-                      <p className="text-sm text-gray-400">{sale.customer}</p>
+                      {customerCode && (
+                        <p className="text-sm text-gray-400">Code: {customerCode}</p>
+                      )}
                     </div>
                     <div>
                       <p className="text-xs text-gray-500 mb-1">Contact Number</p>
@@ -421,11 +522,19 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {sale.items.map((item) => (
+                      {sale.items.map((item) => {
+                        // CRITICAL FIX: Use productName from joined product data, fallback to item.name
+                        const productName = item.productName || item.name || 'Unknown Product';
+                        const displaySku = item.sku || 'N/A';
+                        
+                        return (
                         <TableRow key={item.id} className="border-gray-800">
                           <TableCell>
                             <div>
-                              <p className="font-medium text-white">{item.name}</p>
+                              <p className="font-medium text-white">{productName}</p>
+                              {displaySku && displaySku !== 'N/A' && (
+                                <p className="text-xs text-gray-500">SKU: {displaySku}</p>
+                              )}
                               {(item.thaans || item.meters) && (
                                 <p className="text-xs text-gray-500">
                                   {item.thaans && `${item.thaans} Thaans`}
@@ -435,7 +544,7 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
                               )}
                             </div>
                           </TableCell>
-                          <TableCell className="text-gray-400">{item.sku}</TableCell>
+                          <TableCell className="text-gray-400">{displaySku}</TableCell>
                           <TableCell>
                             {(item.size || item.color) ? (
                               <div className="flex flex-wrap gap-1">
@@ -464,7 +573,8 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
                             Rs. {(item.price * (item.quantity || (item as any).qty || 0)).toLocaleString()}
                           </TableCell>
                         </TableRow>
-                      ))}
+                        );
+                      })}
                     </TableBody>
                   </Table>
                 </div>
@@ -557,7 +667,10 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
                 <h3 className="text-lg font-semibold text-white">Payment History</h3>
                 {sale.due > 0 && (
                   <Button
-                    onClick={() => onAddPayment?.(sale.id)}
+                    onClick={() => {
+                      onAddPayment?.(sale.id);
+                      // CRITICAL FIX: Reload will happen via event listener (paymentAdded event)
+                    }}
                     className="bg-blue-600 hover:bg-blue-700 text-white"
                   >
                     <CreditCard size={16} className="mr-2" />
@@ -566,47 +679,189 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
                 )}
               </div>
 
-              {/* Payment Summary - Sale type doesn't have payments array */}
-              {sale.paid > 0 ? (
-                <div className="space-y-3">
-                  <div 
-                    className="bg-gray-900/50 border border-gray-800 rounded-xl p-5"
-                  >
-                    <div className="flex justify-between items-start mb-3">
+              {/* CRITICAL FIX: Payment Summary with Cash/Bank Breakdown */}
+              {loadingPayments ? (
+                <div className="text-center py-12 text-gray-400">Loading payments...</div>
+              ) : payments.length > 0 ? (
+                <div className="space-y-4">
+                  {/* Summary Cards by Payment Method */}
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    {/* Cash Payments Summary */}
+                    {payments.filter(p => p.method === 'cash').length > 0 && (
+                      <div className="bg-green-500/10 border border-green-500/20 rounded-xl p-4">
+                        <p className="text-xs text-gray-400 mb-1">Paid (Cash)</p>
+                        <p className="text-2xl font-bold text-green-400">
+                          Rs. {payments.filter(p => p.method === 'cash').reduce((sum, p) => sum + p.amount, 0).toLocaleString()}
+                        </p>
+                        <p className="text-xs text-gray-500 mt-1">
+                          {payments.filter(p => p.method === 'cash').length} payment(s)
+                        </p>
+                      </div>
+                    )}
+                    
+                    {/* Bank Payments Summary */}
+                    {payments.filter(p => p.method === 'bank' || p.method === 'card').length > 0 && (
+                      <div className="bg-blue-500/10 border border-blue-500/20 rounded-xl p-4">
+                        <p className="text-xs text-gray-400 mb-1">Paid (Bank/Card)</p>
+                        <p className="text-2xl font-bold text-blue-400">
+                          Rs. {payments.filter(p => p.method === 'bank' || p.method === 'card').reduce((sum, p) => sum + p.amount, 0).toLocaleString()}
+                        </p>
+                        <p className="text-xs text-gray-500 mt-1">
+                          {payments.filter(p => p.method === 'bank' || p.method === 'card').length} payment(s)
+                        </p>
+                      </div>
+                    )}
+                    
+                    {/* Other Payments Summary */}
+                    {payments.filter(p => p.method === 'other' || (p.method !== 'cash' && p.method !== 'bank' && p.method !== 'card')).length > 0 && (
+                      <div className="bg-purple-500/10 border border-purple-500/20 rounded-xl p-4">
+                        <p className="text-xs text-gray-400 mb-1">Paid (Other)</p>
+                        <p className="text-2xl font-bold text-purple-400">
+                          Rs. {payments.filter(p => p.method === 'other' || (p.method !== 'cash' && p.method !== 'bank' && p.method !== 'card')).reduce((sum, p) => sum + p.amount, 0).toLocaleString()}
+                        </p>
+                        <p className="text-xs text-gray-500 mt-1">
+                          {payments.filter(p => p.method === 'other' || (p.method !== 'cash' && p.method !== 'bank' && p.method !== 'card')).length} payment(s)
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                  
+                  {/* Total Paid Summary */}
+                  <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-5">
+                    <div className="flex justify-between items-center mb-4">
                       <div>
-                        <p className="text-white font-semibold text-lg">
+                        <p className="text-white font-semibold text-xl">
                           Rs. {sale.paid.toLocaleString()}
                         </p>
                         <p className="text-sm text-gray-400 mt-1">
-                          Total paid amount
+                          Total Paid Amount
                         </p>
                       </div>
-                      <Badge className="bg-blue-500/10 text-blue-400 border-blue-500/20">
-                        <CheckCircle2 size={12} className="mr-1" />
-                        {sale.paymentMethod || 'Cash'}
+                      <Badge className={cn(
+                        "text-sm font-semibold",
+                        sale.paymentStatus === 'paid' ? "bg-green-500/10 text-green-400 border-green-500/20" :
+                        sale.paymentStatus === 'partial' ? "bg-yellow-500/10 text-yellow-400 border-yellow-500/20" :
+                        "bg-red-500/10 text-red-400 border-red-500/20"
+                      )}>
+                        {sale.paymentStatus === 'paid' ? 'Paid' : sale.paymentStatus === 'partial' ? 'Partial' : 'Unpaid'}
                       </Badge>
                     </div>
                     
-                    <div className="text-sm space-y-2">
-                      <div className="flex justify-between">
-                        <span className="text-gray-500">Payment Status:</span>
-                        <span className={sale.paymentStatus === 'paid' ? "text-green-400" : sale.paymentStatus === 'partial' ? "text-yellow-400" : "text-red-400"}>
-                          {sale.paymentStatus === 'paid' ? 'Paid' : sale.paymentStatus === 'partial' ? 'Partial' : 'Unpaid'}
+                    {sale.due > 0 && (
+                      <div className="flex justify-between text-sm pt-3 border-t border-gray-800">
+                        <span className="text-gray-400">Amount Due:</span>
+                        <span className="text-red-400 font-medium">
+                          Rs. {sale.due.toLocaleString()}
                         </span>
                       </div>
-                      {sale.due > 0 && (
-                        <div className="flex justify-between">
-                          <span className="text-gray-500">Amount Due:</span>
-                          <span className="text-red-400 font-medium">
-                            Rs. {sale.due.toLocaleString()}
-                          </span>
+                    )}
+                  </div>
+                  
+                  {/* Individual Payment Breakdown */}
+                <div className="space-y-3">
+                    <h4 className="text-sm font-semibold text-gray-400 uppercase">Payment Details</h4>
+                    {payments.map((payment) => (
+                    <div 
+                      key={payment.id}
+                        className="bg-gray-900/50 border border-gray-800 rounded-xl p-4"
+                      >
+                        <div className="flex justify-between items-start mb-2">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2 mb-1">
+                              <p className="text-white font-semibold">
+                            Rs. {payment.amount.toLocaleString()}
+                          </p>
+                              {payment.referenceNo && (
+                                <code className="text-xs bg-gray-800 px-2 py-0.5 rounded text-blue-400 border border-gray-700">
+                                  {payment.referenceNo}
+                                </code>
+                              )}
+                            </div>
+                            <p className="text-sm text-gray-400">
+                            {new Date(payment.date).toLocaleDateString('en-US', { 
+                              month: 'short', 
+                              day: 'numeric', 
+                                year: 'numeric'
+                            })}
+                          </p>
+                            {payment.accountName && (
+                              <p className="text-xs text-gray-500 mt-1">
+                                Account: {payment.accountName}
+                              </p>
+                            )}
                         </div>
+                          <div className="flex items-center gap-2">
+                            <Badge className={cn(
+                              "text-xs font-semibold",
+                              payment.method === 'cash' ? "bg-green-500/10 text-green-400 border-green-500/20" :
+                              payment.method === 'bank' || payment.method === 'card' ? "bg-blue-500/10 text-blue-400 border-blue-500/20" :
+                              "bg-purple-500/10 text-purple-400 border-purple-500/20"
+                            )}>
+                              {payment.method === 'cash' ? 'Cash' : 
+                               payment.method === 'bank' ? 'Bank' :
+                               payment.method === 'card' ? 'Card' : 'Other'}
+                        </Badge>
+                            {/* CRITICAL FIX: Add delete button for each payment */}
+                            <button
+                              onClick={async () => {
+                                if (!window.confirm(`Are you sure you want to delete this payment of Rs ${payment.amount.toLocaleString()}? This will create a reverse entry and update the invoice balance.`)) {
+                                  return;
+                                }
+                                
+                                // CRITICAL FIX: Set loading state
+                                setLoadingPayments(true);
+                                
+                                try {
+                                  // CRITICAL FIX: Add timeout to prevent infinite hang
+                                  const deletePromise = saleService.deletePayment(payment.id, sale.id);
+                                  const timeoutPromise = new Promise((_, reject) => 
+                                    setTimeout(() => reject(new Error('Payment deletion timed out. Please try again.')), 10000)
+                                  );
+                                  
+                                  await Promise.race([deletePromise, timeoutPromise]);
+                                  
+                                  toast.success('Payment deleted successfully. Reverse entry created.');
+                                  
+                                  // CRITICAL FIX: Reload payments and sale data
+                                  await Promise.all([
+                                    loadPayments(sale.id),
+                                    reloadSaleData()
+                                  ]);
+                                } catch (error: any) {
+                                  console.error('[VIEW SALE] Error deleting payment:', error);
+                                  toast.error(error?.message || 'Failed to delete payment. Please try again.');
+                                } finally {
+                                  // CRITICAL FIX: Always reset loading state
+                                  setLoadingPayments(false);
+                                }
+                              }}
+                              className="p-1.5 rounded-lg hover:bg-red-500/20 text-gray-400 hover:text-red-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                              title="Delete Payment"
+                              disabled={loadingPayments}
+                            >
+                              {loadingPayments ? (
+                                <span className="animate-spin">⏳</span>
+                              ) : (
+                                <Trash2 size={14} />
+                              )}
+                            </button>
+                      </div>
+                        </div>
+                        {payment.notes && (
+                          <p className="text-xs text-gray-500 mt-2">{payment.notes}</p>
                       )}
                     </div>
-                    <p className="text-xs text-gray-500 mt-3">
-                      Note: Detailed payment history can be viewed in the Ledger tab
-                    </p>
+                  ))}
                   </div>
+                </div>
+              ) : sale.paid > 0 ? (
+                <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-5">
+                  <p className="text-white font-semibold text-lg">
+                    Rs. {sale.paid.toLocaleString()}
+                  </p>
+                  <p className="text-sm text-gray-400 mt-1">
+                    Total paid amount (payment details loading...)
+                  </p>
                 </div>
               ) : (
                 <div className="text-center py-12">

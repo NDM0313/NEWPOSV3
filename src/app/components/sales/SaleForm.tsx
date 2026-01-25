@@ -166,7 +166,7 @@ interface SaleFormProps {
 export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
     // Supabase & Context
     const { companyId, branchId: contextBranchId, user, userRole } = useSupabase();
-    const { createSale } = useSales();
+    const { createSale, updateSale } = useSales();
     const { openDrawer, closeDrawer, activeDrawer, createdContactId, createdContactType, setCreatedContactId, openPackingModal } = useNavigation();
     
     // TASK 4 FIX - Check if user is admin
@@ -700,15 +700,51 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                 setItems(convertedItems);
             }
             
-            // Pre-fill payments if any
+            // CRITICAL FIX: Pre-fill payments from existing payments (split by method)
             if (initialSale.paid > 0) {
-                setPartialPayments([{
-                    id: '1',
-                    method: (initialSale.paymentMethod || 'cash') as 'cash' | 'bank' | 'other',
-                    amount: initialSale.paid,
-                    reference: '',
-                    attachments: []
-                }]);
+                // Fetch existing payments to show split
+                const loadExistingPayments = async () => {
+                    try {
+                        const { saleService } = await import('@/app/services/saleService');
+                        const existingPayments = await saleService.getSalePayments(initialSale.id);
+                        
+                        if (existingPayments && existingPayments.length > 0) {
+                            // Convert to partialPayments format (read-only for existing)
+                            const paymentRows = existingPayments.map((p: any, index: number) => ({
+                                id: `existing-${p.id || index}`,
+                                method: (p.method === 'cash' ? 'cash' : 
+                                        p.method === 'bank' || p.method === 'card' ? 'bank' : 
+                                        'other') as 'cash' | 'bank' | 'other',
+                                amount: p.amount,
+                                reference: p.referenceNo || '',
+                                attachments: [],
+                                isExisting: true // Mark as existing (read-only)
+                            }));
+                            setPartialPayments(paymentRows);
+                        } else {
+                            // Fallback: Single payment if no breakdown available
+                            setPartialPayments([{
+                                id: '1',
+                                method: (initialSale.paymentMethod || 'cash') as 'cash' | 'bank' | 'other',
+                                amount: initialSale.paid,
+                                reference: '',
+                                attachments: []
+                            }]);
+                        }
+                    } catch (error) {
+                        console.error('[SALE FORM] Error loading existing payments:', error);
+                        // Fallback: Single payment
+                        setPartialPayments([{
+                            id: '1',
+                            method: (initialSale.paymentMethod || 'cash') as 'cash' | 'bank' | 'other',
+                            amount: initialSale.paid,
+                            reference: '',
+                            attachments: []
+                        }]);
+                    }
+                };
+                
+                loadExistingPayments();
             }
             
             // Pre-fill expenses
@@ -1094,30 +1130,52 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
             const saleType: 'invoice' | 'quotation' = saleStatus === 'final' ? 'invoice' : 'quotation';
             const mappedStatus: 'draft' | 'quotation' | 'order' | 'final' = saleStatus;
             
-            // CRITICAL: Generate invoice/document number based on status
+            // CRITICAL FIX: Generate invoice/document number based on status
+            // BUT: If editing existing sale, preserve original invoice number
             let documentNumber: string;
             let documentType: 'draft' | 'quotation' | 'order' | 'invoice';
             
-            switch (saleStatus) {
-                case 'draft':
+            if (initialSale && initialSale.invoiceNo) {
+                // EDIT MODE: Preserve existing invoice number
+                documentNumber = initialSale.invoiceNo;
+                // Determine document type from existing invoice number prefix
+                if (documentNumber.startsWith('DRAFT-')) {
                     documentType = 'draft';
-                    documentNumber = generateDocumentNumber('draft');
-                    break;
-                case 'quotation':
+                } else if (documentNumber.startsWith('QT-')) {
                     documentType = 'quotation';
-                    documentNumber = generateDocumentNumber('quotation');
-                    break;
-                case 'order':
+                } else if (documentNumber.startsWith('SO-')) {
                     documentType = 'order';
-                    documentNumber = generateDocumentNumber('order');
-                    break;
-                case 'final':
+                } else if (documentNumber.startsWith('INV-')) {
                     documentType = 'invoice';
-                    documentNumber = generateDocumentNumber('invoice');
-                    break;
-                default:
-                    documentType = 'draft';
-                    documentNumber = generateDocumentNumber('draft');
+                } else {
+                    // Fallback: determine from status
+                    documentType = saleStatus === 'final' ? 'invoice' : 
+                                  saleStatus === 'quotation' ? 'quotation' :
+                                  saleStatus === 'order' ? 'order' : 'draft';
+                }
+            } else {
+                // NEW SALE: Generate new invoice number
+                switch (saleStatus) {
+                    case 'draft':
+                        documentType = 'draft';
+                        documentNumber = generateDocumentNumber('draft');
+                        break;
+                    case 'quotation':
+                        documentType = 'quotation';
+                        documentNumber = generateDocumentNumber('quotation');
+                        break;
+                    case 'order':
+                        documentType = 'order';
+                        documentNumber = generateDocumentNumber('order');
+                        break;
+                    case 'final':
+                        documentType = 'invoice';
+                        documentNumber = generateDocumentNumber('invoice');
+                        break;
+                    default:
+                        documentType = 'draft';
+                        documentNumber = generateDocumentNumber('draft');
+                }
             }
             
             // CRITICAL FIX: For draft/quotation/order, force payment to 0 and payment_status to 'unpaid'
@@ -1167,16 +1225,23 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                 // CRITICAL: Include extra expenses, commission for accounting
                 extraExpenses: extraExpenses,
                 commissionAmount: commissionAmount,
-                salesmanId: salesmanId !== "1" ? salesmanId : null
+                salesmanId: salesmanId !== "1" ? salesmanId : null,
+                // CRITICAL FIX: Pass partialPayments array for splitting into separate payment records
+                partialPayments: (saleStatus === 'final' && partialPayments.length > 0) ? partialPayments : []
             };
             
-            // Create sale via context
-            await createSale(saleData);
-            
-            // Increment document number after successful save
-            incrementNextNumber(documentType);
-            
-            toast.success(`${saleType === 'invoice' ? 'Invoice' : 'Quotation'} created successfully!`);
+            // CRITICAL FIX: Check if editing existing sale
+            if (initialSale && initialSale.id) {
+                // EDIT MODE: Update existing sale (preserve invoice number)
+                await updateSale(initialSale.id, saleData);
+                toast.success(`Sale ${documentNumber} updated successfully!`);
+            } else {
+                // NEW SALE: Create new sale
+                await createSale(saleData);
+                // Increment document number after successful save
+                incrementNextNumber(documentType);
+                toast.success(`${saleType === 'invoice' ? 'Invoice' : 'Quotation'} created successfully!`);
+            }
             
             if (print) {
                 // TODO: Implement print functionality
@@ -2051,23 +2116,42 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                                 {partialPayments.length === 0 ? (
                                     <div className="text-center text-gray-600 text-xs py-4">No payments added</div>
                                 ) : (
-                                    partialPayments.map((p) => (
-                                        <div key={p.id} className="flex justify-between items-center text-sm p-2 bg-gray-900 rounded border border-gray-800/50">
+                                    partialPayments.map((p) => {
+                                        const isExisting = (p as any).isExisting;
+                                        return (
+                                        <div key={p.id} className={cn(
+                                            "flex justify-between items-center text-sm p-2 rounded border",
+                                            isExisting 
+                                                ? "bg-gray-800/50 border-gray-700/50 opacity-75" 
+                                                : "bg-gray-900 border-gray-800/50"
+                                        )}>
                                             <div className="flex items-center gap-2">
                                                 {p.method === 'cash' && <Banknote size={14} className="text-green-500" />}
                                                 {p.method === 'bank' && <CreditCard size={14} className="text-blue-500" />}
                                                 {p.method === 'other' && <Wallet size={14} className="text-purple-500" />}
                                                 <span className="capitalize text-gray-300 text-xs">{p.method}</span>
-                                                {p.reference && <span className="text-gray-500 text-xs">({p.reference})</span>}
+                                                {p.reference && (
+                                                    <code className="text-xs bg-gray-800 px-1.5 py-0.5 rounded text-blue-400">
+                                                        {p.reference}
+                                                    </code>
+                                                )}
+                                                {isExisting && (
+                                                    <Badge variant="outline" className="text-xs border-gray-600 text-gray-500">
+                                                        Existing
+                                                    </Badge>
+                                                )}
                                             </div>
                                             <div className="flex items-center gap-3">
-                                                <span className="font-medium text-white">${p.amount.toLocaleString()}</span>
-                                                <button onClick={() => removePartialPayment(p.id)} className="text-gray-500 hover:text-red-400">
-                                                    <X size={12} />
-                                                </button>
+                                                <span className="font-medium text-white">Rs {p.amount.toLocaleString()}</span>
+                                                {!isExisting && (
+                                                    <button onClick={() => removePartialPayment(p.id)} className="text-gray-500 hover:text-red-400">
+                                                        <X size={12} />
+                                                    </button>
+                                                )}
                                             </div>
                                         </div>
-                                    ))
+                                        );
+                                    })
                                 )}
                                 </div>
                             </div>

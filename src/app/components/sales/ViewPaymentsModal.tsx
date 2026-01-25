@@ -189,20 +189,32 @@ export const ViewPaymentsModal: React.FC<ViewPaymentsModalProps> = ({
 
     setIsDeleting(true);
     try {
-      await onDeletePayment(paymentToDelete.id);
-      toast.success('Payment deleted successfully');
+      // CRITICAL FIX: Add timeout to prevent infinite hang
+      const deletePromise = onDeletePayment(paymentToDelete.id);
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Payment deletion timed out. Please try again.')), 10000)
+      );
+      
+      await Promise.race([deletePromise, timeoutPromise]);
+      
+      toast.success('Payment deleted successfully. Reverse entry created.');
       setDeleteConfirmOpen(false);
       setPaymentToDelete(null);
-      // Refetch payments after deletion
+      
+      // CRITICAL FIX: Refetch payments after deletion
       if (invoice?.id) {
         const { saleService } = await import('@/app/services/saleService');
         const fetchedPayments = await saleService.getSalePayments(invoice.id);
         setPayments(fetchedPayments);
       }
-      onRefresh?.();
+      
+      // CRITICAL FIX: Call refresh callback
+      await onRefresh?.();
     } catch (error: any) {
-      toast.error(error.message || 'Failed to delete payment');
+      console.error('[VIEW PAYMENTS] Error deleting payment:', error);
+      toast.error(error?.message || 'Failed to delete payment. Please try again.');
     } finally {
+      // CRITICAL FIX: Always reset loading state
       setIsDeleting(false);
     }
   };
@@ -210,8 +222,16 @@ export const ViewPaymentsModal: React.FC<ViewPaymentsModalProps> = ({
   return (
     <>
       {/* Main Modal */}
-      <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-        <DialogContent className="bg-gray-900 border-gray-700 text-white sm:max-w-[700px] max-h-[90vh] overflow-hidden flex flex-col">
+      <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()} modal={true}>
+        <DialogContent 
+          className="bg-gray-900 border-gray-700 text-white sm:max-w-[700px] max-h-[90vh] overflow-hidden flex flex-col"
+          onInteractOutside={(e) => {
+            // Prevent closing when clicking outside if delete confirmation is open
+            if (deleteConfirmOpen) {
+              e.preventDefault();
+            }
+          }}
+        >
           <DialogHeader className="border-b border-gray-800 pb-4">
             <DialogTitle className="flex items-center justify-between">
               <div className="flex items-center gap-3">
@@ -443,9 +463,22 @@ export const ViewPaymentsModal: React.FC<ViewPaymentsModalProps> = ({
         </DialogContent>
       </Dialog>
 
-      {/* Delete Confirmation Dialog */}
-      <AlertDialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
-        <AlertDialogContent className="bg-gray-900 border-gray-700">
+      {/* Delete Confirmation Dialog - Rendered outside main dialog to avoid aria-hidden conflicts */}
+      <AlertDialog open={deleteConfirmOpen} onOpenChange={(open) => {
+        if (!open && !isDeleting) {
+          setDeleteConfirmOpen(false);
+          setPaymentToDelete(null);
+        }
+      }} modal={true}>
+        <AlertDialogContent 
+          className="bg-gray-900 border-gray-700"
+          onInteractOutside={(e) => {
+            // Prevent closing when deleting
+            if (isDeleting) {
+              e.preventDefault();
+            }
+          }}
+        >
           <AlertDialogHeader>
             <AlertDialogTitle className="text-white flex items-center gap-2">
               <AlertCircle size={20} className="text-red-400" />

@@ -213,63 +213,69 @@ const normalizePaymentMethodForEnum = (method: string | undefined): string => {
   return enumMap[method] || enumMap[normalized] || 'cash';
 };
 
+// CRITICAL FIX: Export convertFromSupabaseSale as a standalone function
+// This allows it to be used outside the context provider
+export const convertFromSupabaseSale = (supabaseSale: any): Sale => {
+  // Resolve branch display: use joined branch data if available
+  // UI Rule: Show only branch NAME (not code, never UUID)
+  let locationDisplay = '';
+  if (supabaseSale.branch) {
+    // Branch data joined from API - show NAME only
+    locationDisplay = supabaseSale.branch.name || '';
+  }
+  // Note: Do NOT fallback to branch_id UUID - it should never appear in UI
+  
+  return {
+    id: supabaseSale.id,
+    invoiceNo: supabaseSale.invoice_no || '',
+    type: supabaseSale.status === 'quotation' ? 'quotation' : 'invoice',
+    status: supabaseSale.status || (supabaseSale.type === 'invoice' ? 'final' : 'quotation'),
+    customer: supabaseSale.customer_id || '',
+    customerName: supabaseSale.customer_name || '',
+    contactNumber: supabaseSale.customer?.phone || '',
+    date: supabaseSale.invoice_date || new Date().toISOString().split('T')[0],
+    location: locationDisplay,
+    items: (supabaseSale.items || []).map((item: any) => ({
+      id: item.id || '',
+      productId: item.product_id || '',
+      productName: item.product_name || '',
+      sku: item.sku || item.product?.sku || 'N/A',
+      quantity: item.quantity || 0,
+      price: item.unit_price || 0,
+      discount: item.discount_amount || 0,
+      tax: item.tax_amount || 0,
+      total: item.total || 0,
+      variationId: item.variation_id || undefined,
+      size: item.variation?.size || item.size || undefined,
+      color: item.variation?.color || item.color || undefined,
+      packingDetails: item.packing_details || undefined,
+      thaans: item.packing_details?.thaans || undefined,
+      meters: item.packing_details?.total_meters || item.packing_quantity || undefined,
+    })),
+    itemsCount: supabaseSale.items?.length || 0,
+    subtotal: supabaseSale.subtotal || 0,
+    discount: supabaseSale.discount_amount || 0,
+    tax: supabaseSale.tax_amount || 0,
+    expenses: supabaseSale.expenses || supabaseSale.shipping_charges || 0,
+    total: supabaseSale.total || 0,
+    paid: supabaseSale.paid_amount || 0,
+    due: supabaseSale.due_amount || 0,
+    returnDue: supabaseSale.return_due || 0,
+    paymentStatus: supabaseSale.payment_status || 'unpaid',
+    paymentMethod: supabaseSale.payment_method || 'Cash',
+    shippingStatus: supabaseSale.shipping_status || 'pending',
+    notes: supabaseSale.notes,
+    createdAt: supabaseSale.created_at || new Date().toISOString(),
+    updatedAt: supabaseSale.updated_at || new Date().toISOString(),
+  };
+};
+
 export const SalesProvider = ({ children }: { children: ReactNode }) => {
   const [sales, setSales] = useState<Sale[]>([]);
   const [loading, setLoading] = useState(true);
   const { generateDocumentNumber, incrementNextNumber } = useDocumentNumbering();
   const accounting = useAccounting();
   const { companyId, branchId, user } = useSupabase();
-
-  // Convert Supabase sale format to app format
-  const convertFromSupabaseSale = useCallback((supabaseSale: any): Sale => {
-    // Resolve branch display: use joined branch data if available
-    // UI Rule: Show only branch NAME (not code, never UUID)
-    let locationDisplay = '';
-    if (supabaseSale.branch) {
-      // Branch data joined from API - show NAME only
-      locationDisplay = supabaseSale.branch.name || '';
-    }
-    // Note: Do NOT fallback to branch_id UUID - it should never appear in UI
-    
-    return {
-      id: supabaseSale.id,
-      invoiceNo: supabaseSale.invoice_no || '',
-      type: supabaseSale.status === 'quotation' ? 'quotation' : 'invoice',
-      status: supabaseSale.status || (supabaseSale.type === 'invoice' ? 'final' : 'quotation'), // CRITICAL FIX: Include status
-      customer: supabaseSale.customer_id || '',
-      customerName: supabaseSale.customer_name || '',
-      contactNumber: supabaseSale.customer?.phone || '',
-      date: supabaseSale.invoice_date || new Date().toISOString().split('T')[0],
-      location: locationDisplay, // NOW uses resolved branch name/code instead of raw UUID
-      items: (supabaseSale.items || []).map((item: any) => ({
-        id: item.id || '',
-        productId: item.product_id || '',
-        productName: item.product_name || '',
-        sku: item.sku || item.product?.sku || 'N/A',
-        quantity: item.quantity || 0,
-        price: item.unit_price || 0,
-        discount: item.discount_amount || 0,
-        tax: item.tax_amount || 0,
-        total: item.total || 0,
-        variationId: item.variation_id || undefined, // CRITICAL FIX: Include variationId
-      })),
-      itemsCount: supabaseSale.items?.length || 0,
-      subtotal: supabaseSale.subtotal || 0,
-      discount: supabaseSale.discount_amount || 0,
-      tax: supabaseSale.tax_amount || 0,
-      expenses: supabaseSale.expenses || supabaseSale.shipping_charges || 0,
-      total: supabaseSale.total || 0,
-      paid: supabaseSale.paid_amount || 0,
-      due: supabaseSale.due_amount || 0,
-      returnDue: supabaseSale.return_due || 0,
-      paymentStatus: supabaseSale.payment_status || 'unpaid',
-      paymentMethod: supabaseSale.payment_method || 'Cash',
-      shippingStatus: supabaseSale.shipping_status || 'pending',
-      notes: supabaseSale.notes,
-      createdAt: supabaseSale.created_at || new Date().toISOString(),
-      updatedAt: supabaseSale.updated_at || new Date().toISOString(),
-    };
-  }, []);
 
   // Load sales from database
   const loadSales = useCallback(async () => {
@@ -287,7 +293,7 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
     } finally {
       setLoading(false);
     }
-  }, [companyId, branchId, convertFromSupabaseSale]);
+  }, [companyId, branchId]);
 
   // Load sales from Supabase on mount
   useEffect(() => {
@@ -383,71 +389,117 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
       // Convert back to app format
       const newSale = convertFromSupabaseSale(result);
       
-      // CRITICAL FIX: Record initial payment if sale has paid_amount > 0
-      // NOTE: SQL trigger will also try to create this, so we check if it already exists
+      // CRITICAL FIX: Record MULTIPLE payments if partialPayments array exists
+      // Each payment method = separate payment record = separate reference number = separate journal entry
+      const partialPayments = (saleData as any).partialPayments || [];
+      
       if (newSale.paid > 0 && companyId && branchId && user) {
         try {
-          // CRITICAL FIX: Check if payment already exists (from SQL trigger)
-          // If trigger created it, we only need to create journal entry
-          // If not, we create both payment and journal entry
-          const { supabase } = await import('@/lib/supabase');
-          const { data: existingPayment } = await supabase
-            .from('payments')
-            .select('id, payment_account_id')
-            .eq('reference_type', 'sale')
-            .eq('reference_id', newSale.id)
-            .eq('amount', newSale.paid)
-            .limit(1)
-            .maybeSingle();
+          const { accountHelperService } = await import('@/app/services/accountHelperService');
+          const { saleService } = await import('@/app/services/saleService');
+          const { accountService } = await import('@/app/services/accountService');
           
-          const paymentMethod = normalizePaymentMethodForEnum(saleData.paymentMethod || 'cash');
-          let paymentAccountId: string | null = null;
-          
-          if (existingPayment) {
-            // Payment already exists from trigger, use its account_id
-            paymentAccountId = existingPayment.payment_account_id;
-          } else {
-            // Payment doesn't exist, create it
-            const { accountHelperService } = await import('@/app/services/accountHelperService');
-            paymentAccountId = await accountHelperService.getDefaultAccountByPaymentMethod(
-              paymentMethod,
-              companyId
-            );
-            
-            // If no account found, use Cash as default
-            if (!paymentAccountId) {
-              const { accountService } = await import('@/app/services/accountService');
-              const allAccounts = await accountService.getAllAccounts(companyId);
-              const cashAccount = allAccounts.find(acc => acc.code === '1000');
-              paymentAccountId = cashAccount?.id || null;
-            }
-            
-            if (paymentAccountId) {
-              // Record initial payment (reference will be auto-generated by trigger)
-              const { saleService } = await import('@/app/services/saleService');
-              await saleService.recordPayment(
-                newSale.id,
-                newSale.paid,
+          // CRITICAL FIX: If partialPayments array exists, split into separate payments
+          if (partialPayments.length > 0) {
+            // Split payments: each method gets its own payment record
+            for (const partialPayment of partialPayments) {
+              const paymentMethod = normalizePaymentMethodForEnum(partialPayment.method || 'cash');
+              
+              // Get account for this payment method
+              let paymentAccountId = await accountHelperService.getDefaultAccountByPaymentMethod(
                 paymentMethod,
-                paymentAccountId,
-                companyId,
-                branchId,
-                saleData.date
-                // Reference number will be auto-generated by trigger
+                companyId
               );
+              
+              // If no account found, use Cash as default
+              if (!paymentAccountId) {
+                const allAccounts = await accountService.getAllAccounts(companyId);
+                const cashAccount = allAccounts.find(acc => acc.code === '1000');
+                paymentAccountId = cashAccount?.id || null;
+              }
+              
+              if (paymentAccountId && partialPayment.amount > 0) {
+                // Record separate payment (reference will be auto-generated by trigger)
+                await saleService.recordPayment(
+                  newSale.id,
+                  partialPayment.amount,
+                  paymentMethod,
+                  paymentAccountId,
+                  companyId,
+                  branchId,
+                  saleData.date
+                  // Reference number will be auto-generated by trigger
+                );
+                
+                // Create separate journal entry for this payment
+                accounting.recordSalePayment({
+                  saleId: newSale.id,
+                  invoiceNo: newSale.invoiceNo,
+                  customerName: newSale.customerName,
+                  amount: partialPayment.amount,
+                  paymentMethod: paymentMethod as any,
+                  accountId: paymentAccountId,
+                });
+              }
             }
-          }
-          
-          // Create journal entry for initial payment (whether payment existed or was just created)
-          if (paymentAccountId) {
-            accounting.recordSalePayment({
-              saleId: newSale.id,
-              invoiceNo: newSale.invoiceNo,
-              customerName: newSale.customerName,
-              amount: newSale.paid,
-              paymentMethod: paymentMethod as any,
-              accountId: paymentAccountId,
-            });
+          } else {
+            // Fallback: Single payment (backward compatibility)
+            const paymentMethod = normalizePaymentMethodForEnum(saleData.paymentMethod || 'cash');
+            let paymentAccountId: string | null = null;
+            
+            // Check if payment already exists (from SQL trigger)
+            const { supabase } = await import('@/lib/supabase');
+            const { data: existingPayment } = await supabase
+              .from('payments')
+              .select('id, payment_account_id')
+              .eq('reference_type', 'sale')
+              .eq('reference_id', newSale.id)
+              .eq('amount', newSale.paid)
+              .limit(1)
+              .maybeSingle();
+            
+            if (existingPayment) {
+              // Payment already exists from trigger, use its account_id
+              paymentAccountId = existingPayment.payment_account_id;
+            } else {
+              // Payment doesn't exist, create it
+              paymentAccountId = await accountHelperService.getDefaultAccountByPaymentMethod(
+                paymentMethod,
+                companyId
+              );
+              
+              // If no account found, use Cash as default
+              if (!paymentAccountId) {
+                const allAccounts = await accountService.getAllAccounts(companyId);
+                const cashAccount = allAccounts.find(acc => acc.code === '1000');
+                paymentAccountId = cashAccount?.id || null;
+              }
+              
+              if (paymentAccountId) {
+                // Record initial payment (reference will be auto-generated by trigger)
+                await saleService.recordPayment(
+                  newSale.id,
+                  newSale.paid,
+                  paymentMethod,
+                  paymentAccountId,
+                  companyId,
+                  branchId,
+                  saleData.date
+                );
+              }
+            }
+            
+            // Create journal entry for initial payment (whether payment existed or was just created)
+            if (paymentAccountId) {
+              accounting.recordSalePayment({
+                saleId: newSale.id,
+                invoiceNo: newSale.invoiceNo,
+                customerName: newSale.customerName,
+                amount: newSale.paid,
+                paymentMethod: paymentMethod as any,
+                accountId: paymentAccountId,
+              });
+            }
           }
         } catch (error: any) {
           console.error('[SALES CONTEXT] Error recording initial payment:', error);
@@ -569,19 +621,72 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
   // Update sale
   const updateSale = async (id: string, updates: Partial<Sale>): Promise<void> => {
     try {
-      // Convert updates to Supabase format
+      // CRITICAL FIX: Handle full sale update (not just status)
       const supabaseUpdates: any = {};
+      
+      // CRITICAL: Preserve invoice_no - NEVER update it
+      // Invoice number should remain unchanged when editing
+      
       if (updates.status !== undefined) supabaseUpdates.status = updates.status === 'invoice' ? 'final' : 'quotation';
+      if (updates.type !== undefined) supabaseUpdates.type = updates.type === 'invoice' ? 'invoice' : 'quotation';
       if (updates.paymentStatus !== undefined) supabaseUpdates.payment_status = updates.paymentStatus;
       if (updates.total !== undefined) supabaseUpdates.total = updates.total;
+      if (updates.subtotal !== undefined) supabaseUpdates.subtotal = updates.subtotal;
+      if (updates.discount !== undefined) supabaseUpdates.discount_amount = updates.discount;
+      if (updates.tax !== undefined) supabaseUpdates.tax_amount = updates.tax;
+      if (updates.expenses !== undefined) supabaseUpdates.expenses = updates.expenses;
       if (updates.paid !== undefined) supabaseUpdates.paid_amount = updates.paid;
       if (updates.due !== undefined) supabaseUpdates.due_amount = updates.due;
+      if (updates.date !== undefined) supabaseUpdates.invoice_date = updates.date;
+      if (updates.customerName !== undefined) supabaseUpdates.customer_name = updates.customerName;
+      if (updates.customer !== undefined) supabaseUpdates.customer_id = updates.customer;
+      if (updates.location !== undefined) {
+        // Location is branch_id, need to resolve branch name to ID
+        // For now, if it's already a UUID, use it directly
+        supabaseUpdates.branch_id = updates.location;
+      }
+      if (updates.notes !== undefined) supabaseUpdates.notes = updates.notes;
+      if (updates.shippingStatus !== undefined) supabaseUpdates.shipping_status = updates.shippingStatus;
+      if (updates.paymentMethod !== undefined) {
+        supabaseUpdates.payment_method = normalizePaymentMethodForEnum(updates.paymentMethod);
+      }
+
+      // CRITICAL FIX: Update sale items if provided
+      if ((updates as any).items && Array.isArray((updates as any).items)) {
+        const { saleService } = await import('@/app/services/saleService');
+        const saleItems = (updates as any).items.map((item: any) => ({
+          product_id: item.productId,
+          variation_id: item.variationId || undefined,
+          product_name: item.productName,
+          sku: item.sku || 'N/A',
+          quantity: item.quantity,
+          unit: item.unit || 'piece',
+          unit_price: item.price,
+          discount_percentage: item.discountPercentage || 0,
+          discount_amount: item.discount || 0,
+          tax_percentage: item.taxPercentage || 0,
+          tax_amount: item.tax || 0,
+          total: item.total,
+          packing_type: item.packingDetails?.packing_type || null,
+          packing_quantity: item.packingDetails?.total_meters || item.meters || null,
+          packing_unit: item.packingDetails?.unit || 'meters',
+          packing_details: item.packingDetails || null,
+        }));
+        
+        // Delete existing items and insert new ones
+        const { supabase } = await import('@/lib/supabase');
+        await supabase.from('sales_items').delete().eq('sale_id', id);
+        if (saleItems.length > 0) {
+          const itemsWithSaleId = saleItems.map((item: any) => ({ ...item, sale_id: id }));
+          await supabase.from('sales_items').insert(itemsWithSaleId);
+        }
+      }
 
       // If status is changing to invoice (final), decrement stock
       const sale = getSaleById(id);
-      if (sale && updates.status === 'invoice' && sale.type !== 'invoice' && sale.items) {
+      if (sale && updates.status === 'invoice' && sale.type !== 'invoice' && (updates as any).items) {
         try {
-          for (const item of sale.items) {
+          for (const item of (updates as any).items) {
             if (item.productId && item.quantity > 0) {
               const product = await productService.getProduct(item.productId);
               if (product) {
@@ -600,14 +705,81 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
       }
 
       // Update in Supabase
-      await saleService.updateSaleStatus(id, supabaseUpdates.status || 'final');
+      if (Object.keys(supabaseUpdates).length > 0) {
+        await saleService.updateSale(id, supabaseUpdates);
+      }
       
-      // Update local state
-      setSales(prev => prev.map(sale => 
-        sale.id === id 
-          ? { ...sale, ...updates, updatedAt: new Date().toISOString() }
-          : sale
-      ));
+      // CRITICAL FIX: Handle payments if provided in updates
+      // When editing, existing payments should NOT be recreated
+      // Only new payments (not marked as existing) should be created
+      if ((updates as any).partialPayments && Array.isArray((updates as any).partialPayments)) {
+        const partialPayments = (updates as any).partialPayments;
+        const newPayments = partialPayments.filter((p: any) => !p.isExisting);
+        
+        if (newPayments.length > 0 && companyId && branchId && user) {
+          try {
+            const { accountHelperService } = await import('@/app/services/accountHelperService');
+            const { saleService } = await import('@/app/services/saleService');
+            const { accountService } = await import('@/app/services/accountService');
+            
+            for (const partialPayment of newPayments) {
+              const paymentMethod = normalizePaymentMethodForEnum(partialPayment.method || 'cash');
+              
+              // Get account for this payment method
+              let paymentAccountId = await accountHelperService.getDefaultAccountByPaymentMethod(
+                paymentMethod,
+                companyId
+              );
+              
+              // If no account found, use Cash as default
+              if (!paymentAccountId) {
+                const allAccounts = await accountService.getAllAccounts(companyId);
+                const cashAccount = allAccounts.find(acc => acc.code === '1000');
+                paymentAccountId = cashAccount?.id || null;
+              }
+              
+              if (paymentAccountId && partialPayment.amount > 0) {
+                // Record separate payment (reference will be auto-generated by trigger)
+                await saleService.recordPayment(
+                  id,
+                  partialPayment.amount,
+                  paymentMethod,
+                  paymentAccountId,
+                  companyId,
+                  branchId
+                );
+                
+                // Create separate journal entry for this payment
+                accounting.recordSalePayment({
+                  saleId: id,
+                  invoiceNo: sale?.invoiceNo || '',
+                  customerName: sale?.customerName || '',
+                  amount: partialPayment.amount,
+                  paymentMethod: paymentMethod as any,
+                  accountId: paymentAccountId,
+                });
+              }
+            }
+          } catch (error: any) {
+            console.error('[SALES CONTEXT] Error recording new payments during edit:', error);
+            // Don't fail update if payment recording fails
+          }
+        }
+      }
+      
+      // CRITICAL FIX: Reload sale from database to get fresh data
+      const updatedSaleData = await saleService.getSaleById(id);
+      if (updatedSaleData) {
+        const updatedSale = convertFromSupabaseSale(updatedSaleData);
+        setSales(prev => prev.map(s => s.id === id ? updatedSale : s));
+      } else {
+        // Fallback: Update local state
+        setSales(prev => prev.map(sale => 
+          sale.id === id 
+            ? { ...sale, ...updates, updatedAt: new Date().toISOString() }
+            : sale
+        ));
+      }
       
       toast.success('Sale updated successfully!');
     } catch (error: any) {
@@ -703,6 +875,15 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
 
     try {
       await updateSale(saleId, { shippingStatus: status });
+      
+      // CRITICAL FIX: Update local state immediately for instant UI feedback
+      setSales(prev => prev.map(s => 
+        s.id === saleId ? { ...s, shippingStatus: status } : s
+      ));
+      
+      // Also refresh from database to ensure consistency
+      await loadSales();
+      
       toast.success(`Shipping status updated to ${status}!`);
     } catch (error) {
       throw error;

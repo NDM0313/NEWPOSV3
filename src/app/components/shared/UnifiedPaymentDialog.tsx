@@ -210,7 +210,7 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
     !isProcessing;
 
   // Handle payment submission
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!canSubmit) return;
 
     setIsProcessing(true);
@@ -221,7 +221,7 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
       // Route to appropriate accounting function based on context
       switch (context) {
         case 'supplier':
-          success = accounting.recordSupplierPayment({
+          success = await accounting.recordSupplierPayment({
             supplierName: entityName,
             supplierId: entityId,
             amount,
@@ -241,19 +241,48 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
             setIsProcessing(false);
             return;
           }
-          success = accounting.recordSalePayment({
-            saleId: referenceId, // CRITICAL FIX: UUID for reference_id
-            invoiceNo: referenceNo || `INV-${Date.now()}`, // Invoice number for referenceNo
-            customerName: entityName,
-            customerId: entityId,
-            amount,
-            paymentMethod,
-            accountId: selectedAccount // CRITICAL FIX: Always pass account ID
-          });
+          if (!companyId || !branchId) {
+            toast.error('Company ID and Branch ID are required');
+            setIsProcessing(false);
+            return;
+          }
+          
+          // CRITICAL FIX: First create the payment record via saleService
+          try {
+            const { saleService } = await import('@/app/services/saleService');
+            await saleService.recordPayment(
+              referenceId,
+              amount,
+              paymentMethod,
+              selectedAccount,
+              companyId,
+              branchId,
+              paymentDateTime.split('T')[0], // Extract date from datetime
+              notes || undefined
+            );
+            
+            // Then create journal entry via accounting
+            success = await accounting.recordSalePayment({
+              saleId: referenceId, // CRITICAL FIX: UUID for reference_id
+              invoiceNo: referenceNo || `INV-${Date.now()}`, // Invoice number for referenceNo
+              customerName: entityName,
+              customerId: entityId,
+              amount,
+              paymentMethod,
+              accountId: selectedAccount // CRITICAL FIX: Always pass account ID
+            });
+          } catch (paymentError: any) {
+            console.error('[UNIFIED PAYMENT] Error recording payment:', paymentError);
+            toast.error('Payment failed', {
+              description: paymentError.message || 'Unable to record payment. Please try again.'
+            });
+            setIsProcessing(false);
+            return;
+          }
           break;
 
         case 'worker':
-          success = accounting.recordWorkerPayment({
+          success = await accounting.recordWorkerPayment({
             workerName: entityName,
             workerId: entityId,
             amount,
@@ -263,7 +292,7 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
           break;
 
         case 'rental':
-          success = accounting.recordRentalPayment({
+          success = await accounting.recordRentalPayment({
             rentalName: entityName,
             rentalId: entityId,
             amount,
@@ -287,10 +316,10 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
           description: 'Unable to process payment. Please try again.'
         });
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Payment error:', error);
       toast.error('Payment failed', {
-        description: 'An error occurred while processing payment.'
+        description: error?.message || 'An error occurred while processing payment.'
       });
     } finally {
       setIsProcessing(false);

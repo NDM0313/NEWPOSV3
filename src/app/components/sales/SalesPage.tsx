@@ -1134,9 +1134,32 @@ export const SalesPage = () => {
             setPaymentDialogOpen(true);
           }}
           onDeletePayment={async (paymentId: string) => {
-            // TODO: Implement payment deletion
-            console.log('Delete payment:', paymentId);
-            throw new Error('Payment deletion not yet implemented');
+            if (!selectedSale || !paymentId) {
+              throw new Error('Sale or Payment ID not found');
+            }
+            
+            try {
+              const { saleService } = await import('@/app/services/saleService');
+              
+              // CRITICAL FIX: Add timeout to prevent infinite hang
+              const deletePromise = saleService.deletePayment(paymentId, selectedSale.id);
+              const timeoutPromise = new Promise((_, reject) => 
+                setTimeout(() => reject(new Error('Payment deletion timed out. Please try again.')), 15000)
+              );
+              
+              await Promise.race([deletePromise, timeoutPromise]);
+              
+              // Refresh sales list to get updated totals
+              await refreshSales();
+              
+              // Trigger reload in ViewSaleDetailsDrawer if open
+              window.dispatchEvent(new CustomEvent('paymentAdded'));
+              
+              // Success message already shown in ViewPaymentsModal
+            } catch (error: any) {
+              console.error('[SALES PAGE] Error deleting payment:', error);
+              throw new Error(error?.message || 'Failed to delete payment. Please try again.');
+            }
           }}
           onRefresh={async () => {
             await refreshSales();
@@ -1168,8 +1191,16 @@ export const SalesPage = () => {
             toast.success('Payment recorded successfully');
             await refreshSales();
             setPaymentDialogOpen(false);
+            
+            // CRITICAL FIX: Trigger reload in ViewSaleDetailsDrawer if open
+            window.dispatchEvent(new CustomEvent('paymentAdded'));
+            
             // Re-open View Payments modal to show updated data
-            setViewPaymentsOpen(true);
+            if (viewDetailsOpen) {
+              // ViewSaleDetailsDrawer will reload automatically via event
+            } else {
+              setViewPaymentsOpen(true);
+            }
           }}
         />
       )}

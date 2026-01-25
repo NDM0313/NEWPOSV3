@@ -38,6 +38,7 @@ import { useExpenses } from '@/app/context/ExpenseContext';
 import type { AccountingEntry } from '@/app/context/AccountingContext';
 import { ManualEntryDialog } from './ManualEntryDialog';
 import { AccountLedgerView } from './AccountLedgerView';
+import { AccountLedgerPage } from './AccountLedgerPage';
 import { TransactionDetailModal } from './TransactionDetailModal';
 import { AddAccountDrawer } from './AddAccountDrawer';
 import { useSupabase } from '@/app/context/SupabaseContext';
@@ -1061,15 +1062,14 @@ export const AccountingDashboard = () => {
       </DialogContent>
       </Dialog>
 
-      {/* Account Ledger View Modal */}
+      {/* Account Ledger View - Full Screen */}
       {ledgerAccount && (
-        <AccountLedgerView
-          isOpen={!!ledgerAccount}
-          onClose={() => setLedgerAccount(null)}
+        <AccountLedgerPage
           accountId={ledgerAccount.id}
           accountName={ledgerAccount.name}
           accountCode={ledgerAccount.code}
           accountType={ledgerAccount.type}
+          onClose={() => setLedgerAccount(null)}
         />
       )}
 

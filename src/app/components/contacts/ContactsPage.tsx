@@ -23,6 +23,7 @@ import { saleService } from '@/app/services/saleService';
 import { purchaseService } from '@/app/services/purchaseService';
 import { UnifiedPaymentDialog } from '@/app/components/shared/UnifiedPaymentDialog';
 import { UnifiedLedgerView } from '@/app/components/shared/UnifiedLedgerView';
+import { CustomerLedgerPage } from '@/app/components/accounting/CustomerLedgerPage';
 import { ViewContactProfile } from './ViewContactProfile';
 import { toast } from 'sonner';
 import { Pagination } from '@/app/components/ui/pagination';
@@ -1076,15 +1077,28 @@ export const ContactsPage = () => {
         />
       )}
 
-      {/* Unified Ledger View */}
-      {selectedContact && (
+      {/* Customer Ledger - Full Screen (for customers only) */}
+      {selectedContact && selectedContact.type === 'customer' && ledgerOpen && (
+        <CustomerLedgerPage
+          customerId={selectedContact.uuid}
+          customerName={selectedContact.name}
+          customerCode={selectedContact.code}
+          onClose={() => {
+            setLedgerOpen(false);
+            setSelectedContact(null);
+          }}
+        />
+      )}
+
+      {/* Unified Ledger View (for suppliers and workers) */}
+      {selectedContact && selectedContact.type !== 'customer' && (
         <UnifiedLedgerView
           isOpen={ledgerOpen}
           onClose={() => {
             setLedgerOpen(false);
             setSelectedContact(null);
           }}
-          entityType={selectedContact.type === 'customer' ? 'customer' : selectedContact.type === 'supplier' ? 'supplier' : 'worker'}
+          entityType={selectedContact.type === 'supplier' ? 'supplier' : 'worker'}
           entityName={selectedContact.name}
           entityId={selectedContact.id.toString()}
         />

@@ -41,6 +41,8 @@ export interface AccountLedgerEntry {
   journal_entry_id: string;
   payment_id?: string;
   sale_id?: string;
+  branch_id?: string;
+  branch_name?: string;
 }
 
 export const accountingService = {
@@ -138,9 +140,17 @@ export const accountingService = {
   },
 
   // Get journal entry by reference number
-  // Reference can be entry_no, payment reference_number, or journal entry id
+  // STRICT RULE: Lookup ONLY in journal_entries table by entry_no
   async getEntryByReference(referenceNumber: string, companyId: string) {
-    // Try to find by entry_no first
+    if (!referenceNumber || !companyId) {
+      console.error('[ACCOUNTING SERVICE] getEntryByReference: Missing referenceNumber or companyId');
+      return null;
+    }
+
+    // PRIMARY: Find by entry_no (exact match first, then case-insensitive)
+    const cleanRef = referenceNumber.trim().toUpperCase();
+    
+    // Try exact match first (case-insensitive)
     let { data, error } = await supabase
       .from('journal_entries')
       .select(`
@@ -150,45 +160,16 @@ export const accountingService = {
           account:accounts(id, name, code, type)
         ),
         payment:payments(id, reference_number, amount, payment_method, payment_date),
-        sale:sales(id, invoice_no, customer_name, total, paid_amount, due_amount)
+        sale:sales(id, invoice_no, customer_name, total, paid_amount, due_amount),
+        branch:branches(id, name, code)
       `)
-      .eq('entry_no', referenceNumber)
       .eq('company_id', companyId)
+      .eq('entry_no', cleanRef)
       .maybeSingle();
-
-    // If not found by entry_no, try by payment reference_number
-    if (!data && !error) {
-      const { data: paymentData } = await supabase
-        .from('payments')
-        .select('id')
-        .eq('reference_number', referenceNumber)
-        .eq('company_id', companyId)
-        .maybeSingle();
-
-      if (paymentData) {
-        const result = await supabase
-          .from('journal_entries')
-          .select(`
-            *,
-            lines:journal_entry_lines(
-              *,
-              account:accounts(id, name, code, type)
-            ),
-            payment:payments(id, reference_number, amount, payment_method, payment_date),
-            sale:sales(id, invoice_no, customer_name, total, paid_amount, due_amount)
-          `)
-          .eq('payment_id', paymentData.id)
-          .eq('company_id', companyId)
-          .maybeSingle();
-        
-        data = result.data;
-        error = result.error;
-      }
-    }
-
-    // If still not found, try by journal entry id (if referenceNumber looks like UUID)
-    if (!data && !error && referenceNumber.length === 36) {
-      const result = await supabase
+    
+    // If not found with exact match, try case-insensitive search
+    if (!data && (!error || error.code === 'PGRST116')) {
+      const { data: ilikeData, error: ilikeError } = await supabase
         .from('journal_entries')
         .select(`
           *,
@@ -197,17 +178,31 @@ export const accountingService = {
             account:accounts(id, name, code, type)
           ),
           payment:payments(id, reference_number, amount, payment_method, payment_date),
-          sale:sales(id, invoice_no, customer_name, total, paid_amount, due_amount)
+          sale:sales(id, invoice_no, customer_name, total, paid_amount, due_amount),
+          branch:branches(id, name, code)
         `)
-        .eq('id', referenceNumber)
         .eq('company_id', companyId)
+        .ilike('entry_no', cleanRef)
         .maybeSingle();
       
-      data = result.data;
-      error = result.error;
+      if (ilikeData) {
+        data = ilikeData;
+        error = null;
+      } else if (ilikeError && ilikeError.code !== 'PGRST116') {
+        error = ilikeError;
+      }
     }
 
-    if (error && error.code !== 'PGRST116') throw error;
+    // If not found, log for debugging
+    if (!data && error && error.code !== 'PGRST116') {
+      console.error('[ACCOUNTING SERVICE] Error finding entry by reference:', error);
+      console.error('[ACCOUNTING SERVICE] Reference searched:', cleanRef, 'Original:', referenceNumber);
+    }
+
+    if (error && error.code !== 'PGRST116') {
+      throw error;
+    }
+
     return data || null;
   },
 
@@ -216,7 +211,9 @@ export const accountingService = {
     accountId: string,
     companyId: string,
     startDate?: string,
-    endDate?: string
+    endDate?: string,
+    branchId?: string,
+    searchTerm?: string
   ): Promise<AccountLedgerEntry[]> {
     try {
       // Get all journal entry lines for this account
@@ -233,12 +230,19 @@ export const accountingService = {
             reference_type,
             reference_id,
             payment_id,
+            branch_id,
             created_by,
-            created_at
+            created_at,
+            branch:branches(id, name, code)
           )
         `)
         .eq('account_id', accountId)
         .order('created_at', { ascending: true });
+      
+      // Apply branch filter if provided
+      if (branchId) {
+        query = query.eq('journal_entry.branch_id', branchId);
+      }
 
       const { data: lines, error } = await query;
 
@@ -303,10 +307,30 @@ export const accountingService = {
       // Build ledger entries with running balance
       // First filter, then sort by Date ASC, ID ASC (as per requirements)
       const filteredLines = lines.filter((line: any) => {
-        const entryDate = line.journal_entry?.entry_date;
-        if (!entryDate) return false;
+        const entry = line.journal_entry;
+        if (!entry) return false;
+        
+        const entryDate = entry.entry_date;
         if (startDate && entryDate < startDate) return false;
         if (endDate && entryDate > endDate) return false;
+        
+        // Apply branch filter if provided
+        if (branchId && entry.branch_id !== branchId) return false;
+        
+        // Apply search filter if provided
+        if (searchTerm && searchTerm.trim()) {
+          const search = searchTerm.toLowerCase().trim();
+          const entryNo = entry.entry_no?.toLowerCase() || '';
+          const description = (entry.description || line.description || '').toLowerCase();
+          const amount = ((line.debit || 0) + (line.credit || 0)).toString();
+          
+          if (!entryNo.includes(search) && 
+              !description.includes(search) && 
+              !amount.includes(search)) {
+            return false;
+          }
+        }
+        
         return true;
       });
 
@@ -335,19 +359,34 @@ export const accountingService = {
             sourceModule = 'Payment';
           }
 
-          // Prioritize entry_no (short reference) over UUID
-          // If entry_no is missing or looks like UUID, try to get from payment reference
+          // Use entry_no if it's in short format (EXP-0001, JE-0001, etc.)
+          // If entry_no is UUID or missing, generate short reference
           let referenceNumber = entry.entry_no;
-          if (!referenceNumber || referenceNumber.length > 20 || 
-              (referenceNumber.includes('-') && referenceNumber.length === 36)) {
-            // If entry_no is UUID or missing, try to get from payment
+          
+          // Check if entry_no is UUID or invalid format
+          const isUUID = referenceNumber && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(referenceNumber);
+          const isShortFormat = referenceNumber && /^[A-Z]+-[0-9]+$/.test(referenceNumber);
+          
+          if (!referenceNumber || referenceNumber.length > 20 || isUUID || !isShortFormat) {
+            // Try to get from payment reference first
             if (entry.payment_id && paymentRefsMap.has(entry.payment_id)) {
               referenceNumber = paymentRefsMap.get(entry.payment_id)!;
+            } else if (entry.reference_type === 'expense' || entry.reference_type === 'extra_expense') {
+              // Generate EXP-XXXX format
+              referenceNumber = `EXP-${entry.id.substring(0, 4).toUpperCase()}`;
+            } else if (entry.reference_type === 'sale') {
+              // Try to get invoice number from sale
+              // This will be handled by salesMap in getCustomerLedger
+              referenceNumber = `JE-${entry.id.substring(0, 4).toUpperCase()}`;
             } else {
-              // Fallback to short UUID if still missing
-              referenceNumber = entry.id.substring(0, 8).toUpperCase();
+              // Generate JE-XXXX format for manual entries
+              referenceNumber = `JE-${entry.id.substring(0, 4).toUpperCase()}`;
             }
           }
+
+          // Get branch info from joined data
+          const branch = (entry as any).branch;
+          const branchName = branch ? (branch.code ? `${branch.code} | ${branch.name}` : branch.name) : null;
 
           return {
             date: entry.entry_date,
@@ -361,6 +400,8 @@ export const accountingService = {
             journal_entry_id: entry.id,
             payment_id: entry.payment_id,
             sale_id: entry.reference_id,
+            branch_id: entry.branch_id,
+            branch_name: branchName,
           };
         });
 
@@ -382,6 +423,204 @@ export const accountingService = {
       type: entry.debit > 0 ? 'Debit' : 'Credit',
       balance: entry.running_balance,
     }));
+  },
+
+  // Get customer ledger from journal_entries (filtered by Accounts Receivable account)
+  async getCustomerLedger(
+    customerId: string,
+    companyId: string,
+    branchId?: string,
+    startDate?: string,
+    endDate?: string,
+    searchTerm?: string
+  ): Promise<AccountLedgerEntry[]> {
+    try {
+      // First, find Accounts Receivable account
+      const { data: arAccounts } = await supabase
+        .from('accounts')
+        .select('id, code, name')
+        .eq('company_id', companyId)
+        .or('code.eq.2000,code.eq.1100,name.ilike.%Accounts Receivable%')
+        .limit(1);
+
+      if (!arAccounts || arAccounts.length === 0) {
+        console.warn('[ACCOUNTING SERVICE] Accounts Receivable account not found');
+        return [];
+      }
+
+      const arAccountId = arAccounts[0].id;
+
+      // Get journal entry lines for Accounts Receivable account
+      // Filter by customer through linked sales or payments
+      let query = supabase
+        .from('journal_entry_lines')
+        .select(`
+          *,
+          journal_entry:journal_entries(
+            id,
+            entry_no,
+            entry_date,
+            description,
+            reference_type,
+            reference_id,
+            payment_id,
+            branch_id,
+            created_by,
+            created_at,
+            sale:sales(id, invoice_no, customer_id, customer_name)
+          )
+        `)
+        .eq('account_id', arAccountId)
+        .order('created_at', { ascending: true });
+
+      const { data: lines, error } = await query;
+
+      if (error) {
+        console.error('[ACCOUNTING SERVICE] Error fetching customer ledger:', error);
+        return [];
+      }
+
+      if (!lines || lines.length === 0) {
+        return [];
+      }
+
+      // Get payments for this customer to filter payment-related entries
+      const { data: customerPayments } = await supabase
+        .from('payments')
+        .select('id, reference_number')
+        .eq('company_id', companyId)
+        .eq('contact_id', customerId);
+
+      const paymentIds = customerPayments?.map(p => p.id) || [];
+      const paymentRefsMap = new Map<string, string>();
+      customerPayments?.forEach((p: any) => {
+        if (p.reference_number) {
+          paymentRefsMap.set(p.id, p.reference_number);
+        }
+      });
+
+      // Get sales data for reference number generation
+      const saleIds = lines
+        .map((line: any) => line.journal_entry?.reference_id)
+        .filter((id: string | undefined) => id && lines.find((l: any) => l.journal_entry?.reference_type === 'sale' && l.journal_entry?.reference_id === id)) as string[];
+
+      const salesMap = new Map();
+      if (saleIds.length > 0) {
+        const { data: sales } = await supabase
+          .from('sales')
+          .select('id, invoice_no, customer_id, customer_name')
+          .in('id', saleIds);
+
+        if (sales) {
+          sales.forEach((sale: any) => {
+            salesMap.set(sale.id, sale);
+          });
+        }
+      }
+
+      // Filter by customer ID (from sales.customer_id or payments.contact_id)
+      const customerLines = lines.filter((line: any) => {
+        const entry = line.journal_entry;
+        if (!entry) return false;
+
+        // Check if linked to this customer via sale
+        if (entry.reference_type === 'sale' && entry.reference_id) {
+          const sale = salesMap.get(entry.reference_id);
+          if (sale && sale.customer_id === customerId) {
+            return true;
+          }
+        }
+
+        // Check if linked via payment
+        if (entry.payment_id && paymentIds.includes(entry.payment_id)) {
+          return true;
+        }
+
+        return false;
+      });
+
+      // Further filter by date range and branch
+      const filteredLines = customerLines.filter((line: any) => {
+        const entry = line.journal_entry;
+        if (!entry) return false;
+
+        const entryDate = entry.entry_date;
+        if (startDate && entryDate < startDate) return false;
+        if (endDate && entryDate > endDate) return false;
+        if (branchId && entry.branch_id !== branchId) return false;
+
+        return true;
+      });
+
+      // Calculate opening balance (balance before start date)
+      let openingBalance = 0;
+      if (startDate) {
+        const priorLines = filteredLines.filter((line: any) => {
+          const entry = line.journal_entry;
+          return entry && entry.entry_date < startDate;
+        });
+
+        priorLines.forEach((line: any) => {
+          openingBalance += (line.debit || 0) - (line.credit || 0);
+        });
+      }
+
+      let runningBalance = openingBalance;
+
+      // Build ledger entries with running balance
+      const ledgerEntries: AccountLedgerEntry[] = filteredLines.map((line: any) => {
+        const entry = line.journal_entry;
+        runningBalance += (line.debit || 0) - (line.credit || 0);
+
+        // Determine source module
+        let sourceModule = 'Accounting';
+        if (entry.reference_type === 'sale') {
+          sourceModule = 'Sales';
+        } else if (entry.payment_id) {
+          sourceModule = 'Payment';
+        } else if (entry.reference_type === 'expense') {
+          sourceModule = 'Expense';
+        }
+
+        // Generate short reference number
+        let referenceNumber = entry.entry_no;
+        if (!referenceNumber || referenceNumber.length > 20 || 
+            (referenceNumber.includes('-') && referenceNumber.length === 36)) {
+          // Generate short reference based on type
+          const sale = entry.reference_id ? salesMap.get(entry.reference_id) : null;
+          if (entry.reference_type === 'sale' && sale?.invoice_no) {
+            referenceNumber = sale.invoice_no;
+          } else if (entry.payment_id && paymentRefsMap.has(entry.payment_id)) {
+            referenceNumber = paymentRefsMap.get(entry.payment_id)!;
+          } else if (entry.payment_id) {
+            referenceNumber = `PAY-${entry.payment_id.substring(0, 4).toUpperCase()}`;
+          } else if (entry.reference_type === 'expense') {
+            referenceNumber = `EXP-${entry.id.substring(0, 4).toUpperCase()}`;
+          } else {
+            referenceNumber = `JE-${entry.id.substring(0, 4).toUpperCase()}`;
+          }
+        }
+
+        return {
+          date: entry.entry_date,
+          reference_number: referenceNumber,
+          description: entry.description || line.description || 'Journal Entry',
+          debit: line.debit || 0,
+          credit: line.credit || 0,
+          running_balance: runningBalance,
+          source_module: sourceModule,
+          created_by: entry.created_by,
+          journal_entry_id: entry.id,
+          payment_id: entry.payment_id,
+          sale_id: entry.reference_id,
+        };
+      });
+
+      return ledgerEntries;
+    } catch (error: any) {
+      console.error('[ACCOUNTING SERVICE] Error getting customer ledger:', error);
+      return [];
+    }
   },
 
   // Create journal entry with lines
