@@ -856,8 +856,9 @@ export const ContactsPage = () => {
                                 <DropdownMenuItem 
                                   onClick={() => {
                                     setCurrentView('sales');
-                                    // Store customer filter in sessionStorage for SalesPage to read
-                                    sessionStorage.setItem('salesFilter_customerId', contact.id || '');
+                                    // CRITICAL FIX: Use contact.uuid (database UUID) not contact.id (number)
+                                    // sale.customer_id matches contacts.id (UUID) in database
+                                    sessionStorage.setItem('salesFilter_customerId', contact.uuid || contact.id?.toString() || '');
                                     sessionStorage.setItem('salesFilter_customerName', contact.name || '');
                                     toast.info(`Filtering sales for ${contact.name}`);
                                   }}

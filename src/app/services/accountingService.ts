@@ -32,6 +32,7 @@ export interface JournalEntryWithLines extends JournalEntry {
 export interface AccountLedgerEntry {
   date: string;
   reference_number: string;
+  entry_no?: string; // Actual entry_no from database (for lookup)
   description: string;
   debit: number;
   credit: number;
@@ -43,6 +44,9 @@ export interface AccountLedgerEntry {
   sale_id?: string;
   branch_id?: string;
   branch_name?: string;
+  account_name?: string; // Payment Account name (from account_id)
+  notes?: string; // User notes/narration (separate from description)
+  document_type?: string; // Document Type (Sale, Payment, etc.)
 }
 
 export const accountingService = {
@@ -140,17 +144,58 @@ export const accountingService = {
   },
 
   // Get journal entry by reference number
-  // STRICT RULE: Lookup ONLY in journal_entries table by entry_no
+  // Get journal entry by ID (PRIMARY METHOD - NO GUESSING)
+  async getEntryById(journalEntryId: string, companyId: string) {
+    if (!journalEntryId || !companyId) {
+      console.error('[ACCOUNTING SERVICE] getEntryById: Missing journalEntryId or companyId');
+      return null;
+    }
+
+    console.log('[ACCOUNTING SERVICE] getEntryById:', { journalEntryId, companyId });
+
+    const { data, error } = await supabase
+      .from('journal_entries')
+      .select(`
+        *,
+        lines:journal_entry_lines(
+          *,
+          account:accounts(id, name, code, type)
+        ),
+        payment:payments(id, reference_number, amount, payment_method, payment_date, contact_id),
+        sale:sales(id, invoice_no, customer_name, total, paid_amount, due_amount, customer_id),
+        branch:branches(id, name, code)
+      `)
+      .eq('id', journalEntryId)
+      .eq('company_id', companyId)
+      .maybeSingle();
+
+    if (error) {
+      console.error('[ACCOUNTING SERVICE] getEntryById error:', error);
+      return null;
+    }
+
+    if (!data) {
+      console.warn('[ACCOUNTING SERVICE] getEntryById: No entry found for ID:', journalEntryId);
+      return null;
+    }
+
+    console.log('[ACCOUNTING SERVICE] getEntryById SUCCESS:', { entry_no: data.entry_no, id: data.id });
+    return data;
+  },
+
+  // CRITICAL FIX: Lookup by entry_no, payment reference_number, or invoice_no (FALLBACK ONLY)
   async getEntryByReference(referenceNumber: string, companyId: string) {
     if (!referenceNumber || !companyId) {
       console.error('[ACCOUNTING SERVICE] getEntryByReference: Missing referenceNumber or companyId');
       return null;
     }
 
-    // PRIMARY: Find by entry_no (exact match first, then case-insensitive)
-    const cleanRef = referenceNumber.trim().toUpperCase();
+    // CRITICAL: Don't force uppercase - preserve original case for exact match
+    // But use uppercase for ilike search (case-insensitive)
+    const cleanRef = referenceNumber.trim();
+    const cleanRefUpper = cleanRef.toUpperCase();
     
-    // Try exact match first (case-insensitive)
+    // STEP 1: Try to find by journal_entries.entry_no (primary lookup)
     let { data, error } = await supabase
       .from('journal_entries')
       .select(`
@@ -164,12 +209,85 @@ export const accountingService = {
         branch:branches(id, name, code)
       `)
       .eq('company_id', companyId)
-      .eq('entry_no', cleanRef)
+      .ilike('entry_no', cleanRefUpper) // Use uppercase for case-insensitive search
       .maybeSingle();
     
-    // If not found with exact match, try case-insensitive search
+    // STEP 2: If not found by entry_no, try payment reference_number
     if (!data && (!error || error.code === 'PGRST116')) {
-      const { data: ilikeData, error: ilikeError } = await supabase
+      const { data: paymentData } = await supabase
+        .from('payments')
+        .select('id')
+        .eq('company_id', companyId)
+        .ilike('reference_number', cleanRef)
+        .maybeSingle();
+
+      if (paymentData) {
+        const { data: jeData, error: jeError } = await supabase
+          .from('journal_entries')
+          .select(`
+            *,
+            lines:journal_entry_lines(
+              *,
+              account:accounts(id, name, code, type)
+            ),
+            payment:payments(id, reference_number, amount, payment_method, payment_date),
+            sale:sales(id, invoice_no, customer_name, total, paid_amount, due_amount),
+            branch:branches(id, name, code)
+          `)
+          .eq('company_id', companyId)
+          .eq('payment_id', paymentData.id)
+          .maybeSingle();
+        
+        if (jeData) {
+          data = jeData;
+          error = null;
+        } else if (jeError && jeError.code !== 'PGRST116') {
+          error = jeError;
+        }
+      }
+    }
+
+    // STEP 3: If still not found, try invoice_no (for sales)
+    if (!data && (!error || error.code === 'PGRST116')) {
+      const { data: saleData } = await supabase
+        .from('sales')
+        .select('id')
+        .eq('company_id', companyId)
+        .ilike('invoice_no', cleanRef)
+        .maybeSingle();
+
+      if (saleData) {
+        const { data: jeData, error: jeError } = await supabase
+          .from('journal_entries')
+          .select(`
+            *,
+            lines:journal_entry_lines(
+              *,
+              account:accounts(id, name, code, type)
+            ),
+            payment:payments(id, reference_number, amount, payment_method, payment_date),
+            sale:sales(id, invoice_no, customer_name, total, paid_amount, due_amount),
+            branch:branches(id, name, code)
+          `)
+          .eq('company_id', companyId)
+          .eq('reference_type', 'sale')
+          .eq('reference_id', saleData.id)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        
+        if (jeData) {
+          data = jeData;
+          error = null;
+        } else if (jeError && jeError.code !== 'PGRST116') {
+          error = jeError;
+        }
+      }
+    }
+
+    // STEP 4: If still not found, try exact match on entry_no (case-sensitive)
+    if (!data && (!error || error.code === 'PGRST116')) {
+      const { data: exactData, error: exactError } = await supabase
         .from('journal_entries')
         .select(`
           *,
@@ -182,18 +300,47 @@ export const accountingService = {
           branch:branches(id, name, code)
         `)
         .eq('company_id', companyId)
-        .ilike('entry_no', cleanRef)
+        .eq('entry_no', referenceNumber.trim()) // Exact match (case-sensitive)
         .maybeSingle();
       
-      if (ilikeData) {
-        data = ilikeData;
+      if (exactData) {
+        data = exactData;
         error = null;
-      } else if (ilikeError && ilikeError.code !== 'PGRST116') {
-        error = ilikeError;
+      } else if (exactError && exactError.code !== 'PGRST116') {
+        error = exactError;
       }
     }
 
-    // If not found, log for debugging
+    // STEP 5: If still not found and reference looks like JE-XXXX (generated from ID),
+    // try to find by matching the pattern in entry_no
+    if (!data && (!error || error.code === 'PGRST116')) {
+      // Try partial match - if reference is JE-0066, try to find entries with entry_no containing this
+      const { data: patternData, error: patternError } = await supabase
+        .from('journal_entries')
+        .select(`
+          *,
+          lines:journal_entry_lines(
+            *,
+            account:accounts(id, name, code, type)
+          ),
+          payment:payments(id, reference_number, amount, payment_method, payment_date),
+          sale:sales(id, invoice_no, customer_name, total, paid_amount, due_amount),
+          branch:branches(id, name, code)
+        `)
+        .eq('company_id', companyId)
+        .ilike('entry_no', '%' + cleanRefUpper + '%')
+        .limit(1)
+        .maybeSingle();
+      
+      if (patternData) {
+        data = patternData;
+        error = null;
+      } else if (patternError && patternError.code !== 'PGRST116') {
+        error = patternError;
+      }
+    }
+
+    // Log if not found
     if (!data && error && error.code !== 'PGRST116') {
       console.error('[ACCOUNTING SERVICE] Error finding entry by reference:', error);
       console.error('[ACCOUNTING SERVICE] Reference searched:', cleanRef, 'Original:', referenceNumber);
@@ -238,11 +385,6 @@ export const accountingService = {
         `)
         .eq('account_id', accountId)
         .order('created_at', { ascending: true });
-      
-      // Apply branch filter if provided
-      if (branchId) {
-        query = query.eq('journal_entry.branch_id', branchId);
-      }
 
       const { data: lines, error } = await query;
 
@@ -405,6 +547,19 @@ export const accountingService = {
           };
         });
 
+      // PHASE 5: LOG FINAL RESULTS
+      console.log('[ACCOUNTING SERVICE] getCustomerLedger - FINAL RESULT:', {
+        totalEntries: ledgerEntries.length,
+        totalDebit: ledgerEntries.reduce((sum, e) => sum + (e.debit || 0), 0),
+        totalCredit: ledgerEntries.reduce((sum, e) => sum + (e.credit || 0), 0),
+        sampleEntries: ledgerEntries.slice(0, 3).map(e => ({
+          reference: e.reference_number,
+          debit: e.debit,
+          credit: e.credit,
+          journal_entry_id: e.journal_entry_id
+        }))
+      });
+
       return ledgerEntries;
     } catch (error: any) {
       console.error('[ACCOUNTING SERVICE] Error getting account ledger:', error);
@@ -436,19 +591,33 @@ export const accountingService = {
   ): Promise<AccountLedgerEntry[]> {
     try {
       // First, find Accounts Receivable account
-      const { data: arAccounts } = await supabase
+      // CRITICAL: Journal entries use account code 2000, so we MUST prioritize code 2000
+      // Query all AR accounts and pick code 2000 first, then fallback to 1100
+      const { data: allArAccounts } = await supabase
         .from('accounts')
         .select('id, code, name')
         .eq('company_id', companyId)
-        .or('code.eq.2000,code.eq.1100,name.ilike.%Accounts Receivable%')
-        .limit(1);
+        .or('code.eq.2000,code.eq.1100,name.ilike.%Accounts Receivable%');
 
-      if (!arAccounts || arAccounts.length === 0) {
+      if (!allArAccounts || allArAccounts.length === 0) {
         console.warn('[ACCOUNTING SERVICE] Accounts Receivable account not found');
         return [];
       }
 
-      const arAccountId = arAccounts[0].id;
+      // Prioritize code 2000 (used by journal entries), then 1100, then any AR account
+      let arAccount = allArAccounts.find(a => a.code === '2000') ||
+                      allArAccounts.find(a => a.code === '1100') ||
+                      allArAccounts[0];
+
+      const arAccountId = arAccount.id;
+      console.log('[ACCOUNTING SERVICE] getCustomerLedger - AR Account found:', {
+        id: arAccountId,
+        code: arAccount.code,
+        name: arAccount.name,
+        totalArAccounts: allArAccounts.length
+      });
+
+      console.log('[ACCOUNTING SERVICE] getCustomerLedger - PHASE 1: Starting with customerId:', customerId);
 
       // Get journal entry lines for Accounts Receivable account
       // Filter by customer through linked sales or payments
@@ -456,6 +625,7 @@ export const accountingService = {
         .from('journal_entry_lines')
         .select(`
           *,
+          account:accounts(id, name, code),
           journal_entry:journal_entries(
             id,
             entry_no,
@@ -467,13 +637,15 @@ export const accountingService = {
             branch_id,
             created_by,
             created_at,
-            sale:sales(id, invoice_no, customer_id, customer_name)
+            branch:branches(id, name, code)
           )
         `)
         .eq('account_id', arAccountId)
         .order('created_at', { ascending: true });
 
       const { data: lines, error } = await query;
+      
+      console.log('[ACCOUNTING SERVICE] getCustomerLedger - PHASE 1: Total AR journal entry lines:', lines?.length || 0);
 
       if (error) {
         console.error('[ACCOUNTING SERVICE] Error fetching customer ledger:', error);
@@ -484,59 +656,180 @@ export const accountingService = {
         return [];
       }
 
-      // Get payments for this customer to filter payment-related entries
+      // PHASE 2: Get ALL payments for this customer via sales
+      // Payments are linked to sales, not directly to contacts
+      // So we need to find payments where the linked sale has customer_id = customerId
+      console.log('[ACCOUNTING SERVICE] getCustomerLedger - PHASE 2: Fetching payments via sales', { customerId, companyId });
+      
+      // First, get all sales for this customer
+      const { data: customerSales } = await supabase
+        .from('sales')
+        .select('id')
+        .eq('company_id', companyId)
+        .eq('customer_id', customerId);
+      
+      const saleIds = customerSales?.map(s => s.id) || [];
+      console.log('[ACCOUNTING SERVICE] getCustomerLedger - Customer sales found:', saleIds.length);
+      
+      // Then get payments linked to those sales (include notes and payment_account_id)
       const { data: customerPayments } = await supabase
         .from('payments')
-        .select('id, reference_number')
+        .select('id, reference_number, payment_method, amount, payment_date, reference_id, reference_type, notes, payment_account_id')
         .eq('company_id', companyId)
-        .eq('contact_id', customerId);
+        .eq('reference_type', 'sale')
+        .in('reference_id', saleIds.length > 0 ? saleIds : ['00000000-0000-0000-0000-000000000000']);
+      
+      // Fetch account names for payment accounts
+      const paymentAccountIds = customerPayments?.map(p => p.payment_account_id).filter(Boolean) || [];
+      const accountMap = new Map<string, string>();
+      if (paymentAccountIds.length > 0) {
+        const { data: accounts } = await supabase
+          .from('accounts')
+          .select('id, name')
+          .in('id', paymentAccountIds);
+        
+        accounts?.forEach(acc => {
+          accountMap.set(acc.id, acc.name);
+        });
+      }
+
+      console.log('[ACCOUNTING SERVICE] getCustomerLedger - Payments found:', customerPayments?.length || 0);
+      if (customerPayments && customerPayments.length > 0) {
+        console.log('[ACCOUNTING SERVICE] getCustomerLedger - Sample payment:', {
+          id: customerPayments[0].id,
+          reference_id: customerPayments[0].reference_id,
+          reference_number: customerPayments[0].reference_number
+        });
+      }
 
       const paymentIds = customerPayments?.map(p => p.id) || [];
       const paymentRefsMap = new Map<string, string>();
+      const paymentDetailsMap = new Map<string, any>();
       customerPayments?.forEach((p: any) => {
         if (p.reference_number) {
           paymentRefsMap.set(p.id, p.reference_number);
         }
+        // Add account name to payment details
+        if (p.payment_account_id && accountMap.has(p.payment_account_id)) {
+          p.payment_account = { name: accountMap.get(p.payment_account_id) };
+        }
+        paymentDetailsMap.set(p.id, p);
+      });
+      
+      console.log('[ACCOUNTING SERVICE] getCustomerLedger - Payments found:', paymentIds.length);
+
+      // Get ALL sales for this customer (needed for matching journal entries)
+      console.log('[ACCOUNTING SERVICE] getCustomerLedger - Fetching customer sales', { customerId, companyId });
+      const { data: allCustomerSales } = await supabase
+        .from('sales')
+        .select('id, invoice_no, customer_id, customer_name')
+        .eq('company_id', companyId)
+        .eq('customer_id', customerId);
+      
+      const salesMap = new Map();
+      if (allCustomerSales) {
+        allCustomerSales.forEach((sale: any) => {
+          salesMap.set(sale.id, sale);
+        });
+        console.log('[ACCOUNTING SERVICE] getCustomerLedger - Customer sales found:', allCustomerSales.length);
+      }
+      
+
+      // PHASE 3: Filter by customer ID (from sales.customer_id OR payments via sales)
+      // MUST include BOTH sales (debit) AND payments (credit) entries
+      console.log('[ACCOUNTING SERVICE] getCustomerLedger - PHASE 3: Filtering lines', {
+        totalLines: lines.length,
+        paymentIds: paymentIds.length,
+        customerSalesCount: salesMap.size,
+        customerId,
+        salesMapKeys: Array.from(salesMap.keys()).slice(0, 5)
       });
 
-      // Get sales data for reference number generation
-      const saleIds = lines
-        .map((line: any) => line.journal_entry?.reference_id)
-        .filter((id: string | undefined) => id && lines.find((l: any) => l.journal_entry?.reference_type === 'sale' && l.journal_entry?.reference_id === id)) as string[];
+      let saleMatchCount = 0;
+      let paymentMatchCount = 0;
+      let noMatchCount = 0;
 
-      const salesMap = new Map();
-      if (saleIds.length > 0) {
-        const { data: sales } = await supabase
-          .from('sales')
-          .select('id, invoice_no, customer_id, customer_name')
-          .in('id', saleIds);
-
-        if (sales) {
-          sales.forEach((sale: any) => {
-            salesMap.set(sale.id, sale);
-          });
-        }
-      }
-
-      // Filter by customer ID (from sales.customer_id or payments.contact_id)
       const customerLines = lines.filter((line: any) => {
         const entry = line.journal_entry;
         if (!entry) return false;
 
-        // Check if linked to this customer via sale
+        // CRITICAL: Exclude commission entries - Commission is COMPANY expense, NOT customer-related
+        const desc = entry.description?.toLowerCase() || '';
+        if (desc.includes('commission')) {
+          console.log(`[ACCOUNTING SERVICE] EXCLUDING commission entry: ${entry.entry_no} - ${entry.description}`);
+          return false; // Commission should NOT be in customer ledger
+        }
+
+        // Check if linked to this customer via sale (DEBIT entries - sales increase receivable)
         if (entry.reference_type === 'sale' && entry.reference_id) {
           const sale = salesMap.get(entry.reference_id);
-          if (sale && sale.customer_id === customerId) {
-            return true;
+          if (sale) {
+            console.log(`[ACCOUNTING SERVICE] Sale check: entry.ref_id=${entry.reference_id}, sale.customer_id=${sale.customer_id}, customerId=${customerId}, match=${sale.customer_id === customerId}`);
+            if (sale.customer_id === customerId) {
+              saleMatchCount++;
+              return true;
+            }
+          } else {
+            console.log(`[ACCOUNTING SERVICE] Sale NOT in map: entry.ref_id=${entry.reference_id}`);
           }
         }
 
-        // Check if linked via payment
-        if (entry.payment_id && paymentIds.includes(entry.payment_id)) {
-          return true;
+        // CRITICAL: Check if linked via payment (CREDIT entries - payments received decrease receivable)
+        // Payment journal entries can be:
+        // 1. reference_type='payment' with reference_id=payment.id
+        // 2. reference_type='sale' with payment_id set (payment linked to sale)
+        
+        // Pattern 1: reference_type='payment'
+        if (entry.reference_type === 'payment' && entry.reference_id) {
+          // Check if this payment is in our customer payments list
+          if (paymentIds.includes(entry.reference_id)) {
+            return true;
+          }
+          
+          // Also check via payment's linked sale
+          const payment = paymentDetailsMap.get(entry.reference_id);
+          if (payment && payment.reference_id) {
+            const sale = salesMap.get(payment.reference_id);
+            if (sale && sale.customer_id === customerId) {
+              return true;
+            }
+          }
+        }
+        
+        // Pattern 2: reference_type='sale' with payment_id set
+        if (entry.reference_type === 'sale' && entry.payment_id) {
+          // Check if this payment is in our customer payments list
+          if (paymentIds.includes(entry.payment_id)) {
+            return true;
+          }
+          
+          // Also check if the sale belongs to this customer
+          if (entry.reference_id) {
+            const sale = salesMap.get(entry.reference_id);
+            if (sale && sale.customer_id === customerId) {
+              return true;
+            }
+          }
         }
 
         return false;
+      });
+
+      console.log('[ACCOUNTING SERVICE] getCustomerLedger - PHASE 3: Filter results:', {
+        saleMatches: saleMatchCount,
+        paymentMatches: paymentMatchCount,
+        noMatches: noMatchCount,
+        totalCustomerLines: customerLines.length,
+        sampleNoMatches: lines.filter((l: any) => {
+          const e = l.journal_entry;
+          if (!e) return false;
+          if (e.reference_type === 'sale' && e.reference_id && !salesMap.get(e.reference_id)) return true;
+          return false;
+        }).slice(0, 3).map((l: any) => ({
+          entry_no: l.journal_entry?.entry_no,
+          ref_type: l.journal_entry?.reference_type,
+          ref_id: l.journal_entry?.reference_id
+        }))
       });
 
       // Further filter by date range and branch
@@ -567,26 +860,95 @@ export const accountingService = {
 
       let runningBalance = openingBalance;
 
-      // Build ledger entries with running balance
+      // PHASE 4: Build ledger entries with running balance
+      console.log('[ACCOUNTING SERVICE] getCustomerLedger - PHASE 4: Building ledger entries', {
+        filteredLines: filteredLines.length,
+        openingBalance,
+        sampleEntries: filteredLines.slice(0, 3).map((l: any) => ({
+          entry_no: l.journal_entry?.entry_no,
+          ref_type: l.journal_entry?.reference_type,
+          ref_id: l.journal_entry?.reference_id,
+          payment_id: l.journal_entry?.payment_id,
+          debit: l.debit,
+          credit: l.credit
+        }))
+      });
+
       const ledgerEntries: AccountLedgerEntry[] = filteredLines.map((line: any) => {
         const entry = line.journal_entry;
-        runningBalance += (line.debit || 0) - (line.credit || 0);
+        
+        // STEP 3: BACKEND JOURNAL ENTRY RULE - Verify debit/credit are mutually exclusive
+        const debit = line.debit || 0;
+        const credit = line.credit || 0;
+        
+        // STEP 4: SQL VERIFICATION - Log if both debit and credit are non-zero (DATA CORRUPTION)
+        if (debit > 0 && credit > 0) {
+          console.error('[ACCOUNTING SERVICE] DATA CORRUPTION: Both debit and credit > 0:', {
+            journal_entry_id: entry.id,
+            entry_no: entry.entry_no,
+            debit,
+            credit,
+            description: entry.description
+          });
+        }
+        
+        // STEP 6: Running Balance Formula for ASSET account: balance = previous + debit - credit
+        runningBalance += debit - credit;
 
-        // Determine source module
+        // Determine source module and document type
         let sourceModule = 'Accounting';
+        let documentType = 'Journal Entry';
         if (entry.reference_type === 'sale') {
           sourceModule = 'Sales';
+          documentType = 'Sale Invoice';
         } else if (entry.payment_id) {
           sourceModule = 'Payment';
+          documentType = 'Payment';
         } else if (entry.reference_type === 'expense') {
           sourceModule = 'Expense';
+          documentType = 'Expense';
         }
 
-        // Generate short reference number
+        // Get Payment Account name (from journal_entry_lines.account or payment.payment_account)
+        let accountName = '';
+        // First try: Get from journal_entry_lines.account (for AR entries, this is the AR account itself)
+        // For payment entries, we need the OTHER side (Cash/Bank account)
+        if (entry.payment_id) {
+          const payment = paymentDetailsMap.get(entry.payment_id);
+          if (payment?.payment_account?.name) {
+            accountName = payment.payment_account.name;
+          } else if (payment?.payment_account_id && accountMap.has(payment.payment_account_id)) {
+            accountName = accountMap.get(payment.payment_account_id) || '';
+          } else if (payment?.payment_method) {
+            // Fallback to payment_method if account not found
+            accountName = payment.payment_method;
+          }
+        } else if (line.account) {
+          // For non-payment entries, use the account from journal_entry_lines
+          accountName = line.account.name || '';
+        }
+
+        // Get Notes (from payment.notes, separate from description)
+        let notes = '';
+        if (entry.payment_id) {
+          const payment = paymentDetailsMap.get(entry.payment_id);
+          if (payment?.notes) {
+            notes = payment.notes;
+          }
+        }
+
+        // CRITICAL FIX: Use entry_no from database as PRIMARY reference
+        // Only generate fallback if entry_no is truly missing or invalid
         let referenceNumber = entry.entry_no;
-        if (!referenceNumber || referenceNumber.length > 20 || 
-            (referenceNumber.includes('-') && referenceNumber.length === 36)) {
-          // Generate short reference based on type
+        
+        // Check if entry_no is missing, empty, or looks like UUID
+        const isInvalidEntryNo = !referenceNumber || 
+                                  referenceNumber.trim() === '' || 
+                                  (referenceNumber.includes('-') && referenceNumber.length === 36) ||
+                                  referenceNumber.length > 50;
+        
+        if (isInvalidEntryNo) {
+          // Generate short reference based on type (FALLBACK ONLY)
           const sale = entry.reference_id ? salesMap.get(entry.reference_id) : null;
           if (entry.reference_type === 'sale' && sale?.invoice_no) {
             referenceNumber = sale.invoice_no;
@@ -597,22 +959,50 @@ export const accountingService = {
           } else if (entry.reference_type === 'expense') {
             referenceNumber = `EXP-${entry.id.substring(0, 4).toUpperCase()}`;
           } else {
+            // Last resort: Use entry ID substring (but this won't match database lookup)
             referenceNumber = `JE-${entry.id.substring(0, 4).toUpperCase()}`;
           }
+        }
+        
+        // Get branch info from joined data
+        const branch = (entry as any).branch;
+        const branchName = branch ? (branch.code ? `${branch.code} | ${branch.name}` : branch.name) : null;
+
+        // STEP 2: DATA SOURCE CONFIRMATION - Ensure debit/credit are properly set
+        const finalDebit = debit;
+        const finalCredit = credit;
+        
+        // Verify: Dono aik sath non-zero NA hon
+        if (finalDebit > 0 && finalCredit > 0) {
+          console.warn('[ACCOUNTING SERVICE] Invalid entry: Both debit and credit non-zero:', {
+            entry_id: entry.id,
+            entry_no: entry.entry_no,
+            debit: finalDebit,
+            credit: finalCredit
+          });
         }
 
         return {
           date: entry.entry_date,
           reference_number: referenceNumber,
+          // CRITICAL: Store actual entry_no from database (for lookup)
+          // If entry_no exists in DB, use it. Otherwise, use referenceNumber (which is generated from entry_no or UUID)
+          entry_no: entry.entry_no || null, // Keep actual DB entry_no, don't fallback to generated referenceNumber
           description: entry.description || line.description || 'Journal Entry',
-          debit: line.debit || 0,
-          credit: line.credit || 0,
+          // STEP 1: DIRECT mapping - NO Math.abs(), NO conditionals
+          debit: finalDebit,
+          credit: finalCredit,
           running_balance: runningBalance,
           source_module: sourceModule,
+          document_type: documentType,
+          account_name: accountName,
+          notes: notes,
           created_by: entry.created_by,
-          journal_entry_id: entry.id,
+          journal_entry_id: entry.id, // Use journal_entry_id as fallback if entry_no is missing
           payment_id: entry.payment_id,
           sale_id: entry.reference_id,
+          branch_id: entry.branch_id,
+          branch_name: branchName,
         };
       });
 

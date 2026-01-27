@@ -1,0 +1,56 @@
+/* Print Styles for Customer Ledger Test Page */
+
+@media print {
+  body * {
+    visibility: hidden;
+  }
+
+  #ledger-print-area,
+  #ledger-print-area * {
+    visibility: visible;
+  }
+
+  #ledger-print-area {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    padding: 20px;
+    background: white;
+  }
+
+  #ledger-print-area * {
+    color: black !important;
+    background: white !important;
+    box-shadow: none !important;
+    text-shadow: none !important;
+  }
+
+  @page {
+    margin: 1cm;
+    size: A4;
+  }
+
+  @page landscape {
+    size: A4 landscape;
+    margin: 1cm;
+  }
+
+  #ledger-print-area.landscape {
+    width: 297mm !important;
+    height: 210mm !important;
+  }
+}
+
+#ledger-print-area {
+  display: none !important;
+}
+
+@media print {
+  #ledger-print-area {
+    display: block !important;
+    position: relative !important;
+    left: 0 !important;
+    top: 0 !important;
+  }
+}

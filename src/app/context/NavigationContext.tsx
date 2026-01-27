@@ -37,7 +37,9 @@ type View =
   | 'sale-header-test'
   | 'transaction-header-test'
   | 'user-management-test'
-  | 'branch-management-test';
+  | 'branch-management-test'
+  | 'accounting-chart-test'
+  | 'customer-ledger-test';
 
 type DrawerType = 'none' | 'addUser' | 'addProduct' | 'edit-product' | 'addSale' | 'edit-sale' | 'addPurchase' | 'edit-purchase' | 'addContact';
 

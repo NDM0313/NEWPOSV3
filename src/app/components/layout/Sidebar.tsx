@@ -81,6 +81,7 @@ export const Sidebar = () => {
     { id: 'user-management-test', label: 'User Management Test', icon: FlaskConical },
     { id: 'branch-management-test', label: 'Branch Management Test', icon: FlaskConical },
     { id: 'accounting-chart-test', label: 'Chart of Accounts Test', icon: FlaskConical },
+    { id: 'customer-ledger-test', label: 'Customer Ledger Test', icon: FlaskConical },
   ];
 
   const visibleNavItems = navItems.filter(item => !item.isHidden);

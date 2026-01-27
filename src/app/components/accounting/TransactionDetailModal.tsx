@@ -13,7 +13,7 @@ import { cn } from '@/app/components/ui/utils';
 interface TransactionDetailModalProps {
   isOpen: boolean;
   onClose: () => void;
-  referenceNumber: string;
+  referenceNumber: string; // Can be journal_entry_id (UUID) or reference_no (string)
 }
 
 export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
@@ -36,8 +36,51 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
 
     setLoading(true);
     try {
-      const data = await accountingService.getEntryByReference(referenceNumber, companyId);
+      // CRITICAL FIX: Prioritize entry_no lookup (JE-0058) over UUID lookup
+      // UUID format: 8-4-4-4-12 hex characters
+      const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(referenceNumber);
+      const looksLikeEntryNo = /^[A-Z]+-\d+$/i.test(referenceNumber.trim()); // JE-0058, EXP-0001, etc.
+      
+      console.log('[TRANSACTION DETAIL] Loading transaction:', {
+        referenceNumber,
+        isUUID,
+        looksLikeEntryNo,
+        companyId
+      });
+
+      let data = null;
+      
+      // PRIORITY 1: If it looks like entry_no (JE-0058), use reference lookup first
+      if (looksLikeEntryNo) {
+        console.log('[TRANSACTION DETAIL] Looks like entry_no, using reference lookup first...');
+        data = await accountingService.getEntryByReference(referenceNumber, companyId);
+        console.log('[TRANSACTION DETAIL] Reference lookup result:', data ? 'FOUND' : 'NOT FOUND');
+      }
+      
+      // PRIORITY 2: If UUID, try ID-based lookup
+      if (!data && isUUID) {
+        console.log('[TRANSACTION DETAIL] Looks like UUID, using ID lookup...');
+        data = await accountingService.getEntryById(referenceNumber, companyId);
+        console.log('[TRANSACTION DETAIL] ID lookup result:', data ? 'FOUND' : 'NOT FOUND');
+      }
+      
+      // PRIORITY 3: Fallback to reference lookup (for any other format)
+      if (!data && !looksLikeEntryNo) {
+        console.log('[TRANSACTION DETAIL] Trying reference lookup as fallback...');
+        data = await accountingService.getEntryByReference(referenceNumber, companyId);
+        console.log('[TRANSACTION DETAIL] Reference lookup result:', data ? 'FOUND' : 'NOT FOUND');
+      }
+
       setTransaction(data);
+      
+      if (!data) {
+        console.error('[TRANSACTION DETAIL] Transaction not found:', referenceNumber);
+        console.error('[TRANSACTION DETAIL] Tried:', {
+          entryNoLookup: looksLikeEntryNo,
+          uuidLookup: isUUID,
+          referenceLookup: true
+        });
+      }
     } catch (error: any) {
       console.error('[TRANSACTION DETAIL] Error loading transaction:', error);
     } finally {

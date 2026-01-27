@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { 
-  Users,
+  Users, 
   Search,
   Plus,
   Eye,
@@ -269,13 +269,13 @@ export const StudioWorkflowPage: React.FC = () => {
       
       {/* Header */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4 border-b border-gray-800 pb-4">
-        <div>
+          <div>
           <h2 className="text-3xl font-bold text-white tracking-tight flex items-center gap-3">
             <Users className="text-blue-400" size={32} />
             Workers Management
           </h2>
           <p className="text-gray-400 mt-1">Monitor workload, progress, and production involvement</p>
-        </div>
+          </div>
 
         <div className="flex items-center gap-3">
           <Button 
@@ -299,8 +299,8 @@ export const StudioWorkflowPage: React.FC = () => {
             <div className="h-12 w-12 rounded-lg bg-blue-500/10 flex items-center justify-center">
               <Users className="text-blue-400" size={24} />
             </div>
-          </div>
-        </div>
+              </div>
+            </div>
 
         <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
           <div className="flex items-center justify-between">
@@ -311,8 +311,8 @@ export const StudioWorkflowPage: React.FC = () => {
             <div className="h-12 w-12 rounded-lg bg-yellow-500/10 flex items-center justify-center">
               <Clock className="text-yellow-400" size={24} />
             </div>
+            </div>
           </div>
-        </div>
 
         <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
           <div className="flex items-center justify-between">
@@ -338,8 +338,8 @@ export const StudioWorkflowPage: React.FC = () => {
               <TrendingUp className="text-orange-400" size={24} />
             </div>
           </div>
-        </div>
-      </div>
+                  </div>
+                </div>
 
       {/* Quick Filters */}
       <div className="bg-gray-900/80 border border-gray-800 rounded-lg px-4 py-3">
@@ -390,30 +390,30 @@ export const StudioWorkflowPage: React.FC = () => {
           >
             All Status
           </Button>
-          <Button
+                            <Button 
             variant={statusFilter === 'Available' ? 'default' : 'outline'}
             size="sm"
             onClick={() => setStatusFilter('Available')}
             className={statusFilter === 'Available' ? 'bg-green-600' : 'border-gray-700 text-gray-400'}
           >
             Available
-          </Button>
-          <Button
+                            </Button>
+                            <Button 
             variant={statusFilter === 'Busy' ? 'default' : 'outline'}
             size="sm"
             onClick={() => setStatusFilter('Busy')}
             className={statusFilter === 'Busy' ? 'bg-yellow-600' : 'border-gray-700 text-gray-400'}
           >
             Busy
-          </Button>
-          <Button
+                            </Button>
+                            <Button 
             variant={statusFilter === 'Overloaded' ? 'default' : 'outline'}
             size="sm"
             onClick={() => setStatusFilter('Overloaded')}
             className={statusFilter === 'Overloaded' ? 'bg-red-600' : 'border-gray-700 text-gray-400'}
           >
             Overloaded
-          </Button>
+                            </Button>
         </div>
       </div>
 
@@ -452,9 +452,9 @@ export const StudioWorkflowPage: React.FC = () => {
           >
             <Download size={16} />
             Export
-          </Button>
-        </div>
-      </div>
+                </Button>
+            </div>
+          </div>
 
       {/* Workers Table */}
       <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden">
@@ -470,8 +470,8 @@ export const StudioWorkflowPage: React.FC = () => {
                 <th className="px-6 py-3 font-medium text-right">Pending Amount</th>
                 <th className="px-6 py-3 font-medium text-center">Status</th>
                 <th className="px-6 py-3 font-medium text-center">Actions</th>
-              </tr>
-            </thead>
+                </tr>
+              </thead>
             <tbody className="divide-y divide-gray-800">
               {paginatedWorkers.map((worker) => {
                 const DeptIcon = getDepartmentIcon(worker.department);
@@ -583,8 +583,8 @@ export const StudioWorkflowPage: React.FC = () => {
                   </tr>
                 );
               })}
-            </tbody>
-          </table>
+              </tbody>
+            </table>
         </div>
 
         {/* Empty State */}
@@ -593,9 +593,9 @@ export const StudioWorkflowPage: React.FC = () => {
             <Users className="mx-auto text-gray-600 mb-3" size={48} />
             <p className="text-gray-400 text-lg font-medium">No workers found</p>
             <p className="text-gray-600 text-sm mt-1">Try adjusting your filters or search term</p>
-          </div>
-        )}
-      </div>
+        </div>
+      )}
+        </div>
     </div>
   );
 };
