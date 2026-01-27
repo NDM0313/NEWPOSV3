@@ -172,6 +172,7 @@ export const saleService = {
   // Get all sales
   async getAllSales(companyId: string, branchId?: string) {
     // Join with branches table to get branch name and code
+    // CRITICAL FIX: Sort by created_at DESC to show newest first
     let query = supabase
       .from('sales')
       .select(`
@@ -184,6 +185,7 @@ export const saleService = {
           variation:product_variations(*)
         )
       `)
+      .order('created_at', { ascending: false })
       .order('invoice_date', { ascending: false });
     
     if (branchId) {

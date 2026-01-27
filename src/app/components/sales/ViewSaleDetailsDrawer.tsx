@@ -456,12 +456,17 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
                     Transaction Details
                   </h3>
                   <div className="space-y-3">
-                    <div className="flex justify-between">
-                      <span className="text-xs text-gray-500">Date</span>
-                      <span className="text-white flex items-center gap-2">
+                    <div>
+                      <span className="text-xs text-gray-500 block mb-1">Date</span>
+                      <div className="text-white flex items-center gap-2">
                         <Calendar size={14} className="text-gray-500" />
-                        {new Date(sale.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                      </span>
+                        <div>
+                          <div>{new Date(sale.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</div>
+                          <div className="text-xs text-gray-500 mt-0.5">
+                            {new Date(sale.createdAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })}
+                          </div>
+                        </div>
+                      </div>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-xs text-gray-500">Location</span>
@@ -608,19 +613,31 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
                     </div>
                   )}
                   
-                  {sale.shippingCharges && sale.shippingCharges > 0 && (
+                  {/* CRITICAL FIX: Show shipping charges clearly */}
+                  {(sale.shippingCharges && sale.shippingCharges > 0) || (sale.expenses && sale.expenses > 0) ? (
                     <div className="flex justify-between text-sm">
                       <span className="text-gray-400">Shipping Charges</span>
-                      <span className="text-white font-medium">Rs. {sale.shippingCharges.toLocaleString()}</span>
+                      <span className="text-white font-medium">
+                        Rs. {(sale.shippingCharges || sale.expenses || 0).toLocaleString()}
+                      </span>
                     </div>
-                  )}
+                  ) : null}
                   
-                  {sale.otherCharges && sale.otherCharges > 0 && (
+                  {/* CRITICAL FIX: Show extra/other charges clearly */}
+                  {sale.otherCharges && sale.otherCharges > 0 ? (
                     <div className="flex justify-between text-sm">
-                      <span className="text-gray-400">Other Charges</span>
+                      <span className="text-gray-400">Extra Charges</span>
                       <span className="text-white font-medium">Rs. {sale.otherCharges.toLocaleString()}</span>
                     </div>
-                  )}
+                  ) : null}
+                  
+                  {/* CRITICAL FIX: Show expenses if different from shipping */}
+                  {sale.expenses && sale.expenses > 0 && sale.expenses !== (sale.shippingCharges || 0) ? (
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-400">Other Expenses</span>
+                      <span className="text-white font-medium">Rs. {sale.expenses.toLocaleString()}</span>
+                    </div>
+                  ) : null}
                   
                   <Separator className="bg-gray-800" />
                   

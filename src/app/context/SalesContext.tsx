@@ -48,6 +48,8 @@ export interface Sale {
   discount: number;
   tax: number;
   expenses: number;
+  shippingCharges?: number; // For backward compatibility
+  otherCharges?: number; // Extra charges beyond shipping
   total: number;
   paid: number;
   due: number;
@@ -257,6 +259,8 @@ export const convertFromSupabaseSale = (supabaseSale: any): Sale => {
     discount: supabaseSale.discount_amount || 0,
     tax: supabaseSale.tax_amount || 0,
     expenses: supabaseSale.expenses || supabaseSale.shipping_charges || 0,
+    shippingCharges: supabaseSale.expenses || supabaseSale.shipping_charges || 0, // Map expenses to shippingCharges for UI
+    otherCharges: supabaseSale.other_charges || 0, // Extra charges if any
     total: supabaseSale.total || 0,
     paid: supabaseSale.paid_amount || 0,
     due: supabaseSale.due_amount || 0,
