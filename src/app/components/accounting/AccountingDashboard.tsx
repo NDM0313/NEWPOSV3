@@ -41,6 +41,7 @@ import { AccountLedgerView } from './AccountLedgerView';
 import { AccountLedgerPage } from './AccountLedgerPage';
 import { TransactionDetailModal } from './TransactionDetailModal';
 import { AddAccountDrawer } from './AddAccountDrawer';
+import CustomerLedgerPageOriginal from '../customer-ledger-test/CustomerLedgerPageOriginal';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { accountService } from '@/app/services/accountService';
 import { toast } from 'sonner';
@@ -70,7 +71,7 @@ export const AccountingDashboard = () => {
   const expenses = useExpenses();
   const { openDrawer } = useNavigation();
   const { companyId, branchId } = useSupabase();
-  const [activeTab, setActiveTab] = useState<'transactions' | 'accounts' | 'receivables' | 'payables' | 'deposits' | 'studio' | 'reports'>('transactions');
+  const [activeTab, setActiveTab] = useState<'transactions' | 'accounts' | 'receivables' | 'payables' | 'deposits' | 'studio' | 'reports' | 'customer-ledger'>('transactions');
   const [searchTerm, setSearchTerm] = useState('');
   const [pageSize, setPageSize] = useState(25);
   const [currentPage, setCurrentPage] = useState(1);
@@ -136,6 +137,7 @@ export const AccountingDashboard = () => {
     { key: 'payables', label: 'Payables', icon: TrendingDown },
     { key: 'deposits', label: 'Deposits', icon: Shield },
     { key: 'studio', label: 'Studio Costs', icon: Wrench },
+    { key: 'customer-ledger', label: 'Customer Ledger', icon: Users },
     { key: 'reports', label: 'Reports', icon: BarChart3 },
   ];
 
@@ -169,6 +171,17 @@ export const AccountingDashboard = () => {
 
     return filtered;
   }, [transactions, searchTerm, typeFilter]);
+
+  // If customer-ledger tab is active, render it full screen
+  if (activeTab === 'customer-ledger') {
+    return (
+      <div className="fixed inset-0 z-50 bg-[#111827] overflow-y-auto">
+        <CustomerLedgerPageOriginal 
+          onClose={() => setActiveTab('transactions')}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="h-screen flex flex-col bg-[#0B0F19] overflow-hidden">

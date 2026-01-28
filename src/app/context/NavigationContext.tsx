@@ -39,7 +39,9 @@ type View =
   | 'user-management-test'
   | 'branch-management-test'
   | 'accounting-chart-test'
-  | 'customer-ledger-test';
+  | 'customer-ledger-test'
+  | 'test-ledger'
+  | 'customer-ledger-interactive-test';
 
 type DrawerType = 'none' | 'addUser' | 'addProduct' | 'edit-product' | 'addSale' | 'edit-sale' | 'addPurchase' | 'edit-purchase' | 'addContact';
 

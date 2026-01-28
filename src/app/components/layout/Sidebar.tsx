@@ -75,13 +75,22 @@ export const Sidebar = () => {
     { id: 'accounting', label: 'Accounting', icon: Calculator, isHidden: !settingsModules.accountingModuleEnabled },
     { id: 'reports', label: 'Reports', icon: PieChart },
     { id: 'settings', label: 'Settings', icon: Settings },
-    { id: 'contact-search-test', label: 'Contact Test', icon: FlaskConical },
-    { id: 'sale-header-test', label: 'Header Test', icon: FlaskConical },
-    { id: 'transaction-header-test', label: 'Transaction Header', icon: FlaskConical },
-    { id: 'user-management-test', label: 'User Management Test', icon: FlaskConical },
-    { id: 'branch-management-test', label: 'Branch Management Test', icon: FlaskConical },
-    { id: 'accounting-chart-test', label: 'Chart of Accounts Test', icon: FlaskConical },
-    { id: 'customer-ledger-test', label: 'Customer Ledger Test', icon: FlaskConical },
+    { 
+      id: 'test-pages-group', 
+      label: 'Test Pages', 
+      icon: FlaskConical,
+      children: [
+        { id: 'customer-ledger-test', label: 'Customer Ledger Test' },
+        { id: 'test-ledger', label: 'Test Ledger (API Tests)' },
+        { id: 'customer-ledger-interactive-test', label: 'Interactive Test (Manual)' },
+        { id: 'contact-search-test', label: 'Contact Test' },
+        { id: 'sale-header-test', label: 'Header Test' },
+        { id: 'transaction-header-test', label: 'Transaction Header' },
+        { id: 'user-management-test', label: 'User Management Test' },
+        { id: 'branch-management-test', label: 'Branch Management Test' },
+        { id: 'accounting-chart-test', label: 'Chart of Accounts Test' },
+      ]
+    },
   ];
 
   const visibleNavItems = navItems.filter(item => !item.isHidden);

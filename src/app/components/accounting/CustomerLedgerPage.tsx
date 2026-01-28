@@ -501,8 +501,11 @@ export const CustomerLedgerPage: React.FC<CustomerLedgerPageProps> = ({
   const handleExportPDF = async () => {
     try {
       // Use jsPDF with html2canvas for PDF generation
-      const { default: jsPDF } = await import('jspdf');
-      const html2canvas = (await import('html2canvas')).default;
+      // CRITICAL FIX: Use proper import syntax for jspdf v4 and Vite
+      const jsPDFModule = await import('jspdf');
+      const jsPDF = jsPDFModule.default || jsPDFModule;
+      const html2canvasModule = await import('html2canvas');
+      const html2canvas = html2canvasModule.default || html2canvasModule;
       
       const element = document.getElementById('ledger-print-area');
       if (!element) {

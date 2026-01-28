@@ -65,7 +65,9 @@ import { TransactionHeaderTestPage } from './components/test/TransactionHeaderTe
 import { UserManagementTestPage } from './components/test/UserManagementTestPage';
 import { BranchManagementTestPage } from './components/test/BranchManagementTestPage';
 import { AccountingChartTestPage } from './components/test/AccountingChartTestPage';
-import { CustomerLedgerTestPage } from './components/accounting/CustomerLedgerTestPage';
+import { CustomerLedgerTestPage } from './components/customer-ledger-test/CustomerLedgerTestPage';
+import TestLedger from './TestLedger';
+import CustomerLedgerInteractiveTest from './components/customer-ledger-test/CustomerLedgerInteractiveTest';
 import { SupabaseProvider } from './context/SupabaseContext';
 import { ProtectedRoute } from './components/auth/ProtectedRoute';
 import { useSettings } from './context/SettingsContext';
@@ -183,11 +185,9 @@ const AppContent = () => {
       {currentView === 'user-management-test' && <UserManagementTestPage />}
       {currentView === 'branch-management-test' && <BranchManagementTestPage />}
       {currentView === 'accounting-chart-test' && <AccountingChartTestPage />}
-      {currentView === 'customer-ledger-test' && (
-        <CustomerLedgerTestPage 
-          onClose={() => setCurrentView('accounting')} 
-        />
-      )}
+      {currentView === 'customer-ledger-test' && <CustomerLedgerTestPage />}
+      {currentView === 'test-ledger' && <TestLedger />}
+      {currentView === 'customer-ledger-interactive-test' && <CustomerLedgerInteractiveTest />}
       
       <GlobalDrawer />
     </Layout>

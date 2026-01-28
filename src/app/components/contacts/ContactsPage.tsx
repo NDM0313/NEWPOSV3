@@ -14,6 +14,9 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubTrigger,
+  DropdownMenuSubContent,
 } from "@/app/components/ui/dropdown-menu";
 import { cn } from "@/app/components/ui/utils";
 import { useNavigation } from '@/app/context/NavigationContext';
@@ -24,6 +27,7 @@ import { purchaseService } from '@/app/services/purchaseService';
 import { UnifiedPaymentDialog } from '@/app/components/shared/UnifiedPaymentDialog';
 import { UnifiedLedgerView } from '@/app/components/shared/UnifiedLedgerView';
 import { CustomerLedgerPage } from '@/app/components/accounting/CustomerLedgerPage';
+import CustomerLedgerPageOriginal from '@/app/components/customer-ledger-test/CustomerLedgerPageOriginal';
 import { ViewContactProfile } from './ViewContactProfile';
 import { toast } from 'sonner';
 import { Pagination } from '@/app/components/ui/pagination';
@@ -86,6 +90,7 @@ export const ContactsPage = () => {
   const [selectedContact, setSelectedContact] = useState<Contact | null>(null);
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
   const [ledgerOpen, setLedgerOpen] = useState(false);
+  const [ledgerType, setLedgerType] = useState<'classic' | 'modern' | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [editContactOpen, setEditContactOpen] = useState(false);
   const [viewProfileOpen, setViewProfileOpen] = useState(false);
@@ -877,16 +882,37 @@ export const ContactsPage = () => {
                                   <DollarSign size={14} className="mr-2 text-green-400" />
                                   Receive Payment
                                 </DropdownMenuItem>
-                                <DropdownMenuItem 
-                                  onClick={() => {
-                                    setSelectedContact(contact);
-                                    setLedgerOpen(true);
-                                  }}
-                                  className="hover:bg-gray-800 cursor-pointer"
-                                >
-                                  <FileText size={14} className="mr-2 text-purple-400" />
-                                  Ledger / Transactions
-                                </DropdownMenuItem>
+                                {/* Ledger Submenu */}
+                                <DropdownMenuSub>
+                                  <DropdownMenuSubTrigger className="hover:bg-gray-800 cursor-pointer">
+                                    <FileText size={14} className="mr-2 text-purple-400" />
+                                    Ledger / Transactions
+                                  </DropdownMenuSubTrigger>
+                                  <DropdownMenuSubContent className="bg-gray-900 border-gray-700 text-white">
+                                    <DropdownMenuItem 
+                                      onClick={() => {
+                                        setSelectedContact(contact);
+                                        setLedgerType('classic');
+                                        setLedgerOpen(true);
+                                      }}
+                                      className="hover:bg-gray-800 cursor-pointer"
+                                    >
+                                      <FileText size={14} className="mr-2 text-blue-400" />
+                                      Classic Ledger
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem 
+                                      onClick={() => {
+                                        setSelectedContact(contact);
+                                        setLedgerType('modern');
+                                        setLedgerOpen(true);
+                                      }}
+                                      className="hover:bg-gray-800 cursor-pointer"
+                                    >
+                                      <FileText size={14} className="mr-2 text-green-400" />
+                                      Modern Ledger (New Design)
+                                    </DropdownMenuItem>
+                                  </DropdownMenuSubContent>
+                                </DropdownMenuSub>
                                 <DropdownMenuSeparator className="bg-gray-700" />
                                 <DropdownMenuItem 
                                   onClick={() => {
@@ -937,16 +963,37 @@ export const ContactsPage = () => {
                                   <DollarSign size={14} className="mr-2 text-red-400" />
                                   Make Payment
                                 </DropdownMenuItem>
-                                <DropdownMenuItem 
-                                  onClick={() => {
-                                    setSelectedContact(contact);
-                                    setLedgerOpen(true);
-                                  }}
-                                  className="hover:bg-gray-800 cursor-pointer"
-                                >
-                                  <FileText size={14} className="mr-2 text-blue-400" />
-                                  Ledger / Transactions
-                                </DropdownMenuItem>
+                                {/* Ledger Submenu for Suppliers */}
+                                <DropdownMenuSub>
+                                  <DropdownMenuSubTrigger className="hover:bg-gray-800 cursor-pointer">
+                                    <FileText size={14} className="mr-2 text-blue-400" />
+                                    Ledger / Transactions
+                                  </DropdownMenuSubTrigger>
+                                  <DropdownMenuSubContent className="bg-gray-900 border-gray-700 text-white">
+                                    <DropdownMenuItem 
+                                      onClick={() => {
+                                        setSelectedContact(contact);
+                                        setLedgerType('classic');
+                                        setLedgerOpen(true);
+                                      }}
+                                      className="hover:bg-gray-800 cursor-pointer"
+                                    >
+                                      <FileText size={14} className="mr-2 text-blue-400" />
+                                      Classic Ledger
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem 
+                                      onClick={() => {
+                                        setSelectedContact(contact);
+                                        setLedgerType('modern');
+                                        setLedgerOpen(true);
+                                      }}
+                                      className="hover:bg-gray-800 cursor-pointer"
+                                    >
+                                      <FileText size={14} className="mr-2 text-green-400" />
+                                      Modern Ledger (New Design)
+                                    </DropdownMenuItem>
+                                  </DropdownMenuSubContent>
+                                </DropdownMenuSub>
                                 <DropdownMenuSeparator className="bg-gray-700" />
                                 <DropdownMenuItem 
                                   onClick={() => {
@@ -1080,15 +1127,29 @@ export const ContactsPage = () => {
 
       {/* Customer Ledger - Full Screen (for customers only) */}
       {selectedContact && selectedContact.type === 'customer' && ledgerOpen && (
-        <CustomerLedgerPage
-          customerId={selectedContact.uuid}
-          customerName={selectedContact.name}
-          customerCode={selectedContact.code}
-          onClose={() => {
-            setLedgerOpen(false);
-            setSelectedContact(null);
-          }}
-        />
+        <div className="fixed inset-0 z-50 bg-[#111827] overflow-y-auto">
+          {ledgerType === 'modern' ? (
+            <CustomerLedgerPageOriginal 
+              initialCustomerId={selectedContact.uuid}
+              onClose={() => {
+                setLedgerOpen(false);
+                setLedgerType(null);
+                setSelectedContact(null);
+              }}
+            />
+          ) : (
+            <CustomerLedgerPage
+              customerId={selectedContact.uuid}
+              customerName={selectedContact.name}
+              customerCode={selectedContact.code}
+              onClose={() => {
+                setLedgerOpen(false);
+                setLedgerType(null);
+                setSelectedContact(null);
+              }}
+            />
+          )}
+        </div>
       )}
 
       {/* Unified Ledger View (for suppliers and workers) */}
