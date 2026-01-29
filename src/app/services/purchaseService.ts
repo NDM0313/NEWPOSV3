@@ -219,8 +219,22 @@ export const purchaseService = {
     if (error) throw error;
   },
 
-  // Record payment
+  // Record payment – allowed only when purchase status is final/completed (ERP rule)
   async recordPayment(purchaseId: string, amount: number, paymentMethod: string, accountId: string, companyId: string, branchId: string) {
+    const { data: purchase, error: fetchError } = await supabase
+      .from('purchases')
+      .select('id, status')
+      .eq('id', purchaseId)
+      .single();
+
+    if (fetchError || !purchase) {
+      throw new Error('Purchase not found');
+    }
+    const status = (purchase as any).status;
+    if (status !== 'final' && status !== 'completed') {
+      throw new Error('Payment not allowed until purchase is Final. Status: ' + (status || 'unknown'));
+    }
+
     const { data, error } = await supabase
       .from('payments')
       .insert({

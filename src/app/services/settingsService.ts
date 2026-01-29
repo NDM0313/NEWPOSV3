@@ -127,6 +127,25 @@ export const settingsService = {
   },
 
   // ============================================
+  // ENABLE PACKING (Inventory – Boxes/Pieces)
+  // Global system setting: OFF = packing hidden everywhere; ON = full packing.
+  // ============================================
+  async getEnablePacking(companyId: string): Promise<boolean> {
+    const record = await this.getSetting(companyId, 'enable_packing');
+    return record?.value === true;
+  },
+
+  async setEnablePacking(companyId: string, value: boolean): Promise<SettingRecord> {
+    return this.setSetting(
+      companyId,
+      'enable_packing',
+      value,
+      'inventory',
+      'Enable Packing (Boxes/Pieces) – when OFF, packing is hidden system-wide'
+    );
+  },
+
+  // ============================================
   // MODULE CONFIG (Module Toggles)
   // ============================================
 

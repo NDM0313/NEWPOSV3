@@ -832,39 +832,48 @@ export const accountingService = {
         }))
       });
 
-      // Further filter by date range and branch
-      const filteredLines = customerLines.filter((line: any) => {
-        const entry = line.journal_entry;
-        if (!entry) return false;
+      // Filter by branch first (applies to all lines)
+      const branchFiltered = branchId
+        ? customerLines.filter((line: any) => line.journal_entry?.branch_id === branchId)
+        : customerLines;
 
-        const entryDate = entry.entry_date;
-        if (startDate && entryDate < startDate) return false;
-        if (endDate && entryDate > endDate) return false;
-        if (branchId && entry.branch_id !== branchId) return false;
-
-        return true;
-      });
-
-      // Calculate opening balance (balance before start date)
+      // Opening balance = sum of (debit - credit) for ALL lines BEFORE startDate (from customer data, not from date-filtered set)
       let openingBalance = 0;
       if (startDate) {
-        const priorLines = filteredLines.filter((line: any) => {
+        branchFiltered.forEach((line: any) => {
           const entry = line.journal_entry;
-          return entry && entry.entry_date < startDate;
-        });
-
-        priorLines.forEach((line: any) => {
+          if (!entry || entry.entry_date >= startDate) return;
           openingBalance += (line.debit || 0) - (line.credit || 0);
         });
       }
 
+      // Lines to display: only those within date range [startDate, endDate]
+      const rangeLines = branchFiltered.filter((line: any) => {
+        const entry = line.journal_entry;
+        if (!entry) return false;
+        const entryDate = entry.entry_date;
+        if (startDate && entryDate < startDate) return false;
+        if (endDate && entryDate > endDate) return false;
+        return true;
+      });
+
+      // Sort by entry_date then created_at for correct running balance
+      rangeLines.sort((a: any, b: any) => {
+        const dateA = (a.journal_entry?.entry_date || '').toString();
+        const dateB = (b.journal_entry?.entry_date || '').toString();
+        if (dateA !== dateB) return dateA.localeCompare(dateB);
+        const createdA = (a.journal_entry?.created_at || a.created_at || '').toString();
+        const createdB = (b.journal_entry?.created_at || b.created_at || '').toString();
+        return createdA.localeCompare(createdB);
+      });
+
       let runningBalance = openingBalance;
 
-      // PHASE 4: Build ledger entries with running balance
+      // PHASE 4: Build ledger entries with running balance (from rangeLines only)
       console.log('[ACCOUNTING SERVICE] getCustomerLedger - PHASE 4: Building ledger entries', {
-        filteredLines: filteredLines.length,
+        rangeLines: rangeLines.length,
         openingBalance,
-        sampleEntries: filteredLines.slice(0, 3).map((l: any) => ({
+        sampleEntries: rangeLines.slice(0, 3).map((l: any) => ({
           entry_no: l.journal_entry?.entry_no,
           ref_type: l.journal_entry?.reference_type,
           ref_id: l.journal_entry?.reference_id,
@@ -874,7 +883,7 @@ export const accountingService = {
         }))
       });
 
-      const ledgerEntries: AccountLedgerEntry[] = filteredLines.map((line: any) => {
+      const ledgerEntriesFromRange: AccountLedgerEntry[] = rangeLines.map((line: any) => {
         const entry = line.journal_entry;
         
         // STEP 3: BACKEND JOURNAL ENTRY RULE - Verify debit/credit are mutually exclusive
@@ -1005,6 +1014,27 @@ export const accountingService = {
           branch_name: branchName,
         };
       });
+
+      // When date range is applied, prepend opening balance row so UI/PDF/Print show it and totals are correct
+      const ledgerEntries: AccountLedgerEntry[] = startDate
+        ? [
+            {
+              date: startDate,
+              reference_number: '-',
+              entry_no: null,
+              description: 'Opening Balance',
+              debit: 0,
+              credit: 0,
+              running_balance: openingBalance,
+              source_module: 'Accounting',
+              journal_entry_id: '',
+              document_type: 'Opening Balance',
+              account_name: '',
+              notes: '',
+            },
+            ...ledgerEntriesFromRange,
+          ]
+        : ledgerEntriesFromRange;
 
       return ledgerEntries;
     } catch (error: any) {

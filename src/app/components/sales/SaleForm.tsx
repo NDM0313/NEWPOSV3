@@ -96,50 +96,34 @@ import { Loader2 } from 'lucide-react';
 import { useDocumentNumbering } from '@/app/hooks/useDocumentNumbering';
 import { userService, User as UserType } from '@/app/services/userService';
 
-// Mock variations for products that have them
-const productVariations: Record<number, Array<{ size: string; color: string }>> = {
-    3: [ // Silk Dupatta
-        { size: "S", color: "Red" },
-        { size: "S", color: "Blue" },
-        { size: "M", color: "Red" },
-        { size: "M", color: "Blue" },
-        { size: "M", color: "Green" },
-        { size: "L", color: "Red" },
-        { size: "L", color: "Blue" },
-        { size: "L", color: "Green" },
-    ],
-    4: [ // Unstitched 3-Pc Suit
-        { size: "S", color: "Beige" },
-        { size: "M", color: "Beige" },
-        { size: "M", color: "Cream" },
-        { size: "L", color: "Beige" },
-        { size: "L", color: "Cream" },
-        { size: "XL", color: "Beige" },
-        { size: "XL", color: "Cream" },
-        { size: "XL", color: "White" },
-    ],
-};
+// Variation options come from backend (product.variations) - no dummy data.
+// Built in useMemo below from products loaded from productService.
 
 interface SaleItem {
     id: number;
-    productId: number;
+    productId: number | string;
     name: string;
     sku: string;
     price: number;
     qty: number;
-    // Standard Variation Fields
+    // Standard Variation Fields (from backend product_variations)
     size?: string;
     color?: string;
+    variationId?: string; // Backend variation id - for ledger/reporting/stock
     // Standard Packing Fields (Wholesale)
     thaans?: number;
     meters?: number;
     packingDetails?: PackingDetails;
+    packing_quantity?: number; // Backend-ready: total_meters
+    packing_unit?: string; // Backend-ready: 'meters' etc.
     // Stock and Purchase Info
     stock?: number;
     lastPurchasePrice?: number;
     lastSupplier?: string;
     // UI State
     showVariations?: boolean; // Flag to show variation selector inline under this item
+    /** Set when user opens packing modal; cleared on save. Used to block submit if packing not saved. */
+    packingTouched?: boolean;
 }
 
 interface PartialPayment {
@@ -165,7 +149,7 @@ interface SaleFormProps {
 
 export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
     // Supabase & Context
-    const { companyId, branchId: contextBranchId, user, userRole } = useSupabase();
+    const { companyId, branchId: contextBranchId, user, userRole, enablePacking } = useSupabase();
     const { createSale, updateSale } = useSales();
     const { openDrawer, closeDrawer, activeDrawer, createdContactId, createdContactType, setCreatedContactId, openPackingModal } = useNavigation();
     
@@ -174,7 +158,7 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
     
     // Data State
     const [customers, setCustomers] = useState<Array<{ id: number | string; name: string; dueBalance: number }>>([]);
-    const [products, setProducts] = useState<Array<{ id: number | string; name: string; sku: string; price: number; stock: number; lastPurchasePrice?: number; lastSupplier?: string; hasVariations: boolean; needsPacking: boolean }>>([]);
+    const [products, setProducts] = useState<Array<{ id: number | string; name: string; sku: string; price: number; stock: number; lastPurchasePrice?: number; lastSupplier?: string; hasVariations: boolean; needsPacking: boolean; variations?: Array<{ id: string; attributes?: Record<string, unknown>; size?: string; color?: string }> }>>([]);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     
@@ -338,6 +322,21 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
         p.sku.toLowerCase().includes(productSearchTerm.toLowerCase())
     );
     
+    // Variation options from backend only (product.variations) - no dummy data
+    const productVariationsFromBackend = useMemo(() => {
+        const map: Record<string, Array<{ id: string; size: string; color: string }>> = {};
+        products.forEach((p) => {
+            if (p.variations && p.variations.length > 0) {
+                map[String(p.id)] = p.variations.map((v: any) => ({
+                    id: v.id,
+                    size: (v.attributes?.size ?? v.size ?? '').toString(),
+                    color: (v.attributes?.color ?? v.color ?? '').toString(),
+                }));
+            }
+        });
+        return map;
+    }, [products]);
+    
     // Load data from Supabase
     // CRITICAL: Only load on initial mount, not on every companyId change
     // This prevents remount/reload from resetting customer selection
@@ -414,12 +413,13 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                       id: p.id || p.uuid || '',
                       name: p.name || '',
                       sku: p.sku || '',
-                      price: p.salePrice || p.price || 0,
+                      price: (p.retail_price ?? p.sellingPrice ?? p.salePrice ?? p.price) || 0,
                       stock: calculatedStock, // This will show actual stock or current_stock, not forced 0
-                      lastPurchasePrice: p.costPrice || undefined,
+                      lastPurchasePrice: (p.cost_price ?? p.costPrice) ?? undefined,
                       lastSupplier: undefined, // Can be enhanced later
                       hasVariations: (p.variations && p.variations.length > 0) || false,
-                      needsPacking: false // Can be enhanced based on product type
+                      needsPacking: false, // Can be enhanced based on product type
+                      variations: p.variations || [] // Backend variations for inline selector (no dummy data)
                     };
                   })
                 );
@@ -912,12 +912,13 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
         setProductSearchTerm("");
     };
     
-    // Handle variation selection from inline row
-    const handleInlineVariationSelect = (itemId: number, variation: { size?: string; color?: string }) => {
+    // Handle variation selection from inline row (variation from backend product.variations)
+    const handleInlineVariationSelect = (itemId: number, variation: { id?: string; size?: string; color?: string }) => {
         setItems(prev => prev.map(item => {
             if (item.id === itemId) {
                 return {
                     ...item,
+                    variationId: variation.id,
                     size: variation.size,
                     color: variation.color,
                     showVariations: false, // Hide variation selector
@@ -971,45 +972,54 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
         setItems(prev => prev.filter(item => item.id !== id));
     };
 
-    // Packing Handlers - Open with existing data if available (for editing)
+    // Packing normalization: backend-ready shape (first-time save)
+    const normalizePacking = (details: PackingDetails): PackingDetails => ({
+        total_boxes: details.total_boxes ?? 0,
+        total_pieces: details.total_pieces ?? 0,
+        total_meters: details.total_meters ?? 0,
+        boxes: (details.boxes && details.boxes.length > 0) ? details.boxes : [],
+    });
+
+    // Packing Handlers – single source of truth = sale item. On first save, commit immediately to item.
+    const handleSavePacking = (itemId: number, details: PackingDetails) => {
+        const normalized = normalizePacking(details);
+        setItems(prev => prev.map(item => {
+            if (item.id === itemId) {
+                return {
+                    ...item,
+                    packingDetails: normalized,
+                    packing_quantity: normalized.total_meters,
+                    packing_unit: 'meters',
+                    qty: normalized.total_meters,
+                    thaans: normalized.total_boxes,
+                    meters: normalized.total_meters,
+                    packingTouched: false,
+                };
+            }
+            return item;
+        }));
+        toast.success("Packing details saved");
+        setActivePackingItemId(null);
+    };
+
     const openPackingModalLocal = (item: SaleItem) => {
         setActivePackingItemId(item.id);
-        // Use global packing modal
+        // Mark that user opened packing (for submit validation: block if not saved)
+        setItems(prev => prev.map(i => i.id === item.id ? { ...i, packingTouched: true } : i));
         if (openPackingModal) {
             openPackingModal({
                 itemId: item.id,
                 productName: item.name,
                 initialData: item.packingDetails, // Pre-fill with existing data if editing
-                onSave: handleSavePacking
+                onSave: (details) => handleSavePacking(item.id, details), // Pass itemId in closure – no reliance on state
             });
         }
     };
 
     const handleOpenPackingModalById = (itemId: number) => {
+        if (!enablePacking) return;
         const item = items.find(i => i.id === itemId);
-        if (item) {
-            openPackingModalLocal(item);
-        }
-    };
-
-    const handleSavePacking = (details: PackingDetails) => {
-        if (activePackingItemId !== null) {
-            // Update existing item
-            setItems(prev => prev.map(item => {
-                if (item.id === activePackingItemId) {
-                    return { 
-                        ...item, 
-                        packingDetails: details,
-                        qty: details.total_meters, // Auto-update quantity based on meters
-                        thaans: details.total_boxes,
-                        meters: details.total_meters
-                    };
-                }
-                return item;
-            }));
-            toast.success("Packing details saved");
-            setActivePackingItemId(null);
-        }
+        if (item) openPackingModalLocal(item);
     };
 
     // Payment Handlers
@@ -1067,6 +1077,16 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
             toast.error('Please add at least one item');
             return;
         }
+
+        // HARD validation: packing opened but not saved → block submit (only when packing is enabled)
+        if (enablePacking) {
+            const packingOpenedNotSaved = items.some(i => i.packingTouched && !i.packingDetails);
+            if (packingOpenedNotSaved) {
+                toast.error('Please save packing for all items where packing was opened.');
+                setSaving(false);
+                return;
+            }
+        }
         
         try {
             setSaving(true);
@@ -1081,25 +1101,22 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
               items.map(async (item) => {
                 let variationId: string | undefined = undefined;
                 
-                // If product has variations and size/color are set, find the variation_id
-                if (item.size || item.color) {
+                // Use variationId from inline selector (backend) if set; else resolve from size/color
+                if (item.variationId) {
+                  variationId = item.variationId;
+                } else if (item.size || item.color) {
                   try {
-                    // Get product variations from database
                     const product = await productService.getProduct(item.productId.toString());
                     if (product && product.variations && product.variations.length > 0) {
-                      // Find matching variation by size and color
                       const matchingVariation = product.variations.find((v: any) => {
                         const vSize = v.size || v.attributes?.size;
                         const vColor = v.color || v.attributes?.color;
                         return vSize === item.size && vColor === item.color;
                       });
-                      if (matchingVariation) {
-                        variationId = matchingVariation.id;
-                      }
+                      if (matchingVariation) variationId = matchingVariation.id;
                     }
                   } catch (variationError) {
                     console.warn(`[SALE FORM] Could not find variation for item ${item.id}:`, variationError);
-                    // Continue without variation_id
                   }
                 }
                 
@@ -1114,10 +1131,12 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                   tax: 0, // Can be enhanced later
                   total: item.price * item.qty,
                   variationId: variationId, // CRITICAL FIX: Include variationId
-                  // Include packing data if available
-                  packingDetails: item.packingDetails,
-                  thaans: item.thaans,
-                  meters: item.meters
+                  // Packing: only include when global Enable Packing is ON
+                  ...(enablePacking ? {
+                    packingDetails: item.packingDetails,
+                    thaans: item.thaans,
+                    meters: item.meters
+                  } : { packingDetails: undefined, thaans: undefined, meters: undefined })
                 };
               })
             );
@@ -1732,13 +1751,14 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                     handleSelectProduct={handleSelectProduct}
                     handleAddItem={commitPendingItem}
                     handleOpenPackingModal={handleOpenPackingModalById}
+                    enablePacking={enablePacking}
                     searchInputRef={searchInputRef}
                     qtyInputRef={qtyInputRef}
                     priceInputRef={priceInputRef}
                     addBtnRef={addBtnRef}
                     showVariationSelector={showVariationSelector}
                     selectedProductForVariation={selectedProductForVariation}
-                    productVariations={productVariations}
+                    productVariations={productVariationsFromBackend}
                     handleVariationSelect={handleVariationSelect}
                     setShowVariationSelector={setShowVariationSelector}
                     setSelectedProductForVariation={setSelectedProductForVariation}
@@ -2173,7 +2193,7 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                         <span>Qty: <span className="font-semibold text-white">{items.reduce((sum, item) => sum + item.qty, 0).toLocaleString()}</span></span>
                         
                         {/* Packing Summary - Only show non-zero values */}
-                        {items.some(item => item.packingDetails) && (() => {
+                        {enablePacking && items.some(item => item.packingDetails) && (() => {
                             const totalBoxes = items.reduce((sum, item) => sum + (item.packingDetails?.total_boxes || 0), 0);
                             const totalPieces = items.reduce((sum, item) => sum + (item.packingDetails?.total_pieces || 0), 0);
                             const totalMeters = items.reduce((sum, item) => sum + (item.packingDetails?.total_meters || 0), 0);
@@ -2239,8 +2259,8 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                     {/* Total Quantity */}
                     <span>Qty: {items.reduce((sum, item) => sum + item.qty, 0).toLocaleString()}</span>
                     
-                    {/* Packing Summary - Only show if at least one item has packing */}
-                    {items.some(item => item.packingDetails) && (
+                    {/* Packing Summary - Only when Enable Packing is ON and at least one item has packing */}
+                    {enablePacking && items.some(item => item.packingDetails) && (
                         <>
                             <span className="w-1 h-1 rounded-full bg-gray-600" />
                             <span>

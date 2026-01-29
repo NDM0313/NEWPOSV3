@@ -162,8 +162,8 @@ export const ContactsPage = () => {
       
       // Load sales and purchases to calculate balances
       const [salesData, purchasesData] = await Promise.all([
-        saleService.getAllSales(companyId, branchId || undefined).catch(() => []),
-        purchaseService.getAllPurchases(companyId, branchId || undefined).catch(() => []),
+        saleService.getAllSales(companyId, branchId === 'all' ? undefined : branchId || undefined).catch(() => []),
+        purchaseService.getAllPurchases(companyId, branchId === 'all' ? undefined : branchId || undefined).catch(() => []),
       ]);
       
       // Convert to app format

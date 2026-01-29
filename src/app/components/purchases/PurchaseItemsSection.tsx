@@ -87,6 +87,8 @@ interface PurchaseItemsSectionProps {
     setShowVariationSelector: React.Dispatch<React.SetStateAction<boolean>>;
     setSelectedProductForVariation: React.Dispatch<React.SetStateAction<Product | null>>;
     handleInlineVariationSelect: (itemId: number, variation: { size?: string; color?: string }) => void;
+    /** When false, Packing column and modal trigger are hidden (global Enable Packing = OFF). */
+    enablePacking?: boolean;
     // Update item function
     updateItem: (id: number, field: 'qty' | 'price', value: number) => void;
     // Keyboard navigation
@@ -138,6 +140,7 @@ export const PurchaseItemsSection: React.FC<PurchaseItemsSectionProps> = ({
     setShowVariationSelector,
     setSelectedProductForVariation,
     handleInlineVariationSelect,
+    enablePacking = false,
     // Update item function
     updateItem,
     // Keyboard navigation
@@ -305,12 +308,15 @@ export const PurchaseItemsSection: React.FC<PurchaseItemsSectionProps> = ({
 
             {/* Table Section */}
             <div className="flex-1 overflow-hidden flex flex-col">
-                {/* Table Headers - FIXED SPACING */}
-                <div className="grid grid-cols-[32px_1fr_auto_auto_80px_100px_80px_50px] gap-2 px-2 py-2.5 bg-gray-950/30 border-b border-gray-800/50 shrink-0">
+                {/* Table Headers - FIXED SPACING (Packing column when enablePacking) */}
+                <div className={enablePacking
+                    ? "grid grid-cols-[32px_1fr_auto_auto_80px_100px_80px_50px] gap-2 px-2 py-2.5 bg-gray-950/30 border-b border-gray-800/50 shrink-0"
+                    : "grid grid-cols-[32px_1fr_auto_80px_100px_80px_50px] gap-2 px-2 py-2.5 bg-gray-950/30 border-b border-gray-800/50 shrink-0"
+                }>
                     <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider">#</div>
                     <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Name</div>
                     <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider w-[100px]">Variation</div>
-                    <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider w-[120px]">Packing</div>
+                    {enablePacking && <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider w-[120px]">Packing</div>}
                     <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider text-center">Qty</div>
                     <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider text-right">Price</div>
                     <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider text-right">Total</div>
@@ -323,8 +329,11 @@ export const PurchaseItemsSection: React.FC<PurchaseItemsSectionProps> = ({
                         <div className="divide-y divide-gray-800/50">
                             {items.map((item, index) => (
                                 <div key={item.id}>
-                                    {/* Main Item Row - FIXED SPACING */}
-                                    <div className="group grid grid-cols-[32px_1fr_auto_auto_80px_100px_80px_50px] gap-2 px-2 py-1.5 hover:bg-gray-900/30 transition-colors items-center">
+                                    {/* Main Item Row - FIXED SPACING (Packing cell when enablePacking) */}
+                                    <div className={enablePacking
+                                        ? "group grid grid-cols-[32px_1fr_auto_auto_80px_100px_80px_50px] gap-2 px-2 py-1.5 hover:bg-gray-900/30 transition-colors items-center"
+                                        : "group grid grid-cols-[32px_1fr_auto_80px_100px_80px_50px] gap-2 px-2 py-1.5 hover:bg-gray-900/30 transition-colors items-center"
+                                    }>
                                         {/* # (Fixed 32px) */}
                                         <div className="w-[32px]">
                                             <span className="text-xs text-gray-500 font-medium">
@@ -366,7 +375,8 @@ export const PurchaseItemsSection: React.FC<PurchaseItemsSectionProps> = ({
                                             </div>
                                         </div>
 
-                                    {/* Packing (Fixed Width) */}
+                                    {/* Packing (Fixed Width) - only when enablePacking */}
+                                    {enablePacking && (
                                     <div className="w-[120px]">
                                         <div className="flex flex-wrap items-center gap-2">
                                             {(item.thaans || item.meters || item.packingDetails) ? (
@@ -397,6 +407,7 @@ export const PurchaseItemsSection: React.FC<PurchaseItemsSectionProps> = ({
                                             )}
                                         </div>
                                     </div>
+                                    )}
 
                                     {/* Qty (Fixed 80px) */}
                                     <div className="w-[80px]">
@@ -407,7 +418,7 @@ export const PurchaseItemsSection: React.FC<PurchaseItemsSectionProps> = ({
                                             value={item.qty}
                                             onChange={(e) => updateItem(item.id, 'qty', parseFloat(e.target.value) || 0)}
                                             onKeyDown={(e) => handleQtyKeyDown(e, item.id)}
-                                            disabled={!!item.packingDetails}
+                                            disabled={enablePacking && !!item.packingDetails}
                                         />
                                     </div>
 

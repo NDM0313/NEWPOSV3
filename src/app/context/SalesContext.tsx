@@ -29,7 +29,11 @@ export interface SaleItem {
   discount: number;
   tax: number;
   total: number;
-  variationId?: string; // CRITICAL FIX: Add variationId for variation tracking
+  variationId?: string; // Backend variation id - for ledger/reporting/stock
+  /** Unit from backend (sales_items.unit): piece, box, meters, etc. */
+  unit?: string;
+  /** Packing from backend (sales_items.packing_*) - for display/reports */
+  packingDetails?: { packing_type?: string; packing_quantity?: number; packing_unit?: string; [k: string]: unknown };
 }
 
 export interface Sale {
@@ -237,23 +241,33 @@ export const convertFromSupabaseSale = (supabaseSale: any): Sale => {
     contactNumber: supabaseSale.customer?.phone || '',
     date: supabaseSale.invoice_date || new Date().toISOString().split('T')[0],
     location: locationDisplay,
-    items: (supabaseSale.items || []).map((item: any) => ({
-      id: item.id || '',
-      productId: item.product_id || '',
-      productName: item.product_name || '',
-      sku: item.sku || item.product?.sku || 'N/A',
-      quantity: item.quantity || 0,
-      price: item.unit_price || 0,
-      discount: item.discount_amount || 0,
-      tax: item.tax_amount || 0,
-      total: item.total || 0,
-      variationId: item.variation_id || undefined,
-      size: item.variation?.size || item.size || undefined,
-      color: item.variation?.color || item.color || undefined,
-      packingDetails: item.packing_details || undefined,
-      thaans: item.packing_details?.thaans || undefined,
-      meters: item.packing_details?.total_meters || item.packing_quantity || undefined,
-    })),
+    items: (supabaseSale.items || []).map((item: any) => {
+      // Packing: single source of truth from backend – pre-fill modal on edit (no zero/blank)
+      const pd = item.packing_details;
+      const packingDetails = pd
+        ? { ...pd, total_boxes: pd.total_boxes ?? 0, total_pieces: pd.total_pieces ?? 0, total_meters: pd.total_meters ?? item.packing_quantity ?? 0, boxes: pd.boxes || [] }
+        : (item.packing_quantity != null && item.packing_quantity !== '')
+          ? { total_boxes: 0, total_pieces: 0, total_meters: Number(item.packing_quantity) || 0, boxes: [] as any[] }
+          : undefined;
+      return {
+        id: item.id || '',
+        productId: item.product_id || '',
+        productName: item.product_name || '',
+        sku: item.sku || item.product?.sku || 'N/A',
+        quantity: item.quantity || 0,
+        price: item.unit_price || 0,
+        discount: item.discount_amount || 0,
+        tax: item.tax_amount || 0,
+        total: item.total || 0,
+        variationId: item.variation_id || undefined,
+        unit: item.unit || undefined,
+        size: item.variation?.size || item.size || undefined,
+        color: item.variation?.color || item.color || undefined,
+        packingDetails: packingDetails ?? undefined,
+        thaans: packingDetails?.total_boxes ?? item.packing_details?.thaans,
+        meters: packingDetails?.total_meters ?? item.packing_quantity ?? undefined,
+      };
+    }),
     itemsCount: supabaseSale.items?.length || 0,
     subtotal: supabaseSale.subtotal || 0,
     discount: supabaseSale.discount_amount || 0,
@@ -287,7 +301,7 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
     
     try {
       setLoading(true);
-      const data = await saleService.getAllSales(companyId, branchId || undefined);
+      const data = await saleService.getAllSales(companyId, branchId === 'all' ? undefined : branchId || undefined);
       setSales(data.map(convertFromSupabaseSale));
     } catch (error) {
       console.error('[SALES CONTEXT] Error loading sales:', error);
@@ -370,7 +384,7 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
         product_name: item.productName,
         sku: (item as any).sku || 'N/A', // Required in DB
         quantity: item.quantity,
-        unit: (item as any).unit || 'piece',
+        unit: (item as any).packingDetails ? ((item as any).packingDetails?.unit || 'meters') : ((item as any).unit || 'piece'),
         unit_price: item.price,
         discount_percentage: (item as any).discountPercentage || 0,
         discount_amount: (item as any).discount || 0,

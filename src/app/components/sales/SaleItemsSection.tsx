@@ -20,7 +20,7 @@ import {
 import { useNavigation } from '../../context/NavigationContext';
 
 interface Product {
-    id: number;
+    id: number | string;
     name: string;
     sku: string;
     price: number;
@@ -32,13 +32,14 @@ interface Product {
 
 interface SaleItem {
     id: number;
-    productId: number;
+    productId: number | string;
     name: string;
     sku: string;
     price: number;
     qty: number;
     size?: string;
     color?: string;
+    variationId?: string; // Backend variation id
     thaans?: number;
     meters?: number;
     packingDetails?: any;
@@ -79,14 +80,16 @@ interface SaleItemsSectionProps {
     qtyInputRef: React.RefObject<HTMLInputElement>;
     priceInputRef: React.RefObject<HTMLInputElement>;
     addBtnRef: React.RefObject<HTMLButtonElement>;
-    // Inline variation selection
+    // Inline variation selection (from backend product.variations - no dummy data)
     showVariationSelector: boolean;
     selectedProductForVariation: Product | null;
-    productVariations: Record<number, Array<{ size: string; color: string }>>;
+    productVariations: Record<string, Array<{ id: string; size: string; color: string }>>;
     handleVariationSelect: (variation: Variation) => void;
     setShowVariationSelector: React.Dispatch<React.SetStateAction<boolean>>;
     setSelectedProductForVariation: React.Dispatch<React.SetStateAction<Product | null>>;
-    handleInlineVariationSelect: (itemId: number, variation: { size?: string; color?: string }) => void;
+    handleInlineVariationSelect: (itemId: number, variation: { id?: string; size?: string; color?: string }) => void;
+    /** When false, Packing column and modal trigger are hidden (global Enable Packing = OFF). */
+    enablePacking?: boolean;
     // Update item function
     updateItem: (id: number, field: 'qty' | 'price', value: number) => void;
     // Keyboard navigation
@@ -138,6 +141,7 @@ export const SaleItemsSection: React.FC<SaleItemsSectionProps> = ({
     setShowVariationSelector,
     setSelectedProductForVariation,
     handleInlineVariationSelect,
+    enablePacking = false,
     // Update item function
     updateItem,
     // Keyboard navigation
@@ -305,12 +309,15 @@ export const SaleItemsSection: React.FC<SaleItemsSectionProps> = ({
 
             {/* Table Section */}
             <div className="flex-1 overflow-hidden flex flex-col">
-                {/* Table Headers - FIXED SPACING */}
-                <div className="grid grid-cols-[32px_1fr_auto_auto_80px_100px_80px_50px] gap-2 px-2 py-2.5 bg-gray-950/30 border-b border-gray-800/50 shrink-0">
+                {/* Table Headers - FIXED SPACING (Packing column when enablePacking) */}
+                <div className={enablePacking
+                    ? "grid grid-cols-[32px_1fr_auto_auto_80px_100px_80px_50px] gap-2 px-2 py-2.5 bg-gray-950/30 border-b border-gray-800/50 shrink-0"
+                    : "grid grid-cols-[32px_1fr_auto_80px_100px_80px_50px] gap-2 px-2 py-2.5 bg-gray-950/30 border-b border-gray-800/50 shrink-0"
+                }>
                     <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider">#</div>
                     <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Name</div>
                     <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider w-[100px]">Variation</div>
-                    <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider w-[120px]">Packing</div>
+                    {enablePacking && <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider w-[120px]">Packing</div>}
                     <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider text-center">Qty</div>
                     <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider text-right">Price</div>
                     <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider text-right">Total</div>
@@ -323,8 +330,11 @@ export const SaleItemsSection: React.FC<SaleItemsSectionProps> = ({
                         <div className="divide-y divide-gray-800/50">
                             {items.map((item, index) => (
                                 <div key={item.id}>
-                                    {/* Main Item Row - FIXED SPACING */}
-                                    <div className="group grid grid-cols-[32px_1fr_auto_auto_80px_100px_80px_50px] gap-2 px-2 py-1.5 hover:bg-gray-900/30 transition-colors items-center">
+                                    {/* Main Item Row - FIXED SPACING (Packing cell when enablePacking) */}
+                                    <div className={enablePacking
+                                        ? "group grid grid-cols-[32px_1fr_auto_auto_80px_100px_80px_50px] gap-2 px-2 py-1.5 hover:bg-gray-900/30 transition-colors items-center"
+                                        : "group grid grid-cols-[32px_1fr_auto_80px_100px_80px_50px] gap-2 px-2 py-1.5 hover:bg-gray-900/30 transition-colors items-center"
+                                    }>
                                         {/* # (Fixed 32px) */}
                                         <div className="w-[32px]">
                                             <span className="text-xs text-gray-500 font-medium">
@@ -366,7 +376,8 @@ export const SaleItemsSection: React.FC<SaleItemsSectionProps> = ({
                                             </div>
                                         </div>
 
-                                    {/* Packing (Fixed Width) */}
+                                    {/* Packing (Fixed Width) - only when enablePacking */}
+                                    {enablePacking && (
                                     <div className="w-[120px]">
                                         <div className="flex flex-wrap items-center gap-2">
                                             {(item.thaans || item.meters || item.packingDetails) ? (
@@ -397,6 +408,7 @@ export const SaleItemsSection: React.FC<SaleItemsSectionProps> = ({
                                             )}
                                         </div>
                                     </div>
+                                    )}
 
                                     {/* Qty (Fixed 80px) */}
                                     <div className="w-[80px]">
@@ -443,12 +455,12 @@ export const SaleItemsSection: React.FC<SaleItemsSectionProps> = ({
                                 </div>
 
                                 {/* Inline Variation Selector Row - Shows under product if variations needed */}
-                                {item.showVariations && productVariations[item.productId] && (
+                                {item.showVariations && productVariations[String(item.productId)] && (
                                     <div className="bg-blue-500/5 border-t border-blue-500/20 px-6 py-4">
                                         <div className="flex items-center gap-3">
                                             <span className="text-xs text-blue-400 font-medium">Select Variation:</span>
                                             <div className="flex flex-wrap gap-2">
-                                                {productVariations[item.productId].map((variation, vIndex) => (
+                                                {productVariations[String(item.productId)].map((variation, vIndex) => (
                                                     <button
                                                         key={vIndex}
                                                         ref={(el) => {
@@ -458,7 +470,7 @@ export const SaleItemsSection: React.FC<SaleItemsSectionProps> = ({
                                                         }}
                                                         onClick={() => handleInlineVariationSelect(item.id, variation)}
                                                         onKeyDown={(e) => {
-                                                            const totalVariations = productVariations[item.productId].length;
+                                                            const totalVariations = productVariations[String(item.productId)].length;
                                                             const variationButtons = document.querySelectorAll(`[data-variation-item=\"${item.id}\"]`);
                                                             
                                                             if (e.key === 'ArrowRight') {

@@ -1,6 +1,21 @@
-/* Print Styles for Customer Ledger Test Page */
+/* Customer Ledger Test – Classic Print & PDF (Black & White, Professional) */
+
+#ledger-print-area {
+  display: none !important;
+}
+
+/* Force visible when capturing for PDF (js sets data-pdf-capture before html2canvas) */
+#ledger-print-area[data-pdf-capture="true"] {
+  display: block !important;
+  position: absolute !important;
+  left: 0 !important;
+  top: 0 !important;
+  visibility: visible !important;
+  z-index: 99999 !important;
+}
 
 @media print {
+  /* Hide entire app UI – only ledger print area is visible */
   body * {
     visibility: hidden;
   }
@@ -11,19 +26,102 @@
   }
 
   #ledger-print-area {
-    position: absolute;
-    left: 0;
-    top: 0;
-    width: 100%;
-    padding: 20px;
-    background: white;
+    display: block !important;
+    position: absolute !important;
+    left: 0 !important;
+    top: 0 !important;
+    width: 100% !important;
+    max-width: 100%;
+    padding: 15mm !important;
+    background: #fff !important;
+    color: #000 !important;
   }
 
   #ledger-print-area * {
-    color: black !important;
-    background: white !important;
+    color: #000 !important;
+    background: transparent !important;
     box-shadow: none !important;
     text-shadow: none !important;
+  }
+
+  /* Classic header */
+  #ledger-print-area .print-header,
+  #ledger-print-area .ledger-print-header {
+    margin-bottom: 16px;
+    border-bottom: 2px solid #000;
+    padding-bottom: 10px;
+  }
+
+  #ledger-print-area .print-header h1,
+  #ledger-print-area .ledger-print-header h1 {
+    font-size: 18px;
+    font-weight: bold;
+    margin: 0 0 8px 0;
+    color: #000 !important;
+  }
+
+  #ledger-print-area .print-header div,
+  #ledger-print-area .ledger-print-header .print-meta {
+    font-size: 11px;
+    line-height: 1.5;
+    color: #000 !important;
+  }
+
+  /* Classic table */
+  #ledger-print-area table,
+  #ledger-print-area .ledger-print-table {
+    width: 100%;
+    border-collapse: collapse;
+    border: 1px solid #000;
+    margin-top: 8px;
+    margin-bottom: 16px;
+    font-size: 10px;
+  }
+
+  #ledger-print-area table th,
+  #ledger-print-area table td,
+  #ledger-print-area .ledger-print-table th,
+  #ledger-print-area .ledger-print-table td {
+    border: 1px solid #000;
+    padding: 6px 8px;
+    text-align: left;
+    color: #000 !important;
+    background: #fff !important;
+  }
+
+  #ledger-print-area table th,
+  #ledger-print-area .ledger-print-table th {
+    background: #e0e0e0 !important;
+    font-weight: bold;
+    text-transform: uppercase;
+    font-size: 9px;
+  }
+
+  #ledger-print-area table td.text-right,
+  #ledger-print-area .ledger-print-table td.text-right {
+    text-align: right;
+  }
+
+  /* Classic summary box */
+  #ledger-print-area .print-summary-box {
+    margin-top: 16px;
+    padding: 12px;
+    border: 1px solid #000;
+    background: #f5f5f5 !important;
+    font-size: 11px;
+    color: #000 !important;
+  }
+
+  #ledger-print-area .print-summary-box span {
+    color: #000 !important;
+  }
+
+  .no-print {
+    display: none !important;
+  }
+
+  tr {
+    page-break-inside: avoid;
   }
 
   @page {
@@ -31,26 +129,13 @@
     size: A4;
   }
 
+  #ledger-print-area.landscape {
+    width: 297mm !important;
+    min-height: 210mm !important;
+  }
+
   @page landscape {
     size: A4 landscape;
     margin: 1cm;
-  }
-
-  #ledger-print-area.landscape {
-    width: 297mm !important;
-    height: 210mm !important;
-  }
-}
-
-#ledger-print-area {
-  display: none !important;
-}
-
-@media print {
-  #ledger-print-area {
-    display: block !important;
-    position: relative !important;
-    left: 0 !important;
-    top: 0 !important;
   }
 }

@@ -43,7 +43,7 @@ type SettingsTab =
 
 export const SettingsPageNew = () => {
   const settings = useSettings();
-  const { companyId } = useSupabase();
+  const { companyId, enablePacking, setEnablePacking } = useSupabase();
   const [activeTab, setActiveTab] = useState<SettingsTab>('company');
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
 
@@ -902,7 +902,26 @@ export const SettingsPageNew = () => {
                 </div>
 
                 <div className="space-y-3 pt-4 border-t border-gray-800">
-                  <h4 className="text-white font-semibold mb-3">Inventory Control</h4>
+                  <h4 className="text-white font-semibold mb-3">Packing (Boxes / Pieces)</h4>
+                  <div className="flex items-center justify-between bg-gray-950 p-4 rounded-lg border border-amber-500/30">
+                    <div>
+                      <p className="text-white font-medium">Enable Packing (Boxes / Pieces)</p>
+                      <p className="text-sm text-gray-400">When ON: packing columns and modal appear in Sale, Purchase, Inventory, Ledger & Print. When OFF: system behaves as quantity-only.</p>
+                    </div>
+                    <Switch
+                      checked={enablePacking}
+                      onCheckedChange={async (val) => {
+                        try {
+                          await setEnablePacking(val);
+                          toast.success(val ? 'Packing enabled' : 'Packing disabled');
+                        } catch (e: any) {
+                          toast.error(e?.message || 'Failed to update');
+                        }
+                      }}
+                    />
+                  </div>
+
+                  <h4 className="text-white font-semibold mb-3 mt-6">Inventory Control</h4>
                   
                   <div className="flex items-center justify-between bg-gray-950 p-4 rounded-lg border border-gray-800">
                     <div>

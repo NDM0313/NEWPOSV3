@@ -34,7 +34,7 @@ import { PackingEntryModal } from '../transactions/PackingEntryModal';
 
 export const GlobalDrawer = () => {
   const { activeDrawer, openDrawer, closeDrawer, drawerData, parentDrawer, packingModalOpen, closePackingModal, packingModalData } = useNavigation();
-  const { companyId, user } = useSupabase();
+  const { companyId, user, enablePacking } = useSupabase();
   const isMobile = useMediaQuery('(max-width: 768px)');
   const [saving, setSaving] = useState(false);
 
@@ -240,8 +240,8 @@ export const GlobalDrawer = () => {
           </SheetContent>
         </Sheet>
         
-        {/* Global Packing Modal - Rendered at root level, outside drawer */}
-        {packingModalData && (
+        {/* Global Packing Modal - Only when Enable Packing is ON */}
+        {enablePacking && packingModalData && (
           <PackingEntryModal
             open={packingModalOpen || false}
             onOpenChange={(open) => {
@@ -287,8 +287,8 @@ export const GlobalDrawer = () => {
         </SheetContent>
       </Sheet>
       
-      {/* Global Packing Modal - Rendered at root level, outside drawer */}
-      {packingModalData && (
+      {/* Global Packing Modal - Only when Enable Packing is ON */}
+      {enablePacking && packingModalData && (
         <PackingEntryModal
           open={packingModalOpen || false}
           onOpenChange={(open) => {

@@ -374,78 +374,90 @@ export const CustomerLedgerPage: React.FC<CustomerLedgerPageProps> = ({
     }
   }, [filteredEntries, companyId]); // Changed dependency to filteredEntries (works for both views)
 
-  // Fetch sale items for View tab
+  // Fetch sale items for View tab - SAME structure as sale (sale_items / sales_items)
+  // Single source of truth: product_id, variation_id, packing_*, quantity, unit, unit_price, total
   useEffect(() => {
     if (selectedSaleForView && companyId) {
       const fetchSaleItems = async () => {
         try {
-          // First try with products join
+          // Try sales_items first (match saleService), then sale_items
+          const selectCols = `
+            id,
+            sale_id,
+            product_id,
+            variation_id,
+            product_name,
+            sku,
+            quantity,
+            unit,
+            unit_price,
+            discount_amount,
+            tax_amount,
+            total,
+            packing_type,
+            packing_quantity,
+            packing_unit,
+            packing_details,
+            variation:product_variations(id, attributes)
+          `;
           let { data: items, error } = await supabase
-            .from('sale_items')
-            .select(`
-              id,
-              product_id,
-              product_name,
-              quantity,
-              unit,
-              unit_price,
-              discount_amount,
-              tax_amount,
-              total,
-              products:product_id (
-                id,
-                name,
-                sku
-              )
-            `)
+            .from('sales_items')
+            .select(selectCols)
             .eq('sale_id', selectedSaleForView)
             .order('id');
 
-          // If products join fails, try without it (products might not exist)
-          if (error && (error.code === '42703' || error.message?.includes('does not exist'))) {
-            console.warn('[CUSTOMER LEDGER] Products join failed, fetching without join:', error.message);
-            const { data: itemsWithoutJoin, error: errorWithoutJoin } = await supabase
+          if (error) {
+            const { data: itemsFallback, error: errorFallback } = await supabase
               .from('sale_items')
-              .select(`
-                id,
-                product_id,
-                product_name,
-                quantity,
-                unit,
-                unit_price,
-                discount_amount,
-                tax_amount,
-                total
-              `)
+              .select(selectCols)
               .eq('sale_id', selectedSaleForView)
               .order('id');
-            
-            if (errorWithoutJoin) throw errorWithoutJoin;
-            items = itemsWithoutJoin;
-          } else if (error) {
-            throw error;
+            if (errorFallback) {
+              const selectColsNoJoin = `
+                id, sale_id, product_id, variation_id, product_name, sku,
+                quantity, unit, unit_price, discount_amount, tax_amount, total,
+                packing_type, packing_quantity, packing_unit, packing_details
+              `;
+              const { data: itemsBasic, error: errBasic } = await supabase
+                .from('sale_items')
+                .select(selectColsNoJoin)
+                .eq('sale_id', selectedSaleForView)
+                .order('id');
+              if (errBasic) throw errBasic;
+              items = itemsBasic;
+            } else {
+              items = itemsFallback;
+            }
           }
 
           if (items) {
             const map = new Map<string, any[]>();
             map.set(selectedSaleForView, items);
             setSaleItemsMap(map);
-            console.log('[CUSTOMER LEDGER] Fetched sale items:', {
+            // Step 1 – Raw DB verification: log raw sale_items/sales_items (packing_type, packing_quantity, packing_unit, quantity, unit, variation_id)
+            console.log('[CUSTOMER LEDGER] Step 1 – Raw DB verification (sale_items/sales_items):', {
               saleId: selectedSaleForView,
-              itemsCount: items.length,
-              sample: items.slice(0, 2)
+              count: items.length,
+              sample: items.slice(0, 2).map((it: any) => ({
+                product_name: it.product_name,
+                packing_type: it.packing_type,
+                packing_quantity: it.packing_quantity,
+                packing_unit: it.packing_unit,
+                quantity: it.quantity,
+                unit: it.unit,
+                variation_id: it.variation_id,
+                variation_attrs: it.variation?.attributes,
+              })),
             });
           }
         } catch (error) {
           console.error('[CUSTOMER LEDGER] Error fetching sale items:', error);
           toast.error('Failed to load sale items');
-          // Clear the map on error so loading state is cleared
           setSaleItemsMap(new Map());
         }
       };
       fetchSaleItems();
     } else {
-      // Clear map when no sale is selected
       setSaleItemsMap(new Map());
     }
   }, [selectedSaleForView, companyId]);
@@ -1541,14 +1553,17 @@ export const CustomerLedgerPage: React.FC<CustomerLedgerPageProps> = ({
                     );
                   })()}
 
-                  {/* Sale Items Table */}
+                  {/* Sale Items Table - 1:1 with sale_items: no merged columns, no derived values */}
                   <div className="bg-gray-900 border border-gray-800 rounded-lg overflow-hidden">
                     <table className="w-full">
                       <thead className="bg-gray-800 border-b border-gray-700">
                         <tr className="text-xs font-semibold text-gray-400 uppercase">
                           <th className="px-4 py-3 text-left">#</th>
-                          <th className="px-4 py-3 text-left">Product</th>
-                          <th className="px-4 py-3 text-right">Quantity</th>
+                          <th className="px-4 py-3 text-left">Product Name</th>
+                          <th className="px-4 py-3 text-left">Variation</th>
+                          <th className="px-4 py-3 text-left">Packing</th>
+                          <th className="px-4 py-3 text-right">Qty</th>
+                          <th className="px-4 py-3 text-left">Unit</th>
                           <th className="px-4 py-3 text-right">Unit Price</th>
                           <th className="px-4 py-3 text-right">Discount</th>
                           <th className="px-4 py-3 text-right">Tax</th>
@@ -1557,45 +1572,70 @@ export const CustomerLedgerPage: React.FC<CustomerLedgerPageProps> = ({
                         </tr>
                       </thead>
                       <tbody>
-                        {saleItemsMap.get(selectedSaleForView)?.map((item, index) => {
+                        {(() => {
+                        const itemsToRender = saleItemsMap.get(selectedSaleForView) || [];
+                        // Step 2 – Ledger items before render: verify data reached UI (packing_type, packing_quantity, packing_unit, quantity, unit, variation_id)
+                        if (itemsToRender.length > 0) {
+                          console.log('[CUSTOMER LEDGER] Step 2 – Ledger items before render:', {
+                            saleId: selectedSaleForView,
+                            itemCount: itemsToRender.length,
+                            items: itemsToRender.map((p: any) => ({
+                              product_name: p.product_name,
+                              packing_type: p.packing_type,
+                              packing_quantity: p.packing_quantity,
+                              packing_unit: p.packing_unit,
+                              quantity: p.quantity,
+                              unit: p.unit,
+                              variation_id: p.variation_id,
+                            })),
+                          });
+                        }
+                        return itemsToRender;
+                      })().map((item: any, index: number) => {
                           const productName = item.product_name || item.products?.name || 'N/A';
-                          const unit = item.unit || 'piece'; // Use unit from sale_items
-                          const quantity = item.quantity || 0;
-                          const unitPrice = item.unit_price || 0;
-                          const discount = item.discount_amount || 0;
-                          const tax = item.tax_amount || 0;
-                          const priceIncTax = unitPrice + tax; // unit_price + tax_amount
-                          const subtotal = item.total || 0; // Use total from sale_items
+                          const unit = item.unit ?? 'piece';
+                          const quantity = Number(item.quantity) || 0;
+                          const unitPrice = Number(item.unit_price) || 0;
+                          const discount = Number(item.discount_amount) || 0;
+                          const tax = Number(item.tax_amount) || 0;
+                          const priceIncTax = unitPrice + tax;
+                          const subtotal = Number(item.total) || 0;
+                          const variationData = item.variation || item.product_variations;
+                          const attrs = variationData?.attributes || {};
+                          const variationText = (attrs.size || attrs.color) ? [attrs.size, attrs.color].filter(Boolean).join(' / ') : '—';
+                          // Packing: structured – Boxes + Pieces (never merge with Qty/Unit)
+                          const pd = item.packing_details || {};
+                          const totalBoxes = pd.total_boxes ?? 0;
+                          const totalPieces = pd.total_pieces ?? 0;
+                          const packingParts: string[] = [];
+                          if (Number(totalBoxes) > 0) packingParts.push(`${totalBoxes} Box${Number(totalBoxes) !== 1 ? 'es' : ''}`);
+                          if (Number(totalPieces) > 0) packingParts.push(`${totalPieces} Piece${Number(totalPieces) !== 1 ? 's' : ''}`);
+                          const packingText = packingParts.length
+                            ? packingParts.join(', ')
+                            : (item.packing_type || item.packing_quantity != null || item.packing_unit)
+                              ? [item.packing_type, item.packing_quantity != null && item.packing_quantity !== '' ? String(item.packing_quantity) : null, item.packing_unit].filter(Boolean).join(' ')
+                              : '—';
 
                           return (
                             <tr key={item.id} className="border-b border-gray-800 hover:bg-gray-800/50">
                               <td className="px-4 py-3 text-sm text-gray-300">{index + 1}</td>
                               <td className="px-4 py-3 text-sm text-white font-medium">{productName}</td>
-                              <td className="px-4 py-3 text-sm text-right text-gray-300">
-                                {quantity.toFixed(2)} {unit}
-                              </td>
-                              <td className="px-4 py-3 text-sm text-right text-gray-300">
-                                Rs {unitPrice.toFixed(2)}
-                              </td>
-                              <td className="px-4 py-3 text-sm text-right text-red-400">
-                                Rs {discount.toFixed(2)}
-                              </td>
-                              <td className="px-4 py-3 text-sm text-right text-gray-300">
-                                Rs {tax.toFixed(2)}
-                              </td>
-                              <td className="px-4 py-3 text-sm text-right text-gray-300">
-                                Rs {priceIncTax.toFixed(2)}
-                              </td>
-                              <td className="px-4 py-3 text-sm text-right text-green-400 font-semibold">
-                                Rs {subtotal.toFixed(2)}
-                              </td>
+                              <td className="px-4 py-3 text-sm text-gray-300">{variationText}</td>
+                              <td className="px-4 py-3 text-sm text-gray-300">{packingText}</td>
+                              <td className="px-4 py-3 text-sm text-right text-gray-300">{quantity.toFixed(2)}</td>
+                              <td className="px-4 py-3 text-sm text-gray-300">{unit}</td>
+                              <td className="px-4 py-3 text-sm text-right text-gray-300">Rs {unitPrice.toFixed(2)}</td>
+                              <td className="px-4 py-3 text-sm text-right text-red-400">Rs {discount.toFixed(2)}</td>
+                              <td className="px-4 py-3 text-sm text-right text-gray-300">Rs {tax.toFixed(2)}</td>
+                              <td className="px-4 py-3 text-sm text-right text-gray-300">Rs {priceIncTax.toFixed(2)}</td>
+                              <td className="px-4 py-3 text-sm text-right text-green-400 font-semibold">Rs {subtotal.toFixed(2)}</td>
                             </tr>
                           );
                         })}
                       </tbody>
                       <tfoot className="bg-gray-800 border-t-2 border-gray-700">
                         <tr>
-                          <td colSpan={7} className="px-4 py-3 text-right text-sm font-semibold text-gray-300">
+                          <td colSpan={10} className="px-4 py-3 text-right text-sm font-semibold text-gray-300">
                             Total:
                           </td>
                           <td className="px-4 py-3 text-right text-lg font-bold text-green-400">

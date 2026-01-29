@@ -487,9 +487,10 @@ export function TransactionClassicView({ transactions, onTransactionClick }: Tra
           {/* Closing Balance */}
           <div 
             style={{ 
+              boxSizing: 'content-box',
               textAlign: 'right',
               minWidth: '150px',
-              background: '#1e293b',
+              background: 'rgba(21, 30, 48, 1)',
               padding: '12px 16px',
               borderRadius: '6px',
               border: '1px solid #3b82f6'
@@ -506,7 +507,7 @@ export function TransactionClassicView({ transactions, onTransactionClick }: Tra
             </div>
             <div style={{ 
               color: '#3b82f6',
-              fontSize: '18px',
+              fontSize: '20px',
               fontWeight: '800',
               fontFamily: 'monospace'
             }}>

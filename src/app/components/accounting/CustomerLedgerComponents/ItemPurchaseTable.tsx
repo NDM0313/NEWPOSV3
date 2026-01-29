@@ -14,12 +14,18 @@ interface ItemPurchaseTableProps {
 interface SaleItem {
   id: string;
   product_name: string;
+  variation_id?: string;
   quantity: number;
   unit: string;
   unit_price: number;
   discount_amount: number;
   tax_amount: number;
   total: number;
+  packing_type?: string;
+  packing_quantity?: number;
+  packing_unit?: string;
+  packing_details?: unknown;
+  variation?: { id: string; attributes?: Record<string, unknown> };
 }
 
 interface SaleWithItems {
@@ -73,12 +79,30 @@ export const ItemPurchaseTable: React.FC<ItemPurchaseTableProps> = ({
         return;
       }
 
-      // Fetch sale items for all sales
-      const { data: saleItems } = await supabase
-        .from('sale_items')
-        .select('id, sale_id, product_name, quantity, unit, unit_price, discount_amount, tax_amount, total')
+      // Fetch sale items - same structure as sale (sales_items / sale_items), no derived values
+      const selectCols = 'id, sale_id, product_id, variation_id, product_name, sku, quantity, unit, unit_price, discount_amount, tax_amount, total, packing_type, packing_quantity, packing_unit, packing_details, variation:product_variations(id, attributes)';
+      let { data: saleItems, error: itemsError } = await supabase
+        .from('sales_items')
+        .select(selectCols)
         .in('sale_id', saleIds)
         .order('id');
+      if (itemsError && (itemsError.code === '42P01' || String(itemsError.message).includes('sales_items'))) {
+        const res = await supabase
+          .from('sale_items')
+          .select(selectCols)
+          .in('sale_id', saleIds)
+          .order('id');
+        saleItems = res.data;
+        itemsError = res.error;
+      }
+      if (itemsError) {
+        const res = await supabase
+          .from('sale_items')
+          .select('id, sale_id, product_id, variation_id, product_name, sku, quantity, unit, unit_price, discount_amount, tax_amount, total, packing_type, packing_quantity, packing_unit, packing_details')
+          .in('sale_id', saleIds)
+          .order('id');
+        saleItems = res.data;
+      }
 
       // Group items by sale
       const itemsBySale = new Map<string, SaleItem[]>();
@@ -149,44 +173,60 @@ export const ItemPurchaseTable: React.FC<ItemPurchaseTableProps> = ({
               </div>
             </div>
 
-            {/* Items Table */}
+            {/* Items Table - 1:1 with sale_items: Variation, Packing, Qty, Unit separate */}
             <table className="w-full">
               <thead className="bg-gray-900 border-b border-gray-800">
                 <tr className="text-xs font-semibold text-gray-400 uppercase">
-                  <th className="px-4 py-3 text-left">Item Name</th>
+                  <th className="px-4 py-3 text-left">Product Name</th>
+                  <th className="px-4 py-3 text-left">Variation</th>
+                  <th className="px-4 py-3 text-left">Packing</th>
                   <th className="px-4 py-3 text-right">Qty</th>
-                  <th className="px-4 py-3 text-right">Rate</th>
+                  <th className="px-4 py-3 text-left">Unit</th>
+                  <th className="px-4 py-3 text-right">Unit Price</th>
                   <th className="px-4 py-3 text-right">Line Total</th>
                 </tr>
               </thead>
               <tbody>
                 {sale.items.length === 0 ? (
                   <tr>
-                    <td colSpan={4} className="px-4 py-4 text-center text-gray-400 text-sm">
+                    <td colSpan={7} className="px-4 py-4 text-center text-gray-400 text-sm">
                       No items found
                     </td>
                   </tr>
                 ) : (
-                  sale.items.map((item, idx) => (
-                    <tr key={item.id} className="border-b border-gray-800 hover:bg-gray-800/50">
-                      <td className="px-4 py-3 text-sm text-white">{item.product_name}</td>
-                      <td className="px-4 py-3 text-sm text-right text-gray-300">
-                        {item.quantity.toFixed(2)} {item.unit}
-                      </td>
-                      <td className="px-4 py-3 text-sm text-right text-gray-300">
-                        Rs {item.unit_price.toLocaleString('en-US', {
-                          minimumFractionDigits: 2,
-                          maximumFractionDigits: 2,
-                        })}
-                      </td>
-                      <td className="px-4 py-3 text-sm text-right text-green-400 font-semibold">
-                        Rs {item.total.toLocaleString('en-US', {
-                          minimumFractionDigits: 2,
-                          maximumFractionDigits: 2,
-                        })}
-                      </td>
-                    </tr>
-                  ))
+                  sale.items.map((item) => {
+                    const variationData = item.variation || (item as any).product_variations;
+                    const attrs = variationData?.attributes || {};
+                    const variationText = (attrs.size || attrs.color) ? [attrs.size, attrs.color].filter(Boolean).join(' / ') : '—';
+                    // Packing: structured – Boxes + Pieces (never merge with Qty/Unit)
+                    const pd = item.packing_details || {};
+                    const totalBoxes = pd.total_boxes ?? 0;
+                    const totalPieces = pd.total_pieces ?? 0;
+                    const packingParts: string[] = [];
+                    if (Number(totalBoxes) > 0) packingParts.push(`${totalBoxes} Box${Number(totalBoxes) !== 1 ? 'es' : ''}`);
+                    if (Number(totalPieces) > 0) packingParts.push(`${totalPieces} Piece${Number(totalPieces) !== 1 ? 's' : ''}`);
+                    const packingText = packingParts.length
+                      ? packingParts.join(', ')
+                      : (item.packing_type || item.packing_quantity != null || item.packing_unit)
+                        ? [item.packing_type, item.packing_quantity != null && item.packing_quantity !== '' ? String(item.packing_quantity) : null, item.packing_unit].filter(Boolean).join(' ')
+                        : '—';
+                    const unit = item.unit ?? 'piece';
+                    return (
+                      <tr key={item.id} className="border-b border-gray-800 hover:bg-gray-800/50">
+                        <td className="px-4 py-3 text-sm text-white">{item.product_name}</td>
+                        <td className="px-4 py-3 text-sm text-gray-300">{variationText}</td>
+                        <td className="px-4 py-3 text-sm text-gray-300">{packingText}</td>
+                        <td className="px-4 py-3 text-sm text-right text-gray-300">{Number(item.quantity).toFixed(2)}</td>
+                        <td className="px-4 py-3 text-sm text-gray-300">{unit}</td>
+                        <td className="px-4 py-3 text-sm text-right text-gray-300">
+                          Rs {Number(item.unit_price).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </td>
+                        <td className="px-4 py-3 text-sm text-right text-green-400 font-semibold">
+                          Rs {Number(item.total).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </td>
+                      </tr>
+                    );
+                  })
                 )}
               </tbody>
             </table>

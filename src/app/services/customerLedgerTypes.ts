@@ -14,7 +14,7 @@ export interface Transaction {
   id: string;
   date: string;
   referenceNo: string;
-  documentType: 'Sale' | 'Payment' | 'Discount';
+  documentType: 'Sale' | 'Payment' | 'Discount' | 'Opening Balance';
   description: string;
   paymentAccount: string;
   notes: string;
@@ -23,6 +23,29 @@ export interface Transaction {
   runningBalance: number;
   linkedInvoices?: string[];
   linkedPayments?: string[];
+}
+
+/** Build transaction list with Opening Balance as first entry (for all views). */
+export function buildTransactionsWithOpeningBalance(
+  openingBalance: number,
+  transactions: Transaction[],
+  fromDate: string
+): Transaction[] {
+  const openingEntry: Transaction = {
+    id: 'opening-balance',
+    date: fromDate,
+    referenceNo: 'Opening Balance',
+    documentType: 'Opening Balance',
+    description: 'Opening Balance',
+    paymentAccount: '—',
+    notes: '',
+    debit: openingBalance > 0 ? openingBalance : 0,
+    credit: openingBalance < 0 ? Math.abs(openingBalance) : 0,
+    runningBalance: openingBalance,
+    linkedInvoices: [],
+    linkedPayments: [],
+  };
+  return [openingEntry, ...transactions];
 }
 
 export interface InvoiceItem {

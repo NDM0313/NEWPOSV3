@@ -1,0 +1,141 @@
+/* Stock Ledger – Classic Print & PDF (Black & White, Professional) */
+
+@media print {
+  body * {
+    visibility: hidden;
+  }
+
+  #stock-ledger-print-area,
+  #stock-ledger-print-area * {
+    visibility: visible;
+  }
+
+  #stock-ledger-print-area {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    padding: 20px;
+    background: #fff;
+    color: #000;
+  }
+
+  #stock-ledger-print-area * {
+    color: #000 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    text-shadow: none !important;
+  }
+
+  .stock-ledger-print-header {
+    margin-bottom: 20px;
+    border-bottom: 2px solid #000;
+    padding-bottom: 12px;
+  }
+
+  .stock-ledger-print-header h1 {
+    font-size: 20px;
+    font-weight: bold;
+    margin: 0 0 8px 0;
+    color: #000 !important;
+  }
+
+  .stock-ledger-print-header .print-meta {
+    font-size: 11px;
+    line-height: 1.6;
+    color: #000 !important;
+  }
+
+  .stock-ledger-summary-box {
+    background: #f5f5f5 !important;
+    border: 1px solid #000 !important;
+    padding: 14px;
+    margin-bottom: 20px;
+  }
+
+  .stock-ledger-summary-box h2 {
+    font-size: 14px;
+    font-weight: bold;
+    margin: 0 0 10px 0;
+    color: #000 !important;
+  }
+
+  .stock-ledger-summary-box .summary-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    font-size: 11px;
+    color: #000 !important;
+  }
+
+  .stock-ledger-summary-box .summary-item {
+    border: 1px solid #000;
+    padding: 8px;
+    text-align: center;
+  }
+
+  #stock-ledger-print-area table.stock-ledger-table {
+    width: 100%;
+    border-collapse: collapse;
+    border: 1px solid #000;
+    margin-bottom: 20px;
+    font-size: 10px;
+  }
+
+  #stock-ledger-print-area table.stock-ledger-table th,
+  #stock-ledger-print-area table.stock-ledger-table td {
+    border: 1px solid #000;
+    padding: 6px 8px;
+    text-align: left;
+    color: #000 !important;
+    background: #fff !important;
+  }
+
+  #stock-ledger-print-area table.stock-ledger-table th {
+    background: #e0e0e0 !important;
+    font-weight: bold;
+    text-transform: uppercase;
+    font-size: 9px;
+  }
+
+  #stock-ledger-print-area table.stock-ledger-table td.text-right {
+    text-align: right;
+  }
+
+  .no-print {
+    display: none !important;
+  }
+
+  tr {
+    page-break-inside: avoid;
+  }
+
+  @page {
+    margin: 1cm;
+    size: A4;
+  }
+
+  #stock-ledger-print-area.landscape {
+    width: 297mm !important;
+    min-height: 210mm !important;
+  }
+
+  @page landscape {
+    size: A4 landscape;
+    margin: 1cm;
+  }
+}
+
+/* Screen: hide print area */
+#stock-ledger-print-area {
+  display: none !important;
+}
+
+@media print {
+  #stock-ledger-print-area {
+    display: block !important;
+    position: relative !important;
+    left: 0 !important;
+    top: 0 !important;
+  }
+}

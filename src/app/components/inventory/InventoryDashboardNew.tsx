@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { 
-  Package, TrendingDown, Clock, DollarSign, AlertTriangle, 
-  BarChart3, Search, Filter, Download, Archive, Warehouse, Loader2 
+  Package, TrendingDown, DollarSign, AlertTriangle, 
+  BarChart3, Search, Filter, Download, Warehouse, Loader2,
+  ExternalLink, SlidersHorizontal, FileDown, Printer
 } from 'lucide-react';
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
@@ -9,146 +10,181 @@ import { Badge } from "../ui/badge";
 import { cn } from "../ui/utils";
 import { useSupabase } from '../../context/SupabaseContext';
 import { productService } from '../../services/productService';
-import { saleService } from '../../services/saleService';
-import { purchaseService } from '../../services/purchaseService';
+import { inventoryService, InventoryOverviewRow, InventoryMovementRow } from '../../services/inventoryService';
 import { toast } from 'sonner';
+import { FullStockLedgerView } from '../products/FullStockLedgerView';
+import { StockAdjustmentDrawer } from './StockAdjustmentDrawer';
 
 type InventoryTab = 'overview' | 'analytics';
 
-interface InventoryProduct {
-  id: string;
-  sku: string;
-  name: string;
-  category: string;
-  stock: number;
-  reorderLevel: number;
-  purchasePrice: number;
-  sellingPrice: number;
-  lastPurchase?: string;
-  lastSale?: string;
-  daysInStock: number;
-  movement: 'Fast' | 'Medium' | 'Slow' | 'Dead';
-}
-
 export const InventoryDashboardNew = () => {
-  const { companyId, branchId } = useSupabase();
+  const { companyId, branchId, user, enablePacking } = useSupabase();
   const [activeTab, setActiveTab] = useState<InventoryTab>('overview');
   const [searchTerm, setSearchTerm] = useState('');
-  const [inventoryProducts, setInventoryProducts] = useState<InventoryProduct[]>([]);
+  const [overviewRows, setOverviewRows] = useState<InventoryOverviewRow[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Load products from Supabase
-  const loadProducts = useCallback(async () => {
+  // Ledger & Adjustment modals
+  const [ledgerProduct, setLedgerProduct] = useState<InventoryOverviewRow | null>(null);
+  const [adjustmentProduct, setAdjustmentProduct] = useState<InventoryOverviewRow | null>(null);
+
+  // Analytics tab
+  const [movements, setMovements] = useState<InventoryMovementRow[]>([]);
+  const [movementsLoading, setMovementsLoading] = useState(false);
+  const [filters, setFilters] = useState({
+    dateFrom: '',
+    dateTo: '',
+    productId: '',
+    movementType: '',
+  });
+
+  // Stock Overview: single source of truth from inventoryService
+  const loadOverview = useCallback(async () => {
     if (!companyId) return;
-    
     try {
       setLoading(true);
-      
-      // Load products
-      const productsData = await productService.getAllProducts(companyId);
-      
-      // Load sales and purchases to calculate movement
-      const [salesData, purchasesData] = await Promise.all([
-        saleService.getAllSales(companyId, branchId || undefined).catch(() => []),
-        purchaseService.getAllPurchases(companyId, branchId || undefined).catch(() => []),
-      ]);
-      
-      // Convert to inventory format
-      const convertedProducts: InventoryProduct[] = productsData.map((p: any) => {
-        // Find last purchase date
-        const lastPurchase = purchasesData
-          .filter((pur: any) => pur.items?.some((item: any) => item.product_id === p.id))
-          .sort((a: any, b: any) => new Date(b.purchase_date || b.created_at).getTime() - new Date(a.purchase_date || a.created_at).getTime())[0];
-        
-        // Find last sale date
-        const lastSale = salesData
-          .filter((s: any) => s.items?.some((item: any) => item.product_id === p.id))
-          .sort((a: any, b: any) => new Date(b.invoice_date || b.created_at).getTime() - new Date(a.invoice_date || a.created_at).getTime())[0];
-        
-        // Calculate days in stock (from last purchase or creation)
-        const lastPurchaseDate = lastPurchase 
-          ? new Date(lastPurchase.purchase_date || lastPurchase.created_at)
-          : new Date(p.created_at);
-        const daysInStock = Math.floor((Date.now() - lastPurchaseDate.getTime()) / (1000 * 60 * 60 * 24));
-        
-        // Determine movement based on days in stock and stock level
-        let movement: 'Fast' | 'Medium' | 'Slow' | 'Dead' = 'Medium';
-        if (daysInStock < 30 && p.current_stock < p.min_stock * 2) {
-          movement = 'Fast';
-        } else if (daysInStock > 60 && p.current_stock > p.min_stock * 3) {
-          movement = 'Slow';
-        } else if (daysInStock > 90) {
-          movement = 'Dead';
-        }
-        
-        return {
-          id: p.id,
-          sku: p.sku || '',
-          name: p.name || '',
-          category: p.category?.name || 'Uncategorized',
-          stock: p.current_stock || 0,
-          reorderLevel: p.min_stock || 0,
-          purchasePrice: p.cost_price || 0,
-          sellingPrice: p.retail_price || 0,
-          lastPurchase: lastPurchase ? (lastPurchase.purchase_date || lastPurchase.created_at) : undefined,
-          lastSale: lastSale ? (lastSale.invoice_date || lastSale.created_at) : undefined,
-          daysInStock,
-          movement,
-        };
-      });
-      
-      setInventoryProducts(convertedProducts);
+      const rows = await inventoryService.getInventoryOverview(
+        companyId,
+        branchId === 'all' ? null : branchId || null
+      );
+      setOverviewRows(rows);
     } catch (error: any) {
-      console.error('[INVENTORY DASHBOARD] Error loading products:', error);
+      console.error('[INVENTORY DASHBOARD] Error loading overview:', error);
       toast.error('Failed to load inventory: ' + (error.message || 'Unknown error'));
-      setInventoryProducts([]);
+      setOverviewRows([]);
     } finally {
       setLoading(false);
     }
   }, [companyId, branchId]);
 
-  // Load products on mount
   useEffect(() => {
-    if (companyId) {
-      loadProducts();
-    } else {
-      setLoading(false);
+    if (companyId) loadOverview();
+    else setLoading(false);
+  }, [companyId, loadOverview]);
+
+  // Stock Analytics: load movements with filters
+  const loadMovements = useCallback(async () => {
+    if (!companyId) return;
+    try {
+      setMovementsLoading(true);
+      const list = await inventoryService.getInventoryMovements({
+        companyId,
+        branchId: branchId === 'all' ? undefined : branchId || undefined,
+        productId: filters.productId || undefined,
+        movementType: filters.movementType || undefined,
+        dateFrom: filters.dateFrom || undefined,
+        dateTo: filters.dateTo || undefined,
+      });
+      setMovements(list);
+    } catch (error: any) {
+      toast.error('Failed to load movements: ' + (error.message || 'Unknown error'));
+      setMovements([]);
+    } finally {
+      setMovementsLoading(false);
     }
-  }, [companyId, loadProducts]);
+  }, [companyId, branchId, filters.dateFrom, filters.dateTo, filters.productId, filters.movementType]);
+
+  useEffect(() => {
+    if (companyId && activeTab === 'analytics') loadMovements();
+  }, [companyId, activeTab, loadMovements]);
 
   const lowStockItems = useMemo(() => 
-    inventoryProducts.filter(p => p.stock <= p.reorderLevel),
-    [inventoryProducts]
+    overviewRows.filter(p => p.status === 'Low' || p.status === 'Out'),
+    [overviewRows]
   );
-  
   const slowMovingItems = useMemo(() => 
-    inventoryProducts.filter(p => p.movement === 'Slow' || p.movement === 'Dead'),
-    [inventoryProducts]
+    overviewRows.filter(p => p.movement === 'Slow' || p.movement === 'Dead'),
+    [overviewRows]
   );
-  
-  const agingItems = useMemo(() => 
-    inventoryProducts.filter(p => p.daysInStock > 60),
-    [inventoryProducts]
-  );
-
   const totalStockValue = useMemo(() => 
-    inventoryProducts.reduce((sum, p) => sum + (p.stock * p.purchasePrice), 0),
-    [inventoryProducts]
+    overviewRows.reduce((sum, p) => sum + p.stockValue, 0),
+    [overviewRows]
   );
-  
   const potentialProfit = useMemo(() => 
-    inventoryProducts.reduce((sum, p) => sum + (p.stock * (p.sellingPrice - p.purchasePrice)), 0),
-    [inventoryProducts]
+    overviewRows.reduce((sum, p) => sum + (p.stock * (p.sellingPrice - p.avgCost)), 0),
+    [overviewRows]
   );
 
   const filteredProducts = useMemo(() => 
-    inventoryProducts.filter(p => 
+    overviewRows.filter(p => 
       p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       p.sku.toLowerCase().includes(searchTerm.toLowerCase()) ||
       p.category.toLowerCase().includes(searchTerm.toLowerCase())
     ),
-    [inventoryProducts, searchTerm]
+    [overviewRows, searchTerm]
   );
+
+  const handleAdjustSave = useCallback(async (data: {
+    productId: string;
+    type: 'add' | 'subtract';
+    quantity: number;
+    reason: string;
+    notes: string;
+    date: string;
+    newStock: number;
+  }) => {
+    if (!companyId) return;
+    try {
+      await productService.updateProduct(data.productId, { current_stock: data.newStock });
+      const qty = data.type === 'add' ? data.quantity : -data.quantity;
+      await productService.createStockMovement({
+        company_id: companyId,
+        branch_id: branchId === 'all' ? undefined : branchId || undefined,
+        product_id: data.productId,
+        movement_type: 'adjustment',
+        quantity: qty,
+        notes: `${data.reason}: ${data.notes}`,
+        reference_type: 'adjustment',
+        created_by: user?.id,
+      });
+      toast.success('Stock adjustment saved');
+      setAdjustmentProduct(null);
+      loadOverview();
+    } catch (error: any) {
+      toast.error('Adjustment failed: ' + (error.message || 'Unknown error'));
+    }
+  }, [companyId, branchId, user?.id, loadOverview]);
+
+  const exportOverviewCsv = useCallback(() => {
+    const headers = ['Product', 'SKU', 'Category', 'Stock', 'Boxes', 'Pieces', 'Unit', 'Avg Cost', 'Selling Price', 'Stock Value', 'Status', 'Movement'];
+    const rows = filteredProducts.map(p => [
+      p.name, p.sku, p.category, p.stock, p.boxes, p.pieces, p.unit,
+      p.avgCost, p.sellingPrice, p.stockValue, p.status, p.movement,
+    ].join(','));
+    const csv = [headers.join(','), ...rows].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `inventory-overview-${new Date().toISOString().slice(0, 10)}.csv`;
+    link.click();
+    URL.revokeObjectURL(link.href);
+    toast.success('Export downloaded');
+  }, [filteredProducts]);
+
+  const exportMovementsCsv = useCallback(() => {
+    const headers = ['Date', 'Product', 'SKU', 'Type', 'Qty', 'Box', 'Piece', 'Before', 'After', 'Unit Cost', 'Notes'];
+    const rows = movements.map(m => [
+      m.created_at?.slice(0, 19) || '',
+      m.product?.name ?? '',
+      m.product?.sku ?? '',
+      m.movement_type ?? '',
+      m.quantity ?? '',
+      m.box_change ?? '',
+      m.piece_change ?? '',
+      m.before_qty ?? '',
+      m.after_qty ?? '',
+      m.unit_cost ?? '',
+      (m.notes || '').replace(/,/g, ';'),
+    ].join(','));
+    const csv = [headers.join(','), ...rows].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `stock-movements-${new Date().toISOString().slice(0, 10)}.csv`;
+    link.click();
+    URL.revokeObjectURL(link.href);
+    toast.success('Export downloaded');
+  }, [movements]);
 
   const getMovementBadge = (movement: string) => {
     switch(movement) {
@@ -173,12 +209,26 @@ export const InventoryDashboardNew = () => {
         </div>
         
         <div className="flex gap-3">
-          <Button variant="outline" className="gap-2 border-gray-700 text-gray-300">
-            <Filter size={16} /> Filters
-          </Button>
-          <Button variant="outline" className="gap-2 border-gray-700 text-gray-300">
-            <Download size={16} /> Export
-          </Button>
+          {activeTab === 'overview' && (
+            <>
+              <Button variant="outline" className="gap-2 border-gray-700 text-gray-300" onClick={exportOverviewCsv}>
+                <FileDown size={16} /> Export CSV
+              </Button>
+              <Button variant="outline" className="gap-2 border-gray-700 text-gray-300" onClick={() => window.print()}>
+                <Printer size={16} /> Print
+              </Button>
+            </>
+          )}
+          {activeTab === 'analytics' && (
+            <>
+              <Button variant="outline" className="gap-2 border-gray-700 text-gray-300" onClick={loadMovements}>
+                <Filter size={16} /> Apply Filters
+              </Button>
+              <Button variant="outline" className="gap-2 border-gray-700 text-gray-300" onClick={exportMovementsCsv}>
+                <Download size={16} /> Export CSV
+              </Button>
+            </>
+          )}
         </div>
       </div>
 
@@ -261,7 +311,7 @@ export const InventoryDashboardNew = () => {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-gray-400 text-sm">Total SKUs</p>
-                  <h3 className="text-2xl font-bold text-white mt-1">{inventoryProducts.length}</h3>
+                  <h3 className="text-2xl font-bold text-white mt-1">{overviewRows.length}</h3>
                 </div>
                 <div className="p-3 bg-purple-500/10 rounded-lg">
                   <Package className="text-purple-400" size={24} />
@@ -282,7 +332,7 @@ export const InventoryDashboardNew = () => {
           </div>
 
           {/* Stock Table */}
-          <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden">
+          <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden print:border print:rounded">
             <table className="w-full">
               <thead className="bg-gray-950/50 border-b border-gray-800">
                 <tr>
@@ -290,23 +340,32 @@ export const InventoryDashboardNew = () => {
                   <th className="px-6 py-4 text-left text-xs font-medium text-gray-400 uppercase">SKU</th>
                   <th className="px-6 py-4 text-left text-xs font-medium text-gray-400 uppercase">Category</th>
                   <th className="px-6 py-4 text-center text-xs font-medium text-gray-400 uppercase">Stock</th>
-                  <th className="px-6 py-4 text-right text-xs font-medium text-gray-400 uppercase">Purchase Price</th>
+                  {enablePacking && (
+                    <>
+                      <th className="px-6 py-4 text-center text-xs font-medium text-gray-400 uppercase">Boxes</th>
+                      <th className="px-6 py-4 text-center text-xs font-medium text-gray-400 uppercase">Pieces</th>
+                      <th className="px-6 py-4 text-center text-xs font-medium text-gray-400 uppercase">Unit</th>
+                    </>
+                  )}
+                  <th className="px-6 py-4 text-right text-xs font-medium text-gray-400 uppercase">Avg Cost</th>
                   <th className="px-6 py-4 text-right text-xs font-medium text-gray-400 uppercase">Selling Price</th>
+                  <th className="px-6 py-4 text-right text-xs font-medium text-gray-400 uppercase">Stock Value</th>
                   <th className="px-6 py-4 text-center text-xs font-medium text-gray-400 uppercase">Movement</th>
                   <th className="px-6 py-4 text-center text-xs font-medium text-gray-400 uppercase">Status</th>
+                  <th className="px-6 py-4 text-center text-xs font-medium text-gray-400 uppercase print:hidden">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-800">
                 {loading ? (
                   <tr>
-                    <td colSpan={8} className="px-6 py-12 text-center">
+                    <td colSpan={enablePacking ? 13 : 10} className="px-6 py-12 text-center">
                       <Loader2 size={48} className="mx-auto text-blue-500 mb-3 animate-spin" />
                       <p className="text-gray-400 text-sm">Loading inventory...</p>
                     </td>
                   </tr>
                 ) : filteredProducts.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="px-6 py-12 text-center">
+                    <td colSpan={enablePacking ? 13 : 10} className="px-6 py-12 text-center">
                       <Package size={48} className="mx-auto text-gray-600 mb-3" />
                       <p className="text-gray-400 text-sm">No products found</p>
                       <p className="text-gray-600 text-xs mt-1">Try adjusting your search</p>
@@ -327,16 +386,26 @@ export const InventoryDashboardNew = () => {
                     <td className="px-6 py-4 text-center">
                       <span className={cn(
                         "font-bold font-mono",
-                        product.stock <= product.reorderLevel ? "text-red-400" : "text-white"
+                        product.status === 'Out' || product.status === 'Low' ? "text-red-400" : "text-white"
                       )}>
                         {product.stock}
                       </span>
                     </td>
+                    {enablePacking && (
+                      <>
+                        <td className="px-6 py-4 text-center text-gray-400">{product.boxes}</td>
+                        <td className="px-6 py-4 text-center text-gray-400">{product.pieces}</td>
+                        <td className="px-6 py-4 text-center text-gray-400">{product.unit}</td>
+                      </>
+                    )}
                     <td className="px-6 py-4 text-right text-gray-400">
-                      Rs {product.purchasePrice.toLocaleString()}
+                      Rs {product.avgCost.toLocaleString()}
                     </td>
                     <td className="px-6 py-4 text-right text-white font-medium">
                       Rs {product.sellingPrice.toLocaleString()}
+                    </td>
+                    <td className="px-6 py-4 text-right text-gray-300">
+                      Rs {product.stockValue.toLocaleString()}
                     </td>
                     <td className="px-6 py-4 text-center">
                       <Badge className={cn("border", getMovementBadge(product.movement))}>
@@ -344,16 +413,38 @@ export const InventoryDashboardNew = () => {
                       </Badge>
                     </td>
                     <td className="px-6 py-4 text-center">
-                      {product.stock <= product.reorderLevel ? (
-                        <Badge className="bg-red-500/20 text-red-400 border-red-500/30 border">
+                      {product.status === 'Out' ? (
+                        <Badge className="bg-red-500/20 text-red-400 border-red-500/30 border">Out</Badge>
+                      ) : product.status === 'Low' ? (
+                        <Badge className="bg-orange-500/20 text-orange-400 border-orange-500/30 border">
                           <AlertTriangle size={12} className="mr-1" />
-                          Low Stock
+                          Low
                         </Badge>
                       ) : (
-                        <Badge className="bg-green-500/20 text-green-400 border-green-500/30 border">
-                          In Stock
-                        </Badge>
+                        <Badge className="bg-green-500/20 text-green-400 border-green-500/30 border">OK</Badge>
                       )}
+                    </td>
+                    <td className="px-6 py-4 text-center print:hidden">
+                      <div className="flex items-center justify-center gap-2">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="text-blue-400 hover:text-blue-300 hover:bg-blue-500/10"
+                          onClick={() => setLedgerProduct(product)}
+                        >
+                          <ExternalLink size={14} className="mr-1" />
+                          Ledger
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="text-amber-400 hover:text-amber-300 hover:bg-amber-500/10"
+                          onClick={() => setAdjustmentProduct(product)}
+                        >
+                          <SlidersHorizontal size={14} className="mr-1" />
+                          Adjust
+                        </Button>
+                      </div>
                     </td>
                   </tr>
                   ))
@@ -364,170 +455,216 @@ export const InventoryDashboardNew = () => {
         </div>
       )}
 
+      {/* Full Stock Ledger modal */}
+      {ledgerProduct && (
+        <FullStockLedgerView
+          isOpen={!!ledgerProduct}
+          onClose={() => setLedgerProduct(null)}
+          productId={ledgerProduct.productId}
+          productName={ledgerProduct.name}
+          productSku={ledgerProduct.sku}
+          currentStock={ledgerProduct.stock}
+        />
+      )}
+
+      {/* Stock Adjustment drawer */}
+      <StockAdjustmentDrawer
+        open={!!adjustmentProduct}
+        onClose={() => setAdjustmentProduct(null)}
+        product={adjustmentProduct ? {
+          id: adjustmentProduct.productId,
+          name: adjustmentProduct.name,
+          sku: adjustmentProduct.sku,
+          currentStock: adjustmentProduct.stock,
+          unit: adjustmentProduct.unit,
+        } : null}
+        onAdjust={handleAdjustSave}
+      />
+
       {/* ANALYTICS TAB */}
       {activeTab === 'analytics' && (
         <div className="space-y-6 animate-in fade-in duration-300">
-          {/* Analytics Cards */}
-          <div className="grid grid-cols-3 gap-6">
-            {/* Slow Moving Items */}
-            <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-6">
-              <div className="flex items-center gap-3 mb-4">
-                <div className="p-2 bg-orange-500/10 rounded-lg">
-                  <TrendingDown className="text-orange-400" size={20} />
-                </div>
-                <div>
-                  <h3 className="text-white font-bold">Slow Moving Stock</h3>
-                  <p className="text-sm text-gray-400">Items with low turnover</p>
-                </div>
-              </div>
-              <div className="space-y-3">
-                {slowMovingItems.slice(0, 3).map((item) => (
-                  <div key={item.id} className="p-3 bg-gray-950/50 rounded-lg border border-gray-800">
-                    <div className="flex justify-between items-start">
-                      <div>
-                        <p className="text-sm font-medium text-white">{item.name}</p>
-                        <p className="text-xs text-gray-500 mt-1">{item.category}</p>
-                      </div>
-                      <Badge className={cn("border text-xs", getMovementBadge(item.movement))}>
-                        {item.daysInStock}d
-                      </Badge>
-                    </div>
-                  </div>
+          {/* Filters */}
+          <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4 flex flex-wrap items-end gap-4">
+            <div>
+              <label className="text-xs text-gray-400 block mb-1">From Date</label>
+              <Input
+                type="date"
+                value={filters.dateFrom}
+                onChange={(e) => setFilters(f => ({ ...f, dateFrom: e.target.value }))}
+                className="bg-gray-950 border-gray-700 text-white w-40"
+              />
+            </div>
+            <div>
+              <label className="text-xs text-gray-400 block mb-1">To Date</label>
+              <Input
+                type="date"
+                value={filters.dateTo}
+                onChange={(e) => setFilters(f => ({ ...f, dateTo: e.target.value }))}
+                className="bg-gray-950 border-gray-700 text-white w-40"
+              />
+            </div>
+            <div>
+              <label className="text-xs text-gray-400 block mb-1">Movement Type</label>
+              <select
+                value={filters.movementType}
+                onChange={(e) => setFilters(f => ({ ...f, movementType: e.target.value }))}
+                className="h-9 px-3 rounded-md bg-gray-950 border border-gray-700 text-white text-sm w-40"
+              >
+                <option value="">All</option>
+                <option value="purchase">Purchase</option>
+                <option value="sale">Sale</option>
+                <option value="adjustment">Adjustment</option>
+                <option value="transfer">Transfer</option>
+                <option value="return">Return</option>
+              </select>
+            </div>
+            <div>
+              <label className="text-xs text-gray-400 block mb-1">Product</label>
+              <select
+                value={filters.productId}
+                onChange={(e) => setFilters(f => ({ ...f, productId: e.target.value }))}
+                className="h-9 px-3 rounded-md bg-gray-950 border border-gray-700 text-white text-sm min-w-[180px]"
+              >
+                <option value="">All products</option>
+                {overviewRows.map((p) => (
+                  <option key={p.id} value={p.productId}>{p.name} ({p.sku})</option>
                 ))}
-              </div>
+              </select>
             </div>
-
-            {/* Aging Stock */}
-            <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-6">
-              <div className="flex items-center gap-3 mb-4">
-                <div className="p-2 bg-red-500/10 rounded-lg">
-                  <Clock className="text-red-400" size={20} />
-                </div>
-                <div>
-                  <h3 className="text-white font-bold">Aging Stock</h3>
-                  <p className="text-sm text-gray-400">Over 60 days old</p>
-                </div>
-              </div>
-              <div className="space-y-3">
-                {agingItems.map((item) => (
-                  <div key={item.id} className="p-3 bg-gray-950/50 rounded-lg border border-gray-800">
-                    <div className="flex justify-between items-start">
-                      <div>
-                        <p className="text-sm font-medium text-white">{item.name}</p>
-                        <p className="text-xs text-gray-500 mt-1">Last sale: {item.lastSale}</p>
-                      </div>
-                      <Badge className="bg-red-500/20 text-red-400 border-red-500/30 border text-xs">
-                        {item.daysInStock}d
-                      </Badge>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Profit Analysis */}
-            <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-6">
-              <div className="flex items-center gap-3 mb-4">
-                <div className="p-2 bg-green-500/10 rounded-lg">
-                  <DollarSign className="text-green-400" size={20} />
-                </div>
-                <div>
-                  <h3 className="text-white font-bold">Profit Analysis</h3>
-                  <p className="text-sm text-gray-400">Top profit items</p>
-                </div>
-              </div>
-              <div className="space-y-3">
-                {inventoryProducts
-                  .sort((a, b) => (b.sellingPrice - b.purchasePrice) * b.stock - (a.sellingPrice - a.purchasePrice) * a.stock)
-                  .slice(0, 3)
-                  .map((item) => {
-                    const profit = (item.sellingPrice - item.purchasePrice) * item.stock;
-                    return (
-                      <div key={item.id} className="p-3 bg-gray-950/50 rounded-lg border border-gray-800">
-                        <div className="flex justify-between items-start">
-                          <div>
-                            <p className="text-sm font-medium text-white">{item.name}</p>
-                            <p className="text-xs text-gray-500 mt-1">Stock: {item.stock}</p>
-                          </div>
-                          <div className="text-right">
-                            <p className="text-sm font-bold text-green-400">Rs {profit.toLocaleString()}</p>
-                            <p className="text-xs text-gray-500">potential</p>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-              </div>
-            </div>
+            <Button onClick={loadMovements} className="gap-2">
+              <Filter size={16} /> Apply
+            </Button>
           </div>
 
-          {/* Detailed Analytics Table */}
+          {/* Movements Table */}
           <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden">
-            <div className="p-6 border-b border-gray-800">
-              <h3 className="text-lg font-bold text-white">Detailed Stock Analytics</h3>
-              <p className="text-sm text-gray-400 mt-1">Movement patterns and profitability metrics</p>
+            <div className="p-6 border-b border-gray-800 flex justify-between items-center">
+              <div>
+                <h3 className="text-lg font-bold text-white">Stock Movements</h3>
+                <p className="text-sm text-gray-400 mt-1">Filter by date, product, and movement type</p>
+              </div>
+              <Button variant="outline" size="sm" className="gap-2 border-gray-700 text-gray-300" onClick={exportMovementsCsv}>
+                <Download size={16} /> Export CSV
+              </Button>
             </div>
             <table className="w-full">
               <thead className="bg-gray-950/50 border-b border-gray-800">
                 <tr>
+                  <th className="px-6 py-4 text-left text-xs font-medium text-gray-400 uppercase">Date</th>
                   <th className="px-6 py-4 text-left text-xs font-medium text-gray-400 uppercase">Product</th>
-                  <th className="px-6 py-4 text-center text-xs font-medium text-gray-400 uppercase">Days in Stock</th>
-                  <th className="px-6 py-4 text-center text-xs font-medium text-gray-400 uppercase">Movement</th>
-                  <th className="px-6 py-4 text-right text-xs font-medium text-gray-400 uppercase">Stock Value</th>
-                  <th className="px-6 py-4 text-right text-xs font-medium text-gray-400 uppercase">Potential Profit</th>
-                  <th className="px-6 py-4 text-right text-xs font-medium text-gray-400 uppercase">Margin %</th>
+                  <th className="px-6 py-4 text-left text-xs font-medium text-gray-400 uppercase">Type</th>
+                  <th className="px-6 py-4 text-center text-xs font-medium text-gray-400 uppercase">Qty</th>
+                  {enablePacking && (
+                    <>
+                      <th className="px-6 py-4 text-center text-xs font-medium text-gray-400 uppercase">Box</th>
+                      <th className="px-6 py-4 text-center text-xs font-medium text-gray-400 uppercase">Piece</th>
+                      <th className="px-6 py-4 text-center text-xs font-medium text-gray-400 uppercase">Before</th>
+                      <th className="px-6 py-4 text-center text-xs font-medium text-gray-400 uppercase">After</th>
+                    </>
+                  )}
+                  <th className="px-6 py-4 text-right text-xs font-medium text-gray-400 uppercase">Unit Cost</th>
+                  <th className="px-6 py-4 text-left text-xs font-medium text-gray-400 uppercase max-w-[200px]">Notes</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-800">
-                {inventoryProducts.map((product) => {
-                  const stockValue = product.stock * product.purchasePrice;
-                  const potentialProfit = product.stock * (product.sellingPrice - product.purchasePrice);
-                  const margin = ((product.sellingPrice - product.purchasePrice) / product.sellingPrice * 100);
-                  
-                  return (
-                    <tr key={product.id} className="hover:bg-gray-800/30 transition-colors">
+                {movementsLoading ? (
+                  <tr>
+                    <td colSpan={enablePacking ? 10 : 6} className="px-6 py-12 text-center">
+                      <Loader2 size={32} className="mx-auto text-blue-500 animate-spin" />
+                      <p className="text-gray-400 text-sm mt-2">Loading movements...</p>
+                    </td>
+                  </tr>
+                ) : movements.length === 0 ? (
+                  <tr>
+                    <td colSpan={enablePacking ? 10 : 6} className="px-6 py-12 text-center text-gray-400 text-sm">
+                      No movements found. Adjust filters or ensure stock_movements has data.
+                    </td>
+                  </tr>
+                ) : (
+                  movements.map((m) => (
+                    <tr key={m.id} className="hover:bg-gray-800/30 transition-colors">
+                      <td className="px-6 py-4 text-gray-400 text-sm whitespace-nowrap">
+                        {m.created_at ? new Date(m.created_at).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' }) : '-'}
+                      </td>
                       <td className="px-6 py-4">
                         <div>
-                          <p className="font-medium text-white">{product.name}</p>
-                          <p className="text-sm text-gray-500">{product.sku}</p>
+                          <p className="font-medium text-white">{m.product?.name ?? '-'}</p>
+                          <p className="text-xs text-gray-500">{m.product?.sku ?? ''}</p>
                         </div>
                       </td>
-                      <td className="px-6 py-4 text-center">
-                        <span className={cn(
-                          "font-mono font-medium",
-                          product.daysInStock > 60 ? "text-red-400" :
-                          product.daysInStock > 30 ? "text-yellow-400" :
-                          "text-green-400"
+                      <td className="px-6 py-4">
+                        <Badge className={cn(
+                          "border text-xs",
+                          m.movement_type === 'sale' ? "bg-red-500/20 text-red-400 border-red-500/30" :
+                          m.movement_type === 'purchase' ? "bg-green-500/20 text-green-400 border-green-500/30" :
+                          m.movement_type === 'adjustment' ? "bg-amber-500/20 text-amber-400 border-amber-500/30" :
+                          "bg-gray-500/20 text-gray-400 border-gray-500/30"
                         )}>
-                          {product.daysInStock} days
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 text-center">
-                        <Badge className={cn("border", getMovementBadge(product.movement))}>
-                          {product.movement}
+                          {m.movement_type ?? '-'}
                         </Badge>
                       </td>
+                      <td className="px-6 py-4 text-center font-mono text-white">
+                        {m.quantity != null ? (Number(m.quantity) >= 0 ? '+' : '') + Number(m.quantity) : '-'}
+                      </td>
+                      {enablePacking && (
+                        <>
+                          <td className="px-6 py-4 text-center text-gray-400">{m.box_change ?? '-'}</td>
+                          <td className="px-6 py-4 text-center text-gray-400">{m.piece_change ?? '-'}</td>
+                          <td className="px-6 py-4 text-center text-gray-400">{m.before_qty ?? '-'}</td>
+                          <td className="px-6 py-4 text-center text-gray-400">{m.after_qty ?? '-'}</td>
+                        </>
+                      )}
                       <td className="px-6 py-4 text-right text-gray-400">
-                        Rs {stockValue.toLocaleString()}
+                        {m.unit_cost != null ? `Rs ${Number(m.unit_cost).toLocaleString()}` : '-'}
                       </td>
-                      <td className="px-6 py-4 text-right text-green-400 font-medium">
-                        Rs {potentialProfit.toLocaleString()}
-                      </td>
-                      <td className="px-6 py-4 text-right">
-                        <span className={cn(
-                          "font-bold",
-                          margin > 50 ? "text-green-400" :
-                          margin > 30 ? "text-yellow-400" :
-                          "text-orange-400"
-                        )}>
-                          {margin.toFixed(1)}%
-                        </span>
+                      <td className="px-6 py-4 text-gray-400 text-sm max-w-[200px] truncate" title={m.notes || ''}>
+                        {m.notes || '-'}
                       </td>
                     </tr>
-                  );
-                })}
+                  ))
+                )}
               </tbody>
             </table>
+          </div>
+
+          {/* Summary cards from overview (reuse for context) */}
+          <div className="grid grid-cols-3 gap-6">
+            <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-6">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-orange-500/10 rounded-lg">
+                  <TrendingDown className="text-orange-400" size={20} />
+                </div>
+                <div>
+                  <h3 className="text-white font-bold">Slow Moving</h3>
+                  <p className="text-2xl font-bold text-white mt-1">{slowMovingItems.length}</p>
+                  <p className="text-sm text-gray-400">items</p>
+                </div>
+              </div>
+            </div>
+            <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-6">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-red-500/10 rounded-lg">
+                  <AlertTriangle className="text-red-400" size={20} />
+                </div>
+                <div>
+                  <h3 className="text-white font-bold">Low / Out of Stock</h3>
+                  <p className="text-2xl font-bold text-white mt-1">{lowStockItems.length}</p>
+                  <p className="text-sm text-gray-400">items</p>
+                </div>
+              </div>
+            </div>
+            <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-6">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-green-500/10 rounded-lg">
+                  <DollarSign className="text-green-400" size={20} />
+                </div>
+                <div>
+                  <h3 className="text-white font-bold">Total Stock Value</h3>
+                  <p className="text-2xl font-bold text-white mt-1">Rs {totalStockValue.toLocaleString()}</p>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       )}

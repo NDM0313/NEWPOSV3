@@ -504,7 +504,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
       });
 
       // Load Numbering Rules from document_sequences
-      const sequences = await settingsService.getAllDocumentSequences(companyId, branchId || undefined);
+      const sequences = await settingsService.getAllDocumentSequences(companyId, branchId === 'all' ? undefined : branchId || undefined);
       const sequencesMap = new Map(sequences.map(s => [s.document_type, s]));
       
       const getSequence = (type: string) => sequencesMap.get(type);
@@ -721,7 +721,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
 
       // Save each document sequence
       for (const [docType, { prefix, nextNumber }] of Object.entries(documentTypeMap)) {
-        await settingsService.setDocumentSequence(companyId, branchId || undefined, docType, prefix, nextNumber, 4);
+        await settingsService.setDocumentSequence(companyId, branchId === 'all' ? undefined : branchId || undefined, docType, prefix, nextNumber, 4);
       }
       
       toast.success('Numbering rules saved');
@@ -761,7 +761,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
     }
 
     try {
-      const nextNumber = await settingsService.getNextDocumentNumber(companyId, branchId || undefined, docType);
+      const nextNumber = await settingsService.getNextDocumentNumber(companyId, branchId === 'all' ? undefined : branchId || undefined, docType);
       // Update local state
       const prefixKey = module.replace('NextNumber', 'Prefix') as keyof NumberingRules;
       const prefix = numberingRules[prefixKey] as string;

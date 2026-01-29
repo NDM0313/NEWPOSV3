@@ -1,9 +1,12 @@
 import { useEffect, useState } from 'react';
 import type { Transaction } from '@/app/services/customerLedgerTypes';
 import React from 'react';
+import { useSupabase } from '@/app/context/SupabaseContext';
+import './ledger-print-view-print.css';
 
 interface LedgerPrintViewProps {
   transactions: Transaction[];
+  saleItemsMap?: Map<string, any[]>;
   accountName: string;
   dateRange: { from: string; to: string };
   openingBalance: number;
@@ -11,37 +14,15 @@ interface LedgerPrintViewProps {
   onClose: () => void;
 }
 
-// Mock product detail data for sales
-const getSaleProducts = (transaction: Transaction) => {
-  if (transaction.documentType === 'Invoice') {
-    return [
-      {
-        id: '1',
-        name: 'Premium Cotton Fabric',
-        quantity: 25,
-        unit: 'M&Y',
-        unitPrice: 450,
-        discount: 22.5,
-        tax: 85.5,
-        lineTotal: 12825
-      },
-      {
-        id: '2',
-        name: 'Silk Blend Material',
-        quantity: 15,
-        unit: 'M&Y',
-        unitPrice: 850,
-        discount: 127.5,
-        tax: 192.38,
-        lineTotal: 13723.2
-      }
-    ];
-  }
-  return [];
-};
+// Sale product breakdown from backend only – no mock
+function getSaleProductsFromBackend(transaction: Transaction, saleItemsMap: Map<string, any[]>): any[] {
+  if (transaction.documentType !== 'Sale' || !transaction.id) return [];
+  return saleItemsMap.get(transaction.id) || [];
+}
 
 export function LedgerPrintView({ 
   transactions, 
+  saleItemsMap = new Map(),
   accountName, 
   dateRange, 
   openingBalance,
@@ -49,11 +30,13 @@ export function LedgerPrintView({
   onClose 
 }: LedgerPrintViewProps) {
   
+  const { enablePacking } = useSupabase();
   const [orientation, setOrientation] = React.useState<'portrait' | 'landscape'>(initialOrientation);
   
-  // Calculate totals
-  const totalDebit = transactions.reduce((sum, t) => sum + t.debit, 0);
-  const totalCredit = transactions.reduce((sum, t) => sum + t.credit, 0);
+  // Period totals (exclude Opening Balance row for summary)
+  const periodTransactions = transactions.filter(t => t.documentType !== 'Opening Balance');
+  const totalDebit = periodTransactions.reduce((sum, t) => sum + t.debit, 0);
+  const totalCredit = periodTransactions.reduce((sum, t) => sum + t.credit, 0);
   const closingBalance = openingBalance + totalDebit - totalCredit;
 
   useEffect(() => {
@@ -107,10 +90,14 @@ export function LedgerPrintView({
   };
 
   const getDescription = (transaction: Transaction) => {
-    if (transaction.documentType === 'Invoice') {
+    if (transaction.documentType === 'Opening Balance') {
+      return 'Opening Balance';
+    }
+    if (transaction.documentType === 'Sale') {
       return `Sale - ${transaction.referenceNo}`;
-    } else if (transaction.documentType === 'Payment') {
-      return `Payment Received`;
+    }
+    if (transaction.documentType === 'Payment') {
+      return 'Payment Received';
     }
     return transaction.description || transaction.documentType;
   };
@@ -294,25 +281,7 @@ export function LedgerPrintView({
               </div>
             </div>
 
-            {/* Opening Balance */}
-            <div style={{ 
-              marginBottom: '20px', 
-              padding: '12px 16px', 
-              background: '#f8f9fa',
-              border: '1px solid #dee2e6',
-              borderRadius: '4px'
-            }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontSize: '13px', fontWeight: '700', color: '#000000' }}>
-                  OPENING BALANCE:
-                </span>
-                <span style={{ fontSize: '15px', fontWeight: '700', color: '#000000', fontFamily: 'monospace' }}>
-                  Rs {openingBalance.toLocaleString('en-PK')}
-                </span>
-              </div>
-            </div>
-
-            {/* Ledger Table */}
+            {/* Ledger Table (first row = Opening Balance when transactions include it) */}
             <table 
               style={{ 
                 width: '100%', 
@@ -389,8 +358,8 @@ export function LedgerPrintView({
               </thead>
               <tbody>
                 {transactions.map((transaction, index) => {
-                  const isSale = transaction.documentType === 'Invoice';
-                  const products = isSale ? getSaleProducts(transaction) : [];
+                  const isSale = transaction.documentType === 'Sale';
+                  const products = isSale ? getSaleProductsFromBackend(transaction, saleItemsMap) : [];
                   
                   return (
                     <React.Fragment key={transaction.id}>
@@ -451,7 +420,7 @@ export function LedgerPrintView({
                         </td>
                       </tr>
                       
-                      {/* Product details for sales */}
+                      {/* Product breakdown – 1:1 with sale_items: Variation, Packing, Qty, Unit separate */}
                       {products.length > 0 && (
                         <tr style={{ background: '#f1f5f9' }}>
                           <td colSpan={7} style={{ padding: '8px 8px 8px 24px' }}>
@@ -460,7 +429,10 @@ export function LedgerPrintView({
                                 <tr style={{ borderBottom: '1px solid #cbd5e1' }}>
                                   <th style={{ padding: '4px', textAlign: 'left', fontSize: '9px', color: '#64748b', fontWeight: '600' }}>#</th>
                                   <th style={{ padding: '4px', textAlign: 'left', fontSize: '9px', color: '#64748b', fontWeight: '600' }}>PRODUCT NAME</th>
-                                  <th style={{ padding: '4px', textAlign: 'center', fontSize: '9px', color: '#64748b', fontWeight: '600' }}>QTY</th>
+                                  <th style={{ padding: '4px', textAlign: 'left', fontSize: '9px', color: '#64748b', fontWeight: '600' }}>VARIATION</th>
+                                  {enablePacking && <th style={{ padding: '4px', textAlign: 'left', fontSize: '9px', color: '#64748b', fontWeight: '600' }}>PACKING</th>}
+                                  <th style={{ padding: '4px', textAlign: 'right', fontSize: '9px', color: '#64748b', fontWeight: '600' }}>QTY</th>
+                                  <th style={{ padding: '4px', textAlign: 'left', fontSize: '9px', color: '#64748b', fontWeight: '600' }}>UNIT</th>
                                   <th style={{ padding: '4px', textAlign: 'right', fontSize: '9px', color: '#64748b', fontWeight: '600' }}>UNIT PRICE</th>
                                   <th style={{ padding: '4px', textAlign: 'right', fontSize: '9px', color: '#64748b', fontWeight: '600' }}>DISCOUNT</th>
                                   <th style={{ padding: '4px', textAlign: 'right', fontSize: '9px', color: '#64748b', fontWeight: '600' }}>TAX</th>
@@ -468,27 +440,42 @@ export function LedgerPrintView({
                                 </tr>
                               </thead>
                               <tbody>
-                                {products.map((product, idx) => (
-                                  <tr key={product.id}>
-                                    <td style={{ padding: '4px', color: '#64748b' }}>{idx + 1}</td>
-                                    <td style={{ padding: '4px', color: '#000000' }}>{product.name}</td>
-                                    <td style={{ padding: '4px', textAlign: 'center', color: '#000000', fontWeight: '600' }}>
-                                      {product.quantity} {product.unit}
-                                    </td>
-                                    <td style={{ padding: '4px', textAlign: 'right', fontFamily: 'monospace', color: '#000000' }}>
-                                      {product.unitPrice.toLocaleString('en-PK')}
-                                    </td>
-                                    <td style={{ padding: '4px', textAlign: 'right', fontFamily: 'monospace', color: '#000000' }}>
-                                      {product.discount > 0 ? product.discount.toLocaleString('en-PK') : '-'}
-                                    </td>
-                                    <td style={{ padding: '4px', textAlign: 'right', fontFamily: 'monospace', color: '#000000' }}>
-                                      {product.tax.toLocaleString('en-PK')}
-                                    </td>
-                                    <td style={{ padding: '4px', textAlign: 'right', fontFamily: 'monospace', fontWeight: '700', color: '#000000' }}>
-                                      {product.lineTotal.toLocaleString('en-PK')}
-                                    </td>
-                                  </tr>
-                                ))}
+                                {products.map((item: any, idx: number) => {
+                                  const attrs = item.variation?.attributes || item.product_variations?.attributes || {};
+                                  const variationText = (attrs.size || attrs.color) ? [attrs.size, attrs.color].filter(Boolean).join(' / ') : '—';
+                                  // Packing: structured – Boxes + Pieces (never merge with Qty/Unit)
+                                  const pd = item.packing_details || {};
+                                  const totalBoxes = pd.total_boxes ?? 0;
+                                  const totalPieces = pd.total_pieces ?? 0;
+                                  const packingParts: string[] = [];
+                                  if (Number(totalBoxes) > 0) packingParts.push(`${totalBoxes} Box${Number(totalBoxes) !== 1 ? 'es' : ''}`);
+                                  if (Number(totalPieces) > 0) packingParts.push(`${totalPieces} Piece${Number(totalPieces) !== 1 ? 's' : ''}`);
+                                  const packingText = packingParts.length
+                                    ? packingParts.join(', ')
+                                    : (item.packing_type || item.packing_quantity != null || item.packing_unit)
+                                      ? [item.packing_type, item.packing_quantity != null && item.packing_quantity !== '' ? String(item.packing_quantity) : null, item.packing_unit].filter(Boolean).join(' ')
+                                      : '—';
+                                  const qty = Number(item.quantity) || 0;
+                                  const unit = item.unit ?? 'piece';
+                                  const unitPrice = Number(item.unit_price) || 0;
+                                  const discount = Number(item.discount_amount) || 0;
+                                  const tax = Number(item.tax_amount) || 0;
+                                  const lineTotal = Number(item.total) || 0;
+                                  return (
+                                    <tr key={item.id}>
+                                      <td style={{ padding: '4px', color: '#64748b' }}>{idx + 1}</td>
+                                      <td style={{ padding: '4px', color: '#000000' }}>{item.product_name || 'N/A'}</td>
+                                      <td style={{ padding: '4px', color: '#000000' }}>{variationText}</td>
+                                      {enablePacking && <td style={{ padding: '4px', color: '#000000' }}>{packingText}</td>}
+                                      <td style={{ padding: '4px', textAlign: 'right', color: '#000000', fontWeight: '600' }}>{qty.toFixed(2)}</td>
+                                      <td style={{ padding: '4px', color: '#000000' }}>{unit}</td>
+                                      <td style={{ padding: '4px', textAlign: 'right', fontFamily: 'monospace', color: '#000000' }}>{unitPrice.toLocaleString('en-PK')}</td>
+                                      <td style={{ padding: '4px', textAlign: 'right', fontFamily: 'monospace', color: '#000000' }}>{discount > 0 ? discount.toLocaleString('en-PK') : '—'}</td>
+                                      <td style={{ padding: '4px', textAlign: 'right', fontFamily: 'monospace', color: '#000000' }}>{tax.toLocaleString('en-PK')}</td>
+                                      <td style={{ padding: '4px', textAlign: 'right', fontFamily: 'monospace', fontWeight: '700', color: '#000000' }}>{lineTotal.toLocaleString('en-PK')}</td>
+                                    </tr>
+                                  );
+                                })}
                               </tbody>
                             </table>
                           </td>

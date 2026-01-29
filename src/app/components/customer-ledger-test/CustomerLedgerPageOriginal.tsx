@@ -10,13 +10,17 @@ import { Search, Calendar, Download, Printer, Filter, ChevronDown, FileText, X }
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { customerLedgerAPI, type CustomerLedgerSummary, type AgingReport } from '@/app/services/customerLedgerApi';
 import type { Customer, Transaction, Invoice, Payment } from '@/app/services/customerLedgerTypes';
+import { buildTransactionsWithOpeningBalance } from '@/app/services/customerLedgerTypes';
 import { ModernCustomerSearch } from './modern-original/ModernCustomerSearch';
 import { ModernDateFilter } from './modern-original/ModernDateFilter';
 import { ModernSummaryCards } from './modern-original/ModernSummaryCards';
 import { ModernLedgerTabs } from './modern-original/ModernLedgerTabs';
 import { ModernTransactionModal } from './modern-original/ModernTransactionModal';
+import { LedgerPrintView } from './modern-original/print/LedgerPrintView';
+import { ViewSaleDetailsDrawer } from '@/app/components/sales/ViewSaleDetailsDrawer';
 import type { LedgerData } from '@/app/services/customerLedgerTypes';
 import { LoadingSpinner } from '@/app/components/shared/LoadingSpinner';
+import { supabase } from '@/lib/supabase';
 import { ErrorMessage } from '@/app/components/shared/ErrorMessage';
 import { toast } from 'sonner';
 
@@ -36,11 +40,14 @@ export default function CustomerLedgerPageOriginal({
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [dateRange, setDateRange] = useState({ from: '2025-01-01', to: new Date().toISOString().split('T')[0] });
   const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null);
-  
+  const [saleDrawerSaleId, setSaleDrawerSaleId] = useState<string | null>(null);
+
   // Data states
   const [ledgerData, setLedgerData] = useState<LedgerData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [printOpen, setPrintOpen] = useState(false);
+  const [saleItemsMap, setSaleItemsMap] = useState<Map<string, any[]>>(new Map());
 
   // Load customers on mount
   useEffect(() => {
@@ -158,9 +165,101 @@ export default function CustomerLedgerPageOriginal({
     }
   };
 
+  // Fetch sale_items for all Sale transactions (1:1 with backend – no mock)
+  useEffect(() => {
+    if (!ledgerData?.transactions || !companyId) {
+      setSaleItemsMap(new Map());
+      return;
+    }
+    const saleIds = ledgerData.transactions
+      .filter((t) => t.documentType === 'Sale' && t.id)
+      .map((t) => t.id);
+    if (saleIds.length === 0) {
+      setSaleItemsMap(new Map());
+      return;
+    }
+    const selectCols = 'id, sale_id, product_id, variation_id, product_name, sku, quantity, unit, unit_price, discount_amount, tax_amount, total, packing_type, packing_quantity, packing_unit, packing_details, variation:product_variations(id, attributes)';
+    const fetchItems = async () => {
+      try {
+        let { data: items, error: err } = await supabase
+          .from('sales_items')
+          .select(selectCols)
+          .in('sale_id', saleIds)
+          .order('sale_id')
+          .order('id');
+        if (err && (err.code === '42P01' || String(err.message).includes('sales_items'))) {
+          const res = await supabase
+            .from('sale_items')
+            .select(selectCols)
+            .in('sale_id', saleIds)
+            .order('sale_id')
+            .order('id');
+          items = res.data;
+          err = res.error;
+        }
+        if (err) {
+          const res = await supabase
+            .from('sale_items')
+            .select('id, sale_id, product_id, variation_id, product_name, sku, quantity, unit, unit_price, discount_amount, tax_amount, total, packing_type, packing_quantity, packing_unit, packing_details')
+            .in('sale_id', saleIds)
+            .order('sale_id')
+            .order('id');
+          items = res.data;
+        }
+        const map = new Map<string, any[]>();
+        (items || []).forEach((it: any) => {
+          const sid = it.sale_id;
+          if (!map.has(sid)) map.set(sid, []);
+          map.get(sid)!.push(it);
+        });
+        setSaleItemsMap(map);
+        // Step 1 – Raw DB verification: log raw sale_items/sales_items for a problematic sale (e.g. SL-0016) or first Sale
+        const transactions = ledgerData?.transactions ?? [];
+        const saleIdForDebug =
+          transactions.find((t: any) => t.documentType === 'Sale' && t.referenceNo === 'SL-0016')?.id ??
+          transactions.find((t: any) => t.documentType === 'Sale')?.id;
+        const rawItemsForDebug = saleIdForDebug ? (map.get(saleIdForDebug) || []) : [];
+        const refNoForDebug = transactions.find((t: any) => t.id === saleIdForDebug)?.referenceNo ?? '';
+        console.log('[CUSTOMER LEDGER ORIGINAL] Step 1 – Raw DB verification (sale_items/sales_items):', {
+          saleId: saleIdForDebug,
+          referenceNo: refNoForDebug,
+          count: rawItemsForDebug.length,
+          rawRecords: rawItemsForDebug.map((it: any) => ({
+            packing_type: it.packing_type,
+            packing_quantity: it.packing_quantity,
+            packing_unit: it.packing_unit,
+            quantity: it.quantity,
+            unit: it.unit,
+            variation_id: it.variation_id,
+            product_name: it.product_name,
+          })),
+        });
+        if (items?.length) {
+          console.log('[CUSTOMER LEDGER ORIGINAL] Sale items fetched (raw):', { saleIds: saleIds.length, itemCount: items.length, sample: items[0] });
+        }
+      } catch (e) {
+        console.error('[CUSTOMER LEDGER ORIGINAL] Error fetching sale items:', e);
+        setSaleItemsMap(new Map());
+      }
+    };
+    fetchItems();
+  }, [ledgerData?.transactions, companyId]);
+
+  // Display transactions = Opening Balance (first row) + period transactions — shown in all views
+  const displayTransactions = ledgerData
+    ? buildTransactionsWithOpeningBalance(
+        ledgerData.openingBalance,
+        ledgerData.transactions,
+        dateRange.from
+      )
+    : [];
+  const ledgerDataForViews = ledgerData
+    ? { ...ledgerData, transactions: displayTransactions }
+    : null;
+
   if (loading && !ledgerData) {
     return (
-      <div className="min-h-screen flex items-center justify-center" style={{ background: '#111827' }}>
+      <div className="min-h-screen flex items-center justify-center bg-[#0B0F19]">
         <LoadingSpinner />
       </div>
     );
@@ -168,7 +267,7 @@ export default function CustomerLedgerPageOriginal({
 
   if (error && !ledgerData) {
     return (
-      <div className="min-h-screen flex items-center justify-center" style={{ background: '#111827' }}>
+      <div className="min-h-screen flex items-center justify-center bg-[#0B0F19]">
         <ErrorMessage message={error} onRetry={loadCustomers} />
       </div>
     );
@@ -176,115 +275,126 @@ export default function CustomerLedgerPageOriginal({
 
   if (!ledgerData || !selectedCustomer) {
     return (
-      <div className="min-h-screen flex items-center justify-center" style={{ background: '#111827' }}>
+      <div className="min-h-screen flex items-center justify-center bg-[#0B0F19]">
         <div className="text-center">
-          <p className="text-gray-400">No customer selected or no data available</p>
+          <p className="text-sm text-gray-400">No customer selected or no data available</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen dark" style={{ background: '#111827' }}>
-      {/* Modern Header with Dark Theme */}
-      <header className="sticky top-0 z-20 shadow-sm" style={{ 
-        background: 'rgba(15, 23, 42, 0.95)',
-        backdropFilter: 'blur(12px)',
-        borderBottom: '1px solid #374151'
-      }}>
-        <div className="max-w-[1600px] mx-auto px-8 py-4">
-          {/* Top Row - Title and Actions */}
-          <div className="flex items-center justify-between mb-6">
-            <div className="flex items-center gap-4">
-              {onClose && (
-                <button
-                  onClick={onClose}
-                  className="p-2 rounded-lg hover:bg-gray-800 transition-colors"
-                  style={{ color: '#ffffff' }}
-                  title="Close"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              )}
+    <div className="min-h-screen flex flex-col bg-[#0B0F19]">
+      {/* Header – exact match to Products page layout & styles */}
+      <header className="shrink-0 px-6 py-4 border-b border-gray-800">
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center gap-4">
+            {onClose && (
+              <button
+                onClick={onClose}
+                className="p-2 rounded-lg hover:bg-gray-800 transition-colors text-white"
+                title="Close"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            )}
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-lg flex items-center justify-center bg-blue-500/10">
+                <FileText className="w-5 h-5 text-blue-500" />
+              </div>
               <div>
-                <h1 className="text-2xl flex items-center gap-3" style={{ color: '#ffffff' }}>
-                  <div className="w-10 h-10 rounded-lg flex items-center justify-center" style={{
-                    background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)'
-                  }}>
-                    <FileText className="w-5 h-5 text-white" />
-                  </div>
-                  Customer Ledger
-                </h1>
-                <p className="text-sm mt-1 ml-13" style={{ color: '#9ca3af' }}>Manage and track customer accounts</p>
+                <h1 className="text-2xl font-bold text-white">Customer Ledger</h1>
+                <p className="text-sm text-gray-400 mt-0.5">Manage and track customer accounts</p>
               </div>
             </div>
-            
-            <div className="flex items-center gap-3">
-              <button className="px-4 py-2 text-sm rounded-lg transition-colors flex items-center gap-2 shadow-sm" style={{
-                color: '#ffffff',
-                background: '#1f2937',
-                border: '1px solid #374151'
-              }} onMouseEnter={(e) => e.currentTarget.style.background = '#374151'}
-                 onMouseLeave={(e) => e.currentTarget.style.background = '#1f2937'}>
-                <Download className="w-4 h-4" />
-                Export
-              </button>
-              <button className="px-4 py-2 text-sm rounded-lg transition-colors flex items-center gap-2 shadow-sm" style={{
-                color: '#ffffff',
-                background: '#1f2937',
-                border: '1px solid #374151'
-              }} onMouseEnter={(e) => e.currentTarget.style.background = '#374151'}
-                 onMouseLeave={(e) => e.currentTarget.style.background = '#1f2937'}>
-                <Printer className="w-4 h-4" />
-                Print
-              </button>
-              <button className="px-4 py-2 text-sm rounded-lg transition-colors flex items-center gap-2 shadow-sm" style={{
-                color: '#ffffff',
-                background: '#1f2937',
-                border: '1px solid #374151'
-              }} onMouseEnter={(e) => e.currentTarget.style.background = '#374151'}
-                 onMouseLeave={(e) => e.currentTarget.style.background = '#1f2937'}>
-                <Filter className="w-4 h-4" />
-                Filters
-              </button>
-            </div>
           </div>
-
-          {/* Filters Row */}
-          <div className="flex items-center gap-4">
-            <ModernCustomerSearch
-              customers={customers}
-              selectedCustomer={selectedCustomer}
-              onSelect={setSelectedCustomer}
-            />
-            
-            <ModernDateFilter
-              dateRange={dateRange}
-              onApply={setDateRange}
-            />
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setPrintOpen(true)}
+              className="px-4 py-2 text-sm rounded-lg transition-colors flex items-center gap-2 bg-gray-900 border border-gray-700 text-white hover:bg-gray-800"
+            >
+              <Download className="w-4 h-4" />
+              Export / PDF
+            </button>
+            <button
+              onClick={() => setPrintOpen(true)}
+              className="px-4 py-2 text-sm rounded-lg transition-colors flex items-center gap-2 bg-gray-900 border border-gray-700 text-white hover:bg-gray-800"
+            >
+              <Printer className="w-4 h-4" />
+              Print
+            </button>
+            <button className="px-4 py-2 text-sm rounded-lg transition-colors flex items-center gap-2 bg-gray-900 border border-gray-700 text-white hover:bg-gray-800">
+              <Filter className="w-4 h-4" />
+              Filters
+            </button>
           </div>
+        </div>
+        {/* Filters Row – same spacing as Products */}
+        <div className="flex items-center gap-4">
+          <ModernCustomerSearch
+            customers={customers}
+            selectedCustomer={selectedCustomer}
+            onSelect={setSelectedCustomer}
+          />
+          <ModernDateFilter
+            dateRange={dateRange}
+            onApply={setDateRange}
+          />
         </div>
       </header>
 
-      {/* Main Content */}
-      <div className="max-w-[1600px] mx-auto px-8 py-6">
-        {/* Summary Cards Section */}
-        <ModernSummaryCards ledgerData={ledgerData} />
+      {/* Main Content – same padding as Products */}
+      <div className="flex-1 overflow-auto px-6 py-4">
+        {/* Summary Cards Section – same strip as Products (bg-[#0F1419], border-b) */}
+        <div className="shrink-0 pb-6 border-b border-gray-800">
+          <ModernSummaryCards ledgerData={ledgerData} />
+        </div>
 
-        {/* Ledger Content */}
+        {/* Ledger Content – tabs same as Products table section (transactions include Opening Balance as first row) */}
         <div className="mt-6">
           <ModernLedgerTabs
-            ledgerData={ledgerData}
-            onTransactionClick={setSelectedTransaction}
+            ledgerData={ledgerDataForViews!}
+            saleItemsMap={saleItemsMap}
+            accountName={selectedCustomer?.name ?? ''}
+            dateRange={dateRange}
+            onTransactionClick={(transaction) => {
+              if (transaction.documentType === 'Opening Balance') return;
+              if (transaction.documentType === 'Sale') {
+                setSaleDrawerSaleId(transaction.id);
+                setSelectedTransaction(null);
+              } else {
+                setSaleDrawerSaleId(null);
+                setSelectedTransaction(transaction);
+              }
+            }}
           />
         </div>
       </div>
 
-      {/* Transaction Modal */}
+      {/* Sale Transaction Details (full page) – opens when sale reference is clicked */}
+      <ViewSaleDetailsDrawer
+        isOpen={!!saleDrawerSaleId}
+        onClose={() => setSaleDrawerSaleId(null)}
+        saleId={saleDrawerSaleId}
+      />
+
+      {/* Payment / other transaction modal – opens when payment reference is clicked */}
       {selectedTransaction && (
         <ModernTransactionModal
           transaction={selectedTransaction}
           onClose={() => setSelectedTransaction(null)}
+        />
+      )}
+
+      {/* Print / PDF modal – same data as screen (Opening Balance as first row) */}
+      {printOpen && ledgerData && selectedCustomer && (
+        <LedgerPrintView
+          transactions={displayTransactions}
+          accountName={selectedCustomer.name}
+          dateRange={dateRange}
+          openingBalance={ledgerData.openingBalance}
+          orientation="portrait"
+          onClose={() => setPrintOpen(false)}
         />
       )}
     </div>

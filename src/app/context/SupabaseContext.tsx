@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useState, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 import { User, Session } from '@supabase/supabase-js';
+import { settingsService } from '@/app/services/settingsService';
 
 interface SupabaseContextType {
   user: User | null;
@@ -13,6 +14,10 @@ interface SupabaseContextType {
   branchId: string | null;
   defaultBranchId: string | null;
   setBranchId: (branchId: string | null) => void;
+  /** Global packing (Boxes/Pieces): OFF = hidden everywhere; ON = full packing. Default OFF. */
+  enablePacking: boolean;
+  setEnablePacking: (value: boolean) => Promise<void>;
+  refreshEnablePacking: () => Promise<void>;
   supabaseClient: typeof supabase;
 }
 
@@ -26,7 +31,27 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const [userRole, setUserRole] = useState<string | null>(null);
   const [branchId, setBranchId] = useState<string | null>(null);
   const [defaultBranchId, setDefaultBranchId] = useState<string | null>(null);
-  
+  const [enablePacking, setEnablePackingState] = useState<boolean>(false);
+
+  const loadEnablePacking = async (cid: string) => {
+    try {
+      const value = await settingsService.getEnablePacking(cid);
+      setEnablePackingState(value);
+    } catch {
+      setEnablePackingState(false);
+    }
+  };
+
+  const refreshEnablePacking = async () => {
+    if (companyId) await loadEnablePacking(companyId);
+  };
+
+  const setEnablePacking = async (value: boolean) => {
+    if (!companyId) return;
+    await settingsService.setEnablePacking(companyId, value);
+    setEnablePackingState(value);
+  };
+
   // Ref to track ongoing fetch operations (prevent duplicate calls)
   const fetchingRef = useRef<Set<string>>(new Set());
   const fetchedRef = useRef<Set<string>>(new Set());
@@ -155,8 +180,8 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             });
           });
           
-          // Load user's default branch
-          loadUserBranch(userId, data.company_id);
+          // Load user's default branch (admin → All Branches; normal user → assigned/first branch)
+          loadUserBranch(userId, data.company_id, data.role);
         }
       }
     } catch (error) {
@@ -166,11 +191,18 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
   };
 
-  // Load user's default branch
-  const loadUserBranch = async (userId: string, companyId: string) => {
+  // Load user's default branch (admin → All Branches; normal user → assigned/first branch)
+  const loadUserBranch = async (userId: string, companyId: string, userRole?: string | null) => {
     try {
+      const isAdmin = userRole === 'admin' || userRole === 'Admin';
+      if (isAdmin) {
+        setDefaultBranchId('all');
+        setBranchId('all');
+        console.log('[BRANCH LOADED] Admin: All Branches');
+        return;
+      }
+
       // First, try to get user's default branch (table may not exist)
-      // Suppress 404 errors as this table is optional
       const { data: userBranch, error: branchError } = await supabase
         .from('user_branches')
         .select('branch_id')
@@ -178,25 +210,19 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         .eq('is_default', true)
         .single();
 
-      // If table doesn't exist (404/406 error) or no data, skip to company branch
       if (userBranch && !branchError) {
         setDefaultBranchId(userBranch.branch_id);
         setBranchId(userBranch.branch_id);
         console.log('[BRANCH LOADED]', { branchId: userBranch.branch_id });
         return;
       }
-      
-      // If error is 404 (Not Found) or 406 (Not Acceptable), table doesn't exist - skip silently
-      // Don't log these errors as they're expected when table doesn't exist
+
       if (branchError && (branchError.code === 'PGRST301' || branchError.code === 'PGRST116' || branchError.status === 404 || branchError.status === 406)) {
-        // Table doesn't exist, continue to company branch lookup (silent)
-        // This is expected behavior - user_branches is optional
+        // Table doesn't exist - continue to company branch
       } else if (branchError) {
-        // Only log unexpected errors
         console.warn('[BRANCH LOAD] Unexpected error (non-blocking):', branchError);
       }
 
-      // If no default branch, get first branch for company
       const { data: companyBranch, error: companyBranchError } = await supabase
         .from('branches')
         .select('id')
@@ -210,14 +236,11 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         setBranchId(companyBranch.id);
         console.log('[BRANCH LOADED] Default company branch:', companyBranch.id);
       } else {
-        // No branch found - don't set fallback, let user create branch
-        console.warn('[BRANCH LOADED] No branch found for company. User should create a branch.');
         setDefaultBranchId(null);
         setBranchId(null);
       }
     } catch (error) {
       console.error('[LOAD BRANCH ERROR]', error);
-      // Don't use fallback - let user create branch
       setDefaultBranchId(null);
       setBranchId(null);
     }
@@ -265,11 +288,33 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     fetchingRef.current.clear();
     fetchedRef.current.clear();
     lastFetchedUserIdRef.current = null;
+    setEnablePackingState(false);
   };
+
+  // Load enable_packing when company is set
+  useEffect(() => {
+    if (companyId) loadEnablePacking(companyId);
+    else setEnablePackingState(false);
+  }, [companyId]);
 
   return (
     <SupabaseContext.Provider
-      value={{ user, session, loading, signIn, signOut, companyId, userRole, branchId, defaultBranchId, setBranchId, supabaseClient: supabase }}
+      value={{
+        user,
+        session,
+        loading,
+        signIn,
+        signOut,
+        companyId,
+        userRole,
+        branchId,
+        defaultBranchId,
+        setBranchId,
+        enablePacking,
+        setEnablePacking,
+        refreshEnablePacking,
+        supabaseClient: supabase,
+      }}
     >
       {children}
     </SupabaseContext.Provider>

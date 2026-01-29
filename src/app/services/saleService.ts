@@ -493,6 +493,43 @@ export const saleService = {
     return data;
   },
 
+  // Get a single payment by ID (for ledger detail panel)
+  async getPaymentById(paymentId: string) {
+    const { data, error } = await supabase
+      .from('payments')
+      .select(`
+        id,
+        reference_number,
+        payment_date,
+        amount,
+        payment_method,
+        payment_account_id,
+        reference_id,
+        reference_type,
+        notes,
+        created_at,
+        account:accounts(id, name)
+      `)
+      .eq('id', paymentId)
+      .single();
+
+    if (error || !data) return null;
+    const p = data as any;
+    return {
+      id: p.id,
+      referenceNo: p.reference_number || '',
+      date: p.payment_date,
+      amount: parseFloat(p.amount || 0),
+      method: p.payment_method || 'cash',
+      accountId: p.payment_account_id,
+      accountName: p.account?.name || '',
+      referenceId: p.reference_id,
+      referenceType: p.reference_type,
+      notes: p.notes || '',
+      createdAt: p.created_at,
+    };
+  },
+
   // Get payments for a specific sale (by sale ID)
   async getSalePayments(saleId: string) {
     const { data, error } = await supabase

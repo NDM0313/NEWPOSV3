@@ -216,18 +216,18 @@ export const EnhancedProductForm = ({
     loadCategories();
   }, [companyId]);
 
-  // Pre-populate form when editing
+  // Pre-populate form when editing (support both list product: purchasePrice/sellingPrice and API product: cost_price/retail_price)
   useEffect(() => {
     if (initialProduct) {
       setValue('name', initialProduct.name || '');
       setValue('sku', initialProduct.sku || '');
-      setValue('purchasePrice', initialProduct.cost_price || 0);
-      setValue('sellingPrice', initialProduct.retail_price || 0);
-      setValue('rentalPrice', initialProduct.rental_price_daily || 0);
-      setValue('stock', initialProduct.current_stock || 0);
-      setValue('lowStockThreshold', initialProduct.min_stock || 0);
+      setValue('purchasePrice', initialProduct.cost_price ?? initialProduct.purchasePrice ?? 0);
+      setValue('sellingPrice', initialProduct.retail_price ?? initialProduct.sellingPrice ?? 0);
+      setValue('rentalPrice', initialProduct.rental_price_daily ?? 0);
+      setValue('stock', initialProduct.current_stock ?? initialProduct.stock ?? 0);
+      setValue('lowStockThreshold', initialProduct.min_stock ?? initialProduct.lowStockThreshold ?? 0);
       setValue('description', initialProduct.description || '');
-      setValue('category', initialProduct.category_id || '');
+      setValue('category', initialProduct.category_id || initialProduct.category || '');
       // Load variations if product has them
       if (initialProduct.variations && initialProduct.variations.length > 0) {
         // TODO: Load variations into state
@@ -444,61 +444,83 @@ export const EnhancedProductForm = ({
         is_active: true,
       };
 
-      // Save to Supabase
-      const result = await productService.createProduct(productData);
-      
-      // Save variations if any
-      if (generatedVariations.length > 0 && result.id) {
-        try {
-          const variationsToSave = generatedVariations.map(variation => ({
-            product_id: result.id,
-            sku: variation.sku,
-            barcode: variation.barcode || null,
-            attributes: variation.combination,
-            price: variation.price || null,
-            stock: variation.stock || 0,
-            is_active: true,
-          }));
+      const productId = initialProduct?.uuid ?? initialProduct?.id; // Edit: UUID from list or API
+      const isEdit = !!productId;
 
-          const { error: variationsError } = await supabase
-            .from('product_variations')
-            .insert(variationsToSave);
+      if (isEdit) {
+        // UPDATE existing product – real backend write
+        const result = await productService.updateProduct(productId, productData);
+        const payload = {
+          ...data,
+          sku: finalSKU,
+          id: result.id,
+          uuid: result.id,
+          isSellable: true,
+          isRentable: (data.rentalPrice || 0) > 0,
+          variations: generatedVariations,
+          combos: combos,
+        };
+        toast.success('Product updated successfully!');
+        if (action === "saveAndAdd" && onSaveAndAdd) {
+          onSaveAndAdd(payload);
+        } else {
+          onSave(payload);
+        }
+      } else {
+        // CREATE new product
+        const result = await productService.createProduct(productData);
+        if (generatedVariations.length > 0 && result.id) {
+          try {
+            const variationsToSave = generatedVariations.map(variation => ({
+              product_id: result.id,
+              sku: variation.sku,
+              barcode: variation.barcode || null,
+              attributes: variation.combination,
+              price: variation.price || null,
+              stock: variation.stock || 0,
+              is_active: true,
+            }));
 
-          if (variationsError) {
+            const { error: variationsError } = await supabase
+              .from('product_variations')
+              .insert(variationsToSave);
+
+            if (variationsError) {
+              console.error('[PRODUCT FORM] Error saving variations:', variationsError);
+              toast.warning('Product saved but variations could not be saved. Please add them manually.');
+            } else {
+              toast.success(`Product created with ${generatedVariations.length} variations!`);
+            }
+          } catch (variationsError) {
             console.error('[PRODUCT FORM] Error saving variations:', variationsError);
             toast.warning('Product saved but variations could not be saved. Please add them manually.');
-          } else {
-            toast.success(`Product created with ${generatedVariations.length} variations!`);
           }
-        } catch (variationsError) {
-          console.error('[PRODUCT FORM] Error saving variations:', variationsError);
-          toast.warning('Product saved but variations could not be saved. Please add them manually.');
+        }
+
+        const payload = {
+          ...data,
+          sku: finalSKU,
+          id: result.id,
+          isSellable: true,
+          isRentable: (data.rentalPrice || 0) > 0,
+          variations: generatedVariations,
+          combos: combos,
+        };
+
+        if (generatedVariations.length === 0) {
+          toast.success('Product created successfully!');
+        }
+
+        if (action === "saveAndAdd" && onSaveAndAdd) {
+          onSaveAndAdd(payload);
+        } else {
+          onSave(payload);
         }
       }
-      
-      // Convert back to app format for callback
-      const payload = {
-        ...data,
-        sku: finalSKU,
-        id: result.id,
-        isSellable: true,
-        isRentable: (data.rentalPrice || 0) > 0,
-        variations: generatedVariations,
-        combos: combos,
-      };
-
-      if (generatedVariations.length === 0) {
-        toast.success('Product created successfully!');
-      }
-      
-      if (action === "saveAndAdd" && onSaveAndAdd) {
-        onSaveAndAdd(payload);
-      } else {
-        onSave(payload);
-      }
     } catch (error: any) {
-      console.error('[PRODUCT FORM] Error creating product:', error);
-      toast.error('Failed to create product: ' + (error.message || 'Unknown error'));
+      const wasEdit = !!(initialProduct?.uuid ?? initialProduct?.id);
+      console.error('[PRODUCT FORM] Error saving product:', error);
+      toast.error(wasEdit ? 'Failed to update product: ' + (error.message || 'Unknown error') : 'Failed to create product: ' + (error.message || 'Unknown error'));
     } finally {
       setSaving(false);
     }
@@ -508,9 +530,9 @@ export const EnhancedProductForm = ({
     <div className="flex flex-col h-full bg-gray-900 text-white">
       <div className="p-6 border-b border-gray-800 flex justify-between items-center bg-gray-900 sticky top-0 z-10">
         <div>
-          <h2 className="text-xl font-bold">Add New Product</h2>
+          <h2 className="text-xl font-bold">{initialProduct ? 'Edit Product' : 'Add New Product'}</h2>
           <p className="text-sm text-gray-400">
-            Complete product details for inventory
+            {initialProduct ? 'Update product details' : 'Complete product details for inventory'}
           </p>
         </div>
         <button

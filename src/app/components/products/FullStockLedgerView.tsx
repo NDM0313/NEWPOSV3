@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { X, Download, FileText, ArrowUpRight, ArrowDownRight, Loader2, ExternalLink, Filter, Package } from 'lucide-react';
+import { X, Download, FileText, ArrowUpRight, ArrowDownRight, Loader2, ExternalLink, Filter, Package, Printer } from 'lucide-react';
 import { Button } from '../ui/button';
 import { ScrollArea } from '../ui/scroll-area';
 import { Badge } from '../ui/badge';
@@ -12,8 +12,11 @@ import { useSales } from '@/app/context/SalesContext';
 import { usePurchases } from '@/app/context/PurchaseContext';
 import { toast } from 'sonner';
 import { cn } from '../ui/utils';
+import { formatStockReference } from '@/app/utils/formatters';
 import { ViewSaleDetailsDrawer } from '../sales/ViewSaleDetailsDrawer';
 import { ViewPurchaseDetailsDrawer } from '../purchases/ViewPurchaseDetailsDrawer';
+import { StockLedgerClassicPrintView } from './StockLedgerClassicPrintView';
+import { supabase } from '@/lib/supabase';
 
 interface StockMovement {
   id: string;
@@ -84,6 +87,23 @@ export const FullStockLedgerView: React.FC<FullStockLedgerViewProps> = ({
   const [viewPurchaseOpen, setViewPurchaseOpen] = useState(false);
   const [selectedSaleId, setSelectedSaleId] = useState<string | null>(null);
   const [selectedPurchase, setSelectedPurchase] = useState<any>(null);
+  const [printOrientation, setPrintOrientation] = useState<'portrait' | 'landscape'>('landscape');
+  const [showClassicPrintView, setShowClassicPrintView] = useState(false);
+  const [companyName, setCompanyName] = useState<string>('');
+
+  // Company name for print view header
+  useEffect(() => {
+    if (!companyId) {
+      setCompanyName('');
+      return;
+    }
+    supabase
+      .from('companies')
+      .select('name')
+      .eq('id', companyId)
+      .maybeSingle()
+      .then(({ data }) => setCompanyName(data?.name || ''));
+  }, [companyId]);
 
   // Load variations for the product
   const loadVariations = useCallback(async () => {
@@ -542,8 +562,34 @@ export const FullStockLedgerView: React.FC<FullStockLedgerViewProps> = ({
 
   if (!isOpen) return null;
 
+  const branchLabel =
+    !selectedBranchId || selectedBranchId === 'all'
+      ? 'All Branches'
+      : branches.find((b) => b.id === selectedBranchId)?.name || 'All Branches';
+
   return (
-    <div className="fixed inset-0 z-[60] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
+    <>
+      {showClassicPrintView && (
+        <StockLedgerClassicPrintView
+          companyName={companyName || undefined}
+          productName={productName}
+          productSku={productSku}
+          branchLabel={branchLabel}
+          movements={movements}
+          runningBalance={runningBalance}
+          totals={{
+            totalPurchased: totals.totalPurchased,
+            totalSold: totals.totalSold,
+            totalAdjustments: totals.totalAdjustments,
+            currentBalance: totals.currentBalance,
+          }}
+          getMovementTypeLabel={getMovementTypeLabel}
+          getSaleById={getSaleById}
+          getPurchaseById={getPurchaseById}
+          onClose={() => setShowClassicPrintView(false)}
+        />
+      )}
+      <div className="fixed inset-0 z-[60] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
       <div className="bg-[#0B0F17] rounded-xl border border-gray-800 w-full max-w-6xl max-h-[90vh] overflow-hidden flex flex-col shadow-2xl animate-in slide-in-from-bottom-4 duration-300">
         {/* Header */}
         <div className="px-6 py-5 border-b border-gray-800 bg-[#111827] flex items-center justify-between shrink-0">
@@ -678,10 +724,7 @@ export const FullStockLedgerView: React.FC<FullStockLedgerViewProps> = ({
                 <FileText size={48} className="mx-auto mb-4 opacity-50" />
                 <p>No stock movements found</p>
                 <p className="text-xs mt-2 text-gray-500">
-                  Debug: Total movements fetched: {movements.length}
-                </p>
-                <p className="text-xs mt-1 text-gray-500">
-                  Product ID: {productId?.substring(0, 8)}... | Company ID: {companyId?.substring(0, 8)}...
+                  No movements in selected filters. Try changing branch or variation.
                 </p>
               </div>
             ) : (
@@ -709,26 +752,19 @@ export const FullStockLedgerView: React.FC<FullStockLedgerViewProps> = ({
                       const isIn = qty > 0;
                       const balance = runningBalance.get(movement.id) || 0;
                       const movementType = getMovementType(movement);
-                      const referenceNo = movement.reference_type
-                        ? `${movement.reference_type.toUpperCase()}-${movement.reference_id?.substring(0, 8) || 'N/A'}`
-                        : 'N/A';
-                      
-                      // Get customer/supplier name from context
+                      const sale = movement.reference_type && movement.reference_id && movement.reference_type.toLowerCase().includes('sale') ? getSaleById(movement.reference_id) : null;
+                      const purchase = movement.reference_type && movement.reference_id && movement.reference_type.toLowerCase().includes('purchase') ? getPurchaseById(movement.reference_id) : null;
+                      const referenceNo = formatStockReference({
+                        referenceType: movement.reference_type,
+                        referenceId: movement.reference_id,
+                        movementId: movement.id,
+                        saleInvoiceNo: sale?.invoiceNo,
+                        purchaseInvoiceNo: purchase?.purchaseNo,
+                        notes: movement.notes,
+                      });
                       let customerSupplierName = '-';
-                      if (movement.reference_type && movement.reference_id) {
-                        const refType = movement.reference_type.toLowerCase();
-                        if (refType === 'sale') {
-                          const sale = getSaleById(movement.reference_id);
-                          if (sale) {
-                            customerSupplierName = sale.customer_name || sale.customer?.name || '-';
-                          }
-                        } else if (refType === 'purchase') {
-                          const purchase = getPurchaseById(movement.reference_id);
-                          if (purchase) {
-                            customerSupplierName = purchase.supplier_name || purchase.supplier?.name || '-';
-                          }
-                        }
-                      }
+                      if (sale) customerSupplierName = sale.customerName || sale.customer_name || '-';
+                      else if (purchase) customerSupplierName = purchase.supplierName || purchase.supplier_name || '-';
 
                       return (
                         <tr
@@ -773,10 +809,10 @@ export const FullStockLedgerView: React.FC<FullStockLedgerViewProps> = ({
                               <span className="text-gray-400 text-xs">{referenceNo}</span>
                             )}
                           </td>
-                          <td className="py-3 px-4 text-gray-300 text-xs max-w-xs truncate" title={customerSupplierName}>
+                          <td className="py-3 px-4 text-gray-300 text-xs max-w-[140px] truncate" title={customerSupplierName}>
                             {customerSupplierName}
                           </td>
-                          <td className="py-3 px-4 text-gray-500 text-xs max-w-xs truncate" title={movement.notes || ''}>
+                          <td className="py-3 px-4 text-gray-500 text-xs min-w-[120px] max-w-[280px] break-words" title={movement.notes || ''}>
                             {movement.notes || '-'}
                           </td>
                         </tr>
@@ -791,34 +827,28 @@ export const FullStockLedgerView: React.FC<FullStockLedgerViewProps> = ({
         </div>
 
         {/* Footer */}
-        <div className="p-5 border-t border-gray-800 bg-gray-950 flex items-center justify-between">
+        <div className="p-5 border-t border-gray-800 bg-gray-950 flex items-center justify-between flex-wrap gap-2">
           <div className="text-xs text-gray-500">
             Total {movements.length} {movements.length === 1 ? 'movement' : 'movements'}
-            {process.env.NODE_ENV === 'development' && (
-              <span className="ml-2 text-gray-600">
-                | Product: {productId?.substring(0, 8)}... | Company: {companyId?.substring(0, 8)}...
-              </span>
-            )}
           </div>
-          <div className="flex gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              className="border-gray-700 text-gray-300 hover:text-white hover:bg-gray-800"
-              onClick={() => {
-                // TODO: Implement export functionality
-                toast.info('Export functionality coming soon');
-              }}
+          <div className="flex items-center gap-2 flex-wrap">
+            <select
+              value={printOrientation}
+              onChange={(e) => setPrintOrientation(e.target.value as 'portrait' | 'landscape')}
+              className="h-8 px-2 rounded bg-gray-800 border border-gray-700 text-gray-300 text-xs"
             >
-              <Download size={14} className="mr-2" />
-              Export
+              <option value="portrait">Portrait</option>
+              <option value="landscape">Landscape</option>
+            </select>
+            <Button variant="outline" size="sm" className="border-gray-700 text-gray-300 hover:text-white hover:bg-gray-800" onClick={() => setShowClassicPrintView(true)}>
+              <Printer size={14} className="mr-2" />
+              Print
             </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              className="border-gray-700 text-gray-300 hover:text-white hover:bg-gray-800"
-              onClick={onClose}
-            >
+            <Button variant="outline" size="sm" className="border-gray-700 text-gray-300 hover:text-white hover:bg-gray-800" onClick={() => setShowClassicPrintView(true)}>
+              <Download size={14} className="mr-2" />
+              Save as PDF
+            </Button>
+            <Button variant="outline" size="sm" className="border-gray-700 text-gray-300 hover:text-white hover:bg-gray-800" onClick={onClose}>
               Close
             </Button>
           </div>
@@ -860,6 +890,7 @@ export const FullStockLedgerView: React.FC<FullStockLedgerViewProps> = ({
           purchase={selectedPurchase}
         />
       )}
-    </div>
+      </div>
+    </>
   );
 };

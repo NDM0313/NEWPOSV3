@@ -12,7 +12,6 @@ export function InvoicesTab({ invoices }: InvoicesTabProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'Fully Paid' | 'Partially Paid' | 'Unpaid'>('all');
 
-  // Safety check for invoices array
   const safeInvoices = invoices || [];
 
   const toggleInvoice = (invoiceNo: string) => {
@@ -28,13 +27,13 @@ export function InvoicesTab({ invoices }: InvoicesTabProps) {
   const getStatusConfig = (status: string) => {
     switch (status) {
       case 'Fully Paid':
-        return { icon: CheckCircle2, color: 'text-emerald-700 bg-emerald-50' };
+        return { icon: CheckCircle2, color: 'text-green-400 bg-green-500/10 border-green-500/20' };
       case 'Partially Paid':
-        return { icon: Clock, color: 'text-amber-700 bg-amber-50' };
+        return { icon: Clock, color: 'text-yellow-400 bg-yellow-500/10 border-yellow-500/20' };
       case 'Unpaid':
-        return { icon: AlertCircle, color: 'text-red-700 bg-red-50' };
+        return { icon: AlertCircle, color: 'text-red-400 bg-red-500/10 border-red-500/20' };
       default:
-        return { icon: AlertCircle, color: 'text-slate-700 bg-slate-50' };
+        return { icon: AlertCircle, color: 'text-gray-400 bg-gray-500/10 border-gray-500/20' };
     }
   };
 
@@ -52,85 +51,54 @@ export function InvoicesTab({ invoices }: InvoicesTabProps) {
 
   return (
     <div className="space-y-4">
-      {/* Search and Filter Bar */}
       <div className="flex items-center justify-between gap-4">
         <div className="flex-1 max-w-md relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4" style={{ color: '#94a3b8' }} />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
           <input
             type="text"
             placeholder="Search invoice number..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-10 pr-4 py-2.5 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            style={{ 
-              background: 'rgba(30, 41, 59, 0.3)',
-              border: '1px solid rgba(100, 116, 139, 0.3)',
-              color: '#e2e8f0'
-            }}
+            className="w-full pl-10 pr-4 py-2.5 rounded-lg text-sm focus:outline-none bg-gray-950 border border-gray-700 text-white placeholder:text-gray-500 focus:border-gray-600"
           />
         </div>
-
         <div className="flex items-center gap-3">
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value as any)}
-            className="px-4 py-2.5 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            style={{ 
-              background: 'rgba(30, 41, 59, 0.3)',
-              border: '1px solid rgba(100, 116, 139, 0.3)',
-              color: '#e2e8f0'
-            }}
+            className="px-4 py-2.5 rounded-lg text-sm focus:outline-none bg-gray-950 border border-gray-700 text-white"
           >
             <option value="all">All Status</option>
             <option value="Fully Paid">Fully Paid</option>
             <option value="Partially Paid">Partially Paid</option>
             <option value="Unpaid">Unpaid</option>
           </select>
-
-          <button className="px-4 py-2.5 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700 transition-colors flex items-center gap-2">
+          <button className="px-4 py-2.5 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-500 transition-colors flex items-center gap-2">
             <Download className="w-4 h-4" />
             Export
           </button>
         </div>
       </div>
 
-      {/* Stats Cards */}
       <div className="grid grid-cols-3 gap-4">
-        <div 
-          className="rounded-xl p-4"
-          style={{ 
-            background: 'linear-gradient(135deg, rgba(59, 130, 246, 0.15) 0%, rgba(37, 99, 235, 0.1) 100%)'
-          }}
-        >
-          <div className="text-xs mb-1" style={{ color: '#60a5fa' }}>Total Invoice Amount</div>
-          <div className="text-2xl" style={{ color: '#3b82f6' }}>Rs {stats.total.toLocaleString('en-PK')}</div>
+        <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
+          <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Total Invoice Amount</p>
+          <p className="text-2xl font-bold text-blue-400 mt-1">Rs {stats.total.toLocaleString('en-PK')}</p>
         </div>
-        <div 
-          className="rounded-xl p-4"
-          style={{ 
-            background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.15) 0%, rgba(5, 150, 105, 0.1) 100%)'
-          }}
-        >
-          <div className="text-xs mb-1" style={{ color: '#34d399' }}>Total Paid</div>
-          <div className="text-2xl" style={{ color: '#10b981' }}>Rs {stats.paid.toLocaleString('en-PK')}</div>
+        <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
+          <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Total Paid</p>
+          <p className="text-2xl font-bold text-green-400 mt-1">Rs {stats.paid.toLocaleString('en-PK')}</p>
         </div>
-        <div 
-          className="rounded-xl p-4"
-          style={{ 
-            background: 'linear-gradient(135deg, rgba(249, 115, 22, 0.15) 0%, rgba(234, 88, 12, 0.1) 100%)'
-          }}
-        >
-          <div className="text-xs mb-1" style={{ color: '#fb923c' }}>Total Pending</div>
-          <div className="text-2xl" style={{ color: '#f97316' }}>Rs {stats.pending.toLocaleString('en-PK')}</div>
+        <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
+          <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Total Pending</p>
+          <p className="text-2xl font-bold text-yellow-400 mt-1">Rs {stats.pending.toLocaleString('en-PK')}</p>
         </div>
       </div>
 
-      {/* Results Count */}
-      <div className="text-sm" style={{ color: '#94a3b8' }}>
-        Showing <span style={{ color: '#e2e8f0' }}>{filteredInvoices.length}</span> of {safeInvoices.length} invoices
+      <div className="text-sm text-gray-500">
+        Showing <span className="text-white font-medium">{filteredInvoices.length}</span> of {safeInvoices.length} invoices
       </div>
 
-      {/* Invoices List */}
       <div className="space-y-3">
         {filteredInvoices.map((invoice) => {
           const statusConfig = getStatusConfig(invoice.status);
@@ -138,60 +106,47 @@ export function InvoicesTab({ invoices }: InvoicesTabProps) {
           const isExpanded = expandedInvoices.has(invoice.invoiceNo);
 
           return (
-            <div 
-              key={invoice.invoiceNo} 
-              className="rounded-xl overflow-hidden transition-colors"
-              style={{ 
-                border: '1px solid rgba(100, 116, 139, 0.3)',
-                background: '#273548'
-              }}
+            <div
+              key={invoice.invoiceNo}
+              className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden"
             >
-              {/* Invoice Header */}
               <div
                 onClick={() => toggleInvoice(invoice.invoiceNo)}
-                className="px-6 py-4 flex justify-between items-center cursor-pointer transition-colors"
-                onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(59, 130, 246, 0.08)'}
-                onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                className="px-6 py-4 flex justify-between items-center cursor-pointer hover:bg-gray-800/30 transition-colors border-b border-gray-800/50"
               >
                 <div className="flex items-center gap-4">
-                  <div style={{ color: '#64748b' }}>
+                  <div className="text-gray-500">
                     {isExpanded ? <ChevronDown className="w-5 h-5" /> : <ChevronRight className="w-5 h-5" />}
                   </div>
                   <div>
-                    <div className="text-base mb-1" style={{ color: '#e2e8f0' }}>{invoice.invoiceNo}</div>
-                    <div className="text-xs" style={{ color: '#64748b' }}>
+                    <div className="text-base font-medium text-white mb-0.5">{invoice.invoiceNo}</div>
+                    <div className="text-xs text-gray-500">
                       {new Date(invoice.date).toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' })}
                     </div>
                   </div>
                 </div>
                 <div className="flex items-center gap-6">
                   <div className="text-right">
-                    <div className="text-xs mb-1" style={{ color: '#94a3b8' }}>Invoice Total</div>
-                    <div className="text-lg" style={{ color: '#e2e8f0' }}>Rs {invoice.invoiceTotal.toLocaleString('en-PK')}</div>
+                    <div className="text-xs text-gray-500 mb-0.5">Invoice Total</div>
+                    <div className="text-lg font-medium text-white">Rs {invoice.invoiceTotal.toLocaleString('en-PK')}</div>
                   </div>
                   <div className="text-right">
-                    <div className="text-xs mb-1" style={{ color: '#94a3b8' }}>Paid</div>
-                    <div className="text-base text-emerald-500">Rs {invoice.paidAmount.toLocaleString('en-PK')}</div>
+                    <div className="text-xs text-gray-500 mb-0.5">Paid</div>
+                    <div className="text-base text-green-400 font-medium">Rs {invoice.paidAmount.toLocaleString('en-PK')}</div>
                   </div>
                   <div className="text-right">
-                    <div className="text-xs mb-1" style={{ color: '#94a3b8' }}>Pending</div>
-                    <div className="text-base text-orange-500">Rs {invoice.pendingAmount.toLocaleString('en-PK')}</div>
+                    <div className="text-xs text-gray-500 mb-0.5">Pending</div>
+                    <div className="text-base text-yellow-400 font-medium">Rs {invoice.pendingAmount.toLocaleString('en-PK')}</div>
                   </div>
-                  <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm ${statusConfig.color}`}>
+                  <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm border ${statusConfig.color}`}>
                     <StatusIcon className="w-4 h-4" />
                     {invoice.status}
                   </span>
                 </div>
               </div>
 
-              {/* Invoice Items Table */}
               {isExpanded && (
-                <div 
-                  style={{ 
-                    background: 'rgba(30, 41, 59, 0.5)',
-                    borderTop: '1px solid rgba(100, 116, 139, 0.2)'
-                  }}
-                >
+                <div className="bg-gray-950/50 border-t border-gray-800">
                   <ModernItemsTable items={invoice.items} />
                 </div>
               )}

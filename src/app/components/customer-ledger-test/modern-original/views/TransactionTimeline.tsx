@@ -1,4 +1,4 @@
-import { Calendar, TrendingUp, TrendingDown, FileText, CreditCard, Tag } from 'lucide-react';
+import { Calendar, TrendingUp, TrendingDown, FileText, CreditCard, Tag, DollarSign } from 'lucide-react';
 import type { Transaction } from '@/app/services/customerLedgerTypes';
 
 interface TransactionTimelineProps {
@@ -7,12 +7,8 @@ interface TransactionTimelineProps {
 }
 
 export function TransactionTimeline({ transactions, onTransactionClick }: TransactionTimelineProps) {
-  // Group by month
   const groupedByMonth = transactions.reduce((groups, transaction) => {
-    const monthYear = new Date(transaction.date).toLocaleDateString('en-GB', { 
-      month: 'long', 
-      year: 'numeric' 
-    });
+    const monthYear = new Date(transaction.date).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
     if (!groups[monthYear]) {
       groups[monthYear] = [];
     }
@@ -22,27 +18,21 @@ export function TransactionTimeline({ transactions, onTransactionClick }: Transa
 
   const getDocumentIcon = (type: string) => {
     switch (type) {
-      case 'Sale':
-        return <FileText className="w-4 h-4" />;
-      case 'Payment':
-        return <CreditCard className="w-4 h-4" />;
-      case 'Discount':
-        return <Tag className="w-4 h-4" />;
-      default:
-        return <FileText className="w-4 h-4" />;
+      case 'Opening Balance': return <DollarSign className="w-4 h-4 text-gray-400" />;
+      case 'Sale': return <FileText className="w-4 h-4 text-blue-500" />;
+      case 'Payment': return <CreditCard className="w-4 h-4 text-green-500" />;
+      case 'Discount': return <Tag className="w-4 h-4 text-purple-500" />;
+      default: return <FileText className="w-4 h-4 text-gray-500" />;
     }
   };
 
-  const getDocumentColor = (type: string) => {
+  const getDocumentDotClass = (type: string) => {
     switch (type) {
-      case 'Sale':
-        return 'bg-blue-600';
-      case 'Payment':
-        return 'bg-emerald-600';
-      case 'Discount':
-        return 'bg-purple-600';
-      default:
-        return 'bg-slate-600';
+      case 'Opening Balance': return 'bg-gray-600/30 border-gray-500/50';
+      case 'Sale': return 'bg-blue-500/20 border-blue-500/50';
+      case 'Payment': return 'bg-green-500/20 border-green-500/50';
+      case 'Discount': return 'bg-purple-500/20 border-purple-500/50';
+      default: return 'bg-gray-500/20 border-gray-500/50';
     }
   };
 
@@ -54,48 +44,32 @@ export function TransactionTimeline({ transactions, onTransactionClick }: Transa
 
         return (
           <div key={monthYear} className="relative">
-            {/* Month Header */}
-            <div 
-              className="sticky top-0 z-10 rounded-xl px-6 py-4 shadow-lg mb-6"
-              style={{ 
-                background: 'linear-gradient(to right, #3b82f6, #2563eb)',
-              }}
-            >
+            <div className="sticky top-0 z-10 rounded-xl px-6 py-4 mb-6 bg-gray-900/50 border border-gray-800">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                  <div 
-                    className="w-12 h-12 rounded-lg flex items-center justify-center"
-                    style={{ background: 'rgba(255, 255, 255, 0.2)' }}
-                  >
-                    <Calendar className="w-6 h-6 text-white" />
+                  <div className="w-12 h-12 rounded-lg flex items-center justify-center bg-blue-500/10">
+                    <Calendar className="w-6 h-6 text-blue-500" />
                   </div>
                   <div>
                     <div className="text-xl font-bold text-white">{monthYear}</div>
-                    <div className="text-sm" style={{ color: 'rgba(219, 234, 254, 0.9)' }}>{monthTransactions.length} transactions</div>
+                    <div className="text-sm text-gray-500">{monthTransactions.length} transactions</div>
                   </div>
                 </div>
                 <div className="flex items-center gap-8">
                   <div className="text-right">
-                    <div className="text-xs" style={{ color: 'rgba(219, 234, 254, 0.9)' }}>Total Debit</div>
-                    <div className="text-lg font-bold text-white">Rs {monthDebit.toLocaleString('en-PK')}</div>
+                    <div className="text-xs text-gray-500">Total Debit</div>
+                    <div className="text-lg font-bold text-yellow-400">Rs {monthDebit.toLocaleString('en-PK')}</div>
                   </div>
                   <div className="text-right">
-                    <div className="text-xs" style={{ color: 'rgba(219, 234, 254, 0.9)' }}>Total Credit</div>
-                    <div className="text-lg font-bold text-white">Rs {monthCredit.toLocaleString('en-PK')}</div>
+                    <div className="text-xs text-gray-500">Total Credit</div>
+                    <div className="text-lg font-bold text-green-400">Rs {monthCredit.toLocaleString('en-PK')}</div>
                   </div>
                 </div>
               </div>
             </div>
 
-            {/* Timeline */}
             <div className="relative pl-12">
-              {/* Vertical Line */}
-              <div 
-                className="absolute left-6 top-0 bottom-0 w-0.5"
-                style={{ 
-                  background: 'linear-gradient(to bottom, rgba(59, 130, 246, 0.3), rgba(100, 116, 139, 0.3), rgba(59, 130, 246, 0.3))'
-                }}
-              ></div>
+              <div className="absolute left-6 top-0 bottom-0 w-0.5 bg-gray-700/50" />
 
               {monthTransactions.map((transaction, index) => (
                 <div
@@ -103,56 +77,32 @@ export function TransactionTimeline({ transactions, onTransactionClick }: Transa
                   onClick={() => onTransactionClick(transaction)}
                   className="relative mb-6 group cursor-pointer"
                 >
-                  {/* Timeline Dot */}
-                  <div 
-                    className={`absolute -left-6 w-12 h-12 rounded-full ${getDocumentColor(transaction.documentType)} flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform z-10`}
-                    style={{ border: '4px solid #273548' }}
+                  <div
+                    className={`absolute -left-6 w-12 h-12 rounded-full border-4 border-gray-900 flex items-center justify-center z-10 transition-transform group-hover:scale-105 ${getDocumentDotClass(transaction.documentType)}`}
                   >
-                    <div className="text-white">
-                      {getDocumentIcon(transaction.documentType)}
-                    </div>
+                    {getDocumentIcon(transaction.documentType)}
                   </div>
 
-                  {/* Transaction Card */}
-                  <div 
-                    className="ml-8 rounded-xl shadow-sm hover:shadow-md transition-all overflow-hidden"
-                    style={{ 
-                      background: '#273548',
-                      border: '1px solid rgba(100, 116, 139, 0.3)'
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.borderColor = 'rgba(59, 130, 246, 0.5)';
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.borderColor = 'rgba(100, 116, 139, 0.3)';
-                    }}
-                  >
+                  <div className="ml-8 rounded-xl overflow-hidden bg-gray-900/50 border border-gray-800 hover:border-gray-700 transition-colors">
                     <div className="p-5">
                       <div className="flex items-start justify-between mb-3">
                         <div className="flex-1">
                           <div className="flex items-center gap-3 mb-2">
-                            <div className="text-base font-bold" style={{ color: '#60a5fa' }}>{transaction.referenceNo}</div>
-                            <span 
-                              className={`px-2.5 py-0.5 rounded-full text-xs ${
-                                transaction.documentType === 'Sale' ? 'bg-blue-500/20 text-blue-400' :
-                                transaction.documentType === 'Payment' ? 'bg-emerald-500/20 text-emerald-400' :
-                                'bg-purple-500/20 text-purple-400'
-                              }`}
-                              style={{ border: 'none' }}
-                            >
+                            <div className="text-base font-bold text-blue-400">{transaction.referenceNo}</div>
+                            <span className={`px-2.5 py-0.5 rounded-full text-xs border ${
+                              transaction.documentType === 'Opening Balance' ? 'bg-gray-600/30 text-gray-300 border-gray-600' :
+                              transaction.documentType === 'Sale' ? 'bg-blue-500/10 text-blue-400 border-blue-500/20' :
+                              transaction.documentType === 'Payment' ? 'bg-green-500/10 text-green-400 border-green-500/20' :
+                              'bg-purple-500/10 text-purple-400 border-purple-500/20'
+                            }`}>
                               {transaction.documentType}
                             </span>
                           </div>
-                          <div className="text-sm mb-2" style={{ color: '#cbd5e1' }}>{transaction.description}</div>
-                          <div className="flex items-center gap-4 text-xs" style={{ color: '#64748b' }}>
+                          <div className="text-sm text-gray-400 mb-2">{transaction.description}</div>
+                          <div className="flex items-center gap-4 text-xs text-gray-500">
                             <span className="flex items-center gap-1">
                               <Calendar className="w-3 h-3" />
-                              {new Date(transaction.date).toLocaleDateString('en-GB', { 
-                                day: '2-digit', 
-                                month: 'short',
-                                hour: '2-digit',
-                                minute: '2-digit'
-                              })}
+                              {new Date(transaction.date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
                             </span>
                             <span className="flex items-center gap-1">
                               <CreditCard className="w-3 h-3" />
@@ -160,49 +110,34 @@ export function TransactionTimeline({ transactions, onTransactionClick }: Transa
                             </span>
                           </div>
                         </div>
-
                         <div className="text-right ml-4">
                           {transaction.debit > 0 && (
                             <div className="flex items-center justify-end gap-2 mb-1">
-                              <TrendingUp className="w-4 h-4 text-orange-500" />
-                              <span className="text-xl font-bold text-orange-500 tabular-nums">
-                                +{transaction.debit.toLocaleString('en-PK')}
-                              </span>
+                              <TrendingUp className="w-4 h-4 text-yellow-500" />
+                              <span className="text-xl font-bold text-yellow-400 tabular-nums">+{transaction.debit.toLocaleString('en-PK')}</span>
                             </div>
                           )}
                           {transaction.credit > 0 && (
                             <div className="flex items-center justify-end gap-2 mb-1">
-                              <TrendingDown className="w-4 h-4 text-emerald-500" />
-                              <span className="text-xl font-bold text-emerald-500 tabular-nums">
-                                -{transaction.credit.toLocaleString('en-PK')}
-                              </span>
+                              <TrendingDown className="w-4 h-4 text-green-500" />
+                              <span className="text-xl font-bold text-green-400 tabular-nums">-{transaction.credit.toLocaleString('en-PK')}</span>
                             </div>
                           )}
-                          <div className="text-xs mt-2" style={{ color: '#64748b' }}>Balance</div>
-                          <div className="text-base font-bold tabular-nums" style={{ color: '#e2e8f0' }}>
-                            Rs {transaction.runningBalance.toLocaleString('en-PK')}
-                          </div>
+                          <div className="text-xs text-gray-500 mt-2">Balance</div>
+                          <div className="text-base font-bold tabular-nums text-white">Rs {transaction.runningBalance.toLocaleString('en-PK')}</div>
                         </div>
                       </div>
-
                       {transaction.notes && (
-                        <div 
-                          className="mt-3 pt-3"
-                          style={{ borderTop: '1px solid rgba(100, 116, 139, 0.2)' }}
-                        >
-                          <div className="text-xs mb-1" style={{ color: '#64748b' }}>Notes:</div>
-                          <div className="text-sm" style={{ color: '#cbd5e1' }}>{transaction.notes}</div>
+                        <div className="mt-3 pt-3 border-t border-gray-800">
+                          <div className="text-xs text-gray-500 mb-1">Notes:</div>
+                          <div className="text-sm text-gray-400">{transaction.notes}</div>
                         </div>
                       )}
                     </div>
                   </div>
 
-                  {/* Connection Line to Next */}
                   {index < monthTransactions.length - 1 && (
-                    <div 
-                      className="absolute left-0 top-12 bottom-0 w-px"
-                      style={{ background: 'rgba(100, 116, 139, 0.2)' }}
-                    ></div>
+                    <div className="absolute left-0 top-12 bottom-0 w-px bg-gray-700/30" />
                   )}
                 </div>
               ))}

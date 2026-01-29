@@ -166,7 +166,7 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
     
     try {
       setLoading(true);
-      const data = await purchaseService.getAllPurchases(companyId, branchId || undefined);
+      const data = await purchaseService.getAllPurchases(companyId, branchId === 'all' ? undefined : branchId || undefined);
       setPurchases(data.map(convertFromSupabasePurchase));
     } catch (error) {
       console.error('[PURCHASE CONTEXT] Error loading purchases:', error);
@@ -203,6 +203,8 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
       const purchaseNo = generateDocumentNumber('purchase');
       
       // Convert to Supabase format
+      // DB enum uses 'completed', form uses 'final' – map for insert
+      const dbStatus = purchaseData.status === 'final' ? 'completed' : purchaseData.status;
       const supabasePurchase: SupabasePurchase = {
         company_id: companyId,
         branch_id: branchId,
@@ -210,7 +212,7 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
         po_date: purchaseData.date,
         supplier_id: purchaseData.supplier || undefined,
         supplier_name: purchaseData.supplierName,
-        status: purchaseData.status,
+        status: dbStatus as SupabasePurchase['status'],
         payment_status: purchaseData.paymentStatus,
         subtotal: purchaseData.subtotal,
         discount_amount: purchaseData.discount,
@@ -303,7 +305,7 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
     try {
       // Convert updates to Supabase format
       const supabaseUpdates: any = {};
-      if (updates.status !== undefined) supabaseUpdates.status = updates.status;
+      if (updates.status !== undefined) supabaseUpdates.status = updates.status === 'final' ? 'completed' : updates.status;
       if (updates.paymentStatus !== undefined) supabaseUpdates.payment_status = updates.paymentStatus;
       if (updates.total !== undefined) supabaseUpdates.total = updates.total;
       if (updates.paid !== undefined) supabaseUpdates.paid_amount = updates.paid;
@@ -348,11 +350,14 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
-  // Record payment
+  // Record payment – allowed only when purchase status is final/completed (ERP rule)
   const recordPayment = async (purchaseId: string, amount: number, method: string, accountId?: string): Promise<void> => {
     const purchase = getPurchaseById(purchaseId);
     if (!purchase || !companyId || !branchId) {
       throw new Error('Purchase not found or company/branch missing');
+    }
+    if (purchase.status !== 'final' && purchase.status !== 'completed') {
+      throw new Error('Payment not allowed until purchase is Final. Current status: ' + purchase.status);
     }
 
     try {

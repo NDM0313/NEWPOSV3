@@ -206,3 +206,47 @@ export const cleanBranchDisplay = (value: string | null | undefined): string => 
   
   return value;
 };
+
+/**
+ * Format stock ledger / movement reference for UI (human-readable short format).
+ * UUID must NEVER appear in UI.
+ *
+ * Examples: SL-0016 / INV-840, PO-856, ADJ-0012
+ *
+ * @param options - referenceType (sale|purchase|adjustment), referenceId, movementId, saleInvoiceNo, purchaseInvoiceNo
+ * @returns Short reference string (e.g. SL-0016, PO-856, ADJ-0012)
+ */
+export const formatStockReference = (options: {
+  referenceType?: string | null;
+  referenceId?: string | null;
+  movementId?: string | null;
+  saleInvoiceNo?: string | null;
+  purchaseInvoiceNo?: string | null;
+  notes?: string | null;
+}): string => {
+  const { referenceType, referenceId, movementId, saleInvoiceNo, purchaseInvoiceNo, notes } = options;
+  const type = (referenceType || '').toLowerCase();
+
+  if (type.includes('sale') || type.includes('invoice')) {
+    if (saleInvoiceNo && !isUUID(saleInvoiceNo)) return saleInvoiceNo;
+    if (referenceId && isUUID(referenceId)) return `SL-${referenceId.substring(0, 4)}`;
+    if (referenceId) return referenceId;
+    return 'SL-????';
+  }
+  if (type.includes('purchase') || type.includes('order')) {
+    if (purchaseInvoiceNo && !isUUID(purchaseInvoiceNo)) return purchaseInvoiceNo;
+    if (referenceId && isUUID(referenceId)) return `PO-${referenceId.substring(0, 4)}`;
+    if (referenceId) return referenceId;
+    return 'PO-????';
+  }
+  if (type.includes('adjustment') || type.includes('audit')) {
+    if (movementId) return `ADJ-${movementId.slice(-4).toUpperCase()}`;
+    return 'ADJ-????';
+  }
+  if (referenceId && isUUID(referenceId)) {
+    const prefix = type ? type.substring(0, 2).toUpperCase() : 'REF';
+    return `${prefix}-${referenceId.substring(0, 4)}`;
+  }
+  if (referenceId) return referenceId;
+  return '—';
+};

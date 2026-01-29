@@ -1,0 +1,173 @@
+/**
+ * =============================================================================
+ * ERP DESIGN SYSTEM - Color Theme & Design Settings
+ * =============================================================================
+ * Yeh file ERP system ke liye complete theme define karti hai.
+ * Figma mein values copy karke Variables / Styles mein use kar sakte hain.
+ * Light Theme default hai; Dark Theme optional .dark class ke andar.
+ * =============================================================================
+ */
+
+/* =============================================================================
+   LIGHT THEME (Default - Pehle use karein)
+   ============================================================================= */
+
+:root {
+  /* ---------------------------------------------------------------------------
+     1) PRIMARY, SECONDARY, ACCENT & SEMANTIC COLORS
+     ---------------------------------------------------------------------------
+     Main action color, secondary UI, accent highlight, success/warning/error
+     --------------------------------------------------------------------------- */
+  --erp-primary: #2563EB;           /* Primary Color - Blue, main CTA */
+  --erp-secondary: #64748B;        /* Secondary Color - Slate gray */
+  --erp-accent: #0EA5E9;           /* Accent Color - Sky blue highlight */
+  --erp-success: #10B981;          /* Success Color - Green #10B981 */
+  --erp-warning: #F59E0B;          /* Warning Color - Amber #F59E0B */
+  --erp-error: #EF4444;            /* Error / Danger Color - Red #EF4444 */
+
+  /* ---------------------------------------------------------------------------
+     2) BACKGROUND COLORS
+     ---------------------------------------------------------------------------
+     Main background, cards, sidebar, header
+     --------------------------------------------------------------------------- */
+  --erp-bg-main: #F8FAFC;          /* Main Background - Halka gray-white */
+  --erp-bg-card: #FFFFFF;          /* Card Background - Safed */
+  --erp-bg-sidebar: #F1F5F9;       /* Sidebar Background - Light gray */
+  --erp-bg-header: #FFFFFF;        /* Header Background - Safed */
+
+  /* ---------------------------------------------------------------------------
+     3) TEXT COLORS
+     ---------------------------------------------------------------------------
+     Primary, secondary, muted, heading, link
+     --------------------------------------------------------------------------- */
+  --erp-text-primary: #0F172A;    /* Primary Text - Dark slate */
+  --erp-text-secondary: #475569;   /* Secondary Text - Slate */
+  --erp-text-muted: #94A3B8;       /* Muted Text - Halka gray */
+  --erp-text-heading: #0F172A;     /* Heading Text - Dark */
+  --erp-text-link: #2563EB;        /* Link Text - Primary blue */
+
+  /* ---------------------------------------------------------------------------
+     4) BORDER COLORS
+     ---------------------------------------------------------------------------
+     Default, active, disabled borders
+     --------------------------------------------------------------------------- */
+  --erp-border-default: #E2E8F0;   /* Default Border - Light gray */
+  --erp-border-active: #2563EB;    /* Active Border - Primary */
+  --erp-border-disabled: #CBD5E1;  /* Disabled Border - Muted */
+
+  /* ---------------------------------------------------------------------------
+     5) FONT SETTINGS
+     ---------------------------------------------------------------------------
+     ERP ke liye suitable: Inter clean aur readable hai
+     --------------------------------------------------------------------------- */
+  --erp-font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --erp-font-size-heading: 1.25rem;   /* 20px - Heading Font Size */
+  --erp-font-size-body: 1rem;         /* 16px - Body Font Size */
+  --erp-font-size-button: 0.875rem;  /* 14px - Button Font Size */
+  --erp-font-weight-regular: 400;     /* Regular */
+  --erp-font-weight-medium: 500;     /* Medium */
+  --erp-font-weight-bold: 700;       /* Bold */
+
+  /* ---------------------------------------------------------------------------
+     6) BUTTON STYLES
+     ---------------------------------------------------------------------------
+     Primary: normal, hover, disabled | Secondary | Danger
+     --------------------------------------------------------------------------- */
+  /* Primary Button */
+  --erp-btn-primary-bg: #2563EB;
+  --erp-btn-primary-bg-hover: #1D4ED8;
+  --erp-btn-primary-bg-disabled: #93C5FD;
+  --erp-btn-primary-text: #FFFFFF;
+  --erp-btn-primary-text-disabled: #FFFFFF;
+
+  /* Secondary Button */
+  --erp-btn-secondary-bg: #F1F5F9;
+  --erp-btn-secondary-bg-hover: #E2E8F0;
+  --erp-btn-secondary-text: #334155;
+  --erp-btn-secondary-border: #E2E8F0;
+
+  /* Danger Button */
+  --erp-btn-danger-bg: #EF4444;
+  --erp-btn-danger-bg-hover: #DC2626;
+  --erp-btn-danger-text: #FFFFFF;
+
+  /* ---------------------------------------------------------------------------
+     7) INPUT FIELDS
+     ---------------------------------------------------------------------------
+     Background, text, placeholder, focus, error border
+     --------------------------------------------------------------------------- */
+  --erp-input-bg: #FFFFFF;           /* Input Background */
+  --erp-input-text: #0F172A;         /* Input Text Color */
+  --erp-input-placeholder: #94A3B8;  /* Placeholder Color */
+  --erp-input-focus-border: #2563EB;  /* Focus Border Color */
+  --erp-input-error-border: #EF4444; /* Error Border Color */
+
+  /* ---------------------------------------------------------------------------
+     8) ICONS
+     ---------------------------------------------------------------------------
+     Icon, active, disabled
+     --------------------------------------------------------------------------- */
+  --erp-icon-color: #64748B;         /* Icon Color - Secondary */
+  --erp-icon-active: #2563EB;        /* Active Icon Color - Primary */
+  --erp-icon-disabled: #CBD5E1;     /* Disabled Icon Color */
+}
+
+/* =============================================================================
+   DARK THEME (Optional - .dark class lagane se activate)
+   ============================================================================= */
+
+.dark {
+  /* 1) Primary, Secondary, Accent & Semantic */
+  --erp-primary: #3B82F6;
+  --erp-secondary: #94A3B8;
+  --erp-accent: #38BDF8;
+  --erp-success: #34D399;
+  --erp-warning: #FBBF24;
+  --erp-error: #F87171;
+
+  /* 2) Backgrounds */
+  --erp-bg-main: #0F172A;
+  --erp-bg-card: #1E293B;
+  --erp-bg-sidebar: #1E293B;
+  --erp-bg-header: #1E293B;
+
+  /* 3) Text */
+  --erp-text-primary: #F8FAFC;
+  --erp-text-secondary: #CBD5E1;
+  --erp-text-muted: #64748B;
+  --erp-text-heading: #F8FAFC;
+  --erp-text-link: #60A5FA;
+
+  /* 4) Borders */
+  --erp-border-default: #334155;
+  --erp-border-active: #3B82F6;
+  --erp-border-disabled: #475569;
+
+  /* 5) Buttons - Dark */
+  --erp-btn-primary-bg: #3B82F6;
+  --erp-btn-primary-bg-hover: #2563EB;
+  --erp-btn-primary-bg-disabled: #1E3A5F;
+  --erp-btn-primary-text: #FFFFFF;
+  --erp-btn-primary-text-disabled: #64748B;
+
+  --erp-btn-secondary-bg: #334155;
+  --erp-btn-secondary-bg-hover: #475569;
+  --erp-btn-secondary-text: #F1F5F9;
+  --erp-btn-secondary-border: #475569;
+
+  --erp-btn-danger-bg: #EF4444;
+  --erp-btn-danger-bg-hover: #DC2626;
+  --erp-btn-danger-text: #FFFFFF;
+
+  /* 6) Inputs - Dark */
+  --erp-input-bg: #1E293B;
+  --erp-input-text: #F8FAFC;
+  --erp-input-placeholder: #64748B;
+  --erp-input-focus-border: #3B82F6;
+  --erp-input-error-border: #F87171;
+
+  /* 7) Icons - Dark */
+  --erp-icon-color: #94A3B8;
+  --erp-icon-active: #60A5FA;
+  --erp-icon-disabled: #475569;
+}

@@ -279,10 +279,22 @@ export const customerLedgerAPI = {
       });
     });
 
-    // Sort by date and calculate running balance
+    // Sort by date
     transactions.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-    
+
+    // When date range is applied, running balance must start from opening balance (before fromDate)
     let runningBalance = 0;
+    if (fromDate) {
+      const { data: prevSales } = await supabase
+        .from('sales')
+        .select('total, paid_amount')
+        .eq('company_id', companyId)
+        .eq('customer_id', customerId)
+        .lt('invoice_date', fromDate);
+      const prevTotal = (prevSales || []).reduce((sum, s) => sum + (s.total || 0), 0);
+      const prevPaid = (prevSales || []).reduce((sum, s) => sum + (s.paid_amount || 0), 0);
+      runningBalance = prevTotal - prevPaid;
+    }
     transactions.forEach(t => {
       runningBalance += t.debit - t.credit;
       t.runningBalance = runningBalance;
@@ -300,6 +312,7 @@ export const customerLedgerAPI = {
     fromDate?: string,
     toDate?: string
   ): Promise<Invoice[]> {
+    // Full sale_items columns – single source of truth (packing_type, packing_quantity, packing_unit, quantity, unit, variation_id)
     let query = supabase
       .from('sales')
       .select(`
@@ -313,8 +326,15 @@ export const customerLedgerAPI = {
         items:sales_items(
           product_name,
           quantity,
+          unit,
           unit_price,
-          total
+          discount_amount,
+          tax_amount,
+          total,
+          packing_type,
+          packing_quantity,
+          packing_unit,
+          variation_id
         )
       `)
       .eq('company_id', companyId)

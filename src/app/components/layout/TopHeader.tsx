@@ -76,9 +76,10 @@ export const TopHeader = () => {
     loadBranches();
   }, [loadBranches]);
 
-  // Get current branch name
+  // Get current branch name (All Branches = real option for admin)
   const currentBranch = useMemo(() => {
     if (!branchId) return 'Select Branch';
+    if (branchId === 'all') return 'All Branches';
     const branch = branches.find(b => b.id === branchId);
     return branch?.name || 'Select Branch';
   }, [branchId, branches]);
@@ -266,35 +267,48 @@ export const TopHeader = () => {
                 <Loader2 size={16} className="animate-spin mx-auto mb-2" />
                 <p className="text-xs">Loading branches...</p>
               </div>
-            ) : branches.length === 0 ? (
-              <div className="px-3 py-4 text-center text-muted-foreground">
-                <p className="text-xs">No branches found</p>
-              </div>
             ) : (
-              branches.map((b) => (
+              <>
                 <DropdownMenuItem
-                  key={b.id}
-                  onClick={() => handleBranchChange(b.id)}
+                  onClick={() => handleBranchChange('all')}
                   className={cn(
                     "flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer transition-all",
-                    branchId === b.id 
-                      ? "bg-primary/10 text-primary" 
-                      : "text-foreground hover:bg-accent"
+                    branchId === 'all' ? "bg-primary/10 text-primary" : "text-foreground hover:bg-accent"
                   )}
                 >
-                  <div className={cn(
-                    "w-2 h-2 rounded-full",
-                    b.is_active ? "bg-emerald-500" : "bg-gray-600"
-                  )}></div>
+                  <div className="w-2 h-2 rounded-full bg-blue-500"></div>
                   <div className="flex-1">
-                    <div className="font-medium">{b.name}</div>
-                    <div className="text-xs text-muted-foreground">{b.address || b.city || 'No address'}</div>
+                    <div className="font-medium">All Branches</div>
+                    <div className="text-xs text-muted-foreground">View data from all locations</div>
                   </div>
-                  {branchId === b.id && (
-                    <div className="w-1.5 h-1.5 rounded-full bg-primary"></div>
-                  )}
+                  {branchId === 'all' && <div className="w-1.5 h-1.5 rounded-full bg-primary"></div>}
                 </DropdownMenuItem>
-              ))
+                {branches.length > 0 && (
+                  <div className="border-t border-border my-2" />
+                )}
+                {branches.map((b) => (
+                  <DropdownMenuItem
+                    key={b.id}
+                    onClick={() => handleBranchChange(b.id)}
+                    className={cn(
+                      "flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer transition-all",
+                      branchId === b.id ? "bg-primary/10 text-primary" : "text-foreground hover:bg-accent"
+                    )}
+                  >
+                    <div className={cn(
+                      "w-2 h-2 rounded-full",
+                      b.is_active ? "bg-emerald-500" : "bg-gray-600"
+                    )}></div>
+                    <div className="flex-1">
+                      <div className="font-medium">{b.name}</div>
+                      <div className="text-xs text-muted-foreground">{b.address || b.city || 'No address'}</div>
+                    </div>
+                    {branchId === b.id && (
+                      <div className="w-1.5 h-1.5 rounded-full bg-primary"></div>
+                    )}
+                  </DropdownMenuItem>
+                ))}
+              </>
             )}
           </DropdownMenuContent>
         </DropdownMenu>

@@ -31,6 +31,21 @@ export const CustomerLedgerTestPage: React.FC<CustomerLedgerTestPageProps> = ({ 
   const [loading, setLoading] = useState(false);
   const [selectedReference, setSelectedReference] = useState<string | null>(null);
   const [printOrientation, setPrintOrientation] = useState<'portrait' | 'landscape'>('portrait');
+  const [companyName, setCompanyName] = useState<string>('');
+
+  // Fetch company name for PDF/Print header
+  useEffect(() => {
+    if (!companyId) {
+      setCompanyName('');
+      return;
+    }
+    supabase
+      .from('companies')
+      .select('name')
+      .eq('id', companyId)
+      .maybeSingle()
+      .then(({ data }) => setCompanyName(data?.name || ''));
+  }, [companyId]);
 
   // Load ledger when customer and dates change
   useEffect(() => {
@@ -211,52 +226,46 @@ export const CustomerLedgerTestPage: React.FC<CustomerLedgerTestPageProps> = ({ 
   };
 
   const handleReferenceClick = (entry: AccountLedgerEntry) => {
-    // ALWAYS use journal_entry_id (UUID) for lookup
-    if (entry.journal_entry_id) {
-      setSelectedReference(entry.journal_entry_id);
-    } else if (entry.entry_no) {
-      setSelectedReference(entry.entry_no);
-    } else {
-      toast.error('Unable to find transaction reference');
-    }
+    if (entry.document_type === 'Opening Balance' || !entry.journal_entry_id) return;
+    setSelectedReference(entry.journal_entry_id);
   };
 
   const handlePrint = () => {
+    if (!selectedCustomer) {
+      toast.error('Select a customer first');
+      return;
+    }
     const printArea = document.getElementById('ledger-print-area');
-    if (printArea) {
-      if (printOrientation === 'landscape') {
-        printArea.style.width = '297mm';
-        printArea.style.height = '210mm';
-      } else {
-        printArea.style.width = '210mm';
-        printArea.style.height = '297mm';
-      }
+    if (!printArea) {
+      toast.error('Print area not ready');
+      return;
+    }
+    if (printOrientation === 'landscape') {
+      printArea.style.width = '297mm';
+      printArea.style.height = '210mm';
+    } else {
+      printArea.style.width = '210mm';
+      printArea.style.height = '297mm';
     }
     window.print();
   };
 
   const handleExportPDF = async () => {
+    const element = document.getElementById('ledger-print-area');
+    if (!element) {
+      toast.error('Print area not found. Select a customer and load ledger first.');
+      return;
+    }
+    if (ledgerEntries.length === 0) {
+      toast.error('No ledger data to export. Load a customer ledger first.');
+      return;
+    }
     try {
       const { default: jsPDF } = await import('jspdf');
       const html2canvas = (await import('html2canvas')).default;
-      
-      const element = document.getElementById('ledger-print-area');
-      if (!element) {
-        toast.error('Print area not found');
-        return;
-      }
 
-      const originalDisplay = element.style.display;
-      const originalPosition = element.style.position;
-      const originalLeft = element.style.left;
-      const originalTop = element.style.top;
-      const originalWidth = element.style.width;
-      const originalHeight = element.style.height;
-      
-      element.style.display = 'block';
-      element.style.position = 'absolute';
-      element.style.left = '0';
-      element.style.top = '0';
+      /* CSS has display:none !important – override via data attribute so html2canvas can capture */
+      element.setAttribute('data-pdf-capture', 'true');
       if (printOrientation === 'landscape') {
         element.style.width = '297mm';
         element.style.height = '210mm';
@@ -264,9 +273,7 @@ export const CustomerLedgerTestPage: React.FC<CustomerLedgerTestPageProps> = ({ 
         element.style.width = '210mm';
         element.style.height = 'auto';
       }
-      element.style.zIndex = '9999';
-
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise(resolve => setTimeout(resolve, 150));
 
       const canvas = await html2canvas(element, {
         scale: 2,
@@ -277,12 +284,7 @@ export const CustomerLedgerTestPage: React.FC<CustomerLedgerTestPageProps> = ({ 
         height: element.scrollHeight
       });
 
-      element.style.display = originalDisplay;
-      element.style.position = originalPosition;
-      element.style.left = originalLeft;
-      element.style.top = originalTop;
-      element.style.width = originalWidth;
-      element.style.height = originalHeight;
+      element.removeAttribute('data-pdf-capture');
 
       const imgData = canvas.toDataURL('image/png');
       const orientation = printOrientation === 'landscape' ? 'l' : 'p';
@@ -499,11 +501,11 @@ export const CustomerLedgerTestPage: React.FC<CustomerLedgerTestPageProps> = ({ 
         </div>
       )}
 
-      {/* Print Area (Hidden) */}
+      {/* Print Area (Hidden) – Accounting ledger format: same data as screen, clean layout for Print & PDF */}
       {selectedCustomer && (
         <div
           id="ledger-print-area"
-          className={`bg-white text-black p-8 ${printOrientation === 'landscape' ? 'landscape' : ''}`}
+          className={`ledger-print-only bg-white text-black p-8 ${printOrientation === 'landscape' ? 'landscape' : ''}`}
           style={{
             display: 'none',
             position: 'absolute',
@@ -512,80 +514,27 @@ export const CustomerLedgerTestPage: React.FC<CustomerLedgerTestPageProps> = ({ 
             height: printOrientation === 'landscape' ? '210mm' : 'auto'
           }}
         >
-          <div className="mb-4 border-b-2 border-black pb-3">
-            <h1 className="text-2xl font-bold mb-2">CUSTOMER LEDGER</h1>
-            <div className="text-sm">
-              <div><strong>{selectedCustomer.name}</strong></div>
-              {selectedCustomer.code && <div>Code: {selectedCustomer.code}</div>}
-              {selectedCustomer.phone && <div>Phone: {selectedCustomer.phone}</div>}
-              <div className="mt-2">
-                <strong>Date Range:</strong> {
-                  dateFrom && dateTo
-                    ? `${format(new Date(dateFrom), 'dd-MM-yyyy')} - ${format(new Date(dateTo), 'dd-MM-yyyy')}`
-                    : 'All dates'
-                }
+          {/* Header: Company name, Customer name + code, Date range – classic print */}
+          <div className="print-header ledger-print-header mb-4 border-b-2 border-black pb-3">
+            {companyName && <h1 className="text-lg font-bold mb-1">{companyName}</h1>}
+            <div className="print-meta text-sm">
+              <div><strong>Customer:</strong> {selectedCustomer.name}{selectedCustomer.code ? ` (Code: ${selectedCustomer.code})` : ''}</div>
+              <div className="mt-1">
+                <strong>Date Range:</strong>{' '}
+                {dateFrom && dateTo
+                  ? `${format(new Date(dateFrom), 'dd-MM-yyyy')} to ${format(new Date(dateTo), 'dd-MM-yyyy')}`
+                  : 'All dates'}
               </div>
             </div>
           </div>
 
-          <div className="mb-4 grid grid-cols-4 gap-4 text-sm border-2 border-black p-3">
-            <div><strong>Opening Balance:</strong> Rs {totals.openingBalance.toFixed(2)}</div>
-            <div><strong>Total Debit:</strong> Rs {totals.totalDebit.toFixed(2)}</div>
-            <div><strong>Total Credit:</strong> Rs {totals.totalCredit.toFixed(2)}</div>
-            <div><strong>Closing Balance:</strong> Rs {totals.closingBalance.toFixed(2)}</div>
-          </div>
-
-          {/* Invoice Summary (Print) */}
-          <div className="mb-4 grid grid-cols-2 gap-6 text-sm border-2 border-black p-3">
-            <div>
-              <div className="font-bold mb-2 border-b border-black pb-1">Invoices Summary</div>
-              <div className="space-y-1">
-                <div className="flex justify-between">
-                  <span>Total Invoices:</span>
-                  <strong>{invoiceSummary.totalInvoices}</strong>
-                </div>
-                <div className="flex justify-between">
-                  <span>Total Invoice Amount:</span>
-                  <strong>Rs {invoiceSummary.totalInvoiceAmount.toFixed(2)}</strong>
-                </div>
-                <div className="flex justify-between">
-                  <span>Total Payment Received:</span>
-                  <strong>Rs {invoiceSummary.totalPaymentReceived.toFixed(2)}</strong>
-                </div>
-                <div className="flex justify-between border-t border-black pt-1 mt-1">
-                  <span><strong>Pending Amount:</strong></span>
-                  <strong>Rs {invoiceSummary.pendingAmount.toFixed(2)}</strong>
-                </div>
-              </div>
-            </div>
-            <div>
-              <div className="font-bold mb-2 border-b border-black pb-1">Payment Status</div>
-              <div className="space-y-1">
-                <div className="flex justify-between">
-                  <span>Fully Paid Invoices:</span>
-                  <strong>{invoiceSummary.fullyPaidCount}</strong>
-                </div>
-                <div className="flex justify-between">
-                  <span>Partially Paid:</span>
-                  <strong>{invoiceSummary.partiallyPaidCount}</strong>
-                </div>
-                <div className="flex justify-between">
-                  <span>Unpaid:</span>
-                  <strong>{invoiceSummary.unpaidCount}</strong>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <table className="w-full border-collapse border border-black text-sm">
+          {/* Table: Date, Reference No, Description, Debit, Credit, Running Balance – classic */}
+          <table className="w-full border-collapse border border-black text-sm ledger-print-table">
             <thead>
-              <tr className="bg-gray-200">
+              <tr className="bg-gray-100">
                 <th className="border border-black p-2 text-left">Date</th>
                 <th className="border border-black p-2 text-left">Reference No</th>
-                <th className="border border-black p-2 text-left">Document Type</th>
-                <th className="border border-black p-2 text-left">Payment Account</th>
                 <th className="border border-black p-2 text-left">Description</th>
-                <th className="border border-black p-2 text-left">Notes / Reference</th>
                 <th className="border border-black p-2 text-right">Debit</th>
                 <th className="border border-black p-2 text-right">Credit</th>
                 <th className="border border-black p-2 text-right">Running Balance</th>
@@ -593,13 +542,10 @@ export const CustomerLedgerTestPage: React.FC<CustomerLedgerTestPageProps> = ({ 
             </thead>
             <tbody>
               {ledgerEntries.map((entry, idx) => (
-                <tr key={`print-${entry.journal_entry_id}-${idx}`}>
+                <tr key={`print-${entry.journal_entry_id || 'ob'}-${idx}`}>
                   <td className="border border-black p-2">{format(new Date(entry.date), 'dd-MM-yyyy')}</td>
                   <td className="border border-black p-2">{entry.reference_number}</td>
-                  <td className="border border-black p-2">{entry.document_type || entry.source_module}</td>
-                  <td className="border border-black p-2">{entry.account_name || '-'}</td>
                   <td className="border border-black p-2">{entry.description}</td>
-                  <td className="border border-black p-2">{entry.notes || '-'}</td>
                   <td className="border border-black p-2 text-right">{entry.debit > 0 ? entry.debit.toFixed(2) : ''}</td>
                   <td className="border border-black p-2 text-right">{entry.credit > 0 ? entry.credit.toFixed(2) : ''}</td>
                   <td className="border border-black p-2 text-right">{entry.running_balance.toFixed(2)}</td>
@@ -607,6 +553,13 @@ export const CustomerLedgerTestPage: React.FC<CustomerLedgerTestPageProps> = ({ 
               ))}
             </tbody>
           </table>
+
+          {/* Footer: Total Debit, Total Credit, Closing Balance – classic summary box */}
+          <div className="print-summary-box mt-4 flex justify-end gap-8 text-sm font-semibold border-t-2 border-black pt-3">
+            <span>Total Debit: Rs {totals.totalDebit.toFixed(2)}</span>
+            <span>Total Credit: Rs {totals.totalCredit.toFixed(2)}</span>
+            <span>Closing Balance: Rs {totals.closingBalance.toFixed(2)}</span>
+          </div>
         </div>
       )}
 

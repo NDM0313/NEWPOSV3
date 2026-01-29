@@ -85,6 +85,7 @@ export const Sidebar = () => {
         { id: 'customer-ledger-interactive-test', label: 'Interactive Test (Manual)' },
         { id: 'contact-search-test', label: 'Contact Test' },
         { id: 'sale-header-test', label: 'Header Test' },
+        { id: 'purchase-header-test', label: 'Purchase Header Test' },
         { id: 'transaction-header-test', label: 'Transaction Header' },
         { id: 'user-management-test', label: 'User Management Test' },
         { id: 'branch-management-test', label: 'Branch Management Test' },

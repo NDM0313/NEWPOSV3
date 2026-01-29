@@ -327,7 +327,7 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
     if (!companyId) return;
     
     try {
-      const data = await accountService.getAllAccounts(companyId, branchId || undefined);
+      const data = await accountService.getAllAccounts(companyId, branchId === 'all' ? undefined : branchId || undefined);
       const convertedAccounts = data.map(convertFromSupabaseAccount);
       setAccounts(convertedAccounts);
       console.log('✅ Accounts loaded from database:', convertedAccounts.length);
@@ -348,7 +348,7 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
     try {
       const data = await accountingService.getAllEntries(
         companyId, 
-        branchId || undefined,
+        branchId === 'all' ? undefined : branchId || undefined,
         startDate,
         endDate
       );
@@ -528,7 +528,7 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
             await defaultAccountsService.ensureDefaultAccounts(companyId);
             
             // Reload accounts
-            const refreshedData = await accountService.getAllAccounts(companyId, branchId || undefined);
+            const refreshedData = await accountService.getAllAccounts(companyId, branchId === 'all' ? undefined : branchId || undefined);
             const refreshedAccounts = refreshedData.map((acc: any) => ({
               id: acc.id,
               name: acc.name || '',

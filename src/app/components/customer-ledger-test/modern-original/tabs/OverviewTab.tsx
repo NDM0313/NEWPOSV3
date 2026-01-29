@@ -19,135 +19,88 @@ export function OverviewTab({ ledgerData, onTransactionClick }: OverviewTabProps
 
   return (
     <div className="space-y-6">
-      {/* Quick Stats Grid */}
+      {/* Quick Stats Grid – same card style as Products page */}
       <div className="grid grid-cols-4 gap-4">
-        {/* Account Balance - Light Blue Card */}
-        <div className="rounded-xl p-5 shadow-sm" style={{
-          background: 'linear-gradient(135deg, rgba(59, 130, 246, 0.15) 0%, rgba(96, 165, 250, 0.1) 100%)',
-          border: '1px solid rgba(59, 130, 246, 0.3)'
-        }}>
-          <div className="flex justify-between items-start mb-3">
-            <div className="w-10 h-10 rounded-lg flex items-center justify-center" style={{
-              background: '#3b82f6'
-            }}>
-              <TrendingUp className="w-5 h-5 text-white" />
+        <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
+          <div className="flex items-start justify-between mb-3">
+            <div>
+              <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Account Balance</p>
+              <p className="text-2xl font-bold text-white mt-1">Rs {formatAmount(ledgerData.closingBalance)}</p>
+              <p className="text-xs text-gray-500 mt-1">Current</p>
             </div>
-            <span className="text-xs px-2 py-1 rounded-full text-white" style={{ background: '#3b82f6' }}>Current</span>
-          </div>
-          <div className="text-xs mb-1" style={{ color: '#93c5fd' }}>Account Balance</div>
-          <div className="text-2xl" style={{ color: '#ffffff' }}>Rs {formatAmount(ledgerData.closingBalance)}</div>
-        </div>
-
-        {/* Overdue Amount */}
-        <div className="rounded-xl p-5 shadow-sm" style={{
-          background: '#273548',
-          border: '1px solid #334155'
-        }}>
-          <div className="flex justify-between items-start mb-3">
-            <div className="w-10 h-10 rounded-lg flex items-center justify-center" style={{
-              background: 'rgba(249, 115, 22, 0.1)'
-            }}>
-              <FileText className="w-5 h-5" style={{ color: '#f97316' }} />
+            <div className="w-12 h-12 rounded-full bg-blue-500/10 flex items-center justify-center">
+              <TrendingUp className="w-6 h-6 text-blue-500" />
             </div>
-            <span className="text-xs px-2 py-1 rounded-full" style={{
-              background: 'rgba(249, 115, 22, 0.15)',
-              color: '#fb923c'
-            }}>{overdueInvoices.length}</span>
-          </div>
-          <div className="text-xs mb-1" style={{ color: '#94a3b8' }}>Overdue Amount</div>
-          <div className="text-2xl" style={{ color: '#ffffff' }}>
-            Rs {formatAmount(overdueInvoices.reduce((sum, inv) => sum + inv.pendingAmount, 0))}
           </div>
         </div>
-
-        {/* Total Received */}
-        <div className="rounded-xl p-5 shadow-sm" style={{
-          background: '#273548',
-          border: '1px solid #334155'
-        }}>
-          <div className="flex justify-between items-start mb-3">
-            <div className="w-10 h-10 rounded-lg flex items-center justify-center" style={{
-              background: 'rgba(16, 185, 129, 0.1)'
-            }}>
-              <CheckCircle className="w-5 h-5" style={{ color: '#10b981' }} />
+        <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
+          <div className="flex items-start justify-between mb-3">
+            <div>
+              <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Overdue Amount</p>
+              <p className="text-2xl font-bold text-yellow-400 mt-1">Rs {formatAmount(overdueInvoices.reduce((sum, inv) => sum + inv.pendingAmount, 0))}</p>
+              <p className="text-xs text-gray-500 mt-1">{overdueInvoices.length} unpaid</p>
             </div>
-            <span className="text-xs px-2 py-1 rounded-full" style={{
-              background: 'rgba(16, 185, 129, 0.15)',
-              color: '#34d399'
-            }}>{totalPayments}</span>
+            <div className="w-12 h-12 rounded-full bg-yellow-500/10 flex items-center justify-center">
+              <FileText className="w-6 h-6 text-yellow-500" />
+            </div>
           </div>
-          <div className="text-xs mb-1" style={{ color: '#94a3b8' }}>Total Received</div>
-          <div className="text-2xl" style={{ color: '#ffffff' }}>Rs {formatAmount(ledgerData.totalCredit)}</div>
         </div>
-
-        {/* Total Sales */}
-        <div className="rounded-xl p-5 shadow-sm" style={{
-          background: '#273548',
-          border: '1px solid #334155'
-        }}>
-          <div className="flex justify-between items-start mb-3">
-            <div className="w-10 h-10 rounded-lg flex items-center justify-center" style={{
-              background: 'rgba(139, 92, 246, 0.1)'
-            }}>
-              <TrendingDown className="w-5 h-5" style={{ color: '#8b5cf6' }} />
+        <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
+          <div className="flex items-start justify-between mb-3">
+            <div>
+              <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Total Received</p>
+              <p className="text-2xl font-bold text-green-400 mt-1">Rs {formatAmount(ledgerData.totalCredit)}</p>
+              <p className="text-xs text-gray-500 mt-1">{totalPayments} payments</p>
             </div>
-            <span className="text-xs px-2 py-1 rounded-full" style={{
-              background: 'rgba(139, 92, 246, 0.15)',
-              color: '#a78bfa'
-            }}>{totalSales}</span>
+            <div className="w-12 h-12 rounded-full bg-green-500/10 flex items-center justify-center">
+              <CheckCircle className="w-6 h-6 text-green-500" />
+            </div>
           </div>
-          <div className="text-xs mb-1" style={{ color: '#94a3b8' }}>Total Sales</div>
-          <div className="text-2xl" style={{ color: '#ffffff' }}>Rs {formatAmount(ledgerData.totalDebit)}</div>
+        </div>
+        <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
+          <div className="flex items-start justify-between mb-3">
+            <div>
+              <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Total Sales</p>
+              <p className="text-2xl font-bold text-white mt-1">Rs {formatAmount(ledgerData.totalDebit)}</p>
+              <p className="text-xs text-gray-500 mt-1">{totalSales} sales</p>
+            </div>
+            <div className="w-12 h-12 rounded-full bg-blue-500/10 flex items-center justify-center">
+              <TrendingDown className="w-6 h-6 text-blue-500" />
+            </div>
+          </div>
         </div>
       </div>
 
-      {/* Two Column Layout */}
+      {/* Two Column Layout – same card style as Products */}
       <div className="grid grid-cols-2 gap-6">
-        {/* Recent Transactions */}
-        <div className="rounded-xl overflow-hidden shadow-sm" style={{
-          background: '#273548',
-          border: '1px solid #334155'
-        }}>
-          <div className="px-5 py-4" style={{
-            borderBottom: '1px solid #334155',
-            background: '#1e293b'
-          }}>
-            <h3 className="text-sm" style={{ color: '#ffffff' }}>Recent Transactions</h3>
-            <p className="text-xs mt-0.5" style={{ color: '#94a3b8' }}>Last 5 activities</p>
+        <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden">
+          <div className="px-5 py-4 border-b border-gray-800 bg-gray-950/95">
+            <h3 className="text-sm font-semibold text-white">Recent Transactions</h3>
+            <p className="text-xs text-gray-500 mt-0.5">Last 5 activities</p>
           </div>
-          <div style={{ borderTop: '1px solid #334155' }}>
+          <div className="border-t border-gray-800">
             {recentTransactions.map((transaction, index) => (
               <button
                 key={transaction.id}
                 onClick={() => onTransactionClick(transaction)}
-                className="w-full px-5 py-4 transition-colors text-left"
-                style={{
-                  borderBottom: index < recentTransactions.length - 1 ? '1px solid #334155' : 'none'
-                }}
-                onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(59, 130, 246, 0.05)'}
-                onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                className="w-full px-5 py-4 transition-colors text-left border-b border-gray-800/50 last:border-b-0 hover:bg-gray-800/30"
               >
                 <div className="flex justify-between items-start mb-2">
-                  <div className="text-sm" style={{ color: '#ffffff' }}>{transaction.referenceNo}</div>
-                  <div className="text-xs" style={{ color: '#94a3b8' }}>
+                  <div className="text-sm font-medium text-white">{transaction.referenceNo}</div>
+                  <div className="text-xs text-gray-500">
                     {new Date(transaction.date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })}
                   </div>
                 </div>
-                <div className="text-xs mb-2" style={{ color: '#94a3b8' }}>{transaction.description}</div>
+                <div className="text-xs text-gray-500 mb-2">{transaction.description}</div>
                 <div className="flex justify-between items-center">
-                  <span className={`text-xs px-2 py-1 rounded`} style={{
-                    background: transaction.documentType === 'Sale' ? 'rgba(59, 130, 246, 0.15)' :
-                               transaction.documentType === 'Payment' ? 'rgba(16, 185, 129, 0.15)' :
-                               'rgba(139, 92, 246, 0.15)',
-                    color: transaction.documentType === 'Sale' ? '#60a5fa' :
-                          transaction.documentType === 'Payment' ? '#34d399' :
-                          '#a78bfa'
-                  }}>
+                  <span className={`text-xs px-2 py-1 rounded border ${
+                    transaction.documentType === 'Sale' ? 'bg-blue-500/10 text-blue-400 border-blue-500/20' :
+                    transaction.documentType === 'Payment' ? 'bg-green-500/10 text-green-400 border-green-500/20' :
+                    'bg-purple-500/10 text-purple-400 border-purple-500/20'
+                  }`}>
                     {transaction.documentType}
                   </span>
-                  <span className="text-sm" style={{
-                    color: transaction.debit > 0 ? '#fb923c' : '#34d399'
-                  }}>
+                  <span className={`text-sm font-medium ${transaction.debit > 0 ? 'text-yellow-400' : 'text-green-400'}`}>
                     {transaction.debit > 0 ? '+' : '-'} Rs {formatAmount(transaction.debit || transaction.credit)}
                   </span>
                 </div>
@@ -156,81 +109,66 @@ export function OverviewTab({ ledgerData, onTransactionClick }: OverviewTabProps
           </div>
         </div>
 
-        {/* Pending Invoices */}
-        <div className="rounded-xl overflow-hidden shadow-sm" style={{
-          background: '#273548',
-          border: '1px solid #334155'
-        }}>
-          <div className="px-5 py-4" style={{
-            borderBottom: '1px solid #334155',
-            background: '#1e293b'
-          }}>
-            <h3 className="text-sm" style={{ color: '#ffffff' }}>Pending Invoices</h3>
-            <p className="text-xs mt-0.5" style={{ color: '#94a3b8' }}>Requires attention</p>
+        <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden">
+          <div className="px-5 py-4 border-b border-gray-800 bg-gray-950/95">
+            <h3 className="text-sm font-semibold text-white">Pending Invoices</h3>
+            <p className="text-xs text-gray-500 mt-0.5">Requires attention</p>
           </div>
-          <div style={{ borderTop: '1px solid #334155' }}>
+          <div className="border-t border-gray-800">
             {[...overdueInvoices, ...partiallyPaid].slice(0, 5).map((invoice, index) => (
-              <div 
-                key={invoice.invoiceNo} 
-                className="px-5 py-4 transition-colors"
-                style={{
-                  borderBottom: index < 4 && [...overdueInvoices, ...partiallyPaid].length > index + 1 ? '1px solid #334155' : 'none'
-                }}
+              <div
+                key={invoice.invoiceNo}
+                className="px-5 py-4 border-b border-gray-800/50 last:border-b-0"
               >
                 <div className="flex justify-between items-start mb-2">
-                  <div className="text-sm" style={{ color: '#ffffff' }}>{invoice.invoiceNo}</div>
-                  <div className="text-xs" style={{ color: '#94a3b8' }}>
+                  <div className="text-sm font-medium text-white">{invoice.invoiceNo}</div>
+                  <div className="text-xs text-gray-500">
                     {new Date(invoice.date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })}
                   </div>
                 </div>
                 <div className="flex justify-between items-center">
-                  <span className="text-xs px-2 py-1 rounded" style={{
-                    background: invoice.status === 'Unpaid' ? 'rgba(239, 68, 68, 0.15)' : 'rgba(245, 158, 11, 0.15)',
-                    color: invoice.status === 'Unpaid' ? '#f87171' : '#fbbf24'
-                  }}>
+                  <span className={`text-xs px-2 py-1 rounded border ${
+                    invoice.status === 'Unpaid' ? 'bg-red-500/10 text-red-400 border-red-500/20' : 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20'
+                  }`}>
                     {invoice.status}
                   </span>
                   <div className="text-right">
-                    <div className="text-xs" style={{ color: '#94a3b8' }}>Pending</div>
-                    <div className="text-sm" style={{ color: '#fb923c' }}>Rs {formatAmount(invoice.pendingAmount)}</div>
+                    <div className="text-xs text-gray-500">Pending</div>
+                    <div className="text-sm font-medium text-yellow-400">Rs {formatAmount(invoice.pendingAmount)}</div>
                   </div>
                 </div>
               </div>
             ))}
             {[...overdueInvoices, ...partiallyPaid].length === 0 && (
               <div className="px-5 py-8 text-center">
-                <CheckCircle className="w-12 h-12 mx-auto mb-2" style={{ color: '#10b981' }} />
-                <p className="text-sm" style={{ color: '#94a3b8' }}>All invoices cleared!</p>
+                <CheckCircle className="w-12 h-12 mx-auto mb-2 text-green-500" />
+                <p className="text-sm text-gray-500">All invoices cleared!</p>
               </div>
             )}
           </div>
         </div>
       </div>
 
-      {/* Payment Performance */}
-      <div className="rounded-xl p-6 shadow-sm" style={{
-        background: 'linear-gradient(135deg, #1e293b 0%, rgba(59, 130, 246, 0.05) 100%)',
-        border: '1px solid #334155'
-      }}>
-        <h3 className="text-sm mb-4" style={{ color: '#ffffff' }}>Payment Performance</h3>
+      <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-6">
+        <h3 className="text-sm font-semibold text-white mb-4">Payment Performance</h3>
         <div className="grid grid-cols-3 gap-6">
           <div className="text-center">
-            <div className="text-3xl mb-1" style={{ color: '#ffffff' }}>
-              {ledgerData.invoicesSummary.totalInvoices}
-            </div>
-            <div className="text-xs" style={{ color: '#94a3b8' }}>Total Invoices</div>
+            <div className="text-3xl font-bold text-white mb-1">{ledgerData.invoicesSummary.totalInvoices}</div>
+            <div className="text-xs text-gray-500">Total Invoices</div>
           </div>
-          <div className="text-center" style={{ borderLeft: '1px solid #334155', borderRight: '1px solid #334155' }}>
-            <div className="text-3xl mb-1" style={{ color: '#10b981' }}>
-              {((ledgerData.invoicesSummary.totalPaymentReceived / ledgerData.invoicesSummary.totalInvoiceAmount) * 100).toFixed(1)}%
+          <div className="text-center border-l border-r border-gray-800">
+            <div className="text-3xl font-bold text-green-400 mb-1">
+              {ledgerData.invoicesSummary.totalInvoiceAmount > 0
+                ? ((ledgerData.invoicesSummary.totalPaymentReceived / ledgerData.invoicesSummary.totalInvoiceAmount) * 100).toFixed(1)
+                : '0'}%
             </div>
-            <div className="text-xs" style={{ color: '#94a3b8' }}>Collection Rate</div>
+            <div className="text-xs text-gray-500">Collection Rate</div>
           </div>
           <div className="text-center">
-            <div className="text-3xl mb-1" style={{ color: '#fb923c' }}>
+            <div className="text-3xl font-bold text-yellow-400 mb-1">
               {ledgerData.invoicesSummary.unpaid + ledgerData.invoicesSummary.partiallyPaid}
             </div>
-            <div className="text-xs" style={{ color: '#94a3b8' }}>Pending Invoices</div>
+            <div className="text-xs text-gray-500">Pending Invoices</div>
           </div>
         </div>
       </div>

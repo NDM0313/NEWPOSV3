@@ -58,7 +58,8 @@ interface SaleItem {
   color?: string;
   thaans?: number;
   meters?: number;
-  packingDetails?: any;
+  packingDetails?: { total_boxes?: number; total_pieces?: number; total_meters?: number; [k: string]: unknown };
+  unit?: string;
   stock?: number;
 }
 
@@ -122,7 +123,7 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
 }) => {
   const [activeTab, setActiveTab] = useState<'details' | 'payments' | 'history'>('details');
   const { getSaleById } = useSales();
-  const { companyId } = useSupabase();
+  const { companyId, enablePacking } = useSupabase();
   const [sale, setSale] = useState<Sale | null>(null);
   const [loading, setLoading] = useState(true);
   const [showPrintLayout, setShowPrintLayout] = useState(false);
@@ -521,8 +522,10 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
                         <TableHead className="text-gray-400">Product</TableHead>
                         <TableHead className="text-gray-400">SKU</TableHead>
                         <TableHead className="text-gray-400">Variation</TableHead>
+                        {enablePacking && <TableHead className="text-gray-400">Packing</TableHead>}
                         <TableHead className="text-gray-400 text-right">Unit Price</TableHead>
                         <TableHead className="text-gray-400 text-center">Qty</TableHead>
+                        <TableHead className="text-gray-400">Unit</TableHead>
                         <TableHead className="text-gray-400 text-right">Total</TableHead>
                       </TableRow>
                     </TableHeader>
@@ -531,7 +534,20 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
                         // CRITICAL FIX: Use productName from joined product data, fallback to item.name
                         const productName = item.productName || item.name || 'Unknown Product';
                         const displaySku = item.sku || 'N/A';
-                        
+                        const qty = item.quantity ?? (item as any).qty ?? 0;
+                        // Packing: structured – Boxes + Pieces (same contract as ledger)
+                        const pd = item.packingDetails || {};
+                        const totalBoxes = pd.total_boxes ?? 0;
+                        const totalPieces = pd.total_pieces ?? 0;
+                        const packingParts: string[] = [];
+                        if (Number(totalBoxes) > 0) packingParts.push(`${totalBoxes} Box${Number(totalBoxes) !== 1 ? 'es' : ''}`);
+                        if (Number(totalPieces) > 0) packingParts.push(`${totalPieces} Piece${Number(totalPieces) !== 1 ? 's' : ''}`);
+                        const packingText = packingParts.length
+                          ? packingParts.join(', ')
+                          : (item.thaans != null || item.meters != null)
+                            ? [item.thaans != null && item.thaans > 0 ? `${item.thaans} Thaan${item.thaans !== 1 ? 's' : ''}` : null, item.meters != null && item.meters > 0 ? `${item.meters}m` : null].filter(Boolean).join(' · ') || '—'
+                            : '—';
+                        const unitDisplay = item.unit ?? 'piece';
                         return (
                         <TableRow key={item.id} className="border-gray-800">
                           <TableCell>
@@ -539,13 +555,6 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
                               <p className="font-medium text-white">{productName}</p>
                               {displaySku && displaySku !== 'N/A' && (
                                 <p className="text-xs text-gray-500">SKU: {displaySku}</p>
-                              )}
-                              {(item.thaans || item.meters) && (
-                                <p className="text-xs text-gray-500">
-                                  {item.thaans && `${item.thaans} Thaans`}
-                                  {item.thaans && item.meters && ' • '}
-                                  {item.meters && `${item.meters}m`}
-                                </p>
                               )}
                             </div>
                           </TableCell>
@@ -568,14 +577,16 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
                               <span className="text-gray-600">-</span>
                             )}
                           </TableCell>
+                          {enablePacking && <TableCell className="text-gray-400">{packingText}</TableCell>}
                           <TableCell className="text-right text-white">
                             Rs. {item.price.toLocaleString()}
                           </TableCell>
                           <TableCell className="text-center text-white font-medium">
-                            {item.quantity || (item as any).qty || 0}
+                            {qty}
                           </TableCell>
+                          <TableCell className="text-gray-400">{unitDisplay}</TableCell>
                           <TableCell className="text-right text-white font-medium">
-                            Rs. {(item.price * (item.quantity || (item as any).qty || 0)).toLocaleString()}
+                            Rs. {(item.price * qty).toLocaleString()}
                           </TableCell>
                         </TableRow>
                         );

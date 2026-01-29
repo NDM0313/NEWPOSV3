@@ -49,15 +49,9 @@ export function ModernLedgerTabs({ ledgerData, onTransactionClick }: ModernLedge
   ];
 
   return (
-    <div className="rounded-xl shadow-sm overflow-hidden" style={{
-      background: '#273548',
-      border: '1px solid #334155'
-    }}>
-      {/* Tab Headers */}
-      <div style={{ 
-        borderBottom: '1px solid #334155',
-        background: 'linear-gradient(90deg, #1e293b 0%, #273548 100%)'
-      }}>
+    <div className="rounded-xl shadow-sm overflow-hidden bg-card border border-border">
+      {/* Tab Headers – ERP theme */}
+      <div className="border-b border-border bg-muted">
         <div className="flex gap-0 overflow-x-auto">
           {tabs.map((tab) => {
             const Icon = tab.icon;
@@ -66,32 +60,16 @@ export function ModernLedgerTabs({ ledgerData, onTransactionClick }: ModernLedge
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id as any)}
-                className="flex items-center gap-3 px-6 py-4 transition-all whitespace-nowrap"
-                style={{
-                  borderBottom: isActive ? '2px solid #3b82f6' : '2px solid transparent',
-                  background: isActive ? 'rgba(59, 130, 246, 0.1)' : 'transparent'
-                }}
-                onMouseEnter={(e) => {
-                  if (!isActive) {
-                    e.currentTarget.style.background = '#1e293b';
-                  }
-                }}
-                onMouseLeave={(e) => {
-                  if (!isActive) {
-                    e.currentTarget.style.background = 'transparent';
-                  }
-                }}
+                className={`flex items-center gap-3 px-6 py-4 transition-all whitespace-nowrap border-b-2 ${
+                  isActive ? 'border-primary bg-primary/10' : 'border-transparent hover:bg-accent'
+                }`}
               >
-                <Icon className="w-5 h-5" style={{ 
-                  color: isActive ? '#3b82f6' : '#94a3b8'
-                }} />
+                <Icon className={`w-5 h-5 ${isActive ? 'text-primary' : 'text-muted-foreground'}`} />
                 <div className="text-left">
-                  <div className="text-sm" style={{ 
-                    color: isActive ? '#3b82f6' : '#ffffff'
-                  }}>
+                  <div className={`text-sm ${isActive ? 'text-primary' : 'text-foreground'}`}>
                     {tab.label}
                   </div>
-                  <div className="text-xs" style={{ color: '#94a3b8' }}>
+                  <div className="text-xs text-muted-foreground">
                     {tab.description}
                   </div>
                 </div>

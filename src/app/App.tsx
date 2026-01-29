@@ -61,6 +61,7 @@ import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { KeyboardShortcutsModal } from './components/shared/KeyboardShortcutsModal';
 import { ContactSearchTestPage } from './components/demo/ContactSearchTestPage';
 import { SaleHeaderTestPage } from './components/test/SaleHeaderTestPage';
+import { PurchaseHeaderTestPage } from './components/test/PurchaseHeaderTestPage';
 import { TransactionHeaderTestPage } from './components/test/TransactionHeaderTestPage';
 import { UserManagementTestPage } from './components/test/UserManagementTestPage';
 import { BranchManagementTestPage } from './components/test/BranchManagementTestPage';
@@ -181,6 +182,7 @@ const AppContent = () => {
       {currentView === 'packing' && <PackingEntryPage />}
       {currentView === 'contact-search-test' && <ContactSearchTestPage />}
       {currentView === 'sale-header-test' && <SaleHeaderTestPage />}
+      {currentView === 'purchase-header-test' && <PurchaseHeaderTestPage />}
       {currentView === 'transaction-header-test' && <TransactionHeaderTestPage />}
       {currentView === 'user-management-test' && <UserManagementTestPage />}
       {currentView === 'branch-management-test' && <BranchManagementTestPage />}

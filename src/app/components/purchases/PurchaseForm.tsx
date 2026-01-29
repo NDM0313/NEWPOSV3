@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { 
   X, 
   Search, 
@@ -30,7 +30,8 @@ import {
   Palette,
   Scissors,
   Sparkles,
-  Lock
+  Lock,
+  Hash
 } from 'lucide-react';
 import { cn } from "../ui/utils";
 import { Button } from "../ui/button";
@@ -81,30 +82,6 @@ import { useNavigation } from '@/app/context/NavigationContext';
 import { Loader2 } from 'lucide-react';
 import { format } from "date-fns";
 
-// Mock variations for products that have them
-const productVariations: Record<number, Array<{ size: string; color: string }>> = {
-    3: [ // Silk Dupatta
-        { size: "S", color: "Red" },
-        { size: "S", color: "Blue" },
-        { size: "M", color: "Red" },
-        { size: "M", color: "Blue" },
-        { size: "M", color: "Green" },
-        { size: "L", color: "Red" },
-        { size: "L", color: "Blue" },
-        { size: "L", color: "Green" },
-    ],
-    4: [ // Unstitched 3-Pc Suit
-        { size: "S", color: "Beige" },
-        { size: "M", color: "Beige" },
-        { size: "M", color: "Cream" },
-        { size: "L", color: "Beige" },
-        { size: "L", color: "Cream" },
-        { size: "XL", color: "Beige" },
-        { size: "XL", color: "Cream" },
-        { size: "XL", color: "White" },
-    ],
-};
-
 interface PurchaseItem {
     id: number;
     productId: number;
@@ -150,7 +127,7 @@ interface PurchaseFormProps {
 
 export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFormProps) => {
     // Supabase & Context
-    const { companyId, branchId: contextBranchId, userRole } = useSupabase();
+    const { companyId, branchId: contextBranchId, userRole, enablePacking } = useSupabase();
     // CRITICAL FIX: Check if user is admin
     const isAdmin = userRole === 'admin' || userRole === 'Admin';
     const { createPurchase } = usePurchases();
@@ -158,7 +135,7 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
     
     // Data State
     const [suppliers, setSuppliers] = useState<Array<{ id: number | string; name: string; dueBalance: number }>>([]);
-    const [products, setProducts] = useState<Array<{ id: number | string; name: string; sku: string; price: number; stock: number; lastPurchasePrice?: number; lastSupplier?: string; hasVariations: boolean; needsPacking: boolean }>>([]);
+    const [products, setProducts] = useState<Array<{ id: number | string; name: string; sku: string; price: number; stock: number; lastPurchasePrice?: number; lastSupplier?: string; hasVariations: boolean; needsPacking: boolean; variations?: Array<{ id: string; attributes?: Record<string, unknown>; size?: string; color?: string }> }>>([]);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     
@@ -232,6 +209,7 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
 
     // Status State
     const [purchaseStatus, setPurchaseStatus] = useState<'draft' | 'ordered' | 'received' | 'final'>('draft');
+    const [statusOpen, setStatusOpen] = useState(false);
 
     // Packing Modal State - Now using global modal via NavigationContext
     const [activePackingItemId, setActivePackingItemId] = useState<number | null>(null);
@@ -259,6 +237,46 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
 
     const getSupplierName = () => suppliers.find(s => s.id.toString() === supplierId)?.name || "Select Supplier";
 
+    const selectedSupplierDue = suppliers.find(s => s.id.toString() === supplierId)?.dueBalance ?? 0;
+    const isFinal = purchaseStatus === 'final';
+
+    // When status changes away from Final: clear temp payments (ERP rule: payment only when Final)
+    useEffect(() => {
+        if (purchaseStatus !== 'final') {
+            setPartialPayments([]);
+            setNewPaymentAmount(0);
+            setNewPaymentReference('');
+            setPaymentAttachments([]);
+        }
+    }, [purchaseStatus]);
+
+    const formatDueBalanceCompact = (due: number) => {
+        if (due === 0) return '0';
+        if (due < 0) return `-${Math.abs(due).toLocaleString()}`;
+        return `+${due.toLocaleString()}`;
+    };
+    const getDueBalanceColor = (due: number) => {
+        if (due < 0) return 'text-green-400';
+        if (due > 0) return 'text-red-400';
+        return 'text-gray-500';
+    };
+
+    // Variation options from backend only (product.variations) - no dummy data
+    const productVariationsFromBackend = useMemo(() => {
+        const map: Record<number, Array<{ size: string; color: string }>> = {};
+        products.forEach((p) => {
+            if (!p.variations?.length) return;
+            const key = typeof p.id === 'number' ? p.id : (/^\d+$/.test(String(p.id)) ? parseInt(String(p.id), 10) : NaN);
+            if (!Number.isNaN(key)) {
+                map[key] = p.variations.map((v: any) => ({
+                    size: (v.attributes?.size ?? v.size ?? '').toString(),
+                    color: (v.attributes?.color ?? v.color ?? '').toString(),
+                }));
+            }
+        });
+        return map;
+    }, [products]);
+
     // Status helper functions
     const getStatusColor = () => {
         switch(purchaseStatus) {
@@ -267,6 +285,15 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
             case 'received': return 'text-blue-500 bg-blue-900/20 border-blue-600/50';
             case 'final': return 'text-green-500 bg-green-900/20 border-green-600/50';
             default: return 'text-gray-500 bg-gray-900/50 border-gray-700';
+        }
+    };
+    const getStatusChipColor = () => {
+        switch(purchaseStatus) {
+            case 'draft': return 'bg-gray-500/20 text-gray-400 border-gray-600/50';
+            case 'ordered': return 'bg-yellow-500/20 text-yellow-400 border-yellow-600/50';
+            case 'received': return 'bg-blue-500/20 text-blue-400 border-blue-600/50';
+            case 'final': return 'bg-green-500/20 text-green-400 border-green-600/50';
+            default: return 'bg-gray-500/20 text-gray-400 border-gray-600/50';
         }
     };
 
@@ -395,45 +422,38 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
         setItems(prev => prev.filter(item => item.id !== id));
     };
 
-    // Packing Handlers - Open with existing data if available (for editing)
+    // Packing Handlers - Bind itemId in onSave so first-time save works (no stale activePackingItemId)
     const openPackingModalLocal = (item: PurchaseItem) => {
         setActivePackingItemId(item.id);
-        // Use global packing modal
         if (openPackingModal) {
             openPackingModal({
                 itemId: item.id,
                 productName: item.name,
-                initialData: item.packingDetails, // Pre-fill with existing data if editing
-                onSave: handleSavePacking
+                initialData: item.packingDetails,
+                onSave: (details: PackingDetails) => handleSavePacking(item.id, details)
             });
         }
     };
 
     const handleOpenPackingModalById = (itemId: number) => {
+        if (!enablePacking) return;
         const item = items.find(i => i.id === itemId);
-        if (item) {
-            openPackingModalLocal(item);
-        }
+        if (item) openPackingModalLocal(item);
     };
 
-    const handleSavePacking = (details: PackingDetails) => {
-        if (activePackingItemId !== null) {
-            // Update existing item
-            setItems(prev => prev.map(item => {
-                if (item.id === activePackingItemId) {
-                    return { 
-                        ...item, 
-                        packingDetails: details,
-                        qty: details.total_meters, // Auto-update quantity based on meters
-                        thaans: details.total_boxes,
-                        meters: details.total_meters
-                    };
-                }
-                return item;
-            }));
-            toast.success("Packing details saved");
-            setActivePackingItemId(null);
-        }
+    const handleSavePacking = (itemId: number, details: PackingDetails) => {
+        setItems(prev => prev.map(item => {
+            if (item.id !== itemId) return item;
+            return {
+                ...item,
+                packingDetails: details,
+                qty: details.total_meters ?? item.qty,
+                thaans: details.total_boxes,
+                meters: details.total_meters
+            };
+        }));
+        toast.success("Packing details saved");
+        setActivePackingItemId(null);
     };
 
     // Add Payment
@@ -508,12 +528,13 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                     id: p.id || p.uuid || '',
                     name: p.name || '',
                     sku: p.sku || '',
-                    price: p.costPrice || p.price || 0,
-                    stock: p.stock || 0,
-                    lastPurchasePrice: p.costPrice || undefined,
+                    price: (p.cost_price ?? p.costPrice ?? p.price) || 0,
+                    stock: (p.current_stock ?? p.stock) ?? 0,
+                    lastPurchasePrice: (p.cost_price ?? p.costPrice) ?? undefined,
                     lastSupplier: undefined, // Can be enhanced later
                     hasVariations: (p.variations && p.variations.length > 0) || false,
-                    needsPacking: false // Can be enhanced based on product type
+                    needsPacking: false, // Can be enhanced based on product type
+                    variations: p.variations || []
                 }));
                 setProducts(productsList);
             } catch (error) {
@@ -729,6 +750,8 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                 setPurchaseStatus('ordered');
             } else if (initialPurchase.status === 'received') {
                 setPurchaseStatus('received');
+            } else if (initialPurchase.status === 'completed' || initialPurchase.status === 'final') {
+                setPurchaseStatus('final');
             } else {
                 setPurchaseStatus('draft');
             }
@@ -754,7 +777,7 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
             const supplierName = selectedSupplier?.name || '';
             const supplierUuid = supplierId.toString();
             
-            // Convert items to PurchaseItem format
+            // Convert items to PurchaseItem format (packing only when Enable Packing is ON)
             const purchaseItems = items.map(item => ({
                 id: item.id.toString(),
                 productId: item.productId.toString(),
@@ -766,10 +789,11 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                 discount: 0, // Can be enhanced later
                 tax: 0, // Can be enhanced later
                 total: item.price * item.qty,
-                // Include packing data if available
-                packingDetails: item.packingDetails,
-                thaans: item.thaans,
-                meters: item.meters
+                ...(enablePacking ? {
+                    packingDetails: item.packingDetails,
+                    thaans: item.thaans,
+                    meters: item.meters
+                } : { packingDetails: undefined, thaans: undefined, meters: undefined })
             }));
             
             // CRITICAL FIX: Branch validation
@@ -876,9 +900,9 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
     
     return (
         <div className="flex flex-col h-screen bg-[#111827] text-white overflow-hidden">
-            {/* ============ LAYER 1: FIXED HEADER ============ */}
+            {/* ============ LAYER 1: FIXED HEADER (Same as Purchase Header Test / Sale) ============ */}
             <div className="shrink-0 bg-[#0B1019] border-b border-gray-800 z-20">
-                {/* Top Bar */}
+                {/* Top Bar – PO # left, Status + Branch right */}
                 <div className="h-12 flex items-center justify-between px-6 border-b border-gray-800/50">
                     <div className="flex items-center gap-3">
                         <Button variant="ghost" size="icon" onClick={onClose} className="text-gray-400 hover:text-white h-8 w-8">
@@ -888,17 +912,71 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                             <h2 className="text-sm font-bold text-white">New Purchase Order</h2>
                             <p className="text-[10px] text-gray-500">Standard Entry</p>
                         </div>
+                        <div className="flex items-center gap-2 ml-4 pl-4 border-l border-gray-800">
+                            <Hash size={14} className="text-cyan-500" />
+                            <span className="text-sm font-mono text-cyan-400">{refNumber || 'PO-001'}</span>
+                        </div>
                     </div>
-                    <BranchSelector branchId={branchId} setBranchId={setBranchId} variant="header" />
+                    <div className="flex items-center gap-4">
+                        <Popover open={statusOpen} onOpenChange={setStatusOpen}>
+                            <PopoverTrigger asChild>
+                                <button
+                                    type="button"
+                                    className={cn(
+                                        'px-3 py-1 rounded-lg text-xs font-medium border transition-all flex items-center gap-1.5',
+                                        getStatusChipColor(),
+                                        'hover:opacity-80 cursor-pointer'
+                                    )}
+                                >
+                                    <span className="w-1.5 h-1.5 rounded-full bg-current" />
+                                    {purchaseStatus.charAt(0).toUpperCase() + purchaseStatus.slice(1)}
+                                </button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-48 bg-gray-900 border-gray-800 text-white p-2" align="start">
+                                <div className="space-y-1">
+                                    {(['draft', 'ordered', 'received', 'final'] as const).map((s) => (
+                                        <button
+                                            key={s}
+                                            type="button"
+                                            onClick={() => { setPurchaseStatus(s); setStatusOpen(false); }}
+                                            className={cn(
+                                                'w-full text-left px-3 py-2 rounded-md text-sm transition-all flex items-center gap-2',
+                                                purchaseStatus === s ? 'bg-gray-800 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'
+                                            )}
+                                        >
+                                            <span
+                                                className={cn(
+                                                    'w-1.5 h-1.5 rounded-full',
+                                                    s === 'draft' && 'bg-gray-500',
+                                                    s === 'ordered' && 'bg-yellow-500',
+                                                    s === 'received' && 'bg-blue-500',
+                                                    s === 'final' && 'bg-green-500'
+                                                )}
+                                            />
+                                            {s.charAt(0).toUpperCase() + s.slice(1)}
+                                        </button>
+                                    ))}
+                                </div>
+                            </PopoverContent>
+                        </Popover>
+                        <BranchSelector branchId={branchId} setBranchId={setBranchId} variant="header" />
+                    </div>
                 </div>
 
-                {/* Supplier & Invoice Info Row - FIXED ALIGNMENT */}
-                <div className="px-6 py-2.5 bg-[#0F1419]">
+                {/* Form Row – Supplier, Date, Ref # only (no Invoice #, Status in top bar) */}
+                <div className="px-6 py-4 bg-[#0F1419]">
                     <div className="invoice-container mx-auto w-full">
                         <div className="bg-gray-900/30 border border-gray-800/50 rounded-lg p-3">
-                            <div className="grid grid-cols-1 md:grid-cols-5 gap-2.5 items-end">
-                                <div className="flex flex-col">
-                                    <Label className="text-orange-400 font-medium text-[10px] uppercase tracking-wide h-[14px] mb-1.5">Supplier</Label>
+                            <div className="flex items-end gap-3 w-full flex-wrap">
+                                <div className="flex flex-col flex-1 min-w-0 min-w-[200px]">
+                                    <div className="flex items-center justify-between mb-1.5">
+                                        <Label className="text-orange-400 font-medium text-[10px] uppercase tracking-wide h-[14px]">Supplier</Label>
+                                        {supplierId && (
+                                            <span className={cn("text-[10px] font-medium tabular-nums", getDueBalanceColor(selectedSupplierDue))}>
+                                                {formatDueBalanceCompact(selectedSupplierDue)}
+                                            </span>
+                                        )}
+                                    </div>
                                     <SearchableSelect
                                         key={`supplier-select-${supplierId}-${suppliers.length}`}
                                         value={supplierId}
@@ -910,8 +988,6 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                                         enableAddNew={true}
                                         addNewLabel="Add New Supplier"
                                         onAddNew={(searchText) => {
-                                            // Open Add Contact drawer with Supplier role pre-selected and search text prefilled
-                                            console.log('[PURCHASE FORM] Opening Add Contact drawer, searchText:', searchText);
                                             openDrawer('addContact', 'addPurchase', { 
                                                 contactType: 'supplier',
                                                 prefillName: searchText || undefined
@@ -919,29 +995,32 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                                         }}
                                         renderOption={(option) => (
                                             <div className="flex items-center justify-between w-full">
-                                                <span className="flex-1">{option.name}</span>
-                                                {option.dueBalance > 0 && (
-                                                    <span className="text-xs font-medium px-2 py-0.5 rounded bg-orange-500/20 text-orange-400 ml-2">
-                                                        Due: ${option.dueBalance.toLocaleString()}
-                                                    </span>
-                                                )}
+                                                <span className="flex-1 font-medium">{option.name}</span>
+                                                <span className={cn(
+                                                    "text-xs font-semibold tabular-nums ml-2",
+                                                    option.dueBalance < 0 && "text-green-400",
+                                                    option.dueBalance > 0 && "text-red-400",
+                                                    option.dueBalance === 0 && "text-gray-500"
+                                                )}>
+                                                    {formatDueBalanceCompact(option.dueBalance)}
+                                                </span>
                                             </div>
                                         )}
                                     />
                                 </div>
-
-                                <div className="flex flex-col">
+                                <div className="flex flex-col w-32">
                                     <Label className="text-gray-500 font-medium text-xs uppercase tracking-wide h-[14px] mb-1.5">Date</Label>
-                                    <CalendarDatePicker
-                                        value={purchaseDate}
-                                        onChange={(date) => setPurchaseDate(date || new Date())}
-                                        showTime={true}
-                                        required
-                                    />
+                                    <div className="[&>div>button]:bg-gray-900/50 [&>div>button]:border-gray-800 [&>div>button]:text-white [&>div>button]:text-xs [&>div>button]:h-10 [&>div>button]:min-h-[40px] [&>div>button]:px-2.5 [&>div>button]:py-1 [&>div>button]:rounded-lg [&>div>button]:border [&>div>button]:hover:bg-gray-800 [&>div>button]:w-full [&>div>button]:justify-start">
+                                        <CalendarDatePicker
+                                            value={purchaseDate}
+                                            onChange={(date) => setPurchaseDate(date || new Date())}
+                                            showTime={true}
+                                            required
+                                        />
+                                    </div>
                                 </div>
-
-                                <div className="flex flex-col">
-                                    <Label className="text-gray-500 font-medium text-xs uppercase tracking-wide h-[14px] mb-1.5">Ref#</Label>
+                                <div className="flex flex-col w-24">
+                                    <Label className="text-gray-500 font-medium text-xs uppercase tracking-wide h-[14px] mb-1.5">Ref #</Label>
                                     <div className="relative">
                                         <FileText className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-600" size={14} />
                                         <Input 
@@ -951,58 +1030,6 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                                             placeholder="PO-001"
                                         />
                                     </div>
-                                </div>
-
-                                <div className="flex flex-col">
-                                    <Label className="text-cyan-500 font-medium text-xs uppercase tracking-wide h-[14px] mb-1.5">Invoice#</Label>
-                                    <div className="relative">
-                                        <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-cyan-500" size={14} />
-                                        <Input 
-                                            value="INV-001"
-                                            readOnly
-                                            disabled
-                                            className="pl-9 bg-gray-950/50 border-cyan-500/30 text-cyan-400 h-10 text-sm cursor-not-allowed font-mono"
-                                            placeholder="INV-001"
-                                        />
-                                    </div>
-                                </div>
-
-                                <div className="flex flex-col">
-                                    <Label className="text-cyan-500 font-medium text-xs uppercase tracking-wide h-[14px] mb-1.5">Status</Label>
-                                    <Select value={purchaseStatus} onValueChange={(v: any) => setPurchaseStatus(v)}>
-                                        <SelectTrigger className={`h-10 border ${getStatusColor()}`}>
-                                            <div className="flex items-center gap-2">
-                                                {getStatusIcon()}
-                                                <SelectValue />
-                                            </div>
-                                        </SelectTrigger>
-                                        <SelectContent className="bg-gray-950 border-gray-800 text-white">
-                                            <SelectItem value="draft">
-                                                <div className="flex items-center gap-2">
-                                                    <span className="w-2 h-2 rounded-full bg-gray-500"></span>
-                                                    Draft
-                                                </div>
-                                            </SelectItem>
-                                            <SelectItem value="ordered">
-                                                <div className="flex items-center gap-2">
-                                                    <span className="w-2 h-2 rounded-full bg-yellow-500"></span>
-                                                    Ordered
-                                                </div>
-                                            </SelectItem>
-                                            <SelectItem value="received">
-                                                <div className="flex items-center gap-2">
-                                                    <span className="w-2 h-2 rounded-full bg-blue-500"></span>
-                                                    Received
-                                                </div>
-                                            </SelectItem>
-                                            <SelectItem value="final">
-                                                <div className="flex items-center gap-2">
-                                                    <span className="w-2 h-2 rounded-full bg-green-500"></span>
-                                                    Final
-                                                </div>
-                                            </SelectItem>
-                                        </SelectContent>
-                                    </Select>
                                 </div>
                             </div>
                         </div>
@@ -1043,6 +1070,7 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                                 handleSelectProduct={handleSelectProduct}
                                 handleAddItem={commitPendingItem}
                                 handleOpenPackingModal={handleOpenPackingModalById}
+                                enablePacking={enablePacking}
                                 searchInputRef={searchInputRef}
                                 qtyInputRef={qtyInputRef}
                                 priceInputRef={priceInputRef}
@@ -1050,7 +1078,7 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                                 // Inline variation selection
                                 showVariationSelector={showVariationSelector}
                                 selectedProductForVariation={selectedProductForVariation}
-                                productVariations={productVariations}
+                                productVariations={productVariationsFromBackend}
                                 handleVariationSelect={handleVariationSelect}
                                 setShowVariationSelector={setShowVariationSelector}
                                 setSelectedProductForVariation={setSelectedProductForVariation}
@@ -1179,8 +1207,16 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                                 )}
                             </div>
 
-                            {/* Payment Section */}
-                            <div className="bg-gray-900/50 border border-gray-800 rounded-lg p-4 space-y-4 shrink-0">
+                            {/* Payment Section – enabled only when Status = Final (ERP rule) */}
+                            <div className={cn(
+                                "bg-gray-900/50 border border-gray-800 rounded-lg p-4 space-y-4 shrink-0 transition-opacity",
+                                !isFinal && "opacity-50 pointer-events-none"
+                            )}>
+                                {!isFinal && (
+                                    <div className="text-xs text-yellow-400 mb-2 rounded-md bg-yellow-500/10 border border-yellow-500/30 px-3 py-2">
+                                        Payment sirf Final status par allowed hai. Status ko Final par set karein.
+                                    </div>
+                                )}
                                 {/* Header with Status Badge */}
                                 <div className="flex items-center justify-between">
                                     <h3 className="text-sm font-semibold text-gray-300 uppercase tracking-wide">Payment</h3>
@@ -1234,29 +1270,33 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                                 <div className="grid grid-cols-4 gap-2">
                                     <Button 
                                         type="button"
+                                        disabled={!isFinal}
                                         onClick={() => setNewPaymentAmount(totalAmount * 0.25)}
-                                        className="h-9 bg-gray-800 hover:bg-gray-700 text-white text-xs border border-gray-700"
+                                        className="h-9 bg-gray-800 hover:bg-gray-700 text-white text-xs border border-gray-700 disabled:opacity-50 disabled:pointer-events-none"
                                     >
                                         25%
                                     </Button>
                                     <Button 
                                         type="button"
+                                        disabled={!isFinal}
                                         onClick={() => setNewPaymentAmount(totalAmount * 0.50)}
-                                        className="h-9 bg-gray-800 hover:bg-gray-700 text-white text-xs border border-gray-700"
+                                        className="h-9 bg-gray-800 hover:bg-gray-700 text-white text-xs border border-gray-700 disabled:opacity-50 disabled:pointer-events-none"
                                     >
                                         50%
                                     </Button>
                                     <Button 
                                         type="button"
+                                        disabled={!isFinal}
                                         onClick={() => setNewPaymentAmount(totalAmount * 0.75)}
-                                        className="h-9 bg-gray-800 hover:bg-gray-700 text-white text-xs border border-gray-700"
+                                        className="h-9 bg-gray-800 hover:bg-gray-700 text-white text-xs border border-gray-700 disabled:opacity-50 disabled:pointer-events-none"
                                     >
                                         75%
                                     </Button>
                                     <Button 
                                         type="button"
+                                        disabled={!isFinal}
                                         onClick={() => setNewPaymentAmount(totalAmount)}
-                                        className="h-9 bg-green-700 hover:bg-green-600 text-white text-xs border border-green-600"
+                                        className="h-9 bg-green-700 hover:bg-green-600 text-white text-xs border border-green-600 disabled:opacity-50 disabled:pointer-events-none"
                                     >
                                         Full
                                     </Button>
@@ -1267,8 +1307,8 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                             <div className="space-y-2">
                                 <Label className="text-xs text-gray-500">Add Payment</Label>
                                 <div className="grid grid-cols-2 gap-2">
-                                    <Select value={newPaymentMethod} onValueChange={(v: any) => setNewPaymentMethod(v)}>
-                                        <SelectTrigger className="h-9 bg-gray-950 border-gray-700 text-white text-xs">
+                                    <Select value={newPaymentMethod} onValueChange={(v: any) => setNewPaymentMethod(v)} disabled={!isFinal}>
+                                        <SelectTrigger className="h-9 bg-gray-950 border-gray-700 text-white text-xs disabled:opacity-50">
                                             <SelectValue />
                                         </SelectTrigger>
                                         <SelectContent className="bg-gray-950 border-gray-800 text-white">
@@ -1280,16 +1320,18 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                                     <Input 
                                         type="number"
                                         placeholder="Amount"
+                                        disabled={!isFinal}
                                         value={newPaymentAmount > 0 ? newPaymentAmount : ''}
                                         onChange={(e) => setNewPaymentAmount(parseFloat(e.target.value) || 0)}
-                                        className="h-9 bg-gray-950 border-gray-700 text-white text-xs"
+                                        className="h-9 bg-gray-950 border-gray-700 text-white text-xs disabled:opacity-50"
                                     />
                                 </div>
                                 <Input 
                                     placeholder="Reference (optional)"
+                                    disabled={!isFinal}
                                     value={newPaymentReference}
                                     onChange={(e) => setNewPaymentReference(e.target.value)}
-                                    className="h-9 bg-gray-950 border-gray-700 text-white text-xs"
+                                    className="h-9 bg-gray-950 border-gray-700 text-white text-xs disabled:opacity-50"
                                 />
                                 <PaymentAttachments
                                     attachments={paymentAttachments}
@@ -1297,7 +1339,8 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                                 />
                                 <Button
                                     onClick={handleAddPayment}
-                                    className="w-full h-9 bg-blue-600 hover:bg-blue-500 text-white text-xs"
+                                    disabled={!isFinal}
+                                    className="w-full h-9 bg-blue-600 hover:bg-blue-500 text-white text-xs disabled:opacity-50 disabled:pointer-events-none"
                                 >
                                     <Plus size={14} className="mr-1" /> Add Payment
                                 </Button>
@@ -1323,8 +1366,10 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                                                 <div className="flex items-center gap-2">
                                                     <span className="text-white font-medium">${payment.amount.toLocaleString()}</span>
                                                     <button
+                                                        type="button"
+                                                        disabled={!isFinal}
                                                         onClick={() => setPartialPayments(partialPayments.filter(p => p.id !== payment.id))}
-                                                        className="text-red-400 hover:text-red-300 p-1"
+                                                        className="text-red-400 hover:text-red-300 p-1 disabled:opacity-50 disabled:pointer-events-none"
                                                     >
                                                         <Trash2 size={12} />
                                                     </button>
@@ -1352,8 +1397,8 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                         {/* Total Quantity */}
                         <span>Qty: {items.reduce((sum, item) => sum + item.qty, 0).toLocaleString()}</span>
                         
-                        {/* Packing Summary - Only show non-zero values */}
-                        {items.some(item => item.packingDetails) && (() => {
+                        {/* Packing Summary - Only when Enable Packing is ON and non-zero */}
+                        {enablePacking && items.some(item => item.packingDetails) && (() => {
                             const totalBoxes = items.reduce((sum, item) => sum + (item.packingDetails?.total_boxes || 0), 0);
                             const totalPieces = items.reduce((sum, item) => sum + (item.packingDetails?.total_pieces || 0), 0);
                             const totalMeters = items.reduce((sum, item) => sum + (item.packingDetails?.total_meters || 0), 0);

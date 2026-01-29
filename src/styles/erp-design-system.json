@@ -1,0 +1,247 @@
+{
+  "meta": {
+    "title": "ERP Color Theme & Design Settings",
+    "description": "Business use ke liye clean, professional, modern ERP theme. Light theme pehle; Dark theme optional.",
+    "figmaUsage": "figmaFlat.light / figmaFlat.dark se HEX copy karke Figma > Design > Local variables > Create variable > Color mein use karein.",
+    "sections": {
+      "1": "Primary, Secondary, Accent, Success, Warning, Error colors",
+      "2": "Background: Main, Card, Sidebar, Header",
+      "3": "Text: Primary, Secondary, Muted, Heading, Link",
+      "4": "Borders: Default, Active, Disabled",
+      "5": "Font: Family, sizes, weights",
+      "6": "Button styles: Primary, Secondary, Danger",
+      "7": "Input: Background, text, placeholder, focus, error",
+      "8": "Icons: Default, Active, Disabled"
+    }
+  },
+  "light": {
+    "colors": {
+      "primary": {
+        "value": "#2563EB",
+        "description": "Primary Color - Main CTA, blue"
+      },
+      "secondary": {
+        "value": "#64748B",
+        "description": "Secondary Color - Slate gray"
+      },
+      "accent": {
+        "value": "#0EA5E9",
+        "description": "Accent Color - Sky blue highlight"
+      },
+      "success": {
+        "value": "#10B981",
+        "description": "Success Color - Green"
+      },
+      "warning": {
+        "value": "#F59E0B",
+        "description": "Warning Color - Amber"
+      },
+      "error": {
+        "value": "#EF4444",
+        "description": "Error / Danger Color - Red"
+      },
+      "background": {
+        "main": "#F8FAFC",
+        "card": "#FFFFFF",
+        "sidebar": "#F1F5F9",
+        "header": "#FFFFFF"
+      },
+      "text": {
+        "primary": "#0F172A",
+        "secondary": "#475569",
+        "muted": "#94A3B8",
+        "heading": "#0F172A",
+        "link": "#2563EB"
+      },
+      "border": {
+        "default": "#E2E8F0",
+        "active": "#2563EB",
+        "disabled": "#CBD5E1"
+      },
+      "button": {
+        "primary": {
+          "bg": "#2563EB",
+          "bgHover": "#1D4ED8",
+          "bgDisabled": "#93C5FD",
+          "text": "#FFFFFF"
+        },
+        "secondary": {
+          "bg": "#F1F5F9",
+          "bgHover": "#E2E8F0",
+          "text": "#334155",
+          "border": "#E2E8F0"
+        },
+        "danger": {
+          "bg": "#EF4444",
+          "bgHover": "#DC2626",
+          "text": "#FFFFFF"
+        }
+      },
+      "input": {
+        "bg": "#FFFFFF",
+        "text": "#0F172A",
+        "placeholder": "#94A3B8",
+        "focusBorder": "#2563EB",
+        "errorBorder": "#EF4444"
+      },
+      "icon": {
+        "default": "#64748B",
+        "active": "#2563EB",
+        "disabled": "#CBD5E1"
+      }
+    },
+    "fonts": {
+      "family": "Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+      "sizes": {
+        "heading": "20px",
+        "body": "16px",
+        "button": "14px"
+      },
+      "weights": {
+        "regular": 400,
+        "medium": 500,
+        "bold": 700
+      }
+    }
+  },
+  "dark": {
+    "colors": {
+      "primary": "#3B82F6",
+      "secondary": "#94A3B8",
+      "accent": "#38BDF8",
+      "success": "#34D399",
+      "warning": "#FBBF24",
+      "error": "#F87171",
+      "background": {
+        "main": "#0F172A",
+        "card": "#1E293B",
+        "sidebar": "#1E293B",
+        "header": "#1E293B"
+      },
+      "text": {
+        "primary": "#F8FAFC",
+        "secondary": "#CBD5E1",
+        "muted": "#64748B",
+        "heading": "#F8FAFC",
+        "link": "#60A5FA"
+      },
+      "border": {
+        "default": "#334155",
+        "active": "#3B82F6",
+        "disabled": "#475569"
+      },
+      "button": {
+        "primary": {
+          "bg": "#3B82F6",
+          "bgHover": "#2563EB",
+          "bgDisabled": "#1E3A5F",
+          "text": "#FFFFFF"
+        },
+        "secondary": {
+          "bg": "#334155",
+          "bgHover": "#475569",
+          "text": "#F1F5F9",
+          "border": "#475569"
+        },
+        "danger": {
+          "bg": "#EF4444",
+          "bgHover": "#DC2626",
+          "text": "#FFFFFF"
+        }
+      },
+      "input": {
+        "bg": "#1E293B",
+        "text": "#F8FAFC",
+        "placeholder": "#64748B",
+        "focusBorder": "#3B82F6",
+        "errorBorder": "#F87171"
+      },
+      "icon": {
+        "default": "#94A3B8",
+        "active": "#60A5FA",
+        "disabled": "#475569"
+      }
+    }
+  },
+  "figmaFlat": {
+    "comment": "Figma Variables import ke liye flat list - har color ka naam aur HEX. Copy karke Figma > Local variables > Create variable > Color mein paste karein.",
+    "light": {
+      "primary": "#2563EB",
+      "secondary": "#64748B",
+      "accent": "#0EA5E9",
+      "success": "#10B981",
+      "warning": "#F59E0B",
+      "error": "#EF4444",
+      "bgMain": "#F8FAFC",
+      "bgCard": "#FFFFFF",
+      "bgSidebar": "#F1F5F9",
+      "bgHeader": "#FFFFFF",
+      "textPrimary": "#0F172A",
+      "textSecondary": "#475569",
+      "textMuted": "#94A3B8",
+      "textHeading": "#0F172A",
+      "textLink": "#2563EB",
+      "borderDefault": "#E2E8F0",
+      "borderActive": "#2563EB",
+      "borderDisabled": "#CBD5E1",
+      "btnPrimaryBg": "#2563EB",
+      "btnPrimaryBgHover": "#1D4ED8",
+      "btnPrimaryBgDisabled": "#93C5FD",
+      "btnPrimaryText": "#FFFFFF",
+      "btnSecondaryBg": "#F1F5F9",
+      "btnSecondaryBgHover": "#E2E8F0",
+      "btnSecondaryText": "#334155",
+      "btnSecondaryBorder": "#E2E8F0",
+      "btnDangerBg": "#EF4444",
+      "btnDangerBgHover": "#DC2626",
+      "btnDangerText": "#FFFFFF",
+      "inputBg": "#FFFFFF",
+      "inputText": "#0F172A",
+      "inputPlaceholder": "#94A3B8",
+      "inputFocusBorder": "#2563EB",
+      "inputErrorBorder": "#EF4444",
+      "iconDefault": "#64748B",
+      "iconActive": "#2563EB",
+      "iconDisabled": "#CBD5E1"
+    },
+    "dark": {
+      "primary": "#3B82F6",
+      "secondary": "#94A3B8",
+      "accent": "#38BDF8",
+      "success": "#34D399",
+      "warning": "#FBBF24",
+      "error": "#F87171",
+      "bgMain": "#0F172A",
+      "bgCard": "#1E293B",
+      "bgSidebar": "#1E293B",
+      "bgHeader": "#1E293B",
+      "textPrimary": "#F8FAFC",
+      "textSecondary": "#CBD5E1",
+      "textMuted": "#64748B",
+      "textHeading": "#F8FAFC",
+      "textLink": "#60A5FA",
+      "borderDefault": "#334155",
+      "borderActive": "#3B82F6",
+      "borderDisabled": "#475569",
+      "btnPrimaryBg": "#3B82F6",
+      "btnPrimaryBgHover": "#2563EB",
+      "btnPrimaryBgDisabled": "#1E3A5F",
+      "btnPrimaryText": "#FFFFFF",
+      "btnSecondaryBg": "#334155",
+      "btnSecondaryBgHover": "#475569",
+      "btnSecondaryText": "#F1F5F9",
+      "btnSecondaryBorder": "#475569",
+      "btnDangerBg": "#EF4444",
+      "btnDangerBgHover": "#DC2626",
+      "btnDangerText": "#FFFFFF",
+      "inputBg": "#1E293B",
+      "inputText": "#F8FAFC",
+      "inputPlaceholder": "#64748B",
+      "inputFocusBorder": "#3B82F6",
+      "inputErrorBorder": "#F87171",
+      "iconDefault": "#94A3B8",
+      "iconActive": "#60A5FA",
+      "iconDisabled": "#475569"
+    }
+  }
+}

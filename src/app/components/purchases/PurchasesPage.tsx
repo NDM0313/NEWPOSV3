@@ -202,7 +202,7 @@ export const PurchasesPage = () => {
     
     try {
       setLoading(true);
-      const data = await purchaseService.getAllPurchases(companyId, branchId || undefined);
+      const data = await purchaseService.getAllPurchases(companyId, branchId === 'all' ? undefined : branchId || undefined);
       
       // Convert Supabase format to app format
       const convertedPurchases: Purchase[] = data.map((p: any, index: number) => {

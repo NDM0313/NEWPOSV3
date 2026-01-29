@@ -35,6 +35,7 @@ type View =
   | 'packing'
   | 'contact-search-test'
   | 'sale-header-test'
+  | 'purchase-header-test'
   | 'transaction-header-test'
   | 'user-management-test'
   | 'branch-management-test'
@@ -71,6 +72,23 @@ interface NavigationContextType {
 }
 
 const NavigationContext = createContext<NavigationContextType | undefined>(undefined);
+
+/** Safe default when used outside provider (e.g. HMR or portal). Avoids crash; warn in dev. */
+const defaultNavigationContext: NavigationContextType = {
+  currentView: 'dashboard',
+  setCurrentView: () => {},
+  isSidebarOpen: true,
+  toggleSidebar: () => {},
+  activeDrawer: 'none',
+  openDrawer: () => {},
+  closeDrawer: () => {},
+  parentDrawer: null,
+  setCreatedContactId: () => {},
+  openPackingModal: () => {},
+  closePackingModal: () => {},
+  packingModalOpen: false,
+  packingModalData: null,
+};
 
 export const NavigationProvider = ({ children }: { children: ReactNode }) => {
   const [currentView, setCurrentView] = useState<View>('dashboard');
@@ -205,10 +223,14 @@ export const NavigationProvider = ({ children }: { children: ReactNode }) => {
   );
 };
 
-export const useNavigation = () => {
+export const useNavigation = (): NavigationContextType => {
   const context = useContext(NavigationContext);
   if (!context) {
-    throw new Error('useNavigation must be used within a NavigationProvider');
+    const isDev = typeof import.meta !== 'undefined' && import.meta.env?.DEV !== undefined ? import.meta.env.DEV : (typeof process !== 'undefined' && process.env?.NODE_ENV === 'development');
+    if (isDev) {
+      console.warn('[NavigationContext] useNavigation called outside NavigationProvider (e.g. HMR or portal). Using safe defaults.');
+    }
+    return defaultNavigationContext;
   }
   return context;
 };

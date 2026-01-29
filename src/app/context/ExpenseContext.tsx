@@ -166,7 +166,7 @@ export const ExpenseProvider = ({ children }: { children: ReactNode }) => {
     
     try {
       setLoading(true);
-      const data = await expenseService.getAllExpenses(companyId, branchId || undefined);
+      const data = await expenseService.getAllExpenses(companyId, branchId === 'all' ? undefined : branchId || undefined);
       setExpenses(data.map(convertFromSupabaseExpense));
     } catch (error) {
       console.error('[EXPENSE CONTEXT] Error loading expenses:', error);

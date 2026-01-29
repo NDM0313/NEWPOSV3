@@ -11,6 +11,7 @@ import { ViewSaleDetailsDrawer } from '../sales/ViewSaleDetailsDrawer';
 import { ViewPurchaseDetailsDrawer } from '../purchases/ViewPurchaseDetailsDrawer';
 import { productService } from '@/app/services/productService';
 import { branchService, Branch } from '@/app/services/branchService';
+import { formatStockReference } from '@/app/utils/formatters';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { useSales } from '@/app/context/SalesContext';
 import { usePurchases } from '@/app/context/PurchaseContext';
@@ -323,24 +324,18 @@ export const ProductStockHistoryDrawer = ({
     return (movement.movement_type || movement.type || 'unknown').toLowerCase();
   };
 
-  // Get movement reference (sale invoice, purchase order, etc.)
+  // Get movement reference (short format – never show UUID in UI)
   const getMovementReference = (movement: StockMovement) => {
-    if (movement.reference_type && movement.reference_id) {
-      // Format based on reference type
-      const refType = movement.reference_type.toLowerCase();
-      if (refType.includes('sale') || refType.includes('invoice')) {
-        return `Inv-${movement.reference_id.substring(0, 3)}`;
-      } else if (refType.includes('purchase') || refType.includes('order')) {
-        return `PO-${movement.reference_id.substring(0, 3)}`;
-      } else if (refType.includes('adjustment') || refType.includes('audit')) {
-        return movement.notes || `Adjustment-${movement.reference_id.substring(0, 3)}`;
-      }
-      return `${refType}-${movement.reference_id.substring(0, 3)}`;
-    }
-    // Fallback to notes or movement type
-    if (movement.notes) return movement.notes;
-    const type = getMovementType(movement);
-    return `${type.charAt(0).toUpperCase() + type.slice(1)}-${movement.id.substring(0, 3)}`;
+    const sale = movement.reference_type && movement.reference_id && String(movement.reference_type).toLowerCase().includes('sale') ? getSaleById(movement.reference_id) : null;
+    const purchase = movement.reference_type && movement.reference_id && String(movement.reference_type).toLowerCase().includes('purchase') ? getPurchaseById(movement.reference_id) : null;
+    return formatStockReference({
+      referenceType: movement.reference_type,
+      referenceId: movement.reference_id,
+      movementId: movement.id,
+      saleInvoiceNo: sale?.invoiceNo,
+      purchaseInvoiceNo: purchase?.purchaseNo,
+      notes: movement.notes,
+    });
   };
 
   // Handle reference click to open sale/purchase detail
