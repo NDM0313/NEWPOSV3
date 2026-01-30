@@ -1,10 +1,14 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useSales, Sale, convertFromSupabaseSale } from '@/app/context/SalesContext';
 import { useSupabase } from '@/app/context/SupabaseContext';
+import { useSettings } from '@/app/context/SettingsContext';
 import { branchService, Branch } from '@/app/services/branchService';
 import { contactService } from '@/app/services/contactService';
 import { saleService } from '@/app/services/saleService';
+import { activityLogService } from '@/app/services/activityLogService';
 import { InvoicePrintLayout } from '../shared/InvoicePrintLayout';
+import { PaymentDeleteConfirmationModal } from '../shared/PaymentDeleteConfirmationModal';
+import { UnifiedPaymentDialog } from '../shared/UnifiedPaymentDialog';
 import { 
   X, 
   Calendar, 
@@ -25,7 +29,10 @@ import {
   Printer,
   Download,
   Share2,
-  MoreVertical
+  MoreVertical,
+  Paperclip,
+  Image as ImageIcon,
+  File
 } from 'lucide-react';
 import { Button } from "../ui/button";
 import { Badge } from "../ui/badge";
@@ -123,7 +130,9 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
 }) => {
   const [activeTab, setActiveTab] = useState<'details' | 'payments' | 'history'>('details');
   const { getSaleById } = useSales();
-  const { companyId, enablePacking } = useSupabase();
+  const { companyId, user } = useSupabase();
+  const { inventorySettings } = useSettings();
+  const enablePacking = inventorySettings.enablePacking;
   const [sale, setSale] = useState<Sale | null>(null);
   const [loading, setLoading] = useState(true);
   const [showPrintLayout, setShowPrintLayout] = useState(false);
@@ -131,6 +140,13 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
   const [customerCode, setCustomerCode] = useState<string | null>(null);
   const [payments, setPayments] = useState<any[]>([]);
   const [loadingPayments, setLoadingPayments] = useState(false);
+  const [activityLogs, setActivityLogs] = useState<any[]>([]);
+  const [loadingActivityLogs, setLoadingActivityLogs] = useState(false);
+  const [deleteConfirmationOpen, setDeleteConfirmationOpen] = useState(false);
+  const [paymentToDelete, setPaymentToDelete] = useState<any | null>(null);
+  const [isDeletingPayment, setIsDeletingPayment] = useState(false);
+  const [editPaymentDialogOpen, setEditPaymentDialogOpen] = useState(false);
+  const [paymentToEdit, setPaymentToEdit] = useState<any | null>(null);
 
   // Load branches for location display
   useEffect(() => {
@@ -226,6 +242,21 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
       setLoadingPayments(false);
     }
   }, []);
+
+  // CRITICAL FIX: Load activity logs
+  const loadActivityLogs = useCallback(async (saleId: string) => {
+    if (!companyId) return;
+    setLoadingActivityLogs(true);
+    try {
+      const logs = await activityLogService.getEntityActivityLogs(companyId, 'sale', saleId);
+      setActivityLogs(logs);
+    } catch (error) {
+      console.error('[VIEW SALE] Error loading activity logs:', error);
+      setActivityLogs([]);
+    } finally {
+      setLoadingActivityLogs(false);
+    }
+  }, [companyId]);
   
   // CRITICAL FIX: Reload sale data (called after payment is added)
   const reloadSaleData = useCallback(async () => {
@@ -829,52 +860,62 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
                                payment.method === 'bank' ? 'Bank' :
                                payment.method === 'card' ? 'Card' : 'Other'}
                         </Badge>
-                            {/* CRITICAL FIX: Add delete button for each payment */}
+                            {/* CRITICAL FIX: Add edit and delete buttons for each payment */}
                             <button
-                              onClick={async () => {
-                                if (!window.confirm(`Are you sure you want to delete this payment of Rs ${payment.amount.toLocaleString()}? This will create a reverse entry and update the invoice balance.`)) {
-                                  return;
-                                }
-                                
-                                // CRITICAL FIX: Set loading state
-                                setLoadingPayments(true);
-                                
-                                try {
-                                  // CRITICAL FIX: Add timeout to prevent infinite hang
-                                  const deletePromise = saleService.deletePayment(payment.id, sale.id);
-                                  const timeoutPromise = new Promise((_, reject) => 
-                                    setTimeout(() => reject(new Error('Payment deletion timed out. Please try again.')), 10000)
-                                  );
-                                  
-                                  await Promise.race([deletePromise, timeoutPromise]);
-                                  
-                                  toast.success('Payment deleted successfully. Reverse entry created.');
-                                  
-                                  // CRITICAL FIX: Reload payments and sale data
-                                  await Promise.all([
-                                    loadPayments(sale.id),
-                                    reloadSaleData()
-                                  ]);
-                                } catch (error: any) {
-                                  console.error('[VIEW SALE] Error deleting payment:', error);
-                                  toast.error(error?.message || 'Failed to delete payment. Please try again.');
-                                } finally {
-                                  // CRITICAL FIX: Always reset loading state
-                                  setLoadingPayments(false);
-                                }
+                              onClick={() => {
+                                setPaymentToEdit(payment);
+                                setEditPaymentDialogOpen(true);
+                              }}
+                              className="p-1.5 rounded-lg hover:bg-blue-500/20 text-gray-400 hover:text-blue-400 transition-colors"
+                              title="Edit Payment"
+                            >
+                              <Edit size={14} />
+                            </button>
+                            <button
+                              onClick={() => {
+                                setPaymentToDelete(payment);
+                                setDeleteConfirmationOpen(true);
                               }}
                               className="p-1.5 rounded-lg hover:bg-red-500/20 text-gray-400 hover:text-red-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                               title="Delete Payment"
-                              disabled={loadingPayments}
+                              disabled={isDeletingPayment || loadingPayments}
                             >
-                              {loadingPayments ? (
-                                <span className="animate-spin">⏳</span>
-                              ) : (
-                                <Trash2 size={14} />
-                              )}
+                              <Trash2 size={14} />
                             </button>
                       </div>
                         </div>
+                        {/* CRITICAL FIX: Show attachment icon if payment has attachments */}
+                        {payment.attachments && (
+                          <div className="mt-2 flex items-center gap-2">
+                            <span className="text-xs text-gray-500">Attachments:</span>
+                            {Array.isArray(payment.attachments) ? (
+                              payment.attachments.map((att: any, idx: number) => {
+                                const url = att.url || att.fileUrl || att;
+                                const name = att.name || att.fileName || `Attachment ${idx + 1}`;
+                                const isImage = /\.(jpg|jpeg|png|gif|webp)$/i.test(url);
+                                return (
+                                  <button
+                                    key={idx}
+                                    onClick={() => window.open(url, '_blank')}
+                                    className="flex items-center gap-1 px-2 py-1 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/30 rounded text-blue-400 text-xs transition-colors"
+                                  >
+                                    {isImage ? <ImageIcon size={12} /> : <File size={12} />}
+                                    <span>{name}</span>
+                                    <Paperclip size={10} />
+                                  </button>
+                                );
+                              })
+                            ) : typeof payment.attachments === 'string' ? (
+                              <button
+                                onClick={() => window.open(payment.attachments, '_blank')}
+                                className="flex items-center gap-1 px-2 py-1 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/30 rounded text-blue-400 text-xs transition-colors"
+                              >
+                                <Paperclip size={12} />
+                                <span>View Attachment</span>
+                              </button>
+                            ) : null}
+                        </div>
+                      )}
                         {payment.notes && (
                           <p className="text-xs text-gray-500 mt-2">{payment.notes}</p>
                       )}
@@ -904,49 +945,92 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
             <div className="space-y-3">
               <h3 className="text-lg font-semibold text-white mb-4">Activity Timeline</h3>
               
-              {/* Timeline */}
+              {loadingActivityLogs ? (
+                <div className="text-center py-12 text-gray-400">Loading activity logs...</div>
+              ) : activityLogs.length > 0 ? (
               <div className="space-y-4">
-                <div className="flex gap-4">
+                  {activityLogs.map((log, index) => {
+                    const getIcon = () => {
+                      switch (log.action) {
+                        case 'create':
+                          return <FileText size={16} className="text-gray-500" />;
+                        case 'status_change':
+                          return <CheckCircle2 size={16} className="text-green-500" />;
+                        case 'payment_added':
+                          return <DollarSign size={16} className="text-blue-500" />;
+                        case 'payment_deleted':
+                          return <DollarSign size={16} className="text-red-500" />;
+                        case 'update':
+                          return <Edit size={16} className="text-yellow-500" />;
+                        case 'delete':
+                          return <Trash2 size={16} className="text-red-500" />;
+                        default:
+                          return <Clock size={16} className="text-gray-500" />;
+                      }
+                    };
+
+                    const getBgColor = () => {
+                      switch (log.action) {
+                        case 'create':
+                          return 'bg-gray-700/20';
+                        case 'status_change':
+                          return 'bg-green-500/20';
+                        case 'payment_added':
+                          return 'bg-blue-500/20';
+                        case 'payment_deleted':
+                          return 'bg-red-500/20';
+                        case 'update':
+                          return 'bg-yellow-500/20';
+                        case 'delete':
+                          return 'bg-red-500/20';
+                        default:
+                          return 'bg-gray-700/20';
+                      }
+                    };
+
+                    return (
+                      <div key={log.id || index} className="flex gap-4">
                   <div className="flex flex-col items-center">
-                    <div className="w-8 h-8 rounded-full bg-green-500/20 flex items-center justify-center">
-                      <CheckCircle2 size={16} className="text-green-500" />
+                          <div className={`w-8 h-8 rounded-full ${getBgColor()} flex items-center justify-center`}>
+                            {getIcon()}
                     </div>
+                          {index < activityLogs.length - 1 && (
                     <div className="w-0.5 h-full bg-gray-800 mt-2" />
+                          )}
                   </div>
                   <div className="flex-1 pb-6">
-                    <p className="text-white font-medium">Sale Finalized</p>
-                    <p className="text-sm text-gray-400 mt-1">{sale.updatedAt || sale.createdAt}</p>
-                    <p className="text-sm text-gray-500 mt-1">Status changed to Final</p>
+                          <p className="text-white font-medium">
+                            {log.description || activityLogService.formatActivityLog(log)}
+                          </p>
+                          <p className="text-sm text-gray-400 mt-1">
+                            {new Date(log.created_at).toLocaleString()}
+                          </p>
+                          {log.performed_by_name && (
+                            <p className="text-sm text-gray-500 mt-1">
+                              By: {log.performed_by_name}
+                            </p>
+                          )}
+                          {log.field && log.old_value !== undefined && log.new_value !== undefined && (
+                            <p className="text-sm text-gray-500 mt-1">
+                              {log.field}: {String(log.old_value)} → {String(log.new_value)}
+                            </p>
+                          )}
+                          {log.amount && (
+                            <p className="text-sm text-gray-500 mt-1">
+                              Amount: Rs. {log.amount.toLocaleString()} {log.payment_method && `via ${log.payment_method}`}
+                            </p>
+                          )}
                   </div>
                 </div>
-
-                <div className="flex gap-4">
-                  <div className="flex flex-col items-center">
-                    <div className="w-8 h-8 rounded-full bg-blue-500/20 flex items-center justify-center">
-                      <DollarSign size={16} className="text-blue-500" />
+                    );
+                  })}
                     </div>
-                    <div className="w-0.5 h-full bg-gray-800 mt-2" />
+              ) : (
+                <div className="text-center py-12">
+                  <Clock size={48} className="mx-auto text-gray-700 mb-4" />
+                  <p className="text-gray-500">No activity logs found</p>
                   </div>
-                  <div className="flex-1 pb-6">
-                    <p className="text-white font-medium">Payment Received</p>
-                    <p className="text-sm text-gray-400 mt-1">{sale.createdAt}</p>
-                    <p className="text-sm text-gray-500 mt-1">Rs. {sale.paid.toLocaleString()} received via {sale.paymentMethod || 'Cash'}</p>
-                  </div>
-                </div>
-
-                <div className="flex gap-4">
-                  <div className="flex flex-col items-center">
-                    <div className="w-8 h-8 rounded-full bg-gray-700/20 flex items-center justify-center">
-                      <FileText size={16} className="text-gray-500" />
-                    </div>
-                  </div>
-                  <div className="flex-1">
-                    <p className="text-white font-medium">Sale Created</p>
-                    <p className="text-sm text-gray-400 mt-1">{sale.createdAt}</p>
-                    <p className="text-sm text-gray-500 mt-1">Sale created on {new Date(sale.createdAt).toLocaleString()}</p>
-                  </div>
-                </div>
-              </div>
+              )}
             </div>
           )}
         </div>
@@ -981,6 +1065,107 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
             />
           </div>
         </div>
+      )}
+
+      {/* Payment Delete Confirmation Modal */}
+      {paymentToDelete && (
+        <PaymentDeleteConfirmationModal
+          isOpen={deleteConfirmationOpen}
+          onClose={() => {
+            setDeleteConfirmationOpen(false);
+            setPaymentToDelete(null);
+          }}
+          onConfirm={async () => {
+            if (!paymentToDelete || !sale || !companyId) return;
+            
+            setIsDeletingPayment(true);
+            try {
+              const deletePromise = saleService.deletePayment(paymentToDelete.id, sale.id);
+              const timeoutPromise = new Promise((_, reject) => 
+                setTimeout(() => reject(new Error('Payment deletion timed out. Please try again.')), 15000)
+              );
+              
+              await Promise.race([deletePromise, timeoutPromise]);
+              
+              // CRITICAL FIX: Log activity
+              if (companyId) {
+                try {
+                  await activityLogService.logActivity({
+                    companyId,
+                    module: 'payment',
+                    entityId: sale.id,
+                    entityReference: sale.invoiceNo,
+                    action: 'payment_deleted',
+                    amount: paymentToDelete.amount,
+                    paymentMethod: paymentToDelete.method,
+                    performedBy: user?.id || undefined,
+                    description: `Payment of Rs ${paymentToDelete.amount.toLocaleString()} deleted from sale ${sale.invoiceNo}`,
+                  });
+                } catch (logError) {
+                  console.error('[VIEW SALE] Error logging payment deletion:', logError);
+                }
+              }
+              
+              toast.success('Payment deleted successfully. Reverse entry created.');
+              
+              await Promise.all([
+                loadPayments(sale.id),
+                reloadSaleData()
+              ]);
+              
+              setDeleteConfirmationOpen(false);
+              setPaymentToDelete(null);
+            } catch (error: any) {
+              console.error('[VIEW SALE] Error deleting payment:', error);
+              toast.error(error?.message || 'Failed to delete payment. Please try again.');
+            } finally {
+              setIsDeletingPayment(false);
+            }
+          }}
+          paymentAmount={paymentToDelete.amount}
+          paymentMethod={paymentToDelete.method}
+          paymentDate={paymentToDelete.date}
+          referenceNumber={paymentToDelete.referenceNo}
+          isLoading={isDeletingPayment}
+        />
+      )}
+
+      {/* Edit Payment Dialog */}
+      {paymentToEdit && sale && (
+        <UnifiedPaymentDialog
+          isOpen={editPaymentDialogOpen}
+          onClose={() => {
+            setEditPaymentDialogOpen(false);
+            setPaymentToEdit(null);
+          }}
+          context="customer"
+          entityName={sale.customerName || 'Customer'}
+          entityId={sale.customer}
+          outstandingAmount={sale.due}
+          totalAmount={sale.total}
+          paidAmount={sale.paid}
+          referenceNo={sale.invoiceNo}
+          referenceId={sale.id}
+          editMode={true}
+          paymentToEdit={{
+            id: paymentToEdit.id,
+            amount: paymentToEdit.amount,
+            method: paymentToEdit.method,
+            accountId: paymentToEdit.accountId || paymentToEdit.payment_account_id,
+            date: paymentToEdit.date || paymentToEdit.payment_date,
+            referenceNumber: paymentToEdit.referenceNo || paymentToEdit.reference_number,
+            notes: paymentToEdit.notes
+          }}
+          onSuccess={async () => {
+            toast.success('Payment updated successfully');
+            await Promise.all([
+              loadPayments(sale.id),
+              reloadSaleData()
+            ]);
+            setEditPaymentDialogOpen(false);
+            setPaymentToEdit(null);
+          }}
+        />
       )}
     </>
   );

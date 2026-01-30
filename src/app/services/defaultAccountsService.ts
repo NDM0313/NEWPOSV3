@@ -17,7 +17,8 @@ export interface DefaultAccount {
 const MANDATORY_ACCOUNTS: DefaultAccount[] = [
   { code: '1000', name: 'Cash', type: 'asset' },
   { code: '1010', name: 'Bank', type: 'asset' },
-  { code: '2000', name: 'Accounts Receivable', type: 'asset' }, // Required for payment entries
+  { code: '1100', name: 'Accounts Receivable', type: 'asset' }, // Required for customer payment entries
+  { code: '2000', name: 'Accounts Payable', type: 'liability' }, // Required for supplier/purchase payment entries
 ];
 
 export const defaultAccountsService = {

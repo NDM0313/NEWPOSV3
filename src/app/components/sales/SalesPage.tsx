@@ -65,9 +65,7 @@ export const SalesPage = () => {
   const [branches, setBranches] = useState<Branch[]>([]);
   const [branchMap, setBranchMap] = useState<Map<string, string>>(new Map());
   
-  // Bulk selection state
-  const [selectedSales, setSelectedSales] = useState<Set<string>>(new Set());
-  const [bulkActionOpen, setBulkActionOpen] = useState(false);
+  // Bulk selection removed - using single-row actions only
   
   // Load branches for location display
   useEffect(() => {
@@ -227,83 +225,7 @@ export const SalesPage = () => {
     items: true,
   });
   
-  // Bulk selection handlers
-  const toggleSaleSelection = (saleId: string) => {
-    setSelectedSales(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(saleId)) {
-        newSet.delete(saleId);
-      } else {
-        newSet.add(saleId);
-      }
-      return newSet;
-    });
-  };
-  
-  const toggleSelectAll = () => {
-    if (selectedSales.size === paginatedSales.length) {
-      setSelectedSales(new Set());
-    } else {
-      setSelectedSales(new Set(paginatedSales.map(s => s.id)));
-    }
-  };
-  
-  const clearSelection = () => {
-    setSelectedSales(new Set());
-  };
-  
-  // Bulk action handlers
-  const handleBulkDelete = async () => {
-    if (selectedSales.size === 0) return;
-    
-    if (!window.confirm(`Are you sure you want to delete ${selectedSales.size} sale(s)? This action cannot be undone.`)) {
-      return;
-    }
-    
-    try {
-      for (const saleId of selectedSales) {
-        await deleteSale(saleId);
-      }
-      toast.success(`${selectedSales.size} sale(s) deleted successfully`);
-      clearSelection();
-      await refreshSales();
-    } catch (error: any) {
-      toast.error(error.message || 'Failed to delete sales');
-    }
-  };
-  
-  const handleBulkUpdateShipping = async (status: ShippingStatus) => {
-    if (selectedSales.size === 0) return;
-    
-    try {
-      for (const saleId of selectedSales) {
-        await updateShippingStatus(saleId, status);
-      }
-      toast.success(`Shipping status updated for ${selectedSales.size} sale(s)`);
-      clearSelection();
-      await refreshSales();
-    } catch (error: any) {
-      toast.error(error.message || 'Failed to update shipping status');
-    }
-  };
-  
-  const handleBulkChangeBranch = async (newBranchId: string) => {
-    if (selectedSales.size === 0) return;
-    
-    try {
-      for (const saleId of selectedSales) {
-        const sale = sales.find(s => s.id === saleId);
-        if (sale) {
-          await updateSale(saleId, { ...sale, location: newBranchId });
-        }
-      }
-      toast.success(`Branch updated for ${selectedSales.size} sale(s)`);
-      clearSelection();
-      await refreshSales();
-    } catch (error: any) {
-      toast.error(error.message || 'Failed to update branch');
-    }
-  };
+  // Bulk selection and actions removed - using single-row actions only
 
   // Column order state - defines the order of columns
   // REMOVED: contact and paymentMethod from default order
@@ -391,7 +313,7 @@ export const SalesPage = () => {
       .filter(key => visibleColumns[key as keyof typeof visibleColumns])
       .map(key => getColumnWidth(key))
       .join(' ');
-    return `40px ${columns} 60px`.trim(); // 40px for checkbox, 60px for Actions column
+    return `${columns} 60px`.trim(); // 60px for Actions column (checkbox removed)
   }, [columnOrder, visibleColumns]);
 
   // Filtered sales - Use real data from context (TASK 1 FIX - "All" means no filter)
@@ -827,78 +749,6 @@ export const SalesPage = () => {
         </div>
       </div>
 
-      {/* Bulk Action Bar */}
-      {selectedSales.size > 0 && (
-        <div className="shrink-0 px-6 py-3 bg-blue-600/10 border-b border-blue-500/20 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <span className="text-sm text-white font-medium">
-              {selectedSales.size} sale(s) selected
-            </span>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={clearSelection}
-              className="text-gray-400 hover:text-white"
-            >
-              Clear Selection
-            </Button>
-          </div>
-          <div className="flex items-center gap-2">
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="bg-gray-800 hover:bg-gray-700 text-white border-gray-700"
-                >
-                  Bulk Actions
-                  <ChevronDown size={14} className="ml-2" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="bg-gray-900 border-gray-700 text-white w-56">
-                <DropdownMenuItem 
-                  className="hover:bg-gray-800 cursor-pointer"
-                  onClick={() => {
-                    const status = window.prompt('Enter shipping status (pending/processing/delivered/cancelled):');
-                    if (status && ['pending', 'processing', 'delivered', 'cancelled'].includes(status)) {
-                      handleBulkUpdateShipping(status as ShippingStatus);
-                    }
-                  }}
-                >
-                  <Truck size={14} className="mr-2 text-orange-400" />
-                  Update Shipping Status
-                </DropdownMenuItem>
-                <DropdownMenuItem 
-                  className="hover:bg-gray-800 cursor-pointer"
-                  onClick={() => {
-                    const branchName = window.prompt('Enter branch name:');
-                    if (branchName) {
-                      const branch = branches.find(b => b.name === branchName);
-                      if (branch) {
-                        handleBulkChangeBranch(branch.id);
-                      } else {
-                        toast.error('Branch not found');
-                      }
-                    }
-                  }}
-                >
-                  <MapPin size={14} className="mr-2 text-blue-400" />
-                  Change Branch
-                </DropdownMenuItem>
-                <DropdownMenuSeparator className="bg-gray-700" />
-                <DropdownMenuItem 
-                  className="hover:bg-gray-800 cursor-pointer text-red-400"
-                  onClick={handleBulkDelete}
-                >
-                  <Trash2 size={14} className="mr-2" />
-                  Delete Selected
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
-        </div>
-      )}
-
       {/* Global List Toolbar */}
       <ListToolbar
         search={{
@@ -1091,16 +941,6 @@ export const SalesPage = () => {
                     gridTemplateColumns: gridTemplateColumns
                   }}
                 >
-                  {/* Checkbox column */}
-                  <div className="flex items-center justify-center">
-                    <input
-                      type="checkbox"
-                      checked={selectedSales.size > 0 && selectedSales.size === paginatedSales.length}
-                      onChange={toggleSelectAll}
-                      className="w-4 h-4 rounded border-gray-600 bg-gray-800 text-blue-600 focus:ring-blue-500"
-                    />
-                  </div>
-                  
                   {columnOrder.map(key => {
                     if (!visibleColumns[key as keyof typeof visibleColumns]) return null;
                     
@@ -1170,17 +1010,6 @@ export const SalesPage = () => {
                         gridTemplateColumns: gridTemplateColumns
                       }}
                     >
-                      {/* Checkbox column */}
-                      <div className="flex items-center justify-center">
-                        <input
-                          type="checkbox"
-                          checked={selectedSales.has(sale.id)}
-                          onChange={() => toggleSaleSelection(sale.id)}
-                          onClick={(e) => e.stopPropagation()}
-                          className="w-4 h-4 rounded border-gray-600 bg-gray-800 text-blue-600 focus:ring-blue-500"
-                        />
-                      </div>
-                      
                       {/* Render columns in order */}
                       {columnOrder.map(key => {
                         if (!visibleColumns[key as keyof typeof visibleColumns]) return null;
@@ -1323,10 +1152,11 @@ export const SalesPage = () => {
             try {
               const { saleService } = await import('@/app/services/saleService');
               
-              // CRITICAL FIX: Add timeout to prevent infinite hang
+              // CRITICAL FIX: Increased timeout to 30 seconds for complex delete operations
+              // Delete involves: payment deletion, journal entry reversal, activity logging, balance updates
               const deletePromise = saleService.deletePayment(paymentId, selectedSale.id);
               const timeoutPromise = new Promise((_, reject) => 
-                setTimeout(() => reject(new Error('Payment deletion timed out. Please try again.')), 15000)
+                setTimeout(() => reject(new Error('Payment deletion is taking longer than expected. Please wait or try again.')), 30000)
               );
               
               await Promise.race([deletePromise, timeoutPromise]);

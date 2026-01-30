@@ -1,324 +1,1101 @@
-import React, { useEffect, useState } from 'react';
-import { X, ShoppingBag, DollarSign, Package, User, Calendar, FileText, Receipt, Truck, CheckCircle, Clock, XCircle, Printer } from 'lucide-react';
-import { Button } from '../ui/button';
-import { Badge } from '../ui/badge';
-import { ScrollArea } from '../ui/scroll-area';
+import React, { useState, useEffect, useCallback } from 'react';
+import { usePurchases, Purchase, convertFromSupabasePurchase } from '@/app/context/PurchaseContext';
+import { useSupabase } from '@/app/context/SupabaseContext';
+import { useSettings } from '@/app/context/SettingsContext';
+import { branchService, Branch } from '@/app/services/branchService';
+import { contactService } from '@/app/services/contactService';
 import { purchaseService } from '@/app/services/purchaseService';
-import { toast } from 'sonner';
-import { Loader2 } from 'lucide-react';
+import { activityLogService } from '@/app/services/activityLogService';
 import { PurchaseOrderPrintLayout } from '../shared/PurchaseOrderPrintLayout';
-import { usePurchases, Purchase as PurchaseContextPurchase } from '@/app/context/PurchaseContext';
+import { PaymentDeleteConfirmationModal } from '../shared/PaymentDeleteConfirmationModal';
+import { UnifiedPaymentDialog } from '../shared/UnifiedPaymentDialog';
+import { UnifiedPaymentDialog } from '../shared/UnifiedPaymentDialog';
+import { 
+  X, 
+  Calendar, 
+  User, 
+  Phone, 
+  MapPin, 
+  Package, 
+  DollarSign, 
+  CreditCard, 
+  Truck,
+  Edit,
+  Trash2,
+  FileText,
+  CheckCircle2,
+  Clock,
+  Building2,
+  UserCheck,
+  Printer,
+  Download,
+  Share2,
+  MoreVertical,
+  ShoppingBag,
+  Paperclip,
+  Image as ImageIcon,
+  File
+} from 'lucide-react';
+import { Button } from "../ui/button";
+import { Badge } from "../ui/badge";
+import { Separator } from "../ui/separator";
+import { cn } from "../ui/utils";
+import { toast } from 'sonner';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "../ui/table";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "../ui/dropdown-menu";
 
-interface Purchase {
-  id: number;
-  uuid: string;
-  poNo: string;
-  supplier: string;
-  supplierContact: string;
+interface PurchaseItem {
+  id: string;
+  productId: string;
+  productName: string;
+  sku: string;
+  price: number;
+  quantity: number;
+  receivedQty?: number;
+  unit?: string;
+  packingDetails?: { total_boxes?: number; total_pieces?: number; total_meters?: number; [k: string]: unknown };
+}
+
+interface Payment {
+  id: string;
   date: string;
-  reference: string;
-  location: string;
-  items: number;
-  grandTotal: number;
-  paymentDue: number;
-  status: 'received' | 'ordered' | 'pending';
-  paymentStatus: 'paid' | 'partial' | 'unpaid';
-  addedBy: string;
+  amount: number;
+  method: string;
+  referenceNo?: string;
+  accountName?: string;
+  notes?: string;
 }
 
 interface ViewPurchaseDetailsDrawerProps {
   isOpen: boolean;
   onClose: () => void;
-  purchase: Purchase | null;
+  purchaseId: string | null; // Changed to string (UUID)
+  onEdit?: (id: string) => void;
+  onDelete?: (id: string) => void;
+  onAddPayment?: (id: string) => void;
+  onPrint?: (id: string) => void;
 }
 
 export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps> = ({
   isOpen,
   onClose,
-  purchase,
+  purchaseId,
+  onEdit,
+  onDelete,
+  onAddPayment,
+  onPrint,
 }) => {
+  const [activeTab, setActiveTab] = useState<'details' | 'payments' | 'history'>('details');
   const { getPurchaseById } = usePurchases();
-  const [purchaseDetails, setPurchaseDetails] = useState<any>(null);
-  const [purchaseContextData, setPurchaseContextData] = useState<PurchaseContextPurchase | null>(null);
-  const [loading, setLoading] = useState(false);
+  const { companyId, user } = useSupabase();
+  const { inventorySettings } = useSettings();
+  const enablePacking = inventorySettings.enablePacking;
+  const [purchase, setPurchase] = useState<Purchase | null>(null);
+  const [loading, setLoading] = useState(true);
   const [showPrintLayout, setShowPrintLayout] = useState(false);
+  const [branchMap, setBranchMap] = useState<Map<string, string>>(new Map());
+  const [supplierCode, setSupplierCode] = useState<string | null>(null);
+  const [payments, setPayments] = useState<any[]>([]);
+  const [loadingPayments, setLoadingPayments] = useState(false);
+  const [activityLogs, setActivityLogs] = useState<any[]>([]);
+  const [loadingActivityLogs, setLoadingActivityLogs] = useState(false);
+  const [deleteConfirmationOpen, setDeleteConfirmationOpen] = useState(false);
+  const [paymentToDelete, setPaymentToDelete] = useState<any | null>(null);
+  const [isDeletingPayment, setIsDeletingPayment] = useState(false);
+  const [editPaymentDialogOpen, setEditPaymentDialogOpen] = useState(false);
+  const [paymentToEdit, setPaymentToEdit] = useState<any | null>(null);
+  const [editPaymentDialogOpen, setEditPaymentDialogOpen] = useState(false);
+  const [paymentToEdit, setPaymentToEdit] = useState<any | null>(null);
 
+  // Load branches for location display
   useEffect(() => {
-    if (isOpen && purchase?.uuid) {
-      loadPurchaseDetails();
-      // Also try to get from context
-      const contextPurchase = getPurchaseById(purchase.uuid);
-      if (contextPurchase) {
-        setPurchaseContextData(contextPurchase);
+    const loadBranches = async () => {
+      if (!companyId) return;
+      try {
+        const branchesData = await branchService.getAllBranches(companyId);
+        // Create mapping from branch_id to branch name
+        const map = new Map<string, string>();
+        branchesData.forEach(branch => {
+          map.set(branch.id, branch.name);
+        });
+        setBranchMap(map);
+      } catch (error) {
+        console.error('[VIEW PURCHASE DETAILS] Error loading branches:', error);
       }
-    }
-  }, [isOpen, purchase?.uuid, getPurchaseById]);
+    };
+    loadBranches();
+  }, [companyId]);
 
-  const loadPurchaseDetails = async () => {
-    if (!purchase?.uuid) return;
-    
-    try {
-      setLoading(true);
-      const data = await purchaseService.getPurchase(purchase.uuid);
-      setPurchaseDetails(data);
+  // Load purchase data from context (TASK 2 & 3 FIX - Real data instead of mock)
+  useEffect(() => {
+    if (isOpen && purchaseId) {
+      const loadPurchaseData = async () => {
+        setLoading(true);
+        try {
+          // CRITICAL FIX: Fetch fresh purchase data from database (not just context)
+          const purchaseData = await purchaseService.getPurchase(purchaseId);
+          if (purchaseData) {
+            const convertedPurchase = convertFromSupabasePurchase(purchaseData);
+            setPurchase(convertedPurchase);
+            
+            // CRITICAL FIX: Load supplier code if supplier ID exists
+            if (convertedPurchase.supplier && companyId) {
+              contactService.getContact(convertedPurchase.supplier)
+                .then(contact => {
+                  if (contact && (contact as any).code) {
+                    setSupplierCode((contact as any).code);
+                  } else {
+                    setSupplierCode(null);
+                  }
+                })
+                .catch(error => {
+                  console.error('[VIEW PURCHASE] Error loading supplier:', error);
+                  setSupplierCode(null);
+                });
+            } else {
+              setSupplierCode(null);
+            }
+            
+            // CRITICAL FIX: Load payments breakdown
+            loadPayments(purchaseId);
+          } else {
+            // Fallback to context
+            const contextPurchase = getPurchaseById(purchaseId);
+            if (contextPurchase) {
+              setPurchase(contextPurchase);
+              loadPayments(purchaseId);
+            }
+          }
     } catch (error: any) {
-      console.error('[VIEW PURCHASE] Error loading details:', error);
-      toast.error('Failed to load purchase details: ' + (error.message || 'Unknown error'));
+          console.error('[VIEW PURCHASE] Error loading purchase:', error?.message || error);
+          // Fallback to context
+          const contextPurchase = getPurchaseById(purchaseId);
+          if (contextPurchase) {
+            setPurchase(contextPurchase);
+            loadPayments(purchaseId);
+          } else {
+            // If context also doesn't have it, show error
+            console.error('[VIEW PURCHASE] Purchase not found in context either');
+          }
     } finally {
       setLoading(false);
     }
   };
 
-  if (!isOpen || !purchase) return null;
+      loadPurchaseData();
+    } else {
+      setLoading(false);
+    }
+  }, [isOpen, purchaseId, getPurchaseById, companyId]);
+  
+  // CRITICAL FIX: Load payments breakdown
+  const loadPayments = useCallback(async (purchaseId: string) => {
+    setLoadingPayments(true);
+    try {
+      const fetchedPayments = await purchaseService.getPurchasePayments(purchaseId);
+      setPayments(fetchedPayments);
+    } catch (error) {
+      console.error('[VIEW PURCHASE] Error loading payments:', error);
+      setPayments([]);
+    } finally {
+      setLoadingPayments(false);
+    }
+  }, []);
 
-  const getStatusBadge = (status: string) => {
+  // CRITICAL FIX: Load activity logs
+  const loadActivityLogs = useCallback(async (purchaseId: string) => {
+    if (!companyId) return;
+    setLoadingActivityLogs(true);
+    try {
+      const logs = await activityLogService.getEntityActivityLogs(companyId, 'purchase', purchaseId);
+      setActivityLogs(logs);
+    } catch (error) {
+      console.error('[VIEW PURCHASE] Error loading activity logs:', error);
+      setActivityLogs([]);
+    } finally {
+      setLoadingActivityLogs(false);
+    }
+  }, [companyId]);
+  
+  // CRITICAL FIX: Reload purchase data (called after payment is added)
+  const reloadPurchaseData = useCallback(async () => {
+    if (!purchaseId) return;
+    try {
+      const purchaseData = await purchaseService.getPurchase(purchaseId);
+      if (purchaseData) {
+        const convertedPurchase = convertFromSupabasePurchase(purchaseData);
+        setPurchase(convertedPurchase);
+        // Reload payments
+        await loadPayments(purchaseId);
+      }
+    } catch (error: any) {
+      console.error('[VIEW PURCHASE] Error reloading purchase:', error?.message || error);
+    }
+  }, [purchaseId, loadPayments]);
+  
+  // CRITICAL FIX: Listen for payment added event
+  useEffect(() => {
+    const handlePaymentAdded = () => {
+      if (purchaseId) {
+        reloadPurchaseData();
+      }
+    };
+    
+    window.addEventListener('paymentAdded', handlePaymentAdded);
+    return () => {
+      window.removeEventListener('paymentAdded', handlePaymentAdded);
+    };
+  }, [purchaseId, reloadPurchaseData]);
+
+  if (!isOpen || !purchaseId) return null;
+
+  if (loading) {
+    return (
+      <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center">
+        <div className="text-white">Loading purchase details...</div>
+      </div>
+    );
+  }
+
+  if (!purchase) {
+    return (
+      <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center">
+        <div className="text-white">Purchase not found</div>
+        <Button onClick={onClose} className="ml-4">Close</Button>
+      </div>
+    );
+  }
+
+  const getStatusColor = (status: string) => {
     switch (status) {
-      case 'received':
-        return <Badge className="bg-green-500/10 text-green-400 border-green-500/30">Received</Badge>;
-      case 'ordered':
-        return <Badge className="bg-blue-500/10 text-blue-400 border-blue-500/30">Ordered</Badge>;
-      case 'pending':
-        return <Badge className="bg-yellow-500/10 text-yellow-400 border-yellow-500/30">Pending</Badge>;
-      default:
-        return <Badge className="bg-gray-500/10 text-gray-400 border-gray-500/30">{status}</Badge>;
+      case 'final': 
+      case 'completed': 
+      case 'received': return 'bg-green-500/10 text-green-500 border-green-500/20';
+      case 'ordered': return 'bg-blue-500/10 text-blue-500 border-blue-500/20';
+      case 'draft': return 'bg-gray-500/10 text-gray-500 border-gray-500/20';
+      default: return 'bg-gray-500/10 text-gray-500 border-gray-500/20';
     }
   };
 
-  const getPaymentStatusBadge = (status: string) => {
+  const getPaymentStatusColor = (status: string) => {
     switch (status) {
-      case 'paid':
-        return <Badge className="bg-green-500/10 text-green-400 border-green-500/30">Paid</Badge>;
-      case 'partial':
-        return <Badge className="bg-yellow-500/10 text-yellow-400 border-yellow-500/30">Partial</Badge>;
-      case 'unpaid':
-        return <Badge className="bg-red-500/10 text-red-400 border-red-500/30">Unpaid</Badge>;
-      default:
-        return <Badge className="bg-gray-500/10 text-gray-400 border-gray-500/30">{status}</Badge>;
+      case 'paid': return 'bg-green-500/10 text-green-500';
+      case 'partial': return 'bg-yellow-500/10 text-yellow-500';
+      case 'unpaid': return 'bg-red-500/10 text-red-500';
+      default: return 'bg-gray-500/10 text-gray-500';
     }
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex justify-end animate-in fade-in duration-200">
-      <div className="w-full max-w-2xl bg-[#0B0F17] h-full shadow-2xl flex flex-col border-l border-gray-800 animate-in slide-in-from-right duration-300">
+    <>
+      {/* Backdrop */}
+      <div 
+        className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 transition-opacity"
+        onClick={onClose}
+      />
+
+      {/* Drawer */}
+      <div className="fixed right-0 top-0 h-full w-full md:w-[1100px] bg-gray-950 shadow-2xl z-50 overflow-hidden flex flex-col border-l border-gray-800">
         {/* Header */}
-        <div className="px-6 py-5 border-b border-gray-800 bg-[#111827] flex items-center justify-between shrink-0">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-orange-500/10 flex items-center justify-center">
-              <ShoppingBag size={20} className="text-orange-500" />
-            </div>
+        <div className="bg-gray-900/80 border-b border-gray-800 px-6 py-4 flex items-center justify-between shrink-0">
+          <div className="flex items-center gap-4">
             <div>
-              <h2 className="text-lg font-semibold text-white">Purchase Order Details</h2>
-              <p className="text-xs text-gray-400">{purchase.poNo}</p>
+              <h2 className="text-xl font-bold text-white flex items-center gap-3">
+                {purchase.purchaseNo}
+                <Badge className={cn("text-xs font-semibold border", getStatusColor(purchase.status))}>
+                  {purchase.status === 'final' || purchase.status === 'completed' ? 'Final' : 
+                   purchase.status === 'received' ? 'Received' : 
+                   purchase.status === 'ordered' ? 'Ordered' : 'Draft'}
+                </Badge>
+              </h2>
+              <p className="text-sm text-gray-400 mt-0.5">
+                Purchase Transaction Details
+              </p>
             </div>
           </div>
+          
           <div className="flex items-center gap-2">
+            {/* Action Buttons */}
             <Button
               variant="ghost"
               size="sm"
               className="text-gray-400 hover:text-white hover:bg-gray-800"
               onClick={() => {
                 setShowPrintLayout(true);
+                onPrint?.(purchase.id);
               }}
             >
               <Printer size={16} className="mr-2" />
               Print
             </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={onClose}
-              className="text-gray-400 hover:text-white hover:bg-gray-800"
-            >
-              <X size={20} />
-            </Button>
+
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-gray-400 hover:text-white hover:bg-gray-800"
+                >
+                  <MoreVertical size={16} />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="bg-gray-900 border-gray-800 text-white">
+                <DropdownMenuItem 
+                  className="hover:bg-gray-800 cursor-pointer"
+                  onClick={() => onEdit?.(purchase.id)}
+                >
+                  <Edit size={14} className="mr-2" />
+                  Edit Purchase
+                </DropdownMenuItem>
+                <DropdownMenuItem className="hover:bg-gray-800 cursor-pointer">
+                  <Download size={14} className="mr-2" />
+                  Export PDF
+                </DropdownMenuItem>
+                <DropdownMenuItem className="hover:bg-gray-800 cursor-pointer">
+                  <Share2 size={14} className="mr-2" />
+                  Share
+                </DropdownMenuItem>
+                <DropdownMenuItem 
+                  className="hover:bg-gray-800 cursor-pointer text-red-400"
+                  onClick={() => onDelete?.(purchase.id)}
+                >
+                  <Trash2 size={14} className="mr-2" />
+                  Delete
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+
+          <Button
+            variant="ghost"
+            size="icon"
+              className="text-gray-400 hover:text-white"
+            onClick={onClose}
+          >
+            <X size={20} />
+          </Button>
+          </div>
+        </div>
+
+        {/* Tabs */}
+        <div className="bg-gray-900/50 border-b border-gray-800 px-6 shrink-0">
+          <div className="flex gap-1">
+            {[
+              { id: 'details', label: 'Details' },
+              { id: 'payments', label: 'Payments' },
+              { id: 'history', label: 'History' },
+            ].map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id as any)}
+                className={cn(
+                  "px-4 py-3 text-sm font-medium transition-colors relative",
+                  activeTab === tab.id
+                    ? "text-blue-400"
+                    : "text-gray-500 hover:text-gray-300"
+                )}
+              >
+                {tab.label}
+                {activeTab === tab.id && (
+                  <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-500" />
+                )}
+              </button>
+            ))}
           </div>
         </div>
 
         {/* Content */}
-        <ScrollArea className="flex-1">
-          <div className="p-6 space-y-6">
-            {loading ? (
-              <div className="flex items-center justify-center py-12">
-                <Loader2 size={32} className="text-blue-500 animate-spin" />
-              </div>
-            ) : (
-              <>
-                {/* Purchase Header */}
-                <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-6">
-                  <div className="flex items-start justify-between mb-4">
-                    <div>
-                      <h3 className="text-xl font-bold text-white mb-1">PO {purchase.poNo}</h3>
-                      <p className="text-sm text-gray-400">Reference: {purchase.reference || 'N/A'}</p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {getStatusBadge(purchase.status)}
-                      {getPaymentStatusBadge(purchase.paymentStatus)}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Supplier Information */}
-                <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-6">
-                  <h4 className="text-sm font-semibold text-white mb-4 flex items-center gap-2">
+        <div className="flex-1 overflow-y-auto p-6 space-y-6">
+          {activeTab === 'details' && (
+            <>
+              {/* Supplier & Transaction Info */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* Supplier Info */}
+                <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-5">
+                  <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-4 flex items-center gap-2">
                     <User size={16} />
                     Supplier Information
-                  </h4>
-                  <div className="grid grid-cols-2 gap-4">
+                  </h3>
+                  <div className="space-y-3">
                     <div>
                       <p className="text-xs text-gray-500 mb-1">Supplier Name</p>
-                      <p className="text-sm text-white font-medium">{purchase.supplier}</p>
+                      <p className="text-white font-medium">{purchase.supplierName}</p>
+                      {supplierCode && (
+                        <p className="text-sm text-gray-400">Code: {supplierCode}</p>
+                      )}
                     </div>
                     <div>
-                      <p className="text-xs text-gray-500 mb-1">Contact</p>
-                      <p className="text-sm text-white font-medium">{purchase.supplierContact || 'N/A'}</p>
+                      <p className="text-xs text-gray-500 mb-1">Contact Number</p>
+                      <p className="text-white flex items-center gap-2">
+                        <Phone size={14} className="text-gray-500" />
+                        {purchase.contactNumber || 'N/A'}
+                      </p>
                     </div>
                   </div>
                 </div>
 
-                {/* Purchase Information */}
-                <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-6">
-                  <h4 className="text-sm font-semibold text-white mb-4 flex items-center gap-2">
+                {/* Transaction Info */}
+                <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-5">
+                  <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-4 flex items-center gap-2">
                     <FileText size={16} />
-                    Purchase Information
-                  </h4>
-                  <div className="grid grid-cols-2 gap-4">
+                    Transaction Details
+                  </h3>
+                  <div className="space-y-3">
                     <div>
-                      <p className="text-xs text-gray-500 mb-1">Date</p>
-                      <p className="text-sm text-white font-medium">{new Date(purchase.date).toLocaleDateString()}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-gray-500 mb-1">Location</p>
-                      <p className="text-sm text-white font-medium">{purchase.location}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-gray-500 mb-1">Items Count</p>
-                      <p className="text-sm text-white font-medium">{purchase.items}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-gray-500 mb-1">Added By</p>
-                      <p className="text-sm text-white font-medium">{purchase.addedBy}</p>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Financial Information */}
-                <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-6">
-                  <h4 className="text-sm font-semibold text-white mb-4 flex items-center gap-2">
-                    <DollarSign size={16} />
-                    Financial Information
-                  </h4>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <p className="text-xs text-gray-500 mb-1">Grand Total</p>
-                      <p className="text-lg text-white font-semibold">${purchase.grandTotal.toLocaleString()}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-gray-500 mb-1">Payment Due</p>
-                      <p className={`text-lg font-semibold ${purchase.paymentDue > 0 ? 'text-red-400' : 'text-green-400'}`}>
-                        ${purchase.paymentDue.toLocaleString()}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-gray-500 mb-1">Paid Amount</p>
-                      <p className="text-lg text-green-400 font-semibold">
-                        ${(purchase.grandTotal - purchase.paymentDue).toLocaleString()}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Purchase Items */}
-                {purchaseDetails?.items && purchaseDetails.items.length > 0 && (
-                  <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-6">
-                    <h4 className="text-sm font-semibold text-white mb-4 flex items-center gap-2">
-                      <Package size={16} />
-                      Purchase Items ({purchaseDetails.items.length})
-                    </h4>
-                    <div className="space-y-3">
-                      {purchaseDetails.items.map((item: any, index: number) => (
-                        <div key={index} className="flex items-center justify-between p-3 bg-gray-800/50 rounded-lg">
-                          <div className="flex-1">
-                            <p className="text-sm text-white font-medium">{item.product_name || item.product?.name || 'Unknown Product'}</p>
-                            <p className="text-xs text-gray-400">Qty: {item.quantity} × ${item.unit_price?.toLocaleString() || '0'}</p>
-                          </div>
-                          <div className="text-right">
-                            <p className="text-sm text-white font-semibold">${item.total?.toLocaleString() || '0'}</p>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Additional Details from Database */}
-                {purchaseDetails && (
-                  <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-6">
-                    <h4 className="text-sm font-semibold text-white mb-4 flex items-center gap-2">
-                      <FileText size={16} />
-                      Additional Details
-                    </h4>
-                    <div className="space-y-3">
-                      {purchaseDetails.subtotal && (
-                        <div className="flex justify-between">
-                          <p className="text-xs text-gray-400">Subtotal</p>
-                          <p className="text-sm text-white">${purchaseDetails.subtotal.toLocaleString()}</p>
-                        </div>
-                      )}
-                      {purchaseDetails.discount_amount > 0 && (
-                        <div className="flex justify-between">
-                          <p className="text-xs text-gray-400">Discount</p>
-                          <p className="text-sm text-red-400">-${purchaseDetails.discount_amount.toLocaleString()}</p>
-                        </div>
-                      )}
-                      {purchaseDetails.tax_amount > 0 && (
-                        <div className="flex justify-between">
-                          <p className="text-xs text-gray-400">Tax</p>
-                          <p className="text-sm text-white">${purchaseDetails.tax_amount.toLocaleString()}</p>
-                        </div>
-                      )}
-                      {purchaseDetails.shipping_cost > 0 && (
-                        <div className="flex justify-between">
-                          <p className="text-xs text-gray-400">Shipping</p>
-                          <p className="text-sm text-white">${purchaseDetails.shipping_cost.toLocaleString()}</p>
-                        </div>
-                      )}
-                      {purchaseDetails.notes && (
+                      <span className="text-xs text-gray-500 block mb-1">Date</span>
+                      <div className="text-white flex items-center gap-2">
+                        <Calendar size={14} className="text-gray-500" />
                         <div>
-                          <p className="text-xs text-gray-400 mb-1">Notes</p>
-                          <p className="text-sm text-gray-300">{purchaseDetails.notes}</p>
+                          <div>{new Date(purchase.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</div>
+                          <div className="text-xs text-gray-500 mt-0.5">
+                            {new Date(purchase.createdAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })}
+                          </div>
                         </div>
+                      </div>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-xs text-gray-500">Location</span>
+                      <span className="text-white flex items-center gap-2">
+                        <Building2 size={14} className="text-gray-500" />
+                        {branchMap.get(purchase.branchId || '') || purchase.location}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-xs text-gray-500">Created At</span>
+                      <span className="text-white">{new Date(purchase.createdAt).toLocaleString()}</span>
+                    </div>
+                    {purchase.updatedAt && (
+                      <div className="flex justify-between">
+                        <span className="text-xs text-gray-500">Last Updated</span>
+                        <span className="text-white">{new Date(purchase.updatedAt).toLocaleString()}</span>
+                    </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Status Cards */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
+                  <p className="text-xs text-gray-500 mb-2">Payment Status</p>
+                  <Badge className={cn("text-sm font-semibold", getPaymentStatusColor(purchase.paymentStatus))}>
+                    {purchase.paymentStatus === 'paid' ? 'Paid' : purchase.paymentStatus === 'partial' ? 'Partial' : 'Unpaid'}
+                  </Badge>
+                </div>
+                <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
+                  <p className="text-xs text-gray-500 mb-2">Order Status</p>
+                  <Badge className={cn("text-sm font-semibold", getStatusColor(purchase.status))}>
+                    {purchase.status === 'final' || purchase.status === 'completed' ? 'Final' : 
+                     purchase.status === 'received' ? 'Received' : 
+                     purchase.status === 'ordered' ? 'Ordered' : 'Draft'}
+                  </Badge>
+                </div>
+              </div>
+
+              {/* Items Table */}
+              <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden">
+                <div className="px-5 py-3 bg-gray-950/50 border-b border-gray-800">
+                  <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wide flex items-center gap-2">
+                    <Package size={16} />
+                    Items ({purchase.items.length})
+                  </h3>
+                </div>
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="border-gray-800 hover:bg-transparent">
+                        <TableHead className="text-gray-400">Product</TableHead>
+                        <TableHead className="text-gray-400">SKU</TableHead>
+                        <TableHead className="text-gray-400">Variation</TableHead>
+                        {enablePacking && <TableHead className="text-gray-400">Packing</TableHead>}
+                        <TableHead className="text-gray-400 text-right">Unit Price</TableHead>
+                        <TableHead className="text-gray-400 text-center">Qty</TableHead>
+                        <TableHead className="text-gray-400">Unit</TableHead>
+                        <TableHead className="text-gray-400 text-right">Total</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {purchase.items.map((item) => {
+                        const productName = item.productName || 'Unknown Product';
+                        const displaySku = item.sku || 'N/A';
+                        const qty = item.quantity ?? 0;
+                        // Packing: structured – Boxes + Pieces
+                        const pd = item.packingDetails || {};
+                        const totalBoxes = pd.total_boxes ?? 0;
+                        const totalPieces = pd.total_pieces ?? 0;
+                        const packingParts: string[] = [];
+                        if (Number(totalBoxes) > 0) packingParts.push(`${totalBoxes} Box${Number(totalBoxes) !== 1 ? 'es' : ''}`);
+                        if (Number(totalPieces) > 0) packingParts.push(`${totalPieces} Piece${Number(totalPieces) !== 1 ? 's' : ''}`);
+                        const packingText = packingParts.length ? packingParts.join(', ') : '—';
+                        const unitDisplay = item.unit ?? 'piece';
+                        return (
+                        <TableRow key={item.id} className="border-gray-800">
+                          <TableCell>
+                            <div>
+                              <p className="font-medium text-white">{productName}</p>
+                              {displaySku && displaySku !== 'N/A' && (
+                                <p className="text-xs text-gray-500">SKU: {displaySku}</p>
+                              )}
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-gray-400">{displaySku}</TableCell>
+                          <TableCell>
+                            <span className="text-gray-600">-</span>
+                          </TableCell>
+                          {enablePacking && <TableCell className="text-gray-400">{packingText}</TableCell>}
+                          <TableCell className="text-right text-white">
+                            Rs. {item.price.toLocaleString()}
+                          </TableCell>
+                          <TableCell className="text-center text-white font-medium">
+                            {qty}
+                          </TableCell>
+                          <TableCell className="text-gray-400">{unitDisplay}</TableCell>
+                          <TableCell className="text-right text-white font-medium">
+                            Rs. {(item.price * qty).toLocaleString()}
+                          </TableCell>
+                        </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                  </div>
+                </div>
+
+              {/* Payment Summary */}
+              <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden">
+                <div className="px-5 py-3 bg-gray-950/50 border-b border-gray-800">
+                  <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wide flex items-center gap-2">
+                    <DollarSign size={16} />
+                    Payment Summary
+                  </h3>
+                </div>
+                <div className="p-5 space-y-3">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-400">Subtotal</span>
+                    <span className="text-white font-medium">Rs. {purchase.subtotal.toLocaleString()}</span>
+                  </div>
+                  
+                  {purchase.discount && purchase.discount > 0 && (
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-400">Discount</span>
+                      <span className="text-red-400 font-medium">- Rs. {purchase.discount.toLocaleString()}</span>
+                    </div>
+                  )}
+                  
+                  {purchase.tax && purchase.tax > 0 && (
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-400">Tax</span>
+                      <span className="text-white font-medium">Rs. {purchase.tax.toLocaleString()}</span>
+                    </div>
+                  )}
+                  
+                  {purchase.shippingCost && purchase.shippingCost > 0 && (
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-400">Shipping Charges</span>
+                      <span className="text-white font-medium">Rs. {purchase.shippingCost.toLocaleString()}</span>
+                    </div>
+                  )}
+                  
+                  <Separator className="bg-gray-800" />
+                  
+                  <div className="flex justify-between">
+                    <span className="text-gray-300 font-semibold">Grand Total</span>
+                    <span className="text-white text-xl font-bold">Rs. {purchase.total.toLocaleString()}</span>
+                  </div>
+                  
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-400">Total Paid</span>
+                    <span className="text-green-400 font-medium">Rs. {purchase.paid.toLocaleString()}</span>
+                  </div>
+                  
+                  {purchase.due > 0 && (
+                    <div className="flex justify-between">
+                      <span className="text-gray-400 font-medium">Amount Due</span>
+                      <span className="text-red-400 text-lg font-bold">Rs. {purchase.due.toLocaleString()}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Notes */}
+              {purchase.notes && (
+                <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-5">
+                  <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-3">Notes</h3>
+                  <p className="text-white text-sm leading-relaxed">{purchase.notes}</p>
+                </div>
+              )}
+            </>
+          )}
+
+          {activeTab === 'payments' && (
+            <div className="space-y-4">
+              {/* Add Payment Button */}
+              <div className="flex justify-between items-center">
+                <h3 className="text-lg font-semibold text-white">Payment History</h3>
+                {purchase.due > 0 && (
+                  <Button
+                    onClick={() => {
+                      onAddPayment?.(purchase.id);
+                    }}
+                    className="bg-blue-600 hover:bg-blue-700 text-white"
+                  >
+                    <CreditCard size={16} className="mr-2" />
+                    Add Payment
+                  </Button>
+                )}
+              </div>
+
+              {/* Payment Summary with Cash/Bank Breakdown */}
+              {loadingPayments ? (
+                <div className="text-center py-12 text-gray-400">Loading payments...</div>
+              ) : payments.length > 0 ? (
+                <div className="space-y-4">
+                  {/* Summary Cards by Payment Method */}
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    {/* Cash Payments Summary */}
+                    {payments.filter(p => p.method === 'cash').length > 0 && (
+                      <div className="bg-green-500/10 border border-green-500/20 rounded-xl p-4">
+                        <p className="text-xs text-gray-400 mb-1">Paid (Cash)</p>
+                        <p className="text-2xl font-bold text-green-400">
+                          Rs. {payments.filter(p => p.method === 'cash').reduce((sum, p) => sum + p.amount, 0).toLocaleString()}
+                        </p>
+                        <p className="text-xs text-gray-500 mt-1">
+                          {payments.filter(p => p.method === 'cash').length} payment(s)
+                        </p>
+                      </div>
+                    )}
+                    
+                    {/* Bank Payments Summary */}
+                    {payments.filter(p => p.method === 'bank' || p.method === 'card').length > 0 && (
+                      <div className="bg-blue-500/10 border border-blue-500/20 rounded-xl p-4">
+                        <p className="text-xs text-gray-400 mb-1">Paid (Bank/Card)</p>
+                        <p className="text-2xl font-bold text-blue-400">
+                          Rs. {payments.filter(p => p.method === 'bank' || p.method === 'card').reduce((sum, p) => sum + p.amount, 0).toLocaleString()}
+                        </p>
+                        <p className="text-xs text-gray-500 mt-1">
+                          {payments.filter(p => p.method === 'bank' || p.method === 'card').length} payment(s)
+                        </p>
+                      </div>
+                    )}
+                    
+                    {/* Other Payments Summary */}
+                    {payments.filter(p => p.method === 'other' || (p.method !== 'cash' && p.method !== 'bank' && p.method !== 'card')).length > 0 && (
+                      <div className="bg-purple-500/10 border border-purple-500/20 rounded-xl p-4">
+                        <p className="text-xs text-gray-400 mb-1">Paid (Other)</p>
+                        <p className="text-2xl font-bold text-purple-400">
+                          Rs. {payments.filter(p => p.method === 'other' || (p.method !== 'cash' && p.method !== 'bank' && p.method !== 'card')).reduce((sum, p) => sum + p.amount, 0).toLocaleString()}
+                        </p>
+                        <p className="text-xs text-gray-500 mt-1">
+                          {payments.filter(p => p.method === 'other' || (p.method !== 'cash' && p.method !== 'bank' && p.method !== 'card')).length} payment(s)
+                        </p>
+                          </div>
+                    )}
+                          </div>
+                  
+                  {/* Total Paid Summary */}
+                  <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-5">
+                    <div className="flex justify-between items-center mb-4">
+                      <div>
+                        <p className="text-white font-semibold text-xl">
+                          Rs. {purchase.paid.toLocaleString()}
+                        </p>
+                        <p className="text-sm text-gray-400 mt-1">
+                          Total Paid Amount
+                        </p>
+                        </div>
+                      <Badge className={cn(
+                        "text-sm font-semibold",
+                        purchase.paymentStatus === 'paid' ? "bg-green-500/10 text-green-400 border-green-500/20" :
+                        purchase.paymentStatus === 'partial' ? "bg-yellow-500/10 text-yellow-400 border-yellow-500/20" :
+                        "bg-red-500/10 text-red-400 border-red-500/20"
+                      )}>
+                        {purchase.paymentStatus === 'paid' ? 'Paid' : purchase.paymentStatus === 'partial' ? 'Partial' : 'Unpaid'}
+                      </Badge>
+                    </div>
+                    
+                    {purchase.due > 0 && (
+                      <div className="flex justify-between text-sm pt-3 border-t border-gray-800">
+                        <span className="text-gray-400">Amount Due:</span>
+                        <span className="text-red-400 font-medium">
+                          Rs. {purchase.due.toLocaleString()}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                  
+                  {/* Individual Payment Breakdown */}
+                    <div className="space-y-3">
+                    <h4 className="text-sm font-semibold text-gray-400 uppercase">Payment Details</h4>
+                    {payments.map((payment) => (
+                    <div 
+                      key={payment.id}
+                        className="bg-gray-900/50 border border-gray-800 rounded-xl p-4"
+                      >
+                        <div className="flex justify-between items-start mb-2">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2 mb-1">
+                              <p className="text-white font-semibold">
+                            Rs. {payment.amount.toLocaleString()}
+                          </p>
+                              {payment.referenceNo && (
+                                <code className="text-xs bg-gray-800 px-2 py-0.5 rounded text-blue-400 border border-gray-700">
+                                  {payment.referenceNo}
+                                </code>
+                              )}
+                        </div>
+                            <p className="text-sm text-gray-400">
+                            {new Date(payment.date).toLocaleDateString('en-US', { 
+                              month: 'short', 
+                              day: 'numeric', 
+                                year: 'numeric'
+                            })}
+                          </p>
+                            {payment.accountName && (
+                              <p className="text-xs text-gray-500 mt-1">
+                                Account: {payment.accountName}
+                              </p>
+                            )}
+                        </div>
+                          <div className="flex items-center gap-2">
+                            <Badge className={cn(
+                              "text-xs font-semibold",
+                              payment.method === 'cash' ? "bg-green-500/10 text-green-400 border-green-500/20" :
+                              payment.method === 'bank' || payment.method === 'card' ? "bg-blue-500/10 text-blue-400 border-blue-500/20" :
+                              "bg-purple-500/10 text-purple-400 border-purple-500/20"
+                            )}>
+                              {payment.method === 'cash' ? 'Cash' : 
+                               payment.method === 'bank' ? 'Bank' :
+                               payment.method === 'card' ? 'Card' : 'Other'}
+                        </Badge>
+                            {/* CRITICAL FIX: Add edit and delete buttons for each payment */}
+                            <button
+                              onClick={() => {
+                                setPaymentToEdit(payment);
+                                setEditPaymentDialogOpen(true);
+                              }}
+                              className="p-1.5 rounded-lg hover:bg-blue-500/20 text-gray-400 hover:text-blue-400 transition-colors"
+                              title="Edit Payment"
+                            >
+                              <Edit size={14} />
+                            </button>
+                            <button
+                              onClick={() => {
+                                setPaymentToDelete(payment);
+                                setDeleteConfirmationOpen(true);
+                              }}
+                              className="p-1.5 rounded-lg hover:bg-red-500/20 text-gray-400 hover:text-red-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                              title="Edit Payment - Not Available (Delete and re-add to modify)"
+                              disabled
+                            >
+                              <Edit size={14} />
+                            </button>
+                            <button
+                              onClick={() => {
+                                setPaymentToDelete(payment);
+                                setDeleteConfirmationOpen(true);
+                              }}
+                              className="p-1.5 rounded-lg hover:bg-red-500/20 text-gray-400 hover:text-red-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                              title="Delete Payment"
+                              disabled={isDeletingPayment || loadingPayments}
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                      </div>
+                        </div>
+                        {/* CRITICAL FIX: Show attachment icon if payment has attachments */}
+                        {payment.attachments && (
+                          <div className="mt-2 flex items-center gap-2">
+                            <span className="text-xs text-gray-500">Attachments:</span>
+                            {Array.isArray(payment.attachments) ? (
+                              payment.attachments.map((att: any, idx: number) => {
+                                const url = att.url || att.fileUrl || att;
+                                const name = att.name || att.fileName || `Attachment ${idx + 1}`;
+                                const isImage = /\.(jpg|jpeg|png|gif|webp)$/i.test(url);
+                                return (
+                                  <button
+                                    key={idx}
+                                    onClick={() => window.open(url, '_blank')}
+                                    className="flex items-center gap-1 px-2 py-1 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/30 rounded text-blue-400 text-xs transition-colors"
+                                  >
+                                    {isImage ? <ImageIcon size={12} /> : <File size={12} />}
+                                    <span>{name}</span>
+                                    <Paperclip size={10} />
+                                  </button>
+                                );
+                              })
+                            ) : typeof payment.attachments === 'string' ? (
+                              <button
+                                onClick={() => window.open(payment.attachments, '_blank')}
+                                className="flex items-center gap-1 px-2 py-1 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/30 rounded text-blue-400 text-xs transition-colors"
+                              >
+                                <Paperclip size={12} />
+                                <span>View Attachment</span>
+                              </button>
+                            ) : null}
+                          </div>
+                        )}
+                        {payment.notes && (
+                          <p className="text-xs text-gray-500 mt-2">{payment.notes}</p>
                       )}
                     </div>
+                  ))}
+                  </div>
+                </div>
+              ) : purchase.paid > 0 ? (
+                <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-5">
+                  <p className="text-white font-semibold text-lg">
+                    Rs. {purchase.paid.toLocaleString()}
+                  </p>
+                  <p className="text-sm text-gray-400 mt-1">
+                    Total paid amount (payment details loading...)
+                  </p>
+                </div>
+              ) : (
+                <div className="text-center py-12">
+                  <CreditCard size={48} className="mx-auto text-gray-700 mb-4" />
+                  <p className="text-gray-500">No payments recorded yet</p>
+                        </div>
+                      )}
+                        </div>
+                      )}
+
+          {activeTab === 'history' && (
+            <div className="space-y-3">
+              <h3 className="text-lg font-semibold text-white mb-4">Activity Timeline</h3>
+              
+              {loadingActivityLogs ? (
+                <div className="text-center py-12 text-gray-400">Loading activity logs...</div>
+              ) : activityLogs.length > 0 ? (
+                <div className="space-y-4">
+                  {activityLogs.map((log, index) => {
+                    const getIcon = () => {
+                      switch (log.action) {
+                        case 'create':
+                          return <FileText size={16} className="text-gray-500" />;
+                        case 'status_change':
+                          return <CheckCircle2 size={16} className="text-green-500" />;
+                        case 'payment_added':
+                          return <DollarSign size={16} className="text-blue-500" />;
+                        case 'payment_deleted':
+                          return <DollarSign size={16} className="text-red-500" />;
+                        case 'update':
+                          return <Edit size={16} className="text-yellow-500" />;
+                        case 'delete':
+                          return <Trash2 size={16} className="text-red-500" />;
+                        default:
+                          return <Clock size={16} className="text-gray-500" />;
+                      }
+                    };
+
+                    const getBgColor = () => {
+                      switch (log.action) {
+                        case 'create':
+                          return 'bg-gray-700/20';
+                        case 'status_change':
+                          return 'bg-green-500/20';
+                        case 'payment_added':
+                          return 'bg-blue-500/20';
+                        case 'payment_deleted':
+                          return 'bg-red-500/20';
+                        case 'update':
+                          return 'bg-yellow-500/20';
+                        case 'delete':
+                          return 'bg-red-500/20';
+                        default:
+                          return 'bg-gray-700/20';
+                      }
+                    };
+
+                    return (
+                      <div key={log.id || index} className="flex gap-4">
+                        <div className="flex flex-col items-center">
+                          <div className={`w-8 h-8 rounded-full ${getBgColor()} flex items-center justify-center`}>
+                            {getIcon()}
+                          </div>
+                          {index < activityLogs.length - 1 && (
+                            <div className="w-0.5 h-full bg-gray-800 mt-2" />
+                          )}
+                        </div>
+                        <div className="flex-1 pb-6">
+                          <p className="text-white font-medium">
+                            {log.description || activityLogService.formatActivityLog(log)}
+                          </p>
+                          <p className="text-sm text-gray-400 mt-1">
+                            {new Date(log.created_at).toLocaleString()}
+                          </p>
+                          {log.performed_by_name && (
+                            <p className="text-sm text-gray-500 mt-1">
+                              By: {log.performed_by_name}
+                            </p>
+                          )}
+                          {log.field && log.old_value !== undefined && log.new_value !== undefined && (
+                            <p className="text-sm text-gray-500 mt-1">
+                              {log.field}: {String(log.old_value)} → {String(log.new_value)}
+                            </p>
+                          )}
+                          {log.amount && (
+                            <p className="text-sm text-gray-500 mt-1">
+                              Amount: Rs. {log.amount.toLocaleString()} {log.payment_method && `via ${log.payment_method}`}
+                            </p>
+                      )}
+                    </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="text-center py-12">
+                  <Clock size={48} className="mx-auto text-gray-700 mb-4" />
+                  <p className="text-gray-500">No activity logs found</p>
                   </div>
                 )}
-              </>
+            </div>
             )}
           </div>
-        </ScrollArea>
 
-        {/* Footer */}
-        <div className="px-6 py-4 border-t border-gray-800 bg-[#111827] shrink-0 flex items-center justify-end gap-3">
+        {/* Footer Actions */}
+        {activeTab === 'details' && purchase.due > 0 && (
+          <div className="border-t border-gray-800 px-6 py-4 bg-gray-900/50 shrink-0">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-gray-400">Amount Due</p>
+                <p className="text-2xl font-bold text-red-400">Rs. {purchase.due.toLocaleString()}</p>
+              </div>
           <Button
-            variant="outline"
-            onClick={onClose}
-            className="bg-gray-800 border-gray-700 text-white hover:bg-gray-700"
+                onClick={() => onAddPayment?.(purchase.id)}
+                className="bg-blue-600 hover:bg-blue-700 text-white"
           >
-            Close
+                <CreditCard size={16} className="mr-2" />
+                Add Payment
           </Button>
         </div>
       </div>
+        )}
+      </div>
 
       {/* Print Layout Modal */}
-      {showPrintLayout && purchaseContextData && (
+      {showPrintLayout && purchase && (
         <div className="fixed inset-0 z-[100] bg-black/80 flex items-center justify-center p-4">
           <div className="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-auto">
             <PurchaseOrderPrintLayout 
-              purchase={purchaseContextData} 
+              purchase={purchase} 
               onClose={() => setShowPrintLayout(false)}
             />
-          </div>
-        </div>
-      )}
+      </div>
     </div>
+      )}
+
+      {/* Payment Delete Confirmation Modal */}
+      {paymentToDelete && (
+        <PaymentDeleteConfirmationModal
+          isOpen={deleteConfirmationOpen}
+          onClose={() => {
+            setDeleteConfirmationOpen(false);
+            setPaymentToDelete(null);
+          }}
+          onConfirm={async () => {
+            if (!paymentToDelete || !purchase || !companyId) return;
+            
+            setIsDeletingPayment(true);
+            try {
+              const deletePromise = purchaseService.deletePayment(paymentToDelete.id, purchase.id);
+              const timeoutPromise = new Promise((_, reject) => 
+                setTimeout(() => reject(new Error('Payment deletion timed out. Please try again.')), 15000)
+              );
+              
+              await Promise.race([deletePromise, timeoutPromise]);
+              
+              // CRITICAL FIX: Log activity
+              if (companyId) {
+                try {
+                  await activityLogService.logActivity({
+                    companyId,
+                    module: 'payment',
+                    entityId: purchase.id,
+                    entityReference: purchase.purchaseNo,
+                    action: 'payment_deleted',
+                    amount: paymentToDelete.amount,
+                    paymentMethod: paymentToDelete.method,
+                    performedBy: user?.id || undefined,
+                    description: `Payment of Rs ${paymentToDelete.amount.toLocaleString()} deleted from purchase ${purchase.purchaseNo}`,
+                  });
+                } catch (logError) {
+                  console.error('[VIEW PURCHASE] Error logging payment deletion:', logError);
+                }
+              }
+              
+              toast.success('Payment deleted successfully. Reverse entry created.');
+              
+              await Promise.all([
+                loadPayments(purchase.id),
+                reloadPurchaseData()
+              ]);
+              
+              setDeleteConfirmationOpen(false);
+              setPaymentToDelete(null);
+            } catch (error: any) {
+              console.error('[VIEW PURCHASE] Error deleting payment:', error);
+              toast.error(error?.message || 'Failed to delete payment. Please try again.');
+            } finally {
+              setIsDeletingPayment(false);
+            }
+          }}
+          paymentAmount={paymentToDelete.amount}
+          paymentMethod={paymentToDelete.method}
+          paymentDate={paymentToDelete.date}
+          referenceNumber={paymentToDelete.referenceNo}
+          isLoading={isDeletingPayment}
+        />
+      )}
+
+      {/* Edit Payment Dialog */}
+      {paymentToEdit && purchase && (
+        <UnifiedPaymentDialog
+          isOpen={editPaymentDialogOpen}
+          onClose={() => {
+            setEditPaymentDialogOpen(false);
+            setPaymentToEdit(null);
+          }}
+          context="supplier"
+          entityName={purchase.supplierName || 'Supplier'}
+          entityId={purchase.supplier}
+          outstandingAmount={purchase.due}
+          totalAmount={purchase.total}
+          paidAmount={purchase.paid}
+          referenceNo={purchase.purchaseNo}
+          referenceId={purchase.id}
+          editMode={true}
+          paymentToEdit={{
+            id: paymentToEdit.id,
+            amount: paymentToEdit.amount,
+            method: paymentToEdit.method,
+            accountId: paymentToEdit.accountId || paymentToEdit.payment_account_id,
+            date: paymentToEdit.date || paymentToEdit.payment_date,
+            referenceNumber: paymentToEdit.referenceNo || paymentToEdit.reference_number,
+            notes: paymentToEdit.notes
+          }}
+          onSuccess={async () => {
+            toast.success('Payment updated successfully');
+            await Promise.all([
+              loadPayments(purchase.id),
+              reloadPurchaseData()
+            ]);
+            setEditPaymentDialogOpen(false);
+            setPaymentToEdit(null);
+          }}
+        />
+      )}
+    </>
   );
 };

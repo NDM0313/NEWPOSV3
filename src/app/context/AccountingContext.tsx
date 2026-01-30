@@ -262,6 +262,7 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
       balance: parseFloat(supabaseAccount.balance || supabaseAccount.current_balance || 0),
       branch: supabaseAccount.branch_name || supabaseAccount.branch_id || '',
       isActive: supabaseAccount.is_active !== false,
+      code: supabaseAccount.code || undefined, // CRITICAL FIX: Include code for account lookup
     };
   }, []);
   
@@ -440,9 +441,12 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
   // 🎯 CORE: Create Entry (SAVES TO DATABASE)
   // ============================================
   const createEntry = async (entry: Omit<AccountingEntry, 'id' | 'date' | 'createdBy'>): Promise<boolean> => {
-    if (!companyId || !branchId) {
-      console.error('[ACCOUNTING] Cannot create entry: companyId or branchId missing');
-      toast.error('Cannot create entry: Company or branch not set');
+    // CRITICAL FIX: Validate branchId - must be valid UUID or null, not "all"
+    const validBranchId = (branchId && branchId !== 'all') ? branchId : null;
+    
+    if (!companyId) {
+      console.error('[ACCOUNTING] Cannot create entry: companyId missing');
+      toast.error('Cannot create entry: Company not set');
       return false;
     }
 
@@ -489,7 +493,8 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
           // Match by code for default accounts
           (normalizedDebitAccount === 'Cash' && accCode === '1000') ||
           (normalizedDebitAccount === 'Bank' && accCode === '1010') ||
-          (normalizedDebitAccount === 'Accounts Receivable' && accCode === '1100')
+          (normalizedDebitAccount === 'Accounts Receivable' && accCode === '1100') ||
+          (normalizedDebitAccount === 'Accounts Payable' && accCode === '2000')
         );
       });
       creditAccountObj = accounts.find(acc => {
@@ -503,7 +508,8 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
           // Match by code for default accounts
           (normalizedCreditAccount === 'Cash' && accCode === '1000') ||
           (normalizedCreditAccount === 'Bank' && accCode === '1010') ||
-          (normalizedCreditAccount === 'Accounts Receivable' && accCode === '2000')
+          (normalizedCreditAccount === 'Accounts Receivable' && accCode === '1100') ||
+          (normalizedCreditAccount === 'Accounts Payable' && accCode === '2000')
         );
       });
 
@@ -537,6 +543,7 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
               balance: parseFloat(acc.balance || 0),
               branch: acc.branch_name || acc.branch_id || '',
               isActive: acc.is_active !== false,
+              code: acc.code || undefined, // CRITICAL FIX: Include code for account lookup
             }));
             setAccounts(refreshedAccounts);
             
@@ -549,6 +556,7 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
                 accType.toLowerCase() === normalizedDebitAccount.toLowerCase() || 
                 accName.toLowerCase() === normalizedDebitAccount.toLowerCase() ||
                 (normalizedDebitAccount === 'Cash' && (accCode === '1000' || accName.toLowerCase().includes('cash'))) ||
+                (normalizedDebitAccount === 'Accounts Payable' && (accCode === '2000' || accName.toLowerCase().includes('payable'))) ||
                 (normalizedDebitAccount === 'Bank' && (accCode === '1010' || accName.toLowerCase().includes('bank'))) ||
                 (normalizedDebitAccount === 'Accounts Receivable' && (accCode === '1100' || accName.toLowerCase().includes('receivable')))
               );
@@ -560,7 +568,10 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
               return (
                 accType.toLowerCase() === normalizedCreditAccount.toLowerCase() || 
                 accName.toLowerCase() === normalizedCreditAccount.toLowerCase() ||
-                (normalizedCreditAccount === 'Accounts Receivable' && (accCode === '2000' || accName.toLowerCase().includes('receivable')))
+                (normalizedCreditAccount === 'Cash' && (accCode === '1000' || accName.toLowerCase().includes('cash'))) ||
+                (normalizedCreditAccount === 'Bank' && (accCode === '1010' || accName.toLowerCase().includes('bank'))) ||
+                (normalizedCreditAccount === 'Accounts Receivable' && (accCode === '1100' || accName.toLowerCase().includes('receivable'))) ||
+                (normalizedCreditAccount === 'Accounts Payable' && (accCode === '2000' || accName.toLowerCase().includes('payable')))
               );
             });
             
@@ -570,9 +581,10 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
               creditAccountObj = retryCredit;
               
               // Use retry accounts - continue with journal entry creation
+              // CRITICAL FIX: Use validBranchId (not "all")
               const journalEntry: JournalEntry = {
                 company_id: companyId,
-                branch_id: branchId || null,
+                branch_id: validBranchId,
                 entry_no: `JE-${Date.now()}-${Math.random().toString(36).substr(2, 5).toUpperCase()}`,
                 entry_date: new Date().toISOString().split('T')[0],
                 description: entry.description,
@@ -604,9 +616,10 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
 
       // Create journal entry (matching database schema)
       // CRITICAL FIX: Use null instead of undefined for optional UUID fields to prevent "undefinedundefined" error
+      // CRITICAL FIX: Use validBranchId (not "all") to prevent UUID error
       const journalEntry: JournalEntry = {
         company_id: companyId,
-        branch_id: branchId || null,
+        branch_id: validBranchId,
         entry_no: entryNo,
         entry_date: entryDate,
         description: entry.description,
@@ -1171,14 +1184,15 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
   const recordSupplierPayment = async (params: SupplierPaymentParams): Promise<boolean> => {
     const { purchaseId, supplierName, supplierId, amount, paymentMethod, referenceNo } = params;
 
+    // STEP 2 FIX: Use 'purchase' as reference_type to match payment record
     return await createEntry({
-      source: 'Payment',
+      source: 'Purchase', // Changed from 'Payment' to 'Purchase' to match payment record reference_type
       referenceNo: referenceNo,
       debitAccount: 'Accounts Payable',
       creditAccount: paymentMethod as AccountType,
       amount: amount,
       description: `Payment to supplier ${supplierName}`,
-      module: 'Accounting',
+      module: 'Purchases',
       metadata: { supplierId, supplierName, purchaseId }
     });
   };

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { X, ExternalLink, FileText } from 'lucide-react';
+import { X, ExternalLink, FileText, Paperclip, Image as ImageIcon, File } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/app/components/ui/dialog';
 import { Button } from '@/app/components/ui/button';
 import { Badge } from '@/app/components/ui/badge';
@@ -24,6 +24,7 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
   const { companyId, branchId } = useSupabase();
   const [transaction, setTransaction] = useState<any>(null);
   const [loading, setLoading] = useState(false);
+  const [selectedAttachment, setSelectedAttachment] = useState<string | null>(null);
 
   useEffect(() => {
     if (isOpen && referenceNumber && companyId) {
@@ -117,7 +118,7 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-5xl max-h-[90vh] overflow-auto bg-gray-900 border-gray-800">
+      <DialogContent className="max-w-7xl w-[95vw] max-h-[95vh] overflow-auto bg-gray-900 border-gray-800">
         <DialogHeader>
           <DialogTitle className="text-white flex items-center justify-between">
             <div>
@@ -232,6 +233,40 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
                           {format(new Date(payment.payment_date), 'dd MMM yyyy')}
                         </p>
                       </div>
+                      {/* CRITICAL FIX: Show attachment icon if payment has attachments */}
+                      {payment.attachments && (
+                        <div className="col-span-2">
+                          <span className="text-gray-400">Attachments:</span>
+                          <div className="flex flex-wrap gap-2 mt-2">
+                            {Array.isArray(payment.attachments) ? (
+                              payment.attachments.map((att: any, idx: number) => {
+                                const url = att.url || att.fileUrl || att;
+                                const name = att.name || att.fileName || `Attachment ${idx + 1}`;
+                                const isImage = /\.(jpg|jpeg|png|gif|webp)$/i.test(url);
+                                return (
+                                  <button
+                                    key={idx}
+                                    onClick={() => setSelectedAttachment(url)}
+                                    className="flex items-center gap-2 px-3 py-1.5 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/30 rounded-lg text-blue-400 transition-colors"
+                                  >
+                                    {isImage ? <ImageIcon size={16} /> : <File size={16} />}
+                                    <span className="text-sm">{name}</span>
+                                    <Paperclip size={14} />
+                                  </button>
+                                );
+                              })
+                            ) : typeof payment.attachments === 'string' ? (
+                              <button
+                                onClick={() => setSelectedAttachment(payment.attachments)}
+                                className="flex items-center gap-2 px-3 py-1.5 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/30 rounded-lg text-blue-400 transition-colors"
+                              >
+                                <Paperclip size={16} />
+                                <span className="text-sm">View Attachment</span>
+                              </button>
+                            ) : null}
+                          </div>
+                        </div>
+                      )}
                     </>
                   )}
                 </div>
@@ -338,6 +373,37 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
             )}
           </div>
         ) : null}
+
+        {/* Attachment Viewer Modal */}
+        {selectedAttachment && (
+          <div 
+            className="fixed inset-0 z-[200] bg-black/90 flex items-center justify-center p-4"
+            onClick={() => setSelectedAttachment(null)}
+          >
+            <div className="relative max-w-6xl max-h-[90vh] w-full h-full flex items-center justify-center">
+              <button
+                onClick={() => setSelectedAttachment(null)}
+                className="absolute top-4 right-4 text-white hover:text-gray-300 z-10 bg-gray-900/80 rounded-full p-2"
+              >
+                <X size={24} />
+              </button>
+              {/\.(jpg|jpeg|png|gif|webp)$/i.test(selectedAttachment) ? (
+                <img 
+                  src={selectedAttachment} 
+                  alt="Attachment" 
+                  className="max-w-full max-h-full object-contain"
+                  onClick={(e) => e.stopPropagation()}
+                />
+              ) : (
+                <iframe
+                  src={selectedAttachment}
+                  className="w-full h-full border-0"
+                  onClick={(e) => e.stopPropagation()}
+                />
+              )}
+            </div>
+          </div>
+        )}
       </DialogContent>
     </Dialog>
   );

@@ -20,7 +20,9 @@ export const RentalDashboard = () => {
       if (!companyId) return;
       
       try {
-        const data = await rentalService.getAllRentals(companyId, branchId || undefined);
+        // Pass undefined if branchId is "all" to show all branches
+        const branchIdToUse = branchId && branchId !== 'all' ? branchId : undefined;
+        const data = await rentalService.getAllRentals(companyId, branchIdToUse);
         setRentals(data || []);
       } catch (error) {
         console.error('[RENTAL DASHBOARD] Error loading rentals:', error);

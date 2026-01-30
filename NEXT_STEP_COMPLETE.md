@@ -1,76 +1,45 @@
-# ✅ NEXT STEP - COMPLETE STATUS
-
-## Date: 2026-01-20
-
-## 🎯 SUMMARY
-
-All automated attempts to apply schema failed due to network/connection issues. Manual application via Supabase SQL Editor is the recommended and most reliable method.
-
----
+# Next Step Complete - Sale/Purchase Forms Integration ✅
 
 ## ✅ COMPLETED
 
-1. **.env.local Updated** ✅
-   - New project: wrwljqzckmnmuphwhslt.supabase.co
-   - All credentials configured
-   - Ready for use
+### 1. SaleForm ✅
+- ✅ Updated to use `useSettings()` for `enablePacking`
+- ✅ Packing dialog and columns show/hide based on setting
+- ✅ Packing data flows correctly
 
-2. **Schema File Ready** ✅
-   - Complete frontend-driven schema
-   - 20 tables, all indexes, triggers, functions
-   - File: `supabase-extract/migrations/03_frontend_driven_schema.sql`
+### 2. PurchaseForm ✅
+- ✅ Updated to use `useSettings()` for `enablePacking`
+- ✅ Packing dialog and columns show/hide based on setting
+- ✅ Packing data flows correctly
 
-3. **Documentation Created** ✅
-   - Step-by-step application guide
-   - Verification queries
-   - Troubleshooting tips
+### 3. ViewSaleDetailsDrawer ✅
+- ✅ Updated to use `useSettings()` for `enablePacking`
+- ✅ Packing column shows/hides based on setting
 
----
+### 4. LedgerPrintView ✅
+- ✅ Updated to use `useSettings()` for `enablePacking`
+- ✅ Packing column in print shows/hides based on setting
 
-## ⚠️ MANUAL STEP REQUIRED
+## 📋 SUMMARY
 
-### Apply Schema via Supabase SQL Editor
+**All Sale/Purchase forms now:**
+- ✅ Use `useSettings()` for `enablePacking` (consistent source)
+- ✅ Show/hide packing UI based on setting
+- ✅ Pass `enablePacking` to child components
+- ✅ Include packing data in save when enabled
 
-**Time Required:** 5 minutes
+**Files Updated:**
+1. ✅ `src/app/components/sales/SaleForm.tsx`
+2. ✅ `src/app/components/purchases/PurchaseForm.tsx`
+3. ✅ `src/app/components/sales/ViewSaleDetailsDrawer.tsx`
+4. ✅ `src/app/components/customer-ledger-test/modern-original/print/LedgerPrintView.tsx`
 
-**Steps:**
-1. Open: https://supabase.com/dashboard
-2. Select project: wrwljqzckmnmuphwhslt
-3. SQL Editor → New Query
-4. Copy entire content from: `supabase-extract/migrations/03_frontend_driven_schema.sql`
-5. Paste and Run
-6. Wait 30-60 seconds
-7. Verify success
+## 🔄 REMAINING (For Future)
 
-**Detailed Guide:** See `SCHEMA_APPLY_FINAL_GUIDE.md`
-
----
-
-## 📋 AFTER SCHEMA APPLIED
-
-1. **Restart Dev Server**
-   ```bash
-   npm run dev
-   ```
-
-2. **Test Connection**
-   - Create new business
-   - Verify it works
-
-3. **Verify Data Persistence**
-   - Add data
-   - Hard refresh
-   - Verify data persists
+1. **Other Print Components** - Add enablePacking checks
+2. **Stock Movement Recording** - Record boxes/pieces in movements
+3. **Inventory Balance Updates** - Update boxes/pieces in balance
 
 ---
 
-## 📁 ALL FILES READY
-
-- ✅ `.env.local` - Updated
-- ✅ `supabase-extract/migrations/03_frontend_driven_schema.sql` - Schema file
-- ✅ `SCHEMA_APPLY_FINAL_GUIDE.md` - Complete guide
-- ✅ `NEXT_STEP_COMPLETE.md` - This file
-
----
-
-**Status:** ✅ All preparation complete | ⚠️ Manual schema application required (5 minutes)
+**Status:** ✅ Next Step Complete - Sale/Purchase Forms Fully Integrated

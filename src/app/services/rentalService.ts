@@ -86,7 +86,8 @@ export const rentalService = {
       .eq('company_id', companyId)
       .order('booking_date', { ascending: false });
 
-    if (branchId) {
+    // Only apply branch_id filter if it's provided and not "all"
+    if (branchId && branchId !== 'all') {
       query = query.eq('branch_id', branchId);
     }
 

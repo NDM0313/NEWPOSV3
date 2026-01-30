@@ -81,7 +81,7 @@ export const GlobalDrawer = () => {
 
   // Determine width and side based on content type and device
   const isSale = activeDrawer === 'addSale' || activeDrawer === 'edit-sale';
-  const isPurchase = activeDrawer === 'addPurchase';
+  const isPurchase = activeDrawer === 'addPurchase' || activeDrawer === 'edit-purchase';
   const isProduct = activeDrawer === 'addProduct' || activeDrawer === 'edit-product';
   const isContact = activeDrawer === 'addContact';
   const side = isMobile ? "bottom" : "right";

@@ -478,6 +478,74 @@ export const saleService = {
     return data;
   },
 
+  // Update payment
+  async updatePayment(
+    paymentId: string,
+    saleId: string,
+    updates: {
+      amount?: number;
+      paymentMethod?: string;
+      accountId?: string;
+      paymentDate?: string;
+      referenceNumber?: string;
+      notes?: string;
+    }
+  ) {
+    try {
+      // Normalize payment method if provided
+      let normalizedPaymentMethod = updates.paymentMethod;
+      if (updates.paymentMethod) {
+        const normalized = updates.paymentMethod.toLowerCase().trim();
+        const paymentMethodMap: Record<string, string> = {
+          'cash': 'cash',
+          'Cash': 'cash',
+          'bank': 'bank',
+          'Bank': 'bank',
+          'card': 'card',
+          'Card': 'card',
+          'cheque': 'other',
+          'Cheque': 'other',
+          'mobile wallet': 'other',
+          'Mobile Wallet': 'other',
+          'mobile_wallet': 'other',
+          'wallet': 'other',
+          'Wallet': 'other',
+        };
+        normalizedPaymentMethod = paymentMethodMap[updates.paymentMethod] || paymentMethodMap[normalized] || 'cash';
+      }
+
+      // Build update data
+      const updateData: any = {};
+      if (updates.amount !== undefined) updateData.amount = updates.amount;
+      if (normalizedPaymentMethod) updateData.payment_method = normalizedPaymentMethod;
+      if (updates.accountId) updateData.payment_account_id = updates.accountId;
+      if (updates.paymentDate) updateData.payment_date = updates.paymentDate;
+      if (updates.referenceNumber !== undefined) updateData.reference_number = updates.referenceNumber;
+      if (updates.notes !== undefined) updateData.notes = updates.notes;
+
+      const { data, error } = await supabase
+        .from('payments')
+        .update(updateData)
+        .eq('id', paymentId)
+        .select()
+        .single();
+
+      if (error) {
+        console.error('[SALE SERVICE] Error updating payment:', error);
+        throw error;
+      }
+
+      // Triggers will handle:
+      // 1. Journal entry update (if needed)
+      // 2. Sale totals recalculation
+      console.log('[SALE SERVICE] Payment updated successfully');
+      return data;
+    } catch (error: any) {
+      console.error('[SALE SERVICE] Error updating payment:', error);
+      throw error;
+    }
+  },
+
   // Get sales report
   async getSalesReport(companyId: string, startDate: string, endDate: string) {
     const { data, error } = await supabase
@@ -542,6 +610,7 @@ export const saleService = {
         payment_method,
         payment_account_id,
         notes,
+        attachments,
         created_at,
         account:accounts(id, name)
       `)

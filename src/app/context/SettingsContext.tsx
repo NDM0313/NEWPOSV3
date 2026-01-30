@@ -118,6 +118,7 @@ export interface InventorySettings {
   valuationMethod: 'FIFO' | 'LIFO' | 'Weighted Average';
   autoReorderEnabled: boolean;
   barcodeRequired: boolean;
+  enablePacking: boolean; // Global toggle: ON = boxes/pieces enabled everywhere, OFF = completely hidden
 }
 
 export interface RentalSettings {
@@ -285,6 +286,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
     valuationMethod: 'FIFO',
     autoReorderEnabled: false,
     barcodeRequired: false,
+    enablePacking: false, // Default: Packing disabled
   });
 
   // Rental Settings
@@ -458,6 +460,10 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
 
       // Load Inventory Settings
       const inventoryData = (settingsMap.get('inventory_settings') as any) || {};
+      
+      // Load Enable Packing setting (separate key for global control)
+      const enablePacking = await settingsService.getEnablePacking(companyId);
+      
       setInventorySettings({
         lowStockThreshold: inventoryData.lowStockThreshold || 0,
         reorderAlertDays: inventoryData.reorderAlertDays || 0,
@@ -465,6 +471,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
         valuationMethod: inventoryData.valuationMethod || 'FIFO',
         autoReorderEnabled: inventoryData.autoReorderEnabled || false,
         barcodeRequired: inventoryData.barcodeRequired || false,
+        enablePacking: enablePacking || false,
       });
 
       // Load Rental Settings
@@ -648,7 +655,15 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
     setInventorySettings(updated);
     
     try {
-      await settingsService.setSetting(companyId, 'inventory_settings', updated, 'inventory', 'Inventory module settings');
+      // Save inventory_settings (excluding enablePacking)
+      const { enablePacking, ...otherSettings } = updated;
+      await settingsService.setSetting(companyId, 'inventory_settings', otherSettings, 'inventory', 'Inventory module settings');
+      
+      // Save enablePacking separately (global setting)
+      if (settings.enablePacking !== undefined) {
+        await settingsService.setEnablePacking(companyId, settings.enablePacking);
+      }
+      
       toast.success('Inventory settings saved');
     } catch (error) {
       console.error('[SETTINGS] Error saving inventory settings:', error);

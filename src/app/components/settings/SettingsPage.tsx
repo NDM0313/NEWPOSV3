@@ -1400,6 +1400,51 @@ export const SettingsPage = () => {
                       />
                     </label>
                   </div>
+
+                  {/* Inventory Settings Section */}
+                  <div className="pt-6 border-t border-gray-800 mt-6">
+                    <div className="flex items-center gap-3 mb-4">
+                      <Package className="text-orange-400" size={20} />
+                      <h3 className="text-lg font-bold text-white">Inventory Settings</h3>
+                    </div>
+                    
+                    <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-4 mb-4">
+                      <div className="flex items-start gap-3">
+                        <AlertCircle className="text-blue-400 mt-0.5" size={20} />
+                        <div>
+                          <div className="text-blue-400 font-semibold">Enable Packing (Boxes/Pieces)</div>
+                          <div className="text-xs text-blue-300/80 mt-1">
+                            When ON: Packing columns (Boxes/Pieces) visible in Sale, Purchase, Inventory, Ledger, Print/PDF
+                            <br />
+                            When OFF: Packing completely hidden system-wide - only Qty shown
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <label className="flex items-center justify-between p-4 bg-gray-800 rounded-lg cursor-pointer border-2 border-blue-500/30">
+                      <div className="flex items-center gap-3">
+                        <div>
+                          <div className="text-white font-semibold">Enable Packing System</div>
+                          <div className="text-xs text-gray-400 mt-1">
+                            Global toggle: Controls boxes/pieces visibility everywhere
+                          </div>
+                        </div>
+                        <Badge className={settingsContext.inventorySettings.enablePacking ? "bg-green-500/20 text-green-400 border-green-500/30" : "bg-gray-500/20 text-gray-400 border-gray-500/30"}>
+                          {settingsContext.inventorySettings.enablePacking ? "ON" : "OFF"}
+                        </Badge>
+                      </div>
+                      <input
+                        type="checkbox"
+                        checked={settingsContext.inventorySettings.enablePacking}
+                        onChange={async (e) => {
+                          await settingsContext.updateInventorySettings({ enablePacking: e.target.checked });
+                          setHasChanges(true);
+                        }}
+                        className="w-6 h-6 rounded border-gray-700"
+                      />
+                    </label>
+                  </div>
                 </div>
               )}
 

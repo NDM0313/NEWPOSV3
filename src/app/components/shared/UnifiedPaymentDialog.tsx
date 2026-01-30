@@ -35,6 +35,17 @@ export interface PaymentDialogProps {
   referenceNo?: string; // Invoice number (string) for display
   referenceId?: string; // UUID of sale/purchase/rental (for journal entry reference_id)
   onSuccess?: () => void;
+  // Edit mode props
+  editMode?: boolean;
+  paymentToEdit?: {
+    id: string;
+    amount: number;
+    method: string;
+    accountId?: string;
+    date: string;
+    referenceNumber?: string;
+    notes?: string;
+  };
 }
 
 // ============================================
@@ -53,7 +64,9 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
   previousPayments = [],
   referenceNo,
   referenceId, // CRITICAL FIX: UUID for journal entry reference_id
-  onSuccess
+  onSuccess,
+  editMode = false,
+  paymentToEdit
 }) => {
   const accounting = useAccounting();
   const settings = useSettings();
@@ -81,20 +94,38 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
   // Reset form when dialog opens
   React.useEffect(() => {
     if (isOpen) {
-      setAmount(0);
-      setPaymentMethod('Cash');
-      setSelectedAccount('');
-      setNotes('');
-      const now = new Date();
-      const year = now.getFullYear();
-      const month = String(now.getMonth() + 1).padStart(2, '0');
-      const day = String(now.getDate()).padStart(2, '0');
-      const hours = String(now.getHours()).padStart(2, '0');
-      const minutes = String(now.getMinutes()).padStart(2, '0');
-      setPaymentDateTime(`${year}-${month}-${day}T${hours}:${minutes}`);
+      if (editMode && paymentToEdit) {
+        // Edit mode: populate with existing payment data
+        setAmount(paymentToEdit.amount);
+        setPaymentMethod((paymentToEdit.method.charAt(0).toUpperCase() + paymentToEdit.method.slice(1)) as PaymentMethod || 'Cash');
+        setSelectedAccount(paymentToEdit.accountId || '');
+        setNotes(paymentToEdit.notes || '');
+        
+        // Format date for datetime-local input
+        const paymentDate = new Date(paymentToEdit.date);
+        const year = paymentDate.getFullYear();
+        const month = String(paymentDate.getMonth() + 1).padStart(2, '0');
+        const day = String(paymentDate.getDate()).padStart(2, '0');
+        const hours = String(paymentDate.getHours() || 0).padStart(2, '0');
+        const minutes = String(paymentDate.getMinutes() || 0).padStart(2, '0');
+        setPaymentDateTime(`${year}-${month}-${day}T${hours}:${minutes}`);
+      } else {
+        // Add mode: reset to defaults
+        setAmount(0);
+        setPaymentMethod('Cash');
+        setSelectedAccount('');
+        setNotes('');
+        const now = new Date();
+        const year = now.getFullYear();
+        const month = String(now.getMonth() + 1).padStart(2, '0');
+        const day = String(now.getDate()).padStart(2, '0');
+        const hours = String(now.getHours()).padStart(2, '0');
+        const minutes = String(now.getMinutes()).padStart(2, '0');
+        setPaymentDateTime(`${year}-${month}-${day}T${hours}:${minutes}`);
+      }
       setAttachments([]);
     }
-  }, [isOpen]);
+  }, [isOpen, editMode, paymentToEdit]);
 
   // 🎯 Filter accounts based on payment method AND branch
   // Include: branch-specific accounts + global accounts
@@ -218,16 +249,94 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
     try {
       let success = false;
 
-      // Route to appropriate accounting function based on context
-      switch (context) {
-        case 'supplier':
-          success = await accounting.recordSupplierPayment({
-            supplierName: entityName,
-            supplierId: entityId,
-            amount,
-            paymentMethod,
-            referenceNo: referenceNo || `PAY-${Date.now()}`
-          });
+      // EDIT MODE: Update existing payment
+      if (editMode && paymentToEdit) {
+        const paymentDate = paymentDateTime.split('T')[0];
+        
+        if (context === 'customer' && referenceId) {
+          const { saleService } = await import('@/app/services/saleService');
+          await saleService.updatePayment(
+            paymentToEdit.id,
+            referenceId,
+            {
+              amount,
+              paymentMethod,
+              accountId: selectedAccount,
+              paymentDate,
+              referenceNumber: notes || undefined,
+              notes: notes || undefined
+            }
+          );
+          success = true;
+        } else if (context === 'supplier' && referenceId) {
+          const { purchaseService } = await import('@/app/services/purchaseService');
+          await purchaseService.updatePayment(
+            paymentToEdit.id,
+            referenceId,
+            {
+              amount,
+              paymentMethod,
+              accountId: selectedAccount,
+              paymentDate,
+              referenceNumber: notes || undefined,
+              notes: notes || undefined
+            }
+          );
+          success = true;
+        }
+      } else {
+        // ADD MODE: Create new payment
+        // Route to appropriate accounting function based on context
+        switch (context) {
+          case 'supplier':
+          // STEP 2 FIX: Create payment record first (like customer payments)
+          if (!referenceId) {
+            toast.error('Purchase ID is required for payment recording');
+            setIsProcessing(false);
+            return;
+          }
+          if (!selectedAccount) {
+            toast.error('Please select an account for payment');
+            setIsProcessing(false);
+            return;
+          }
+          if (!companyId) {
+            toast.error('Company ID is required');
+            setIsProcessing(false);
+            return;
+          }
+          
+          // CRITICAL FIX: branchId can be "all" from context, but purchaseService will get actual branch_id from purchase record
+          // So we pass it as optional - purchaseService will use purchase's branch_id instead
+          try {
+            // CRITICAL FIX: First create the payment record via purchaseService
+            const { purchaseService } = await import('@/app/services/purchaseService');
+            await purchaseService.recordPayment(
+              referenceId,
+              amount,
+              paymentMethod,
+              selectedAccount,
+              companyId,
+              branchId && branchId !== 'all' ? branchId : undefined // Pass undefined if "all"
+            );
+            
+            // Then create journal entry via accounting
+            success = await accounting.recordSupplierPayment({
+              purchaseId: referenceId, // CRITICAL FIX: UUID for reference_id
+              supplierName: entityName,
+              supplierId: entityId,
+              amount,
+              paymentMethod,
+              referenceNo: referenceNo || `PO-${Date.now()}`
+            });
+          } catch (paymentError: any) {
+            console.error('[UNIFIED PAYMENT] Error recording purchase payment:', paymentError);
+            toast.error('Payment failed', {
+              description: paymentError.message || 'Unable to record payment. Please try again.'
+            });
+            setIsProcessing(false);
+            return;
+          }
           break;
 
         case 'customer':
@@ -300,6 +409,7 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
             referenceNo: referenceNo || `RP-${Date.now()}`
           });
           break;
+        }
       }
 
       if (success) {
@@ -349,7 +459,9 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
                 {labels.icon}
               </div>
               <div>
-                <h2 className="text-lg font-bold text-white">{labels.title}</h2>
+                <h2 className="text-lg font-bold text-white">
+                  {editMode ? 'Edit Payment' : labels.title}
+                </h2>
                 <p className="text-xs text-gray-400 mt-0.5">Complete transaction details</p>
               </div>
             </div>
@@ -710,7 +822,7 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
                 ) : (
                   <span className="flex items-center gap-2">
                     <Check size={16} />
-                    {labels.actionButton}
+                    {editMode ? 'Update Payment' : labels.actionButton}
                   </span>
                 )}
               </Button>

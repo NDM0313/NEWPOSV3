@@ -172,7 +172,9 @@ export const RentalOrdersList = () => {
 
     try {
       setLoading(true);
-      const rentalsData = await rentalService.getAllRentals(companyId, branchId || undefined);
+      // Pass undefined if branchId is "all" to show all branches
+      const branchIdToUse = branchId && branchId !== 'all' ? branchId : undefined;
+      const rentalsData = await rentalService.getAllRentals(companyId, branchIdToUse);
       const convertedOrders = rentalsData.map(convertFromSupabaseRental);
       setOrders(convertedOrders);
     } catch (error: any) {

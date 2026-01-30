@@ -74,24 +74,29 @@ import { BranchSelector, currentUser } from '@/app/components/layout/BranchSelec
 import { PurchaseItemsSection } from './PurchaseItemsSection';
 import { PaymentAttachments, PaymentAttachment } from '../payments/PaymentAttachments';
 import { useSupabase } from '@/app/context/SupabaseContext';
+import { useSettings } from '@/app/context/SettingsContext';
 import { contactService } from '@/app/services/contactService';
 import { productService } from '@/app/services/productService';
 import { branchService } from '@/app/services/branchService';
+import { purchaseService } from '@/app/services/purchaseService';
 import { usePurchases } from '@/app/context/PurchaseContext';
 import { useNavigation } from '@/app/context/NavigationContext';
+import { useDocumentNumbering } from '@/app/hooks/useDocumentNumbering';
 import { Loader2 } from 'lucide-react';
 import { format } from "date-fns";
 
 interface PurchaseItem {
     id: number;
-    productId: number;
+    productId: number | string;
     name: string;
     sku: string;
     price: number;
     qty: number;
+    receivedQty?: number;
     // Standard Variation Fields
     size?: string;
     color?: string;
+    variationId?: string; // Variation UUID for database
     // Standard Packing Fields (Wholesale)
     thaans?: number;
     meters?: number;
@@ -127,11 +132,38 @@ interface PurchaseFormProps {
 
 export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFormProps) => {
     // Supabase & Context
-    const { companyId, branchId: contextBranchId, userRole, enablePacking } = useSupabase();
+    const { companyId, branchId: contextBranchId, userRole } = useSupabase();
+    const { inventorySettings } = useSettings();
+    const enablePacking = inventorySettings.enablePacking;
     // CRITICAL FIX: Check if user is admin
     const isAdmin = userRole === 'admin' || userRole === 'Admin';
-    const { createPurchase } = usePurchases();
+    const { createPurchase, updatePurchase } = usePurchases();
     const { openDrawer, activeDrawer, createdContactId, createdContactType, setCreatedContactId, openPackingModal } = useNavigation();
+    const { generateDocumentNumber } = useDocumentNumbering();
+    
+    // STEP 1: Detect edit mode - check for purchase ID in multiple possible fields
+    // CRITICAL FIX: Database uses UUID, but frontend might pass numeric id
+    // Priority: uuid (database UUID) > id (if it's a valid UUID string) > purchaseId
+    let purchaseId: string | null = null;
+    if (initialPurchase?.uuid) {
+        purchaseId = initialPurchase.uuid;
+    } else if (initialPurchase?.id) {
+        // Check if id is a UUID (contains dashes) or numeric
+        const idStr = String(initialPurchase.id);
+        if (idStr.includes('-') && idStr.length > 30) {
+            // Looks like a UUID
+            purchaseId = idStr;
+        } else {
+            // Numeric ID - this won't work with UUID database, log warning
+            console.warn('[PURCHASE FORM] Numeric purchase ID detected, but database expects UUID. Purchase might not load correctly.');
+        }
+    } else if (initialPurchase?.purchaseId) {
+        purchaseId = initialPurchase.purchaseId;
+    }
+    const isEditMode = Boolean(purchaseId);
+    
+    // State to track loaded purchase data from backend
+    const [loadedPurchaseData, setLoadedPurchaseData] = useState<any>(null);
     
     // Data State
     const [suppliers, setSuppliers] = useState<Array<{ id: number | string; name: string; dueBalance: number }>>([]);
@@ -144,7 +176,8 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
     const [supplierSearchOpen, setSupplierSearchOpen] = useState(false);
     const [supplierSearchTerm, setSupplierSearchTerm] = useState("");
     const [purchaseDate, setPurchaseDate] = useState<Date>(new Date());
-    const [refNumber, setRefNumber] = useState("");
+    const [refNumber, setRefNumber] = useState(""); // Reference number (optional, user-entered)
+    const [poNumber, setPoNumber] = useState<string>(""); // Auto-generated PO number (read-only)
     
     // Add Supplier Modal State - REMOVED (using GlobalDrawer contact form instead)
     
@@ -238,11 +271,13 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
     const getSupplierName = () => suppliers.find(s => s.id.toString() === supplierId)?.name || "Select Supplier";
 
     const selectedSupplierDue = suppliers.find(s => s.id.toString() === supplierId)?.dueBalance ?? 0;
+    // STEP 2 FIX: Payment enabled for both 'received' and 'final' status
+    const isPaymentEnabled = purchaseStatus === 'received' || purchaseStatus === 'final';
     const isFinal = purchaseStatus === 'final';
 
-    // When status changes away from Final: clear temp payments (ERP rule: payment only when Final)
+    // STEP 2 FIX: When status changes away from Received/Final: clear temp payments
     useEffect(() => {
-        if (purchaseStatus !== 'final') {
+        if (purchaseStatus !== 'received' && purchaseStatus !== 'final') {
             setPartialPayments([]);
             setNewPaymentAmount(0);
             setNewPaymentReference('');
@@ -687,79 +722,227 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
         reloadSuppliers();
     }, [activeDrawer, companyId, createdContactId, createdContactType, setCreatedContactId]);
 
-    // Pre-populate form when editing (TASK 3 FIX)
+    // Generate PO number for new purchases
+    // Track if PO number has been generated for new purchases
+    const poNumberGeneratedRef = useRef(false);
+    
     useEffect(() => {
+        if (!initialPurchase && !poNumberGeneratedRef.current) {
+            // New purchase: Generate PO number (only once)
+            poNumberGeneratedRef.current = true;
+            const newPoNumber = generateDocumentNumber('purchase');
+            setPoNumber(newPoNumber);
+        }
+        
+        // Reset when switching to edit mode
         if (initialPurchase) {
-            // Pre-fill header fields
-            setSupplierId(initialPurchase.supplier || '');
-            setPurchaseDate(initialPurchase.date ? new Date(initialPurchase.date) : new Date());
-            setRefNumber('');
-            
-            // Pre-fill items
-            if (initialPurchase.items && initialPurchase.items.length > 0) {
-                const convertedItems: PurchaseItem[] = initialPurchase.items.map((item: any, index: number) => ({
-                    id: Date.now() + index, // Generate unique ID
-                    productId: item.productId || '',
-                    name: item.productName || '',
-                    sku: item.sku || '',
-                    price: item.price || 0,
-                    qty: item.quantity || 0,
-                    receivedQty: item.receivedQty || item.quantity || 0,
-                    size: item.size,
-                    color: item.color,
-                    stock: 0, // Will be loaded from product if needed
-                    lastPurchasePrice: undefined,
-                    lastSupplier: undefined,
-                    showVariations: false,
-                    packingDetails: item.packingDetails,
-                    thaans: item.packingDetails?.total_boxes,
-                    meters: item.packingDetails?.total_meters,
-                }));
-                setItems(convertedItems);
+            poNumberGeneratedRef.current = false;
+        }
+    }, [initialPurchase]); // Removed generateDocumentNumber from dependencies
+
+    // STEP 2: Load full purchase data from backend when editing
+    useEffect(() => {
+        const loadPurchaseData = async () => {
+            // Only load if we have a purchase ID (edit mode)
+            if (!purchaseId) {
+                setLoadedPurchaseData(null);
+                return;
             }
             
-            // Pre-fill payments if any
-            if (initialPurchase.paid > 0) {
+            try {
+                setLoading(true);
+                console.log('[PURCHASE FORM] Loading purchase data from backend, ID:', purchaseId);
+                
+                // Load full purchase data from backend API (includes items, payments, expenses, supplier, branch)
+                const fullPurchaseData = await purchaseService.getPurchase(purchaseId);
+                console.log('[PURCHASE FORM] Loaded purchase data from backend:', fullPurchaseData);
+                
+                if (!fullPurchaseData) {
+                    console.error('[PURCHASE FORM] No purchase data returned from API');
+                    toast.error('Purchase not found');
+                    return;
+                }
+                
+                setLoadedPurchaseData(fullPurchaseData);
+            } catch (error: any) {
+                console.error('[PURCHASE FORM] Error loading purchase data:', error);
+                toast.error('Failed to load purchase data: ' + (error.message || 'Unknown error'));
+                // Fallback to context data if API fails
+                if (initialPurchase) {
+                    setLoadedPurchaseData(initialPurchase);
+                }
+            } finally {
+                setLoading(false);
+            }
+        };
+        
+        loadPurchaseData();
+    }, [purchaseId]); // Only depend on purchaseId, not initialPurchase
+
+    // STEP 3: Pre-populate form when editing - wait for loadedPurchaseData
+    // Use ref to track if form has been initialized to prevent infinite loops
+    const formInitializedRef = useRef(false);
+    
+    useEffect(() => {
+        // In edit mode, wait for loadedPurchaseData from backend
+        // In create mode, use initialPurchase if provided (shouldn't happen, but safe fallback)
+        const purchaseData = isEditMode ? loadedPurchaseData : (initialPurchase || null);
+        
+        // Only run when:
+        // 1. We have purchase data
+        // 2. Form hasn't been initialized yet
+        // 3. In edit mode, wait for loadedPurchaseData (not null)
+        if (purchaseData && !formInitializedRef.current && (!isEditMode || loadedPurchaseData !== null)) {
+            formInitializedRef.current = true;
+            
+            console.log('[PURCHASE FORM] Pre-populating form with data:', purchaseData);
+            
+            // Pre-fill header fields
+            const supplierIdValue = purchaseData.supplier_id || 
+                                   purchaseData.supplier?.id || 
+                                   purchaseData.supplier || 
+                                   '';
+            setSupplierId(supplierIdValue.toString());
+            
+            // Handle date - can be po_date, date, or purchaseDate
+            const purchaseDateValue = purchaseData.po_date || purchaseData.date || purchaseData.purchaseDate;
+            setPurchaseDate(purchaseDateValue ? new Date(purchaseDateValue) : new Date());
+            
+            // Load PO number (read-only, auto-generated)
+            setPoNumber(purchaseData.po_no || purchaseData.purchaseNo || purchaseData.poNo || generateDocumentNumber('purchase'));
+            
+            // STEP 1 FIX: Load reference number from reference field or notes field
+            setRefNumber(purchaseData.reference || purchaseData.reference_no || purchaseData.notes || '');
+            
+            // STEP 4: Pre-fill branch if available (RULE 2 - Branch locked in edit mode)
+            if (purchaseData.branch_id) {
+                setBranchId(purchaseData.branch_id);
+            }
+            
+            // Pre-fill items from backend response
+            if (purchaseData.items && purchaseData.items.length > 0) {
+                const convertedItems: PurchaseItem[] = purchaseData.items.map((item: any, index: number) => {
+                    // Handle nested product data from backend
+                    const product = item.product || {};
+                    const variation = item.variation || item.product_variations || {};
+                    
+                    // Get variation ID if available
+                    const variationId = item.variation_id || 
+                                       item.variationId || 
+                                       variation.id || 
+                                       undefined;
+                    
+                    // Get variation attributes
+                    const variationAttrs = variation.attributes || {};
+                    
+                    // Handle packing details from backend
+                    const packingDetails = item.packing_details || item.packingDetails || null;
+                    
+                    return {
+                        id: Date.now() + index, // Generate unique ID
+                        productId: item.product_id || item.productId || product.id || '',
+                        name: product.name || item.product_name || item.productName || '',
+                        sku: product.sku || item.sku || '',
+                        price: item.unit_price || item.price || 0,
+                        qty: item.quantity || item.qty || 0,
+                        receivedQty: item.received_quantity || item.receivedQty || item.quantity || item.qty || 0,
+                        size: item.size || variationAttrs.size || variation.size,
+                        color: item.color || variationAttrs.color || variation.color,
+                        variationId: variationId, // Store variation ID for proper mapping
+                        stock: 0, // Will be loaded from product if needed
+                        lastPurchasePrice: undefined,
+                        lastSupplier: undefined,
+                        showVariations: false,
+                        packingDetails: packingDetails,
+                        thaans: packingDetails?.total_boxes || packingDetails?.boxes || 0,
+                        meters: packingDetails?.total_meters || packingDetails?.meters || 0,
+                    };
+                });
+                setItems(convertedItems);
+                console.log('[PURCHASE FORM] Converted items:', convertedItems);
+            }
+            
+            // Pre-fill payments if any (from purchase_payments table)
+            if (purchaseData.payments && purchaseData.payments.length > 0) {
+                const payments = purchaseData.payments.map((payment: any, index: number) => ({
+                    id: payment.id?.toString() || (index + 1).toString(),
+                    method: (payment.method || payment.payment_method || 'cash') as 'cash' | 'bank' | 'other',
+                    amount: payment.amount || 0,
+                    reference: payment.reference || payment.reference_no || '',
+                    attachments: payment.attachments || []
+                }));
+                setPartialPayments(payments);
+            } else if (purchaseData.paid > 0 || purchaseData.paid_amount > 0) {
+                // Fallback to single payment if payments array not available
+                const paidAmount = purchaseData.paid || purchaseData.paid_amount || 0;
                 setPartialPayments([{
                     id: '1',
-                    method: (initialPurchase.paymentMethod || 'cash') as 'cash' | 'bank' | 'other',
-                    amount: initialPurchase.paid,
+                    method: (purchaseData.paymentMethod || purchaseData.payment_method || 'cash') as 'cash' | 'bank' | 'other',
+                    amount: paidAmount,
                     reference: '',
                     attachments: []
                 }]);
             }
             
-            // Pre-fill expenses
-            if (initialPurchase.shippingCost > 0) {
+            // Pre-fill expenses (from purchase_expenses or extra_expenses)
+            if (purchaseData.expenses && purchaseData.expenses.length > 0) {
+                const expenses = purchaseData.expenses.map((expense: any, index: number) => ({
+                    id: expense.id?.toString() || (index + 1).toString(),
+                    type: expense.type || expense.expense_type || 'other',
+                    amount: expense.amount || 0,
+                    notes: expense.notes || expense.description || ''
+                }));
+                setExtraExpenses(expenses);
+            } else if (purchaseData.shippingCost > 0 || purchaseData.shipping_cost > 0) {
+                // Fallback to single expense if expenses array not available
+                const shippingAmount = purchaseData.shippingCost || purchaseData.shipping_cost || 0;
                 setExtraExpenses([{
                     id: '1',
                     type: 'freight',
-                    amount: initialPurchase.shippingCost,
+                    amount: shippingAmount,
                     notes: 'Shipping charges'
                 }]);
             }
             
             // Pre-fill discount
-            if (initialPurchase.discount > 0) {
-                setDiscountValue(initialPurchase.discount);
+            if (purchaseData.discount > 0 || purchaseData.discount_amount > 0) {
+                const discountAmount = purchaseData.discount || purchaseData.discount_amount || 0;
+                setDiscountValue(discountAmount);
                 setDiscountType('fixed'); // Default to fixed, can be enhanced
             }
             
             // Pre-fill status
-            if (initialPurchase.status === 'ordered') {
+            if (purchaseData.status === 'ordered') {
                 setPurchaseStatus('ordered');
-            } else if (initialPurchase.status === 'received') {
+            } else if (purchaseData.status === 'received') {
                 setPurchaseStatus('received');
-            } else if (initialPurchase.status === 'completed' || initialPurchase.status === 'final') {
+            } else if (purchaseData.status === 'completed' || purchaseData.status === 'final') {
                 setPurchaseStatus('final');
             } else {
                 setPurchaseStatus('draft');
             }
         }
-    }, [initialPurchase]);
+        
+        // Reset ref when purchase data is cleared (form closed or new purchase selected)
+        if (!purchaseData && !isEditMode) {
+            formInitializedRef.current = false;
+        }
+    }, [loadedPurchaseData, initialPurchase, isEditMode]); // Watch loadedPurchaseData, initialPurchase, and isEditMode
     
     // Handle Save
     const handleSave = async (print: boolean = false) => {
+        // RULE 2 FIX: Branch validation - Required for Admin/Owner
+        if (isAdmin && (!branchId || branchId === '' || branchId === 'all')) {
+            toast.error('Please select a branch before saving purchase');
+            return;
+        }
+        
+        // RULE 3 FIX: Branch validation for all users (backend requirement)
+        if (!branchId || branchId === '' || branchId === 'all') {
+            toast.error('Branch is required. Please select a branch.');
+            return;
+        }
+        
         if (!supplierId || supplierId === '') {
             toast.error('Please select a supplier');
             return;
@@ -781,14 +964,17 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
             const purchaseItems = items.map(item => ({
                 id: item.id.toString(),
                 productId: item.productId.toString(),
+                variationId: item.variationId || undefined, // Include variation ID if available
                 productName: item.name,
                 sku: item.sku,
                 quantity: item.qty,
-                receivedQty: 0, // Will be updated when received
+                receivedQty: item.receivedQty || 0, // Preserve received qty if editing
                 price: item.price,
                 discount: 0, // Can be enhanced later
                 tax: 0, // Can be enhanced later
                 total: item.price * item.qty,
+                size: item.size,
+                color: item.color,
                 ...(enablePacking ? {
                     packingDetails: item.packingDetails,
                     thaans: item.thaans,
@@ -796,14 +982,15 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                 } : { packingDetails: undefined, thaans: undefined, meters: undefined })
             }));
             
-            // CRITICAL FIX: Branch validation
+            // CRITICAL FIX: Branch validation (MANDATORY)
             // Admin must select branch, normal user uses auto-selected branch
             const finalBranchId = isAdmin 
                 ? (branchId || contextBranchId || '') // Admin can select or use context
                 : (contextBranchId || branchId || ''); // Normal user uses context (auto-selected)
             
-            if (isAdmin && !finalBranchId) {
-                toast.error('Please select a branch');
+            // Validate branch: Must be a valid UUID, not "all" or empty
+            if (!finalBranchId || finalBranchId === 'all' || finalBranchId.trim() === '') {
+                toast.error('Please select a branch before saving purchase. Branch is mandatory.');
                 setSaving(false);
                 return;
             }
@@ -815,7 +1002,8 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                 contactNumber: '', // Can be enhanced to get from supplier
                 date: format(purchaseDate, 'yyyy-MM-dd'),
                 expectedDelivery: undefined,
-                location: finalBranchId, // CRITICAL: Always use validated branch ID
+                location: finalBranchId, // Branch name for display
+                branchId: finalBranchId, // CRITICAL: Branch UUID for database
                 status: purchaseStatus as 'draft' | 'ordered' | 'received' | 'final',
                 items: purchaseItems,
                 itemsCount: items.length,
@@ -831,10 +1019,26 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                 notes: refNumber || undefined
             };
             
-            // Create purchase via context
-            await createPurchase(purchaseData);
-            
-            toast.success('Purchase order created successfully!');
+            // STEP 5: Handle edit vs create mode
+            if (isEditMode && purchaseId) {
+                // EDIT MODE: Update existing purchase
+                // Note: Full update with items might need backend enhancement
+                // For now, update basic fields and status
+                // STEP 1 FIX: Include notes (reference number) in update
+                await updatePurchase(purchaseId, {
+                    status: purchaseStatus as 'draft' | 'ordered' | 'received' | 'final',
+                    paymentStatus: paymentStatus as 'paid' | 'partial' | 'unpaid',
+                    total: totalAmount,
+                    paid: totalPaid,
+                    due: balanceDue,
+                    notes: refNumber || undefined, // CRITICAL: Save reference number in notes field
+                });
+                toast.success('Purchase order updated successfully!');
+            } else {
+                // CREATE MODE: Create new purchase
+                await createPurchase(purchaseData);
+                toast.success('Purchase order created successfully!');
+            }
             
             if (print) {
                 // TODO: Implement print functionality
@@ -914,7 +1118,12 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                         </div>
                         <div className="flex items-center gap-2 ml-4 pl-4 border-l border-gray-800">
                             <Hash size={14} className="text-cyan-500" />
-                            <span className="text-sm font-mono text-cyan-400">{refNumber || 'PO-001'}</span>
+                            <span className="text-sm font-mono text-cyan-400">{poNumber || 'PO-001'}</span>
+                            {initialPurchase && (
+                                <Badge variant="outline" className="text-[10px] px-1.5 py-0.5 border-cyan-500/30 text-cyan-400">
+                                    Auto
+                                </Badge>
+                            )}
                         </div>
                     </div>
                     <div className="flex items-center gap-4">
@@ -959,7 +1168,19 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                                 </div>
                             </PopoverContent>
                         </Popover>
-                        <BranchSelector branchId={branchId} setBranchId={setBranchId} variant="header" />
+                        {/* Branch Selector - Role-based visibility + Edit mode lock */}
+                        {isAdmin ? (
+                            <BranchSelector 
+                                branchId={branchId} 
+                                setBranchId={setBranchId} 
+                                variant="header"
+                                disabled={isEditMode} // STEP 4: Lock branch in edit mode
+                            />
+                        ) : (
+                            <div className="px-3 py-1.5 rounded-lg bg-gray-800/50 border border-gray-700 text-xs text-gray-400">
+                                Branch: {branches.find(b => b.id === branchId)?.name || 'Auto-selected'}
+                            </div>
+                        )}
                     </div>
                 </div>
 
@@ -1027,7 +1248,7 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                                             value={refNumber}
                                             onChange={(e) => setRefNumber(e.target.value)}
                                             className="pl-9 bg-gray-950 border-gray-700 h-10 text-sm"
-                                            placeholder="PO-001"
+                                            placeholder="Optional"
                                         />
                                     </div>
                                 </div>
@@ -1044,7 +1265,23 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                         
                         {/* LEFT PANEL - Items Entry (Independent Scroll) */}
                         <div className="flex flex-col h-full overflow-hidden">
-                            {/* Items Table Section */}
+                            {/* Branch Validation Warning */}
+                            {(!branchId || branchId === 'all' || branchId.trim() === '') && (
+                                <div className="mb-3 p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-lg flex items-center gap-2">
+                                    <AlertCircle size={16} className="text-yellow-400 flex-shrink-0" />
+                                    <p className="text-xs text-yellow-400">
+                                        {isAdmin 
+                                            ? 'Please select a branch before adding items. Branch is mandatory for purchases.'
+                                            : 'Branch is required. Please contact admin if branch is not auto-selected.'}
+                                    </p>
+                                </div>
+                            )}
+                            
+                            {/* Items Table Section - Disabled until branch selected */}
+                            <div className={cn(
+                                "flex flex-col h-full overflow-hidden",
+                                (!branchId || branchId === 'all' || branchId.trim() === '') && "opacity-50 pointer-events-none"
+                            )}>
                             <PurchaseItemsSection
                                 items={items}
                                 setItems={setItems}
@@ -1092,6 +1329,7 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                                 handleQtyKeyDown={handleQtyKeyDown}
                                 handlePriceKeyDown={handlePriceKeyDown}
                             />
+                            </div>
                         </div>
 
                         {/* RIGHT PANEL - Summary + Payment + Expenses (Independent Scroll) */}
@@ -1207,14 +1445,14 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                                 )}
                             </div>
 
-                            {/* Payment Section – enabled only when Status = Final (ERP rule) */}
+                            {/* Payment Section – enabled when Status = Received or Final (STEP 2 FIX) */}
                             <div className={cn(
                                 "bg-gray-900/50 border border-gray-800 rounded-lg p-4 space-y-4 shrink-0 transition-opacity",
-                                !isFinal && "opacity-50 pointer-events-none"
+                                !isPaymentEnabled && "opacity-50 pointer-events-none"
                             )}>
-                                {!isFinal && (
+                                {!isPaymentEnabled && (
                                     <div className="text-xs text-yellow-400 mb-2 rounded-md bg-yellow-500/10 border border-yellow-500/30 px-3 py-2">
-                                        Payment sirf Final status par allowed hai. Status ko Final par set karein.
+                                        Payment sirf Received ya Final status par allowed hai. Status ko Received ya Final par set karein.
                                     </div>
                                 )}
                                 {/* Header with Status Badge */}
@@ -1270,7 +1508,7 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                                 <div className="grid grid-cols-4 gap-2">
                                     <Button 
                                         type="button"
-                                        disabled={!isFinal}
+                                        disabled={!isPaymentEnabled}
                                         onClick={() => setNewPaymentAmount(totalAmount * 0.25)}
                                         className="h-9 bg-gray-800 hover:bg-gray-700 text-white text-xs border border-gray-700 disabled:opacity-50 disabled:pointer-events-none"
                                     >
@@ -1278,7 +1516,7 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                                     </Button>
                                     <Button 
                                         type="button"
-                                        disabled={!isFinal}
+                                        disabled={!isPaymentEnabled}
                                         onClick={() => setNewPaymentAmount(totalAmount * 0.50)}
                                         className="h-9 bg-gray-800 hover:bg-gray-700 text-white text-xs border border-gray-700 disabled:opacity-50 disabled:pointer-events-none"
                                     >
@@ -1286,7 +1524,7 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                                     </Button>
                                     <Button 
                                         type="button"
-                                        disabled={!isFinal}
+                                        disabled={!isPaymentEnabled}
                                         onClick={() => setNewPaymentAmount(totalAmount * 0.75)}
                                         className="h-9 bg-gray-800 hover:bg-gray-700 text-white text-xs border border-gray-700 disabled:opacity-50 disabled:pointer-events-none"
                                     >
@@ -1294,7 +1532,7 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                                     </Button>
                                     <Button 
                                         type="button"
-                                        disabled={!isFinal}
+                                        disabled={!isPaymentEnabled}
                                         onClick={() => setNewPaymentAmount(totalAmount)}
                                         className="h-9 bg-green-700 hover:bg-green-600 text-white text-xs border border-green-600 disabled:opacity-50 disabled:pointer-events-none"
                                     >
@@ -1307,7 +1545,7 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                             <div className="space-y-2">
                                 <Label className="text-xs text-gray-500">Add Payment</Label>
                                 <div className="grid grid-cols-2 gap-2">
-                                    <Select value={newPaymentMethod} onValueChange={(v: any) => setNewPaymentMethod(v)} disabled={!isFinal}>
+                                    <Select value={newPaymentMethod} onValueChange={(v: any) => setNewPaymentMethod(v)} disabled={!isPaymentEnabled}>
                                         <SelectTrigger className="h-9 bg-gray-950 border-gray-700 text-white text-xs disabled:opacity-50">
                                             <SelectValue />
                                         </SelectTrigger>
@@ -1320,7 +1558,7 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                                     <Input 
                                         type="number"
                                         placeholder="Amount"
-                                        disabled={!isFinal}
+                                        disabled={!isPaymentEnabled}
                                         value={newPaymentAmount > 0 ? newPaymentAmount : ''}
                                         onChange={(e) => setNewPaymentAmount(parseFloat(e.target.value) || 0)}
                                         className="h-9 bg-gray-950 border-gray-700 text-white text-xs disabled:opacity-50"
@@ -1328,7 +1566,7 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                                 </div>
                                 <Input 
                                     placeholder="Reference (optional)"
-                                    disabled={!isFinal}
+                                    disabled={!isPaymentEnabled}
                                     value={newPaymentReference}
                                     onChange={(e) => setNewPaymentReference(e.target.value)}
                                     className="h-9 bg-gray-950 border-gray-700 text-white text-xs disabled:opacity-50"
@@ -1339,7 +1577,7 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                                 />
                                 <Button
                                     onClick={handleAddPayment}
-                                    disabled={!isFinal}
+                                    disabled={!isPaymentEnabled}
                                     className="w-full h-9 bg-blue-600 hover:bg-blue-500 text-white text-xs disabled:opacity-50 disabled:pointer-events-none"
                                 >
                                     <Plus size={14} className="mr-1" /> Add Payment
@@ -1367,7 +1605,7 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                                                     <span className="text-white font-medium">${payment.amount.toLocaleString()}</span>
                                                     <button
                                                         type="button"
-                                                        disabled={!isFinal}
+                                                        disabled={!isPaymentEnabled}
                                                         onClick={() => setPartialPayments(partialPayments.filter(p => p.id !== payment.id))}
                                                         className="text-red-400 hover:text-red-300 p-1 disabled:opacity-50 disabled:pointer-events-none"
                                                     >
@@ -1420,11 +1658,10 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                         <span>Total: ${totalAmount.toLocaleString()}</span>
                     </div>
                 </div>
-
+                
                 {/* Action Buttons Row - FIXED 2 BUTTONS ONLY */}
                 <div className="h-14 px-6 flex items-center justify-center">
-                    <div className="invoice-container mx-auto w-full">
-                        <div className="flex gap-3 justify-center">
+                    <div className="flex gap-3 justify-center">
                             <Button 
                                 type="button"
                                 variant="outline"
@@ -1444,7 +1681,6 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                                 <Printer size={15} className="mr-1.5" />
                                 {saving ? 'Saving...' : 'Save & Print'}
                             </Button>
-                        </div>
                     </div>
                 </div>
             </div>

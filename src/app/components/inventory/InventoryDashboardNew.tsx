@@ -9,6 +9,7 @@ import { Input } from "../ui/input";
 import { Badge } from "../ui/badge";
 import { cn } from "../ui/utils";
 import { useSupabase } from '../../context/SupabaseContext';
+import { useSettings } from '../../context/SettingsContext';
 import { productService } from '../../services/productService';
 import { inventoryService, InventoryOverviewRow, InventoryMovementRow } from '../../services/inventoryService';
 import { toast } from 'sonner';
@@ -18,7 +19,9 @@ import { StockAdjustmentDrawer } from './StockAdjustmentDrawer';
 type InventoryTab = 'overview' | 'analytics';
 
 export const InventoryDashboardNew = () => {
-  const { companyId, branchId, user, enablePacking } = useSupabase();
+  const { companyId, branchId, user } = useSupabase();
+  const { inventorySettings } = useSettings();
+  const enablePacking = inventorySettings.enablePacking;
   const [activeTab, setActiveTab] = useState<InventoryTab>('overview');
   const [searchTerm, setSearchTerm] = useState('');
   const [overviewRows, setOverviewRows] = useState<InventoryOverviewRow[]>([]);
@@ -146,11 +149,16 @@ export const InventoryDashboardNew = () => {
   }, [companyId, branchId, user?.id, loadOverview]);
 
   const exportOverviewCsv = useCallback(() => {
-    const headers = ['Product', 'SKU', 'Category', 'Stock', 'Boxes', 'Pieces', 'Unit', 'Avg Cost', 'Selling Price', 'Stock Value', 'Status', 'Movement'];
-    const rows = filteredProducts.map(p => [
-      p.name, p.sku, p.category, p.stock, p.boxes, p.pieces, p.unit,
-      p.avgCost, p.sellingPrice, p.stockValue, p.status, p.movement,
-    ].join(','));
+    const headers = enablePacking 
+      ? ['Product', 'SKU', 'Category', 'Stock Qty', 'Boxes', 'Pieces', 'Unit', 'Avg Cost', 'Selling Price', 'Stock Value', 'Status', 'Movement']
+      : ['Product', 'SKU', 'Category', 'Stock Qty', 'Unit', 'Avg Cost', 'Selling Price', 'Stock Value', 'Status', 'Movement'];
+    const rows = filteredProducts.map(p => {
+      if (enablePacking) {
+        return [p.name, p.sku, p.category, p.stock, p.boxes, p.pieces, p.unit, p.avgCost, p.sellingPrice, p.stockValue, p.status, p.movement].join(',');
+      } else {
+        return [p.name, p.sku, p.category, p.stock, p.unit, p.avgCost, p.sellingPrice, p.stockValue, p.status, p.movement].join(',');
+      }
+    });
     const csv = [headers.join(','), ...rows].join('\n');
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
@@ -159,23 +167,41 @@ export const InventoryDashboardNew = () => {
     link.click();
     URL.revokeObjectURL(link.href);
     toast.success('Export downloaded');
-  }, [filteredProducts]);
+  }, [filteredProducts, enablePacking]);
 
   const exportMovementsCsv = useCallback(() => {
-    const headers = ['Date', 'Product', 'SKU', 'Type', 'Qty', 'Box', 'Piece', 'Before', 'After', 'Unit Cost', 'Notes'];
-    const rows = movements.map(m => [
-      m.created_at?.slice(0, 19) || '',
-      m.product?.name ?? '',
-      m.product?.sku ?? '',
-      m.movement_type ?? '',
-      m.quantity ?? '',
-      m.box_change ?? '',
-      m.piece_change ?? '',
-      m.before_qty ?? '',
-      m.after_qty ?? '',
-      m.unit_cost ?? '',
-      (m.notes || '').replace(/,/g, ';'),
-    ].join(','));
+    const headers = enablePacking
+      ? ['Date', 'Product', 'SKU', 'Type', 'Qty Change', 'Box Change', 'Piece Change', 'Before Qty', 'After Qty', 'Unit Cost', 'Notes']
+      : ['Date', 'Product', 'SKU', 'Type', 'Qty Change', 'Before Qty', 'After Qty', 'Unit Cost', 'Notes'];
+    const rows = movements.map(m => {
+      if (enablePacking) {
+        return [
+          m.created_at?.slice(0, 19) || '',
+          m.product?.name ?? '',
+          m.product?.sku ?? '',
+          m.movement_type ?? '',
+          m.quantity ?? '',
+          m.box_change ?? '',
+          m.piece_change ?? '',
+          m.before_qty ?? '',
+          m.after_qty ?? '',
+          m.unit_cost ?? '',
+          (m.notes || '').replace(/,/g, ';'),
+        ].join(',');
+      } else {
+        return [
+          m.created_at?.slice(0, 19) || '',
+          m.product?.name ?? '',
+          m.product?.sku ?? '',
+          m.movement_type ?? '',
+          m.quantity ?? '',
+          m.before_qty ?? '',
+          m.after_qty ?? '',
+          m.unit_cost ?? '',
+          (m.notes || '').replace(/,/g, ';'),
+        ].join(',');
+      }
+    });
     const csv = [headers.join(','), ...rows].join('\n');
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
@@ -184,7 +210,7 @@ export const InventoryDashboardNew = () => {
     link.click();
     URL.revokeObjectURL(link.href);
     toast.success('Export downloaded');
-  }, [movements]);
+  }, [movements, enablePacking]);
 
   const getMovementBadge = (movement: string) => {
     switch(movement) {
@@ -339,14 +365,14 @@ export const InventoryDashboardNew = () => {
                   <th className="px-6 py-4 text-left text-xs font-medium text-gray-400 uppercase">Product</th>
                   <th className="px-6 py-4 text-left text-xs font-medium text-gray-400 uppercase">SKU</th>
                   <th className="px-6 py-4 text-left text-xs font-medium text-gray-400 uppercase">Category</th>
-                  <th className="px-6 py-4 text-center text-xs font-medium text-gray-400 uppercase">Stock</th>
+                  <th className="px-6 py-4 text-center text-xs font-medium text-gray-400 uppercase">Stock Qty</th>
                   {enablePacking && (
                     <>
                       <th className="px-6 py-4 text-center text-xs font-medium text-gray-400 uppercase">Boxes</th>
                       <th className="px-6 py-4 text-center text-xs font-medium text-gray-400 uppercase">Pieces</th>
-                      <th className="px-6 py-4 text-center text-xs font-medium text-gray-400 uppercase">Unit</th>
                     </>
                   )}
+                  <th className="px-6 py-4 text-center text-xs font-medium text-gray-400 uppercase">Unit</th>
                   <th className="px-6 py-4 text-right text-xs font-medium text-gray-400 uppercase">Avg Cost</th>
                   <th className="px-6 py-4 text-right text-xs font-medium text-gray-400 uppercase">Selling Price</th>
                   <th className="px-6 py-4 text-right text-xs font-medium text-gray-400 uppercase">Stock Value</th>
@@ -358,14 +384,14 @@ export const InventoryDashboardNew = () => {
               <tbody className="divide-y divide-gray-800">
                 {loading ? (
                   <tr>
-                    <td colSpan={enablePacking ? 13 : 10} className="px-6 py-12 text-center">
+                    <td colSpan={enablePacking ? 13 : 11} className="px-6 py-12 text-center">
                       <Loader2 size={48} className="mx-auto text-blue-500 mb-3 animate-spin" />
                       <p className="text-gray-400 text-sm">Loading inventory...</p>
                     </td>
                   </tr>
                 ) : filteredProducts.length === 0 ? (
                   <tr>
-                    <td colSpan={enablePacking ? 13 : 10} className="px-6 py-12 text-center">
+                    <td colSpan={enablePacking ? 13 : 11} className="px-6 py-12 text-center">
                       <Package size={48} className="mx-auto text-gray-600 mb-3" />
                       <p className="text-gray-400 text-sm">No products found</p>
                       <p className="text-gray-600 text-xs mt-1">Try adjusting your search</p>
@@ -395,9 +421,9 @@ export const InventoryDashboardNew = () => {
                       <>
                         <td className="px-6 py-4 text-center text-gray-400">{product.boxes}</td>
                         <td className="px-6 py-4 text-center text-gray-400">{product.pieces}</td>
-                        <td className="px-6 py-4 text-center text-gray-400">{product.unit}</td>
                       </>
                     )}
+                    <td className="px-6 py-4 text-center text-gray-400">{product.unit}</td>
                     <td className="px-6 py-4 text-right text-gray-400">
                       Rs {product.avgCost.toLocaleString()}
                     </td>
@@ -554,15 +580,15 @@ export const InventoryDashboardNew = () => {
                   <th className="px-6 py-4 text-left text-xs font-medium text-gray-400 uppercase">Date</th>
                   <th className="px-6 py-4 text-left text-xs font-medium text-gray-400 uppercase">Product</th>
                   <th className="px-6 py-4 text-left text-xs font-medium text-gray-400 uppercase">Type</th>
-                  <th className="px-6 py-4 text-center text-xs font-medium text-gray-400 uppercase">Qty</th>
+                  <th className="px-6 py-4 text-center text-xs font-medium text-gray-400 uppercase">Qty Change</th>
                   {enablePacking && (
                     <>
-                      <th className="px-6 py-4 text-center text-xs font-medium text-gray-400 uppercase">Box</th>
-                      <th className="px-6 py-4 text-center text-xs font-medium text-gray-400 uppercase">Piece</th>
-                      <th className="px-6 py-4 text-center text-xs font-medium text-gray-400 uppercase">Before</th>
-                      <th className="px-6 py-4 text-center text-xs font-medium text-gray-400 uppercase">After</th>
+                      <th className="px-6 py-4 text-center text-xs font-medium text-gray-400 uppercase">Box Change</th>
+                      <th className="px-6 py-4 text-center text-xs font-medium text-gray-400 uppercase">Piece Change</th>
                     </>
                   )}
+                  <th className="px-6 py-4 text-center text-xs font-medium text-gray-400 uppercase">Before Qty</th>
+                  <th className="px-6 py-4 text-center text-xs font-medium text-gray-400 uppercase">After Qty</th>
                   <th className="px-6 py-4 text-right text-xs font-medium text-gray-400 uppercase">Unit Cost</th>
                   <th className="px-6 py-4 text-left text-xs font-medium text-gray-400 uppercase max-w-[200px]">Notes</th>
                 </tr>
@@ -570,14 +596,14 @@ export const InventoryDashboardNew = () => {
               <tbody className="divide-y divide-gray-800">
                 {movementsLoading ? (
                   <tr>
-                    <td colSpan={enablePacking ? 10 : 6} className="px-6 py-12 text-center">
+                    <td colSpan={enablePacking ? 10 : 8} className="px-6 py-12 text-center">
                       <Loader2 size={32} className="mx-auto text-blue-500 animate-spin" />
                       <p className="text-gray-400 text-sm mt-2">Loading movements...</p>
                     </td>
                   </tr>
                 ) : movements.length === 0 ? (
                   <tr>
-                    <td colSpan={enablePacking ? 10 : 6} className="px-6 py-12 text-center text-gray-400 text-sm">
+                    <td colSpan={enablePacking ? 10 : 8} className="px-6 py-12 text-center text-gray-400 text-sm">
                       No movements found. Adjust filters or ensure stock_movements has data.
                     </td>
                   </tr>
@@ -611,10 +637,10 @@ export const InventoryDashboardNew = () => {
                         <>
                           <td className="px-6 py-4 text-center text-gray-400">{m.box_change ?? '-'}</td>
                           <td className="px-6 py-4 text-center text-gray-400">{m.piece_change ?? '-'}</td>
-                          <td className="px-6 py-4 text-center text-gray-400">{m.before_qty ?? '-'}</td>
-                          <td className="px-6 py-4 text-center text-gray-400">{m.after_qty ?? '-'}</td>
                         </>
                       )}
+                      <td className="px-6 py-4 text-center text-gray-400">{m.before_qty ?? '-'}</td>
+                      <td className="px-6 py-4 text-center text-gray-400">{m.after_qty ?? '-'}</td>
                       <td className="px-6 py-4 text-right text-gray-400">
                         {m.unit_cost != null ? `Rs ${Number(m.unit_cost).toLocaleString()}` : '-'}
                       </td>

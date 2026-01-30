@@ -23,6 +23,9 @@ interface StockMovement {
   movement_type?: string; // May be named 'type' in some schemas
   type?: string; // Alternative column name
   quantity: number;
+  box_change?: number; // For packing support
+  piece_change?: number; // For packing support
+  unit?: string; // Unit of measurement
   unit_cost?: number;
   total_cost?: number;
   reference_type?: string;
@@ -567,28 +570,52 @@ export const FullStockLedgerView: React.FC<FullStockLedgerViewProps> = ({
       ? 'All Branches'
       : branches.find((b) => b.id === selectedBranchId)?.name || 'All Branches';
 
+  // Map movements to print format with packing fields
+  const printMovements = React.useMemo(() => {
+    return movements.map(m => ({
+      id: m.id,
+      movement_type: m.movement_type || m.type,
+      type: m.type || m.movement_type,
+      quantity: m.quantity,
+      box_change: (m as any).box_change,
+      piece_change: (m as any).piece_change,
+      unit: (m as any).unit,
+      reference_type: m.reference_type,
+      reference_id: m.reference_id,
+      notes: m.notes,
+      created_at: m.created_at,
+    }));
+  }, [movements]);
+
   return (
     <>
       {showClassicPrintView && (
-        <StockLedgerClassicPrintView
-          companyName={companyName || undefined}
-          productName={productName}
-          productSku={productSku}
-          branchLabel={branchLabel}
-          movements={movements}
-          runningBalance={runningBalance}
-          totals={{
-            totalPurchased: totals.totalPurchased,
-            totalSold: totals.totalSold,
-            totalAdjustments: totals.totalAdjustments,
-            currentBalance: totals.currentBalance,
-          }}
-          getMovementTypeLabel={getMovementTypeLabel}
-          getSaleById={getSaleById}
-          getPurchaseById={getPurchaseById}
-          onClose={() => setShowClassicPrintView(false)}
-        />
+        <div className="fixed inset-0 z-[9999] bg-white" style={{ zIndex: 9999 }}>
+          <div className="w-full h-full overflow-auto p-4">
+            <div className="bg-white w-full max-w-6xl mx-auto min-h-full">
+              <StockLedgerClassicPrintView
+              companyName={companyName || undefined}
+              productName={productName}
+              productSku={productSku}
+              branchLabel={branchLabel}
+              movements={printMovements}
+              runningBalance={runningBalance}
+              totals={{
+                totalPurchased: totals.totalPurchased,
+                totalSold: totals.totalSold,
+                totalAdjustments: totals.totalAdjustments,
+                currentBalance: totals.currentBalance,
+              }}
+              getMovementTypeLabel={getMovementTypeLabel}
+              getSaleById={getSaleById}
+              getPurchaseById={getPurchaseById}
+              onClose={() => setShowClassicPrintView(false)}
+            />
+            </div>
+          </div>
+        </div>
       )}
+      {!showClassicPrintView && (
       <div className="fixed inset-0 z-[60] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
       <div className="bg-[#0B0F17] rounded-xl border border-gray-800 w-full max-w-6xl max-h-[90vh] overflow-hidden flex flex-col shadow-2xl animate-in slide-in-from-bottom-4 duration-300">
         {/* Header */}
@@ -891,6 +918,7 @@ export const FullStockLedgerView: React.FC<FullStockLedgerViewProps> = ({
         />
       )}
       </div>
+      )}
     </>
   );
 };

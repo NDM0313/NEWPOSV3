@@ -258,6 +258,7 @@ export const productService = {
       .limit(20);
 
     // Step 3: Now try with both filters (include ALL movement types: purchase, sale, adjustment, transfer, return, etc.)
+    // Use * to select all fields (handles missing columns gracefully)
     let query = supabase
       .from('stock_movements')
       .select('*')

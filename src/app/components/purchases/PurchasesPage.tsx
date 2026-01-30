@@ -36,9 +36,10 @@ import { formatLongDate } from '@/app/components/ui/utils';
 import { UnifiedPaymentDialog } from '@/app/components/shared/UnifiedPaymentDialog';
 import { UnifiedLedgerView } from '@/app/components/shared/UnifiedLedgerView';
 import { ViewPurchaseDetailsDrawer } from './ViewPurchaseDetailsDrawer';
+import { ViewPaymentsModal, type InvoiceDetails, type Payment } from '@/app/components/sales/ViewPaymentsModal';
 import { toast } from 'sonner';
 
-type PurchaseStatus = 'received' | 'ordered' | 'pending';
+type PurchaseStatus = 'received' | 'ordered' | 'pending' | 'final' | 'draft';
 type PaymentStatus = 'paid' | 'partial' | 'unpaid';
 
 interface Purchase {
@@ -120,6 +121,9 @@ export const PurchasesPage = () => {
   const [isLedgerOpen, setIsLedgerOpen] = useState(false);
   const [viewDetailsOpen, setViewDetailsOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  
+  // STEP 2 FIX: View Payments Modal state (like Sale module)
+  const [viewPaymentsOpen, setViewPaymentsOpen] = useState(false);
 
   // Column visibility state
   const [visibleColumns, setVisibleColumns] = useState({
@@ -137,12 +141,16 @@ export const PurchasesPage = () => {
   });
 
   // ✅ Action Handlers
+  // STEP 2 FIX: Payment click handler - show ViewPaymentsModal first (like Sale module)
   const handleMakePayment = (purchase: Purchase) => {
-    if (purchase.paymentDue === 0) {
-      toast.error('No outstanding payment for this purchase');
-      return;
-    }
     setSelectedPurchase(purchase);
+    // First show payment history modal
+    setViewPaymentsOpen(true);
+  };
+
+  // Handle Add Payment from ViewPaymentsModal
+  const handleAddPaymentFromModal = () => {
+    setViewPaymentsOpen(false);
     setIsPaymentDialogOpen(true);
   };
 
@@ -192,6 +200,23 @@ export const PurchasesPage = () => {
     setViewDetailsOpen(true);
   };
 
+  // Handle purchase actions (edit, delete, make_payment)
+  const handlePurchaseAction = (action: 'edit' | 'delete' | 'make_payment', purchase: Purchase) => {
+    setSelectedPurchase(purchase);
+    switch (action) {
+      case 'edit':
+        // TODO: Implement edit functionality
+        toast.info('Edit purchase functionality coming soon');
+        break;
+      case 'delete':
+        setDeleteDialogOpen(true);
+        break;
+      case 'make_payment':
+        setIsPaymentDialogOpen(true);
+        break;
+    }
+  };
+
   const handleEdit = (purchase: Purchase) => {
     openDrawer('edit-purchase', undefined, { purchase });
   };
@@ -221,14 +246,21 @@ export const PurchasesPage = () => {
           supplier: p.supplier?.name || p.supplier_name || 'Unknown Supplier',
           supplierContact: p.supplier?.phone || '',
           date: p.po_date || new Date().toISOString().split('T')[0],
-          reference: p.reference || '',
+          // STEP 1 FIX: Reference number from notes field (reference field may not exist in all schemas)
+          reference: p.reference || p.notes || '',
           location: location,
           items: p.items?.length || 0,
           grandTotal: p.total || 0,
           paymentDue: p.due_amount || 0,
-          status: p.status === 'received' ? 'received' : p.status === 'ordered' ? 'ordered' : 'pending',
+          // STEP 1 FIX: Proper status mapping - Final/Received show correctly, Draft/Ordered show as Pending
+          status: (p.status === 'final' ? 'final' : 
+                   p.status === 'received' ? 'received' : 
+                   p.status === 'ordered' ? 'pending' : 
+                   p.status === 'draft' ? 'pending' : 
+                   'pending') as PurchaseStatus,
           paymentStatus: p.payment_status || 'unpaid',
-          addedBy: p.created_by_user?.full_name || 'Unknown',
+          // STEP 3 FIX: Added By - show user name from created_by_user join
+          addedBy: p.created_by_user?.full_name || p.created_by_user?.email || 'Unknown',
         };
       });
       
@@ -267,14 +299,21 @@ export const PurchasesPage = () => {
           supplier: p.supplierName || 'Unknown Supplier',
           supplierContact: p.contactNumber || '',
           date: p.date || new Date().toISOString().split('T')[0],
-          reference: '',
+          // STEP 1 FIX: Reference number from notes field
+          reference: p.notes || '',
           location: locationDisplay,
           items: p.itemsCount || 0,
           grandTotal: p.total || 0,
           paymentDue: p.due || 0,
-          status: p.status === 'received' ? 'received' : p.status === 'ordered' ? 'ordered' : 'pending',
+          // STEP 1 FIX: Proper status mapping - Final/Received show correctly, Draft/Ordered show as Pending
+          status: (p.status === 'final' ? 'final' : 
+                   p.status === 'received' ? 'received' : 
+                   p.status === 'ordered' ? 'pending' : 
+                   p.status === 'draft' ? 'pending' : 
+                   'pending') as PurchaseStatus,
           paymentStatus: p.paymentStatus || 'unpaid',
-          addedBy: 'Unknown',
+          // STEP 3 FIX: Added By - show user name from created_by_user join (context purchases)
+          addedBy: p.created_by_user?.full_name || p.created_by_user?.email || 'Unknown',
         };
       });
       setPurchases(convertedPurchases);
@@ -415,17 +454,21 @@ export const PurchasesPage = () => {
     branchFilter !== 'all',
   ].filter(Boolean).length;
 
+  // STEP 1 FIX: Status badge with proper mapping
+  // Final → Final (green), Received → Received (green), Draft/Ordered → Pending (yellow)
   const getPurchaseStatusBadge = (status: PurchaseStatus) => {
-    const config = {
-      received: { bg: 'bg-green-500/20', text: 'text-green-400', border: 'border-green-500/30', icon: CheckCircle },
-      ordered: { bg: 'bg-blue-500/20', text: 'text-blue-400', border: 'border-blue-500/30', icon: Clock },
-      pending: { bg: 'bg-yellow-500/20', text: 'text-yellow-400', border: 'border-yellow-500/30', icon: AlertCircle },
+    const config: Record<string, { bg: string; text: string; border: string; icon: any; label: string }> = {
+      final: { bg: 'bg-green-500/20', text: 'text-green-400', border: 'border-green-500/30', icon: CheckCircle, label: 'Final' },
+      received: { bg: 'bg-green-500/20', text: 'text-green-400', border: 'border-green-500/30', icon: CheckCircle, label: 'Received' },
+      pending: { bg: 'bg-yellow-500/20', text: 'text-yellow-400', border: 'border-yellow-500/30', icon: AlertCircle, label: 'Pending' },
+      ordered: { bg: 'bg-yellow-500/20', text: 'text-yellow-400', border: 'border-yellow-500/30', icon: AlertCircle, label: 'Pending' },
+      draft: { bg: 'bg-yellow-500/20', text: 'text-yellow-400', border: 'border-yellow-500/30', icon: AlertCircle, label: 'Pending' },
     };
-    const { bg, text, border, icon: Icon } = config[status];
+    const { bg, text, border, icon: Icon, label } = config[status] || config.pending;
     return (
       <Badge className={cn('text-xs font-medium capitalize gap-1 h-6 px-2', bg, text, border)}>
         <Icon size={12} />
-        {status}
+        {label}
       </Badge>
     );
   };
@@ -826,23 +869,37 @@ export const PurchasesPage = () => {
                         </div>
                       )}
 
-                      {/* Payment Due */}
+                      {/* Payment Due - STEP 2 FIX: Clickable to open payment dialog */}
                       {visibleColumns.paymentDue && (
                         <div className="text-right">
                           {purchase.paymentDue > 0 ? (
-                            <div className="text-sm font-semibold text-red-400 tabular-nums">
+                            <button
+                              onClick={() => handleMakePayment(purchase)}
+                              className="text-sm font-semibold text-red-400 tabular-nums hover:text-red-300 hover:underline cursor-pointer transition-colors"
+                              title="Click to make payment"
+                            >
                               ${purchase.paymentDue.toLocaleString()}
-                            </div>
+                            </button>
                           ) : (
                             <div className="text-sm text-gray-600">-</div>
                           )}
                         </div>
                       )}
 
-                      {/* Payment Status */}
+                      {/* Payment Status - STEP 2 FIX: Clickable if there's due amount */}
                       {visibleColumns.paymentStatus && (
                         <div className="flex justify-center">
-                          {getPaymentStatusBadge(purchase.paymentStatus)}
+                          {purchase.paymentDue > 0 ? (
+                            <button
+                              onClick={() => handleMakePayment(purchase)}
+                              className="hover:opacity-80 transition-opacity"
+                              title="Click to make payment"
+                            >
+                              {getPaymentStatusBadge(purchase.paymentStatus)}
+                            </button>
+                          ) : (
+                            getPaymentStatusBadge(purchase.paymentStatus)
+                          )}
                         </div>
                       )}
 
@@ -926,20 +983,101 @@ export const PurchasesPage = () => {
         onPageSizeChange={handlePageSizeChange}
       />
 
+      {/* STEP 2 FIX: View Payments Modal (like Sale module) */}
+      {selectedPurchase && (
+        <ViewPaymentsModal
+          isOpen={viewPaymentsOpen}
+          onClose={() => {
+            setViewPaymentsOpen(false);
+            setSelectedPurchase(null);
+          }}
+          invoice={{
+            id: selectedPurchase.uuid,
+            invoiceNo: selectedPurchase.poNo,
+            date: selectedPurchase.date,
+            customerName: selectedPurchase.supplier,
+            customerId: selectedPurchase.uuid,
+            total: selectedPurchase.grandTotal,
+            paid: selectedPurchase.grandTotal - selectedPurchase.paymentDue,
+            due: selectedPurchase.paymentDue,
+            paymentStatus: selectedPurchase.paymentStatus,
+          }}
+          onAddPayment={handleAddPaymentFromModal}
+          onRefresh={async () => {
+            await loadPurchases();
+          }}
+        />
+      )}
+
       {/* Unified Payment Dialog */}
       {selectedPurchase && (
         <UnifiedPaymentDialog
           isOpen={isPaymentDialogOpen}
           onClose={() => {
             setIsPaymentDialogOpen(false);
-            setSelectedPurchase(null);
+            // Re-open View Payments modal after payment is cancelled (like Sale module)
+            if (!viewPaymentsOpen) {
+              setViewPaymentsOpen(true);
+            }
           }}
           context="supplier"
           entityName={selectedPurchase.supplier}
           entityId={selectedPurchase.uuid}
           outstandingAmount={selectedPurchase.paymentDue}
+          totalAmount={selectedPurchase.grandTotal}
+          paidAmount={selectedPurchase.grandTotal - selectedPurchase.paymentDue}
           referenceNo={selectedPurchase.poNo}
-          onSuccess={handlePaymentComplete}
+          referenceId={selectedPurchase.uuid}
+          onSuccess={async () => {
+            toast.success('Payment recorded successfully');
+            
+            // CRITICAL FIX: Reload specific purchase from database to get updated paid_amount/due_amount
+            if (selectedPurchase?.uuid) {
+              try {
+                const purchaseData = await purchaseService.getPurchase(selectedPurchase.uuid);
+                if (purchaseData) {
+                  // Get branch name from branchMap or purchaseData
+                  let location = selectedPurchase.location;
+                  if (purchaseData.branch?.name) {
+                    location = purchaseData.branch.name;
+                  } else if (purchaseData.branch_id && branchMap.size > 0) {
+                    location = branchMap.get(purchaseData.branch_id) || selectedPurchase.location;
+                  }
+                  
+                  const convertedPurchase: Purchase = {
+                    id: selectedPurchase.id, // Keep same ID
+                    uuid: purchaseData.id,
+                    poNo: purchaseData.po_no || selectedPurchase.poNo,
+                    date: purchaseData.po_date || selectedPurchase.date,
+                    supplier: purchaseData.supplier?.name || purchaseData.supplier_name || selectedPurchase.supplier,
+                    supplierContact: purchaseData.supplier?.phone || selectedPurchase.supplierContact,
+                    reference: purchaseData.reference || purchaseData.notes || selectedPurchase.reference,
+                    location: location,
+                    items: purchaseData.items?.length || selectedPurchase.items,
+                    grandTotal: purchaseData.total || selectedPurchase.grandTotal,
+                    paymentDue: purchaseData.due_amount || 0, // CRITICAL: Get updated due_amount from database (trigger updated it)
+                    status: (purchaseData.status === 'final' ? 'final' : 
+                             purchaseData.status === 'received' ? 'received' : 
+                             purchaseData.status === 'ordered' ? 'pending' : 
+                             purchaseData.status === 'draft' ? 'pending' : 
+                             'pending') as PurchaseStatus,
+                    paymentStatus: purchaseData.payment_status || 'unpaid',
+                    addedBy: purchaseData.created_by_user?.full_name || purchaseData.created_by_user?.email || selectedPurchase.addedBy,
+                  };
+                  setSelectedPurchase(convertedPurchase);
+                }
+              } catch (error: any) {
+                console.error('[PURCHASES PAGE] Error reloading purchase after payment:', error);
+              }
+            }
+            
+            // Reload all purchases list
+            await loadPurchases();
+            setIsPaymentDialogOpen(false);
+            
+            // Re-open View Payments modal to show updated data
+            setViewPaymentsOpen(true);
+          }}
         />
       )}
 
@@ -951,7 +1089,19 @@ export const PurchasesPage = () => {
             setViewDetailsOpen(false);
             setSelectedPurchase(null);
           }}
-          purchase={selectedPurchase}
+          purchaseId={selectedPurchase.uuid}
+          onEdit={() => {
+            setViewDetailsOpen(false);
+            handlePurchaseAction('edit', selectedPurchase);
+          }}
+          onDelete={() => {
+            setViewDetailsOpen(false);
+            handlePurchaseAction('delete', selectedPurchase);
+          }}
+          onAddPayment={() => {
+            setViewDetailsOpen(false);
+            handlePurchaseAction('make_payment', selectedPurchase);
+          }}
         />
       )}
 

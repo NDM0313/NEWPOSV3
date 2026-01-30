@@ -162,7 +162,6 @@ export const accountingService = {
           account:accounts(id, name, code, type)
         ),
         payment:payments(id, reference_number, amount, payment_method, payment_date, contact_id),
-        sale:sales(id, invoice_no, customer_name, total, paid_amount, due_amount, customer_id),
         branch:branches(id, name, code)
       `)
       .eq('id', journalEntryId)
@@ -177,6 +176,23 @@ export const accountingService = {
     if (!data) {
       console.warn('[ACCOUNTING SERVICE] getEntryById: No entry found for ID:', journalEntryId);
       return null;
+    }
+
+    // CRITICAL FIX: Fetch sale data separately if reference_type is 'sale'
+    if (data.reference_type === 'sale' && data.reference_id) {
+      try {
+        const { data: saleData, error: saleError } = await supabase
+          .from('sales')
+          .select('id, invoice_no, customer_name, total, paid_amount, due_amount, customer_id')
+          .eq('id', data.reference_id)
+          .single();
+        
+        if (!saleError && saleData) {
+          (data as any).sale = saleData;
+        }
+      } catch (saleErr) {
+        console.warn('[ACCOUNTING SERVICE] Could not fetch sale data:', saleErr);
+      }
     }
 
     console.log('[ACCOUNTING SERVICE] getEntryById SUCCESS:', { entry_no: data.entry_no, id: data.id });
@@ -205,7 +221,6 @@ export const accountingService = {
           account:accounts(id, name, code, type)
         ),
         payment:payments(id, reference_number, amount, payment_method, payment_date),
-        sale:sales(id, invoice_no, customer_name, total, paid_amount, due_amount),
         branch:branches(id, name, code)
       `)
       .eq('company_id', companyId)
@@ -231,7 +246,6 @@ export const accountingService = {
               account:accounts(id, name, code, type)
             ),
             payment:payments(id, reference_number, amount, payment_method, payment_date),
-            sale:sales(id, invoice_no, customer_name, total, paid_amount, due_amount),
             branch:branches(id, name, code)
           `)
           .eq('company_id', companyId)
@@ -279,6 +293,17 @@ export const accountingService = {
         if (jeData) {
           data = jeData;
           error = null;
+          // CRITICAL FIX: Fetch sale data separately if needed
+          if (jeData.reference_type === 'sale' && jeData.reference_id) {
+            try {
+              const { data: saleData } = await supabase
+                .from('sales')
+                .select('id, invoice_no, customer_name, total, paid_amount, due_amount')
+                .eq('id', jeData.reference_id)
+                .single();
+              if (saleData) (data as any).sale = saleData;
+            } catch {}
+          }
         } else if (jeError && jeError.code !== 'PGRST116') {
           error = jeError;
         }
@@ -296,7 +321,6 @@ export const accountingService = {
             account:accounts(id, name, code, type)
           ),
           payment:payments(id, reference_number, amount, payment_method, payment_date),
-          sale:sales(id, invoice_no, customer_name, total, paid_amount, due_amount),
           branch:branches(id, name, code)
         `)
         .eq('company_id', companyId)
@@ -324,7 +348,6 @@ export const accountingService = {
             account:accounts(id, name, code, type)
           ),
           payment:payments(id, reference_number, amount, payment_method, payment_date),
-          sale:sales(id, invoice_no, customer_name, total, paid_amount, due_amount),
           branch:branches(id, name, code)
         `)
         .eq('company_id', companyId)
@@ -1064,7 +1087,8 @@ export const accountingService = {
     };
     
     // Only add optional UUID fields if they have valid values (not null/undefined)
-    if (entry.branch_id) {
+    // CRITICAL FIX: Validate branch_id - must be valid UUID, not "all"
+    if (entry.branch_id && entry.branch_id !== 'all') {
       insertData.branch_id = entry.branch_id;
     }
     if (entry.reference_id) {
@@ -1078,10 +1102,11 @@ export const accountingService = {
       insertData.payment_id = paymentId;
     }
     
+    // STEP 2 FIX: Fix journal_entries query - use proper select instead of select()
     const { data: entryData, error: entryError } = await supabase
       .from('journal_entries')
       .insert(insertData)
-      .select()
+      .select('*')
       .single();
 
     // CRITICAL FIX: Handle missing table error with helpful message

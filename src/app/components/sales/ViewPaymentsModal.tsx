@@ -157,9 +157,35 @@ export const ViewPaymentsModal: React.FC<ViewPaymentsModalProps> = ({
       const fetchPayments = async () => {
         setLoadingPayments(true);
         try {
-          const { saleService } = await import('@/app/services/saleService');
-          const fetchedPayments = await saleService.getSalePayments(invoice.id);
-          setPayments(fetchedPayments);
+          // STEP 2 FIX: Determine if this is a purchase or sale based on invoice number pattern
+          // Purchase: PO-XXX, Sale: INV-XXX or other patterns
+          const isPurchase = invoice.invoiceNo?.startsWith('PO-') || false;
+          
+          if (isPurchase) {
+            // Purchase payments
+            try {
+              const { purchaseService } = await import('@/app/services/purchaseService');
+              console.log('[VIEW PAYMENTS] Fetching purchase payments for:', invoice.id);
+              const fetchedPayments = await purchaseService.getPurchasePayments(invoice.id);
+              console.log('[VIEW PAYMENTS] Purchase payments loaded:', fetchedPayments);
+              setPayments(fetchedPayments || []);
+            } catch (purchaseError: any) {
+              console.error('[VIEW PAYMENTS] Error fetching purchase payments:', purchaseError);
+              setPayments(invoice.payments || []);
+            }
+          } else {
+            // Sale payments
+            try {
+              const { saleService } = await import('@/app/services/saleService');
+              console.log('[VIEW PAYMENTS] Fetching sale payments for:', invoice.id);
+              const fetchedPayments = await saleService.getSalePayments(invoice.id);
+              console.log('[VIEW PAYMENTS] Sale payments loaded:', fetchedPayments);
+              setPayments(fetchedPayments || []);
+            } catch (saleError: any) {
+              console.error('[VIEW PAYMENTS] Error fetching sale payments:', saleError);
+              setPayments(invoice.payments || []);
+            }
+          }
         } catch (error: any) {
           console.error('[VIEW PAYMENTS] Error fetching payments:', error);
           setPayments(invoice.payments || []);
@@ -171,7 +197,7 @@ export const ViewPaymentsModal: React.FC<ViewPaymentsModalProps> = ({
     } else {
       setPayments(invoice?.payments || []);
     }
-  }, [isOpen, invoice?.id, invoice?.payments]);
+  }, [isOpen, invoice?.id, invoice?.invoiceNo, invoice?.payments]);
 
   if (!isOpen || !invoice) return null;
 
@@ -189,10 +215,11 @@ export const ViewPaymentsModal: React.FC<ViewPaymentsModalProps> = ({
 
     setIsDeleting(true);
     try {
-      // CRITICAL FIX: Add timeout to prevent infinite hang
+      // CRITICAL FIX: Increased timeout to 30 seconds for complex delete operations
+      // Delete involves: payment deletion, journal entry reversal, activity logging, balance updates
       const deletePromise = onDeletePayment(paymentToDelete.id);
       const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('Payment deletion timed out. Please try again.')), 10000)
+        setTimeout(() => reject(new Error('Payment deletion is taking longer than expected. Please wait or try again.')), 30000)
       );
       
       await Promise.race([deletePromise, timeoutPromise]);

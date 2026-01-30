@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import type { Transaction } from '@/app/services/customerLedgerTypes';
 import React from 'react';
 import { useSupabase } from '@/app/context/SupabaseContext';
+import { useSettings } from '@/app/context/SettingsContext';
 import './ledger-print-view-print.css';
 
 interface LedgerPrintViewProps {
@@ -30,7 +31,8 @@ export function LedgerPrintView({
   onClose 
 }: LedgerPrintViewProps) {
   
-  const { enablePacking } = useSupabase();
+  const { inventorySettings } = useSettings();
+  const enablePacking = inventorySettings.enablePacking;
   const [orientation, setOrientation] = React.useState<'portrait' | 'landscape'>(initialOrientation);
   
   // Period totals (exclude Opening Balance row for summary)

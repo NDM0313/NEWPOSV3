@@ -87,6 +87,7 @@ import { BranchSelector, currentUser } from '@/app/components/layout/BranchSelec
 import { SaleItemsSection } from './SaleItemsSection';
 import { PaymentAttachments, PaymentAttachment } from '../payments/PaymentAttachments';
 import { useSupabase } from '@/app/context/SupabaseContext';
+import { useSettings } from '@/app/context/SettingsContext';
 import { contactService } from '@/app/services/contactService';
 import { productService } from '@/app/services/productService';
 import { branchService, Branch } from '@/app/services/branchService';
@@ -149,7 +150,9 @@ interface SaleFormProps {
 
 export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
     // Supabase & Context
-    const { companyId, branchId: contextBranchId, user, userRole, enablePacking } = useSupabase();
+    const { companyId, branchId: contextBranchId, user, userRole } = useSupabase();
+    const { inventorySettings } = useSettings();
+    const enablePacking = inventorySettings.enablePacking;
     const { createSale, updateSale } = useSales();
     const { openDrawer, closeDrawer, activeDrawer, createdContactId, createdContactType, setCreatedContactId, openPackingModal } = useNavigation();
     

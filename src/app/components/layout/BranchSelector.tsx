@@ -18,13 +18,15 @@ interface BranchSelectorProps {
   setBranchId: (id: string) => void;
   variant?: 'header' | 'inline';
   className?: string;
+  disabled?: boolean; // STEP 4: Allow external control (e.g., edit mode)
 }
 
 export const BranchSelector: React.FC<BranchSelectorProps> = ({ 
   branchId, 
   setBranchId, 
   variant = 'header',
-  className = '' 
+  className = '',
+  disabled = false
 }) => {
   const { companyId, branchId: contextBranchId, user, userRole } = useSupabase();
   const [branches, setBranches] = useState<Branch[]>([]);
@@ -32,7 +34,8 @@ export const BranchSelector: React.FC<BranchSelectorProps> = ({
   
   // CRITICAL FIX: Use actual userRole from Supabase, fallback to currentUser for compatibility
   const isAdmin = userRole === 'admin' || userRole === 'Admin' || currentUser.role === 'admin';
-  const isBranchLocked = !isAdmin; // Normal users = locked, Admin = can change
+  // STEP 4: Disabled if explicitly set OR if user is not admin
+  const isBranchLocked = disabled || !isAdmin; // External disabled prop OR normal users = locked, Admin = can change
   
   // Load branches from Supabase
   const loadBranches = useCallback(async () => {
@@ -71,10 +74,10 @@ export const BranchSelector: React.FC<BranchSelectorProps> = ({
     return (
       <div className={`flex items-center gap-2 ${className}`}>
         <Label className={`text-xs font-medium uppercase tracking-wide flex items-center gap-1.5 ${ 
-          isBranchLocked ? 'text-orange-500' : 'text-indigo-400'
+          isBranchLocked ? (disabled ? 'text-gray-500' : 'text-orange-500') : 'text-indigo-400'
         }`}>
           <Building2 size={14} />
-          Branch {isBranchLocked && <Lock size={10} className="text-orange-400" />}
+          Branch {isBranchLocked && <Lock size={10} className={disabled ? 'text-gray-400' : 'text-orange-400'} />}
         </Label>
         <Select 
           value={branchId} 
@@ -117,9 +120,9 @@ export const BranchSelector: React.FC<BranchSelectorProps> = ({
   return (
     <div className={`space-y-1.5 ${className}`}>
       <Label className={`font-medium text-xs uppercase tracking-wide flex items-center gap-1 ${ 
-        isBranchLocked ? 'text-orange-500' : 'text-indigo-500'
+        isBranchLocked ? (disabled ? 'text-gray-500' : 'text-orange-500') : 'text-indigo-500'
       }`}>
-        Branch {isBranchLocked && <Lock size={10} className="text-orange-400" />}
+        Branch {isBranchLocked && <Lock size={10} className={disabled ? 'text-gray-400' : 'text-orange-400'} />}
       </Label>
       <Select 
         value={branchId} 

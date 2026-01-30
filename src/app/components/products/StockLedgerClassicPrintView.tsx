@@ -7,17 +7,21 @@
  */
 
 import React from 'react';
-import { X, Printer, Download } from 'lucide-react';
+import { Download } from 'lucide-react';
 import { Button } from '../ui/button';
 import { formatStockReference } from '@/app/utils/formatters';
 import { toast } from 'sonner';
-import './stock-ledger-classic-print.css';
+import { useSettings } from '@/app/context/SettingsContext';
+import { ClassicPrintBase } from '../shared/ClassicPrintBase';
 
 export interface StockMovementForPrint {
   id: string;
   movement_type?: string;
   type?: string;
   quantity: number;
+  box_change?: number;
+  piece_change?: number;
+  unit?: string;
   reference_type?: string;
   reference_id?: string;
   notes?: string;
@@ -58,102 +62,68 @@ export const StockLedgerClassicPrintView: React.FC<StockLedgerClassicPrintViewPr
   getPurchaseById,
   onClose,
 }) => {
+  const { inventorySettings } = useSettings();
+  const enablePacking = inventorySettings.enablePacking;
   const sortedMovements = [...movements].sort(
     (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
   );
-
-  const handlePrint = () => {
-    window.print();
-  };
 
   const handleSavePDF = () => {
     toast.info('In the Print dialog, choose "Save as PDF" or "Microsoft Print to PDF" as destination.');
     window.print();
   };
 
+  const headerMeta = [
+    { label: 'Product', value: `${productName}${productSku ? ` (${productSku})` : ''}` },
+    { label: 'Branch', value: branchLabel },
+  ];
+
   return (
-    <div className="stock-ledger-classic-print-view">
-      {/* Chrome: Close, Print, Save as PDF – hidden when printing */}
-      <div className="stock-ledger-classic-print-chrome no-print">
-        <div className="chrome-title">Stock Ledger – Print Preview</div>
-        <div className="chrome-actions">
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={handlePrint}
-            className="chrome-btn"
-          >
-            <Printer size={16} className="mr-2" />
-            Print
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={handleSavePDF}
-            className="chrome-btn"
-          >
-            <Download size={16} className="mr-2" />
-            Save as PDF
-          </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            onClick={onClose}
-            className="chrome-btn-close"
-          >
-            <X size={18} />
-            Close
-          </Button>
+    <ClassicPrintBase
+      documentTitle="STOCK LEDGER"
+      companyName={companyName || 'Din Collection'}
+      headerMeta={headerMeta}
+      onPrint={() => window.print()}
+      onClose={onClose}
+      showActions={true}
+    >
+      {/* Summary Section */}
+      <div className="classic-print-section">
+        <h2 className="classic-print-section-title">Summary</h2>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px', marginTop: '12px' }}>
+          <div style={{ padding: '12px', backgroundColor: '#f9fafb', borderRadius: '4px', border: '1px solid #e5e7eb' }}>
+            <div style={{ fontSize: '10px', color: '#6b7280', marginBottom: '4px' }}>Total Purchased</div>
+            <div style={{ fontSize: '14px', fontWeight: 600, color: '#111827' }}>{totals.totalPurchased.toFixed(2)}</div>
+          </div>
+          <div style={{ padding: '12px', backgroundColor: '#f9fafb', borderRadius: '4px', border: '1px solid #e5e7eb' }}>
+            <div style={{ fontSize: '10px', color: '#6b7280', marginBottom: '4px' }}>Total Sold</div>
+            <div style={{ fontSize: '14px', fontWeight: 600, color: '#111827' }}>{totals.totalSold.toFixed(2)}</div>
+          </div>
+          <div style={{ padding: '12px', backgroundColor: '#f9fafb', borderRadius: '4px', border: '1px solid #e5e7eb' }}>
+            <div style={{ fontSize: '10px', color: '#6b7280', marginBottom: '4px' }}>Adjustments</div>
+            <div style={{ fontSize: '14px', fontWeight: 600, color: '#111827' }}>
+              {totals.totalAdjustments >= 0 ? '+' : ''}{totals.totalAdjustments.toFixed(2)}
+            </div>
+          </div>
+          <div style={{ padding: '12px', backgroundColor: '#f9fafb', borderRadius: '4px', border: '1px solid #e5e7eb' }}>
+            <div style={{ fontSize: '10px', color: '#6b7280', marginBottom: '4px' }}>Current Stock</div>
+            <div style={{ fontSize: '14px', fontWeight: 600, color: '#111827' }}>{totals.currentBalance.toFixed(2)}</div>
+          </div>
         </div>
       </div>
 
-      {/* Printable content – always visible on screen, prints as-is */}
-      <div className="stock-ledger-classic-print-content">
-        <header className="classic-print-header">
-          {companyName && (
-            <div className="company-name">{companyName}</div>
-          )}
-          <h1 className="classic-print-title">STOCK LEDGER</h1>
-          <div className="classic-print-meta">
-            <div><strong>Product:</strong> {productName}{productSku ? ` (${productSku})` : ''}</div>
-            <div><strong>Branch:</strong> {branchLabel}</div>
-            <div><strong>Generated:</strong> {new Date().toLocaleString()}</div>
-          </div>
-        </header>
-
-        <section className="classic-print-summary">
-          <h2 className="classic-print-summary-title">Summary</h2>
-          <div className="classic-print-summary-grid">
-            <div className="classic-print-summary-item">
-              <span className="label">Total Purchased</span>
-              <span className="value">{totals.totalPurchased.toFixed(2)}</span>
-            </div>
-            <div className="classic-print-summary-item">
-              <span className="label">Total Sold</span>
-              <span className="value">{totals.totalSold.toFixed(2)}</span>
-            </div>
-            <div className="classic-print-summary-item">
-              <span className="label">Adjustments</span>
-              <span className="value">
-                {totals.totalAdjustments >= 0 ? '+' : ''}{totals.totalAdjustments.toFixed(2)}
-              </span>
-            </div>
-            <div className="classic-print-summary-item">
-              <span className="label">Current Stock</span>
-              <span className="value">{totals.currentBalance.toFixed(2)}</span>
-            </div>
-          </div>
-        </section>
-
+      {/* Movements Table Section */}
+      <div className="classic-print-section">
+        <h2 className="classic-print-section-title">Stock Movements</h2>
         <table className="classic-print-table">
           <thead>
             <tr>
               <th>Date</th>
               <th>Type</th>
               <th className="text-right">Qty Change</th>
+              {enablePacking && <th className="text-right">Box Change</th>}
+              {enablePacking && <th className="text-right">Piece Change</th>}
+              {enablePacking && <th className="text-left">Unit</th>}
               <th className="text-right">Balance</th>
               <th>Reference</th>
               <th className="notes-col">Notes</th>
@@ -162,6 +132,9 @@ export const StockLedgerClassicPrintView: React.FC<StockLedgerClassicPrintViewPr
           <tbody>
             {sortedMovements.map((movement) => {
               const qty = Number(movement.quantity ?? 0);
+              const boxChange = movement.box_change ?? 0;
+              const pieceChange = movement.piece_change ?? 0;
+              const unit = movement.unit || 'pcs';
               const balance = runningBalance.get(movement.id) ?? 0;
               const sale =
                 movement.reference_type &&
@@ -188,15 +161,18 @@ export const StockLedgerClassicPrintView: React.FC<StockLedgerClassicPrintViewPr
                   <td>{new Date(movement.created_at).toLocaleString()}</td>
                   <td>{getMovementTypeLabel(movement.movement_type || movement.type || '')}</td>
                   <td className="text-right">{qty >= 0 ? '+' : ''}{qty.toFixed(2)}</td>
+                  {enablePacking && <td className="text-right">{boxChange >= 0 ? '+' : ''}{boxChange}</td>}
+                  {enablePacking && <td className="text-right">{pieceChange >= 0 ? '+' : ''}{pieceChange}</td>}
+                  {enablePacking && <td className="text-left">{unit}</td>}
                   <td className="text-right">{balance.toFixed(2)}</td>
                   <td>{refNo}</td>
-                  <td className="notes-col">{movement.notes || '—'}</td>
+                  <td style={{ maxWidth: '200px', wordBreak: 'break-word' }}>{movement.notes || '—'}</td>
                 </tr>
               );
             })}
           </tbody>
         </table>
       </div>
-    </div>
+    </ClassicPrintBase>
   );
 };
