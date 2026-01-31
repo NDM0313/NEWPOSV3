@@ -334,24 +334,65 @@ export const PurchasesPage = () => {
     }
   }, [companyId, purchases.length, loading, contextLoading, loadPurchases]);
 
-  // Columns configuration for Column Manager
-  const columns = [
-    { key: 'date', label: 'Date' },
-    { key: 'poNo', label: 'PO Number' },
-    { key: 'reference', label: 'Reference' },
-    { key: 'supplier', label: 'Supplier' },
-    { key: 'location', label: 'Location' },
-    { key: 'status', label: 'Purchase Status' },
-    { key: 'items', label: 'Items' },
-    { key: 'grandTotal', label: 'Grand Total' },
-    { key: 'paymentDue', label: 'Payment Due' },
-    { key: 'paymentStatus', label: 'Payment Status' },
-    { key: 'addedBy', label: 'Added By' },
-  ];
+  // Column order state - defines order of columns (same as Sale/Products; reorder in Columns dropdown)
+  const [columnOrder, setColumnOrder] = useState([
+    'date', 'poNo', 'reference', 'supplier', 'location', 'status', 'items',
+    'grandTotal', 'paymentDue', 'paymentStatus', 'addedBy',
+  ]);
+
+  // Columns configuration for Column Manager - ordered by columnOrder (reorder via Move Up/Down)
+  const columnLabels: Record<string, string> = {
+    date: 'Date',
+    poNo: 'PO Number',
+    reference: 'Reference',
+    supplier: 'Supplier',
+    location: 'Location',
+    status: 'Purchase Status',
+    items: 'Items',
+    grandTotal: 'Grand Total',
+    paymentDue: 'Payment Due',
+    paymentStatus: 'Payment Status',
+    addedBy: 'Added By',
+  };
+  const columns = columnOrder.map(key => ({ key, label: columnLabels[key] || key }));
 
   const toggleColumn = (key: string) => {
     setVisibleColumns(prev => ({ ...prev, [key]: !prev[key as keyof typeof visibleColumns] }));
   };
+
+  const moveColumnUp = (key: string) => {
+    const index = columnOrder.indexOf(key);
+    if (index > 0) {
+      const newOrder = [...columnOrder];
+      [newOrder[index - 1], newOrder[index]] = [newOrder[index], newOrder[index - 1]];
+      setColumnOrder(newOrder);
+    }
+  };
+
+  const moveColumnDown = (key: string) => {
+    const index = columnOrder.indexOf(key);
+    if (index < columnOrder.length - 1) {
+      const newOrder = [...columnOrder];
+      [newOrder[index], newOrder[index + 1]] = [newOrder[index + 1], newOrder[index]];
+      setColumnOrder(newOrder);
+    }
+  };
+
+  const getColumnWidth = (key: string): string => {
+    const widths: Record<string, string> = {
+      date: '100px', poNo: '110px', reference: '110px', supplier: '200px', location: '150px',
+      status: '130px', items: '80px', grandTotal: '120px', paymentDue: '120px',
+      paymentStatus: '130px', addedBy: '130px',
+    };
+    return widths[key] || '100px';
+  };
+
+  const gridTemplateColumns = useMemo(() => {
+    const parts = columnOrder
+      .filter(key => visibleColumns[key as keyof typeof visibleColumns])
+      .map(key => getColumnWidth(key));
+    return `${parts.join(' ')} 60px`.trim();
+  }, [columnOrder, visibleColumns]);
 
   // Filter data by date range (TASK 1 FIX - "All" means no date filter)
   const filterByDateRange = useCallback((dateStr: string | undefined): boolean => {
@@ -487,6 +528,85 @@ export const PurchasesPage = () => {
     );
   };
 
+  const renderPurchaseCell = (purchase: Purchase, key: string): React.ReactNode => {
+    switch (key) {
+      case 'date':
+        return <div className="text-sm text-gray-400">{formatLongDate(purchase.date)}</div>;
+      case 'poNo':
+        return <div className="text-sm text-orange-400 font-mono font-semibold">{purchase.poNo}</div>;
+      case 'reference':
+        return <div className="text-sm text-gray-400">{purchase.reference || '-'}</div>;
+      case 'supplier':
+        return (
+          <div className="min-w-0">
+            <div className="text-sm font-medium text-white truncate leading-[1.3]">{purchase.supplier}</div>
+            <div className="flex items-center gap-1 text-xs text-gray-500 leading-[1.3] mt-0.5">
+              <Phone size={10} className="text-gray-600" />
+              <span>{purchase.supplierContact}</span>
+            </div>
+          </div>
+        );
+      case 'location': {
+        let locationText = purchase.location || '';
+        const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(locationText);
+        if (isUUID && branchMap.size > 0) {
+          const resolved = branchMap.get(locationText);
+          locationText = resolved?.includes('|') ? resolved.split('|').pop()?.trim() || '' : (resolved || '');
+        }
+        if (locationText.includes('|')) locationText = locationText.split('|').pop()?.trim() || '';
+        return (
+          <div className="flex items-center gap-1.5 text-xs text-gray-400">
+            <MapPin size={12} className="text-gray-600" />
+            <span className="truncate">{locationText || '—'}</span>
+          </div>
+        );
+      }
+      case 'status':
+        return <div className="flex justify-center">{getPurchaseStatusBadge(purchase.status)}</div>;
+      case 'items':
+        return (
+          <div className="flex items-center justify-center gap-1 text-gray-300">
+            <Package size={12} className="text-gray-500" />
+            <span className="text-sm font-medium">{purchase.items}</span>
+          </div>
+        );
+      case 'grandTotal':
+        return (
+          <div className="text-right">
+            <div className="text-sm font-semibold text-white tabular-nums">${purchase.grandTotal.toLocaleString()}</div>
+          </div>
+        );
+      case 'paymentDue':
+        return (
+          <div className="text-right">
+            {purchase.paymentDue > 0 ? (
+              <button onClick={() => handleMakePayment(purchase)} className="text-sm font-semibold text-red-400 tabular-nums hover:text-red-300 hover:underline cursor-pointer transition-colors" title="Click to make payment">
+                ${purchase.paymentDue.toLocaleString()}
+              </button>
+            ) : (
+              <div className="text-sm text-gray-600">-</div>
+            )}
+          </div>
+        );
+      case 'paymentStatus':
+        return (
+          <div className="flex justify-center">
+            {purchase.paymentDue > 0 ? (
+              <button onClick={() => handleMakePayment(purchase)} className="hover:opacity-80 transition-opacity" title="Click to make payment">
+                {getPaymentStatusBadge(purchase.paymentStatus)}
+              </button>
+            ) : (
+              getPaymentStatusBadge(purchase.paymentStatus)
+            )}
+          </div>
+        );
+      case 'addedBy':
+        return <div className="text-xs text-gray-400">{purchase.addedBy}</div>;
+      default:
+        return null;
+    }
+  };
+
   return (
     <div className="h-screen flex flex-col bg-[#0B0F19]">
       {/* Page Header - Fixed */}
@@ -589,7 +709,9 @@ export const PurchasesPage = () => {
               return acc;
             }, {} as typeof visibleColumns);
             setVisibleColumns(allVisible);
-          }
+          },
+          onMoveUp: moveColumnUp,
+          onMoveDown: moveColumnDown,
         }}
         filter={{
           isOpen: filterOpen,
@@ -749,30 +871,22 @@ export const PurchasesPage = () => {
         <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden">
           <div className="overflow-x-auto">
             <div className="min-w-[1400px]">
-              {/* Table Header */}
-              <div className="sticky top-0 bg-gray-900 border-b border-gray-800 z-10">
+              {/* Table Header - full-width background (w-max so it spans full table width when scrolling) */}
+              <div className="sticky top-0 z-10 min-w-[1400px] w-max bg-gray-900 border-b border-gray-800">
                 <div className="grid gap-3 px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider"
-                  style={{
-                    gridTemplateColumns: `${visibleColumns.date ? '100px ' : ''}${visibleColumns.poNo ? '110px ' : ''}${visibleColumns.reference ? '110px ' : ''}${visibleColumns.supplier ? '200px ' : ''}${visibleColumns.location ? '150px ' : ''}${visibleColumns.status ? '130px ' : ''}${visibleColumns.items ? '80px ' : ''}${visibleColumns.grandTotal ? '120px ' : ''}${visibleColumns.paymentDue ? '120px ' : ''}${visibleColumns.paymentStatus ? '130px ' : ''}${visibleColumns.addedBy ? '130px ' : ''}60px`.trim()
-                  }}
+                  style={{ gridTemplateColumns: gridTemplateColumns }}
                 >
-                  {visibleColumns.date && <div className="text-left">Date</div>}
-                  {visibleColumns.poNo && <div className="text-left">PO No.</div>}
-                  {visibleColumns.reference && <div className="text-left">Reference</div>}
-                  {visibleColumns.supplier && <div className="text-left">Supplier</div>}
-                  {visibleColumns.location && <div className="text-left">Location</div>}
-                  {visibleColumns.status && <div className="text-center">Status</div>}
-                  {visibleColumns.items && <div className="text-center">Items</div>}
-                  {visibleColumns.grandTotal && <div className="text-right">Total</div>}
-                  {visibleColumns.paymentDue && <div className="text-right">Due</div>}
-                  {visibleColumns.paymentStatus && <div className="text-center">Payment</div>}
-                  {visibleColumns.addedBy && <div className="text-left">Added By</div>}
+                  {columnOrder.map(key => {
+                    if (!visibleColumns[key as keyof typeof visibleColumns]) return null;
+                    const align = (key === 'status' || key === 'items' || key === 'paymentStatus') ? 'text-center' : (key === 'grandTotal' || key === 'paymentDue') ? 'text-right' : 'text-left';
+                    return <div key={key} className={align}>{columnLabels[key]}</div>;
+                  })}
                   <div className="text-center">Actions</div>
                 </div>
               </div>
 
-              {/* Table Body */}
-              <div>
+              {/* Table Body - w-max so row lines span full table width (no short lines on right) */}
+              <div className="min-w-[1400px] w-max">
                 {paginatedPurchases.length === 0 ? (
                   <div className="py-12 text-center">
                     <ShoppingBag size={48} className="mx-auto text-gray-600 mb-3" />
@@ -785,131 +899,23 @@ export const PurchasesPage = () => {
                       key={purchase.id}
                       onMouseEnter={() => setHoveredRow(purchase.id)}
                       onMouseLeave={() => setHoveredRow(null)}
-                      className="relative grid gap-3 px-4 h-16 hover:bg-gray-800/30 transition-colors items-center after:absolute after:bottom-0 after:left-0 after:right-0 after:h-px after:bg-gray-700 last:after:hidden"
-                      style={{
-                        gridTemplateColumns: `${visibleColumns.date ? '100px ' : ''}${visibleColumns.poNo ? '110px ' : ''}${visibleColumns.reference ? '110px ' : ''}${visibleColumns.supplier ? '200px ' : ''}${visibleColumns.location ? '150px ' : ''}${visibleColumns.status ? '130px ' : ''}${visibleColumns.items ? '80px ' : ''}${visibleColumns.grandTotal ? '120px ' : ''}${visibleColumns.paymentDue ? '120px ' : ''}${visibleColumns.paymentStatus ? '130px ' : ''}${visibleColumns.addedBy ? '130px ' : ''}60px`.trim()
-                      }}
+                      className="grid gap-3 px-4 h-16 min-w-[1400px] w-max hover:bg-gray-800/30 transition-colors items-center border-b border-gray-800 last:border-b-0"
+                      style={{ gridTemplateColumns: gridTemplateColumns }}
                     >
-                      {/* Date */}
-                      {visibleColumns.date && (
-                        <div className="text-sm text-gray-400">{formatLongDate(purchase.date)}</div>
-                      )}
-
-                      {/* PO No */}
-                      {visibleColumns.poNo && (
-                        <div className="text-sm text-orange-400 font-mono font-semibold">{purchase.poNo}</div>
-                      )}
-
-                      {/* Reference */}
-                      {visibleColumns.reference && (
-                        <div className="text-sm text-gray-400">{purchase.reference || '-'}</div>
-                      )}
-
-                      {/* Supplier */}
-                      {visibleColumns.supplier && (
-                        <div className="min-w-0">
-                          <div className="text-sm font-medium text-white truncate leading-[1.3]">{purchase.supplier}</div>
-                          <div className="flex items-center gap-1 text-xs text-gray-500 leading-[1.3] mt-0.5">
-                            <Phone size={10} className="text-gray-600" />
-                            <span>{purchase.supplierContact}</span>
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Location */}
-                      {visibleColumns.location && (() => {
-                        // UI Rule: Show branch NAME only (not code, never UUID)
-                        let locationText = purchase.location || '';
-                        
-                        // If it looks like a UUID, try branchMap fallback
-                        const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(locationText);
-                        if (isUUID && branchMap.size > 0) {
-                          const resolved = branchMap.get(locationText);
-                          // Extract just the name if branchMap returns "BR-001 | Name" format
-                          if (resolved && resolved.includes('|')) {
-                            locationText = resolved.split('|').pop()?.trim() || '';
-                          } else {
-                            locationText = resolved || '';
-                          }
-                        }
-                        // If it contains '|' (old format), extract just the name
-                        if (locationText.includes('|')) {
-                          locationText = locationText.split('|').pop()?.trim() || '';
-                        }
-                        
-                        return (
-                          <div className="flex items-center gap-1.5 text-xs text-gray-400">
-                            <MapPin size={12} className="text-gray-600" />
-                            <span className="truncate">{locationText || '—'}</span>
-                          </div>
-                        );
-                      })()}
-
-                      {/* Status */}
-                      {visibleColumns.status && (
-                        <div className="flex justify-center">
-                          {getPurchaseStatusBadge(purchase.status)}
-                        </div>
-                      )}
-
-                      {/* Items */}
-                      {visibleColumns.items && (
-                        <div className="flex items-center justify-center gap-1 text-gray-300">
-                          <Package size={12} className="text-gray-500" />
-                          <span className="text-sm font-medium">{purchase.items}</span>
-                        </div>
-                      )}
-
-                      {/* Grand Total */}
-                      {visibleColumns.grandTotal && (
-                        <div className="text-right">
-                          <div className="text-sm font-semibold text-white tabular-nums">
-                            ${purchase.grandTotal.toLocaleString()}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Payment Due - STEP 2 FIX: Clickable to open payment dialog */}
-                      {visibleColumns.paymentDue && (
-                        <div className="text-right">
-                          {purchase.paymentDue > 0 ? (
-                            <button
-                              onClick={() => handleMakePayment(purchase)}
-                              className="text-sm font-semibold text-red-400 tabular-nums hover:text-red-300 hover:underline cursor-pointer transition-colors"
-                              title="Click to make payment"
-                            >
-                              ${purchase.paymentDue.toLocaleString()}
-                            </button>
-                          ) : (
-                            <div className="text-sm text-gray-600">-</div>
-                          )}
-                        </div>
-                      )}
-
-                      {/* Payment Status - STEP 2 FIX: Clickable if there's due amount */}
-                      {visibleColumns.paymentStatus && (
-                        <div className="flex justify-center">
-                          {purchase.paymentDue > 0 ? (
-                            <button
-                              onClick={() => handleMakePayment(purchase)}
-                              className="hover:opacity-80 transition-opacity"
-                              title="Click to make payment"
-                            >
-                              {getPaymentStatusBadge(purchase.paymentStatus)}
-                            </button>
-                          ) : (
-                            getPaymentStatusBadge(purchase.paymentStatus)
-                          )}
-                        </div>
-                      )}
-
-                      {/* Added By */}
-                      {visibleColumns.addedBy && (
-                        <div className="text-xs text-gray-400">{purchase.addedBy}</div>
-                      )}
-
-                      {/* Actions */}
-                      <div className="flex justify-center">
+                      {columnOrder.map(key => {
+                        if (!visibleColumns[key as keyof typeof visibleColumns]) return null;
+                        return <div key={key}>{renderPurchaseCell(purchase, key)}</div>;
+                      })}
+                      {/* Actions - visible delete icon + dropdown (same as Sale) */}
+                      <div className="flex items-center justify-center gap-1">
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); handleDelete(purchase); }}
+                          className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:text-red-400 hover:bg-gray-800/80 transition-all"
+                          title="Delete"
+                        >
+                          <Trash2 size={16} />
+                        </button>
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
                             <button 
@@ -1003,6 +1009,19 @@ export const PurchasesPage = () => {
             paymentStatus: selectedPurchase.paymentStatus,
           }}
           onAddPayment={handleAddPaymentFromModal}
+          onDeletePayment={async (paymentId: string) => {
+            if (!selectedPurchase?.uuid || !paymentId) {
+              throw new Error('Purchase or Payment ID not found');
+            }
+            try {
+              await purchaseService.deletePayment(paymentId, selectedPurchase.uuid);
+              await loadPurchases();
+              window.dispatchEvent(new CustomEvent('paymentAdded'));
+            } catch (error: any) {
+              console.error('[PURCHASES PAGE] Error deleting payment:', error);
+              throw new Error(error?.message || 'Failed to delete payment. Please try again.');
+            }
+          }}
           onRefresh={async () => {
             await loadPurchases();
           }}

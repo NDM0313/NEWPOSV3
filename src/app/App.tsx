@@ -30,6 +30,7 @@ import { AccountingProvider } from './context/AccountingContext';
 import { SettingsProvider } from './context/SettingsContext';
 import { SalesProvider } from './context/SalesContext';
 import { PurchaseProvider } from './context/PurchaseContext';
+import { RentalProvider } from './context/RentalContext';
 import { ExpenseProvider } from './context/ExpenseContext';
 import { ModuleSettings } from './components/settings/ModuleSettings';
 import { ReportsDashboard } from './components/reports/ReportsDashboard';
@@ -207,13 +208,15 @@ export default function App() {
                 <SettingsProvider>
                   <SalesProvider>
                     <PurchaseProvider>
-                      <ExpenseProvider>
-                        <NavigationProvider>
-                          <AppContent />
-                          <Toaster position="bottom-right" theme="dark" />
-                          <KeyboardShortcutsModal />
-                        </NavigationProvider>
-                      </ExpenseProvider>
+                      <RentalProvider>
+                        <ExpenseProvider>
+                          <NavigationProvider>
+                            <AppContent />
+                            <Toaster position="bottom-right" theme="dark" />
+                            <KeyboardShortcutsModal />
+                          </NavigationProvider>
+                        </ExpenseProvider>
+                      </RentalProvider>
                     </PurchaseProvider>
                   </SalesProvider>
                 </SettingsProvider>

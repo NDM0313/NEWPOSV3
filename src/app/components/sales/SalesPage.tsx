@@ -934,8 +934,8 @@ export const SalesPage = () => {
         <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden">
           <div className="overflow-x-auto">
             <div className="min-w-[1400px]">
-              {/* Table Header */}
-              <div className="sticky top-0 bg-gray-900 border-b border-gray-800 z-10">
+              {/* Table Header - full-width background (w-max so it spans full table when scrolling) */}
+              <div className="sticky top-0 z-10 min-w-[1400px] w-max bg-gray-900 border-b border-gray-800">
                 <div className="grid gap-3 px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider"
                   style={{
                     gridTemplateColumns: gridTemplateColumns
@@ -986,8 +986,8 @@ export const SalesPage = () => {
                 </div>
               </div>
 
-              {/* Table Body */}
-              <div>
+              {/* Table Body - w-max so row lines span full table width (no short lines on right) */}
+              <div className="min-w-[1400px] w-max">
                 {loading ? (
                   <div className="py-12 text-center">
                     <Loader2 size={48} className="mx-auto text-blue-500 mb-3 animate-spin" />
@@ -1005,7 +1005,7 @@ export const SalesPage = () => {
                       key={sale.id}
                       onMouseEnter={() => setHoveredRow(sale.id || sale.invoiceNo)}
                       onMouseLeave={() => setHoveredRow(null)}
-                      className="relative grid gap-3 px-4 h-16 hover:bg-gray-800/30 transition-colors items-center after:absolute after:bottom-0 after:left-0 after:right-0 after:h-px after:bg-gray-700 last:after:hidden"
+                      className="relative grid gap-3 px-4 h-16 min-w-[1400px] w-max hover:bg-gray-800/30 transition-colors items-center border-b border-gray-800 last:border-b-0"
                       style={{
                         gridTemplateColumns: gridTemplateColumns
                       }}

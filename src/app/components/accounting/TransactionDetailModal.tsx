@@ -118,7 +118,7 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-7xl w-[95vw] max-h-[95vh] overflow-auto bg-gray-900 border-gray-800">
+      <DialogContent className="!w-[800px] !max-w-[800px] sm:!max-w-[800px] max-h-[95vh] overflow-auto bg-gray-900 border-gray-800">
         <DialogHeader>
           <DialogTitle className="text-white flex items-center justify-between">
             <div>

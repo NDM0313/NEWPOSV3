@@ -160,8 +160,26 @@ export const ViewPaymentsModal: React.FC<ViewPaymentsModalProps> = ({
           // STEP 2 FIX: Determine if this is a purchase or sale based on invoice number pattern
           // Purchase: PO-XXX, Sale: INV-XXX or other patterns
           const isPurchase = invoice.invoiceNo?.startsWith('PO-') || false;
+          const isRental = invoice.invoiceNo?.startsWith('RN-') || false;
           
-          if (isPurchase) {
+          if (isRental) {
+            try {
+              const { rentalService } = await import('@/app/services/rentalService');
+              const fetchedPayments = await rentalService.getRentalPayments(invoice.id);
+              setPayments((fetchedPayments || []).map((p: any) => ({
+                id: p.id,
+                date: p.payment_date || p.created_at?.split('T')[0] || '',
+                referenceNo: p.reference || '',
+                amount: p.amount,
+                method: p.method,
+                notes: p.reference,
+                createdAt: p.created_at,
+              })));
+            } catch (rentalError: any) {
+              console.error('[VIEW PAYMENTS] Error fetching rental payments:', rentalError);
+              setPayments(invoice.payments || []);
+            }
+          } else if (isPurchase) {
             // Purchase payments
             try {
               const { purchaseService } = await import('@/app/services/purchaseService');

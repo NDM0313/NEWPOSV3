@@ -70,7 +70,7 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
 }) => {
   const accounting = useAccounting();
   const settings = useSettings();
-  const { branchId, companyId } = useSupabase();
+  const { branchId, companyId, user } = useSupabase();
   const [amount, setAmount] = useState<number>(0);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('Cash');
   const [selectedAccount, setSelectedAccount] = useState<string>('');
@@ -401,13 +401,27 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
           break;
 
         case 'rental':
-          success = await accounting.recordRentalPayment({
-            rentalName: entityName,
-            rentalId: entityId,
-            amount,
-            paymentMethod,
-            referenceNo: referenceNo || `RP-${Date.now()}`
-          });
+          if (!referenceId || !companyId) {
+            toast.error('Rental ID and Company are required');
+            setIsProcessing(false);
+            return;
+          }
+          try {
+            const { rentalService } = await import('@/app/services/rentalService');
+            await rentalService.addPayment(
+              referenceId,
+              companyId,
+              amount,
+              paymentMethod,
+              notes || undefined,
+              user?.id ?? undefined
+            );
+            success = true;
+          } catch (rentalError: any) {
+            toast.error(rentalError?.message || 'Rental payment failed');
+            setIsProcessing(false);
+            return;
+          }
           break;
         }
       }

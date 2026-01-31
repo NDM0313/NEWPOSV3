@@ -343,19 +343,133 @@ export const ProductsPage = () => {
     setVisibleColumns(prev => ({ ...prev, [column]: !prev[column] }));
   };
 
-  const columns = [
-    { key: 'sku', label: 'SKU' },
-    { key: 'image', label: 'Image' },
-    { key: 'name', label: 'Product Name' },
-    { key: 'branch', label: 'Branch' },
-    { key: 'unit', label: 'Unit' },
-    { key: 'purchase', label: 'Purchase Price' },
-    { key: 'selling', label: 'Selling Price' },
-    { key: 'margin', label: 'Margin' },
-    { key: 'stock', label: 'Stock Status' },
-    { key: 'type', label: 'Type' },
-    { key: 'category', label: 'Category' },
-  ] as const;
+  const [columnOrder, setColumnOrder] = useState([
+    'sku', 'image', 'name', 'branch', 'unit', 'purchase', 'selling', 'margin', 'stock', 'type', 'category',
+  ]);
+
+  const columnLabels: Record<string, string> = {
+    sku: 'SKU',
+    image: 'Image',
+    name: 'Product Name',
+    branch: 'Branch',
+    unit: 'Unit',
+    purchase: 'Purchase Price',
+    selling: 'Selling Price',
+    margin: 'Margin',
+    stock: 'Stock Status',
+    type: 'Type',
+    category: 'Category',
+  };
+  const columns = columnOrder.map(key => ({ key, label: columnLabels[key] || key }));
+
+  const moveColumnUp = (key: string) => {
+    const index = columnOrder.indexOf(key);
+    if (index > 0) {
+      const newOrder = [...columnOrder];
+      [newOrder[index - 1], newOrder[index]] = [newOrder[index], newOrder[index - 1]];
+      setColumnOrder(newOrder);
+    }
+  };
+
+  const moveColumnDown = (key: string) => {
+    const index = columnOrder.indexOf(key);
+    if (index < columnOrder.length - 1) {
+      const newOrder = [...columnOrder];
+      [newOrder[index], newOrder[index + 1]] = [newOrder[index + 1], newOrder[index]];
+      setColumnOrder(newOrder);
+    }
+  };
+
+  const getColumnWidth = (key: string): string => {
+    const widths: Record<string, string> = {
+      sku: '80px', image: '60px', name: '1fr', branch: '140px', unit: '80px',
+      purchase: '110px', selling: '110px', margin: '100px', stock: '100px',
+      type: '120px', category: '120px',
+    };
+    return widths[key] || '100px';
+  };
+
+  const gridTemplateColumns = useMemo(() => {
+    const parts = columnOrder
+      .filter(key => visibleColumns[key as keyof typeof visibleColumns])
+      .map(key => getColumnWidth(key));
+    return `${parts.join(' ')} 60px`.trim();
+  }, [columnOrder, visibleColumns]);
+
+  const renderProductCell = (product: Product, key: string): React.ReactNode => {
+    switch (key) {
+      case 'sku':
+        return <div className="text-sm text-blue-400 font-mono">{product.sku}</div>;
+      case 'image':
+        return (
+          <div className="flex justify-center">
+            <div className="w-10 h-10 rounded-lg bg-gray-800 border border-gray-700 flex items-center justify-center">
+              <ImageIcon size={16} className="text-gray-600" />
+            </div>
+          </div>
+        );
+      case 'name':
+        return (
+          <div className="min-w-0">
+            <div className="text-sm font-medium text-white truncate leading-[1.3]">{product.name}</div>
+            <div className="text-xs text-gray-500 leading-[1.3] mt-0.5">{product.brand}</div>
+          </div>
+        );
+      case 'branch':
+        return <div className="text-xs text-gray-400 truncate">{product.branch}</div>;
+      case 'unit':
+        return <div className="text-xs text-gray-400">{product.unit}</div>;
+      case 'purchase':
+        return (
+          <div className="text-right">
+            <div className="text-sm font-medium text-gray-300 tabular-nums">${product.purchasePrice.toLocaleString()}</div>
+          </div>
+        );
+      case 'selling':
+        return (
+          <div className="text-right">
+            <div className="text-sm font-semibold text-white tabular-nums">${product.sellingPrice.toLocaleString()}</div>
+          </div>
+        );
+      case 'margin': {
+        const { margin, marginPercent } = getMargin(product);
+        return (
+          <div className="text-right">
+            <div className="text-sm font-semibold text-green-400 tabular-nums">+{marginPercent}%</div>
+            <div className="text-[10px] text-gray-500 tabular-nums">${margin.toLocaleString()}</div>
+          </div>
+        );
+      }
+      case 'stock':
+        return (
+          <div className="flex flex-col items-center gap-1">
+            <div className={cn(
+              'text-sm font-bold tabular-nums',
+              product.stock === 0 && 'text-red-400',
+              product.stock > 0 && product.stock <= product.lowStockThreshold && 'text-yellow-400',
+              product.stock > product.lowStockThreshold && 'text-white'
+            )}>
+              {product.stock}
+            </div>
+            {getStockStatusBadge(product)}
+          </div>
+        );
+      case 'type':
+        return (
+          <Badge className={cn(
+            'text-xs font-medium capitalize w-fit px-2 py-0.5 h-5',
+            product.type === 'simple' && 'bg-gray-500/20 text-gray-400 border-gray-500/30',
+            product.type === 'variable' && 'bg-purple-500/20 text-purple-400 border-purple-500/30'
+          )}>
+            {product.type}
+          </Badge>
+        );
+      case 'category':
+        return <div className="text-xs text-gray-400 truncate">{product.category}</div>;
+      default:
+        return null;
+    }
+  };
 
   return (
     <div className="h-screen flex flex-col bg-[#0B0F19]">
@@ -460,7 +574,9 @@ export const ProductsPage = () => {
                 return acc;
               }, {} as typeof visibleColumns);
               setVisibleColumns(allVisible);
-            }
+            },
+            onMoveUp: moveColumnUp,
+            onMoveDown: moveColumnDown,
           }}
           filter={{
             isOpen: filterOpen,
@@ -647,30 +763,22 @@ export const ProductsPage = () => {
           {/* Wrapper for horizontal scroll */}
           <div className="overflow-x-auto">
             <div className="min-w-[1400px]">
-              {/* Table Header - Fixed within scroll container */}
-              <div className="sticky top-0 bg-gray-950/95 backdrop-blur-sm z-10 border-b border-gray-800">
+              {/* Table Header - full-width; order from Columns dropdown (Move Up/Down) */}
+              <div className="sticky top-0 bg-gray-950/95 backdrop-blur-sm z-10 border-b border-gray-800 min-w-[1400px] w-max">
                 <div className="grid gap-3 px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider"
-                  style={{
-                    gridTemplateColumns: `${visibleColumns.sku ? '80px ' : ''}${visibleColumns.image ? '60px ' : ''}${visibleColumns.name ? '1fr ' : ''}${visibleColumns.branch ? '140px ' : ''}${visibleColumns.unit ? '80px ' : ''}${visibleColumns.purchase ? '110px ' : ''}${visibleColumns.selling ? '110px ' : ''}${visibleColumns.margin ? '100px ' : ''}${visibleColumns.stock ? '100px ' : ''}${visibleColumns.type ? '120px ' : ''}${visibleColumns.category ? '120px ' : ''}60px`.trim()
-                  }}
+                  style={{ gridTemplateColumns: gridTemplateColumns }}
                 >
-                  {visibleColumns.sku && <div className="text-left">SKU</div>}
-                  {visibleColumns.image && <div className="text-center">Image</div>}
-                  {visibleColumns.name && <div className="text-left">Product Name</div>}
-                  {visibleColumns.branch && <div className="text-left">Branch</div>}
-                  {visibleColumns.unit && <div className="text-left">Unit</div>}
-                  {visibleColumns.purchase && <div className="text-right">Purchase</div>}
-                  {visibleColumns.selling && <div className="text-right">Selling</div>}
-                  {visibleColumns.margin && <div className="text-right">Margin</div>}
-                  {visibleColumns.stock && <div className="text-right">Stock</div>}
-                  {visibleColumns.type && <div className="text-left">Type</div>}
-                  {visibleColumns.category && <div className="text-left">Category</div>}
+                  {columnOrder.map(key => {
+                    if (!visibleColumns[key as keyof typeof visibleColumns]) return null;
+                    const align = (key === 'image' || key === 'stock') ? 'text-center' : (key === 'purchase' || key === 'selling' || key === 'margin') ? 'text-right' : 'text-left';
+                    return <div key={key} className={align}>{columnLabels[key]}</div>;
+                  })}
                   <div className="text-center">Actions</div>
                 </div>
               </div>
 
-              {/* Table Body */}
-              <div>
+              {/* Table Body - w-max so row lines span full table width */}
+              <div className="min-w-[1400px] w-max">
                 {loading ? (
                   <div className="py-12 text-center">
                     <Loader2 size={48} className="mx-auto text-blue-500 mb-3 animate-spin" />
@@ -702,113 +810,18 @@ export const ProductsPage = () => {
                     <p className="text-gray-600 text-xs mt-1">Go to page 1</p>
                   </div>
                 ) : (
-                  paginatedProducts.map((product) => {
-                    const { margin, marginPercent } = getMargin(product);
-                    return (
+                  paginatedProducts.map((product) => (
                       <div
                         key={product.id}
                         onMouseEnter={() => setHoveredRow(product.id)}
                         onMouseLeave={() => setHoveredRow(null)}
-                        className="grid gap-3 px-4 h-16 hover:bg-gray-800/30 transition-colors items-center border-b border-gray-800/50 last:border-b-0"
-                        style={{
-                          gridTemplateColumns: `${visibleColumns.sku ? '80px ' : ''}${visibleColumns.image ? '60px ' : ''}${visibleColumns.name ? '1fr ' : ''}${visibleColumns.branch ? '140px ' : ''}${visibleColumns.unit ? '80px ' : ''}${visibleColumns.purchase ? '110px ' : ''}${visibleColumns.selling ? '110px ' : ''}${visibleColumns.margin ? '100px ' : ''}${visibleColumns.stock ? '100px ' : ''}${visibleColumns.type ? '120px ' : ''}${visibleColumns.category ? '120px ' : ''}60px`.trim()
-                        }}
+                        className="grid gap-3 px-4 h-16 min-w-[1400px] w-max hover:bg-gray-800/30 transition-colors items-center border-b border-gray-800 last:border-b-0"
+                        style={{ gridTemplateColumns: gridTemplateColumns }}
                       >
-                        {/* SKU */}
-                        {visibleColumns.sku && (
-                          <div className="text-sm text-blue-400 font-mono">{product.sku}</div>
-                        )}
-
-                        {/* Image */}
-                        {visibleColumns.image && (
-                          <div className="flex justify-center">
-                            <div className="w-10 h-10 rounded-lg bg-gray-800 border border-gray-700 flex items-center justify-center">
-                              <ImageIcon size={16} className="text-gray-600" />
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Product Name */}
-                        {visibleColumns.name && (
-                          <div className="min-w-0">
-                            <div className="text-sm font-medium text-white truncate leading-[1.3]">{product.name}</div>
-                            <div className="text-xs text-gray-500 leading-[1.3] mt-0.5">{product.brand}</div>
-                          </div>
-                        )}
-
-                        {/* Branch */}
-                        {visibleColumns.branch && (
-                          <div className="text-xs text-gray-400 truncate">{product.branch}</div>
-                        )}
-
-                        {/* Unit */}
-                        {visibleColumns.unit && (
-                          <div className="text-xs text-gray-400">{product.unit}</div>
-                        )}
-
-                        {/* Purchase Price */}
-                        {visibleColumns.purchase && (
-                          <div className="text-right">
-                            <div className="text-sm font-medium text-gray-300 tabular-nums">
-                              ${product.purchasePrice.toLocaleString()}
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Selling Price */}
-                        {visibleColumns.selling && (
-                          <div className="text-right">
-                            <div className="text-sm font-semibold text-white tabular-nums">
-                              ${product.sellingPrice.toLocaleString()}
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Margin */}
-                        {visibleColumns.margin && (
-                          <div className="text-right">
-                            <div className="text-sm font-semibold text-green-400 tabular-nums">
-                              +{marginPercent}%
-                            </div>
-                            <div className="text-[10px] text-gray-500 tabular-nums">
-                              ${margin.toLocaleString()}
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Stock */}
-                        {visibleColumns.stock && (
-                          <div className="flex flex-col items-center gap-1">
-                            <div className={cn(
-                              "text-sm font-bold tabular-nums",
-                              product.stock === 0 && "text-red-400",
-                              product.stock > 0 && product.stock <= product.lowStockThreshold && "text-yellow-400",
-                              product.stock > product.lowStockThreshold && "text-white"
-                            )}>
-                              {product.stock}
-                            </div>
-                            {getStockStatusBadge(product)}
-                          </div>
-                        )}
-
-                        {/* Type */}
-                        {visibleColumns.type && (
-                          <div>
-                            <Badge className={cn(
-                              "text-xs font-medium capitalize w-fit px-2 py-0.5 h-5",
-                              product.type === 'simple' && "bg-gray-500/20 text-gray-400 border-gray-500/30",
-                              product.type === 'variable' && "bg-purple-500/20 text-purple-400 border-purple-500/30"
-                            )}>
-                              {product.type}
-                            </Badge>
-                          </div>
-                        )}
-
-                        {/* Category */}
-                        {visibleColumns.category && (
-                          <div className="text-xs text-gray-400 truncate">{product.category}</div>
-                        )}
-
+                        {columnOrder.map(key => {
+                          if (!visibleColumns[key as keyof typeof visibleColumns]) return null;
+                          return <div key={key}>{renderProductCell(product, key)}</div>;
+                        })}
                         {/* Actions */}
                         <div className="flex justify-center">
                           <DropdownMenu>
@@ -870,8 +883,7 @@ export const ProductsPage = () => {
                           </DropdownMenu>
                         </div>
                       </div>
-                    );
-                  })
+                  ))
                 )}
               </div>
             </div>

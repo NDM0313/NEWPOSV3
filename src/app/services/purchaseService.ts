@@ -416,23 +416,24 @@ export const purchaseService = {
   },
 
   // Delete payment (similar to saleService.deletePayment)
+  // Tries RPC delete_payment first; if 404 or missing, uses direct deletion.
   async deletePayment(paymentId: string, purchaseId: string) {
-    try {
-      // Use RPC function if available
-      const { error: rpcError } = await supabase.rpc('delete_payment', {
+    const tryRpc = async () => {
+      const { error } = await supabase.rpc('delete_payment', {
         p_payment_id: paymentId,
         p_reference_id: purchaseId
       });
+      return error;
+    };
 
-      if (!rpcError) {
-        return; // Success
-      }
-
-      // Fallback to direct deletion
+    try {
+      const rpcError = await tryRpc();
+      if (!rpcError) return; // RPC success
+      // RPC failed (e.g. 404 function not found) → use direct delete
       return await this.deletePaymentDirect(paymentId, purchaseId);
-    } catch (error: any) {
-      console.error('[PURCHASE SERVICE] Error deleting payment:', error);
-      throw error;
+    } catch (err: any) {
+      // RPC request can throw (e.g. 404) → use direct delete
+      return await this.deletePaymentDirect(paymentId, purchaseId);
     }
   },
 

@@ -12,7 +12,7 @@ import { supabase } from '@/lib/supabase';
 export interface ActivityLog {
   id: string;
   company_id: string;
-  module: 'sale' | 'purchase' | 'inventory' | 'payment' | 'expense' | 'accounting' | 'contact' | 'product';
+  module: 'sale' | 'purchase' | 'inventory' | 'payment' | 'expense' | 'accounting' | 'contact' | 'product' | 'rental';
   entity_id: string;
   entity_reference?: string;
   action: string;

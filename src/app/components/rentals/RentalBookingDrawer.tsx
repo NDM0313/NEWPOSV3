@@ -625,8 +625,8 @@ export const RentalBookingDrawer = ({ isOpen, onClose }: RentalBookingDrawerProp
                       </div>
                   )}
 
-                  {/* Security Section */}
-                  <SecuritySection onChange={setSecurityDetails} />
+                  {/* Security Section — disabled at booking; enable at delivery */}
+                  <SecuritySection onChange={setSecurityDetails} disabled />
 
                   {/* Notes */}
                   <div className="space-y-2">
@@ -682,7 +682,7 @@ export const RentalBookingDrawer = ({ isOpen, onClose }: RentalBookingDrawerProp
                   
                   <Button 
                     className="w-full bg-pink-600 hover:bg-pink-500 text-white font-bold h-12 text-lg shadow-lg shadow-pink-600/20"
-                    disabled={!selectedProduct || !securityDetails || !!hasConflict}
+                    disabled={!selectedProduct || !!hasConflict}
                   >
                       {hasConflict ? "Date Conflict" : "Book Order"} <ArrowRight className="ml-2" size={18} />
                   </Button>

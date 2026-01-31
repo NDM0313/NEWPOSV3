@@ -9,7 +9,6 @@ import { activityLogService } from '@/app/services/activityLogService';
 import { PurchaseOrderPrintLayout } from '../shared/PurchaseOrderPrintLayout';
 import { PaymentDeleteConfirmationModal } from '../shared/PaymentDeleteConfirmationModal';
 import { UnifiedPaymentDialog } from '../shared/UnifiedPaymentDialog';
-import { UnifiedPaymentDialog } from '../shared/UnifiedPaymentDialog';
 import { 
   X, 
   Calendar, 
@@ -114,8 +113,6 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
   const [deleteConfirmationOpen, setDeleteConfirmationOpen] = useState(false);
   const [paymentToDelete, setPaymentToDelete] = useState<any | null>(null);
   const [isDeletingPayment, setIsDeletingPayment] = useState(false);
-  const [editPaymentDialogOpen, setEditPaymentDialogOpen] = useState(false);
-  const [paymentToEdit, setPaymentToEdit] = useState<any | null>(null);
   const [editPaymentDialogOpen, setEditPaymentDialogOpen] = useState(false);
   const [paymentToEdit, setPaymentToEdit] = useState<any | null>(null);
 
