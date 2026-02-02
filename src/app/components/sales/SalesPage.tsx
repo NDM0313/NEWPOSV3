@@ -678,13 +678,23 @@ export const SalesPage = () => {
             <h1 className="text-2xl font-bold text-white">Sales</h1>
             <p className="text-sm text-gray-400 mt-0.5">Manage your sales and customer invoices</p>
           </div>
-          <Button 
-            onClick={() => openDrawer('addSale')}
-            className="bg-blue-600 hover:bg-blue-500 text-white h-10 gap-2"
-          >
-            <Plus size={16} />
-            Add Sale
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setCurrentView('sales-list-design-test')}
+              className="h-10 text-gray-400 border-gray-700 hover:bg-gray-800 hover:text-white"
+            >
+              Design test
+            </Button>
+            <Button 
+              onClick={() => openDrawer('addSale')}
+              className="bg-blue-600 hover:bg-blue-500 text-white h-10 gap-2"
+            >
+              <Plus size={16} />
+              Add Sale
+            </Button>
+          </div>
         </div>
       </div>
 

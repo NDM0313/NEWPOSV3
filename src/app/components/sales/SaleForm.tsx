@@ -89,6 +89,7 @@ import { PaymentAttachments, PaymentAttachment } from '../payments/PaymentAttach
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { useSettings } from '@/app/context/SettingsContext';
 import { contactService } from '@/app/services/contactService';
+import { saleService } from '@/app/services/saleService';
 import { productService } from '@/app/services/productService';
 import { branchService, Branch } from '@/app/services/branchService';
 import { useSales } from '@/app/context/SalesContext';
@@ -154,7 +155,7 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
     const { inventorySettings } = useSettings();
     const enablePacking = inventorySettings.enablePacking;
     const { createSale, updateSale } = useSales();
-    const { openDrawer, closeDrawer, activeDrawer, createdContactId, createdContactType, setCreatedContactId, openPackingModal } = useNavigation();
+    const { openDrawer, closeDrawer, activeDrawer, createdContactId, createdContactType, setCreatedContactId, openPackingModal, setCurrentView, setSelectedStudioSaleId } = useNavigation();
     
     // TASK 4 FIX - Check if user is admin
     const isAdmin = userRole === 'admin' || userRole === 'Admin';
@@ -288,6 +289,9 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
     // Packing Modal State - Now using global modal via NavigationContext
     const [activePackingItemId, setActivePackingItemId] = useState<number | null>(null);
 
+    // Document numbering (must be before displayInvoiceNumber useMemo)
+    const { generateDocumentNumber, incrementNextNumber } = useDocumentNumbering();
+
     // Calculations
     const subtotal = items.reduce((sum, item) => sum + (item.price * item.qty), 0);
     const expensesTotal = extraExpenses.reduce((sum, exp) => sum + exp.amount, 0);
@@ -357,15 +361,25 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
             try {
                 setLoading(true);
                 
-                // Load customers (contacts with type='customer')
-                const contactsData = await contactService.getAllContacts(companyId);
-                const customerContacts = contactsData
-                    .filter(c => c.type === 'customer' || c.type === 'both')
-                    .map(c => ({
-                        id: c.id || c.uuid || '',
-                        name: c.name || '',
-                        dueBalance: c.receivables || 0
-                    }));
+                // Load customers (contacts with type='customer') and their due balance from sales
+                const [contactsData, salesData] = await Promise.all([
+                    contactService.getAllContacts(companyId),
+                    saleService.getAllSales(companyId, contextBranchId === 'all' ? undefined : contextBranchId || undefined).catch(() => [])
+                ]);
+                const salesList = Array.isArray(salesData) ? salesData : [];
+                const customerContacts = (contactsData || [])
+                    .filter((c: any) => c.type === 'customer' || c.type === 'both')
+                    .map((c: any) => {
+                        const cId = c.id || c.uuid || '';
+                        const dueBalance = salesList
+                            .filter((s: any) => (s.customer_id || s.customer_name) && (String(s.customer_id) === String(cId) || (s.customer_name && s.customer_name === c.name)))
+                            .reduce((sum: number, s: any) => sum + (Number(s.due_amount) ?? 0), 0);
+                        return {
+                            id: cId,
+                            name: c.name || '',
+                            dueBalance
+                        };
+                    });
                 
                 // Add walk-in customer option
                 setCustomers([
@@ -523,14 +537,20 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                     // Small delay to ensure DB commit (reduced since we're not waiting for drawer close)
                     await new Promise(resolve => setTimeout(resolve, 300));
                     
-                    const contactsData = await contactService.getAllContacts(companyId);
-                    const customerContacts = contactsData
-                        .filter(c => c.type === 'customer' || c.type === 'both')
-                        .map(c => ({
-                            id: c.id || c.uuid || '',
-                            name: c.name || '',
-                            dueBalance: c.receivables || 0
-                        }));
+                    const [contactsDataReload, salesDataReload] = await Promise.all([
+                        contactService.getAllContacts(companyId),
+                        saleService.getAllSales(companyId, contextBranchId === 'all' ? undefined : contextBranchId || undefined).catch(() => [])
+                    ]);
+                    const salesListReload = Array.isArray(salesDataReload) ? salesDataReload : [];
+                    const customerContacts = (contactsDataReload || [])
+                        .filter((c: any) => c.type === 'customer' || c.type === 'both')
+                        .map((c: any) => {
+                            const cId = c.id || c.uuid || '';
+                            const dueBalance = salesListReload
+                                .filter((s: any) => (s.customer_id || s.customer_name) && (String(s.customer_id) === String(cId) || (s.customer_name && s.customer_name === c.name)))
+                                .reduce((sum: number, s: any) => sum + (Number(s.due_amount) ?? 0), 0);
+                            return { id: cId, name: c.name || '', dueBalance };
+                        });
                     
                     console.log('[SALE FORM] Reloaded customers:', customerContacts.length, 'IDs:', customerContacts.map(c => c.id));
                     
@@ -571,14 +591,20 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                         console.warn('[SALE FORM] ❌ Could not find created contact:', contactIdStr, 'Available IDs:', customerContacts.map(c => c.id));
                         // Try one more time after a longer delay (DB might need more time)
                         setTimeout(async () => {
-                            const retryData = await contactService.getAllContacts(companyId);
-                            const retryContacts = retryData
-                                .filter(c => c.type === 'customer' || c.type === 'both')
-                                .map(c => ({
-                                    id: c.id || c.uuid || '',
-                                    name: c.name || '',
-                                    dueBalance: c.receivables || 0
-                                }));
+                            const [retryContactsData, retrySalesData] = await Promise.all([
+                                contactService.getAllContacts(companyId),
+                                saleService.getAllSales(companyId, contextBranchId === 'all' ? undefined : contextBranchId || undefined).catch(() => [])
+                            ]);
+                            const retrySalesList = Array.isArray(retrySalesData) ? retrySalesData : [];
+                            const retryContacts = (retryContactsData || [])
+                                .filter((c: any) => c.type === 'customer' || c.type === 'both')
+                                .map((c: any) => {
+                                    const cId = c.id || c.uuid || '';
+                                    const dueBalance = retrySalesList
+                                        .filter((s: any) => (s.customer_id || s.customer_name) && (String(s.customer_id) === String(cId) || (s.customer_name && s.customer_name === c.name)))
+                                        .reduce((sum: number, s: any) => sum + (Number(s.due_amount) ?? 0), 0);
+                                    return { id: cId, name: c.name || '', dueBalance };
+                                });
                             const retryFound = retryContacts.find(c => {
                                 const cId = c.id?.toString() || '';
                                 return cId === contactIdStr || c.id === contactIdToSelect;
@@ -774,6 +800,10 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
             } else {
                 setSaleStatus('final');
             }
+            // Pre-fill Studio type when editing a studio sale
+            if ((initialSale as any).is_studio) {
+                setIsStudioSale(true);
+            }
         }
     }, [initialSale]);
 
@@ -854,6 +884,15 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
         if (due > 0) return 'text-red-400'; // Due amount (red)
         return 'text-gray-500'; // Zero
     };
+
+    // Display invoice number: actual when editing, preview when new (draft/final/studio)
+    const displayInvoiceNumber = useMemo(() => {
+        if (initialSale?.invoiceNo) return initialSale.invoiceNo;
+        if (typeof generateDocumentNumber !== 'function') return 'SL-0001';
+        if (isStudioSale) return generateDocumentNumber('studio');
+        const docType = saleStatus === 'final' ? 'invoice' : saleStatus === 'quotation' ? 'quotation' : saleStatus === 'order' ? 'order' : 'draft';
+        return generateDocumentNumber(docType);
+    }, [initialSale?.invoiceNo, isStudioSale, saleStatus, generateDocumentNumber]);
 
     // Get selected customer's due balance
     const selectedCustomerDue = selectedCustomer?.dueBalance || 0;
@@ -1066,9 +1105,6 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
 
     const getCustomerName = () => customers.find(c => c.id.toString() === customerId)?.name || "Select Customer";
     
-    // Document numbering hook
-    const { generateDocumentNumber, incrementNextNumber } = useDocumentNumbering();
-    
     // Handle Save
     const handleSave = async (print: boolean = false) => {
         if (!customerId || customerId === '') {
@@ -1152,10 +1188,10 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
             const saleType: 'invoice' | 'quotation' = saleStatus === 'final' ? 'invoice' : 'quotation';
             const mappedStatus: 'draft' | 'quotation' | 'order' | 'final' = saleStatus;
             
-            // CRITICAL FIX: Generate invoice/document number based on status
+            // CRITICAL FIX: Generate invoice/document number based on status and type (studio vs regular)
             // BUT: If editing existing sale, preserve original invoice number
             let documentNumber: string;
-            let documentType: 'draft' | 'quotation' | 'order' | 'invoice';
+            let documentType: 'draft' | 'quotation' | 'order' | 'invoice' | 'studio';
             
             if (initialSale && initialSale.invoiceNo) {
                 // EDIT MODE: Preserve existing invoice number
@@ -1167,36 +1203,43 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                     documentType = 'quotation';
                 } else if (documentNumber.startsWith('SO-')) {
                     documentType = 'order';
-                } else if (documentNumber.startsWith('INV-')) {
+                } else if (documentNumber.startsWith('INV-') || documentNumber.startsWith('SL-')) {
                     documentType = 'invoice';
+                } else if (documentNumber.startsWith('STD-') || documentNumber.startsWith('ST-')) {
+                    documentType = 'studio';
                 } else {
                     // Fallback: determine from status
-                    documentType = saleStatus === 'final' ? 'invoice' : 
+                    documentType = saleStatus === 'final' ? (isStudioSale ? 'studio' : 'invoice') : 
                                   saleStatus === 'quotation' ? 'quotation' :
                                   saleStatus === 'order' ? 'order' : 'draft';
                 }
             } else {
-                // NEW SALE: Generate new invoice number
-                switch (saleStatus) {
-                    case 'draft':
-                        documentType = 'draft';
-                        documentNumber = generateDocumentNumber('draft');
-                        break;
-                    case 'quotation':
-                        documentType = 'quotation';
-                        documentNumber = generateDocumentNumber('quotation');
-                        break;
-                    case 'order':
-                        documentType = 'order';
-                        documentNumber = generateDocumentNumber('order');
-                        break;
-                    case 'final':
-                        documentType = 'invoice';
-                        documentNumber = generateDocumentNumber('invoice');
-                        break;
-                    default:
-                        documentType = 'draft';
-                        documentNumber = generateDocumentNumber('draft');
+                // NEW SALE: Generate new invoice number (studio uses studio prefix when type is Studio)
+                if (isStudioSale) {
+                    documentType = 'studio';
+                    documentNumber = generateDocumentNumber('studio');
+                } else {
+                    switch (saleStatus) {
+                        case 'draft':
+                            documentType = 'draft';
+                            documentNumber = generateDocumentNumber('draft');
+                            break;
+                        case 'quotation':
+                            documentType = 'quotation';
+                            documentNumber = generateDocumentNumber('quotation');
+                            break;
+                        case 'order':
+                            documentType = 'order';
+                            documentNumber = generateDocumentNumber('order');
+                            break;
+                        case 'final':
+                            documentType = 'invoice';
+                            documentNumber = generateDocumentNumber('invoice');
+                            break;
+                        default:
+                            documentType = 'draft';
+                            documentNumber = generateDocumentNumber('draft');
+                    }
                 }
             }
             
@@ -1224,7 +1267,7 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
             const saleData = {
                 type: saleType,
                 status: mappedStatus,
-                invoiceNo: documentNumber, // Status-based document number
+                invoiceNo: documentNumber, // Status-based document number (draft/final/studio)
                 customer: customerUuid || '',
                 customerName: customerName,
                 contactNumber: '', // Can be enhanced to get from customer
@@ -1249,7 +1292,10 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                 commissionAmount: commissionAmount,
                 salesmanId: salesmanId !== "1" ? salesmanId : null,
                 // CRITICAL FIX: Pass partialPayments array for splitting into separate payment records
-                partialPayments: (saleStatus === 'final' && partialPayments.length > 0) ? partialPayments : []
+                partialPayments: (saleStatus === 'final' && partialPayments.length > 0) ? partialPayments : [],
+                // Studio sale: show on Studio page and use studio invoice numbering
+                isStudioSale: isStudioSale,
+                is_studio: isStudioSale
             };
             
             // CRITICAL FIX: Check if editing existing sale
@@ -1259,10 +1305,17 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                 toast.success(`Sale ${documentNumber} updated successfully!`);
             } else {
                 // NEW SALE: Create new sale
-                await createSale(saleData);
+                const created = await createSale(saleData);
                 // Increment document number after successful save
                 incrementNextNumber(documentType);
                 toast.success(`${saleType === 'invoice' ? 'Invoice' : 'Quotation'} created successfully!`);
+                // Studio sale: open Studio Production screen with sale data (Option A – sale-linked flow)
+                if (isStudioSale && created?.id && setSelectedStudioSaleId && setCurrentView) {
+                  setSelectedStudioSaleId(created.id);
+                  closeDrawer();
+                  setCurrentView('studio-production-add');
+                  return; // Don't call onClose – we already closed and navigated
+                }
             }
             
             if (print) {
@@ -1344,7 +1397,7 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                         {/* Invoice Number - Moved to LEFT side after title */}
                         <div className="flex items-center gap-2 ml-4 pl-4 border-l border-gray-800">
                             <Hash size={14} className="text-cyan-500" />
-                            <span className="text-sm font-mono text-cyan-400">{invoiceNumber || 'INV-001'}</span>
+                            <span className="text-sm font-mono text-cyan-400">{displayInvoiceNumber}</span>
                     </div>
                 </div>
 
@@ -1565,8 +1618,12 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                                             onChange={(e) => setCustomerSearchTerm(e.target.value)}
                                             className="bg-gray-800 border-gray-700 text-white text-sm h-9"
                                         />
-                                        {/* Customer List */}
-                                        <div className="space-y-1 max-h-64 overflow-y-auto">
+                                        {/* Customer List - min-h-0 + overscroll-contain so scroll works inside popover */}
+                                        <div
+                                            className="space-y-1 max-h-64 min-h-0 overflow-y-auto overflow-x-hidden overscroll-contain"
+                                            style={{ WebkitOverflowScrolling: 'touch' }}
+                                            tabIndex={0}
+                                        >
                                             {filteredCustomers.length === 0 ? (
                                                 <div className="px-3 py-2 text-sm text-gray-400 text-center">
                                                     No customers found

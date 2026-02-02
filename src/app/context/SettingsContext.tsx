@@ -25,7 +25,9 @@ export interface NumberingRules {
   saleNextNumber: number;
   quotationPrefix?: string; // CRITICAL FIX: Add quotation prefix
   quotationNextNumber?: number; // CRITICAL FIX: Add quotation next number
+  draftPrefix?: string; // DRAFT-0001
   draftNextNumber?: number; // CRITICAL FIX: Add draft next number
+  orderPrefix?: string; // SO-0001
   orderNextNumber?: number; // CRITICAL FIX: Add order next number
   purchasePrefix: string;
   purchaseNextNumber: number;
@@ -39,6 +41,8 @@ export interface NumberingRules {
   studioNextNumber: number;
   posPrefix: string;
   posNextNumber: number;
+  productionPrefix?: string;
+  productionNextNumber?: number;
 }
 
 export interface UserPermissions {
@@ -213,14 +217,47 @@ interface SettingsContextType {
 // 🎯 CONTEXT & PROVIDER
 // ============================================
 
-const SettingsContext = createContext<SettingsContextType | undefined>(undefined);
+export const SettingsContext = createContext<SettingsContextType | undefined>(undefined);
+
+// Safe fallback when context is undefined (e.g. during HMR or error recovery)
+const noop = () => Promise.resolve();
+const noopSync = () => {};
+function getDefaultSettingsStub(): SettingsContextType {
+  return {
+    loading: false,
+    company: { businessName: '', businessAddress: '', businessPhone: '', businessEmail: '', taxId: '', currency: 'PKR', logoUrl: undefined },
+    updateCompanySettings: noop,
+    branches: [],
+    updateBranches: noopSync,
+    addBranch: noopSync,
+    posSettings: { defaultCashAccount: '', creditSaleAllowed: true, autoPrintReceipt: false, defaultTaxRate: 0, invoicePrefix: 'POS-', negativeStockAllowed: false, allowDiscount: true, maxDiscountPercent: 100 },
+    updatePOSSettings: noop,
+    salesSettings: { partialPaymentAllowed: true, defaultPaymentMethod: 'Cash', autoLedgerEntry: true, invoicePrefix: 'SL-', autoDueDays: 0, allowCreditSale: true, requireCustomerInfo: false },
+    updateSalesSettings: noop,
+    purchaseSettings: { defaultSupplierPayableAccount: '', overReceiveAllowed: false, purchaseApprovalRequired: false, grnRequired: false, autoPostToInventory: true, defaultPaymentTerms: 0 },
+    updatePurchaseSettings: noop,
+    inventorySettings: { lowStockThreshold: 0, reorderAlertDays: 0, negativeStockAllowed: false, valuationMethod: 'FIFO', autoReorderEnabled: false, barcodeRequired: false, enablePacking: false },
+    updateInventorySettings: noop,
+    rentalSettings: { defaultLateFeePerDay: 0, gracePeriodDays: 0, advanceRequired: false, advancePercentage: 0, securityDepositRequired: false, securityDepositAmount: 0, damageChargeEnabled: false, autoExtendAllowed: false },
+    updateRentalSettings: noop,
+    accountingSettings: { fiscalYearStart: '', fiscalYearEnd: '', manualJournalEnabled: true, defaultCurrency: 'PKR', multiCurrencyEnabled: false, taxCalculationMethod: 'Inclusive', defaultTaxRate: 0 },
+    updateAccountingSettings: noop,
+    defaultAccounts: { paymentMethods: [] },
+    updateDefaultAccounts: noop,
+    numberingRules: { salePrefix: 'SL-', saleNextNumber: 1, purchasePrefix: 'PO-', purchaseNextNumber: 1, rentalPrefix: 'RNT-', rentalNextNumber: 1, expensePrefix: 'EXP-', expenseNextNumber: 1, productPrefix: 'PRD-', productNextNumber: 1, studioPrefix: 'STD-', studioNextNumber: 1, posPrefix: 'POS-', posNextNumber: 1 },
+    updateNumberingRules: noopSync,
+    getNextNumber: async () => '',
+    currentUser: { role: 'Admin', canCreateSale: true, canEditSale: true, canDeleteSale: true, canViewReports: true, canManageSettings: true, canManageUsers: true, canAccessAccounting: true, canMakePayments: true, canReceivePayments: true, canManageExpenses: true, canManageProducts: true, canManagePurchases: true, canManageRentals: true },
+    updatePermissions: noop,
+    modules: { rentalModuleEnabled: true, studioModuleEnabled: true, accountingModuleEnabled: true, productionModuleEnabled: true, posModuleEnabled: true },
+    updateModules: noop,
+    refreshSettings: noop,
+  };
+}
 
 export const useSettings = () => {
   const context = useContext(SettingsContext);
-  if (!context) {
-    throw new Error('useSettings must be used within SettingsProvider');
-  }
-  return context;
+  return context ?? getDefaultSettingsStub();
 };
 
 interface SettingsProviderProps {
@@ -262,7 +299,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
     partialPaymentAllowed: false,
     defaultPaymentMethod: 'Cash',
     autoLedgerEntry: false,
-    invoicePrefix: 'SAL-',
+    invoicePrefix: 'SL-',
     autoDueDays: 0,
     allowCreditSale: false,
     requireCustomerInfo: false,
@@ -324,7 +361,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
 
   // Numbering Rules
   const [numberingRules, setNumberingRules] = useState<NumberingRules>({
-    salePrefix: 'INV-', // CRITICAL FIX: Changed from SAL- to INV- for invoices
+    salePrefix: 'SL-', // Regular sale: SL-0001
     saleNextNumber: 1,
     quotationPrefix: 'QT-', // CRITICAL FIX: Add quotation prefix
     quotationNextNumber: 1, // CRITICAL FIX: Add quotation next number
@@ -342,6 +379,8 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
     studioNextNumber: 1,
     posPrefix: 'POS-',
     posNextNumber: 1,
+    productionPrefix: 'PRD-',
+    productionNextNumber: 1,
   });
 
   // User Permissions
@@ -441,7 +480,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
         partialPaymentAllowed: salesData.partialPaymentAllowed || false,
         defaultPaymentMethod: salesData.defaultPaymentMethod || 'Cash',
         autoLedgerEntry: salesData.autoLedgerEntry || false,
-        invoicePrefix: salesData.invoicePrefix || 'SAL-',
+        invoicePrefix: salesData.invoicePrefix || 'SL-',
         autoDueDays: salesData.autoDueDays || 0,
         allowCreditSale: salesData.allowCreditSale || false,
         requireCustomerInfo: salesData.requireCustomerInfo || false,
@@ -517,7 +556,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
       const getSequence = (type: string) => sequencesMap.get(type);
       
       setNumberingRules({
-        salePrefix: getSequence('sale')?.prefix || 'SAL-',
+        salePrefix: getSequence('sale')?.prefix || 'SL-',
         saleNextNumber: getSequence('sale')?.current_number || 1,
         purchasePrefix: getSequence('purchase')?.prefix || 'PO-',
         purchaseNextNumber: getSequence('purchase')?.current_number || 1,

@@ -219,9 +219,14 @@ export const ViewPaymentsModal: React.FC<ViewPaymentsModalProps> = ({
 
   if (!isOpen || !invoice) return null;
 
+  // Use sum of actual payment records as Paid when loaded (fixes mismatch with Payment History)
+  const sumPayments = payments.reduce((sum, p) => sum + (p.amount || 0), 0);
+  const displayedPaid = !loadingPayments && payments.length > 0 ? sumPayments : invoice.paid;
+  const displayedDue = Math.max(0, invoice.total - displayedPaid);
+
   const statusConfig = getPaymentStatusConfig(invoice.paymentStatus);
   const StatusIcon = statusConfig.icon;
-  const progressPercent = invoice.total > 0 ? Math.min((invoice.paid / invoice.total) * 100, 100) : 0;
+  const progressPercent = invoice.total > 0 ? Math.min((displayedPaid / invoice.total) * 100, 100) : 0;
 
   const handleDeleteClick = (payment: Payment) => {
     setPaymentToDelete(payment);
@@ -341,11 +346,11 @@ export const ViewPaymentsModal: React.FC<ViewPaymentsModalProps> = ({
                   </div>
                   <div className="text-center p-2 bg-green-500/10 rounded-lg border border-green-500/20">
                     <p className="text-xs text-green-400">Paid</p>
-                    <p className="text-sm font-bold text-green-400">Rs {invoice.paid.toLocaleString()}</p>
+                    <p className="text-sm font-bold text-green-400">Rs {displayedPaid.toLocaleString()}</p>
                   </div>
                   <div className="text-center p-2 bg-red-500/10 rounded-lg border border-red-500/20">
                     <p className="text-xs text-red-400">Due</p>
-                    <p className="text-sm font-bold text-red-400">Rs {invoice.due.toLocaleString()}</p>
+                    <p className="text-sm font-bold text-red-400">Rs {displayedDue.toLocaleString()}</p>
                   </div>
                 </div>
               </div>
@@ -359,7 +364,7 @@ export const ViewPaymentsModal: React.FC<ViewPaymentsModalProps> = ({
                   <h3 className="text-sm font-semibold text-white">Payment History</h3>
                   <Badge className="bg-gray-700 text-gray-300 text-xs">{payments.length}</Badge>
                 </div>
-                {invoice.due > 0 && (
+                {displayedDue > 0 && (
                   <Button
                     size="sm"
                     onClick={onAddPayment}
@@ -383,7 +388,7 @@ export const ViewPaymentsModal: React.FC<ViewPaymentsModalProps> = ({
                   </div>
                   <p className="text-gray-400 text-sm mb-1">No payments recorded yet</p>
                   <p className="text-gray-500 text-xs mb-4">Click "Add Payment" to record a payment</p>
-                  {invoice.due > 0 && (
+                  {displayedDue > 0 && (
                     <Button
                       size="sm"
                       onClick={onAddPayment}

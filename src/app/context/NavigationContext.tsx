@@ -25,6 +25,10 @@ type View =
   | 'studio-sale-detail-new'
   | 'rental-booking'
   | 'studio-workflow'
+  | 'studio-production-list'
+  | 'studio-production-add'
+  | 'studio-production-detail'
+  | 'studio-production-test'
   | 'contact-profile'
   | 'item-report'
   | 'production-detail'
@@ -42,7 +46,8 @@ type View =
   | 'accounting-chart-test'
   | 'customer-ledger-test'
   | 'test-ledger'
-  | 'customer-ledger-interactive-test';
+  | 'customer-ledger-interactive-test'
+  | 'sales-list-design-test';
 
 type DrawerType = 'none' | 'addUser' | 'addProduct' | 'edit-product' | 'addSale' | 'edit-sale' | 'addPurchase' | 'edit-purchase' | 'addContact';
 
@@ -57,6 +62,8 @@ interface NavigationContextType {
   parentDrawer: DrawerType | null;
   selectedStudioSaleId?: string;
   setSelectedStudioSaleId?: (id: string) => void;
+  selectedProductionId?: string;
+  setSelectedProductionId?: (id: string) => void;
   drawerContactType?: 'customer' | 'supplier' | 'worker';
   drawerData?: any; // For passing data to drawers (e.g., product for edit)
   drawerPrefillName?: string; // Prefill name when opening contact form
@@ -96,6 +103,7 @@ export const NavigationProvider = ({ children }: { children: ReactNode }) => {
   const [activeDrawer, setActiveDrawer] = useState<DrawerType>('none');
   const [parentDrawer, setParentDrawer] = useState<DrawerType | null>(null);
   const [selectedStudioSaleId, setSelectedStudioSaleId] = useState<string | undefined>(undefined);
+  const [selectedProductionId, setSelectedProductionId] = useState<string | undefined>(undefined);
   const [drawerContactType, setDrawerContactType] = useState<'customer' | 'supplier' | 'worker' | undefined>(undefined);
   const [drawerData, setDrawerData] = useState<any>(undefined);
   const [drawerPrefillName, setDrawerPrefillName] = useState<string | undefined>(undefined);
@@ -206,6 +214,8 @@ export const NavigationProvider = ({ children }: { children: ReactNode }) => {
       parentDrawer,
       selectedStudioSaleId,
       setSelectedStudioSaleId,
+      selectedProductionId,
+      setSelectedProductionId,
       drawerContactType,
       drawerData,
       drawerPrefillName,

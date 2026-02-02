@@ -9,7 +9,13 @@ import { useAccounting } from '@/app/context/AccountingContext';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { saleService, Sale as SupabaseSale, SaleItem as SupabaseSaleItem } from '@/app/services/saleService';
 import { productService } from '@/app/services/productService';
+import { branchService } from '@/app/services/branchService';
 import { toast } from 'sonner';
+
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+function isValidBranchId(id: string | null): id is string {
+  return !!id && UUID_REGEX.test(id);
+}
 
 // ============================================
 // TYPES
@@ -64,6 +70,7 @@ export interface Sale {
   notes?: string;
   createdAt: string;
   updatedAt: string;
+  is_studio?: boolean;
 }
 
 interface SalesContextType {
@@ -285,6 +292,7 @@ export const convertFromSupabaseSale = (supabaseSale: any): Sale => {
     notes: supabaseSale.notes,
     createdAt: supabaseSale.created_at || new Date().toISOString(),
     updatedAt: supabaseSale.updated_at || new Date().toISOString(),
+    is_studio: !!supabaseSale.is_studio,
   };
 };
 
@@ -329,15 +337,28 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
 
   // Create new sale
   const createSale = async (saleData: Omit<Sale, 'id' | 'invoiceNo' | 'createdAt' | 'updatedAt'>): Promise<Sale> => {
-    if (!companyId || !branchId || !user) {
-      throw new Error('Company ID, Branch ID, and User are required');
+    if (!companyId || !user) {
+      throw new Error('Company ID and User are required');
+    }
+    // DB requires branch_id UUID; when Admin has "All Branches", branchId is 'all' – resolve to first branch
+    let effectiveBranchId = isValidBranchId(branchId) ? branchId : null;
+    if (!effectiveBranchId) {
+      const branches = await branchService.getAllBranches(companyId);
+      if (!branches?.length) throw new Error('No branch found. Please create at least one branch.');
+      effectiveBranchId = branches[0].id;
     }
 
     try {
-      // CRITICAL FIX: Generate document number based on sale status/type
-      // Draft → DRAFT-XXX, Quotation → QT-XXX, Order → SO-XXX, Final → INV-XXX
-      let docType: 'draft' | 'quotation' | 'order' | 'invoice' = 'invoice';
-      if (saleData.status === 'draft') {
+      // CRITICAL FIX: Generate document number based on sale source + status
+      // POS → POS-0001, Studio → STD-0001, Draft → DRAFT-0001, Quotation → QT-0001, Order → SO-0001, Final (regular) → INV-0001
+      const isPOS = (saleData as any).isPOS === true;
+      const isStudioSale = (saleData as any).isStudioSale === true;
+      let docType: 'draft' | 'quotation' | 'order' | 'invoice' | 'pos' | 'studio' = 'invoice';
+      if (isPOS) {
+        docType = 'pos';
+      } else if (isStudioSale) {
+        docType = 'studio';
+      } else if (saleData.status === 'draft') {
         docType = 'draft';
       } else if (saleData.status === 'quotation') {
         docType = 'quotation';
@@ -354,10 +375,10 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
         throw new Error(`Invalid invoice number generated: ${invoiceNo}. Check document numbering settings.`);
       }
       
-      // Convert to Supabase format
+      // Convert to Supabase format (use effectiveBranchId – valid UUID for DB)
       const supabaseSale: SupabaseSale = {
         company_id: companyId,
-        branch_id: branchId,
+        branch_id: effectiveBranchId,
         invoice_no: invoiceNo,
         invoice_date: saleData.date,
         customer_id: saleData.customer || undefined,
@@ -376,30 +397,43 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
         return_due: saleData.returnDue || 0,
         notes: saleData.notes,
         created_by: user.id,
+        // Omit is_studio from insert to avoid 400 if column not yet added (run migrations/sales_is_studio_column.sql)
       };
 
-      const supabaseItems: SupabaseSaleItem[] = saleData.items.map(item => ({
+      const supabaseItems: SupabaseSaleItem[] = saleData.items.map(item => {
+        const unitPrice = Number((item as any).unitPrice ?? item.price ?? 0);
+        const lineTotal = Number((item as any).total ?? (unitPrice * item.quantity) ?? 0);
+        return {
         product_id: item.productId,
         variation_id: item.variationId || undefined,
         product_name: item.productName,
         sku: (item as any).sku || 'N/A', // Required in DB
         quantity: item.quantity,
         unit: (item as any).packingDetails ? ((item as any).packingDetails?.unit || 'meters') : ((item as any).unit || 'piece'),
-        unit_price: item.price,
+        unit_price: unitPrice, // POS sends unitPrice; SaleForm sends price – ensure never null for DB NOT NULL
         discount_percentage: (item as any).discountPercentage || 0,
         discount_amount: (item as any).discount || 0,
         tax_percentage: (item as any).taxPercentage || 0,
         tax_amount: (item as any).tax || 0,
-        total: item.total,
+        total: lineTotal,
         // Include packing data
         packing_type: (item as any).packingDetails?.packing_type || null,
         packing_quantity: (item as any).packingDetails?.total_meters || (item as any).meters || null,
         packing_unit: (item as any).packingDetails?.unit || 'meters',
         packing_details: (item as any).packingDetails || null,
-      }));
+      };
+      });
 
-      // Save to Supabase
+      // Save to Supabase (is_studio omitted from insert to avoid 400 until migration is run)
       const result = await saleService.createSale(supabaseSale, supabaseItems);
+      
+      // Optionally set is_studio after create when column exists (run migrations/sales_is_studio_column.sql)
+      if (isStudioSale && result?.id) {
+        try {
+          const { supabase: sb } = await import('@/lib/supabase');
+          await sb.from('sales').update({ is_studio: true }).eq('id', result.id);
+        } catch (_) { /* column may not exist yet */ }
+      }
       
       // Increment document number
       incrementNextNumber(docType);
@@ -411,7 +445,7 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
       // Each payment method = separate payment record = separate reference number = separate journal entry
       const partialPayments = (saleData as any).partialPayments || [];
       
-      if (newSale.paid > 0 && companyId && branchId && user) {
+      if (newSale.paid > 0 && companyId && effectiveBranchId && user) {
         try {
           const { accountHelperService } = await import('@/app/services/accountHelperService');
           const { saleService } = await import('@/app/services/saleService');
@@ -444,7 +478,7 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
                   paymentMethod,
                   paymentAccountId,
                   companyId,
-                  branchId,
+                  effectiveBranchId,
                   saleData.date
                   // Reference number will be auto-generated by trigger
                 );
@@ -501,7 +535,7 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
                   paymentMethod,
                   paymentAccountId,
                   companyId,
-                  branchId,
+                  effectiveBranchId,
                   saleData.date
                 );
               }
@@ -560,7 +594,7 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
             const { error: discountError } = await supabase.rpc('create_discount_journal_entry', {
               p_sale_id: newSale.id,
               p_company_id: companyId,
-              p_branch_id: branchId,
+              p_branch_id: effectiveBranchId,
               p_discount_amount: saleData.discount,
               p_invoice_no: newSale.invoiceNo
             });
@@ -576,7 +610,7 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
             const { error: commissionError } = await supabase.rpc('create_commission_journal_entry', {
               p_sale_id: newSale.id,
               p_company_id: companyId,
-              p_branch_id: branchId,
+              p_branch_id: effectiveBranchId,
               p_commission_amount: commissionAmount,
               p_salesperson_id: salesmanId,
               p_invoice_no: newSale.invoiceNo
@@ -593,7 +627,7 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
               const { error: expenseError } = await supabase.rpc('create_extra_expense_journal_entry', {
                 p_sale_id: newSale.id,
                 p_company_id: companyId,
-                p_branch_id: branchId,
+                p_branch_id: effectiveBranchId,
                 p_expense_amount: expense.amount,
                 p_expense_name: expense.name || 'Extra Expense',
                 p_invoice_no: newSale.invoiceNo
@@ -626,7 +660,8 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
         }
       }
 
-      toast.success(`${docType === 'invoice' ? 'Invoice' : 'Quotation'} ${invoiceNo} created successfully!`);
+      const createdLabel = docType === 'pos' ? 'POS sale' : docType === 'invoice' ? 'Invoice' : docType === 'quotation' ? 'Quotation' : docType === 'order' ? 'Order' : 'Draft';
+      toast.success(`${createdLabel} ${invoiceNo} created successfully!`);
       
       return newSale;
     } catch (error: any) {
@@ -657,7 +692,8 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
       if (updates.due !== undefined) supabaseUpdates.due_amount = updates.due;
       if (updates.date !== undefined) supabaseUpdates.invoice_date = updates.date;
       if (updates.customerName !== undefined) supabaseUpdates.customer_name = updates.customerName;
-      if (updates.customer !== undefined) supabaseUpdates.customer_id = updates.customer;
+      // UUID column: empty string is invalid; use null for walk-in / no customer
+      if (updates.customer !== undefined) supabaseUpdates.customer_id = (updates.customer === '' || updates.customer == null) ? null : updates.customer;
       if (updates.location !== undefined) {
         // Location is branch_id, need to resolve branch name to ID
         // For now, if it's already a UUID, use it directly
@@ -668,28 +704,35 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
       if (updates.paymentMethod !== undefined) {
         supabaseUpdates.payment_method = normalizePaymentMethodForEnum(updates.paymentMethod);
       }
+      if (updates.is_studio !== undefined) {
+        supabaseUpdates.is_studio = updates.is_studio;
+      }
 
       // CRITICAL FIX: Update sale items if provided
       if ((updates as any).items && Array.isArray((updates as any).items)) {
         const { saleService } = await import('@/app/services/saleService');
-        const saleItems = (updates as any).items.map((item: any) => ({
+        const saleItems = (updates as any).items.map((item: any) => {
+          const unitPrice = Number(item.unitPrice ?? item.price ?? 0);
+          const lineTotal = Number(item.total ?? (unitPrice * item.quantity) ?? 0);
+          return {
           product_id: item.productId,
           variation_id: item.variationId || undefined,
           product_name: item.productName,
           sku: item.sku || 'N/A',
           quantity: item.quantity,
           unit: item.unit || 'piece',
-          unit_price: item.price,
+          unit_price: unitPrice,
           discount_percentage: item.discountPercentage || 0,
           discount_amount: item.discount || 0,
           tax_percentage: item.taxPercentage || 0,
           tax_amount: item.tax || 0,
-          total: item.total,
+          total: lineTotal,
           packing_type: item.packingDetails?.packing_type || null,
           packing_quantity: item.packingDetails?.total_meters || item.meters || null,
           packing_unit: item.packingDetails?.unit || 'meters',
           packing_details: item.packingDetails || null,
-        }));
+        };
+        });
         
         // Delete existing items and insert new ones
         const { supabase } = await import('@/lib/supabase');
@@ -726,15 +769,54 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
       if (Object.keys(supabaseUpdates).length > 0) {
         await saleService.updateSale(id, supabaseUpdates);
       }
-      
+
+      // POS: Keep payment record in sync with paid amount (so Paid display matches Payment Details)
+      const saleForSync = getSaleById(id);
+      const isPOSSale = saleForSync?.invoiceNo?.startsWith('POS-');
+      if (isPOSSale && updates.paid !== undefined) {
+        try {
+          const existingPayments = await saleService.getSalePayments(id);
+          const paidAmount = Number(updates.paid) || 0;
+          const paymentMethod = updates.paymentMethod || saleForSync?.paymentMethod || 'Cash';
+          if (existingPayments.length === 0 && paidAmount > 0) {
+            let syncBranchId = isValidBranchId(branchId) ? branchId : null;
+            if (!syncBranchId && companyId) {
+              const branches = await branchService.getAllBranches(companyId);
+              syncBranchId = branches?.length ? branches[0].id : null;
+            }
+            if (companyId && syncBranchId && user) {
+              const { accountHelperService } = await import('@/app/services/accountHelperService');
+              const { accountService } = await import('@/app/services/accountService');
+              const normalizedMethod = normalizePaymentMethodForEnum(paymentMethod);
+              let paymentAccountId = await accountHelperService.getDefaultAccountByPaymentMethod(normalizedMethod, companyId);
+              if (!paymentAccountId) {
+                const allAccounts = await accountService.getAllAccounts(companyId);
+                paymentAccountId = allAccounts?.find((acc: any) => acc.code === '1000')?.id || null;
+              }
+              if (paymentAccountId) {
+                await saleService.recordPayment(id, paidAmount, paymentMethod, paymentAccountId, companyId, syncBranchId);
+              }
+            }
+          } else if (existingPayments.length === 1) {
+            await saleService.updatePayment(existingPayments[0].id, id, { amount: paidAmount, paymentMethod });
+          }
+        } catch (syncErr: any) {
+          console.warn('[SALES CONTEXT] POS payment sync (non-blocking):', syncErr);
+        }
+      }
+
       // CRITICAL FIX: Handle payments if provided in updates
       // When editing, existing payments should NOT be recreated
       // Only new payments (not marked as existing) should be created
       if ((updates as any).partialPayments && Array.isArray((updates as any).partialPayments)) {
         const partialPayments = (updates as any).partialPayments;
         const newPayments = partialPayments.filter((p: any) => !p.isExisting);
-        
-        if (newPayments.length > 0 && companyId && branchId && user) {
+        let updateBranchId = isValidBranchId(branchId) ? branchId : null;
+        if (!updateBranchId && companyId) {
+          const branches = await branchService.getAllBranches(companyId);
+          updateBranchId = branches?.length ? branches[0].id : null;
+        }
+        if (newPayments.length > 0 && companyId && updateBranchId && user) {
           try {
             const { accountHelperService } = await import('@/app/services/accountHelperService');
             const { saleService } = await import('@/app/services/saleService');
@@ -764,7 +846,7 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
                   paymentMethod,
                   paymentAccountId,
                   companyId,
-                  branchId
+                  updateBranchId
                 );
                 
                 // Create separate journal entry for this payment
@@ -798,8 +880,9 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
             : sale
         ));
       }
-      
-      toast.success('Sale updated successfully!');
+      // POS updates show their own toast; avoid duplicate for POS invoices
+      const isPOS = getSaleById(id)?.invoiceNo?.startsWith('POS-');
+      if (!isPOS) toast.success('Sale updated successfully!');
     } catch (error: any) {
       console.error('[SALES CONTEXT] Error updating sale:', error);
       toast.error(`Failed to update sale: ${error.message || 'Unknown error'}`);
@@ -832,8 +915,14 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
   // Record payment
   const recordPayment = async (saleId: string, amount: number, method: string, accountId?: string): Promise<void> => {
     const sale = getSaleById(saleId);
-    if (!sale || !companyId || !branchId) {
-      throw new Error('Sale not found or company/branch missing');
+    if (!sale || !companyId) {
+      throw new Error('Sale not found or company missing');
+    }
+    let effectiveBranchId = isValidBranchId(branchId) ? branchId : null;
+    if (!effectiveBranchId) {
+      const branches = await branchService.getAllBranches(companyId);
+      if (!branches?.length) throw new Error('No branch found. Please create at least one branch.');
+      effectiveBranchId = branches[0].id;
     }
 
     try {
@@ -855,7 +944,7 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
       
       // CRITICAL FIX: Record payment in Supabase (with account_id)
       // This will trigger update_sale_payment_totals() which auto-updates paid/due amounts
-      await saleService.recordPayment(saleId, amount, method, paymentAccountId, companyId, branchId);
+      await saleService.recordPayment(saleId, amount, method, paymentAccountId, companyId, effectiveBranchId);
 
       // CRITICAL FIX: Reload sale to get updated paid/due amounts from database (trigger updated them)
       // Don't manually calculate - let database trigger handle it

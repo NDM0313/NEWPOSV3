@@ -27,7 +27,7 @@ export interface Contact {
 
 export const contactService = {
   // Get all contacts
-  async getAllContacts(companyId: string, type?: 'customer' | 'supplier' | 'both') {
+  async getAllContacts(companyId: string, type?: 'customer' | 'supplier' | 'worker' | 'both') {
     let query = supabase
       .from('contacts')
       .select('*')

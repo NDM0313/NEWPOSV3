@@ -102,7 +102,8 @@ export const studioService = {
         .eq('company_id', companyId)
         .order('order_date', { ascending: false });
 
-      if (branchId) {
+      // Only filter by branch when a specific branch is selected (not "all")
+      if (branchId && branchId !== 'all') {
         query = query.eq('branch_id', branchId);
       }
 

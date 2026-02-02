@@ -20,7 +20,19 @@ import {
   DropdownMenuTrigger,
 } from "../ui/dropdown-menu";
 import { useSupabase } from '@/app/context/SupabaseContext';
-import { studioService, type StudioOrder } from '@/app/services/studioService';
+import { studioService } from '@/app/services/studioService';
+import { saleService } from '@/app/services/saleService';
+
+function formatDateSafe(value: string | undefined | null, formatStr: string): string {
+  if (value == null || String(value).trim() === '') return '—';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return '—';
+  try {
+    return format(d, formatStr);
+  } catch {
+    return '—';
+  }
+}
 
 type ProductionStatus = 'Not Started' | 'In Progress' | 'Completed';
 
@@ -37,6 +49,7 @@ interface StudioSale {
   paidAmount: number;
   balanceDue: number;
   productionStatus: ProductionStatus;
+  source?: 'studio_order' | 'sale';
 }
 
 export const StudioSalesListNew = () => {
@@ -82,11 +95,37 @@ export const StudioSalesListNew = () => {
       totalAmount: order.total_cost || 0,
       paidAmount: order.advance_paid || 0,
       balanceDue: order.balance_due || 0,
-      productionStatus: statusMap[order.status] || 'Not Started'
+      productionStatus: statusMap[order.status] || 'Not Started',
+      source: 'studio_order' as const
     };
   }, []);
 
-  // Load studio orders from Supabase
+  // Convert sale (from sales table, is_studio = true) to StudioSale
+  const convertFromSale = useCallback((sale: any): StudioSale => {
+    const customer = sale.customer || {};
+    const items = sale.items || [];
+    const fabricSummary = items.length > 0
+      ? (items[0].product_name || 'N/A')
+      : 'N/A';
+    const meters = items.reduce((sum: number, item: any) => sum + (Number(item.quantity) || 0), 0);
+    return {
+      id: sale.id || '',
+      invoiceNo: sale.invoice_no || sale.invoiceNo || `STD-${sale.id?.slice(0, 8)}`,
+      customerName: sale.customer_name || customer.name || 'Unknown',
+      customerPhone: customer.phone || '',
+      fabricSummary,
+      meters,
+      saleDate: sale.invoice_date || sale.invoiceDate || new Date().toISOString().split('T')[0],
+      deliveryDeadline: sale.notes || '',
+      totalAmount: Number(sale.total) || 0,
+      paidAmount: Number(sale.paid_amount) || 0,
+      balanceDue: Number(sale.due_amount) || 0,
+      productionStatus: 'Not Started',
+      source: 'sale' as const
+    };
+  }, []);
+
+  // Load studio orders + studio-type sales (from Sale Form) from Supabase
   const loadStudioOrders = useCallback(async () => {
     if (!companyId) {
       setLoading(false);
@@ -95,16 +134,20 @@ export const StudioSalesListNew = () => {
 
     try {
       setLoading(true);
-      const orders = await studioService.getAllStudioOrders(companyId, branchId || undefined);
-      const convertedSales = orders.map(convertFromSupabaseOrder);
-      setSales(convertedSales);
+      const [orders, studioSalesFromSales] = await Promise.all([
+        studioService.getAllStudioOrders(companyId, branchId === 'all' ? undefined : branchId || undefined),
+        saleService.getStudioSales(companyId, branchId || undefined).catch(() => [])
+      ]);
+      const fromOrders = orders.map(convertFromSupabaseOrder);
+      const fromSales = (studioSalesFromSales || []).map(convertFromSale);
+      setSales([...fromOrders, ...fromSales]);
     } catch (error) {
       console.error('Error loading studio orders:', error);
       setSales([]);
     } finally {
       setLoading(false);
     }
-  }, [companyId, branchId, convertFromSupabaseOrder]);
+  }, [companyId, branchId, convertFromSupabaseOrder, convertFromSale]);
 
   useEffect(() => {
     loadStudioOrders();
@@ -353,7 +396,7 @@ export const StudioSalesListNew = () => {
 
                     {/* Sale Date */}
                     <td className="p-4">
-                      <p className="text-gray-300">{format(new Date(sale.saleDate), 'dd MMM yyyy')}</p>
+                      <p className="text-gray-300">{formatDateSafe(sale.saleDate, 'dd MMM yyyy')}</p>
                     </td>
 
                     {/* Deadline */}
@@ -364,7 +407,7 @@ export const StudioSalesListNew = () => {
                         alert === 'near' && "text-yellow-400",
                         !alert && "text-gray-300"
                       )}>
-                        {format(new Date(sale.deliveryDeadline), 'dd MMM yyyy')}
+                        {formatDateSafe(sale.deliveryDeadline, 'dd MMM yyyy')}
                       </p>
                     </td>
 

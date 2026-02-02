@@ -24,6 +24,7 @@ export interface Sale {
   return_due?: number;
   notes?: string;
   created_by: string;
+  is_studio?: boolean;
 }
 
 export interface SaleItem {
@@ -221,6 +222,20 @@ export const saleService = {
     
     if (error) throw error;
     return data;
+  },
+
+  // Get sales for Studio Sales list by invoice_no prefix 'STD-%' so STD-0002 etc. show (avoids 400 when is_studio column missing).
+  async getStudioSales(companyId: string, branchId?: string) {
+    let q = supabase
+      .from('sales')
+      .select(`*, customer:contacts(name, phone), items:sales_items(*)`)
+      .eq('company_id', companyId)
+      .ilike('invoice_no', 'STD-%')
+      .order('invoice_date', { ascending: false });
+    if (branchId && branchId !== 'all') q = q.eq('branch_id', branchId);
+    const { data, error } = await q;
+    if (error) throw error;
+    return data || [];
   },
   
   // Legacy getAllSales (keeping for backward compatibility)

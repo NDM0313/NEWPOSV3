@@ -32,6 +32,7 @@ import { SalesProvider } from './context/SalesContext';
 import { PurchaseProvider } from './context/PurchaseContext';
 import { RentalProvider } from './context/RentalContext';
 import { ExpenseProvider } from './context/ExpenseContext';
+import { ProductionProvider } from './context/ProductionContext';
 import { ModuleSettings } from './components/settings/ModuleSettings';
 import { ReportsDashboard } from './components/reports/ReportsDashboard';
 import { ReportsDashboardEnhanced } from './components/reports/ReportsDashboardEnhanced';
@@ -56,6 +57,10 @@ import { StudioSalesListNew } from './components/studio/StudioSalesListNew';
 import { StudioSaleDetailNew } from './components/studio/StudioSaleDetailNew';
 import { StudioDashboardNew } from './components/studio/StudioDashboardNew';
 import { WorkerDetailPage } from './components/studio/WorkerDetailPage';
+import { StudioProductionListPage } from './components/studio/StudioProductionListPage';
+import { StudioProductionDetailPage } from './components/studio/StudioProductionDetailPage';
+import { StudioProductionAddPage } from './components/studio/StudioProductionAddPage';
+import { StudioProductionTestPage } from './components/studio/StudioProductionTestPage';
 import { AccountingIntegrationDemo } from './components/accounting/AccountingIntegrationDemo';
 import { PurchaseListExample } from './components/purchases/PurchaseListExample';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
@@ -67,6 +72,7 @@ import { TransactionHeaderTestPage } from './components/test/TransactionHeaderTe
 import { UserManagementTestPage } from './components/test/UserManagementTestPage';
 import { BranchManagementTestPage } from './components/test/BranchManagementTestPage';
 import { AccountingChartTestPage } from './components/test/AccountingChartTestPage';
+import { SalesListDesignTestPage } from './components/test/SalesListDesignTestPage';
 import { CustomerLedgerTestPage } from './components/customer-ledger-test/CustomerLedgerTestPage';
 import TestLedger from './TestLedger';
 import CustomerLedgerInteractiveTest from './components/customer-ledger-test/CustomerLedgerInteractiveTest';
@@ -179,6 +185,10 @@ const AppContent = () => {
       {currentView === 'contact-profile' && <ViewContactProfile />}
       {currentView === 'item-report' && <ItemLifecycleReport />}
       {currentView === 'production-detail' && <ProductionOrderDetail />}
+      {currentView === 'studio-production-list' && <StudioProductionListPage />}
+      {currentView === 'studio-production-add' && <StudioProductionAddPage />}
+      {currentView === 'studio-production-detail' && <StudioProductionDetailPage />}
+      {currentView === 'studio-production-test' && <StudioProductionTestPage />}
       {currentView === 'customer-tracking' && <CustomerOrderTracking />}
       {currentView === 'packing' && <PackingEntryPage />}
       {currentView === 'contact-search-test' && <ContactSearchTestPage />}
@@ -191,6 +201,7 @@ const AppContent = () => {
       {currentView === 'customer-ledger-test' && <CustomerLedgerTestPage />}
       {currentView === 'test-ledger' && <TestLedger />}
       {currentView === 'customer-ledger-interactive-test' && <CustomerLedgerInteractiveTest />}
+      {currentView === 'sales-list-design-test' && <SalesListDesignTestPage />}
       
       <GlobalDrawer />
     </Layout>
@@ -210,11 +221,13 @@ export default function App() {
                     <PurchaseProvider>
                       <RentalProvider>
                         <ExpenseProvider>
+                          <ProductionProvider>
                           <NavigationProvider>
                             <AppContent />
                             <Toaster position="bottom-right" theme="dark" />
                             <KeyboardShortcutsModal />
                           </NavigationProvider>
+                          </ProductionProvider>
                         </ExpenseProvider>
                       </RentalProvider>
                     </PurchaseProvider>

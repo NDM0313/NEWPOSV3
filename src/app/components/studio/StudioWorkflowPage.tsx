@@ -20,7 +20,7 @@ import { Badge } from '../ui/badge';
 import { Input } from '../ui/input';
 import { useNavigation } from '../../context/NavigationContext';
 import { useSupabase } from '../../context/SupabaseContext';
-import { studioService, Worker as SupabaseWorker } from '../../services/studioService';
+import { contactService } from '../../services/contactService';
 import { Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -102,47 +102,45 @@ export const StudioWorkflowPage: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [filterOpen, setFilterOpen] = useState(false);
   
-  // Load workers from Supabase
+  // Load workers from Contacts (type=worker) – same list as Contacts page
   const loadWorkers = useCallback(async () => {
     if (!companyId) return;
     
     try {
       setLoading(true);
-      const supabaseWorkers = await studioService.getAllWorkers(companyId);
+      const workerContacts = await contactService.getAllContacts(companyId, 'worker');
       
-      // Map Supabase Worker to component Worker format
-      const mappedWorkers: Worker[] = supabaseWorkers.map((w: SupabaseWorker) => {
-        // Map worker_type to department
+      // Map contact (type=worker) to component Worker format
+      const mappedWorkers: Worker[] = (workerContacts || []).map((c: any) => {
+        // Map worker_role to department (Contacts: tailor, stitching-master, cutter, hand-worker, dyer, helper)
         let department: DepartmentType = 'Stitching';
-        if (w.worker_type === 'tailor' || w.worker_type === 'cutter') {
+        const role = (c.worker_role || '').toLowerCase();
+        if (role === 'dyer') {
+          department = 'Dyeing';
+        } else if (role === 'hand-worker' || role === 'helper') {
+          department = 'Handwork';
+        } else if (role === 'tailor' || role === 'stitching-master' || role === 'cutter') {
           department = 'Stitching';
-        } else if (w.worker_type === 'finisher') {
-          department = 'Handwork';
-        } else if (w.worker_type === 'embroidery') {
-          department = 'Handwork';
         }
         
-        // Determine status based on current_balance and active status
+        const balance = Number(c.current_balance) || 0;
         let status: WorkerStatus = 'Available';
-        if (w.current_balance > 5000) {
-          status = 'Overloaded';
-        } else if (w.current_balance > 0) {
-          status = 'Busy';
-        }
+        if (balance > 5000) status = 'Overloaded';
+        else if (balance > 0) status = 'Busy';
         
         return {
-          id: w.id || '',
-          name: w.name || '',
-          phone: w.phone || '',
-          department: department,
-          activeJobs: 0, // TODO: Calculate from job_cards
-          pendingJobs: 0, // TODO: Calculate from job_cards
-          completedJobs: 0, // TODO: Calculate from job_cards
-          pendingAmount: w.current_balance || 0,
-          totalEarnings: 0, // TODO: Calculate from payment history
-          status: status,
-          rating: 4.5, // Default rating
-          joinedDate: new Date() // TODO: Get from created_at
+          id: c.id || '',
+          name: c.name || '',
+          phone: c.phone || c.mobile || '',
+          department,
+          activeJobs: 0,
+          pendingJobs: 0,
+          completedJobs: 0,
+          pendingAmount: balance,
+          totalEarnings: 0,
+          status,
+          rating: 4.5,
+          joinedDate: c.created_at ? new Date(c.created_at) : new Date()
         };
       });
       
@@ -150,6 +148,7 @@ export const StudioWorkflowPage: React.FC = () => {
     } catch (error) {
       console.error('[STUDIO WORKFLOW] Error loading workers:', error);
       toast.error('Failed to load workers');
+      setWorkers([]);
     } finally {
       setLoading(false);
     }

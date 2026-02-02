@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { studioService } from '@/app/services/studioService';
+import { saleService } from '@/app/services/saleService';
 import { toast } from 'sonner';
 import { 
   Palette, 
@@ -64,6 +65,7 @@ const DepartmentCard = ({ name, icon: Icon, count, color, onClick }: DepartmentC
 
 interface StudioOrderDisplay {
   id: string;
+  rowKey: string; // unique key for React (e.g. order_xxx / sale_xxx)
   invoiceNo: string;
   customerName: string;
   customerPhone: string;
@@ -72,22 +74,22 @@ interface StudioOrderDisplay {
   assignedWorker: string;
   expectedDate: string;
   status: string;
+  source: 'studio_order' | 'sale';
 }
 
 export const StudioDashboardNew = () => {
-  const { setCurrentView } = useNavigation();
+  const { setCurrentView, setSelectedStudioSaleId } = useNavigation();
   const { companyId, branchId } = useSupabase();
   const [orders, setOrders] = useState<StudioOrderDisplay[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedDepartment, setSelectedDepartment] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Convert Supabase order to display format
+  // Convert Supabase studio_order to display format
   const convertFromSupabaseOrder = useCallback((supabaseOrder: any): StudioOrderDisplay => {
     const firstItem = supabaseOrder.items?.[0];
     const jobCards = supabaseOrder.job_cards || [];
     
-    // Determine current stage from job cards
     let currentStage = 'Dyeing';
     let assignedWorker = 'Unassigned';
     
@@ -99,17 +101,15 @@ export const StudioDashboardNew = () => {
                       activeJob.task_type === 'stitching' ? 'Stitching' : 'Dyeing';
         assignedWorker = activeJob.worker?.name || 'Unassigned';
       } else {
-        // Check if all completed
         const allCompleted = jobCards.every((jc: any) => jc.status === 'completed');
-        if (allCompleted) {
-          currentStage = 'Completed';
-        }
+        if (allCompleted) currentStage = 'Completed';
       }
     }
 
     return {
       id: supabaseOrder.id,
-      invoiceNo: supabaseOrder.order_no || `ST-${supabaseOrder.id.slice(0, 8)}`,
+      rowKey: `order_${supabaseOrder.id}`,
+      invoiceNo: supabaseOrder.order_no || `ST-${supabaseOrder.id?.slice(0, 8) || ''}`,
       customerName: supabaseOrder.customer_name || supabaseOrder.customer?.name || '',
       customerPhone: supabaseOrder.customer?.phone || '',
       fabricName: firstItem?.item_description || 'Fabric',
@@ -117,18 +117,43 @@ export const StudioDashboardNew = () => {
       assignedWorker,
       expectedDate: supabaseOrder.delivery_date || '',
       status: supabaseOrder.status === 'completed' ? 'Completed' : 'In Progress',
+      source: 'studio_order',
     };
   }, []);
 
-  // Load studio orders from Supabase
+  // Convert sale (sales table, is_studio = true) to display format – show on dashboard so user can shift to production
+  const convertFromSale = useCallback((sale: any): StudioOrderDisplay => {
+    const items = sale.items || [];
+    const firstItem = items[0];
+    const customer = sale.customer || {};
+    return {
+      id: sale.id,
+      rowKey: `sale_${sale.id}`,
+      invoiceNo: sale.invoice_no || `SL-${sale.id?.slice(0, 8) || ''}`,
+      customerName: sale.customer_name || customer.name || '',
+      customerPhone: customer.phone || '',
+      fabricName: firstItem?.product_name || firstItem?.product?.name || 'Sale items',
+      currentStage: 'Ready for Production',
+      assignedWorker: '—',
+      expectedDate: sale.notes || '',
+      status: 'Pending',
+      source: 'sale',
+    };
+  }, []);
+
+  // Load studio orders + studio sales (sales with is_studio = true) so both show and can shift to production
   const loadStudioOrders = useCallback(async () => {
     if (!companyId) return;
     
     try {
       setLoading(true);
-      const data = await studioService.getAllStudioOrders(companyId, branchId || undefined);
-      const convertedOrders = data.map(convertFromSupabaseOrder);
-      setOrders(convertedOrders);
+      const [studioOrdersData, studioSalesData] = await Promise.all([
+        studioService.getAllStudioOrders(companyId, branchId === 'all' ? undefined : branchId || undefined),
+        saleService.getStudioSales(companyId, branchId === 'all' ? undefined : branchId || undefined).catch(() => []),
+      ]);
+      const fromOrders = (studioOrdersData || []).map(convertFromSupabaseOrder);
+      const fromSales = (studioSalesData || []).map(convertFromSale);
+      setOrders([...fromOrders, ...fromSales]);
     } catch (error) {
       console.error('[STUDIO DASHBOARD] Error loading studio orders:', error);
       toast.error('Failed to load studio orders');
@@ -136,7 +161,7 @@ export const StudioDashboardNew = () => {
     } finally {
       setLoading(false);
     }
-  }, [companyId, branchId, convertFromSupabaseOrder]);
+  }, [companyId, branchId, convertFromSupabaseOrder, convertFromSale]);
 
   // Load orders on mount
   useEffect(() => {
@@ -155,9 +180,11 @@ export const StudioDashboardNew = () => {
     completed: orders.filter(o => o.status === 'Completed').length
   };
 
-  // Filter orders based on department selection
+  // Filter orders based on department selection (Completed = by status)
   const filteredOrders = selectedDepartment
-    ? orders.filter(o => o.currentStage === selectedDepartment)
+    ? selectedDepartment === 'Completed'
+      ? orders.filter(o => o.status === 'Completed')
+      : orders.filter(o => o.currentStage === selectedDepartment)
     : orders;
 
   // Apply search filter
@@ -176,8 +203,15 @@ export const StudioDashboardNew = () => {
         <p className="text-sm text-gray-400">Department-wise order tracking</p>
       </div>
 
-      {/* DEPARTMENT CARDS */}
-      <div className="grid grid-cols-4 gap-4">
+      {/* DEPARTMENT CARDS – studio sales (Ready for Production) + department-wise */}
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+        <DepartmentCard
+          name="Ready for Production"
+          icon={Package}
+          count={departmentCounts.readyForProduction}
+          color="blue"
+          onClick={() => setSelectedDepartment(selectedDepartment === 'Ready for Production' ? null : 'Ready for Production')}
+        />
         <DepartmentCard
           name="Dyeing Department"
           icon={Palette}
@@ -204,7 +238,7 @@ export const StudioDashboardNew = () => {
           icon={CheckCircle2}
           count={departmentCounts.completed}
           color="orange"
-          onClick={() => {}}
+          onClick={() => setSelectedDepartment(selectedDepartment === 'Completed' ? null : 'Completed')}
         />
       </div>
 
@@ -291,7 +325,7 @@ export const StudioDashboardNew = () => {
                   </td>
                 </tr>
               ) : searchFilteredOrders.map(order => (
-                <tr key={order.id} className="hover:bg-gray-800/50">
+                <tr key={order.rowKey} className="hover:bg-gray-800/50">
                   <td className="p-4">
                     <p className="text-white font-medium">{order.invoiceNo}</p>
                   </td>
@@ -310,9 +344,11 @@ export const StudioDashboardNew = () => {
                       variant="outline"
                       className={cn(
                         "text-xs",
+                        order.currentStage === 'Ready for Production' && "bg-cyan-500/20 text-cyan-400 border-cyan-700",
                         order.currentStage === 'Dyeing' && "bg-purple-500/20 text-purple-400 border-purple-700",
                         order.currentStage === 'Handwork' && "bg-blue-500/20 text-blue-400 border-blue-700",
-                        order.currentStage === 'Stitching' && "bg-green-500/20 text-green-400 border-green-700"
+                        order.currentStage === 'Stitching' && "bg-green-500/20 text-green-400 border-green-700",
+                        order.currentStage === 'Completed' && "bg-orange-500/20 text-orange-400 border-orange-700"
                       )}
                     >
                       {order.currentStage}
@@ -336,17 +372,43 @@ export const StudioDashboardNew = () => {
                     </Badge>
                   </td>
                   <td className="p-4 text-center">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => {
-                        // In real app: Navigate to detail page
-                        setCurrentView('studio-sale-detail-new');
-                      }}
-                      className="border-gray-700 text-gray-300 hover:bg-gray-800 text-xs"
-                    >
-                      View Sale
-                    </Button>
+                    <div className="flex items-center justify-center gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedStudioSaleId?.(order.id);
+                          setCurrentView('studio-sale-detail-new');
+                        }}
+                        className="border-gray-700 text-gray-300 hover:bg-gray-800 text-xs"
+                      >
+                        View Sale
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedStudioSaleId?.(order.id);
+                          setCurrentView('studio-production-add');
+                        }}
+                        className="border-cyan-600 text-cyan-400 hover:bg-cyan-900/30 text-xs"
+                      >
+                        Shift to Production
+                      </Button>
+                      <Button
+                        size="sm"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedStudioSaleId?.(order.id);
+                          setCurrentView('studio-production-test');
+                        }}
+                        className="bg-amber-600 hover:bg-amber-500 text-white text-xs"
+                      >
+                        Send to Studio (Test)
+                      </Button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -355,28 +417,28 @@ export const StudioDashboardNew = () => {
         </div>
       </div>
 
-      {/* QUICK STATS */}
+      {/* QUICK STATS – from real data */}
       <div className="grid grid-cols-3 gap-4">
         <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
           <div className="flex items-center gap-3 mb-2">
-            <Clock size={18} className="text-yellow-400" />
-            <p className="text-sm text-gray-400">Avg. Production Time</p>
+            <Package size={18} className="text-cyan-400" />
+            <p className="text-sm text-gray-400">Ready for Production</p>
           </div>
-          <p className="text-2xl font-bold text-white">7.5 days</p>
+          <p className="text-2xl font-bold text-white">{departmentCounts.readyForProduction}</p>
         </div>
         <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
           <div className="flex items-center gap-3 mb-2">
             <TrendingUp size={18} className="text-green-400" />
-            <p className="text-sm text-gray-400">Orders This Month</p>
+            <p className="text-sm text-gray-400">Total Studio Orders</p>
           </div>
-          <p className="text-2xl font-bold text-white">48 orders</p>
+          <p className="text-2xl font-bold text-white">{orders.length}</p>
         </div>
         <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
           <div className="flex items-center gap-3 mb-2">
             <CheckCircle2 size={18} className="text-blue-400" />
-            <p className="text-sm text-gray-400">On-Time Delivery Rate</p>
+            <p className="text-sm text-gray-400">Completed</p>
           </div>
-          <p className="text-2xl font-bold text-white">92%</p>
+          <p className="text-2xl font-bold text-white">{departmentCounts.completed}</p>
         </div>
       </div>
     </div>

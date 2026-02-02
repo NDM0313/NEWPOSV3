@@ -52,6 +52,7 @@ import { format } from 'date-fns';
 import { useNavigation } from '@/app/context/NavigationContext';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { studioService } from '@/app/services/studioService';
+import { saleService } from '@/app/services/saleService';
 import { cn } from '../ui/utils';
 import { Loader2 } from 'lucide-react';
 
@@ -182,7 +183,7 @@ interface StudioSaleDetail {
 // Mock data removed - data is loaded from Supabase via loadStudioOrder()
 
 export const StudioSaleDetailNew = () => {
-  const { setCurrentView, selectedStudioSaleId } = useNavigation();
+  const { setCurrentView, selectedStudioSaleId, setSelectedStudioSaleId } = useNavigation();
   const { companyId } = useSupabase();
   const [saleDetail, setSaleDetail] = useState<StudioSaleDetail | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
@@ -314,7 +315,38 @@ export const StudioSaleDetailNew = () => {
     };
   }, []);
 
-  // Load studio order from Supabase
+  // Convert sale (from sales table, is_studio = true) to StudioSaleDetail for display
+  const convertFromSale = useCallback((sale: any): StudioSaleDetail => {
+    const customer = sale.customer || {};
+    const items = sale.items || [];
+    const fabricName = items.length > 0 ? (items[0].product_name || 'N/A') : 'N/A';
+    const meters = items.reduce((sum: number, item: any) => sum + (Number(item.quantity) || 0), 0);
+    const fabricCost = items.reduce((sum: number, item: any) => sum + (Number((item as any).total) || 0), 0);
+    return {
+      id: sale.id || '',
+      invoiceNo: sale.invoice_no || sale.invoiceNo || `STD-${sale.id?.slice(0, 8)}`,
+      customerName: sale.customer_name || customer.name || 'Unknown',
+      customerPhone: customer.phone || '',
+      saleDate: sale.invoice_date || sale.invoiceDate || new Date().toISOString().split('T')[0],
+      expectedDeliveryDate: sale.notes || '',
+      saleStatus: sale.status === 'final' ? 'Completed' : sale.status === 'in_progress' ? 'In Progress' : 'Draft',
+      fabricName,
+      meters,
+      fabricCost,
+      productionSteps: [],
+      accessories: [],
+      shipments: [],
+      payments: [],
+      baseAmount: Number(sale.total) || 0,
+      shipmentCharges: 0,
+      totalAmount: Number(sale.total) || 0,
+      paidAmount: Number(sale.paid_amount) || 0,
+      balanceDue: Number(sale.due_amount) || 0,
+      fabricPurchaseCost: fabricCost
+    };
+  }, []);
+
+  // Load studio order from Supabase; if not found, try sale (from sales table with is_studio)
   const loadStudioOrder = useCallback(async () => {
     if (!selectedStudioSaleId) {
       setLoading(false);
@@ -323,16 +355,26 @@ export const StudioSaleDetailNew = () => {
 
     try {
       setLoading(true);
-      const order = await studioService.getStudioOrder(selectedStudioSaleId);
-      const convertedDetail = convertFromSupabaseOrder(order);
-      setSaleDetail(convertedDetail);
+      try {
+        const order = await studioService.getStudioOrder(selectedStudioSaleId);
+        const convertedDetail = convertFromSupabaseOrder(order);
+        setSaleDetail(convertedDetail);
+      } catch {
+        const sale = await saleService.getSale(selectedStudioSaleId);
+        if (sale?.is_studio) {
+          const convertedDetail = convertFromSale(sale);
+          setSaleDetail(convertedDetail);
+        } else {
+          setSaleDetail(null);
+        }
+      }
     } catch (error) {
-      console.error('Error loading studio order:', error);
+      console.error('Error loading studio order/sale:', error);
       setSaleDetail(null);
     } finally {
       setLoading(false);
     }
-  }, [selectedStudioSaleId, convertFromSupabaseOrder]);
+  }, [selectedStudioSaleId, convertFromSupabaseOrder, convertFromSale]);
 
   // Load workers from Supabase
   const loadWorkers = useCallback(async () => {
@@ -793,10 +835,40 @@ export const StudioSaleDetailNew = () => {
             </Button>
             <div>
               <h1 className="text-lg font-bold text-white">{saleDetail.invoiceNo}</h1>
-              <p className="text-xs text-gray-500">Studio Production Order</p>
+              <p className="text-xs text-gray-500 flex items-center gap-2">
+                <Badge variant="outline" className="text-[10px] px-1.5 py-0 bg-cyan-900/30 text-cyan-400 border-cyan-600/50">Studio</Badge>
+                Studio Production Order
+              </p>
             </div>
           </div>
           <div className="flex items-center gap-3">
+            {selectedStudioSaleId && (
+              <>
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    setSelectedStudioSaleId?.(selectedStudioSaleId);
+                    setCurrentView('studio-production-test');
+                  }}
+                  className="bg-cyan-600 hover:bg-cyan-500 text-white"
+                >
+                  <Package size={14} className="mr-1.5" />
+                  Send to Studio
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    setSelectedStudioSaleId?.(selectedStudioSaleId);
+                    setCurrentView('studio-production-list');
+                  }}
+                  className="border-cyan-600 text-cyan-400 hover:bg-cyan-900/30"
+                >
+                  <Package size={14} className="mr-1.5" />
+                  View Production
+                </Button>
+              </>
+            )}
             <Badge 
               variant="outline" 
               className={cn(
