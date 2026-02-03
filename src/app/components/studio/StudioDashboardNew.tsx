@@ -174,6 +174,7 @@ export const StudioDashboardNew = () => {
 
   // Calculate department counts
   const departmentCounts = {
+    readyForProduction: orders.filter(o => o.currentStage === 'Ready for Production').length,
     dyeing: orders.filter(o => o.currentStage === 'Dyeing').length,
     handwork: orders.filter(o => o.currentStage === 'Handwork').length,
     stitching: orders.filter(o => o.currentStage === 'Stitching').length,
@@ -297,7 +298,8 @@ export const StudioDashboardNew = () => {
         </div>
 
         <div className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
-          <table className="w-full text-sm">
+          <div className="overflow-x-auto">
+          <table className="w-full text-sm min-w-[900px]">
             <thead className="bg-gray-950 border-b border-gray-800">
               <tr>
                 <th className="p-4 text-left text-gray-400 font-medium">Invoice No</th>
@@ -379,11 +381,23 @@ export const StudioDashboardNew = () => {
                         onClick={(e) => {
                           e.stopPropagation();
                           setSelectedStudioSaleId?.(order.id);
-                          setCurrentView('studio-sale-detail-new');
+                          setCurrentView('studio-production-test');
                         }}
                         className="border-gray-700 text-gray-300 hover:bg-gray-800 text-xs"
                       >
-                        View Sale
+                        Open Production
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedStudioSaleId?.(order.id);
+                          setCurrentView('studio-sale-detail-new');
+                        }}
+                        className="text-gray-500 hover:text-gray-300 text-xs"
+                      >
+                        Sale detail
                       </Button>
                       <Button
                         size="sm"
@@ -414,6 +428,7 @@ export const StudioDashboardNew = () => {
               ))}
             </tbody>
           </table>
+          </div>
         </div>
       </div>
 

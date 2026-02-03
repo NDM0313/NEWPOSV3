@@ -27,22 +27,17 @@ export const contactGroupService = {
 
     const { data, error } = await query;
     if (error) {
-      // If table doesn't exist yet, return empty array (graceful degradation)
-      // Check for various error codes that indicate table doesn't exist
+      // If table doesn't exist (404) or relation missing, return empty array without logging
       if (
-        error.code === 'PGRST116' || 
-        error.message?.includes('does not exist') ||
+        error.code === 'PGRST116' ||
         error.status === 404 ||
         (error as any).statusCode === 404 ||
+        error.message?.includes('does not exist') ||
         error.message?.includes('relation') ||
         error.message?.includes('contact_groups')
       ) {
-        // Table doesn't exist yet - this is expected before running migration
-        // Silently return empty array, no need to log warning
-        console.log('[CONTACT GROUP SERVICE] contact_groups table does not exist yet, returning empty array');
         return [];
       }
-      // Log other errors but don't crash
       console.warn('[CONTACT GROUP SERVICE] Error loading groups:', error);
       return [];
     }

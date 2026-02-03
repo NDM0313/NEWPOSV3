@@ -76,19 +76,21 @@ export const StudioProductionTestPage = () => {
   const [workerForm, setWorkerForm] = useState({
     assigned_worker_id: '' as string | null,
     estimated_cost: 0,
+    expected_date: '' as string,
     notes: '',
   });
   const [receiveStageId, setReceiveStageId] = useState<string | null>(null);
   const [receiveActualCost, setReceiveActualCost] = useState<string>('');
+  const [finalConfirmChecked, setFinalConfirmChecked] = useState(false);
 
   const loadSale = useCallback(async () => {
-    if (!selectedStudioSaleId) return;
+    if (!selectedStudioSaleId) return null;
     try {
       const sale = await saleService.getSale(selectedStudioSaleId);
       const items = (sale as any).items || [];
       const first = items[0];
       const product = first?.product || {};
-      setSaleData({
+      const data = {
         id: (sale as any).id,
         invoice_no: (sale as any).invoice_no || (sale as any).invoiceNo || `#${selectedStudioSaleId.slice(0, 8)}`,
         customer_name: (sale as any).customer_name || (sale as any).customerName || '—',
@@ -96,11 +98,14 @@ export const StudioProductionTestPage = () => {
         product_name: product?.name || first?.product_name,
         quantity: Number(first?.quantity) || 1,
         unit: first?.unit || product?.unit || 'piece',
-      });
+      };
+      setSaleData(data);
+      return data;
     } catch (e) {
       console.error(e);
       toast.error('Could not load sale');
       setSaleData(null);
+      return null;
     }
   }, [selectedStudioSaleId]);
 
@@ -124,15 +129,52 @@ export const StudioProductionTestPage = () => {
     }
   }, [production?.id]);
 
+  // Option A: Ensure production exists for this sale (fetch or auto-create). One-to-one link.
+  const ensureProductionForSale = useCallback(
+    async (salePayload: NonNullable<typeof saleData>) => {
+      const existing = await studioProductionService.getProductionsBySaleId(salePayload.id);
+      const active = (existing || []).filter((p) => p.status !== 'cancelled');
+      if (active.length > 0) {
+        setProduction(active[0]);
+        return active[0];
+      }
+      const created = await createProduction({
+        sale_id: salePayload.id,
+        production_date: new Date().toISOString().split('T')[0],
+        product_id: salePayload.product_id,
+        quantity: salePayload.quantity,
+        unit: salePayload.unit || 'piece',
+        estimated_cost: 0,
+        actual_cost: 0,
+      });
+      setProduction(created);
+      return created;
+    },
+    [createProduction]
+  );
+
   useEffect(() => {
     if (!selectedStudioSaleId) {
       setLoading(false);
       return;
     }
     setLoading(true);
-    loadSale().then(() => setLoading(false));
     loadWorkers();
-  }, [selectedStudioSaleId, loadSale, loadWorkers]);
+    (async () => {
+      const sale = await loadSale();
+      if (!sale) {
+        setLoading(false);
+        return;
+      }
+      try {
+        await ensureProductionForSale(sale);
+      } catch (e: any) {
+        toast.error(e?.message || 'Failed to ensure production');
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, [selectedStudioSaleId, loadSale, ensureProductionForSale]);
 
   useEffect(() => {
     if (production?.id) loadStages();
@@ -163,8 +205,16 @@ export const StudioProductionTestPage = () => {
 
   const handleAddStage = async () => {
     if (!production?.id || !selectedProcess) return;
+    if (!workerForm.assigned_worker_id) {
+      toast.error('Worker is required');
+      return;
+    }
     if (workerForm.estimated_cost <= 0) {
-      toast.error('Enter estimated cost');
+      toast.error('Enter estimated cost (Rs)');
+      return;
+    }
+    if (!workerForm.expected_date.trim()) {
+      toast.error('Expected completion date is required');
       return;
     }
     setSaving(true);
@@ -173,10 +223,11 @@ export const StudioProductionTestPage = () => {
         stage_type: selectedProcess,
         assigned_worker_id: workerForm.assigned_worker_id || null,
         cost: workerForm.estimated_cost,
+        expected_completion_date: workerForm.expected_date || null,
         notes: workerForm.notes || null,
       });
       await loadStages();
-      setWorkerForm({ assigned_worker_id: null, estimated_cost: 0, notes: '' });
+      setWorkerForm({ assigned_worker_id: null, estimated_cost: 0, expected_date: '', notes: '' });
       setSelectedProcess(null);
       setCurrentStep('receive');
       toast.success('Step added');
@@ -342,17 +393,16 @@ export const StudioProductionTestPage = () => {
                 </div>
               </div>
             </div>
-            {!production ? (
-              <Button onClick={handleStartProduction} disabled={saving} className="bg-cyan-600 hover:bg-cyan-500 gap-2">
-                {saving ? <Loader2 size={18} className="animate-spin" /> : <ArrowRight size={18} />}
-                Start Production
-              </Button>
-            ) : (
-              <Button onClick={() => setCurrentStep('process')} className="bg-cyan-600 hover:bg-cyan-500 gap-2">
-                Continue to Process selection
-                <ArrowRight size={18} />
-              </Button>
+            {production && (
+              <div className="flex items-center gap-2 text-sm text-cyan-400">
+                <CheckCircle2 size={18} />
+                Production linked: {(production as any).production_no}
+              </div>
             )}
+            <Button onClick={() => setCurrentStep('process')} className="bg-cyan-600 hover:bg-cyan-500 gap-2">
+              Continue to Process selection
+              <ArrowRight size={18} />
+            </Button>
           </div>
         )}
 
@@ -415,11 +465,12 @@ export const StudioProductionTestPage = () => {
             </p>
             <div className="space-y-4">
               <div>
-                <Label className="text-gray-400">Worker</Label>
+                <Label className="text-gray-400">Worker *</Label>
                 <select
                   value={workerForm.assigned_worker_id || ''}
                   onChange={(e) => setWorkerForm((f) => ({ ...f, assigned_worker_id: e.target.value || null }))}
                   className="w-full mt-1 h-10 rounded-md border bg-gray-900 border-gray-700 text-white px-3"
+                  required
                 >
                   <option value="">Select worker</option>
                   {workers.map((w) => (
@@ -428,7 +479,7 @@ export const StudioProductionTestPage = () => {
                 </select>
               </div>
               <div>
-                <Label className="text-gray-400">Estimated cost (Rs)</Label>
+                <Label className="text-gray-400">Estimated cost (Rs) *</Label>
                 <Input
                   type="number"
                   min={0}
@@ -439,12 +490,21 @@ export const StudioProductionTestPage = () => {
                 />
               </div>
               <div>
+                <Label className="text-gray-400">Expected completion date *</Label>
+                <Input
+                  type="date"
+                  value={workerForm.expected_date}
+                  onChange={(e) => setWorkerForm((f) => ({ ...f, expected_date: e.target.value }))}
+                  className="bg-gray-900 border-gray-700 text-white mt-1"
+                />
+              </div>
+              <div>
                 <Label className="text-gray-400">Notes (optional)</Label>
                 <Input
                   value={workerForm.notes}
                   onChange={(e) => setWorkerForm((f) => ({ ...f, notes: e.target.value }))}
                   className="bg-gray-900 border-gray-700 text-white mt-1"
-                  placeholder="Expected dates, instructions…"
+                  placeholder="Instructions…"
                 />
               </div>
             </div>
@@ -452,19 +512,13 @@ export const StudioProductionTestPage = () => {
               <Button variant="outline" onClick={() => setCurrentStep('process')} className="border-gray-600">
                 Back
               </Button>
-              <Button onClick={handleAddStage} disabled={saving} className="bg-cyan-600 hover:bg-cyan-500 gap-2">
+              <Button
+                onClick={handleAddStage}
+                disabled={saving || !workerForm.assigned_worker_id || workerForm.estimated_cost <= 0 || !workerForm.expected_date.trim()}
+                className="bg-cyan-600 hover:bg-cyan-500 gap-2"
+              >
                 {saving ? <Loader2 size={18} className="animate-spin" /> : <Check size={18} />}
                 Add this step
-              </Button>
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setCurrentStep('receive');
-                  setSelectedProcess(null);
-                }}
-                className="border-gray-500 text-gray-300"
-              >
-                Skip to Receive (add step later)
               </Button>
             </div>
           </div>
@@ -545,9 +599,13 @@ export const StudioProductionTestPage = () => {
               </div>
             )}
             <div className="flex gap-3 flex-wrap">
-              <Button variant="outline" onClick={() => { setSelectedProcess(null); setCurrentStep('process'); }} className="border-gray-600">
-                Add next process
-              </Button>
+              {allStagesCompleted ? (
+                <Button variant="outline" onClick={() => { setSelectedProcess(null); setCurrentStep('process'); }} className="border-gray-600">
+                  Add next process
+                </Button>
+              ) : (
+                <p className="text-amber-400 text-sm">Complete all current steps (Receive) before adding another process.</p>
+              )}
               <Button
                 onClick={() => setCurrentStep('final')}
                 className="bg-cyan-600 hover:bg-cyan-500"
@@ -559,7 +617,7 @@ export const StudioProductionTestPage = () => {
           </div>
         )}
 
-        {/* Step 5 – Final completion */}
+        {/* Step 5 – Final completion (cost summary + confirm) */}
         {currentStep === 'final' && (
           <div className="space-y-6">
             <h2 className="text-lg font-semibold text-white">Final completion</h2>
@@ -574,12 +632,53 @@ export const StudioProductionTestPage = () => {
               </div>
             ) : (
               <>
+                {/* Phase 4: Cost summary */}
+                {stages.length > 0 && (
+                  <div className="p-4 rounded-xl bg-gray-900/50 border border-gray-800">
+                    <h3 className="text-sm font-semibold text-white mb-3 flex items-center gap-2">
+                      <DollarSign size={18} className="text-cyan-400" />
+                      Cost summary (will be applied to sale)
+                    </h3>
+                    <ul className="space-y-2 text-sm">
+                      {stages.map((s) => {
+                        const st = s as any;
+                        return (
+                          <li key={st.id} className="flex justify-between text-gray-300">
+                            <span className="capitalize">{st.stage_type}</span>
+                            <span>{st.worker?.name || '—'}</span>
+                            <span className="font-medium text-white">Rs {Number(st.cost).toLocaleString()}</span>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                    <div className="mt-3 pt-3 border-t border-gray-700 flex justify-between text-white font-semibold">
+                      <span>Total studio charges</span>
+                      <span>Rs {stages.reduce((sum, s) => sum + Number((s as any).cost || 0), 0).toLocaleString()}</span>
+                    </div>
+                    <p className="text-xs text-gray-500 mt-2">This amount will be added to the customer bill and recorded in worker ledger.</p>
+                  </div>
+                )}
                 {stages.length > 0 && !allStagesCompleted && (
                   <p className="text-amber-400 text-sm">Complete all steps in &quot;Receive&quot; before final completion.</p>
                 )}
+                {stages.length > 0 && allStagesCompleted && (
+                  <label className="flex items-center gap-2 text-sm text-gray-300 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={finalConfirmChecked}
+                      onChange={(e) => setFinalConfirmChecked(e.target.checked)}
+                      className="rounded border-gray-600 bg-gray-900 text-cyan-500"
+                    />
+                    I confirm these costs and want to finalize production (sale, ledger, inventory).
+                  </label>
+                )}
                 <Button
                   onClick={handleFinalComplete}
-                  disabled={saving || (stages.length > 0 && !allStagesCompleted)}
+                  disabled={
+                    saving ||
+                    (stages.length > 0 && !allStagesCompleted) ||
+                    (stages.length > 0 && allStagesCompleted && !finalConfirmChecked)
+                  }
                   className="bg-green-600 hover:bg-green-500 gap-2"
                 >
                   {saving ? <Loader2 size={18} className="animate-spin" /> : <CheckCircle2 size={18} />}

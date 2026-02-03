@@ -50,6 +50,7 @@ export interface StudioProductionStage {
   assigned_worker_id?: string | null;
   cost: number;
   status: StudioProductionStageStatus;
+  expected_completion_date?: string | null;
   completed_at?: string | null;
   notes?: string | null;
   created_at: string;
@@ -275,11 +276,9 @@ export const studioProductionService = {
 
     if (newStatus === 'completed') {
       if (oldStatus === 'cancelled') throw new Error('Cancelled production cannot be completed');
-      // Option A: Production must be linked to a sale to complete.
       const saleId = existing.sale_id;
       if (!saleId) throw new Error('Production must be linked to a sale to complete. Link this production to a sale first.');
 
-      // Stages: if any exist, all must be completed; sum costs for studio_charges and worker ledger.
       const stages = await this.getStagesByProductionId(id);
       let studioCharges = 0;
       if (stages.length > 0) {
@@ -288,44 +287,42 @@ export const studioProductionService = {
         studioCharges = stages.reduce((sum, s) => sum + (Number((s as any).cost) || 0), 0);
       }
 
-      // Update sale: studio_charges and total (customer bill includes studio charges).
       const { data: saleRow, error: saleFetchErr } = await supabase
         .from('sales')
         .select('id, total, company_id')
         .eq('id', saleId)
         .single();
       if (saleFetchErr || !saleRow) throw new Error('Linked sale not found. Cannot complete production.');
-      const currentTotal = Number(saleRow.total) || 0;
-      const newTotal = currentTotal + studioCharges;
-      const { error: saleUpdateErr } = await supabase
-        .from('sales')
-        .update({
-          studio_charges: studioCharges,
-          total: newTotal,
-          status: 'final',
-        })
-        .eq('id', saleId);
-      if (saleUpdateErr) throw new Error(`Failed to update sale with studio charges: ${saleUpdateErr.message}`);
-
-      // Worker ledger: one entry per stage (worker cost). Separate from customer payments.
       const companyIdForLedger = (saleRow as any).company_id || existing.company_id;
+
+      // Order: ledger first, then inventory, then sale, then production status (so failure doesn't leave inconsistent state).
+      // 1. Worker ledger (idempotent: skip if entry already exists for this stage).
       for (const stage of stages) {
         const workerId = (stage as any).assigned_worker_id;
         const amount = Number((stage as any).cost) || 0;
         if (workerId && amount > 0) {
-          const { error: ledgerErr } = await supabase.from('worker_ledger_entries').insert({
-            company_id: companyIdForLedger,
-            worker_id: workerId,
-            amount,
-            reference_type: 'studio_production_stage',
-            reference_id: (stage as any).id,
-            notes: `Studio production ${existing.production_no} – stage completed`,
-          });
-          if (ledgerErr) console.warn('[worker_ledger_entries]', ledgerErr);
+          const { data: existingLedger } = await supabase
+            .from('worker_ledger_entries')
+            .select('id')
+            .eq('reference_type', 'studio_production_stage')
+            .eq('reference_id', (stage as any).id)
+            .limit(1)
+            .maybeSingle();
+          if (!existingLedger) {
+            const { error: ledgerErr } = await supabase.from('worker_ledger_entries').insert({
+              company_id: companyIdForLedger,
+              worker_id: workerId,
+              amount,
+              reference_type: 'studio_production_stage',
+              reference_id: (stage as any).id,
+              notes: `Studio production ${existing.production_no} – stage completed`,
+            });
+            if (ledgerErr) throw new Error(`Worker ledger failed: ${ledgerErr.message}`);
+          }
         }
       }
 
-      // Inventory: add finished goods ONLY when production is completed (controlled).
+      // 2. Inventory
       const qty = Number(existing.quantity) || 0;
       if (qty > 0) {
         const movementType = 'PRODUCTION_IN';
@@ -350,6 +347,19 @@ export const studioProductionService = {
           await productService.updateProduct(existing.product_id, { current_stock: newStock });
         }
       }
+
+      // 3. Sale: studio_charges and total
+      const currentTotal = Number(saleRow.total) || 0;
+      const newTotal = currentTotal + studioCharges;
+      const { error: saleUpdateErr } = await supabase
+        .from('sales')
+        .update({
+          studio_charges: studioCharges,
+          total: newTotal,
+          status: 'final',
+        })
+        .eq('id', saleId);
+      if (saleUpdateErr) throw new Error(`Failed to update sale with studio charges: ${saleUpdateErr.message}`);
     }
     // cancelled: no inventory impact
 
@@ -421,11 +431,20 @@ export const studioProductionService = {
     }
   },
 
-  /** Create a stage (process step) for a production. Manager assigns worker and estimated cost. */
+  /** Create a stage (process step) for a production. Manager assigns worker, estimated cost, expected date. */
   async createStage(
     productionId: string,
-    input: { stage_type: StudioProductionStageType; assigned_worker_id?: string | null; cost: number; notes?: string | null }
+    input: {
+      stage_type: StudioProductionStageType;
+      assigned_worker_id?: string | null;
+      cost: number;
+      expected_completion_date?: string | null;
+      notes?: string | null;
+    }
   ): Promise<StudioProductionStage> {
+    const production = await this.getProductionById(productionId);
+    if (!production) throw new Error('Production not found');
+    if (!production.sale_id) throw new Error('Production must be linked to a sale to add a stage.');
     const { data, error } = await supabase
       .from('studio_production_stages')
       .insert({
@@ -433,6 +452,7 @@ export const studioProductionService = {
         stage_type: input.stage_type,
         assigned_worker_id: input.assigned_worker_id ?? null,
         cost: input.cost,
+        expected_completion_date: input.expected_completion_date || null,
         status: 'pending',
         notes: input.notes ?? null,
       })
@@ -442,16 +462,35 @@ export const studioProductionService = {
     return data as StudioProductionStage;
   },
 
-  /** Update stage (e.g. set actual cost, mark completed). */
+  /** Update stage (worker, cost, status, etc.). Completed stages: only notes allowed (cost lock). */
   async updateStage(
     stageId: string,
-    updates: { status?: StudioProductionStageStatus; cost?: number; completed_at?: string | null; notes?: string | null }
+    updates: {
+      status?: StudioProductionStageStatus;
+      cost?: number;
+      completed_at?: string | null;
+      notes?: string | null;
+      assigned_worker_id?: string | null;
+      expected_completion_date?: string | null;
+    }
   ): Promise<StudioProductionStage> {
+    const { data: existingRow } = await supabase.from('studio_production_stages').select('status').eq('id', stageId).single();
+    if (!existingRow) throw new Error('Stage not found');
+    const isCompleted = (existingRow as any).status === 'completed';
+    if (isCompleted) {
+      if (updates.status !== undefined && updates.status !== 'completed') throw new Error('Completed stage cannot be reopened.');
+      if (updates.cost !== undefined) throw new Error('Completed stage cost is locked.');
+      if (updates.completed_at !== undefined) throw new Error('Completed stage cannot be edited.');
+      if (updates.assigned_worker_id !== undefined) throw new Error('Completed stage worker is locked.');
+      if (updates.notes === undefined) return (await supabase.from('studio_production_stages').select('*, worker:workers(id, name)').eq('id', stageId).single()).data as StudioProductionStage;
+    }
     const payload: Record<string, unknown> = {};
     if (updates.status !== undefined) payload.status = updates.status;
     if (updates.cost !== undefined) payload.cost = updates.cost;
     if (updates.completed_at !== undefined) payload.completed_at = updates.completed_at;
     if (updates.notes !== undefined) payload.notes = updates.notes;
+    if (updates.assigned_worker_id !== undefined) payload.assigned_worker_id = updates.assigned_worker_id;
+    if (updates.expected_completion_date !== undefined) payload.expected_completion_date = updates.expected_completion_date;
     if (Object.keys(payload).length === 0) {
       const existing = await supabase.from('studio_production_stages').select('*').eq('id', stageId).single();
       if (existing.data) return existing.data as StudioProductionStage;
@@ -465,5 +504,63 @@ export const studioProductionService = {
       .single();
     if (error) throw error;
     return data as StudioProductionStage;
+  },
+
+  /**
+   * Receive from worker: mark stage completed with actual cost, and add worker_ledger_entries.
+   * Worker payment is separate from customer payments.
+   */
+  async receiveStage(
+    stageId: string,
+    actualCost: number,
+    notes?: string | null
+  ): Promise<StudioProductionStage> {
+    const { data: stageRow, error: stageErr } = await supabase
+      .from('studio_production_stages')
+      .select('id, production_id, assigned_worker_id, status')
+      .eq('id', stageId)
+      .single();
+    if (stageErr || !stageRow) throw new Error('Stage not found');
+    const stage = stageRow as any;
+    if (stage.status === 'completed') throw new Error('Stage already received/completed');
+
+    const { data: prodRow, error: prodErr } = await supabase
+      .from('studio_productions')
+      .select('id, company_id, production_no')
+      .eq('id', stage.production_id)
+      .single();
+    if (prodErr || !prodRow) throw new Error('Production not found');
+    const production = prodRow as any;
+
+    const updated = await this.updateStage(stageId, {
+      status: 'completed',
+      cost: actualCost,
+      completed_at: new Date().toISOString(),
+      notes: notes ?? null,
+    });
+
+    const workerId = stage.assigned_worker_id;
+    if (workerId && actualCost > 0) {
+      const { data: existingLedger } = await supabase
+        .from('worker_ledger_entries')
+        .select('id')
+        .eq('reference_type', 'studio_production_stage')
+        .eq('reference_id', stageId)
+        .limit(1)
+        .maybeSingle();
+      if (!existingLedger) {
+        const { error: ledgerErr } = await supabase.from('worker_ledger_entries').insert({
+          company_id: production.company_id,
+          worker_id: workerId,
+          amount: actualCost,
+          reference_type: 'studio_production_stage',
+          reference_id: stageId,
+          notes: notes || `Studio production ${production.production_no} – stage received`,
+        });
+        if (ledgerErr) throw new Error(`Worker ledger failed: ${ledgerErr.message}`);
+      }
+    }
+
+    return updated;
   },
 };

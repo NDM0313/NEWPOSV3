@@ -52,9 +52,19 @@ import { format } from 'date-fns';
 import { useNavigation } from '@/app/context/NavigationContext';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { studioService } from '@/app/services/studioService';
+import { contactService } from '@/app/services/contactService';
 import { saleService } from '@/app/services/saleService';
+import { studioProductionService } from '@/app/services/studioProductionService';
 import { cn } from '../ui/utils';
 import { Loader2 } from 'lucide-react';
+import { toast } from 'sonner';
+
+/** Avoid RangeError when date is missing or invalid */
+function safeFormatDate(value: string | null | undefined, fmt: string): string {
+  if (value == null || value === '') return '—';
+  const d = new Date(value);
+  return isNaN(d.getTime()) ? '—' : format(d, fmt);
+}
 
 type SaleStatus = 'Draft' | 'In Progress' | 'Completed';
 type StepStatus = 'Pending' | 'In Progress' | 'Completed';
@@ -184,8 +194,9 @@ interface StudioSaleDetail {
 
 export const StudioSaleDetailNew = () => {
   const { setCurrentView, selectedStudioSaleId, setSelectedStudioSaleId } = useNavigation();
-  const { companyId } = useSupabase();
+  const { companyId, branchId, user } = useSupabase();
   const [saleDetail, setSaleDetail] = useState<StudioSaleDetail | null>(null);
+  const [productionId, setProductionId] = useState<string | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [workers, setWorkers] = useState<Worker[]>([]);
   const [editMode, setEditMode] = useState(false);
@@ -194,8 +205,12 @@ export const StudioSaleDetailNew = () => {
   const [showShipmentModal, setShowShipmentModal] = useState(false);
   const [showDocumentUpload, setShowDocumentUpload] = useState<string | null>(null);
   const [showWorkerEditModal, setShowWorkerEditModal] = useState<string | null>(null);
+  const [showReceiveModal, setShowReceiveModal] = useState<string | null>(null);
+  const [receiveActualCost, setReceiveActualCost] = useState('');
+  const [receiveNotes, setReceiveNotes] = useState('');
   const [showTrackingModal, setShowTrackingModal] = useState<string | null>(null);
   const [showTaskCustomizationModal, setShowTaskCustomizationModal] = useState(false);
+  const [savingStage, setSavingStage] = useState(false);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
@@ -315,6 +330,40 @@ export const StudioSaleDetailNew = () => {
     };
   }, []);
 
+  // Map backend stage_type to display name and icon
+  const stageTypeToStep = (stageType: string, index: number): { name: string; icon: any } => {
+    const order = index + 1;
+    if (stageType === 'dyer') return { name: 'Dyeing', icon: Palette };
+    if (stageType === 'handwork') return { name: 'Handwork / Embroidery', icon: Sparkles };
+    if (stageType === 'stitching') return { name: 'Stitching', icon: Scissors };
+    return { name: stageType, icon: Scissors };
+  };
+
+  // Convert studio_production_stages to ProductionStep[] (so UI can show and persist edits)
+  const stagesToProductionSteps = useCallback((stages: Array<{ id: string; stage_type: string; assigned_worker_id?: string | null; cost?: number; status?: string; expected_completion_date?: string | null; completed_at?: string | null; notes?: string | null; worker?: { id: string; name: string } }>): ProductionStep[] => {
+    const statusMap: Record<string, StepStatus> = { pending: 'Pending', in_progress: 'In Progress', completed: 'Completed' };
+    return stages.map((s, i) => {
+      const { name, icon } = stageTypeToStep(s.stage_type, i);
+      const workerName = s.worker?.name || '';
+      return {
+        id: s.id,
+        name,
+        icon,
+        order: i + 1,
+        assignedWorker: workerName,
+        workerId: s.assigned_worker_id || undefined,
+        assignedWorkers: s.assigned_worker_id ? [{ id: `aw-${s.id}`, workerId: s.assigned_worker_id, workerName, role: 'Main', cost: s.cost ?? 0 }] : [],
+        assignedDate: '',
+        expectedCompletionDate: s.expected_completion_date || '',
+        actualCompletionDate: s.completed_at || undefined,
+        workerCost: s.cost ?? 0,
+        workerPaymentStatus: (s.status === 'completed' ? 'Payable' : 'Pending') as 'Payable' | 'Pending' | 'Paid',
+        status: statusMap[s.status || 'pending'] || 'Pending',
+        notes: s.notes || ''
+      };
+    });
+  }, []);
+
   // Convert sale (from sales table, is_studio = true) to StudioSaleDetail for display
   const convertFromSale = useCallback((sale: any): StudioSaleDetail => {
     const customer = sale.customer || {};
@@ -346,7 +395,7 @@ export const StudioSaleDetailNew = () => {
     };
   }, []);
 
-  // Load studio order from Supabase; if not found, try sale (from sales table with is_studio)
+  // Load by sale_id first (Option A: sale is source of truth). Load/create studio production + stages and merge into detail.
   const loadStudioOrder = useCallback(async () => {
     if (!selectedStudioSaleId) {
       setLoading(false);
@@ -356,17 +405,59 @@ export const StudioSaleDetailNew = () => {
     try {
       setLoading(true);
       try {
+        const sale = await saleService.getSale(selectedStudioSaleId);
+        if (sale && (sale as any).id) {
+          const convertedDetail = convertFromSale(sale);
+          let productionSteps: ProductionStep[] = [];
+          try {
+            const productions = await studioProductionService.getProductionsBySaleId(sale.id);
+            if (productions.length > 0) {
+              const prodId = productions[0].id;
+              setProductionId(prodId);
+              const stages = await studioProductionService.getStagesByProductionId(prodId);
+              productionSteps = stagesToProductionSteps(stages);
+            } else {
+              setProductionId(null);
+            }
+            if (productions.length === 0 && branchId && branchId !== 'all' && /^[0-9a-f-]{36}$/i.test(branchId)) {
+              const items = (sale.items || []) as any[];
+              const firstItem = items[0];
+              if (firstItem?.product_id) {
+                const production = await studioProductionService.createProductionJob({
+                  company_id: companyId!,
+                  branch_id: branchId,
+                  sale_id: sale.id,
+                  production_no: `PRD-${(sale.invoice_no || sale.id?.slice(0, 8) || '')}`,
+                  production_date: sale.invoice_date || new Date().toISOString().split('T')[0],
+                  product_id: firstItem.product_id,
+                  quantity: Number(firstItem.quantity) || 1,
+                  unit: firstItem.unit || 'piece',
+                  created_by: user?.id
+                });
+                setProductionId(production.id);
+                const stageTypes = ['dyer', 'handwork', 'stitching'] as const;
+                for (const st of stageTypes) {
+                  await studioProductionService.createStage(production.id, { stage_type: st, cost: 0 });
+                }
+                const stages = await studioProductionService.getStagesByProductionId(production.id);
+                productionSteps = stagesToProductionSteps(stages);
+              }
+            }
+          } catch (e) {
+            console.warn('[StudioSaleDetail] Production/stages load or create failed:', e);
+          }
+          setSaleDetail({ ...convertedDetail, productionSteps });
+          return;
+        }
+      } catch (_) {
+        // Not a sale id or sale not found; try studio_order
+      }
+      try {
         const order = await studioService.getStudioOrder(selectedStudioSaleId);
         const convertedDetail = convertFromSupabaseOrder(order);
         setSaleDetail(convertedDetail);
       } catch {
-        const sale = await saleService.getSale(selectedStudioSaleId);
-        if (sale?.is_studio) {
-          const convertedDetail = convertFromSale(sale);
-          setSaleDetail(convertedDetail);
-        } else {
-          setSaleDetail(null);
-        }
+        setSaleDetail(null);
       }
     } catch (error) {
       console.error('Error loading studio order/sale:', error);
@@ -374,21 +465,21 @@ export const StudioSaleDetailNew = () => {
     } finally {
       setLoading(false);
     }
-  }, [selectedStudioSaleId, convertFromSupabaseOrder, convertFromSale]);
+  }, [selectedStudioSaleId, companyId, branchId, user?.id, convertFromSale, convertFromSupabaseOrder, stagesToProductionSteps]);
 
-  // Load workers from Supabase
+  // Load workers from Contacts (type=worker only – same as Contacts page Workers tab)
   const loadWorkers = useCallback(async () => {
     if (!companyId) return;
     
     try {
-      const workersData = await studioService.getAllWorkers(companyId);
-      // Convert to Worker interface format
-      const convertedWorkers: Worker[] = workersData.map((w: any) => ({
-        id: w.id,
-        name: w.name,
-        department: w.worker_type || 'General',
-        phone: w.phone || '',
-        isActive: w.is_active !== false
+      const workerContacts = await contactService.getAllContacts(companyId, 'worker');
+      // Map contact (type=worker) to Worker interface format
+      const convertedWorkers: Worker[] = (workerContacts || []).map((c: any) => ({
+        id: c.id,
+        name: c.name || '',
+        department: c.worker_role || 'General',
+        phone: c.phone || c.mobile || '',
+        isActive: c.is_active !== false
       }));
       setWorkers(convertedWorkers);
     } catch (error) {
@@ -401,6 +492,18 @@ export const StudioSaleDetailNew = () => {
     loadStudioOrder();
     loadWorkers();
   }, [loadStudioOrder, loadWorkers]);
+
+  /** Reload production steps from DB so status/costs are always DB-driven (no ghost in-progress). */
+  const reloadProductionSteps = useCallback(async () => {
+    if (!productionId || !saleDetail) return;
+    try {
+      const stages = await studioProductionService.getStagesByProductionId(productionId);
+      const steps = stagesToProductionSteps(stages);
+      setSaleDetail(prev => prev ? { ...prev, productionSteps: steps } : prev);
+    } catch (e) {
+      console.warn('[StudioSaleDetail] Reload stages failed:', e);
+    }
+  }, [productionId, saleDetail, stagesToProductionSteps]);
 
   // Calculate costs
   const calculateInternalCosts = () => {
@@ -429,25 +532,57 @@ export const StudioSaleDetailNew = () => {
     return previousStep?.status !== 'Completed';
   };
 
-  const updateStepStatus = (stepId: string, newStatus: StepStatus) => {
+  const updateStepStatus = async (stepId: string, newStatus: StepStatus) => {
     if (!saleDetail) return;
-    setSaleDetail(prev => {
-      if (!prev) return prev;
-      return {
-        ...prev,
-        productionSteps: prev.productionSteps.map(step => 
-          step.id === stepId ? { 
-            ...step, 
-            status: newStatus,
-            actualCompletionDate: newStatus === 'Completed' ? new Date().toISOString().split('T')[0] : step.actualCompletionDate,
-            // ERP Rule: When task completed, worker payment becomes "Payable" (handled in Accounting)
-            workerPaymentStatus: newStatus === 'Completed' && step.assignedWorker 
-              ? (step.workerPaymentStatus || 'Payable') 
-              : step.workerPaymentStatus
-          } : step
-        )
-      };
-    });
+    const backendStatus = newStatus === 'Pending' ? 'pending' : newStatus === 'In Progress' ? 'in_progress' : 'completed';
+    const isBackendStageId = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(stepId);
+    if (isBackendStageId) {
+      try {
+        await studioProductionService.updateStage(stepId, {
+          status: backendStatus as 'pending' | 'in_progress' | 'completed',
+          completed_at: newStatus === 'Completed' ? new Date().toISOString() : null
+        });
+        toast.success(newStatus === 'Completed' ? 'Step completed' : 'Step started');
+        await reloadProductionSteps();
+      } catch (e: any) {
+        console.error('Failed to update step status:', e);
+        toast.error(e?.message || 'Failed to update step');
+        return;
+      }
+    } else {
+      setSaleDetail(prev => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          productionSteps: prev.productionSteps.map(step => 
+            step.id === stepId ? { ...step, status: newStatus, actualCompletionDate: newStatus === 'Completed' ? new Date().toISOString().split('T')[0] : step.actualCompletionDate } : step
+          )
+        };
+      });
+    }
+  };
+
+  const handleReceiveConfirm = async () => {
+    const stageId = showReceiveModal;
+    if (!stageId) return;
+    const actual = parseFloat(receiveActualCost);
+    if (isNaN(actual) || actual < 0) {
+      toast.error('Enter valid actual cost (Rs)');
+      return;
+    }
+    setSavingStage(true);
+    try {
+      await studioProductionService.receiveStage(stageId, actual, receiveNotes.trim() || null);
+      toast.success('Received from worker. Stage completed & worker ledger updated.');
+      setShowReceiveModal(null);
+      setReceiveActualCost('');
+      setReceiveNotes('');
+      await reloadProductionSteps();
+    } catch (e: any) {
+      toast.error(e?.message || 'Receive failed');
+    } finally {
+      setSavingStage(false);
+    }
   };
 
   const handleAddAccessory = () => {
@@ -591,32 +726,56 @@ export const StudioSaleDetailNew = () => {
     setShowWorkerEditModal(stepId);
   };
 
-  const handleSaveWorkerEdit = () => {
+  const handleSaveWorkerEdit = async (andStart: boolean = false) => {
     if (!showWorkerEditModal) return;
 
     const totalWorkerCost = editingWorkerData.workers.reduce((sum, w) => sum + w.cost, 0);
-    const workerNames = editingWorkerData.workers.map(w => w.workerName).join(', ');
     const displayName = editingWorkerData.workers.length > 1 
       ? `${editingWorkerData.workers[0].workerName} + ${editingWorkerData.workers.length - 1} more`
       : editingWorkerData.workers[0]?.workerName || '';
 
-    setSaleDetail(prev => ({
-      ...prev,
-      productionSteps: prev.productionSteps.map(step =>
-        step.id === showWorkerEditModal
-          ? {
-              ...step,
-              assignedWorker: displayName,
-              workerId: editingWorkerData.workers[0]?.workerId,
-              assignedWorkers: editingWorkerData.workers,
-              workerCost: totalWorkerCost,
-              expectedCompletionDate: editingWorkerData.expectedCompletionDate,
-              notes: editingWorkerData.notes,
-              assignedDate: step.assignedDate || new Date().toISOString().split('T')[0]
-            }
-          : step
-      )
-    }));
+    const stepId = showWorkerEditModal;
+    const isBackendStageId = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(stepId);
+
+    if (isBackendStageId) {
+      setSavingStage(true);
+      try {
+        await studioProductionService.updateStage(stepId, {
+          assigned_worker_id: editingWorkerData.workers[0]?.workerId || null,
+          cost: totalWorkerCost,
+          expected_completion_date: editingWorkerData.expectedCompletionDate || null,
+          notes: editingWorkerData.notes || null,
+          ...(andStart ? { status: 'in_progress' as const } : {})
+        });
+        toast.success(andStart ? 'Saved & started – stage In Progress' : 'Workers saved');
+        await reloadProductionSteps();
+      } catch (e: any) {
+        console.error('Failed to save workers:', e);
+        toast.error(e?.message || 'Failed to save workers');
+        setSavingStage(false);
+        return;
+      }
+      setSavingStage(false);
+    } else {
+      setSaleDetail(prev => ({
+        ...prev!,
+        productionSteps: prev!.productionSteps.map(step =>
+          step.id === stepId
+            ? {
+                ...step,
+                assignedWorker: displayName,
+                workerId: editingWorkerData.workers[0]?.workerId,
+                assignedWorkers: editingWorkerData.workers,
+                workerCost: totalWorkerCost,
+                expectedCompletionDate: editingWorkerData.expectedCompletionDate,
+                notes: editingWorkerData.notes,
+                assignedDate: step.assignedDate || new Date().toISOString().split('T')[0],
+                ...(andStart ? { status: 'In Progress' as StepStatus } : {})
+              }
+            : step
+        )
+      }));
+    }
 
     setShowWorkerEditModal(null);
   };
@@ -908,11 +1067,11 @@ export const StudioSaleDetailNew = () => {
             </div>
             <div>
               <p className="text-xs text-gray-500 mb-1">Sale Date</p>
-              <p className="text-white">{format(new Date(saleDetail.saleDate), 'dd MMM yyyy')}</p>
+              <p className="text-white">{safeFormatDate(saleDetail.saleDate, 'dd MMM yyyy')}</p>
             </div>
             <div>
               <p className="text-xs text-gray-500 mb-1">Deadline</p>
-              <p className="text-yellow-400 font-medium">{format(new Date(saleDetail.expectedDeliveryDate), 'dd MMM yyyy')}</p>
+              <p className="text-yellow-400 font-medium">{safeFormatDate(saleDetail.expectedDeliveryDate, 'dd MMM yyyy')}</p>
             </div>
             <div>
               <p className="text-xs text-gray-500 mb-1">Total Bill</p>
@@ -980,9 +1139,36 @@ export const StudioSaleDetailNew = () => {
                 })}
             </div>
             
-            {/* Production Complete Badge */}
-            {allTasksCompleted && (
-              <Badge className="bg-green-600 text-white px-4 py-2 text-sm font-semibold animate-pulse">
+            {/* Final Complete: only when all stages completed; disabled until then (DB-driven, safe) */}
+            {productionId && saleDetail.saleStatus !== 'Completed' && (
+              <Button
+                size="sm"
+                disabled={!allTasksCompleted || savingStage}
+                title={!allTasksCompleted ? 'Complete all production stages first' : undefined}
+                onClick={async () => {
+                  if (!allTasksCompleted || !productionId) return;
+                  setSavingStage(true);
+                  try {
+                    await studioProductionService.changeProductionStatus(productionId, 'completed');
+                    toast.success('Production completed. Sale finalized, worker ledger & inventory updated.');
+                    await loadStudioOrder();
+                  } catch (e: any) {
+                    toast.error(e?.message || 'Final completion failed');
+                  } finally {
+                    setSavingStage(false);
+                  }
+                }}
+                className={cn(
+                  "bg-green-600 hover:bg-green-700 text-white",
+                  (!allTasksCompleted || savingStage) && "opacity-50 cursor-not-allowed"
+                )}
+              >
+                {savingStage ? <Loader2 size={16} className="animate-spin mr-2" /> : <CheckCircle2 size={16} className="mr-2" />}
+                Final Complete
+              </Button>
+            )}
+            {allTasksCompleted && saleDetail.saleStatus === 'Completed' && (
+              <Badge className="bg-green-600 text-white px-4 py-2 text-sm font-semibold">
                 <CheckCircle2 size={16} className="mr-2" />
                 Production Complete ✓
               </Badge>
@@ -1161,38 +1347,18 @@ export const StudioSaleDetailNew = () => {
                                       </Button>
                                     )}
                                     
-                                    {/* Recall Task Status - Only for completed tasks */}
-                                    {step.status === 'Completed' && !stepLocked && (
-                                      <Button
-                                        size="sm"
-                                        variant="ghost"
-                                        onClick={() => {
-                                          if (confirm(`Recall "${step.name}" task to Pending status?`)) {
-                                            updateStepStatus(step.id, 'Pending');
-                                          }
-                                        }}
-                                        className="h-8 w-8 p-0 text-yellow-400 hover:text-yellow-300 hover:bg-yellow-900/20"
-                                        title="Recall to Pending"
-                                      >
-                                        <Undo2 size={16} />
-                                      </Button>
-                                    )}
-                                    
-                                    {/* Start/Complete Button - Only show when worker is assigned */}
-                                    {!stepLocked && step.status !== 'Completed' && step.assignedWorker && (
+                                                    {/* In Progress → Receive from Worker (actual cost + worker ledger). Pending: use Edit modal "Save & Start". */}
+                                    {!stepLocked && step.status === 'In Progress' && step.assignedWorker && (
                                       <Button
                                         size="sm"
                                         onClick={() => {
-                                          const newStatus: StepStatus = step.status === 'Pending' ? 'In Progress' : 'Completed';
-                                          updateStepStatus(step.id, newStatus);
+                                          setReceiveActualCost(String(step.workerCost || ''));
+                                          setReceiveNotes(step.notes || '');
+                                          setShowReceiveModal(step.id);
                                         }}
-                                        className={cn(
-                                          "text-xs h-8",
-                                          step.status === 'Pending' && "bg-blue-600 hover:bg-blue-700",
-                                          step.status === 'In Progress' && "bg-green-600 hover:bg-green-700"
-                                        )}
+                                        className="text-xs h-8 bg-green-600 hover:bg-green-700"
                                       >
-                                        {step.status === 'Pending' ? 'Start' : 'Complete'}
+                                        Receive from Worker
                                       </Button>
                                     )}
                                     
@@ -1238,7 +1404,7 @@ export const StudioSaleDetailNew = () => {
                                   <div className="flex items-center gap-2 text-sm">
                                     <Calendar size={14} className="text-gray-500" />
                                     <span className="text-gray-400">
-                                      Assigned: {format(new Date(step.assignedDate), 'dd MMM yyyy')}
+                                      Assigned: {safeFormatDate(step.assignedDate, 'dd MMM yyyy')}
                                     </span>
                                   </div>
                                 )}
@@ -1246,7 +1412,7 @@ export const StudioSaleDetailNew = () => {
                                   <div className="flex items-center gap-2 text-sm">
                                     <Clock size={14} className="text-gray-500" />
                                     <span className="text-gray-400">
-                                      Expected: {format(new Date(step.expectedCompletionDate), 'dd MMM yyyy')}
+                                      Expected: {safeFormatDate(step.expectedCompletionDate, 'dd MMM yyyy')}
                                     </span>
                                   </div>
                                 )}
@@ -1254,7 +1420,7 @@ export const StudioSaleDetailNew = () => {
                                   <div className="flex items-center gap-2 text-sm">
                                     <CheckCircle size={14} className="text-green-400" />
                                     <span className="text-green-400">
-                                      Completed: {format(new Date(step.actualCompletionDate), 'dd MMM yyyy')}
+                                      Completed: {safeFormatDate(step.actualCompletionDate, 'dd MMM yyyy')}
                                     </span>
                                   </div>
                                 )}
@@ -1527,13 +1693,13 @@ export const StudioSaleDetailNew = () => {
                               {shipment.bookingDate && (
                                 <div>
                                   <p className="text-xs text-gray-500 mb-1">Booking Date</p>
-                                  <p className="text-white">{format(new Date(shipment.bookingDate), 'dd MMM yyyy')}</p>
+                                  <p className="text-white">{safeFormatDate(shipment.bookingDate, 'dd MMM yyyy')}</p>
                                 </div>
                               )}
                               {shipment.expectedDeliveryDate && (
                                 <div>
                                   <p className="text-xs text-gray-500 mb-1">Expected Delivery</p>
-                                  <p className="text-yellow-400">{format(new Date(shipment.expectedDeliveryDate), 'dd MMM yyyy')}</p>
+                                  <p className="text-yellow-400">{safeFormatDate(shipment.expectedDeliveryDate, 'dd MMM yyyy')}</p>
                                 </div>
                               )}
                             </div>
@@ -1654,7 +1820,7 @@ export const StudioSaleDetailNew = () => {
                                       <div className="flex-1 min-w-0">
                                         <p className="text-xs text-white truncate">{doc.name}</p>
                                         <p className="text-[10px] text-gray-500">
-                                          {format(new Date(doc.uploadedAt), 'dd MMM yyyy HH:mm')}
+                                          {safeFormatDate(doc.uploadedAt, 'dd MMM yyyy HH:mm')}
                                         </p>
                                       </div>
                                       <Button
@@ -1781,6 +1947,17 @@ export const StudioSaleDetailNew = () => {
                         <span className="text-blue-400">Rs {saleDetail.shipmentCharges.toLocaleString()}</span>
                       </div>
                     )}
+                    {saleDetail.productionSteps.length > 0 && (() => {
+                      const studioCharges = saleDetail.productionSteps
+                        .filter(s => s.status === 'Completed')
+                        .reduce((s, step) => s + step.workerCost, 0);
+                      return studioCharges > 0 ? (
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="text-gray-500">Studio Charges (actual worker cost)</span>
+                          <span className="text-orange-400">Rs {studioCharges.toLocaleString()}</span>
+                        </div>
+                      ) : null;
+                    })()}
                     {saleDetail.paidAmount > 0 && (
                       <>
                         <div className="h-px bg-gray-800"></div>
@@ -1822,8 +1999,9 @@ export const StudioSaleDetailNew = () => {
                     <div className="flex-1">
                       <p className="text-sm font-semibold text-blue-400 mb-1">💡 Payment Handling</p>
                       <p className="text-xs text-gray-400 mb-3">
-                        All payments are managed in <strong className="text-blue-400">Accounting → Customer Receipts</strong> module. 
-                        Payments automatically sync with this order.
+                        Customer payments: <strong className="text-blue-400">Accounting → Customer Receipts</strong>. 
+                        Worker payments are separate: <strong className="text-blue-400">Accounting → Worker Payments</strong>. 
+                        Balance Due is driven by customer receipts only.
                       </p>
                       {saleDetail.balanceDue > 0 && (
                         <Button
@@ -1864,7 +2042,7 @@ export const StudioSaleDetailNew = () => {
                         </div>
                         <div className="flex items-center gap-2 text-xs text-gray-500">
                           <Calendar size={12} />
-                          <span>{format(new Date(payment.date), 'dd MMM yyyy')}</span>
+                          <span>{safeFormatDate(payment.date, 'dd MMM yyyy')}</span>
                           {payment.reference && (
                             <>
                               <span>•</span>
@@ -2073,10 +2251,15 @@ export const StudioSaleDetailNew = () => {
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[9999] p-4" style={{ zIndex: 9999 }}>
           <div className="bg-gray-900 border border-gray-800 rounded-xl p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-5">
-              <h3 className="text-lg font-bold text-white flex items-center gap-2">
-                <Users size={18} className="text-blue-400" />
-                Manage Workers
-              </h3>
+              <div>
+                <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                  <Users size={18} className="text-blue-400" />
+                  Manage Workers
+                </h3>
+                {saleDetail?.productionSteps.find(s => s.id === showWorkerEditModal)?.status === 'Pending' && (
+                  <p className="text-xs text-gray-500 mt-1">Save & Start saves to DB and sets stage to In Progress. Next step unlocks after you Receive from Worker.</p>
+                )}
+              </div>
               <Button
                 size="sm"
                 variant="ghost"
@@ -2215,23 +2398,82 @@ export const StudioSaleDetailNew = () => {
                 </p>
               </div>
 
-              <div className="flex gap-3 pt-2">
+              <div className="flex flex-wrap gap-3 pt-2">
                 <Button
                   onClick={() => setShowWorkerEditModal(null)}
                   variant="outline"
-                  className="flex-1 border-gray-700"
+                  className="border-gray-700"
+                  disabled={savingStage}
                 >
                   Cancel
                 </Button>
-                <Button
-                  onClick={handleSaveWorkerEdit}
-                  disabled={editingWorkerData.workers.length === 0}
-                  className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:opacity-50"
-                >
-                  <Save size={16} className="mr-2" />
-                  Save Workers
-                </Button>
+                {(() => {
+                  const currentStep = saleDetail?.productionSteps.find(s => s.id === showWorkerEditModal);
+                  const isPending = currentStep?.status === 'Pending';
+                  return isPending ? (
+                    <Button
+                      onClick={() => handleSaveWorkerEdit(true)}
+                      disabled={editingWorkerData.workers.length === 0 || savingStage}
+                      className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:opacity-50"
+                    >
+                      {savingStage ? <Loader2 size={16} className="animate-spin mr-2" /> : <ArrowRight size={16} className="mr-2" />}
+                      Save & Start
+                    </Button>
+                  ) : (
+                    <Button
+                      onClick={() => handleSaveWorkerEdit(false)}
+                      disabled={editingWorkerData.workers.length === 0 || savingStage}
+                      className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:opacity-50"
+                    >
+                      {savingStage ? <Loader2 size={16} className="animate-spin mr-2" /> : <Save size={16} className="mr-2" />}
+                      Save
+                    </Button>
+                  );
+                })()}
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Receive from Worker Modal */}
+      {showReceiveModal && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[9999] p-4" style={{ zIndex: 9999 }}>
+          <div className="bg-gray-900 border border-gray-800 rounded-xl p-6 max-w-md w-full">
+            <h3 className="text-lg font-bold text-white mb-1">Receive from Worker</h3>
+            <p className="text-sm text-gray-400 mb-4">Enter actual cost (Rs) and remarks. On confirm: stage → Completed, worker_ledger_entries updated. Worker payment is separate from customer payments.</p>
+            <div className="space-y-4">
+              <div>
+                <label className="text-sm text-gray-400 mb-1 block">Actual Cost (Rs) *</label>
+                <Input
+                  type="number"
+                  min={0}
+                  step={1}
+                  value={receiveActualCost}
+                  onChange={(e) => setReceiveActualCost(e.target.value)}
+                  placeholder="0"
+                  className="bg-gray-950 border-gray-700"
+                />
+              </div>
+              <div>
+                <label className="text-sm text-gray-400 mb-1 block">Remarks (optional)</label>
+                <textarea
+                  value={receiveNotes}
+                  onChange={(e) => setReceiveNotes(e.target.value)}
+                  placeholder="Issues, notes..."
+                  rows={2}
+                  className="w-full bg-gray-950 border border-gray-700 rounded-lg text-white px-3 py-2 text-sm resize-none"
+                />
+              </div>
+            </div>
+            <div className="flex gap-3 mt-6">
+              <Button variant="outline" className="flex-1 border-gray-700" onClick={() => { setShowReceiveModal(null); setReceiveActualCost(''); setReceiveNotes(''); }} disabled={savingStage}>
+                Cancel
+              </Button>
+              <Button className="flex-1 bg-green-600 hover:bg-green-700" onClick={handleReceiveConfirm} disabled={savingStage}>
+                {savingStage ? <Loader2 size={16} className="animate-spin mr-2" /> : null}
+                Confirm Receive
+              </Button>
             </div>
           </div>
         </div>

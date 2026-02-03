@@ -213,13 +213,9 @@ export const StudioSalesListNew = () => {
   };
 
   const handleViewDetail = (sale: StudioSale) => {
-    // Open in NEW TAB with unique URL
-    const detailUrl = `/studio/sale/${sale.id}`;
-    
-    // For now, we'll use navigation context but set it to open like a new page
-    // In a real app with routing, this would be: window.open(detailUrl, '_blank')
+    // Option A: Open production wizard (production ensured on load)
     setSelectedStudioSaleId?.(sale.id);
-    setCurrentView('studio-sale-detail');
+    setCurrentView('studio-production-test');
   };
 
   // Status badge color

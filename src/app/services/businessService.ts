@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 
-// Service role client (bypasses RLS)
+// Service role client (bypasses RLS) – only for createBusiness; use in-memory auth so we don't get "Multiple GoTrueClient instances"
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || import.meta.env.NEXT_PUBLIC_SUPABASE_URL;
 const serviceRoleKey = import.meta.env.VITE_SUPABASE_SERVICE_ROLE_KEY || import.meta.env.SUPABASE_SERVICE_ROLE_KEY;
 
@@ -8,11 +8,17 @@ if (!supabaseUrl || !serviceRoleKey) {
   console.error('Missing Supabase credentials for business creation');
 }
 
+const memoryStorage: { [key: string]: string } = {};
 const supabaseAdmin = supabaseUrl && serviceRoleKey
   ? createClient(supabaseUrl, serviceRoleKey, {
       auth: {
         autoRefreshToken: false,
         persistSession: false,
+        storage: {
+          getItem: (key: string) => memoryStorage[key] ?? null,
+          setItem: (key: string, value: string) => { memoryStorage[key] = value; },
+          removeItem: (key: string) => { delete memoryStorage[key]; },
+        },
       },
     })
   : null;

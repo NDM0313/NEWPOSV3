@@ -59,73 +59,72 @@ export const contactService = {
   },
 
   // Create contact
-  async createContact(contact: Partial<Contact>) {
+  async createContact(contact: Partial<Contact> & Record<string, unknown>) {
+    // Strip undefined so Supabase doesn't get invalid/missing column values
+    const clean = (obj: Record<string, unknown>): Record<string, unknown> => {
+      const out: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(obj)) {
+        if (v !== undefined && v !== null) out[k] = v;
+      }
+      return out;
+    };
+    const payload = clean(contact as Record<string, unknown>);
+    // Ensure required fields exist
+    if (!payload.company_id || !payload.type || !payload.name) {
+      throw new Error('company_id, type, and name are required');
+    }
+
     const { data, error } = await supabase
       .from('contacts')
-      .insert(contact)
+      .insert(payload)
       .select()
       .single();
 
-    // If error is about missing columns (PGRST204), retry without them
-    if (error && (error.code === 'PGRST204' || error.code === 'PGRST116' || error.status === 400)) {
-      const errorMessage = error.message || '';
-      const missingColumns: string[] = [];
-      
-      // Check which columns are missing
-      if (errorMessage.includes('country') || errorMessage.includes("'country'")) {
-        missingColumns.push('country');
-      }
-      if (errorMessage.includes('contact_person') || errorMessage.includes("'contact_person'")) {
-        missingColumns.push('contact_person');
-      }
-      if (errorMessage.includes('group_id') || errorMessage.includes("'group_id'")) {
-        missingColumns.push('group_id');
-      }
-      
-      if (missingColumns.length > 0) {
-        // Silently retry without missing columns (expected behavior when migration not run)
-        // Remove missing columns from contact data
-        const contactWithoutMissing = { ...contact };
-        missingColumns.forEach(col => {
-          delete (contactWithoutMissing as any)[col];
-        });
-        
-        const { data: retryData, error: retryError } = await supabase
-          .from('contacts')
-          .insert(contactWithoutMissing)
-          .select()
-          .single();
+    if (!error) return data;
 
-        if (retryError && retryError.code === 'PGRST204') {
-          // If still failing, try removing all optional fields that might not exist
-          const { 
-            country, 
-            contact_person, 
-            group_id, 
-            business_name,
-            payable_account_id,
-            supplier_opening_balance,
-            worker_role,
-            ...contactMinimal 
-          } = contactWithoutMissing;
-          
-          const { data: minimalData, error: minimalError } = await supabase
-            .from('contacts')
-            .insert(contactMinimal)
-            .select()
-            .single();
-          
-          if (minimalError) throw minimalError;
-          return minimalData;
-        }
-        
-        if (retryError) throw retryError;
-        return retryData;
-      }
+    const isBadRequest = error.code === 'PGRST204' || error.code === 'PGRST116' || error.status === 400;
+    if (!isBadRequest) throw error;
+
+    const errorMessage = (error.message || '').toLowerCase();
+    // Columns that may not exist until migration is run
+    const optionalColumns = [
+      'country', 'contact_person', 'group_id', 'business_name',
+      'payable_account_id', 'supplier_opening_balance', 'worker_role',
+      'branch_id', 'current_balance'
+    ];
+    const toStrip = optionalColumns.filter(
+      (col) => errorMessage.includes(col.replace(/_/g, ' ')) || errorMessage.includes("'" + col + "'")
+    );
+    if (toStrip.length > 0) {
+      const reduced = { ...payload };
+      toStrip.forEach((col) => delete reduced[col]);
+      const { data: retryData, error: retryError } = await supabase
+        .from('contacts')
+        .insert(reduced)
+        .select()
+        .single();
+      if (!retryError) return retryData;
     }
 
-    if (error) throw error;
-    return data;
+    // Retry with only base schema columns (no optional/extended columns)
+    const baseColumns = [
+      'company_id', 'type', 'name', 'email', 'phone', 'mobile', 'cnic', 'ntn',
+      'address', 'city', 'state', 'country', 'postal_code', 'tax_number',
+      'opening_balance', 'credit_limit', 'payment_terms', 'notes', 'is_active', 'created_by', 'branch_id'
+    ];
+    const minimal: Record<string, unknown> = {};
+    baseColumns.forEach((k) => {
+      if (payload[k] !== undefined && payload[k] !== null) minimal[k] = payload[k];
+    });
+    const { data: minimalData, error: minimalError } = await supabase
+      .from('contacts')
+      .insert(minimal)
+      .select()
+      .single();
+    if (!minimalError) return minimalData;
+
+    console.error('[CONTACT SERVICE] createContact failed:', error.message, minimalError?.message);
+    throw error;
   },
 
   // Update contact

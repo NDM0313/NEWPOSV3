@@ -331,7 +331,7 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
       const data = await accountService.getAllAccounts(companyId, branchId === 'all' ? undefined : branchId || undefined);
       const convertedAccounts = data.map(convertFromSupabaseAccount);
       setAccounts(convertedAccounts);
-      console.log('✅ Accounts loaded from database:', convertedAccounts.length);
+      if (import.meta.env?.DEV) console.log('✅ Accounts loaded:', convertedAccounts.length);
     } catch (error) {
       console.error('[ACCOUNTING CONTEXT] Error loading accounts:', error);
       setAccounts([]);
@@ -355,7 +355,7 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
       );
       const convertedEntries = data.map(convertFromJournalEntry);
       setEntries(convertedEntries);
-      console.log('✅ Journal entries loaded from database:', convertedEntries.length);
+      if (import.meta.env?.DEV) console.log('✅ Journal entries loaded:', convertedEntries.length);
       
       // Recalculate balances from real entries
       recalculateBalances(convertedEntries);

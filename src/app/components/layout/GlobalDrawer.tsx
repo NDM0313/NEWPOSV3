@@ -470,50 +470,50 @@ const ContactFormContent = ({ onClose }: { onClose: () => void }) => {
         }
       }
       
-      const contactData: any = {
+      const contactData: Record<string, unknown> = {
         company_id: companyId,
-        branch_id: branchId || undefined,
-        type: primaryType === 'both' ? 'customer' : primaryType, // Fallback to 'customer' if 'both' not supported
-        name: name,
-        phone: phone,
-        email: formData.get('email') as string || undefined,
-        address: formData.get('address') as string || undefined,
-        city: formData.get('city') as string || undefined,
+        type: primaryType === 'both' ? 'customer' : primaryType,
+        name: (name || '').trim() || undefined,
+        phone: (phone || '').trim() || undefined,
+        email: (formData.get('email') as string)?.trim() || undefined,
+        address: (formData.get('address') as string)?.trim() || undefined,
+        city: (formData.get('city') as string)?.trim() || undefined,
         country: country === 'pk' ? 'Pakistan' : country === 'in' ? 'India' : country === 'bd' ? 'Bangladesh' : 'Pakistan',
         opening_balance: parseFloat(formData.get('opening-balance') as string) || 0,
         credit_limit: parseFloat(formData.get('credit-limit') as string) || 0,
         payment_terms: parseInt(formData.get('pay-term') as string) || 0,
-        tax_number: formData.get('tax-id') as string || undefined,
-        notes: formData.get('notes') as string || undefined,
+        tax_number: (formData.get('tax-id') as string)?.trim() || undefined,
+        notes: (formData.get('notes') as string)?.trim() || undefined,
         created_by: user.id,
       };
-      
-      // Add contact group if selected (skip if "none")
-      if (selectedGroupId && selectedGroupId !== 'none') {
-        contactData.group_id = selectedGroupId;
+      // Only set branch_id when it's a valid UUID (not "all" or other non-UUID)
+      if (branchId && branchId !== 'all' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(branchId)) {
+        contactData.branch_id = branchId;
       }
-      
-      // Add supplier-specific fields if supplier is selected
+      if (selectedGroupId && selectedGroupId !== 'none') contactData.group_id = selectedGroupId;
+
       if (contactRoles.supplier) {
-        const supplierBusinessName = formData.get('supplier-business-name') as string;
-        const contactPerson = formData.get('contact-person') as string;
-        const ntn = formData.get('supplier-ntn') as string;
-        const payableAccount = formData.get('supplier-payable-account') as string;
+        const supplierBusinessName = (formData.get('supplier-business-name') as string)?.trim();
+        const contactPerson = (formData.get('contact-person') as string)?.trim();
+        const ntn = (formData.get('supplier-ntn') as string)?.trim();
+        const payableAccount = (formData.get('supplier-payable-account') as string)?.trim();
         const supplierOpeningBalance = formData.get('supplier-opening-balance') as string;
-        
         if (supplierBusinessName) contactData.business_name = supplierBusinessName;
-        // Only add contact_person if it has a value (column may not exist in DB yet)
-        if (contactPerson && contactPerson.trim() !== '') {
-          contactData.contact_person = contactPerson;
-        }
+        if (contactPerson) contactData.contact_person = contactPerson;
         if (ntn) contactData.ntn = ntn;
         if (payableAccount) contactData.payable_account_id = payableAccount;
-        if (supplierOpeningBalance) contactData.supplier_opening_balance = parseFloat(supplierOpeningBalance) || 0;
+        if (supplierOpeningBalance != null && supplierOpeningBalance !== '') contactData.supplier_opening_balance = parseFloat(supplierOpeningBalance) || 0;
       }
-      
-      // Add worker-specific fields if worker is selected
-      if (contactRoles.worker) {
-        contactData.worker_role = workerType;
+      if (contactRoles.worker && workerType) contactData.worker_role = workerType;
+
+      // Remove undefined so API doesn't receive invalid payload
+      Object.keys(contactData).forEach((k) => {
+        if (contactData[k] === undefined) delete contactData[k];
+      });
+      if (!contactData.name) {
+        toast.error('Contact name is required');
+        setSaving(false);
+        return;
       }
 
       // Validate at least one role is selected

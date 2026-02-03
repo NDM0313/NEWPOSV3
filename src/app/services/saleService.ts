@@ -341,25 +341,42 @@ export const saleService = {
     return data;
   },
 
-  // Get single sale
+  // Get single sale (fallback without journal_entries if relation causes 400/406)
   async getSale(id: string) {
+    const withJournal = `
+      *,
+      customer:contacts(*),
+      items:sales_items(
+        *,
+        product:products(*),
+        variation:product_variations(*)
+      ),
+      journal:journal_entries(entry_no, entry_date)
+    `;
+    const withoutJournal = `
+      *,
+      customer:contacts(*),
+      items:sales_items(
+        *,
+        product:products(*),
+        variation:product_variations(*)
+      )
+    `;
     const { data, error } = await supabase
       .from('sales')
-      .select(`
-        *,
-        customer:contacts(*),
-        items:sales_items(
-          *,
-          product:products(*),
-          variation:product_variations(*)
-        ),
-        journal:journal_entries(entry_no, entry_date)
-      `)
+      .select(withJournal)
       .eq('id', id)
       .single();
 
-    if (error) throw error;
-    return data;
+    if (!error) return data;
+
+    const { data: fallbackData, error: fallbackError } = await supabase
+      .from('sales')
+      .select(withoutJournal)
+      .eq('id', id)
+      .single();
+    if (fallbackError) throw fallbackError;
+    return fallbackData;
   },
 
   // Update sale status

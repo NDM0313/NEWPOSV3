@@ -158,14 +158,7 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           return;
         }
       } else if (data) {
-        if (process.env.NODE_ENV === 'development') {
-          console.log('[FETCH USER DATA SUCCESS]', {
-            userId: userId,
-            companyId: data.company_id,
-            role: data.role,
-            isActive: data.is_active
-          });
-        }
+        if (import.meta.env?.DEV) console.log('[FETCH USER DATA SUCCESS]', { companyId: data.company_id, role: data.role });
         setCompanyId(data.company_id);
         setUserRole(data.role);
         fetchedRef.current.add(userId);
@@ -198,7 +191,7 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       if (isAdmin) {
         setDefaultBranchId('all');
         setBranchId('all');
-        console.log('[BRANCH LOADED] Admin: All Branches');
+        if (import.meta.env?.DEV) console.log('[BRANCH LOADED] Admin: All Branches');
         return;
       }
 
@@ -213,7 +206,7 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       if (userBranch && !branchError) {
         setDefaultBranchId(userBranch.branch_id);
         setBranchId(userBranch.branch_id);
-        console.log('[BRANCH LOADED]', { branchId: userBranch.branch_id });
+        if (import.meta.env?.DEV) console.log('[BRANCH LOADED]', { branchId: userBranch.branch_id });
         return;
       }
 
@@ -234,7 +227,7 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       if (companyBranch && !companyBranchError) {
         setDefaultBranchId(companyBranch.id);
         setBranchId(companyBranch.id);
-        console.log('[BRANCH LOADED] Default company branch:', companyBranch.id);
+        if (import.meta.env?.DEV) console.log('[BRANCH LOADED] Default company branch:', companyBranch.id);
       } else {
         setDefaultBranchId(null);
         setBranchId(null);
@@ -250,7 +243,7 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   // Sign in
   const signIn = async (email: string, password: string) => {
-    console.log('[AUTH] Attempting sign in:', { email, timestamp: new Date().toISOString() });
+    if (import.meta.env?.DEV) console.log('[AUTH] Attempting sign in:', { email });
     
     const result = await supabase.auth.signInWithPassword({ email, password });
     
@@ -262,14 +255,8 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         email: email,
         timestamp: new Date().toISOString()
       });
-    } else if (result.data?.user) {
-      console.log('[AUTH SUCCESS] Sign in successful:', {
-        userId: result.data.user.id,
-        email: result.data.user.email,
-        emailConfirmed: !!result.data.user.email_confirmed_at,
-        sessionExists: !!result.data.session,
-        timestamp: new Date().toISOString()
-      });
+    } else if (result.data?.user && import.meta.env?.DEV) {
+      console.log('[AUTH SUCCESS] Sign in successful:', { userId: result.data.user.id, email: result.data.user.email });
     }
     
     return result;

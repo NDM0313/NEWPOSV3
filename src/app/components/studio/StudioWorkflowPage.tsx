@@ -158,7 +158,7 @@ export const StudioWorkflowPage: React.FC = () => {
     loadWorkers();
   }, [loadWorkers]);
 
-  // Filtered workers
+  // Filtered workers (workers in deps so list updates when data loads)
   const filteredWorkers = useMemo(() => {
     return workers.filter(worker => {
       // Search filter
@@ -179,7 +179,7 @@ export const StudioWorkflowPage: React.FC = () => {
 
       return true;
     });
-  }, [searchTerm, departmentFilter, statusFilter]);
+  }, [workers, searchTerm, departmentFilter, statusFilter]);
 
   // Pagination
   const paginatedWorkers = useMemo(() => {

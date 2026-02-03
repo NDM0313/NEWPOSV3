@@ -589,7 +589,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
         posModuleEnabled: getModuleEnabled('pos'),
       });
 
-      console.log('✅ Settings loaded from database');
+      if (import.meta.env?.DEV) console.log('✅ Settings loaded');
     } catch (error) {
       console.error('[SETTINGS CONTEXT] Error loading settings:', error);
       toast.error('Failed to load settings');
