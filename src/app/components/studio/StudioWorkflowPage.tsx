@@ -20,7 +20,7 @@ import { Badge } from '../ui/badge';
 import { Input } from '../ui/input';
 import { useNavigation } from '../../context/NavigationContext';
 import { useSupabase } from '../../context/SupabaseContext';
-import { contactService } from '../../services/contactService';
+import { studioService } from '../../services/studioService';
 import { Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -91,7 +91,7 @@ const getStatusIcon = (status: WorkerStatus) => {
 // ============================================
 
 export const StudioWorkflowPage: React.FC = () => {
-  const { setCurrentView, openDrawer } = useNavigation();
+  const { setCurrentView, openDrawer, setSelectedWorkerId } = useNavigation();
   const { companyId } = useSupabase();
   const [workers, setWorkers] = useState<Worker[]>([]);
   const [loading, setLoading] = useState(true);
@@ -102,45 +102,40 @@ export const StudioWorkflowPage: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [filterOpen, setFilterOpen] = useState(false);
   
-  // Load workers from Contacts (type=worker) – same list as Contacts page
+  // Load workers from workers table with real stats (stages + ledger)
   const loadWorkers = useCallback(async () => {
     if (!companyId) return;
     
     try {
       setLoading(true);
-      const workerContacts = await contactService.getAllContacts(companyId, 'worker');
+      const withStats = await studioService.getWorkersWithStats(companyId);
       
-      // Map contact (type=worker) to component Worker format
-      const mappedWorkers: Worker[] = (workerContacts || []).map((c: any) => {
-        // Map worker_role to department (Contacts: tailor, stitching-master, cutter, hand-worker, dyer, helper)
-        let department: DepartmentType = 'Stitching';
-        const role = (c.worker_role || '').toLowerCase();
-        if (role === 'dyer') {
-          department = 'Dyeing';
-        } else if (role === 'hand-worker' || role === 'helper') {
-          department = 'Handwork';
-        } else if (role === 'tailor' || role === 'stitching-master' || role === 'cutter') {
-          department = 'Stitching';
-        }
-        
-        const balance = Number(c.current_balance) || 0;
+      const mapDepartment = (workerType?: string): DepartmentType => {
+        const t = (workerType || '').toLowerCase();
+        if (t === 'dyer') return 'Dyeing';
+        if (t === 'hand-worker' || t === 'helper' || t === 'handwork') return 'Handwork';
+        return 'Stitching';
+      };
+      
+      const mappedWorkers: Worker[] = (withStats || []).map((w: any) => {
+        const activeJobs = Number(w.activeJobs) || 0;
         let status: WorkerStatus = 'Available';
-        if (balance > 5000) status = 'Overloaded';
-        else if (balance > 0) status = 'Busy';
+        if (activeJobs > 5) status = 'Overloaded';
+        else if (activeJobs > 0) status = 'Busy';
         
         return {
-          id: c.id || '',
-          name: c.name || '',
-          phone: c.phone || c.mobile || '',
-          department,
-          activeJobs: 0,
-          pendingJobs: 0,
-          completedJobs: 0,
-          pendingAmount: balance,
-          totalEarnings: 0,
+          id: w.id || '',
+          name: w.name || '',
+          phone: w.phone || '',
+          department: mapDepartment(w.worker_type),
+          activeJobs,
+          pendingJobs: Number(w.pendingJobs) || 0,
+          completedJobs: Number(w.completedJobs) || 0,
+          pendingAmount: Number(w.pendingAmount) || 0,
+          totalEarnings: Number(w.totalEarnings) || 0,
           status,
           rating: 4.5,
-          joinedDate: c.created_at ? new Date(c.created_at) : new Date()
+          joinedDate: w.created_at ? new Date(w.created_at) : new Date()
         };
       });
       
@@ -205,20 +200,15 @@ export const StudioWorkflowPage: React.FC = () => {
   };
 
   const handleViewWorkerDetail = (workerId: string) => {
-    // Open worker detail in new tab
-    const detailUrl = `/worker-detail/${workerId}`;
-    window.open(detailUrl, '_blank');
-    // In real app, you would use router navigation
-    console.log('Opening worker detail:', workerId);
+    setSelectedWorkerId?.(workerId);
+    setCurrentView('worker-detail');
   };
 
   const handleAddWorker = () => {
-    // Navigate to Contacts page
     setCurrentView('contacts');
-    // Open Add Contact drawer with Worker type pre-selected
     setTimeout(() => {
       openDrawer('addContact', undefined, { contactType: 'worker' });
-    }, 100); // Small delay to ensure page transition
+    }, 100);
   };
 
   // Summary stats
@@ -241,17 +231,28 @@ export const StudioWorkflowPage: React.FC = () => {
     setStatusFilter('all');
   };
 
-  // Export handlers
   const handleExportCSV = () => {
-    console.log('Export Workers CSV');
-  };
-
-  const handleExportExcel = () => {
-    console.log('Export Workers Excel');
-  };
-
-  const handleExportPDF = () => {
-    console.log('Export Workers PDF');
+    const headers = ['Name', 'Phone', 'Department', 'Active Jobs', 'Pending Jobs', 'Completed', 'Due Balance (Rs)', 'Total Earnings (Rs)', 'Status'];
+    const rows = filteredWorkers.map(w => [
+      w.name,
+      w.phone,
+      w.department,
+      String(w.activeJobs),
+      String(w.pendingJobs),
+      String(w.completedJobs),
+      String(w.pendingAmount),
+      String(w.totalEarnings),
+      w.status
+    ]);
+    const csvContent = [headers.join(','), ...rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(','))].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `workers-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast.success('Workers exported to CSV');
   };
   
   // Show loader while loading
@@ -466,7 +467,7 @@ export const StudioWorkflowPage: React.FC = () => {
                 <th className="px-6 py-3 font-medium text-center">Active Jobs</th>
                 <th className="px-6 py-3 font-medium text-center">Pending Jobs</th>
                 <th className="px-6 py-3 font-medium text-center">Completed</th>
-                <th className="px-6 py-3 font-medium text-right">Pending Amount</th>
+                <th className="px-6 py-3 font-medium text-right">Due Balance</th>
                 <th className="px-6 py-3 font-medium text-center">Status</th>
                 <th className="px-6 py-3 font-medium text-center">Actions</th>
                 </tr>
@@ -533,7 +534,7 @@ export const StudioWorkflowPage: React.FC = () => {
                       </span>
                     </td>
 
-                    {/* Pending Amount */}
+                    {/* Due Balance (amount we owe to worker) */}
                     <td className="px-6 py-4 text-right">
                       {worker.pendingAmount > 0 ? (
                         <div className="flex flex-col items-end">
@@ -544,7 +545,8 @@ export const StudioWorkflowPage: React.FC = () => {
                             className="text-xs text-blue-400 hover:text-blue-300 flex items-center gap-1 mt-1 group/link"
                             onClick={(e) => {
                               e.stopPropagation();
-                              console.log('Go to accounting for worker:', worker.id);
+                              setSelectedWorkerId?.(worker.id);
+                              setCurrentView('worker-detail');
                             }}
                           >
                             View in Accounting
@@ -552,7 +554,7 @@ export const StudioWorkflowPage: React.FC = () => {
                           </button>
                         </div>
                       ) : (
-                        <span className="text-gray-500 text-sm">Cleared</span>
+                        <span className="text-green-500 text-sm font-medium">Cleared</span>
                       )}
                     </td>
 

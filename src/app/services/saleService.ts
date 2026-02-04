@@ -224,6 +224,24 @@ export const saleService = {
     return data;
   },
 
+  /** Get next studio invoice number from DB (max existing STD-* + 1). Use when document_sequences has no studio row. */
+  async getNextStudioInvoiceNumber(companyId: string): Promise<number> {
+    const { data, error } = await supabase
+      .from('sales')
+      .select('invoice_no')
+      .eq('company_id', companyId)
+      .ilike('invoice_no', 'STD-%');
+    if (error) return 1;
+    const numbers = (data || [])
+      .map((r: any) => {
+        const match = (r.invoice_no || '').match(/^STD-0*(\d+)$/i);
+        return match ? parseInt(match[1], 10) : 0;
+      })
+      .filter((n: number) => !isNaN(n));
+    const max = numbers.length > 0 ? Math.max(...numbers) : 0;
+    return max + 1;
+  },
+
   // Get sales for Studio Sales list by invoice_no prefix 'STD-%' so STD-0002 etc. show (avoids 400 when is_studio column missing).
   async getStudioSales(companyId: string, branchId?: string) {
     let q = supabase

@@ -431,6 +431,27 @@ export const studioProductionService = {
     }
   },
 
+  /** Ledger status per stage (for Payable vs Paid). Returns {} if status column missing. */
+  async getLedgerStatusForStages(stageIds: string[]): Promise<Record<string, 'unpaid' | 'paid'>> {
+    if (stageIds.length === 0) return {};
+    try {
+      const { data, error } = await supabase
+        .from('worker_ledger_entries')
+        .select('reference_id, status')
+        .eq('reference_type', 'studio_production_stage')
+        .in('reference_id', stageIds);
+      if (error) return {}; // e.g. column "status" does not exist before migration
+      const out: Record<string, 'unpaid' | 'paid'> = {};
+      (data || []).forEach((row: { reference_id: string; status?: string }) => {
+        const st = (row.status || 'unpaid').toLowerCase();
+        out[row.reference_id] = st === 'paid' ? 'paid' : 'unpaid';
+      });
+      return out;
+    } catch {
+      return {};
+    }
+  },
+
   /** Create a stage (process step) for a production. Manager assigns worker, estimated cost, expected date. */
   async createStage(
     productionId: string,
@@ -507,14 +528,15 @@ export const studioProductionService = {
   },
 
   /**
-   * Receive from worker: mark stage completed with actual cost, and add worker_ledger_entries.
-   * Worker payment is separate from customer payments.
+   * Receive from worker: mark stage completed with actual cost, add worker_ledger_entries as unpaid only.
+   * No auto payment – user chooses Pay Now or Pay Later (Accounting → Worker Payments).
+   * Returns { stage, ledgerEntryId } so UI can show "Pay Now?" and record payment against this entry.
    */
   async receiveStage(
     stageId: string,
     actualCost: number,
     notes?: string | null
-  ): Promise<StudioProductionStage> {
+  ): Promise<{ stage: StudioProductionStage; ledgerEntryId: string | null }> {
     const { data: stageRow, error: stageErr } = await supabase
       .from('studio_production_stages')
       .select('id, production_id, assigned_worker_id, status')
@@ -539,6 +561,7 @@ export const studioProductionService = {
       notes: notes ?? null,
     });
 
+    let ledgerEntryId: string | null = null;
     const workerId = stage.assigned_worker_id;
     if (workerId && actualCost > 0) {
       const { data: existingLedger } = await supabase
@@ -549,18 +572,91 @@ export const studioProductionService = {
         .limit(1)
         .maybeSingle();
       if (!existingLedger) {
-        const { error: ledgerErr } = await supabase.from('worker_ledger_entries').insert({
+        const insertPayload: Record<string, unknown> = {
           company_id: production.company_id,
           worker_id: workerId,
           amount: actualCost,
           reference_type: 'studio_production_stage',
           reference_id: stageId,
           notes: notes || `Studio production ${production.production_no} – stage received`,
-        });
+          status: 'unpaid',
+        };
+        const { data: inserted, error: ledgerErr } = await supabase
+          .from('worker_ledger_entries')
+          .insert(insertPayload)
+          .select('id')
+          .single();
         if (ledgerErr) throw new Error(`Worker ledger failed: ${ledgerErr.message}`);
+        ledgerEntryId = (inserted as any)?.id ?? null;
+        // Increase worker's payable balance (amount we owe); reduced when user pays via markStageLedgerPaid
+        const { data: workerRow } = await supabase.from('workers').select('current_balance').eq('id', workerId).single();
+        const currentBalance = Number((workerRow as any)?.current_balance) || 0;
+        await supabase.from('workers').update({ current_balance: currentBalance + actualCost, updated_at: new Date().toISOString() }).eq('id', workerId);
       }
     }
 
-    return updated;
+    return { stage: updated, ledgerEntryId };
+  },
+
+  /**
+   * Mark worker ledger entry for a stage as paid (after user records payment via Pay Now or Accounting).
+   * Updates ledger status and decrements worker current_balance.
+   */
+  async markStageLedgerPaid(stageId: string, paymentReference?: string | null): Promise<void> {
+    const { data: ledgerRow, error: ledgerFindErr } = await supabase
+      .from('worker_ledger_entries')
+      .select('id, worker_id, amount, status')
+      .eq('reference_type', 'studio_production_stage')
+      .eq('reference_id', stageId)
+      .limit(1)
+      .maybeSingle();
+    if (ledgerFindErr || !ledgerRow) throw new Error('Ledger entry for this stage not found');
+    const entry = ledgerRow as { id: string; worker_id: string; amount: number; status?: string };
+    if (entry.status === 'paid') return; // already paid
+    const amount = Number(entry.amount) || 0;
+    const { error: updateErr } = await supabase
+      .from('worker_ledger_entries')
+      .update({
+        status: 'paid',
+        paid_at: new Date().toISOString(),
+        ...(paymentReference != null && paymentReference !== '' ? { payment_reference: paymentReference } : {}),
+      })
+      .eq('id', entry.id);
+    if (updateErr) throw new Error(`Ledger update failed: ${updateErr.message}`);
+    if (amount > 0 && entry.worker_id) {
+      const { data: workerRow } = await supabase.from('workers').select('current_balance').eq('id', entry.worker_id).single();
+      const currentBalance = Number((workerRow as any)?.current_balance) || 0;
+      const newBalance = Math.max(0, currentBalance - amount);
+      await supabase.from('workers').update({ current_balance: newBalance, updated_at: new Date().toISOString() }).eq('id', entry.worker_id);
+    }
+  },
+
+  /**
+   * Record a salary payment in worker ledger (Expenses → Salary flow).
+   * Inserts one row: amount, status=paid, reference_type=salary, reference_id=expenseId.
+   * Workers list Due Balance = sum(unpaid); this entry is paid so it only increases total earnings.
+   */
+  async recordSalaryPayment(params: {
+    companyId: string;
+    workerId: string;
+    amount: number;
+    expenseId: string;
+    paymentReference?: string | null;
+    notes?: string | null;
+  }): Promise<void> {
+    const { companyId, workerId, amount, expenseId, paymentReference, notes } = params;
+    if (!companyId || !workerId || amount <= 0 || !expenseId) throw new Error('companyId, workerId, amount, expenseId required');
+    const { error } = await supabase.from('worker_ledger_entries').insert({
+      company_id: companyId,
+      worker_id: workerId,
+      amount,
+      reference_type: 'salary',
+      reference_id: expenseId,
+      status: 'paid',
+      paid_at: new Date().toISOString(),
+      payment_reference: paymentReference || null,
+      notes: notes || `Salary payment`,
+    });
+    if (error) throw new Error(`Worker ledger (salary) failed: ${error.message}`);
   },
 };

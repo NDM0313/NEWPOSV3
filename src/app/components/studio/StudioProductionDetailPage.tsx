@@ -106,7 +106,7 @@ export const StudioProductionDetailPage = () => {
 
   const handleBack = () => {
     setSelectedProductionId?.(undefined);
-    setCurrentView('studio-production-list');
+    setCurrentView('studio-sales-list-new');
   };
 
   if (loading || !production) {

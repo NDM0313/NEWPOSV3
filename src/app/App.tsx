@@ -60,7 +60,6 @@ import { WorkerDetailPage } from './components/studio/WorkerDetailPage';
 import { StudioProductionListPage } from './components/studio/StudioProductionListPage';
 import { StudioProductionDetailPage } from './components/studio/StudioProductionDetailPage';
 import { StudioProductionAddPage } from './components/studio/StudioProductionAddPage';
-import { StudioProductionTestPage } from './components/studio/StudioProductionTestPage';
 import { AccountingIntegrationDemo } from './components/accounting/AccountingIntegrationDemo';
 import { PurchaseListExample } from './components/purchases/PurchaseListExample';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
@@ -117,7 +116,7 @@ const AppContent = () => {
     );
   }
 
-  if ((currentView === 'studio' || currentView === 'studio-dashboard-new' || currentView === 'studio-workflow') && !modules.studioModuleEnabled) {
+  if ((currentView === 'studio' || currentView === 'studio-dashboard-new' || currentView === 'studio-workflow' || currentView === 'worker-detail') && !modules.studioModuleEnabled) {
     return (
       <Layout>
         <div className="flex items-center justify-center h-full">
@@ -168,6 +167,7 @@ const AppContent = () => {
       {currentView === 'studio-sale-detail-new' && <StudioSaleDetailNew />}
       {currentView === 'studio-job' && <StudioJobCard />}
       {currentView === 'studio-workflow' && <StudioWorkflowPage />}
+      {currentView === 'worker-detail' && <WorkerDetailPage />}
       {currentView === 'expenses' && <ExpensesDashboard />}
       {currentView === 'customers' && <ContactList />}
       {currentView === 'contacts' && <ContactsPage />}
@@ -188,7 +188,6 @@ const AppContent = () => {
       {currentView === 'studio-production-list' && <StudioProductionListPage />}
       {currentView === 'studio-production-add' && <StudioProductionAddPage />}
       {currentView === 'studio-production-detail' && <StudioProductionDetailPage />}
-      {currentView === 'studio-production-test' && <StudioProductionTestPage />}
       {currentView === 'customer-tracking' && <CustomerOrderTracking />}
       {currentView === 'packing' && <PackingEntryPage />}
       {currentView === 'contact-search-test' && <ContactSearchTestPage />}

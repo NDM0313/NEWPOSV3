@@ -139,20 +139,31 @@ export const useDocumentNumbering = () => {
   // Generate next document number
   const generateDocumentNumber = (type: DocumentType): string => {
     const config = getNumberingConfig(type);
-    // Ensure nextNumber is a valid number
-    const nextNum = typeof config.nextNumber === 'number' && !isNaN(config.nextNumber) 
-      ? config.nextNumber 
-      : 1;
+
+    // STEP 5 GUARD: Studio must never fallback to 0001 — DB is source of truth
+    if (type === 'studio') {
+      const raw = config.nextNumber;
+      const valid = typeof raw === 'number' && !isNaN(raw) && raw >= 1;
+      if (!valid) return ''; // UI will show loading/empty until settings load from DB
+    }
+
+    // Ensure nextNumber is a valid number (non-studio types may use default 1)
+    const nextNum = typeof config.nextNumber === 'number' && !isNaN(config.nextNumber) && config.nextNumber >= 1
+      ? config.nextNumber
+      : (type === 'studio' ? 0 : 1);
+    if (type === 'studio' && nextNum < 1) return '';
+
     const paddedNumber = String(nextNum).padStart(config.padding, '0');
     const prefix = config.prefix || 'DOC';
     const result = `${prefix}${paddedNumber}`;
-    
+
     // Validate result is not undefined or contains invalid values
     if (!result || result.includes('undefined') || result.includes('NaN')) {
       console.error('[DOCUMENT NUMBERING] Invalid document number generated:', { type, config, result });
-      return `${prefix}001`; // Fallback to safe default
+      if (type === 'studio') return ''; // No fallback to 001 for studio
+      return `${prefix}001`; // Fallback for other types only
     }
-    
+
     return result;
   };
 

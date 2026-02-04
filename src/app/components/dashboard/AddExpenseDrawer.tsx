@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { 
   X, 
   Upload, 
@@ -9,7 +9,8 @@ import {
   Plus, 
   Wallet, 
   CreditCard,
-  MapPin
+  MapPin,
+  Loader2
 } from 'lucide-react';
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
@@ -28,59 +29,190 @@ import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 import { format } from "date-fns";
 import { cn } from "../ui/utils";
 import { VirtualNumpad } from "../ui/virtual-numpad";
+import { useExpenses } from "@/app/context/ExpenseContext";
+import { useSupabase } from "@/app/context/SupabaseContext";
+import { useAccounting } from "@/app/context/AccountingContext";
+import { branchService } from "@/app/services/branchService";
+import { expenseCategoryService, type ExpenseCategoryTreeItem } from "@/app/services/expenseCategoryService";
+import { userService } from "@/app/services/userService";
+import { toast } from "sonner";
+import type { ExpenseCategory } from "@/app/context/ExpenseContext";
 
 interface AddExpenseDrawerProps {
   isOpen: boolean;
   onClose: () => void;
+  onSuccess?: () => void;
 }
 
-export const AddExpenseDrawer = ({ isOpen, onClose }: AddExpenseDrawerProps) => {
+const FALLBACK_CATEGORIES: { id: ExpenseCategory; name: string; slug: string; icon: typeof Building2; color: string }[] = [
+  { id: 'Rent', name: 'Rent', slug: 'rent', icon: Building2, color: 'text-blue-500' },
+  { id: 'Utilities', name: 'Electricity / Utilities', slug: 'utilities', icon: Zap, color: 'text-yellow-500' },
+  { id: 'Salaries', name: 'Salary', slug: 'salaries', icon: Users, color: 'text-purple-500' },
+  { id: 'Marketing', name: 'Marketing', slug: 'marketing', icon: Zap, color: 'text-pink-500' },
+  { id: 'Travel', name: 'Travel', slug: 'travel', icon: MapPin, color: 'text-cyan-500' },
+  { id: 'Office Supplies', name: 'Office Supplies', slug: 'office_supplies', icon: Building2, color: 'text-gray-400' },
+  { id: 'Repairs & Maintenance', name: 'Repairs & Maintenance', slug: 'repairs', icon: Zap, color: 'text-orange-500' },
+  { id: 'Other', name: 'Other', slug: 'miscellaneous', icon: Wallet, color: 'text-gray-500' },
+];
+
+export const AddExpenseDrawer = ({ isOpen, onClose, onSuccess }: AddExpenseDrawerProps) => {
+  const { companyId, branchId: contextBranchId } = useSupabase();
+  const { createExpense, refreshExpenses } = useExpenses();
+  const { accounts: accountingAccounts } = useAccounting();
+
   const [date, setDate] = useState<Date | undefined>(new Date());
   const [amount, setAmount] = useState("");
   const [description, setDescription] = useState("");
+  const [categorySlug, setCategorySlug] = useState("");
+  const [categoryTree, setCategoryTree] = useState<ExpenseCategoryTreeItem[]>([]);
+  const [mainCategoryId, setMainCategoryId] = useState("");
+  const [subCategoryId, setSubCategoryId] = useState("");
+  const [paidToUserId, setPaidToUserId] = useState("");
+  const [salaryUsers, setSalaryUsers] = useState<Array<{ id: string; full_name: string; email?: string; role?: string }>>([]);
+  const [salaryUserSearch, setSalaryUserSearch] = useState("");
+  const [paidFromAccountId, setPaidFromAccountId] = useState("");
+  const [selectedBranchId, setSelectedBranchId] = useState("");
   const [isNumpadOpen, setIsNumpadOpen] = useState(false);
-  const [selectedBranch, setSelectedBranch] = useState("main-store");
+  const [saving, setSaving] = useState(false);
+  const [branches, setBranches] = useState<Array<{ id: string; name: string; address?: string }>>([]);
 
-  // Mock user role (in real app, get from auth context)
-  const userRole = "Admin"; // Change to "Manager" or "Staff" to test
+  const userRole = "Admin";
 
-  // Mock data for branches
-  const branches = [
-    { id: 'main-store', name: 'Main Store', location: 'Liberty Market' },
-    { id: 'outlet-1', name: 'Outlet 1', location: 'Gulberg' },
-    { id: 'outlet-2', name: 'Outlet 2', location: 'DHA Phase 5' },
-    { id: 'warehouse', name: 'Warehouse', location: 'Sundar Industrial' },
-  ];
+  useEffect(() => {
+    if (!companyId) return;
+    branchService.getAllBranches(companyId).then((data) => {
+      setBranches(data || []);
+      if (!selectedBranchId && data?.length) setSelectedBranchId(contextBranchId && contextBranchId !== 'all' ? contextBranchId : data[0]?.id || "");
+    }).catch(() => setBranches([]));
+  }, [companyId, contextBranchId]);
 
-  // Get current branch details
-  const currentBranch = branches.find(b => b.id === selectedBranch) || branches[0];
+  useEffect(() => {
+    if (contextBranchId && contextBranchId !== 'all' && !selectedBranchId) setSelectedBranchId(contextBranchId);
+  }, [contextBranchId, selectedBranchId]);
 
-  // Mock data for dropdowns
-  const categories = [
-    { id: 'rent', name: 'Rent', icon: Building2, color: 'text-blue-500' },
-    { id: 'utilities', name: 'Electricity', icon: Zap, color: 'text-yellow-500' },
-    { id: 'salary', name: 'Salary', icon: Users, color: 'text-purple-500' },
-  ];
+  useEffect(() => {
+    if (isOpen && companyId) expenseCategoryService.getTree(companyId).then(setCategoryTree).catch(() => setCategoryTree([]));
+  }, [isOpen, companyId]);
 
-  const accounts = [
-    { id: 'cash', name: 'Cash in Hand', balance: 45000, icon: Wallet },
-    { id: 'meezan', name: 'Meezan Bank', balance: 1250000, icon: Building2 },
-    { id: 'jazzcash', name: 'JazzCash', balance: 12500, icon: CreditCard },
-  ];
+  const currentBranch = branches.find(b => b.id === selectedBranchId) || branches[0];
+  const selectedMain = categoryTree.find((m) => m.id === mainCategoryId);
+  const subOptions = selectedMain?.children ?? [];
+  const selectedSub = subOptions.find((s) => s.id === subCategoryId);
+  const effectiveSlug = selectedSub?.slug ?? selectedMain?.slug ?? categorySlug;
+  const isSalaryCategory = effectiveSlug === 'salaries' || selectedMain?.type === 'salary' || selectedSub?.type === 'salary';
+
+  useEffect(() => {
+    if (isOpen && companyId && isSalaryCategory) {
+      userService.getUsersForSalary(companyId).then((list) => {
+        setSalaryUsers(list.map((u) => ({
+          id: u.id,
+          full_name: u.full_name || u.email || 'Unknown',
+          email: u.email,
+          role: u.role,
+        })));
+      }).catch(() => setSalaryUsers([]));
+    } else if (!isSalaryCategory) {
+      setPaidToUserId('');
+      setSalaryUserSearch('');
+    }
+  }, [isOpen, companyId, isSalaryCategory]);
+
+  const accountsList = (accountingAccounts || []).map((acc: { id: string; name: string; balance?: number; type?: string }) => ({
+    id: acc.id,
+    name: acc.name,
+    balance: acc.balance ?? 0,
+    icon: Wallet,
+  }));
+  const accounts = accountsList.length > 0 ? accountsList : [{ id: 'cash', name: 'Cash in Hand', balance: 0, icon: Wallet }];
 
   const handleAmountFocus = (e: React.FocusEvent<HTMLInputElement>) => {
-    // Check if mobile (width < 768px)
     if (window.innerWidth < 768) {
       e.preventDefault();
-      e.target.blur(); // Prevent native keyboard
+      e.target.blur();
       setIsNumpadOpen(true);
     }
-    // On desktop, do nothing (allow default focus/typing)
+  };
+
+  const resetForm = useCallback(() => {
+    setDate(new Date());
+    setAmount("");
+    setDescription("");
+    setCategorySlug("");
+    setMainCategoryId("");
+    setSubCategoryId("");
+    setPaidToUserId("");
+    setSalaryUserSearch("");
+    setPaidFromAccountId("");
+  }, []);
+
+  const handleSave = async () => {
+    const amt = Number(amount?.replace(/,/g, '')) || 0;
+    if (amt <= 0) {
+      toast.error("Please enter a valid amount");
+      return;
+    }
+    if (!effectiveSlug) {
+      toast.error("Please select a category");
+      return;
+    }
+    if (isSalaryCategory && !paidToUserId) {
+      toast.error("Please select the user to pay (Salary is for Staff/Salesman/Operator only)");
+      return;
+    }
+    if (!paidFromAccountId) {
+      toast.error("Please select Paid From account");
+      return;
+    }
+    const paidFromAccount = accounts.find((a: { id: string }) => a.id === paidFromAccountId);
+    const paymentMethodName = paidFromAccount?.name || "Cash in Hand";
+    const effectiveBranchId = selectedBranchId || contextBranchId;
+    const selectedSalaryUser = isSalaryCategory ? salaryUsers.find((u) => u.id === paidToUserId) : null;
+    if (!effectiveBranchId || effectiveBranchId === 'all') {
+      toast.error("Please select a branch");
+      return;
+    }
+    setSaving(true);
+    try {
+      await createExpense(
+        {
+          category: effectiveSlug,
+          description: description.trim() || (isSalaryCategory && selectedSalaryUser ? `${selectedSalaryUser.full_name} – Salary` : selectedSub?.name ?? selectedMain?.name ?? effectiveSlug),
+          amount: amt,
+          date: date ? format(date, "yyyy-MM-dd") : format(new Date(), "yyyy-MM-dd"),
+          paymentMethod: paymentMethodName,
+          payeeName: isSalaryCategory && selectedSalaryUser ? selectedSalaryUser.full_name : "",
+          location: effectiveBranchId,
+          status: "paid",
+          submittedBy: "",
+          receiptAttached: false,
+        },
+        {
+          branchId: effectiveBranchId,
+          payment_account_id: paidFromAccountId && /^[0-9a-f-]{36}$/i.test(paidFromAccountId) ? paidFromAccountId : undefined,
+          paidToUserId: isSalaryCategory && paidToUserId ? paidToUserId : undefined,
+        }
+      );
+      refreshExpenses();
+      resetForm();
+      onClose();
+      onSuccess?.();
+    } catch (e) {
+      // toast already in context
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleOpenChange = (open: boolean) => {
+    if (!open) {
+      resetForm();
+      onClose();
+    }
   };
 
   return (
     <>
-      <Sheet open={isOpen} onOpenChange={(open) => !open && onClose()}>
+      <Sheet open={isOpen} onOpenChange={(open) => !open && handleOpenChange(false)}>
         <SheetContent side="right" className="w-full sm:max-w-md bg-[#111827] border-l border-gray-800 text-white p-0 flex flex-col">
           
           {/* TOP HEADER - Branch Info */}
@@ -91,11 +223,10 @@ export const AddExpenseDrawer = ({ isOpen, onClose }: AddExpenseDrawerProps) => 
                   <Building2 size={20} className="text-blue-400" />
                 </div>
                 <div>
-                  {userRole === "Admin" ? (
-                    // Admin sees dropdown
-                    <Select value={selectedBranch} onValueChange={setSelectedBranch}>
+                  {userRole === "Admin" && branches.length > 0 ? (
+                    <Select value={selectedBranchId || branches[0]?.id} onValueChange={setSelectedBranchId}>
                       <SelectTrigger className="h-8 bg-gray-800 border-gray-700 text-white hover:bg-gray-700 w-[200px] focus:ring-0 focus:ring-offset-0">
-                        <SelectValue />
+                        <SelectValue placeholder="Select branch" />
                       </SelectTrigger>
                       <SelectContent className="bg-gray-900 border-gray-700 text-white">
                         {branches.map((branch) => (
@@ -106,19 +237,18 @@ export const AddExpenseDrawer = ({ isOpen, onClose }: AddExpenseDrawerProps) => 
                           >
                             <div className="flex flex-col items-start">
                               <span className="font-medium">{branch.name}</span>
-                              <span className="text-xs text-gray-400">{branch.location}</span>
+                              <span className="text-xs text-gray-400">{branch.address || branch.name}</span>
                             </div>
                           </SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
                   ) : (
-                    // Other roles see static text
                     <>
-                      <p className="text-white font-semibold text-sm">{currentBranch.name}</p>
+                      <p className="text-white font-semibold text-sm">{currentBranch?.name || 'Branch'}</p>
                       <p className="text-gray-400 text-xs flex items-center gap-1">
                         <MapPin size={10} />
-                        {currentBranch.location}
+                        {currentBranch?.address || currentBranch?.name || ''}
                       </p>
                     </>
                   )}
@@ -173,40 +303,108 @@ export const AddExpenseDrawer = ({ isOpen, onClose }: AddExpenseDrawerProps) => 
               </Popover>
             </div>
 
-            {/* Row 2: Category Dropdown */}
+            {/* Row 2: Category – Main + Sub from DB, or single fallback */}
             <div className="space-y-2">
               <Label className="text-gray-400 text-sm">Category</Label>
-              <Select>
-                <SelectTrigger className="h-11 bg-gray-900 border-gray-700 text-white">
-                  <SelectValue placeholder="Select Category" />
-                </SelectTrigger>
-                <SelectContent className="bg-gray-900 border-gray-800 text-white">
-                  {categories.map((cat) => (
-                    <SelectItem key={cat.id} value={cat.id} className="focus:bg-gray-800 focus:text-white cursor-pointer">
-                      <div className="flex items-center gap-2">
-                        <cat.icon className={cn("h-4 w-4", cat.color)} />
-                        {cat.name}
-                      </div>
-                    </SelectItem>
-                  ))}
-                  <div className="p-2 border-t border-gray-800 mt-1">
-                    <Button variant="ghost" size="sm" className="w-full justify-start text-blue-400 hover:text-blue-300 hover:bg-blue-900/20 h-8">
-                      <Plus className="mr-2 h-4 w-4" /> Add Category
-                    </Button>
-                  </div>
-                </SelectContent>
-              </Select>
+              {categoryTree.length > 0 ? (
+                <div className="space-y-2">
+                  <Select
+                    value={mainCategoryId || '_none'}
+                    onValueChange={(v) => {
+                      setMainCategoryId(v === '_none' ? '' : v);
+                      setSubCategoryId('');
+                    }}
+                  >
+                    <SelectTrigger className="h-11 bg-gray-900 border-gray-700 text-white">
+                      <SelectValue placeholder="Main category" />
+                    </SelectTrigger>
+                    <SelectContent className="bg-gray-900 border-gray-800 text-white">
+                      <SelectItem value="_none" className="focus:bg-gray-800 focus:text-white cursor-pointer">Select main category</SelectItem>
+                      {categoryTree.map((m) => (
+                        <SelectItem key={m.id} value={m.id} className="focus:bg-gray-800 focus:text-white cursor-pointer">
+                          {m.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {subOptions.length > 0 && (
+                    <Select value={subCategoryId || '_main'} onValueChange={(v) => setSubCategoryId(v === '_main' ? '' : v)}>
+                      <SelectTrigger className="h-11 bg-gray-900 border-gray-700 text-white">
+                        <SelectValue placeholder="Sub-category (optional)" />
+                      </SelectTrigger>
+                      <SelectContent className="bg-gray-900 border-gray-800 text-white">
+                        <SelectItem value="_main" className="focus:bg-gray-800 focus:text-white cursor-pointer">
+                          — {selectedMain?.name} (main)
+                        </SelectItem>
+                        {subOptions.map((s) => (
+                          <SelectItem key={s.id} value={s.id} className="focus:bg-gray-800 focus:text-white cursor-pointer">
+                            {s.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                </div>
+              ) : (
+                <Select value={categorySlug} onValueChange={setCategorySlug}>
+                  <SelectTrigger className="h-11 bg-gray-900 border-gray-700 text-white">
+                    <SelectValue placeholder="Select Category" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-gray-900 border-gray-800 text-white">
+                    {FALLBACK_CATEGORIES.map((cat) => (
+                      <SelectItem key={cat.id} value={cat.slug} className="focus:bg-gray-800 focus:text-white cursor-pointer">
+                        <div className="flex items-center gap-2">
+                          <cat.icon className={cn("h-4 w-4", cat.color)} />
+                          {cat.name}
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
             </div>
+
+            {/* Salary: Pay to (User) only – Staff/Salesman/Operator from User Management. Workers (Dyer, Stitcher) never here. */}
+            {isSalaryCategory && (
+              <div className="space-y-2">
+                <Label className="text-gray-400 text-sm">Pay to (User)</Label>
+                <Input
+                  placeholder="Search user..."
+                  value={salaryUserSearch}
+                  onChange={(e) => setSalaryUserSearch(e.target.value)}
+                  className="h-9 mb-1 bg-gray-900 border-gray-700 text-white text-sm"
+                />
+                <Select value={paidToUserId} onValueChange={setPaidToUserId}>
+                  <SelectTrigger className="h-11 bg-gray-900 border-gray-700 text-white">
+                    <SelectValue placeholder="Select user (Staff / Salesman / Operator)" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-gray-900 border-gray-800 text-white max-h-[280px]">
+                    {salaryUsers
+                      .filter((u) => !salaryUserSearch || (u.full_name + ' ' + (u.email || '') + ' ' + (u.role || '')).toLowerCase().includes(salaryUserSearch.toLowerCase()))
+                      .map((u) => (
+                        <SelectItem key={u.id} value={u.id} className="focus:bg-gray-800 focus:text-white cursor-pointer">
+                          <div className="flex items-center gap-2">
+                            <Users className="h-4 w-4 text-purple-400 shrink-0" />
+                            <span>{u.full_name}</span>
+                            {u.role && <span className="text-xs text-gray-500 capitalize">({u.role})</span>}
+                          </div>
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-gray-500">Salary is for users only (Admin, Staff, Salesman, Operator). Workers are paid via Production → Worker Ledger.</p>
+              </div>
+            )}
 
             {/* Row 3: Paid From Account */}
             <div className="space-y-2">
               <Label className="text-gray-400 text-sm">Paid From</Label>
-              <Select>
+              <Select value={paidFromAccountId} onValueChange={setPaidFromAccountId}>
                 <SelectTrigger className="h-11 bg-gray-900 border-gray-700 text-white">
                   <SelectValue placeholder="Select Account" />
                 </SelectTrigger>
                 <SelectContent className="bg-gray-900 border-gray-800 text-white">
-                  {accounts.map((acc) => (
+                  {accounts.map((acc: { id: string; name: string; balance: number; icon: typeof Wallet }) => (
                     <SelectItem key={acc.id} value={acc.id} className="focus:bg-gray-800 focus:text-white cursor-pointer">
                       <div className="flex items-center justify-between w-full gap-4">
                         <div className="flex items-center gap-2">
@@ -214,7 +412,7 @@ export const AddExpenseDrawer = ({ isOpen, onClose }: AddExpenseDrawerProps) => 
                           {acc.name}
                         </div>
                         <span className="text-xs text-green-500 font-mono">
-                          Rs {acc.balance.toLocaleString()}
+                          Rs {(acc.balance || 0).toLocaleString()}
                         </span>
                       </div>
                     </SelectItem>
@@ -269,11 +467,17 @@ export const AddExpenseDrawer = ({ isOpen, onClose }: AddExpenseDrawerProps) => 
               <Button 
                 variant="outline" 
                 className="border-gray-700 text-gray-300 hover:bg-gray-800 hover:text-white h-11"
-                onClick={onClose}
+                onClick={() => handleOpenChange(false)}
+                disabled={saving}
               >
                 Cancel
               </Button>
-              <Button className="bg-orange-600 hover:bg-orange-500 text-white font-semibold h-11 shadow-lg shadow-orange-600/20 transition-all active:scale-[0.98]">
+              <Button 
+                className="bg-orange-600 hover:bg-orange-500 text-white font-semibold h-11 shadow-lg shadow-orange-600/20 transition-all active:scale-[0.98] disabled:opacity-70"
+                onClick={handleSave}
+                disabled={saving}
+              >
+                {saving ? <Loader2 size={18} className="animate-spin mr-2" /> : null}
                 Save Expense
               </Button>
             </div>

@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect, useCallback, Rea
 import { useSupabase } from './SupabaseContext';
 import { settingsService } from '@/app/services/settingsService';
 import { branchService } from '@/app/services/branchService';
+import { saleService } from '@/app/services/saleService';
 import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
 
@@ -554,6 +555,15 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
       const sequencesMap = new Map(sequences.map(s => [s.document_type, s]));
       
       const getSequence = (type: string) => sequencesMap.get(type);
+      // When document_sequences has no 'studio' row, derive next number from sales (STD-*) so header shows latest
+      let studioNext = getSequence('studio')?.current_number ?? null;
+      if (studioNext == null) {
+        try {
+          studioNext = await saleService.getNextStudioInvoiceNumber(companyId);
+        } catch {
+          studioNext = 1;
+        }
+      }
       
       setNumberingRules({
         salePrefix: getSequence('sale')?.prefix || 'SL-',
@@ -567,7 +577,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
         productPrefix: getSequence('product')?.prefix || 'PRD-',
         productNextNumber: getSequence('product')?.current_number || 1,
         studioPrefix: getSequence('studio')?.prefix || 'STD-',
-        studioNextNumber: getSequence('studio')?.current_number || 1,
+        studioNextNumber: studioNext,
         posPrefix: getSequence('pos')?.prefix || 'POS-',
         posNextNumber: getSequence('pos')?.current_number || 1,
       });

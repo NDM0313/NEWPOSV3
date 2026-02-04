@@ -123,7 +123,7 @@ export const StudioProductionAddPage = () => {
         notes: form.notes || null,
         instructions: form.instructions || null,
       });
-      setCurrentView('studio-production-list');
+      setCurrentView('studio-sales-list-new');
     } catch (err: any) {
       toast.error(err?.message || 'Failed to create production');
     } finally {
@@ -134,7 +134,7 @@ export const StudioProductionAddPage = () => {
   return (
     <div className="flex flex-col h-full bg-gray-950 text-white">
       <div className="border-b border-gray-800 bg-gray-900/50 px-6 py-4 flex items-center gap-4 shrink-0">
-        <Button variant="ghost" size="icon" onClick={() => setCurrentView('studio-production-list')} className="text-gray-400 hover:text-white">
+        <Button variant="ghost" size="icon" onClick={() => setCurrentView('studio-sales-list-new')} className="text-gray-400 hover:text-white">
           <ArrowLeft size={20} />
         </Button>
         <h1 className="text-xl font-bold text-white">Add Production Job</h1>
@@ -278,7 +278,7 @@ export const StudioProductionAddPage = () => {
             {saving ? <Loader2 size={18} className="animate-spin" /> : <Package size={18} />}
             Create Production Job
           </Button>
-          <Button type="button" variant="outline" onClick={() => setCurrentView('studio-production-list')} className="border-gray-600 text-gray-300">
+          <Button type="button" variant="outline" onClick={() => setCurrentView('studio-sales-list-new')} className="border-gray-600 text-gray-300">
             Cancel
           </Button>
         </div>

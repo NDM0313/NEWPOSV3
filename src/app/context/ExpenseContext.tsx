@@ -28,7 +28,7 @@ export type ExpenseCategory =
 export interface Expense {
   id: string;
   expenseNo: string;
-  category: ExpenseCategory;
+  category: ExpenseCategory | string;
   description: string;
   amount: number;
   date: string;
@@ -49,7 +49,7 @@ interface ExpenseContextType {
   expenses: Expense[];
   loading: boolean;
   getExpenseById: (id: string) => Expense | undefined;
-  createExpense: (expense: Omit<Expense, 'id' | 'expenseNo' | 'createdAt' | 'updatedAt'>) => Promise<Expense>;
+  createExpense: (expense: Omit<Expense, 'id' | 'expenseNo' | 'createdAt' | 'updatedAt'> & { category: ExpenseCategory | string }, options?: { branchId?: string; payment_account_id?: string; paidToUserId?: string }) => Promise<Expense>;
   updateExpense: (id: string, updates: Partial<Expense>) => Promise<void>;
   deleteExpense: (id: string) => Promise<void>;
   approveExpense: (id: string, approvedBy: string) => Promise<void>;
@@ -104,9 +104,10 @@ export const ExpenseProvider = ({ children }: { children: ReactNode }) => {
   const accounting = useAccounting();
   const { companyId, branchId, user } = useSupabase();
 
-  // Map category from app format to Supabase format
-  const mapCategoryToSupabase = (category: ExpenseCategory): SupabaseExpense['category'] => {
-    const mapping: Record<ExpenseCategory, SupabaseExpense['category']> = {
+  // Map category from app format to Supabase format (accepts slug string from expense_categories)
+  const mapCategoryToSupabase = (category: ExpenseCategory | string): string => {
+    if (typeof category === 'string' && /^[a-z0-9_]+$/.test(category)) return category;
+    const mapping: Record<ExpenseCategory, string> = {
       'Rent': 'rent',
       'Utilities': 'utilities',
       'Salaries': 'salaries',
@@ -116,32 +117,27 @@ export const ExpenseProvider = ({ children }: { children: ReactNode }) => {
       'Repairs & Maintenance': 'repairs',
       'Other': 'miscellaneous',
     };
-    return mapping[category] || 'miscellaneous';
+    return mapping[category as ExpenseCategory] || (typeof category === 'string' ? category.toLowerCase().replace(/\s+/g, '_') : 'miscellaneous');
   };
 
-  // Map category from Supabase format to app format
-  const mapCategoryFromSupabase = (category: SupabaseExpense['category']): ExpenseCategory => {
-    const mapping: Record<SupabaseExpense['category'], ExpenseCategory> = {
-      'rent': 'Rent',
-      'utilities': 'Utilities',
-      'salaries': 'Salaries',
-      'marketing': 'Marketing',
-      'travel': 'Travel',
-      'office_supplies': 'Office Supplies',
-      'repairs': 'Repairs & Maintenance',
-      'professional_fees': 'Other',
-      'insurance': 'Other',
-      'taxes': 'Other',
-      'miscellaneous': 'Other',
+  // Map category from Supabase format to app format (can return display name or slug)
+  const mapCategoryFromSupabase = (category: string | null | undefined): ExpenseCategory | string => {
+    const mapping: Record<string, ExpenseCategory> = {
+      'rent': 'Rent', 'utilities': 'Utilities', 'salaries': 'Salaries', 'marketing': 'Marketing',
+      'travel': 'Travel', 'office_supplies': 'Office Supplies', 'repairs': 'Repairs & Maintenance',
+      'professional_fees': 'Other', 'insurance': 'Other', 'taxes': 'Other', 'miscellaneous': 'Other',
     };
-    return mapping[category] || 'Other';
+    if (category && mapping[category]) return mapping[category];
+    return category || 'Other';
   };
 
   // Convert Supabase expense format to app format
   const convertFromSupabaseExpense = useCallback((supabaseExpense: any): Expense => {
+    const id = supabaseExpense.id || '';
+    const expenseNo = supabaseExpense.expense_no || '';
     return {
-      id: supabaseExpense.id,
-      expenseNo: supabaseExpense.expense_no || '',
+      id,
+      expenseNo,
       category: mapCategoryFromSupabase(supabaseExpense.category),
       description: supabaseExpense.description || '',
       amount: supabaseExpense.amount || 0,
@@ -191,31 +187,35 @@ export const ExpenseProvider = ({ children }: { children: ReactNode }) => {
     return expenses.find(e => e.id === id);
   };
 
-  // Create new expense
-  const createExpense = async (expenseData: Omit<Expense, 'id' | 'expenseNo' | 'createdAt' | 'updatedAt'>): Promise<Expense> => {
-    if (!companyId || !branchId || !user) {
+  // Create new expense (options.branchId = override for drawer; options.payment_account_id = chart account id)
+  const createExpense = async (
+    expenseData: Omit<Expense, 'id' | 'expenseNo' | 'createdAt' | 'updatedAt'>,
+    options?: { branchId?: string; payment_account_id?: string }
+  ): Promise<Expense> => {
+    const effectiveBranchId = options?.branchId ?? branchId;
+    if (!companyId || !effectiveBranchId || !user) {
       throw new Error('Company ID, Branch ID, and User are required');
     }
 
     try {
-      // Generate expense number
+      // Generate expense number for display (DB may not have expense_no column)
       const expenseNo = generateDocumentNumber('expense');
       
-      // Convert to Supabase format
+      // Convert to Supabase format (expense_no = EXP-0001 style from document numbering)
       const supabaseExpense: Partial<SupabaseExpense> = {
         company_id: companyId,
-        branch_id: branchId,
+        branch_id: effectiveBranchId,
         expense_no: expenseNo,
         expense_date: expenseData.date,
         category: mapCategoryToSupabase(expenseData.category),
         description: expenseData.description,
         amount: expenseData.amount,
         payment_method: expenseData.paymentMethod,
-        vendor_name: expenseData.payeeName,
         status: expenseData.status === 'paid' ? 'paid' : expenseData.status === 'approved' ? 'approved' : expenseData.status === 'rejected' ? 'rejected' : 'submitted',
         notes: expenseData.notes,
         created_by: user.id,
       };
+      if (options?.paidToUserId) (supabaseExpense as any).paid_to_user_id = options.paidToUserId;
 
       // Save to Supabase
       const result = await expenseService.createExpense(supabaseExpense);
@@ -223,11 +223,14 @@ export const ExpenseProvider = ({ children }: { children: ReactNode }) => {
       // Increment document number
       incrementNextNumber('expense');
       
-      // Convert back to app format
+      // Convert back to app format (use generated expenseNo if DB doesn't return expense_no)
       const newExpense = convertFromSupabaseExpense(result);
+      if (!newExpense.expenseNo) (newExpense as { expenseNo: string }).expenseNo = expenseNo;
       
       // Update local state
       setExpenses(prev => [newExpense, ...prev]);
+
+      // Salary = User only (Staff/Salesman/Operator). Workers are paid via Production → Worker Ledger only.
 
       // Auto-post to accounting if paid
       if (newExpense.status === 'paid') {

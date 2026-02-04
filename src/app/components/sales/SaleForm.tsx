@@ -152,7 +152,7 @@ interface SaleFormProps {
 export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
     // Supabase & Context
     const { companyId, branchId: contextBranchId, user, userRole } = useSupabase();
-    const { inventorySettings } = useSettings();
+    const { inventorySettings, loading: settingsLoading } = useSettings();
     const enablePacking = inventorySettings.enablePacking;
     const { createSale, updateSale } = useSales();
     const { openDrawer, closeDrawer, activeDrawer, createdContactId, createdContactType, setCreatedContactId, openPackingModal, setCurrentView, setSelectedStudioSaleId } = useNavigation();
@@ -187,6 +187,7 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
     const [statusDropdownOpen, setStatusDropdownOpen] = useState(false);
     const [salesmanDropdownOpen, setSalesmanDropdownOpen] = useState(false);
     const [branchDropdownOpen, setBranchDropdownOpen] = useState(false);
+    const [typeDropdownOpen, setTypeDropdownOpen] = useState(false);
     
     // Items List State
     const [items, setItems] = useState<SaleItem[]>([]);
@@ -1194,24 +1195,30 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
             let documentType: 'draft' | 'quotation' | 'order' | 'invoice' | 'studio';
             
             if (initialSale && initialSale.invoiceNo) {
-                // EDIT MODE: Preserve existing invoice number
-                documentNumber = initialSale.invoiceNo;
-                // Determine document type from existing invoice number prefix
-                if (documentNumber.startsWith('DRAFT-')) {
-                    documentType = 'draft';
-                } else if (documentNumber.startsWith('QT-')) {
-                    documentType = 'quotation';
-                } else if (documentNumber.startsWith('SO-')) {
-                    documentType = 'order';
-                } else if (documentNumber.startsWith('INV-') || documentNumber.startsWith('SL-')) {
-                    documentType = 'invoice';
-                } else if (documentNumber.startsWith('STD-') || documentNumber.startsWith('ST-')) {
+                // EDIT MODE: Preserve existing invoice number UNLESS type was changed to Studio (then use next STD-XXXX)
+                const existingIsStudio = (initialSale.invoiceNo.startsWith('STD-') || initialSale.invoiceNo.startsWith('ST-'));
+                if (isStudioSale && !existingIsStudio) {
+                    // Type changed to Studio → regenerate invoice number (STD-XXXX) and persist via update
                     documentType = 'studio';
+                    documentNumber = generateDocumentNumber('studio');
                 } else {
-                    // Fallback: determine from status
-                    documentType = saleStatus === 'final' ? (isStudioSale ? 'studio' : 'invoice') : 
-                                  saleStatus === 'quotation' ? 'quotation' :
-                                  saleStatus === 'order' ? 'order' : 'draft';
+                    documentNumber = initialSale.invoiceNo;
+                    // Determine document type from existing invoice number prefix
+                    if (documentNumber.startsWith('DRAFT-')) {
+                        documentType = 'draft';
+                    } else if (documentNumber.startsWith('QT-')) {
+                        documentType = 'quotation';
+                    } else if (documentNumber.startsWith('SO-')) {
+                        documentType = 'order';
+                    } else if (documentNumber.startsWith('INV-') || documentNumber.startsWith('SL-')) {
+                        documentType = 'invoice';
+                    } else if (documentNumber.startsWith('STD-') || documentNumber.startsWith('ST-')) {
+                        documentType = 'studio';
+                    } else {
+                        documentType = saleStatus === 'final' ? (isStudioSale ? 'studio' : 'invoice') : 
+                                      saleStatus === 'quotation' ? 'quotation' :
+                                      saleStatus === 'order' ? 'order' : 'draft';
+                    }
                 }
             } else {
                 // NEW SALE: Generate new invoice number (studio uses studio prefix when type is Studio)
@@ -1251,14 +1258,13 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                 ? paymentStatus 
                 : 'unpaid';
             
-            // CRITICAL FIX: Branch validation
-            // Admin must select branch, normal user uses auto-selected branch
+            // Branch required for save: must be a valid branch (not empty, not "all")
             const finalBranchId = isAdmin 
-                ? (branchId || contextBranchId || '') // Admin can select or use context
-                : (contextBranchId || branchId || ''); // Normal user uses context (auto-selected)
-            
-            if (isAdmin && !finalBranchId) {
-                toast.error('Please select a branch');
+                ? (branchId || contextBranchId || '') 
+                : (contextBranchId || branchId || '');
+            const isValidBranch = finalBranchId && finalBranchId !== 'all' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(finalBranchId);
+            if (!isValidBranch) {
+                toast.error('Please select a branch before saving');
                 setSaving(false);
                 return;
             }
@@ -1300,8 +1306,12 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
             
             // CRITICAL FIX: Check if editing existing sale
             if (initialSale && initialSale.id) {
-                // EDIT MODE: Update existing sale (preserve invoice number)
+                // EDIT MODE: Update existing sale (invoice number updated when converting to Studio)
                 await updateSale(initialSale.id, saleData);
+                // If we regenerated invoice for Studio conversion, consume the number so next sale gets next STD
+                if (isStudioSale && !(initialSale.invoiceNo.startsWith('STD-') || initialSale.invoiceNo.startsWith('ST-'))) {
+                    incrementNextNumber('studio');
+                }
                 toast.success(`Sale ${documentNumber} updated successfully!`);
             } else {
                 // NEW SALE: Create new sale
@@ -1309,11 +1319,11 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                 // Increment document number after successful save
                 incrementNextNumber(documentType);
                 toast.success(`${saleType === 'invoice' ? 'Invoice' : 'Quotation'} created successfully!`);
-                // Studio sale: open Studio Production screen with sale data (Option A – sale-linked flow)
+                // Studio sale: after save, open Studio Sale Detail for this sale (single master page)
                 if (isStudioSale && created?.id && setSelectedStudioSaleId && setCurrentView) {
                   setSelectedStudioSaleId(created.id);
                   closeDrawer();
-                  setCurrentView('studio-production-add');
+                  setCurrentView('studio-sale-detail-new');
                   return; // Don't call onClose – we already closed and navigated
                 }
             }
@@ -1394,10 +1404,14 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                             <h2 className="text-sm font-bold text-white">New Sale Invoice</h2>
                             <p className="text-[10px] text-gray-500">Standard Entry</p>
                         </div>
-                        {/* Invoice Number - Moved to LEFT side after title */}
+                        {/* Invoice Number - Moved to LEFT side after title (wait for settings so studio number comes from DB) */}
                         <div className="flex items-center gap-2 ml-4 pl-4 border-l border-gray-800">
                             <Hash size={14} className="text-cyan-500" />
-                            <span className="text-sm font-mono text-cyan-400">{displayInvoiceNumber}</span>
+                            <span className="text-sm font-mono text-cyan-400">
+                                {displayInvoiceNumber === '' && isStudioSale && !initialSale?.invoiceNo
+                                    ? (settingsLoading ? 'Loading...' : '...')
+                                    : displayInvoiceNumber}
+                            </span>
                     </div>
                 </div>
 
@@ -1689,10 +1703,10 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                             />
                         </div>
 
-                        {/* Type - Chip Style */}
+                        {/* Type - Chip Style (dropdown closes on select) */}
                         <div className="w-auto">
                             <Label className="text-xs text-gray-500 mb-1.5 block">Type</Label>
-                            <Popover>
+                            <Popover open={typeDropdownOpen} onOpenChange={setTypeDropdownOpen}>
                                 <PopoverTrigger asChild>
                                     <button
                                         type="button"
@@ -1715,6 +1729,7 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                                                 onClick={() => {
                                                     setIsStudioSale(t === 'studio');
                                                     if (t === 'studio') setShippingEnabled(false);
+                                                    setTypeDropdownOpen(false);
                                                 }}
                                                 className={cn(
                                                     "w-full text-left px-3 py-2 rounded-md text-sm transition-all flex items-center gap-2",

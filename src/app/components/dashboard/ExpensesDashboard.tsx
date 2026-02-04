@@ -29,10 +29,12 @@ import {
   DropdownMenuTrigger,
 } from "../ui/dropdown-menu";
 import { toast } from "sonner";
-import { Building2, Zap, Users, ShoppingCart, Briefcase, Utensils } from 'lucide-react';
+import { Building2, Zap, Users, ShoppingCart, Briefcase, Utensils, Car, Wallet, Home } from 'lucide-react';
 import { ListToolbar } from '../ui/list-toolbar';
 import { useExpenses } from '../../context/ExpenseContext';
 import { useAccounting } from '../../context/AccountingContext';
+import { useSupabase } from '../../context/SupabaseContext';
+import { expenseCategoryService, type ExpenseCategoryRow, type ExpenseCategoryTreeItem } from '../../services/expenseCategoryService';
 
 const getCategoryBadgeStyle = (category: string) => {
   switch (category) {
@@ -44,13 +46,38 @@ const getCategoryBadgeStyle = (category: string) => {
   }
 };
 
+const ICON_BY_SLUG: Record<string, React.ComponentType<{ size?: number }>> = {
+  Zap, Users, Car, Building2, Utensils, Wallet, Briefcase, Home, ShoppingCart,
+  Other: Wallet,
+};
+
+function flattenCategories(tree: ExpenseCategoryTreeItem[]): ExpenseCategoryRow[] {
+  const out: ExpenseCategoryRow[] = [];
+  tree.forEach((node) => {
+    out.push(node);
+    node.children.forEach((child) => out.push(child));
+  });
+  return out;
+}
+
 export const ExpensesDashboard = () => {
+  const { companyId } = useSupabase();
   const { expenses, loading, deleteExpense, refreshExpenses } = useExpenses();
   const { accounts } = useAccounting();
   const [activeTab, setActiveTab] = useState<'overview' | 'list' | 'categories'>('overview');
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<any>(null);
+  const [categoriesFromDb, setCategoriesFromDb] = useState<ExpenseCategoryTreeItem[]>([]);
+
+  const loadCategoriesFromDb = React.useCallback(() => {
+    if (!companyId) return;
+    expenseCategoryService.getTree(companyId).then(setCategoriesFromDb).catch(() => setCategoriesFromDb([]));
+  }, [companyId]);
+
+  useEffect(() => {
+    loadCategoriesFromDb();
+  }, [loadCategoriesFromDb]);
 
   // 🎯 NEW: Action States
   const [selectedExpense, setSelectedExpense] = useState<any>(null);
@@ -64,6 +91,8 @@ export const ExpensesDashboard = () => {
   const [filterOpen, setFilterOpen] = useState(false);
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [accountFilter, setAccountFilter] = useState<string>('all');
+  const [fromDate, setFromDate] = useState<string>('');
+  const [toDate, setToDate] = useState<string>('');
   
   // 🎯 NEW: Action Handlers
   const handleExpenseAction = (expense: any, action: string) => {
@@ -104,14 +133,24 @@ export const ExpensesDashboard = () => {
     setIsCategoryModalOpen(true);
   };
 
-  const handleDeleteCategory = (category: any) => {
+  const handleDeleteCategory = async (category: any) => {
     if (category.count > 0) {
       toast.error(`This category is used in ${category.count} records. Cannot delete.`, {
         description: "Please reassign or delete the associated expenses first.",
         duration: 4000,
       });
-    } else {
-      toast.success(`Category "${category.name}" deleted successfully.`);
+      return;
+    }
+    if (!category.company_id || !category.id) {
+      toast.info('This category is from expense history; add a category in DB to edit/delete.');
+      return;
+    }
+    try {
+      await expenseCategoryService.delete(category.id);
+      toast.success(`Category "${category.name}" deleted.`);
+      loadCategoriesFromDb();
+    } catch (e: any) {
+      toast.error(e?.message || 'Failed to delete category');
     }
   };
 
@@ -136,42 +175,40 @@ export const ExpensesDashboard = () => {
     }));
   }, [expenses]);
 
-  // Calculate categories list from real expenses
+  // Categories list: from expense_categories (DB) when available, else from expense counts
   const categoriesList = useMemo(() => {
+    const flat = flattenCategories(categoriesFromDb);
+    if (flat.length > 0) {
+      return flat.map((cat) => ({
+        ...cat,
+        icon: ICON_BY_SLUG[cat.icon] || Receipt,
+        color: cat.color?.startsWith('bg-') ? cat.color : `bg-${cat.color || 'gray'}-500`,
+        count: expenses.filter((e) => (e.category || '') === cat.name).length,
+      }));
+    }
     const categoryCounts: Record<string, number> = {};
     expenses.forEach(exp => {
       const cat = exp.category || 'Other';
       categoryCounts[cat] = (categoryCounts[cat] || 0) + 1;
     });
-    
     const iconMap: Record<string, any> = {
-      'Rent': Building2,
-      'Salaries': Users,
-      'Utilities': Zap,
-      'Stitching': ShoppingCart,
-      'Office Supplies': Briefcase,
-      'Food & Meals': Utensils,
+      'Rent': Building2, 'Salaries': Users, 'Utilities': Zap, 'Stitching': ShoppingCart,
+      'Office Supplies': Briefcase, 'Food & Meals': Utensils,
     };
-    
     const colorMap: Record<string, string> = {
-      'Rent': 'bg-blue-500',
-      'Salaries': 'bg-purple-500',
-      'Utilities': 'bg-orange-500',
-      'Stitching': 'bg-yellow-500',
-      'Office Supplies': 'bg-gray-500',
-      'Food & Meals': 'bg-red-500',
+      'Rent': 'bg-blue-500', 'Salaries': 'bg-purple-500', 'Utilities': 'bg-orange-500',
+      'Stitching': 'bg-yellow-500', 'Office Supplies': 'bg-gray-500', 'Food & Meals': 'bg-red-500',
     };
-    
     return Object.entries(categoryCounts).map(([name, count], index) => ({
-      id: index + 1,
+      id: String(index + 1),
       name,
       icon: iconMap[name] || Receipt,
       color: colorMap[name] || 'bg-gray-500',
       count,
     }));
-  }, [expenses]);
+  }, [expenses, categoriesFromDb]);
 
-  // Filtered expenses
+  // Filtered expenses (search, category, account, date range)
   const filteredExpenses = useMemo(() => {
     return expenses.filter(expense => {
       // Search filter
@@ -190,9 +227,14 @@ export const ExpensesDashboard = () => {
       // Account filter
       if (accountFilter !== 'all' && (expense.paymentMethod || '') !== accountFilter) return false;
 
+      // Date filter (From Date – To Date)
+      const expenseDate = expense.date ? new Date(expense.date).toISOString().slice(0, 10) : '';
+      if (fromDate && expenseDate < fromDate) return false;
+      if (toDate && expenseDate > toDate) return false;
+
       return true;
     });
-  }, [expenses, searchTerm, categoryFilter, accountFilter]);
+  }, [expenses, searchTerm, categoryFilter, accountFilter, fromDate, toDate]);
 
   // Pagination
   const paginatedExpenses = useMemo(() => {
@@ -206,7 +248,7 @@ export const ExpensesDashboard = () => {
   // Reset to page 1 when filters change
   React.useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm]);
+  }, [searchTerm, categoryFilter, accountFilter, fromDate, toDate]);
 
   const handlePageChange = (page: number) => {
     setCurrentPage(page);
@@ -220,14 +262,24 @@ export const ExpensesDashboard = () => {
   // Active filter count
   const activeFilterCount = [
     categoryFilter !== 'all',
-    accountFilter !== 'all'
+    accountFilter !== 'all',
+    !!fromDate,
+    !!toDate
   ].filter(Boolean).length;
 
   // Clear filters
   const clearFilters = () => {
     setCategoryFilter('all');
     setAccountFilter('all');
+    setFromDate('');
+    setToDate('');
   };
+
+  // Bottom summary: total of filtered expenses
+  const summaryTotal = useMemo(
+    () => filteredExpenses.reduce((sum, e) => sum + (e.amount || 0), 0),
+    [filteredExpenses]
+  );
 
   // Export handlers
   const handleExportCSV = () => {
@@ -464,6 +516,32 @@ export const ExpensesDashboard = () => {
                   </div>
 
                   <div className="space-y-4">
+                    {/* Date Filter: From – To */}
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="text-xs text-gray-400 uppercase font-medium mb-2 block">
+                          From Date
+                        </label>
+                        <input
+                          type="date"
+                          value={fromDate}
+                          onChange={(e) => setFromDate(e.target.value)}
+                          className="w-full bg-gray-950 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs text-gray-400 uppercase font-medium mb-2 block">
+                          To Date
+                        </label>
+                        <input
+                          type="date"
+                          value={toDate}
+                          onChange={(e) => setToDate(e.target.value)}
+                          className="w-full bg-gray-950 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500"
+                        />
+                      </div>
+                    </div>
+
                     {/* Category Filter */}
                     <div>
                       <label className="text-xs text-gray-400 uppercase font-medium mb-2 block">
@@ -475,11 +553,9 @@ export const ExpensesDashboard = () => {
                         className="w-full bg-gray-950 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500"
                       >
                         <option value="all">All Categories</option>
-                        <option value="Rent">Rent</option>
-                        <option value="Salaries">Salaries</option>
-                        <option value="Utilities">Utilities</option>
-                        <option value="Stitching">Stitching</option>
-                        <option value="Misc">Misc</option>
+                        {categoriesList.map((cat) => (
+                          <option key={cat.id} value={cat.name}>{cat.name}</option>
+                        ))}
                       </select>
                     </div>
 
@@ -510,9 +586,9 @@ export const ExpensesDashboard = () => {
             }}
           />
 
-          <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden">
+          <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden flex flex-col">
            {/* Table */}
-           <div className="overflow-x-auto">
+           <div className="overflow-x-auto flex-1">
               <table className="w-full text-sm text-left">
                  <thead className="text-xs text-gray-500 uppercase bg-gray-950/50 border-b border-gray-800">
                     <tr>
@@ -551,7 +627,7 @@ export const ExpensesDashboard = () => {
                              </div>
                           </td>
                           <td className="px-6 py-4 text-gray-500 font-mono text-xs">
-                             {expense.expenseNo}
+                             {expense.expenseNo || '—'}
                           </td>
                           <td className="px-6 py-4">
                              <Badge variant="outline" className={cn("font-normal", getCategoryBadgeStyle(expense.category))}>
@@ -596,6 +672,22 @@ export const ExpensesDashboard = () => {
                     )}
                  </tbody>
               </table>
+           </div>
+           {/* Fixed summary bar – Total / Grand Total + entries count */}
+           <div className="border-t border-gray-800 bg-gray-950/80 px-6 py-3 flex items-center justify-between text-sm">
+             <span className="text-gray-400">
+               {categoryFilter !== 'all' ? (
+                 <>Filter: <span className="text-white font-medium">{categoryFilter}</span></>
+               ) : (
+                 <>Grand Total</>
+               )}
+               <span className="text-gray-500 ml-2">
+                 · {filteredExpenses.length} {filteredExpenses.length === 1 ? 'entry' : 'entries'}
+               </span>
+             </span>
+             <span className="font-bold text-white text-lg">
+               Rs {summaryTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+             </span>
            </div>
         </div>
         </div>
@@ -663,6 +755,7 @@ export const ExpensesDashboard = () => {
         isOpen={isCategoryModalOpen} 
         onClose={() => setIsCategoryModalOpen(false)} 
         categoryToEdit={selectedCategory}
+        onSuccess={loadCategoriesFromDb}
       />
 
     </div>

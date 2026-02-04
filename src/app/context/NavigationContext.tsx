@@ -28,7 +28,6 @@ type View =
   | 'studio-production-list'
   | 'studio-production-add'
   | 'studio-production-detail'
-  | 'studio-production-test'
   | 'contact-profile'
   | 'item-report'
   | 'production-detail'
@@ -47,7 +46,8 @@ type View =
   | 'customer-ledger-test'
   | 'test-ledger'
   | 'customer-ledger-interactive-test'
-  | 'sales-list-design-test';
+  | 'sales-list-design-test'
+  | 'worker-detail';
 
 type DrawerType = 'none' | 'addUser' | 'addProduct' | 'edit-product' | 'addSale' | 'edit-sale' | 'addPurchase' | 'edit-purchase' | 'addContact';
 
@@ -103,6 +103,7 @@ export const NavigationProvider = ({ children }: { children: ReactNode }) => {
   const [activeDrawer, setActiveDrawer] = useState<DrawerType>('none');
   const [parentDrawer, setParentDrawer] = useState<DrawerType | null>(null);
   const [selectedStudioSaleId, setSelectedStudioSaleId] = useState<string | undefined>(undefined);
+  const [selectedWorkerId, setSelectedWorkerId] = useState<string | undefined>(undefined);
   const [selectedProductionId, setSelectedProductionId] = useState<string | undefined>(undefined);
   const [drawerContactType, setDrawerContactType] = useState<'customer' | 'supplier' | 'worker' | undefined>(undefined);
   const [drawerData, setDrawerData] = useState<any>(undefined);
@@ -214,6 +215,8 @@ export const NavigationProvider = ({ children }: { children: ReactNode }) => {
       parentDrawer,
       selectedStudioSaleId,
       setSelectedStudioSaleId,
+      selectedWorkerId,
+      setSelectedWorkerId,
       selectedProductionId,
       setSelectedProductionId,
       drawerContactType,

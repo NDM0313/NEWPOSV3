@@ -45,7 +45,7 @@ import {
 } from "@/app/components/ui/alert-dialog";
 
 type ContactType = 'all' | 'customers' | 'suppliers' | 'workers';
-type WorkerRole = 'tailor' | 'stitching-master' | 'cutter' | 'hand-worker' | 'dyer' | 'helper';
+type WorkerRole = 'tailor' | 'stitching-master' | 'cutter' | 'hand-worker' | 'dyer' | 'helper' | 'embroidery';
 type BalanceType = 'all' | 'due' | 'paid';
 type StatusType = 'all' | 'active' | 'inactive' | 'onhold';
 
@@ -74,10 +74,11 @@ const workerRoleLabels: Record<WorkerRole, string> = {
   'hand-worker': 'Hand Worker',
   'dyer': 'Dyer',
   'helper': 'Helper / Labour',
+  'embroidery': 'Embroidery',
 };
 
 export const ContactsPage = () => {
-  const { openDrawer, setCurrentView } = useNavigation();
+  const { openDrawer, setCurrentView, createdContactId, setCreatedContactId } = useNavigation();
   const { companyId, branchId } = useSupabase();
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [loading, setLoading] = useState(true);
@@ -95,26 +96,37 @@ export const ContactsPage = () => {
   const [editContactOpen, setEditContactOpen] = useState(false);
   const [viewProfileOpen, setViewProfileOpen] = useState(false);
 
-  // Convert Supabase contact to app format
+  // Convert Supabase contact to app format (receivables = due from customer, payables = due to supplier/worker)
   const convertFromSupabaseContact = useCallback((supabaseContact: any, index: number, sales: any[], purchases: any[]): Contact => {
-    // Calculate receivables (from sales)
-    const contactSales = sales.filter(s => 
-      s.customer_id === supabaseContact.id || s.customer_name === supabaseContact.name
-    );
-    const receivables = contactSales.reduce((sum, s) => sum + (s.due_amount || 0), 0);
-
-    // Calculate payables (from purchases)
-    const contactPurchases = purchases.filter(p => 
-      p.supplier_id === supabaseContact.id || p.supplier_name === supabaseContact.name
-    );
-    const payables = contactPurchases.reduce((sum, p) => sum + (p.due_amount || 0), 0);
-
-    // Determine contact type
+    // Determine contact type first (needed for worker payables)
     let contactType: 'customer' | 'supplier' | 'worker' = 'customer';
     if (supabaseContact.type === 'supplier') {
       contactType = 'supplier';
     } else if (supabaseContact.type === 'worker') {
       contactType = 'worker';
+    }
+
+    // Receivables: from sales where this contact is customer (due balance from them)
+    const contactSales = sales.filter(s =>
+      s.customer_id === supabaseContact.id || (s.customer_name && s.customer_name === supabaseContact.name)
+    );
+    const receivables = contactSales.reduce((sum, s) => {
+      const due = s.due_amount != null ? Number(s.due_amount) : (Number(s.total) || 0) - (Number(s.paid_amount) || 0);
+      return sum + Math.max(0, due);
+    }, 0);
+
+    // Payables: from purchases where this contact is supplier, OR for workers use current_balance (amount we owe)
+    let payables = 0;
+    if (contactType === 'worker') {
+      payables = Math.max(0, Number(supabaseContact.current_balance) || 0);
+    } else {
+      const contactPurchases = purchases.filter(p =>
+        p.supplier_id === supabaseContact.id || (p.supplier_name && p.supplier_name === supabaseContact.name)
+      );
+      payables = contactPurchases.reduce((sum, p) => {
+        const due = p.due_amount != null ? Number(p.due_amount) : (Number(p.total) || 0) - (Number(p.paid_amount) || 0);
+        return sum + Math.max(0, due);
+      }, 0);
     }
 
     // Generate code if missing
@@ -196,6 +208,21 @@ export const ContactsPage = () => {
       loadContacts();
     }
   }, [companyId, contacts.length, loading, loadContacts]);
+
+  // Refetch list when a new contact is created (e.g. Add Worker) so it shows without refresh
+  useEffect(() => {
+    if (createdContactId) {
+      loadContacts();
+      setCreatedContactId?.(null);
+    }
+  }, [createdContactId, loadContacts, setCreatedContactId]);
+
+  // Refetch when page gains focus so receivables/payables stay updated (e.g. after payment or ledger)
+  useEffect(() => {
+    const onFocus = () => { if (companyId) loadContacts(); };
+    window.addEventListener('focus', onFocus);
+    return () => window.removeEventListener('focus', onFocus);
+  }, [companyId, loadContacts]);
   
   // Filter states
   const [typeFilter, setTypeFilter] = useState<string[]>([]);

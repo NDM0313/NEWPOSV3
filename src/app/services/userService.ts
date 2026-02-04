@@ -212,5 +212,15 @@ export const userService = {
       includeInactive: false,
       canBeSalesman: true
     });
+  },
+
+  /**
+   * Get active users eligible for salary (Staff, Salesman, Operator, Admin, Manager).
+   * Used in Expenses → Salary: "Pay to (User)" dropdown. Workers (Dyer, Stitcher, etc.) are NOT included.
+   */
+  async getUsersForSalary(companyId: string): Promise<User[]> {
+    const all = await this.getAllUsers(companyId, { includeInactive: false });
+    const salaryRoles = ['admin', 'manager', 'staff', 'salesman', 'operator', 'cashier', 'inventory'];
+    return (all || []).filter((u) => salaryRoles.includes((u.role || '').toLowerCase()));
   }
 };

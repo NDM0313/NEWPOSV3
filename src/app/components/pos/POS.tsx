@@ -475,7 +475,7 @@ export const POS = () => {
       };
 
       const newSale = await createSale(saleData);
-
+      
       toast.success(`Sale completed! Invoice: ${newSale.invoiceNo}`);
       clearCart();
       setInvoiceNumber(newSale.invoiceNo);
@@ -796,7 +796,7 @@ export const POS = () => {
               >
                 <ChevronRight size={18} />
               </Button>
-            </div>
+          </div>
           </div>
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-2 px-3 py-1.5 bg-gray-900/70 rounded-lg border border-purple-900/50 min-w-0 flex-1">
@@ -1105,22 +1105,22 @@ export const POS = () => {
                 </>
               ) : (
                 <>
-                  <Button
-                    className="bg-green-600 hover:bg-green-500 text-white font-semibold h-12 rounded-xl shadow-lg shadow-green-900/30"
+              <Button 
+                className="bg-green-600 hover:bg-green-500 text-white font-semibold h-12 rounded-xl shadow-lg shadow-green-900/30"
                     onClick={async () => { await handleCheckout('cash', total); }}
-                    disabled={loading || !companyId || !user}
-                  >
-                    <Banknote size={18} className="mr-2" />
-                    Cash Payment
-                  </Button>
-                  <Button
-                    className="bg-blue-600 hover:bg-blue-500 text-white font-semibold h-12 rounded-xl shadow-lg shadow-blue-900/30"
+                disabled={loading || !companyId || !user}
+              >
+                <Banknote size={18} className="mr-2" />
+                Cash Payment
+              </Button>
+              <Button 
+                className="bg-blue-600 hover:bg-blue-500 text-white font-semibold h-12 rounded-xl shadow-lg shadow-blue-900/30"
                     onClick={async () => { await handleCheckout('card', total); }}
-                    disabled={loading || !companyId || !user}
-                  >
-                    <CreditCard size={18} className="mr-2" />
-                    Card Payment
-                  </Button>
+                disabled={loading || !companyId || !user}
+              >
+                <CreditCard size={18} className="mr-2" />
+                Card Payment
+              </Button>
                 </>
               )}
             </div>

@@ -277,4 +277,253 @@ export const studioService = {
     if (error) throw error;
     return data;
   },
+
+  /**
+   * Workers with real stats: active/pending/completed from studio_production_stages,
+   * total earnings from worker_ledger_entries (all), due balance from UNPAID ledger entries only.
+   * Due balance = sum of worker_ledger_entries.amount where status = 'unpaid' (ledger-driven, not workers.current_balance).
+   */
+  async getWorkersWithStats(companyId: string): Promise<Array<Worker & {
+    activeJobs: number;
+    pendingJobs: number;
+    completedJobs: number;
+    pendingAmount: number;
+    totalEarnings: number;
+  }>> {
+    const workers = await this.getAllWorkers(companyId);
+    const list = (workers || []) as (Worker & { current_balance?: number })[];
+
+    let stageCounts: Record<string, { pending: number; in_progress: number; completed: number }> = {};
+    let totalEarningsByWorker: Record<string, number> = {};
+    let dueBalanceByWorker: Record<string, number> = {};
+
+    try {
+      const { data: prods } = await supabase
+        .from('studio_productions')
+        .select('id')
+        .eq('company_id', companyId);
+      const prodIds = (prods || []).map((p: { id: string }) => p.id);
+
+      if (prodIds.length > 0) {
+        const { data: stageRows } = await supabase
+          .from('studio_production_stages')
+          .select('assigned_worker_id, status')
+          .in('production_id', prodIds);
+
+        (stageRows || []).forEach((row: { assigned_worker_id?: string | null; status: string }) => {
+          const wid = row.assigned_worker_id;
+          if (!wid) return;
+          if (!stageCounts[wid]) stageCounts[wid] = { pending: 0, in_progress: 0, completed: 0 };
+          const status = (row.status || '').toLowerCase();
+          if (status === 'pending') stageCounts[wid].pending++;
+          else if (status === 'in_progress') stageCounts[wid].in_progress++;
+          else if (status === 'completed') stageCounts[wid].completed++;
+        });
+      }
+
+      // Ledger: total earnings (all entries) + due balance (unpaid entries only)
+      let ledgerRows: Array<{ worker_id: string; amount: number; status?: string }> = [];
+      const { data: withStatus, error: errStatus } = await supabase
+        .from('worker_ledger_entries')
+        .select('worker_id, amount, status')
+        .eq('company_id', companyId);
+      if (errStatus && (errStatus.code === '42703' || errStatus.message?.includes('status'))) {
+        const { data: noStatus } = await supabase
+          .from('worker_ledger_entries')
+          .select('worker_id, amount')
+          .eq('company_id', companyId);
+        ledgerRows = (noStatus || []).map((r: any) => ({ ...r, status: 'unpaid' }));
+      } else {
+        ledgerRows = withStatus || [];
+      }
+
+      ledgerRows.forEach((row: { worker_id: string; amount: number; status?: string }) => {
+        const wid = row.worker_id;
+        const amt = Number(row.amount) || 0;
+        totalEarningsByWorker[wid] = (totalEarningsByWorker[wid] || 0) + amt;
+        const status = (row.status || '').toLowerCase();
+        if (status !== 'paid') {
+          dueBalanceByWorker[wid] = (dueBalanceByWorker[wid] || 0) + amt;
+        }
+      });
+    } catch (e: any) {
+      if (e?.code !== 'PGRST205' && !e?.message?.includes('Could not find')) throw e;
+    }
+
+    return list.map((w) => {
+      const id = w.id!;
+      const counts = stageCounts[id] || { pending: 0, in_progress: 0, completed: 0 };
+      const pendingAmount = dueBalanceByWorker[id] ?? 0;
+      const totalEarnings = totalEarningsByWorker[id] || 0;
+      return {
+        ...w,
+        activeJobs: counts.in_progress,
+        pendingJobs: counts.pending,
+        completedJobs: counts.completed,
+        pendingAmount,
+        totalEarnings,
+      };
+    });
+  },
+
+  /**
+   * Single worker detail with current and recent stages (as jobs) for WorkerDetailPage.
+   */
+  async getWorkerDetail(companyId: string, workerId: string): Promise<{
+    worker: Worker & { activeJobs: number; pendingJobs: number; completedJobs: number; pendingAmount: number; totalEarnings: number };
+    currentStages: Array<{
+      id: string;
+      stage_type: string;
+      status: string;
+      cost: number;
+      expected_completion_date?: string | null;
+      completed_at?: string | null;
+      production_no?: string;
+      sale_id?: string;
+      customer_name?: string;
+    }>;
+    recentCompletedStages: Array<{
+      id: string;
+      stage_type: string;
+      cost: number;
+      completed_at?: string | null;
+      production_no?: string;
+    }>;
+  } | null> {
+    const withStats = await this.getWorkersWithStats(companyId);
+    const worker = withStats.find((w) => w.id === workerId) || null;
+    if (!worker) return null;
+
+    const currentStages: Array<{
+      id: string;
+      stage_type: string;
+      status: string;
+      cost: number;
+      expected_completion_date?: string | null;
+      completed_at?: string | null;
+      production_no?: string;
+      sale_id?: string;
+      customer_name?: string;
+    }> = [];
+    const recentCompletedStages: Array<{
+      id: string;
+      stage_type: string;
+      cost: number;
+      completed_at?: string | null;
+      production_no?: string;
+    }> = [];
+
+    try {
+      const { data: prods } = await supabase
+        .from('studio_productions')
+        .select('id, production_no, sale_id, sale:sales(customer:contacts(name))')
+        .eq('company_id', companyId);
+      const prodMap = new Map((prods || []).map((p: any) => [p.id, p]));
+
+      const { data: stages } = await supabase
+        .from('studio_production_stages')
+        .select('id, production_id, stage_type, status, cost, expected_completion_date, completed_at')
+        .eq('assigned_worker_id', workerId)
+        .in('status', ['pending', 'in_progress', 'completed'])
+        .order('created_at', { ascending: false });
+
+      (stages || []).forEach((s: any) => {
+        const prod = prodMap.get(s.production_id);
+        const productionNo = prod?.production_no;
+        const sale = prod?.sale;
+        const customerName = sale?.customer?.name;
+        const item = {
+          id: s.id,
+          stage_type: s.stage_type,
+          status: s.status,
+          cost: Number(s.cost) || 0,
+          expected_completion_date: s.expected_completion_date,
+          completed_at: s.completed_at,
+          production_no: productionNo,
+          sale_id: prod?.sale_id,
+          customer_name: customerName,
+        };
+        if (s.status === 'completed') {
+          recentCompletedStages.push({
+            id: s.id,
+            stage_type: s.stage_type,
+            cost: item.cost,
+            completed_at: s.completed_at,
+            production_no: productionNo,
+          });
+        } else {
+          currentStages.push(item);
+        }
+      });
+      recentCompletedStages.sort((a, b) => {
+        const da = a.completed_at ? new Date(a.completed_at).getTime() : 0;
+        const db = b.completed_at ? new Date(b.completed_at).getTime() : 0;
+        return db - da;
+      });
+      const keepRecent = 10;
+      if (recentCompletedStages.length > keepRecent) recentCompletedStages.length = keepRecent;
+    } catch (e: any) {
+      if (e?.code !== 'PGRST205' && !e?.message?.includes('Could not find')) throw e;
+    }
+
+    return {
+      worker: {
+        ...worker,
+        activeJobs: worker.activeJobs,
+        pendingJobs: worker.pendingJobs,
+        completedJobs: worker.completedJobs,
+        pendingAmount: worker.pendingAmount,
+        totalEarnings: worker.totalEarnings,
+      },
+      currentStages,
+      recentCompletedStages,
+    };
+  },
+
+  /**
+   * Ledger entries for a worker (Payable / Paid) for "View Full Ledger" on Worker Detail.
+   */
+  async getWorkerLedgerEntries(companyId: string, workerId: string): Promise<Array<{
+    id: string;
+    amount: number;
+    status: string;
+    reference_type: string;
+    reference_id: string;
+    notes: string | null;
+    created_at: string;
+    paid_at?: string | null;
+  }>> {
+    const cols = 'id, amount, reference_type, reference_id, notes, created_at';
+    let data: any[] = [];
+    const { data: withStatus, error } = await supabase
+      .from('worker_ledger_entries')
+      .select(`${cols}, status, paid_at`)
+      .eq('company_id', companyId)
+      .eq('worker_id', workerId)
+      .order('created_at', { ascending: false });
+    if (error && (error.code === '42703' || error.message?.includes('status') || error.message?.includes('paid_at'))) {
+      const { data: fallback } = await supabase
+        .from('worker_ledger_entries')
+        .select(cols)
+        .eq('company_id', companyId)
+        .eq('worker_id', workerId)
+        .order('created_at', { ascending: false });
+      data = (fallback || []).map((r: any) => ({ ...r, status: 'unpaid', paid_at: null }));
+    } else if (error) {
+      if (error.code === 'PGRST116' || error.message?.includes('does not exist')) return [];
+      throw error;
+    } else {
+      data = withStatus || [];
+    }
+    return data.map((r: any) => ({
+      id: r.id,
+      amount: Number(r.amount) || 0,
+      status: (r.status || 'unpaid').toLowerCase(),
+      reference_type: r.reference_type || '',
+      reference_id: r.reference_id || '',
+      notes: r.notes ?? null,
+      created_at: r.created_at || '',
+      paid_at: r.paid_at ?? null,
+    }));
+  },
 };

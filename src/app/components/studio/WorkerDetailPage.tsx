@@ -1,7 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { 
   ArrowLeft,
-  User,
   Phone,
   Calendar,
   Star,
@@ -12,14 +11,20 @@ import {
   Clock,
   AlertTriangle,
   Package,
-  TrendingUp,
   ChevronRight,
   Eye,
-  ExternalLink
+  ExternalLink,
+  Loader2,
+  FileText,
+  ChevronDown,
+  ChevronUp
 } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
 import { format } from 'date-fns';
+import { useNavigation } from '../../context/NavigationContext';
+import { useSupabase } from '../../context/SupabaseContext';
+import { studioService } from '../../services/studioService';
 
 // ============================================
 // 🎯 TYPES
@@ -65,90 +70,11 @@ interface WorkerDetail {
   recentCompletedJobs: WorkerJob[];
 }
 
-// ============================================
-// 🎨 MOCK DATA
-// ============================================
-
-const mockWorkerDetail: WorkerDetail = {
-  id: 'W001',
-  name: 'Ahmed Ali',
-  phone: '+92 300 1111111',
-  department: 'Dyeing',
-  rating: 4.5,
-  joinedDate: new Date('2025-06-15'),
-  
-  activeJobs: 3,
-  pendingJobs: 2,
-  completedJobs: 45,
-  
-  totalEarnings: 145000,
-  pendingAmount: 12500,
-  
-  currentJobs: [
-    {
-      id: 'J001',
-      jobCardId: 'JC-2026-001',
-      customerName: 'Ayesha Khan',
-      itemDescription: 'Silk Lawn - Red (5m)',
-      currentStage: 'Dyeing',
-      deadline: new Date('2026-01-25'),
-      status: 'in_progress',
-      assignedDate: new Date('2026-01-10'),
-      paymentAmount: 4500,
-      isPaid: false
-    },
-    {
-      id: 'J002',
-      jobCardId: 'JC-2026-005',
-      customerName: 'Fatima Ahmed',
-      itemDescription: 'Cotton Lawn - Blue (8m)',
-      currentStage: 'Dyeing',
-      deadline: new Date('2026-01-28'),
-      status: 'in_progress',
-      assignedDate: new Date('2026-01-12'),
-      paymentAmount: 5000,
-      isPaid: false
-    },
-    {
-      id: 'J003',
-      jobCardId: 'JC-2026-008',
-      customerName: 'Sarah Ali',
-      itemDescription: 'Chiffon - Green (4m)',
-      currentStage: 'Dyeing',
-      deadline: new Date('2026-01-30'),
-      status: 'in_progress',
-      assignedDate: new Date('2026-01-14'),
-      paymentAmount: 3000,
-      isPaid: false
-    }
-  ],
-  
-  recentCompletedJobs: [
-    {
-      id: 'J004',
-      jobCardId: 'JC-2026-002',
-      customerName: 'Zara Malik',
-      itemDescription: 'Organza - Purple (3m)',
-      currentStage: 'Dyeing',
-      deadline: new Date('2026-01-15'),
-      status: 'completed',
-      assignedDate: new Date('2026-01-05'),
-      paymentAmount: 3500,
-      isPaid: true
-    },
-    {
-      id: 'J005',
-      jobCardId: 'JC-2026-003',
-      customerName: 'Hina Shah',
-      itemDescription: 'Silk - Maroon (6m)',
-      currentStage: 'Dyeing',
-      deadline: new Date('2026-01-12'),
-      status: 'completed',
-      assignedDate: new Date('2026-01-03'),
-      paymentAmount: 4200,
-      isPaid: true
-    }
-  ]
+const mapStageTypeToDept = (t: string): DepartmentType => {
+  const s = (t || '').toLowerCase();
+  if (s === 'dyer' || s === 'dyeing') return 'Dyeing';
+  if (s === 'handwork') return 'Handwork';
+  return 'Stitching';
 };
 
 // ============================================
@@ -191,24 +117,149 @@ const getJobStatusIcon = (status: JobStatus) => {
 // 🎯 MAIN COMPONENT
 // ============================================
 
+interface LedgerEntry {
+  id: string;
+  amount: number;
+  status: string;
+  reference_type: string;
+  reference_id: string;
+  notes: string | null;
+  created_at: string;
+  paid_at?: string | null;
+}
+
 export const WorkerDetailPage: React.FC = () => {
-  const [worker] = useState<WorkerDetail>(mockWorkerDetail);
-  const DeptIcon = getDepartmentIcon(worker.department);
+  const { setCurrentView, setSelectedWorkerId, selectedWorkerId } = useNavigation();
+  const { companyId } = useSupabase();
+  const [worker, setWorker] = useState<WorkerDetail | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [ledgerEntries, setLedgerEntries] = useState<LedgerEntry[]>([]);
+  const [ledgerLoading, setLedgerLoading] = useState(false);
+  const [ledgerOpen, setLedgerOpen] = useState(false);
+
+  const loadDetail = useCallback(async () => {
+    if (!companyId || !selectedWorkerId) {
+      setWorker(null);
+      setLoading(false);
+      return;
+    }
+    try {
+      setLoading(true);
+      const data = await studioService.getWorkerDetail(companyId, selectedWorkerId);
+      if (!data) {
+        setWorker(null);
+        return;
+      }
+      const w = data.worker;
+      const mapDept = (tt?: string) => mapStageTypeToDept(tt || w.worker_type || '');
+      const currentJobs: WorkerJob[] = data.currentStages.map((s) => ({
+        id: s.id,
+        jobCardId: s.production_no || '—',
+        customerName: s.customer_name || '—',
+        itemDescription: s.stage_type,
+        currentStage: mapDept(s.stage_type),
+        deadline: s.expected_completion_date ? new Date(s.expected_completion_date) : new Date(),
+        status: s.status as JobStatus,
+        assignedDate: new Date(),
+        paymentAmount: s.cost,
+        isPaid: false,
+      }));
+      const recentCompletedJobs: WorkerJob[] = data.recentCompletedStages.map((s) => ({
+        id: s.id,
+        jobCardId: s.production_no || '—',
+        customerName: '—',
+        itemDescription: s.stage_type,
+        currentStage: mapDept(s.stage_type),
+        deadline: s.completed_at ? new Date(s.completed_at) : new Date(),
+        status: 'completed',
+        assignedDate: new Date(),
+        paymentAmount: s.cost,
+        isPaid: true,
+      }));
+      setWorker({
+        id: w.id!,
+        name: w.name,
+        phone: w.phone || '',
+        department: mapDept(w.worker_type),
+        rating: 4.5,
+        joinedDate: (w as any).created_at ? new Date((w as any).created_at) : new Date(),
+        activeJobs: w.activeJobs ?? 0,
+        pendingJobs: w.pendingJobs ?? 0,
+        completedJobs: w.completedJobs ?? 0,
+        totalEarnings: w.totalEarnings ?? 0,
+        pendingAmount: w.pendingAmount ?? 0,
+        currentJobs,
+        recentCompletedJobs,
+      });
+    } catch (e) {
+      console.error('[WorkerDetailPage] load error', e);
+      setWorker(null);
+    } finally {
+      setLoading(false);
+    }
+  }, [companyId, selectedWorkerId]);
+
+  useEffect(() => {
+    loadDetail();
+  }, [loadDetail]);
+
+  const loadLedger = useCallback(async () => {
+    if (!companyId || !selectedWorkerId) return;
+    setLedgerLoading(true);
+    try {
+      const entries = await studioService.getWorkerLedgerEntries(companyId, selectedWorkerId);
+      setLedgerEntries(entries);
+    } catch (e) {
+      console.error('[WorkerDetailPage] ledger load error', e);
+      setLedgerEntries([]);
+    } finally {
+      setLedgerLoading(false);
+    }
+  }, [companyId, selectedWorkerId]);
+
+  useEffect(() => {
+    if (ledgerOpen && selectedWorkerId) loadLedger();
+  }, [ledgerOpen, selectedWorkerId, loadLedger]);
 
   const handleGoBack = () => {
-    window.close(); // Close the tab
-    // Or use router to go back
+    setSelectedWorkerId?.(undefined);
+    setCurrentView('studio-workflow');
   };
 
   const handleGoToAccounting = () => {
-    console.log('Navigate to Accounting for worker:', worker.id);
-    // Navigate to accounting module with worker filter
+    setSelectedWorkerId?.(undefined);
+    setCurrentView('accounting');
+    // TODO: pass worker filter when accounting supports it
   };
 
   const handleViewJob = (jobId: string) => {
-    console.log('View job detail:', jobId);
-    // Navigate to job detail page
+    // Stage id – could open studio sale detail if we had sale_id on the stage payload
+    setCurrentView('studio-dashboard-new');
   };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-[#111827]">
+        <Loader2 size={48} className="text-blue-500 animate-spin" />
+      </div>
+    );
+  }
+
+  if (!selectedWorkerId || !worker) {
+    return (
+      <div className="min-h-screen bg-[#111827] text-white flex items-center justify-center">
+        <div className="text-center">
+          <p className="text-gray-400 mb-4">Worker not found</p>
+          <Button onClick={handleGoBack} className="bg-blue-600 hover:bg-blue-500">
+            <ArrowLeft size={18} className="mr-2" />
+            Back to Workers
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  const DeptIcon = getDepartmentIcon(worker.department);
 
   return (
     <div className="min-h-screen bg-[#111827] text-white">
@@ -278,7 +329,7 @@ export const WorkerDetailPage: React.FC = () => {
           </div>
 
           {/* Stats Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mt-6 pt-6 border-t border-gray-800">
+          <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mt-6 pt-6 border-t border-gray-800">
             <div className="text-center">
               <p className="text-gray-400 text-sm mb-1">Active Jobs</p>
               <p className="text-3xl font-bold text-yellow-400">{worker.activeJobs}</p>
@@ -292,6 +343,12 @@ export const WorkerDetailPage: React.FC = () => {
               <p className="text-3xl font-bold text-green-400">{worker.completedJobs}</p>
             </div>
             <div className="text-center border-l border-gray-800">
+              <p className="text-gray-400 text-sm mb-1">Total Due Amount</p>
+              <p className={`text-2xl font-bold ${worker.pendingAmount > 0 ? 'text-orange-400' : 'text-green-400'}`}>
+                {worker.pendingAmount > 0 ? `Rs ${worker.pendingAmount.toLocaleString()}` : 'Cleared'}
+              </p>
+            </div>
+            <div className="text-center border-l border-gray-800">
               <p className="text-gray-400 text-sm mb-1">Total Earnings</p>
               <p className="text-2xl font-bold text-blue-400">
                 Rs {worker.totalEarnings.toLocaleString()}
@@ -300,17 +357,17 @@ export const WorkerDetailPage: React.FC = () => {
           </div>
         </div>
 
-        {/* Payment Snapshot (Read-only) */}
+        {/* Total Due / Payment Snapshot (ledger-driven) */}
         {worker.pendingAmount > 0 && (
           <div className="bg-gradient-to-r from-orange-500/10 to-red-500/10 border border-orange-500/20 rounded-xl p-5">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-orange-400 font-semibold text-sm mb-1">⚠️ Pending Payment</p>
+                <p className="text-orange-400 font-semibold text-sm mb-1">Total Due Amount (Payable)</p>
                 <p className="text-3xl font-bold text-white">
                   Rs {worker.pendingAmount.toLocaleString()}
                 </p>
                 <p className="text-xs text-gray-400 mt-2">
-                  For {worker.currentJobs.filter(j => !j.isPaid).length} unpaid jobs
+                  Ledger-driven: unpaid payable entries. Pay via Accounting → Worker Payments.
                 </p>
               </div>
               <Button
@@ -323,6 +380,69 @@ export const WorkerDetailPage: React.FC = () => {
             </div>
           </div>
         )}
+
+        {/* View Full Ledger: Payable & Paid entries */}
+        <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden">
+          <button
+            type="button"
+            onClick={() => setLedgerOpen((o) => !o)}
+            className="w-full p-6 border-b border-gray-800 flex items-center justify-between text-left hover:bg-gray-800/30 transition-colors"
+          >
+            <h3 className="text-lg font-bold text-white flex items-center gap-2">
+              <FileText className="text-cyan-400" size={20} />
+              View Full Ledger
+            </h3>
+            {ledgerOpen ? <ChevronUp size={20} className="text-gray-400" /> : <ChevronDown size={20} className="text-gray-400" />}
+          </button>
+          {ledgerOpen && (
+            <div className="p-4">
+              {ledgerLoading ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 size={24} className="animate-spin text-blue-500" />
+                </div>
+              ) : ledgerEntries.length === 0 ? (
+                <p className="text-gray-500 text-sm py-4 text-center">No ledger entries yet</p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm text-left">
+                    <thead className="text-xs text-gray-500 uppercase bg-gray-950/50 border-b border-gray-800">
+                      <tr>
+                        <th className="px-4 py-3 font-medium">Date</th>
+                        <th className="px-4 py-3 font-medium">Reference</th>
+                        <th className="px-4 py-3 font-medium text-right">Amount</th>
+                        <th className="px-4 py-3 font-medium text-center">Status</th>
+                        <th className="px-4 py-3 font-medium">Paid At</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-800">
+                      {ledgerEntries.map((entry) => (
+                        <tr key={entry.id} className="hover:bg-gray-800/30">
+                          <td className="px-4 py-3 text-gray-300">
+                            {entry.created_at ? format(new Date(entry.created_at), 'dd MMM yyyy HH:mm') : '—'}
+                          </td>
+                          <td className="px-4 py-3 text-gray-400">
+                            {entry.reference_type === 'studio_production_stage' ? 'Stage' : entry.reference_type} {entry.reference_id?.slice(0, 8)}
+                          </td>
+                          <td className="px-4 py-3 text-right font-semibold text-white">
+                            Rs {entry.amount.toLocaleString()}
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            <Badge variant="outline" className={entry.status === 'paid' ? 'bg-green-500/20 text-green-400 border-green-700' : 'bg-orange-500/20 text-orange-400 border-orange-700'}>
+                              {entry.status === 'paid' ? 'Paid' : 'Payable'}
+                            </Badge>
+                          </td>
+                          <td className="px-4 py-3 text-gray-500 text-xs">
+                            {entry.paid_at ? format(new Date(entry.paid_at), 'dd MMM yyyy') : '—'}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
 
         {/* Current Jobs Section */}
         <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden">

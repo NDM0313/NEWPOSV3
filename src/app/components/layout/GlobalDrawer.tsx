@@ -322,7 +322,17 @@ const ContactFormContent = ({ onClose }: { onClose: () => void }) => {
     supplier: drawerContactType === 'supplier' ? true : false,
     worker: drawerContactType === 'worker' ? true : false,
   });
-  const [workerType, setWorkerType] = useState<string>('dyer');
+  // Worker role = DB value. Must match Studio category filter: Dyeing (dyer) | Stitching (tailor, stitching-master, cutter) | Handwork (hand-worker, helper, embroidery)
+  const WORKER_ROLES = [
+    { value: 'dyer', label: 'Dyer', category: 'Dyeing' },
+    { value: 'tailor', label: 'Tailor', category: 'Stitching' },
+    { value: 'stitching-master', label: 'Stitching Master', category: 'Stitching' },
+    { value: 'cutter', label: 'Cutter', category: 'Stitching' },
+    { value: 'hand-worker', label: 'Hand Worker', category: 'Handwork' },
+    { value: 'helper', label: 'Helper / Labour', category: 'Handwork' },
+    { value: 'embroidery', label: 'Embroidery', category: 'Handwork' },
+  ] as const;
+  const [workerType, setWorkerType] = useState<string>(WORKER_ROLES[0].value);
   const [saving, setSaving] = useState(false);
   const [country, setCountry] = useState<string>('pk');
   const [selectedGroupId, setSelectedGroupId] = useState<string>('none');
@@ -351,8 +361,8 @@ const ContactFormContent = ({ onClose }: { onClose: () => void }) => {
         supplier: drawerContactType === 'supplier' ? true : false,
         worker: drawerContactType === 'worker' ? true : false,
       });
+      if (drawerContactType === 'worker') setWorkerType('dyer');
     } else {
-      // No drawerContactType means all roles should be unselected
       setContactRoles({
         customer: false,
         supplier: false,
@@ -521,6 +531,14 @@ const ContactFormContent = ({ onClose }: { onClose: () => void }) => {
         toast.error('Please select at least one contact role');
         setSaving(false);
         return;
+      }
+      if (contactRoles.worker) {
+        const validWorkerRoles = ['dyer', 'tailor', 'stitching-master', 'cutter', 'hand-worker', 'helper', 'embroidery'];
+        if (!workerType || !validWorkerRoles.includes(workerType)) {
+          toast.error('Please select a worker role (Dyeing / Stitching / Handwork)');
+          setSaving(false);
+          return;
+        }
       }
 
       const createdContact = await contactService.createContact(contactData);
@@ -839,42 +857,28 @@ const ContactFormContent = ({ onClose }: { onClose: () => void }) => {
           </Accordion>
         )}
 
-        {/* Worker Type Selection - Only for Workers */}
+        {/* Worker Role (category) – Only these values; matches Studio assignment filter */}
         {contactRoles.worker && (
           <div className="bg-green-500/10 border border-green-500/30 rounded-lg p-4 space-y-4">
             <h3 className="text-sm font-semibold text-green-400 uppercase tracking-wider flex items-center gap-2">
               <span className="w-2 h-2 rounded-full bg-green-500"></span>
-              Worker Specialization
+              Worker Role (required)
             </h3>
-            
-            <div className="grid grid-cols-2 gap-3">
-              {[
-                { value: 'dyer', label: 'Dyer', icon: '🎨' },
-                { value: 'stitching', label: 'Stitching Master', icon: '✂️' },
-                { value: 'handwork', label: 'Handwork', icon: '🧵' },
-                { value: 'embroidery', label: 'Embroidery', icon: '🪡' },
-                { value: 'printing', label: 'Printing', icon: '🖨️' },
-                { value: 'finishing', label: 'Finishing', icon: '✨' },
-                { value: 'cutting', label: 'Cutting Master', icon: '✂️' },
-                { value: 'packing', label: 'Packing', icon: '📦' },
-              ].map((type) => (
-                <button
-                  key={type.value}
-                  type="button"
-                  onClick={() => setWorkerType(type.value)}
-                  className={`p-3 rounded-lg border-2 transition-all text-left ${
-                    workerType === type.value
-                      ? 'bg-green-600 border-green-500 text-white shadow-lg shadow-green-500/30'
-                      : 'bg-gray-900 border-gray-700 text-gray-400 hover:border-green-500/50 hover:bg-gray-800'
-                  }`}
-                >
-                  <div className="flex items-center gap-2">
-                    <span className="text-xl">{type.icon}</span>
-                    <span className="text-sm font-medium">{type.label}</span>
-                  </div>
-                </button>
-              ))}
-            </div>
+            <p className="text-xs text-gray-500">Used for Studio: Dyeing / Stitching / Handwork task assignment.</p>
+            <Select value={workerType} onValueChange={(v) => setWorkerType(v)} required>
+              <SelectTrigger className="bg-gray-900 border-gray-700 text-white">
+                <SelectValue placeholder="Select role..." />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="dyer" className="text-white focus:bg-gray-800">Dyeing → Dyer</SelectItem>
+                <SelectItem value="tailor" className="text-white focus:bg-gray-800">Stitching → Tailor</SelectItem>
+                <SelectItem value="stitching-master" className="text-white focus:bg-gray-800">Stitching → Stitching Master</SelectItem>
+                <SelectItem value="cutter" className="text-white focus:bg-gray-800">Stitching → Cutter</SelectItem>
+                <SelectItem value="hand-worker" className="text-white focus:bg-gray-800">Handwork → Hand Worker</SelectItem>
+                <SelectItem value="helper" className="text-white focus:bg-gray-800">Handwork → Helper / Labour</SelectItem>
+                <SelectItem value="embroidery" className="text-white focus:bg-gray-800">Handwork → Embroidery</SelectItem>
+              </SelectContent>
+            </Select>
 
             {/* Worker Rate */}
             <div className="space-y-2">

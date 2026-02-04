@@ -68,7 +68,6 @@ export const Sidebar = () => {
       children: [
         { id: 'studio-dashboard-new', label: 'Dashboard' },
         { id: 'studio', label: 'Studio Sales' },
-        { id: 'studio-production-list', label: 'Production Jobs' },
         { id: 'studio-workflow', label: 'Workers' },
       ]
     },

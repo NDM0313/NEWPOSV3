@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { studioService } from '@/app/services/studioService';
 import { saleService } from '@/app/services/saleService';
+import { studioProductionService } from '@/app/services/studioProductionService';
 import { toast } from 'sonner';
 import { 
   Palette, 
@@ -13,13 +14,27 @@ import {
   Package,
   ArrowRight,
   Filter,
-  Search
+  Search,
+  X,
+  User,
+  Calendar,
+  DollarSign,
+  MoreVertical,
+  FileText,
+  Phone
 } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Badge } from '../ui/badge';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '../ui/dropdown-menu';
 import { useNavigation } from '@/app/context/NavigationContext';
 import { cn } from '../ui/utils';
+import { format } from 'date-fns';
 
 // Studio orders will be loaded from Supabase
 
@@ -77,6 +92,314 @@ interface StudioOrderDisplay {
   source: 'studio_order' | 'sale';
 }
 
+const stageTypeToLabel = (t: string) => t === 'dyer' ? 'Dyeing' : t === 'handwork' ? 'Handwork' : t === 'stitching' ? 'Stitching' : t;
+const stageTypeIcon = (t: string) => t === 'dyer' ? Palette : t === 'handwork' ? Sparkles : Scissors;
+
+/** Order Details dialog – Worker Detail inspired: header, graphical progress stepper, worker cost breakdown, financial summary. No Edit/Save. */
+const OrderDetailsModal = ({
+  orderId,
+  onClose,
+  onOpenProduction
+}: {
+  orderId: string;
+  onClose: () => void;
+  onOpenProduction: () => void;
+}) => {
+  const [loading, setLoading] = useState(true);
+  const [sale, setSale] = useState<any>(null);
+  const [stages, setStages] = useState<any[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setLoading(true);
+      try {
+        const s = await saleService.getSale(orderId);
+        if (cancelled || !s?.id) return;
+        setSale(s);
+        const prods = await studioProductionService.getProductionsBySaleId(s.id);
+        if (cancelled || !prods?.length) {
+          setStages([]);
+          return;
+        }
+        const st = await studioProductionService.getStagesByProductionId(prods[0].id);
+        if (cancelled) return;
+        setStages(st || []);
+      } catch (e) {
+        if (!cancelled) setSale(null);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [orderId]);
+
+  const customerName = sale?.customer_name || sale?.customer?.name || '—';
+  const customerPhone = sale?.customer?.phone || '';
+  const invoiceNo = sale?.invoice_no || sale?.invoiceNo || orderId?.slice(0, 8) || '—';
+  const items = sale?.items || [];
+  const fabricName = items.length > 0 ? (items[0].product_name || items[0].item_description || 'Fabric') : '—';
+  const totalBill = sale?.total != null ? Number(sale.total) : 0;
+  const paidAmount = sale?.paid_amount != null ? Number(sale.paid_amount) : 0;
+  const balanceDue = sale?.due_amount != null ? Number(sale.due_amount) : totalBill - paidAmount;
+  const workerCostTotal = stages.reduce((sum: number, s: any) => sum + (Number(s?.cost) || 0), 0);
+  const allCompleted = stages.length > 0 && stages.every((s: any) => s.status === 'completed');
+  const anyInProgress = stages.some((s: any) => s.status === 'in_progress' || s.status === 'completed');
+  const derivedStatus = allCompleted ? 'Completed' : anyInProgress ? 'In Progress' : 'Pending';
+  const expectedDelivery = sale?.notes || (stages.length > 0
+    ? stages.map((s: any) => s.expected_completion_date).filter(Boolean).pop()
+    : null) || '—';
+  const expectedDeliveryFormatted = expectedDelivery && expectedDelivery !== '—'
+    ? (() => { try { return format(new Date(expectedDelivery), 'dd MMM yyyy'); } catch { return String(expectedDelivery).slice(0, 10); } })()
+    : '—';
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/70" onClick={onClose}>
+      <div
+        className="bg-gray-900 border border-gray-800 rounded-xl w-full max-w-[900px] max-h-[90vh] overflow-y-auto shadow-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="sticky top-0 bg-gray-900 border-b border-gray-800 px-4 py-3 flex items-center justify-between z-10">
+          <h3 className="text-lg font-semibold text-white">Order details</h3>
+          <button type="button" onClick={onClose} className="p-2 rounded-lg hover:bg-gray-800 text-gray-400">
+            <X size={18} />
+          </button>
+        </div>
+        <div className="p-5 space-y-5">
+          {loading ? (
+            <div className="py-12 text-center text-gray-500">Loading…</div>
+          ) : !sale ? (
+            <div className="py-12 text-center text-gray-500">Order not found</div>
+          ) : (
+            <>
+              {/* Header */}
+              <div className="bg-gray-950/50 border border-gray-800 rounded-xl p-4 space-y-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-xs text-gray-500 uppercase tracking-wider">Invoice</p>
+                    <p className="text-lg font-bold text-white mt-0.5">{invoiceNo}</p>
+                  </div>
+                  <Badge
+                    variant="outline"
+                    className={cn(
+                      'text-xs shrink-0',
+                      derivedStatus === 'Completed' && 'bg-green-500/20 text-green-400 border-green-700',
+                      derivedStatus === 'In Progress' && 'bg-blue-500/20 text-blue-400 border-blue-700',
+                      derivedStatus === 'Pending' && 'bg-gray-500/20 text-gray-400 border-gray-700'
+                    )}
+                  >
+                    {derivedStatus}
+                  </Badge>
+                </div>
+                <div className="flex items-center gap-2 text-sm">
+                  <User size={14} className="text-gray-500 shrink-0" />
+                  <div>
+                    <p className="text-white font-medium">{customerName}</p>
+                    {customerPhone && (
+                      <p className="text-gray-500 text-xs flex items-center gap-1 mt-0.5">
+                        <Phone size={10} /> {customerPhone}
+                      </p>
+                    )}
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 text-sm">
+                  <Package size={14} className="text-gray-500 shrink-0" />
+                  <p className="text-gray-300">{fabricName}</p>
+                </div>
+                <div className="flex items-center gap-2 text-sm">
+                  <Calendar size={14} className="text-gray-500 shrink-0" />
+                  <p className="text-gray-400">Expected delivery: <span className="text-white">{expectedDeliveryFormatted}</span></p>
+                </div>
+                <div className="grid grid-cols-2 gap-3 pt-2 border-t border-gray-800">
+                  <div>
+                    <p className="text-xs text-gray-500">Total bill</p>
+                    <p className="text-white font-semibold">Rs {totalBill.toLocaleString()}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-500">Balance due</p>
+                    <p className={cn('font-semibold', balanceDue > 0 ? 'text-orange-400' : 'text-green-400')}>
+                      Rs {balanceDue.toLocaleString()}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Production progress – graphical stepper */}
+              <div className="bg-gray-950/50 border border-gray-800 rounded-xl p-4">
+                <h4 className="text-sm font-semibold text-white mb-3 flex items-center gap-2">
+                  <FileText size={16} className="text-cyan-400" />
+                  Production progress
+                </h4>
+                {stages.length === 0 ? (
+                  <p className="text-gray-400 text-sm">No stages yet</p>
+                ) : (
+                  <div className="space-y-3">
+                    {stages.map((s: any, i: number) => {
+                      const Icon = stageTypeIcon(s.stage_type);
+                      const isCompleted = s.status === 'completed';
+                      const isInProgress = s.status === 'in_progress';
+                      const isPending = s.status === 'pending';
+                      return (
+                        <div
+                          key={s.id}
+                          className={cn(
+                            'flex items-start gap-3 p-3 rounded-lg border',
+                            isCompleted && 'bg-green-500/10 border-green-700/50',
+                            isInProgress && 'bg-amber-500/10 border-amber-700/50',
+                            isPending && 'bg-gray-800/50 border-gray-700'
+                          )}
+                        >
+                          <div className={cn(
+                            'h-9 w-9 rounded-full flex items-center justify-center shrink-0',
+                            isCompleted && 'bg-green-500/20 text-green-400',
+                            isInProgress && 'bg-amber-500/20 text-amber-400',
+                            isPending && 'bg-gray-700 text-gray-500'
+                          )}>
+                            {isCompleted ? <CheckCircle2 size={18} /> : <Icon size={18} />}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className={cn(
+                              'font-medium',
+                              isCompleted && 'text-green-400',
+                              isInProgress && 'text-amber-400',
+                              isPending && 'text-gray-400'
+                            )}>
+                              {stageTypeToLabel(s.stage_type)}
+                              {isCompleted && ' ✔'}
+                              {isInProgress && ' ⏳'}
+                              {isPending && ' Pending'}
+                            </p>
+                            {(s.worker?.name || s.expected_completion_date || s.cost != null) && (
+                              <div className="text-xs text-gray-500 mt-1 space-y-0.5">
+                                {s.worker?.name && <p>Assigned: {s.worker.name}</p>}
+                                {s.expected_completion_date && <p>ETA: {String(s.expected_completion_date).slice(0, 10)}</p>}
+                                {s.cost != null && s.cost > 0 && <p>Cost: Rs {Number(s.cost).toLocaleString()}</p>}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* Worker cost breakdown */}
+              <div className="bg-gray-950/50 border border-gray-800 rounded-xl p-4">
+                <h4 className="text-sm font-semibold text-white mb-3 flex items-center gap-2">
+                  <User size={16} className="text-cyan-400" />
+                  Worker cost breakdown
+                </h4>
+                {stages.length === 0 ? (
+                  <p className="text-gray-400 text-sm">No stages</p>
+                ) : (
+                  <div className="space-y-3">
+                    {stages.map((s: any) => {
+                      const fmt = (d: string | undefined) => d ? (() => { try { return format(new Date(d), 'dd MMM yyyy'); } catch { return null; } })() : null;
+                      const assignedDate = s.assigned_worker_id && s.updated_at ? fmt(s.updated_at) : (s.created_at ? fmt(s.created_at) : null);
+                      const completedDate = fmt(s.completed_at);
+                      return (
+                        <div key={s.id} className="border-b border-gray-800 last:border-0 pb-3 last:pb-0">
+                          <div className="flex items-center justify-between text-sm">
+                            <span className="text-gray-300 font-medium">{stageTypeToLabel(s.stage_type)}</span>
+                            <span className="text-white font-medium">Rs {(Number(s.cost) || 0).toLocaleString()}</span>
+                            <Badge variant="outline" className={cn(
+                              'text-[10px]',
+                              s.status === 'completed' ? 'bg-green-500/20 text-green-400 border-green-700' : 'bg-gray-500/20 text-gray-400 border-gray-700'
+                            )}>
+                              {s.status === 'completed' ? 'Payable' : '—'}
+                            </Badge>
+                          </div>
+                          <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-gray-500">
+                            <span>Assigned: {assignedDate || '—'}</span>
+                            <span>Completed: {completedDate || '—'}</span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                    <div className="flex items-center justify-between font-semibold text-white pt-2 border-t border-gray-700">
+                      <span>Total worker cost</span>
+                      <span>Rs {workerCostTotal.toLocaleString()}</span>
+                    </div>
+                    <div className="pt-3">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={onOpenProduction}
+                        className="w-full border-cyan-700 text-cyan-400 hover:bg-cyan-900/30 text-xs"
+                      >
+                        Record / Edit worker payment
+                      </Button>
+                      <p className="text-[10px] text-gray-500 mt-1.5 text-center">Opens Production page to record or edit worker payments</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Financial summary – more detail */}
+              <div className="bg-gray-950/50 border border-gray-800 rounded-xl p-4">
+                <h4 className="text-sm font-semibold text-white mb-3 flex items-center gap-2">
+                  <DollarSign size={16} className="text-cyan-400" />
+                  Financial summary
+                </h4>
+                <div className="space-y-2 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-gray-400">Customer bill (total)</span>
+                    <span className="text-white">Rs {totalBill.toLocaleString()}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-400">Paid by customer</span>
+                    <span className="text-green-400">Rs {paidAmount.toLocaleString()}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-400">Balance due (customer)</span>
+                    <span className={balanceDue <= 0 ? 'text-green-400' : 'text-orange-400'}>
+                      Rs {balanceDue.toLocaleString()}
+                    </span>
+                  </div>
+                  <div className="flex justify-between pt-1 border-t border-gray-800">
+                    <span className="text-gray-400">Worker cost total</span>
+                    <span className="text-white">Rs {workerCostTotal.toLocaleString()}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-400">Net margin (bill − worker cost)</span>
+                    <span className={totalBill - workerCostTotal >= 0 ? 'text-green-400' : 'text-red-400'}>
+                      Rs {(totalBill - workerCostTotal).toLocaleString()}
+                    </span>
+                  </div>
+                  <div className="flex justify-between pt-2 border-t border-gray-800">
+                    <span className="text-gray-400">Customer payment status</span>
+                    <span className={balanceDue <= 0 ? 'text-green-400' : 'text-orange-400'}>
+                      {balanceDue <= 0 ? 'Paid' : 'Rs ' + balanceDue.toLocaleString() + ' due'}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-400">Worker payment</span>
+                    <span className="text-gray-400 text-xs">
+                      {stages.filter((s: any) => s.status === 'completed').length > 0 ? 'Payable (record in Accounting)' : '—'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Actions – no Edit/Save */}
+              <div className="flex flex-col gap-2 pt-2">
+                <Button onClick={onOpenProduction} className="w-full bg-cyan-600 hover:bg-cyan-700 text-white">
+                  Open Production
+                </Button>
+                <Button onClick={onClose} variant="outline" className="w-full border-gray-700 text-gray-300">
+                  Close
+                </Button>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
 export const StudioDashboardNew = () => {
   const { setCurrentView, setSelectedStudioSaleId } = useNavigation();
   const { companyId, branchId } = useSupabase();
@@ -84,6 +407,7 @@ export const StudioDashboardNew = () => {
   const [loading, setLoading] = useState(true);
   const [selectedDepartment, setSelectedDepartment] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [statusDetailOrderId, setStatusDetailOrderId] = useState<string | null>(null);
 
   // Convert Supabase studio_order to display format
   const convertFromSupabaseOrder = useCallback((supabaseOrder: any): StudioOrderDisplay => {
@@ -121,30 +445,79 @@ export const StudioDashboardNew = () => {
     };
   }, []);
 
-  // Convert sale (sales table, is_studio = true) to display format – show on dashboard so user can shift to production
-  const convertFromSale = useCallback((sale: any): StudioOrderDisplay => {
+  // Map stage_type (DB) to display label
+  const stageTypeToLabel = (stageType: string): string => {
+    if (stageType === 'dyer') return 'Dyeing';
+    if (stageType === 'handwork') return 'Handwork';
+    if (stageType === 'stitching') return 'Stitching';
+    return stageType || 'Stage';
+  };
+
+  // Derive current stage, worker, status, expected date from studio_production_stages (DB-driven)
+  const deriveFromStages = useCallback((
+    stages: Array<{ stage_type: string; status?: string; assigned_worker_id?: string | null; expected_completion_date?: string | null; worker?: { name?: string } }>,
+    saleDeadline: string
+  ): { currentStage: string; assignedWorker: string; status: string; expectedDate: string } => {
+    if (!stages || stages.length === 0) {
+      return { currentStage: 'Ready for Production', assignedWorker: 'Unassigned', status: 'Pending', expectedDate: saleDeadline || '—' };
+    }
+    // Stages already in created_at order (dyer → handwork → stitching)
+    const active = stages.find((s: any) => s.status === 'pending' || s.status === 'in_progress');
+    const allCompleted = stages.every((s: any) => s.status === 'completed');
+    if (allCompleted) {
+      return { currentStage: 'Completed', assignedWorker: '—', status: 'Completed', expectedDate: '—' };
+    }
+    if (active) {
+      const workerName = (active as any).worker?.name;
+      const expected = active.expected_completion_date || saleDeadline || '—';
+      const status = active.status === 'in_progress' || stages.some((s: any) => s.status === 'completed') ? 'In Progress' : 'Pending';
+      return {
+        currentStage: stageTypeToLabel(active.stage_type),
+        assignedWorker: (active.assigned_worker_id && workerName) ? workerName : 'Unassigned',
+        status,
+        expectedDate: expected,
+      };
+    }
+    return { currentStage: 'Ready for Production', assignedWorker: 'Unassigned', status: 'Pending', expectedDate: saleDeadline || '—' };
+  }, []);
+
+  // Convert sale + productions/stages to display format (fully DB-driven)
+  const convertSaleToDisplay = useCallback(async (sale: any): Promise<StudioOrderDisplay> => {
     const items = sale.items || [];
     const firstItem = items[0];
     const customer = sale.customer || {};
+    const saleDeadline = sale.notes || ''; // sale deadline / expected date when no stage
+    let stages: any[] = [];
+    try {
+      const productions = await studioProductionService.getProductionsBySaleId(sale.id);
+      if (productions && productions.length > 0) {
+        stages = await studioProductionService.getStagesByProductionId(productions[0].id);
+      }
+    } catch (_) { /* no production yet */ }
+    const { currentStage, assignedWorker, status, expectedDate } = deriveFromStages(stages, saleDeadline);
+    const formatExpected = (v: string) => {
+      if (!v || v === '—') return '—';
+      if (v.includes('T')) return v.slice(0, 10); // ISO → YYYY-MM-DD
+      return v;
+    };
     return {
       id: sale.id,
       rowKey: `sale_${sale.id}`,
-      invoiceNo: sale.invoice_no || `SL-${sale.id?.slice(0, 8) || ''}`,
+      invoiceNo: sale.invoice_no || `STD-${sale.id?.slice(0, 8) || ''}`,
       customerName: sale.customer_name || customer.name || '',
       customerPhone: customer.phone || '',
       fabricName: firstItem?.product_name || firstItem?.product?.name || 'Sale items',
-      currentStage: 'Ready for Production',
-      assignedWorker: '—',
-      expectedDate: sale.notes || '',
-      status: 'Pending',
+      currentStage,
+      assignedWorker,
+      expectedDate: formatExpected(expectedDate && expectedDate !== '—' ? expectedDate : (saleDeadline || '—')),
+      status,
       source: 'sale',
     };
-  }, []);
+  }, [deriveFromStages]);
 
-  // Load studio orders + studio sales (sales with is_studio = true) so both show and can shift to production
+  // Load studio orders + studio sales with real production/stage data from DB
   const loadStudioOrders = useCallback(async () => {
     if (!companyId) return;
-    
     try {
       setLoading(true);
       const [studioOrdersData, studioSalesData] = await Promise.all([
@@ -152,7 +525,7 @@ export const StudioDashboardNew = () => {
         saleService.getStudioSales(companyId, branchId === 'all' ? undefined : branchId || undefined).catch(() => []),
       ]);
       const fromOrders = (studioOrdersData || []).map(convertFromSupabaseOrder);
-      const fromSales = (studioSalesData || []).map(convertFromSale);
+      const fromSales = await Promise.all((studioSalesData || []).map((sale: any) => convertSaleToDisplay(sale)));
       setOrders([...fromOrders, ...fromSales]);
     } catch (error) {
       console.error('[STUDIO DASHBOARD] Error loading studio orders:', error);
@@ -161,16 +534,22 @@ export const StudioDashboardNew = () => {
     } finally {
       setLoading(false);
     }
-  }, [companyId, branchId, convertFromSupabaseOrder, convertFromSale]);
+  }, [companyId, branchId, convertFromSupabaseOrder, convertSaleToDisplay]);
 
-  // Load orders on mount
+  // Load orders on mount and when returning to dashboard (refetch so data is fresh)
   useEffect(() => {
-    if (companyId) {
-      loadStudioOrders();
-    } else {
-      setLoading(false);
-    }
+    if (companyId) loadStudioOrders();
+    else setLoading(false);
   }, [companyId, loadStudioOrders]);
+
+  // Refetch when user returns to this view (e.g. after saving on detail page)
+  const onFocusRefetch = useCallback(() => {
+    if (companyId) loadStudioOrders();
+  }, [companyId, loadStudioOrders]);
+  useEffect(() => {
+    window.addEventListener('focus', onFocusRefetch);
+    return () => window.removeEventListener('focus', onFocusRefetch);
+  }, [onFocusRefetch]);
 
   // Calculate department counts
   const departmentCounts = {
@@ -368,60 +747,54 @@ export const StudioDashboardNew = () => {
                   <td className="p-4 text-center">
                     <Badge
                       variant="outline"
-                      className="bg-blue-500/20 text-blue-400 border-blue-700 text-xs"
+                      className={cn(
+                        "text-xs",
+                        order.status === 'Completed' && "bg-green-500/20 text-green-400 border-green-700",
+                        order.status === 'In Progress' && "bg-blue-500/20 text-blue-400 border-blue-700",
+                        order.status === 'Pending' && "bg-gray-500/20 text-gray-400 border-gray-700"
+                      )}
                     >
                       {order.status}
                     </Badge>
                   </td>
-                  <td className="p-4 text-center">
+                  <td className="p-4">
                     <div className="flex items-center justify-center gap-2">
                       <Button
                         size="sm"
-                        variant="outline"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setSelectedStudioSaleId?.(order.id);
-                          setCurrentView('studio-production-test');
-                        }}
-                        className="border-gray-700 text-gray-300 hover:bg-gray-800 text-xs"
-                      >
-                        Open Production
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
                         onClick={(e) => {
                           e.stopPropagation();
                           setSelectedStudioSaleId?.(order.id);
                           setCurrentView('studio-sale-detail-new');
                         }}
-                        className="text-gray-500 hover:text-gray-300 text-xs"
+                        className="bg-cyan-600 hover:bg-cyan-700 text-white text-xs"
                       >
-                        Sale detail
+                        <Package size={14} className="mr-1.5" />
+                        Open Production
                       </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setSelectedStudioSaleId?.(order.id);
-                          setCurrentView('studio-production-add');
-                        }}
-                        className="border-cyan-600 text-cyan-400 hover:bg-cyan-900/30 text-xs"
-                      >
-                        Shift to Production
-                      </Button>
-                      <Button
-                        size="sm"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setSelectedStudioSaleId?.(order.id);
-                          setCurrentView('studio-production-test');
-                        }}
-                        className="bg-amber-600 hover:bg-amber-500 text-white text-xs"
-                      >
-                        Send to Studio (Test)
-                      </Button>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={(e) => e.stopPropagation()}
+                            className="h-8 w-8 p-0 border-gray-700 text-gray-400 hover:bg-gray-800 hover:text-white"
+                          >
+                            <MoreVertical size={16} />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="bg-gray-900 border-gray-800 text-white min-w-[180px]">
+                          <DropdownMenuItem
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setStatusDetailOrderId(order.id);
+                            }}
+                            className="text-gray-300 focus:bg-gray-800 focus:text-white cursor-pointer"
+                          >
+                            <FileText size={14} className="mr-2" />
+                            View Order Details
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </div>
                   </td>
                 </tr>
@@ -456,6 +829,19 @@ export const StudioDashboardNew = () => {
           <p className="text-2xl font-bold text-white">{departmentCounts.completed}</p>
         </div>
       </div>
+
+      {/* Order Details modal – opened by status badge click or Action → View Order Details */}
+      {statusDetailOrderId && (
+        <OrderDetailsModal
+          orderId={statusDetailOrderId}
+          onClose={() => setStatusDetailOrderId(null)}
+          onOpenProduction={() => {
+            setSelectedStudioSaleId?.(statusDetailOrderId);
+            setCurrentView('studio-sale-detail-new');
+            setStatusDetailOrderId(null);
+          }}
+        />
+      )}
     </div>
   );
 };

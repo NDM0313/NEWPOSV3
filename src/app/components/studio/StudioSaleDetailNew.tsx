@@ -55,9 +55,21 @@ import { studioService } from '@/app/services/studioService';
 import { contactService } from '@/app/services/contactService';
 import { saleService } from '@/app/services/saleService';
 import { studioProductionService } from '@/app/services/studioProductionService';
+import { branchService } from '@/app/services/branchService';
 import { cn } from '../ui/utils';
 import { Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '../ui/alert-dialog';
+import { UnifiedPaymentDialog } from '../shared/UnifiedPaymentDialog';
 
 /** Avoid RangeError when date is missing or invalid */
 function safeFormatDate(value: string | null | undefined, fmt: string): string {
@@ -90,6 +102,8 @@ interface ProductionStep {
   name: string;
   icon: any;
   order: number;
+  /** Backend stage_type for category-wise worker filtering (dyer | stitching | handwork) */
+  stageType?: 'dyer' | 'stitching' | 'handwork';
   assignedWorker: string; // Legacy - for backward compatibility
   workerId?: string; // Legacy
   assignedWorkers?: AssignedWorker[]; // NEW: Multiple workers support
@@ -193,13 +207,16 @@ interface StudioSaleDetail {
 // Mock data removed - data is loaded from Supabase via loadStudioOrder()
 
 export const StudioSaleDetailNew = () => {
-  const { setCurrentView, selectedStudioSaleId, setSelectedStudioSaleId } = useNavigation();
+  const { setCurrentView, selectedStudioSaleId, setSelectedStudioSaleId, openDrawer } = useNavigation();
   const { companyId, branchId, user } = useSupabase();
   const [saleDetail, setSaleDetail] = useState<StudioSaleDetail | null>(null);
   const [productionId, setProductionId] = useState<string | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [workers, setWorkers] = useState<Worker[]>([]);
-  const [editMode, setEditMode] = useState(false);
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [showSaveConfirmDialog, setShowSaveConfirmDialog] = useState(false);
+  const [showUnsavedWarning, setShowUnsavedWarning] = useState(false);
+  const [showAllWorkersInAssignModal, setShowAllWorkersInAssignModal] = useState(false);
   const [showCostBreakdown, setShowCostBreakdown] = useState(false);
   const [showAccessoryModal, setShowAccessoryModal] = useState(false);
   const [showShipmentModal, setShowShipmentModal] = useState(false);
@@ -208,6 +225,14 @@ export const StudioSaleDetailNew = () => {
   const [showReceiveModal, setShowReceiveModal] = useState<string | null>(null);
   const [receiveActualCost, setReceiveActualCost] = useState('');
   const [receiveNotes, setReceiveNotes] = useState('');
+  /** After Confirm Receive: show "Worker Payment" modal (Pay Now / Pay Later) */
+  const [payChoiceAfterReceive, setPayChoiceAfterReceive] = useState<{
+    stageId: string;
+    workerId: string;
+    workerName: string;
+    amount: number;
+  } | null>(null);
+  const [showWorkerPaymentDialog, setShowWorkerPaymentDialog] = useState(false);
   const [showTrackingModal, setShowTrackingModal] = useState<string | null>(null);
   const [showTaskCustomizationModal, setShowTaskCustomizationModal] = useState(false);
   const [savingStage, setSavingStage] = useState(false);
@@ -340,16 +365,26 @@ export const StudioSaleDetailNew = () => {
   };
 
   // Convert studio_production_stages to ProductionStep[] (so UI can show and persist edits)
-  const stagesToProductionSteps = useCallback((stages: Array<{ id: string; stage_type: string; assigned_worker_id?: string | null; cost?: number; status?: string; expected_completion_date?: string | null; completed_at?: string | null; notes?: string | null; worker?: { id: string; name: string } }>): ProductionStep[] => {
+  // ledgerStatusByStageId: optional map from stage id to 'unpaid'|'paid' for Payable vs Paid
+  const stagesToProductionSteps = useCallback((
+    stages: Array<{ id: string; stage_type: string; assigned_worker_id?: string | null; cost?: number; status?: string; expected_completion_date?: string | null; completed_at?: string | null; notes?: string | null; worker?: { id: string; name: string } }>,
+    ledgerStatusByStageId?: Record<string, 'unpaid' | 'paid'>
+  ): ProductionStep[] => {
     const statusMap: Record<string, StepStatus> = { pending: 'Pending', in_progress: 'In Progress', completed: 'Completed' };
+    const stageTypeMap: Record<string, 'dyer' | 'stitching' | 'handwork'> = { dyer: 'dyer', dyeing: 'dyer', stitching: 'stitching', handwork: 'handwork' };
     return stages.map((s, i) => {
       const { name, icon } = stageTypeToStep(s.stage_type, i);
       const workerName = s.worker?.name || '';
+      const stageType = stageTypeMap[s.stage_type] || undefined;
+      const ledgerStatus = ledgerStatusByStageId?.[s.id];
+      const workerPaymentStatus: 'Payable' | 'Pending' | 'Paid' =
+        ledgerStatus === 'paid' ? 'Paid' : (s.status === 'completed' ? 'Payable' : 'Pending');
       return {
         id: s.id,
         name,
         icon,
         order: i + 1,
+        stageType,
         assignedWorker: workerName,
         workerId: s.assigned_worker_id || undefined,
         assignedWorkers: s.assigned_worker_id ? [{ id: `aw-${s.id}`, workerId: s.assigned_worker_id, workerName, role: 'Main', cost: s.cost ?? 0 }] : [],
@@ -357,7 +392,7 @@ export const StudioSaleDetailNew = () => {
         expectedCompletionDate: s.expected_completion_date || '',
         actualCompletionDate: s.completed_at || undefined,
         workerCost: s.cost ?? 0,
-        workerPaymentStatus: (s.status === 'completed' ? 'Payable' : 'Pending') as 'Payable' | 'Pending' | 'Paid',
+        workerPaymentStatus,
         status: statusMap[s.status || 'pending'] || 'Pending',
         notes: s.notes || ''
       };
@@ -419,28 +454,35 @@ export const StudioSaleDetailNew = () => {
             } else {
               setProductionId(null);
             }
-            if (productions.length === 0 && branchId && branchId !== 'all' && /^[0-9a-f-]{36}$/i.test(branchId)) {
-              const items = (sale.items || []) as any[];
-              const firstItem = items[0];
-              if (firstItem?.product_id) {
-                const production = await studioProductionService.createProductionJob({
-                  company_id: companyId!,
-                  branch_id: branchId,
-                  sale_id: sale.id,
-                  production_no: `PRD-${(sale.invoice_no || sale.id?.slice(0, 8) || '')}`,
-                  production_date: sale.invoice_date || new Date().toISOString().split('T')[0],
-                  product_id: firstItem.product_id,
-                  quantity: Number(firstItem.quantity) || 1,
-                  unit: firstItem.unit || 'piece',
-                  created_by: user?.id
-                });
-                setProductionId(production.id);
-                const stageTypes = ['dyer', 'handwork', 'stitching'] as const;
-                for (const st of stageTypes) {
-                  await studioProductionService.createStage(production.id, { stage_type: st, cost: 0 });
+            if (productions.length === 0 && companyId) {
+              let effectiveBranchId = branchId && branchId !== 'all' && /^[0-9a-f-]{36}$/i.test(branchId) ? branchId : null;
+              if (!effectiveBranchId) {
+                const branches = await branchService.getAllBranches(companyId).catch(() => []);
+                effectiveBranchId = branches?.[0]?.id || null;
+              }
+              if (effectiveBranchId) {
+                const items = (sale.items || []) as any[];
+                const firstItem = items[0];
+                if (firstItem?.product_id) {
+                  const production = await studioProductionService.createProductionJob({
+                    company_id: companyId,
+                    branch_id: effectiveBranchId,
+                    sale_id: sale.id,
+                    production_no: `PRD-${(sale.invoice_no || sale.id?.slice(0, 8) || '')}`,
+                    production_date: sale.invoice_date || new Date().toISOString().split('T')[0],
+                    product_id: firstItem.product_id,
+                    quantity: Number(firstItem.quantity) || 1,
+                    unit: firstItem.unit || 'piece',
+                    created_by: user?.id
+                  });
+                  setProductionId(production.id);
+                  const stageTypes = ['dyer', 'handwork', 'stitching'] as const;
+                  for (const st of stageTypes) {
+                    await studioProductionService.createStage(production.id, { stage_type: st, cost: 0 });
+                  }
+                  const stages = await studioProductionService.getStagesByProductionId(production.id);
+                  productionSteps = stagesToProductionSteps(stages);
                 }
-                const stages = await studioProductionService.getStagesByProductionId(production.id);
-                productionSteps = stagesToProductionSteps(stages);
               }
             }
           } catch (e) {
@@ -467,21 +509,32 @@ export const StudioSaleDetailNew = () => {
     }
   }, [selectedStudioSaleId, companyId, branchId, user?.id, convertFromSale, convertFromSupabaseOrder, stagesToProductionSteps]);
 
-  // Load workers from Contacts (type=worker only – same as Contacts page Workers tab)
+  /** Filter workers by task category: Dyeing → dyer/dyeing; Stitching → tailor/stitching-master/cutter; Handwork → hand-worker/helper/embroidery */
+  const getWorkersForStageType = useCallback((stageType: 'dyer' | 'stitching' | 'handwork' | undefined, workerList: Worker[]): Worker[] => {
+    if (!stageType) return workerList;
+    const role = (r: string) => (r || '').toLowerCase();
+    return workerList.filter(w => {
+      const d = role(w.department);
+      if (stageType === 'dyer') return d === 'dyer' || d === 'dyeing';
+      if (stageType === 'stitching') return ['tailor', 'stitching-master', 'cutter', 'stitching'].includes(d);
+      if (stageType === 'handwork') return ['hand-worker', 'helper', 'embroidery', 'handwork'].includes(d);
+      return false;
+    });
+  }, []);
+
+  // Workers = contacts (type=worker). Same ID (synced via workers_sync_from_contacts migration).
   const loadWorkers = useCallback(async () => {
     if (!companyId) return;
-    
     try {
       const workerContacts = await contactService.getAllContacts(companyId, 'worker');
-      // Map contact (type=worker) to Worker interface format
-      const convertedWorkers: Worker[] = (workerContacts || []).map((c: any) => ({
+      const converted: Worker[] = (workerContacts || []).map((c: any) => ({
         id: c.id,
         name: c.name || '',
         department: c.worker_role || 'General',
         phone: c.phone || c.mobile || '',
         isActive: c.is_active !== false
       }));
-      setWorkers(convertedWorkers);
+      setWorkers(converted);
     } catch (error) {
       console.error('Error loading workers:', error);
       setWorkers([]);
@@ -526,6 +579,17 @@ export const StudioSaleDetailNew = () => {
   const allTasksCompleted = saleDetail ? (saleDetail.productionSteps.length > 0 && 
     saleDetail.productionSteps.every(step => step.status === 'Completed')) : false;
 
+  /** Header status: ONLY from production stages. Completed = all stages received; never from assign/start. */
+  const headerStatus: SaleStatus = !saleDetail
+    ? 'Draft'
+    : saleDetail.productionSteps.length === 0
+      ? 'Draft'
+      : allTasksCompleted
+        ? 'Completed'
+        : saleDetail.productionSteps.some(s => s.status === 'In Progress' || s.status === 'Completed')
+          ? 'In Progress'
+          : 'Pending';
+
   const isStepLocked = (stepOrder: number): boolean => {
     if (!saleDetail || stepOrder === 1) return false;
     const previousStep = saleDetail.productionSteps.find(s => s.order === stepOrder - 1);
@@ -534,42 +598,36 @@ export const StudioSaleDetailNew = () => {
 
   const updateStepStatus = async (stepId: string, newStatus: StepStatus) => {
     if (!saleDetail) return;
-    const backendStatus = newStatus === 'Pending' ? 'pending' : newStatus === 'In Progress' ? 'in_progress' : 'completed';
-    const isBackendStageId = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(stepId);
-    if (isBackendStageId) {
-      try {
-        await studioProductionService.updateStage(stepId, {
-          status: backendStatus as 'pending' | 'in_progress' | 'completed',
-          completed_at: newStatus === 'Completed' ? new Date().toISOString() : null
-        });
-        toast.success(newStatus === 'Completed' ? 'Step completed' : 'Step started');
-        await reloadProductionSteps();
-      } catch (e: any) {
-        console.error('Failed to update step status:', e);
-        toast.error(e?.message || 'Failed to update step');
-        return;
-      }
-    } else {
-      setSaleDetail(prev => {
-        if (!prev) return prev;
-        return {
-          ...prev,
-          productionSteps: prev.productionSteps.map(step => 
-            step.id === stepId ? { ...step, status: newStatus, actualCompletionDate: newStatus === 'Completed' ? new Date().toISOString().split('T')[0] : step.actualCompletionDate } : step
-          )
-        };
-      });
-    }
+    setSaleDetail(prev => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        productionSteps: prev.productionSteps.map(step =>
+          step.id === stepId
+            ? { ...step, status: newStatus, actualCompletionDate: newStatus === 'Completed' ? new Date().toISOString().split('T')[0] : step.actualCompletionDate }
+            : step
+        )
+      };
+    });
+    setHasUnsavedChanges(true);
   };
 
   const handleReceiveConfirm = async () => {
     const stageId = showReceiveModal;
     if (!stageId) return;
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(stageId);
+    if (!isUuid) {
+      toast.error('Save your changes first to create production stages, then try Receive again.');
+      return;
+    }
     const actual = parseFloat(receiveActualCost);
     if (isNaN(actual) || actual < 0) {
       toast.error('Enter valid actual cost (Rs)');
       return;
     }
+    const step = saleDetail?.productionSteps.find(s => s.id === stageId);
+    const workerId = step?.workerId || '';
+    const workerName = step?.assignedWorker || 'Worker';
     setSavingStage(true);
     try {
       await studioProductionService.receiveStage(stageId, actual, receiveNotes.trim() || null);
@@ -577,13 +635,129 @@ export const StudioSaleDetailNew = () => {
       setShowReceiveModal(null);
       setReceiveActualCost('');
       setReceiveNotes('');
+      setHasUnsavedChanges(true);
       await reloadProductionSteps();
+      // Show "Worker Payment" modal: Pay Now or Pay Later (no auto payment)
+      setPayChoiceAfterReceive({ stageId, workerId, workerName, amount: actual });
     } catch (e: any) {
       toast.error(e?.message || 'Receive failed');
     } finally {
       setSavingStage(false);
     }
   };
+
+  /** Try to ensure a studio production exists for the current sale (create if missing). Returns productionId or error reason. */
+  const ensureProductionForSale = useCallback(async (): Promise<{ productionId: string | null; error?: 'NO_BRANCH' | 'NO_ITEMS' | 'CREATE_FAILED' }> => {
+    if (!selectedStudioSaleId || !companyId) return { productionId: null, error: 'CREATE_FAILED' };
+    try {
+      const sale = await saleService.getSale(selectedStudioSaleId);
+      if (!sale?.id) return { productionId: null, error: 'CREATE_FAILED' };
+      const productions = await studioProductionService.getProductionsBySaleId(sale.id);
+      if (productions.length > 0) return { productionId: productions[0].id };
+      let effectiveBranchId = branchId && branchId !== 'all' && /^[0-9a-f-]{36}$/i.test(branchId) ? branchId : null;
+      if (!effectiveBranchId) {
+        const branches = await branchService.getAllBranches(companyId).catch(() => []);
+        effectiveBranchId = branches?.[0]?.id || null;
+      }
+      if (!effectiveBranchId) return { productionId: null, error: 'NO_BRANCH' };
+      const items = (sale.items || []) as any[];
+      const firstItem = items[0];
+      if (!firstItem?.product_id) return { productionId: null, error: 'NO_ITEMS' };
+      const production = await studioProductionService.createProductionJob({
+        company_id: companyId,
+        branch_id: effectiveBranchId,
+        sale_id: sale.id,
+        production_no: `PRD-${(sale.invoice_no || sale.id?.slice(0, 8) || '')}`,
+        production_date: sale.invoice_date || new Date().toISOString().split('T')[0],
+        product_id: firstItem.product_id,
+        quantity: Number(firstItem.quantity) || 1,
+        unit: firstItem.unit || 'piece',
+        created_by: user?.id
+      });
+      const stageTypes = ['dyer', 'handwork', 'stitching'] as const;
+      for (const st of stageTypes) {
+        await studioProductionService.createStage(production.id, { stage_type: st, cost: 0 });
+      }
+      return { productionId: production.id };
+    } catch (e) {
+      console.warn('[StudioSaleDetail] ensureProductionForSale failed:', e);
+      return { productionId: null, error: 'CREATE_FAILED' };
+    }
+  }, [selectedStudioSaleId, companyId, branchId, user?.id]);
+
+  /** Persist all production steps to DB. Fetches server stage IDs by order so we never rely on local step.id. */
+  const persistAllStagesToBackend = useCallback(async () => {
+    if (!saleDetail) {
+      toast.error('No sale data. Refresh the page and try again.');
+      return;
+    }
+    let currentProductionId = productionId;
+    if (!currentProductionId) {
+      const result = await ensureProductionForSale();
+      if (result.error === 'NO_BRANCH') {
+        toast.error('No branch selected. Select a branch in the app header (or add one in Settings), refresh the page, then try saving again.');
+        return;
+      }
+      if (result.error === 'NO_ITEMS') {
+        toast.error('This sale has no product line. Add at least one product to the sale, then try saving again.');
+        return;
+      }
+      if (result.error || !result.productionId) {
+        toast.error('Production could not be created. Select a branch and refresh the page, then try saving again.');
+        return;
+      }
+      currentProductionId = result.productionId;
+      setProductionId(result.productionId);
+    }
+    const localSteps = [...(saleDetail.productionSteps || [])].sort((a, b) => a.order - b.order);
+    if (localSteps.length === 0) {
+      toast.error('No production stages to save. Add stages first.');
+      return;
+    }
+    setSavingStage(true);
+    try {
+      const serverStages = await studioProductionService.getStagesByProductionId(currentProductionId);
+      if (serverStages.length === 0) {
+        toast.error('No stages found on server. Refresh the page and try again.');
+        setSavingStage(false);
+        return;
+      }
+      const validWorkerIds = new Set(workers.map(w => w.id));
+      const resolveWorkerId = (id: string | undefined): string | null => {
+        if (!id) return null;
+        return validWorkerIds.has(id) ? id : null;
+      };
+      const sortedServer = [...serverStages].sort((a, b) => (a.created_at || '').localeCompare(b.created_at || ''));
+      for (let i = 0; i < localSteps.length && i < sortedServer.length; i++) {
+        const step = localSteps[i];
+        const serverStage = sortedServer[i] as { id: string; created_at?: string };
+        const stageId = serverStage?.id;
+        if (!stageId) continue;
+        const backendStatus = step.status === 'Pending' ? 'pending' : step.status === 'In Progress' ? 'in_progress' : 'completed';
+        const workerId = resolveWorkerId(step.workerId || step.assignedWorkers?.[0]?.workerId);
+        await studioProductionService.updateStage(stageId, {
+          assigned_worker_id: workerId,
+          cost: step.workerCost ?? 0,
+          expected_completion_date: step.expectedCompletionDate || null,
+          notes: step.notes || null,
+          status: backendStatus as 'pending' | 'in_progress' | 'completed',
+          completed_at: step.status === 'Completed' && step.actualCompletionDate
+            ? new Date(step.actualCompletionDate).toISOString()
+            : step.status === 'Completed'
+            ? new Date().toISOString()
+            : null
+        });
+      }
+      setHasUnsavedChanges(false);
+      toast.success('Changes saved to database.');
+      await reloadProductionSteps();
+      setShowSaveConfirmDialog(true);
+    } catch (e: any) {
+      toast.error(e?.message || 'Failed to save changes');
+    } finally {
+      setSavingStage(false);
+    }
+  }, [saleDetail, productionId, ensureProductionForSale, reloadProductionSteps, workers]);
 
   const handleAddAccessory = () => {
     if (!newAccessory.itemName.trim() || newAccessory.quantity <= 0) return;
@@ -726,57 +900,36 @@ export const StudioSaleDetailNew = () => {
     setShowWorkerEditModal(stepId);
   };
 
-  const handleSaveWorkerEdit = async (andStart: boolean = false) => {
+  const handleSaveWorkerEdit = (andStart: boolean = false) => {
     if (!showWorkerEditModal) return;
 
     const totalWorkerCost = editingWorkerData.workers.reduce((sum, w) => sum + w.cost, 0);
-    const displayName = editingWorkerData.workers.length > 1 
+    const displayName = editingWorkerData.workers.length > 1
       ? `${editingWorkerData.workers[0].workerName} + ${editingWorkerData.workers.length - 1} more`
       : editingWorkerData.workers[0]?.workerName || '';
 
     const stepId = showWorkerEditModal;
-    const isBackendStageId = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(stepId);
-
-    if (isBackendStageId) {
-      setSavingStage(true);
-      try {
-        await studioProductionService.updateStage(stepId, {
-          assigned_worker_id: editingWorkerData.workers[0]?.workerId || null,
-          cost: totalWorkerCost,
-          expected_completion_date: editingWorkerData.expectedCompletionDate || null,
-          notes: editingWorkerData.notes || null,
-          ...(andStart ? { status: 'in_progress' as const } : {})
-        });
-        toast.success(andStart ? 'Saved & started – stage In Progress' : 'Workers saved');
-        await reloadProductionSteps();
-      } catch (e: any) {
-        console.error('Failed to save workers:', e);
-        toast.error(e?.message || 'Failed to save workers');
-        setSavingStage(false);
-        return;
-      }
-      setSavingStage(false);
-    } else {
-      setSaleDetail(prev => ({
-        ...prev!,
-        productionSteps: prev!.productionSteps.map(step =>
-          step.id === stepId
-            ? {
-                ...step,
-                assignedWorker: displayName,
-                workerId: editingWorkerData.workers[0]?.workerId,
-                assignedWorkers: editingWorkerData.workers,
-                workerCost: totalWorkerCost,
-                expectedCompletionDate: editingWorkerData.expectedCompletionDate,
-                notes: editingWorkerData.notes,
-                assignedDate: step.assignedDate || new Date().toISOString().split('T')[0],
-                ...(andStart ? { status: 'In Progress' as StepStatus } : {})
-              }
-            : step
-        )
-      }));
-    }
-
+    // Assign → In Progress: as soon as a worker is assigned, stage is In Progress
+    const setInProgress = editingWorkerData.workers.length > 0;
+    setSaleDetail(prev => ({
+      ...prev!,
+      productionSteps: prev!.productionSteps.map(step =>
+        step.id === stepId
+          ? {
+              ...step,
+              assignedWorker: displayName,
+              workerId: editingWorkerData.workers[0]?.workerId,
+              assignedWorkers: editingWorkerData.workers,
+              workerCost: totalWorkerCost,
+              expectedCompletionDate: editingWorkerData.expectedCompletionDate,
+              notes: editingWorkerData.notes,
+              assignedDate: step.assignedDate || new Date().toISOString().split('T')[0],
+              ...(setInProgress && step.status !== 'Completed' ? { status: 'In Progress' as StepStatus } : andStart ? { status: 'In Progress' as StepStatus } : {})
+            }
+          : step
+      )
+    }));
+    setHasUnsavedChanges(true);
     setShowWorkerEditModal(null);
   };
 
@@ -843,6 +996,7 @@ export const StudioSaleDetailNew = () => {
           name: 'Dyeing',
           icon: Palette,
           order: order++,
+          stageType: 'dyer',
           assignedWorker: '',
           assignedWorkers: [],
           assignedDate: '',
@@ -857,6 +1011,7 @@ export const StudioSaleDetailNew = () => {
           name: 'Handwork / Embroidery',
           icon: Sparkles,
           order: order++,
+          stageType: 'handwork',
           assignedWorker: '',
           assignedWorkers: [],
           assignedDate: '',
@@ -871,6 +1026,7 @@ export const StudioSaleDetailNew = () => {
           name: 'Stitching',
           icon: Scissors,
           order: order++,
+          stageType: 'stitching',
           assignedWorker: '',
           assignedWorkers: [],
           assignedDate: '',
@@ -951,7 +1107,7 @@ export const StudioSaleDetailNew = () => {
 
   const canDeleteAccessory = () => {
     if (!saleDetail) return false;
-    if (saleDetail.saleStatus === 'Completed') return false;
+    if (allTasksCompleted) return false;
     return !saleDetail.productionSteps.some(step => step.status === 'In Progress' || step.status === 'Completed');
   };
 
@@ -979,6 +1135,7 @@ export const StudioSaleDetailNew = () => {
 
   return (
     <div className="flex flex-col h-screen bg-[#111827] text-white overflow-hidden">
+      {/* Page is always editable (no Edit mode toggle). Save Changes appears when worker/stage/cost/time change. */}
       {/* ============ FIXED HEADER ============ */}
       <div className="shrink-0 bg-[#0B1019] border-b border-gray-800 z-20">
         {/* Top Bar */}
@@ -987,7 +1144,10 @@ export const StudioSaleDetailNew = () => {
             <Button
               variant="ghost"
               size="icon"
-              onClick={() => setCurrentView('studio')}
+              onClick={() => {
+                if (hasUnsavedChanges) setShowUnsavedWarning(true);
+                else setCurrentView('studio');
+              }}
               className="text-gray-400 hover:text-white h-9 w-9"
             >
               <ArrowLeft size={18} />
@@ -1002,51 +1162,41 @@ export const StudioSaleDetailNew = () => {
           </div>
           <div className="flex items-center gap-3">
             {selectedStudioSaleId && (
-              <>
-                <Button
-                  size="sm"
-                  onClick={() => {
-                    setSelectedStudioSaleId?.(selectedStudioSaleId);
-                    setCurrentView('studio-production-test');
-                  }}
-                  className="bg-cyan-600 hover:bg-cyan-500 text-white"
-                >
-                  <Package size={14} className="mr-1.5" />
-                  Send to Studio
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => {
-                    setSelectedStudioSaleId?.(selectedStudioSaleId);
-                    setCurrentView('studio-production-list');
-                  }}
-                  className="border-cyan-600 text-cyan-400 hover:bg-cyan-900/30"
-                >
-                  <Package size={14} className="mr-1.5" />
-                  View Production
-                </Button>
-              </>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setSelectedStudioSaleId?.(selectedStudioSaleId);
+                  setCurrentView('studio-sales-list-new');
+                }}
+                className="border-cyan-600 text-cyan-400 hover:bg-cyan-900/30"
+              >
+                <Package size={14} className="mr-1.5" />
+                Studio Sales
+              </Button>
             )}
             <Badge 
               variant="outline" 
+              title="Status from production stages (reactive)"
               className={cn(
                 "text-xs px-3 py-1.5",
-                saleDetail.saleStatus === 'Draft' && "bg-gray-500/20 text-gray-400 border-gray-700",
-                saleDetail.saleStatus === 'In Progress' && "bg-blue-500/20 text-blue-400 border-blue-700",
-                saleDetail.saleStatus === 'Completed' && "bg-green-500/20 text-green-400 border-green-700"
+                headerStatus === 'Draft' && "bg-gray-500/20 text-gray-400 border-gray-700",
+                headerStatus === 'Pending' && "bg-gray-500/20 text-gray-400 border-gray-700",
+                headerStatus === 'In Progress' && "bg-blue-500/20 text-blue-400 border-blue-700",
+                headerStatus === 'Completed' && "bg-green-500/20 text-green-400 border-green-700"
               )}
             >
-              {saleDetail.saleStatus}
+              {headerStatus}
             </Badge>
-            {saleDetail.saleStatus !== 'Completed' && (
+            {hasUnsavedChanges && (
               <Button
                 size="sm"
-                onClick={() => setEditMode(!editMode)}
-                className="bg-blue-600 hover:bg-blue-700"
+                disabled={savingStage}
+                onClick={() => persistAllStagesToBackend()}
+                className="bg-green-600 hover:bg-green-700"
               >
-                <Save size={16} className="mr-2" />
-                {editMode ? 'Save' : 'Edit'}
+                {savingStage ? <Loader2 size={16} className="animate-spin mr-2" /> : <Save size={16} className="mr-2" />}
+                Save Changes
               </Button>
             )}
           </div>
@@ -1139,8 +1289,8 @@ export const StudioSaleDetailNew = () => {
                 })}
             </div>
             
-            {/* Final Complete: only when all stages completed; disabled until then (DB-driven, safe) */}
-            {productionId && saleDetail.saleStatus !== 'Completed' && (
+            {/* Final Complete: only when all stages completed; visibility reactive from headerStatus */}
+            {productionId && headerStatus !== 'Completed' && (
               <Button
                 size="sm"
                 disabled={!allTasksCompleted || savingStage}
@@ -1167,7 +1317,7 @@ export const StudioSaleDetailNew = () => {
                 Final Complete
               </Button>
             )}
-            {allTasksCompleted && saleDetail.saleStatus === 'Completed' && (
+            {allTasksCompleted && (
               <Badge className="bg-green-600 text-white px-4 py-2 text-sm font-semibold">
                 <CheckCircle2 size={16} className="mr-2" />
                 Production Complete ✓
@@ -1321,34 +1471,20 @@ export const StudioSaleDetailNew = () => {
 
                                   {/* Action Buttons */}
                                   <div className="flex items-center gap-2">
-                                    {/* Assign/Edit Worker Button */}
+                                    {/* Assign / Change worker (no Edit button) */}
                                     {!stepLocked && step.status !== 'Completed' && (
                                       <Button
                                         size="sm"
                                         onClick={() => handleOpenWorkerEdit(step.id)}
-                                        className={cn(
-                                          "text-xs h-8",
-                                          step.assignedWorker 
-                                            ? "bg-blue-600 hover:bg-blue-700" 
-                                            : "bg-green-600 hover:bg-green-700"
-                                        )}
+                                        className={step.assignedWorker ? "text-xs h-8 bg-blue-600 hover:bg-blue-700" : "text-xs h-8 bg-green-600 hover:bg-green-700"}
                                       >
-                                        {step.assignedWorker ? (
-                                          <>
-                                            <Edit2 size={14} className="mr-1" />
-                                            Edit
-                                          </>
-                                        ) : (
-                                          <>
-                                            <Plus size={14} className="mr-1" />
-                                            Assign
-                                          </>
-                                        )}
+                                        <Plus size={14} className="mr-1" />
+                                        {step.assignedWorker ? 'Change worker' : 'Assign'}
                                       </Button>
                                     )}
                                     
-                                                    {/* In Progress → Receive from Worker (actual cost + worker ledger). Pending: use Edit modal "Save & Start". */}
-                                    {!stepLocked && step.status === 'In Progress' && step.assignedWorker && (
+                                                    {/* In Progress → Receive from Worker (only when step has server UUID; else ask to save first) */}
+                                    {!stepLocked && step.status === 'In Progress' && step.assignedWorker && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(step.id) && (
                                       <Button
                                         size="sm"
                                         onClick={() => {
@@ -1369,7 +1505,7 @@ export const StudioSaleDetailNew = () => {
                                           variant="ghost"
                                           onClick={() => handleOpenWorkerEdit(step.id)}
                                           className="h-8 w-8 p-0 text-green-400 hover:text-green-300 hover:bg-green-900/20"
-                                          title="View/Edit Details"
+                                          title="View details"
                                         >
                                           <Eye size={16} />
                                         </Button>
@@ -2246,29 +2382,63 @@ export const StudioSaleDetailNew = () => {
         </div>
       )}
 
-      {/* Edit Worker Modal */}
-      {showWorkerEditModal && (
+      {/* Assign Worker Modal – workers filtered by task category (Dyeing / Stitching / Handwork) */}
+      {showWorkerEditModal && (() => {
+        const currentStep = saleDetail?.productionSteps.find(s => s.id === showWorkerEditModal);
+        const workersForCategory = getWorkersForStageType(currentStep?.stageType, workers);
+        const workerList = showAllWorkersInAssignModal ? workers : workersForCategory;
+        const categoryLabel = currentStep?.stageType === 'dyer' ? 'Dyeing' : currentStep?.stageType === 'stitching' ? 'Stitching' : currentStep?.stageType === 'handwork' ? 'Handwork / Embroidery' : 'this task';
+        return (
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[9999] p-4" style={{ zIndex: 9999 }}>
           <div className="bg-gray-900 border border-gray-800 rounded-xl p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-5">
               <div>
                 <h3 className="text-lg font-bold text-white flex items-center gap-2">
                   <Users size={18} className="text-blue-400" />
-                  Manage Workers
+                  Assign worker – {currentStep?.name || categoryLabel}
                 </h3>
-                {saleDetail?.productionSteps.find(s => s.id === showWorkerEditModal)?.status === 'Pending' && (
-                  <p className="text-xs text-gray-500 mt-1">Save & Start saves to DB and sets stage to In Progress. Next step unlocks after you Receive from Worker.</p>
+                <p className="text-xs text-gray-500 mt-1">
+                  {showAllWorkersInAssignModal ? 'Showing all workers.' : `Only ${categoryLabel} workers shown.`} Click &quot;Save Changes&quot; at the top to persist.
+                </p>
+                {currentStep?.status === 'Pending' && (
+                  <p className="text-xs text-gray-500 mt-0.5">Save & Start sets stage to In Progress. Next step unlocks after you Receive from Worker.</p>
                 )}
               </div>
               <Button
                 size="sm"
                 variant="ghost"
-                onClick={() => setShowWorkerEditModal(null)}
+                onClick={() => { setShowWorkerEditModal(null); setShowAllWorkersInAssignModal(false); }}
                 className="h-8 w-8 p-0"
               >
                 <X size={16} />
               </Button>
             </div>
+
+            <div className="mb-4 flex items-center gap-2">
+              <input
+                type="checkbox"
+                id="show-all-workers"
+                checked={showAllWorkersInAssignModal}
+                onChange={(e) => setShowAllWorkersInAssignModal(e.target.checked)}
+                className="rounded border-gray-600 bg-gray-800 text-cyan-500 focus:ring-cyan-500"
+              />
+              <label htmlFor="show-all-workers" className="text-sm text-gray-400 cursor-pointer">Show all workers</label>
+            </div>
+
+            {workerList.length === 0 && (
+              <div className="mb-4 p-4 bg-amber-950/30 border border-amber-800/50 rounded-lg">
+                <p className="text-sm text-amber-400 font-medium">Is category ka koi worker available nahi.</p>
+                <p className="text-xs text-gray-400 mt-1">Add a worker with role &quot;{categoryLabel}&quot; from Contacts, or use the button below.</p>
+                <Button
+                  size="sm"
+                  onClick={() => { setShowWorkerEditModal(null); openDrawer?.('addContact', undefined, { contactType: 'worker' }); }}
+                  className="mt-3 bg-amber-600 hover:bg-amber-700"
+                >
+                  <Plus size={14} className="mr-2" />
+                  Add Worker
+                </Button>
+              </div>
+            )}
 
             <div className="space-y-4">
               {/* Workers List */}
@@ -2279,6 +2449,7 @@ export const StudioSaleDetailNew = () => {
                     size="sm"
                     onClick={handleAddWorker}
                     className="bg-blue-600 hover:bg-blue-700 h-8"
+                    disabled={workerList.length === 0}
                   >
                     <Plus size={14} className="mr-1" />
                     Add Worker
@@ -2289,7 +2460,7 @@ export const StudioSaleDetailNew = () => {
                   <div className="text-center py-8 bg-gray-950/50 rounded-lg border border-dashed border-gray-700">
                     <Users size={32} className="mx-auto text-gray-600 mb-2" />
                     <p className="text-sm text-gray-500">No workers assigned</p>
-                    <p className="text-xs text-gray-600 mt-1">Click "Add Worker" to assign</p>
+                    <p className="text-xs text-gray-600 mt-1">Select a worker from the list below{showAllWorkersInAssignModal ? '' : ` (${categoryLabel} category)`}</p>
                   </div>
                 ) : (
                   <div className="space-y-3">
@@ -2306,15 +2477,15 @@ export const StudioSaleDetailNew = () => {
                                 <select
                                   value={worker.workerId}
                                   onChange={(e) => {
-                                    const selectedWorker = workers.find(w => w.id === e.target.value);
+                                    const selectedWorker = workerList.find(w => w.id === e.target.value);
                                     handleUpdateWorker(worker.id, 'workerId', e.target.value);
                                     handleUpdateWorker(worker.id, 'workerName', selectedWorker?.name || '');
                                   }}
                                   className="w-full bg-gray-900 border border-gray-700 rounded-lg text-white text-sm h-9 px-2"
                                 >
                                   <option value="">Select...</option>
-                                  {workers.map(w => (
-                                    <option key={w.id} value={w.id}>{w.name}</option>
+                                  {workerList.map(w => (
+                                    <option key={w.id} value={w.id}>{w.name} ({w.department})</option>
                                   ))}
                                 </select>
                               </div>
@@ -2373,7 +2544,7 @@ export const StudioSaleDetailNew = () => {
                   type="date"
                   value={editingWorkerData.expectedCompletionDate}
                   onChange={(e) => setEditingWorkerData(prev => ({ ...prev, expectedCompletionDate: e.target.value }))}
-                  className="bg-gray-950 border-gray-700"
+                  className="bg-gray-950 border-gray-700 w-[200px] min-w-0"
                 />
               </div>
 
@@ -2434,14 +2605,15 @@ export const StudioSaleDetailNew = () => {
             </div>
           </div>
         </div>
-      )}
+        );
+      })()}
 
       {/* Receive from Worker Modal */}
       {showReceiveModal && (
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[9999] p-4" style={{ zIndex: 9999 }}>
           <div className="bg-gray-900 border border-gray-800 rounded-xl p-6 max-w-md w-full">
             <h3 className="text-lg font-bold text-white mb-1">Receive from Worker</h3>
-            <p className="text-sm text-gray-400 mb-4">Enter actual cost (Rs) and remarks. On confirm: stage → Completed, worker_ledger_entries updated. Worker payment is separate from customer payments.</p>
+            <p className="text-sm text-gray-400 mb-4">Enter actual cost (Rs) and remarks. On confirm: stage → Completed, ledger entry (unpaid) created. No payment until you choose Pay Now or Pay Later.</p>
             <div className="space-y-4">
               <div>
                 <label className="text-sm text-gray-400 mb-1 block">Actual Cost (Rs) *</label>
@@ -2477,6 +2649,67 @@ export const StudioSaleDetailNew = () => {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Worker Payment choice modal (after Receive): Pay Now / Pay Later */}
+      {payChoiceAfterReceive && !showWorkerPaymentDialog && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[9999] p-4" style={{ zIndex: 9999 }}>
+          <div className="bg-gray-900 border border-gray-800 rounded-xl p-6 max-w-md w-full">
+            <h3 className="text-lg font-bold text-white mb-1">Worker Payment</h3>
+            <p className="text-sm text-gray-400 mb-4">
+              Is stage ka kaam receive ho gaya hai. Kya aap abhi worker ko payment karna chahte hain?
+            </p>
+            <div className="flex gap-3 mt-6">
+              <Button
+                variant="outline"
+                className="flex-1 border-gray-700"
+                onClick={() => {
+                  setPayChoiceAfterReceive(null);
+                  reloadProductionSteps();
+                }}
+              >
+                No, Pay Later
+              </Button>
+              <Button
+                className="flex-1 bg-green-600 hover:bg-green-700"
+                onClick={() => setShowWorkerPaymentDialog(true)}
+              >
+                Yes, Pay Now
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Worker Payment dialog (Pay Now flow): records payment and marks ledger paid */}
+      {payChoiceAfterReceive && (
+        <UnifiedPaymentDialog
+          isOpen={showWorkerPaymentDialog}
+          onClose={() => {
+            setShowWorkerPaymentDialog(false);
+            setPayChoiceAfterReceive(null);
+            reloadProductionSteps();
+          }}
+          context="worker"
+          entityName={payChoiceAfterReceive.workerName}
+          entityId={payChoiceAfterReceive.workerId}
+          outstandingAmount={payChoiceAfterReceive.amount}
+          referenceNo={saleDetail?.invoiceNo ? `STD-${payChoiceAfterReceive.stageId.slice(0, 8)}` : undefined}
+          onSuccess={async () => {
+            try {
+              await studioProductionService.markStageLedgerPaid(
+                payChoiceAfterReceive.stageId,
+                undefined
+              );
+              toast.success('Worker payment recorded. Ledger updated.');
+            } catch (e: any) {
+              toast.error(e?.message || 'Failed to update ledger');
+            }
+            setShowWorkerPaymentDialog(false);
+            setPayChoiceAfterReceive(null);
+            await reloadProductionSteps();
+          }}
+        />
       )}
 
       {/* Task Customization Modal */}
@@ -2806,6 +3039,58 @@ export const StudioSaleDetailNew = () => {
           </div>
         </div>
       )}
+
+      {/* Save confirmation: Yes → Studio Dashboard, No → stay on page */}
+      <AlertDialog open={showSaveConfirmDialog} onOpenChange={setShowSaveConfirmDialog}>
+        <AlertDialogContent className="bg-gray-900 border-gray-800 text-white">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Changes save ho gaye hain</AlertDialogTitle>
+            <AlertDialogDescription>
+              Kya aap dashboard par wapas jana chahte hain?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setShowSaveConfirmDialog(false)} className="border-gray-700">
+              No — stay on page
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                setShowSaveConfirmDialog(false);
+                setCurrentView('studio-dashboard-new');
+              }}
+              className="bg-cyan-600 hover:bg-cyan-700"
+            >
+              Yes — Studio Dashboard
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Unsaved changes warning when leaving page */}
+      <AlertDialog open={showUnsavedWarning} onOpenChange={setShowUnsavedWarning}>
+        <AlertDialogContent className="bg-gray-900 border-gray-800 text-white">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Unsaved changes</AlertDialogTitle>
+            <AlertDialogDescription>
+              Unsaved changes will be lost. Do you want to leave anyway?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setShowUnsavedWarning(false)} className="border-gray-700">
+              Stay
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                setShowUnsavedWarning(false);
+                setCurrentView('studio');
+              }}
+              className="bg-amber-600 hover:bg-amber-700"
+            >
+              Leave
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };

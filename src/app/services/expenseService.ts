@@ -6,7 +6,7 @@ export interface Expense {
   branch_id: string;
   expense_no?: string;
   expense_date: string;
-  category: 'rent' | 'utilities' | 'salaries' | 'marketing' | 'travel' | 'office_supplies' | 'repairs' | 'professional_fees' | 'insurance' | 'taxes' | 'miscellaneous';
+  category: string;
   description: string;
   amount: number;
   payment_method: string;

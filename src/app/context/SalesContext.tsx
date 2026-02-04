@@ -367,14 +367,15 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
       } else if (saleData.type === 'invoice' || saleData.status === 'final') {
         docType = 'invoice';
       }
-      
-      const invoiceNo = generateDocumentNumber(docType);
-      
-      // Validate invoice number is not undefined
+      // Use form-provided invoice number when present (Form already generated STD-XXXX / DRAFT-XXXX etc.) to avoid double-increment
+      const formInvoiceNo = (saleData as any).invoiceNo as string | undefined;
+      const invoiceNo = (typeof formInvoiceNo === 'string' && formInvoiceNo && !formInvoiceNo.includes('undefined'))
+        ? formInvoiceNo
+        : generateDocumentNumber(docType);
+      const weGeneratedNumber = !formInvoiceNo;
       if (!invoiceNo || invoiceNo.includes('undefined') || invoiceNo.includes('NaN')) {
         throw new Error(`Invalid invoice number generated: ${invoiceNo}. Check document numbering settings.`);
       }
-      
       // Convert to Supabase format (use effectiveBranchId – valid UUID for DB)
       const supabaseSale: SupabaseSale = {
         company_id: companyId,
@@ -397,7 +398,7 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
         return_due: saleData.returnDue || 0,
         notes: saleData.notes,
         created_by: user.id,
-        // Omit is_studio from insert to avoid 400 if column not yet added (run migrations/sales_is_studio_column.sql)
+        // Do not send is_studio in insert – column may not exist yet; set via update after create
       };
 
       const supabaseItems: SupabaseSaleItem[] = saleData.items.map(item => {
@@ -424,19 +425,16 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
       };
       });
 
-      // Save to Supabase (is_studio omitted from insert to avoid 400 until migration is run)
       const result = await saleService.createSale(supabaseSale, supabaseItems);
-      
-      // Optionally set is_studio after create when column exists (run migrations/sales_is_studio_column.sql)
+      // Set is_studio after create (avoids 400 if sales.is_studio column not yet added by migration)
       if (isStudioSale && result?.id) {
         try {
           const { supabase: sb } = await import('@/lib/supabase');
           await sb.from('sales').update({ is_studio: true }).eq('id', result.id);
-        } catch (_) { /* column may not exist yet */ }
+        } catch (_) { /* column may not exist */ }
       }
-      
-      // Increment document number
-      incrementNextNumber(docType);
+      // Only increment when we generated the number (Form did not send invoiceNo); Form already increments when it sends number
+      if (weGeneratedNumber) incrementNextNumber(docType);
       
       // Convert back to app format
       const newSale = convertFromSupabaseSale(result);
@@ -677,10 +675,13 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
       // CRITICAL FIX: Handle full sale update (not just status)
       const supabaseUpdates: any = {};
       
-      // CRITICAL: Preserve invoice_no - NEVER update it
-      // Invoice number should remain unchanged when editing
-      
-      if (updates.status !== undefined) supabaseUpdates.status = updates.status === 'invoice' ? 'final' : 'quotation';
+      // When converting to Studio, allow updating invoice_no to STD-XXXX (Form sends new number)
+      if ((updates as any).is_studio === true && typeof (updates as any).invoiceNo === 'string' && (updates as any).invoiceNo) {
+        supabaseUpdates.invoice_no = (updates as any).invoiceNo;
+      }
+      // Otherwise preserve invoice_no when editing (no change)
+
+      if (updates.status !== undefined) supabaseUpdates.status = updates.status === 'invoice' ? 'final' : (updates.status as string);
       if (updates.type !== undefined) supabaseUpdates.type = updates.type === 'invoice' ? 'invoice' : 'quotation';
       if (updates.paymentStatus !== undefined) supabaseUpdates.payment_status = updates.paymentStatus;
       if (updates.total !== undefined) supabaseUpdates.total = updates.total;
