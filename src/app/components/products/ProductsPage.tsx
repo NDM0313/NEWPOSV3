@@ -123,6 +123,13 @@ export const ProductsPage = () => {
       loadProducts();
     }
   }, [companyId, products.length, loading, loadProducts]);
+
+  // Refresh list when a product is added/updated from GlobalDrawer (no full page reload)
+  useEffect(() => {
+    const onProductsUpdated = () => loadProducts();
+    window.addEventListener('products-updated', onProductsUpdated);
+    return () => window.removeEventListener('products-updated', onProductsUpdated);
+  }, [loadProducts]);
   
   // 🎯 NEW: Action States
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);

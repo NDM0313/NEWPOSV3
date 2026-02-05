@@ -563,14 +563,7 @@ export const FullStockLedgerView: React.FC<FullStockLedgerViewProps> = ({
     };
   }, [isOpen]);
 
-  if (!isOpen) return null;
-
-  const branchLabel =
-    !selectedBranchId || selectedBranchId === 'all'
-      ? 'All Branches'
-      : branches.find((b) => b.id === selectedBranchId)?.name || 'All Branches';
-
-  // Map movements to print format with packing fields
+  // Map movements to print format with packing fields - MUST be before early return (Rules of Hooks)
   const printMovements = React.useMemo(() => {
     return movements.map(m => ({
       id: m.id,
@@ -586,6 +579,13 @@ export const FullStockLedgerView: React.FC<FullStockLedgerViewProps> = ({
       created_at: m.created_at,
     }));
   }, [movements]);
+
+  if (!isOpen) return null;
+
+  const branchLabel =
+    !selectedBranchId || selectedBranchId === 'all'
+      ? 'All Branches'
+      : branches.find((b) => b.id === selectedBranchId)?.name || 'All Branches';
 
   return (
     <>

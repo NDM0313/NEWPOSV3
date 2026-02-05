@@ -38,7 +38,7 @@ import {
 } from "@/app/components/ui/dialog";
 import { cn } from "@/app/components/ui/utils";
 import { useNavigation } from '@/app/context/NavigationContext';
-import { useSales, Sale } from '@/app/context/SalesContext';
+import { useSales, Sale, convertFromSupabaseSale } from '@/app/context/SalesContext';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { useDateRange } from '@/app/context/DateRangeContext';
 import { saleService } from '@/app/services/saleService';
@@ -139,8 +139,16 @@ export const SalesPage = () => {
         break;
         
       case 'edit':
-        // Open edit drawer with sale data
-        openDrawer('edit-sale', undefined, { sale });
+        // Fetch full sale with items so Edit form shows line items (not just payments)
+        try {
+          const full = await saleService.getSaleById(sale.id);
+          const saleWithItems = convertFromSupabaseSale(full);
+          openDrawer('edit-sale', undefined, { sale: saleWithItems });
+        } catch (e) {
+          console.error('[SalesPage] Error loading sale for edit:', e);
+          toast.error('Could not load sale details');
+          openDrawer('edit-sale', undefined, { sale });
+        }
         break;
         
       case 'print_invoice':

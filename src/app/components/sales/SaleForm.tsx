@@ -92,7 +92,7 @@ import { contactService } from '@/app/services/contactService';
 import { saleService } from '@/app/services/saleService';
 import { productService } from '@/app/services/productService';
 import { branchService, Branch } from '@/app/services/branchService';
-import { useSales } from '@/app/context/SalesContext';
+import { useSales, convertFromSupabaseSale } from '@/app/context/SalesContext';
 import { useNavigation } from '@/app/context/NavigationContext';
 import { Loader2 } from 'lucide-react';
 import { useDocumentNumbering } from '@/app/hooks/useDocumentNumbering';
@@ -708,10 +708,11 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
             setInvoiceNumber(initialSale.invoiceNo || '');
             setRefNumber('');
             
-            // Pre-fill items
-            if (initialSale.items && initialSale.items.length > 0) {
-                const convertedItems: SaleItem[] = initialSale.items.map((item: any, index: number) => ({
-                    id: Date.now() + index, // Generate unique ID
+            // Pre-fill items (from initialSale or fetch if missing)
+            const mapItemsToForm = (list: any[]) => {
+                if (!list || list.length === 0) return;
+                const convertedItems: SaleItem[] = list.map((item: any, index: number) => ({
+                    id: Date.now() + index,
                     productId: item.productId || '',
                     name: item.productName || '',
                     sku: item.sku || '',
@@ -719,7 +720,7 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                     qty: item.quantity || 0,
                     size: item.size,
                     color: item.color,
-                    stock: 0, // Will be loaded from product if needed
+                    stock: 0,
                     lastPurchasePrice: undefined,
                     lastSupplier: undefined,
                     showVariations: false,
@@ -728,8 +729,21 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                     meters: item.packingDetails?.total_meters,
                 }));
                 setItems(convertedItems);
+            };
+            if (initialSale.items && initialSale.items.length > 0) {
+                mapItemsToForm(initialSale.items);
+            } else if (initialSale.id) {
+                // Fallback: sale passed without items (e.g. from list) – fetch full sale with items
+                saleService.getSaleById(initialSale.id)
+                    .then((full) => {
+                        const saleWithItems = convertFromSupabaseSale(full);
+                        if (saleWithItems.items && saleWithItems.items.length > 0) {
+                            mapItemsToForm(saleWithItems.items);
+                        }
+                    })
+                    .catch((err) => console.warn('[SaleForm] Could not load sale items for edit:', err));
             }
-            
+
             // CRITICAL FIX: Pre-fill payments from existing payments (split by method)
             if (initialSale.paid > 0) {
                 // Fetch existing payments to show split
@@ -1189,14 +1203,14 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
             const saleType: 'invoice' | 'quotation' = saleStatus === 'final' ? 'invoice' : 'quotation';
             const mappedStatus: 'draft' | 'quotation' | 'order' | 'final' = saleStatus;
             
-            // CRITICAL FIX: Generate invoice/document number based on status and type (studio vs regular)
-            // BUT: If editing existing sale, preserve original invoice number
+            // INVOICE PREFIX RULE: Regular sale → generateDocumentNumber('invoice') → SL. Studio → generateDocumentNumber('studio') → STD. Separate counters; never mix.
+            // If editing existing sale, preserve original invoice number unless type was changed to Studio.
             let documentNumber: string;
             let documentType: 'draft' | 'quotation' | 'order' | 'invoice' | 'studio';
             
             if (initialSale && initialSale.invoiceNo) {
                 // EDIT MODE: Preserve existing invoice number UNLESS type was changed to Studio (then use next STD-XXXX)
-                const existingIsStudio = (initialSale.invoiceNo.startsWith('STD-') || initialSale.invoiceNo.startsWith('ST-'));
+                const existingIsStudio = initialSale.invoiceNo.startsWith('STD-') || initialSale.invoiceNo.startsWith('ST-');
                 if (isStudioSale && !existingIsStudio) {
                     // Type changed to Studio → regenerate invoice number (STD-XXXX) and persist via update
                     documentType = 'studio';
@@ -1210,10 +1224,10 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                         documentType = 'quotation';
                     } else if (documentNumber.startsWith('SO-')) {
                         documentType = 'order';
-                    } else if (documentNumber.startsWith('INV-') || documentNumber.startsWith('SL-')) {
+                    } else if (documentNumber.startsWith('SL-') || documentNumber.startsWith('INV-')) {
                         documentType = 'invoice';
                     } else if (documentNumber.startsWith('STD-') || documentNumber.startsWith('ST-')) {
-                        documentType = 'studio';
+                        documentType = 'studio'; // STD is canonical; ST- for legacy
                     } else {
                         documentType = saleStatus === 'final' ? (isStudioSale ? 'studio' : 'invoice') : 
                                       saleStatus === 'quotation' ? 'quotation' :
@@ -1221,7 +1235,7 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                     }
                 }
             } else {
-                // NEW SALE: Generate new invoice number (studio uses studio prefix when type is Studio)
+                // NEW SALE: Regular → SL (invoice). Studio → STD (studio). No shared counter.
                 if (isStudioSale) {
                     documentType = 'studio';
                     documentNumber = generateDocumentNumber('studio');
@@ -1308,8 +1322,8 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
             if (initialSale && initialSale.id) {
                 // EDIT MODE: Update existing sale (invoice number updated when converting to Studio)
                 await updateSale(initialSale.id, saleData);
-                // If we regenerated invoice for Studio conversion, consume the number so next sale gets next STD
-                if (isStudioSale && !(initialSale.invoiceNo.startsWith('STD-') || initialSale.invoiceNo.startsWith('ST-'))) {
+                // If we regenerated invoice for Studio conversion, consume studio number so next studio sale gets next STD
+                if (isStudioSale && !initialSale.invoiceNo.startsWith('STD-') && !initialSale.invoiceNo.startsWith('ST-')) {
                     incrementNextNumber('studio');
                 }
                 toast.success(`Sale ${documentNumber} updated successfully!`);
@@ -1621,22 +1635,24 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                                             </div>
                                 </PopoverTrigger>
                                 <PopoverContent 
-                                    className="w-80 bg-gray-900 border-gray-800 text-white p-2"
+                                    className="w-80 bg-gray-900 border-gray-800 text-white p-2 flex flex-col overflow-hidden max-h-[320px]"
                                     align="start"
+                                    onOpenAutoFocus={(e) => e.preventDefault()}
                                 >
-                                    <div className="space-y-2">
+                                    <div className="space-y-2 flex flex-col min-h-0 flex-1 overflow-hidden">
                                         {/* Search Input */}
                                         <Input
                                             placeholder="Search customers..."
                                             value={customerSearchTerm}
                                             onChange={(e) => setCustomerSearchTerm(e.target.value)}
-                                            className="bg-gray-800 border-gray-700 text-white text-sm h-9"
+                                            className="bg-gray-800 border-gray-700 text-white text-sm h-9 shrink-0"
                                         />
-                                        {/* Customer List - min-h-0 + overscroll-contain so scroll works inside popover */}
+                                        {/* Customer List - scrollable; wheel + touch scroll */}
                                         <div
-                                            className="space-y-1 max-h-64 min-h-0 overflow-y-auto overflow-x-hidden overscroll-contain"
+                                            className="space-y-1 overflow-y-auto overflow-x-hidden overscroll-contain max-h-64"
                                             style={{ WebkitOverflowScrolling: 'touch' }}
                                             tabIndex={0}
+                                            onWheel={(e) => e.stopPropagation()}
                                         >
                                             {filteredCustomers.length === 0 ? (
                                                 <div className="px-3 py-2 text-sm text-gray-400 text-center">

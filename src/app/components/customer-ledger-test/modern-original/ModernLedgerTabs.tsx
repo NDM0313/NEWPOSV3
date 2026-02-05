@@ -7,23 +7,34 @@ import { PaymentsTab } from './tabs/PaymentsTab';
 import { AgingReportTab } from './tabs/AgingReportTab';
 import type { LedgerData, Transaction } from '@/app/services/customerLedgerTypes';
 
+export interface LedgerTabLabels {
+  /** First data tab: Invoices (customer), Purchases (supplier), Expenses (user), Jobs (worker) */
+  dataTabLabel?: string;
+  /** Aging tab description: Receivables aging vs Payables aging */
+  agingDescription?: string;
+}
+
 interface ModernLedgerTabsProps {
   ledgerData: LedgerData;
   saleItemsMap?: Map<string, any[]>;
   onTransactionClick: (transaction: Transaction) => void;
   accountName?: string;
   dateRange?: { from: string; to: string };
+  tabLabels?: LedgerTabLabels;
 }
 
-export function ModernLedgerTabs({ ledgerData, saleItemsMap = new Map(), onTransactionClick, accountName = '', dateRange }: ModernLedgerTabsProps) {
+export function ModernLedgerTabs({ ledgerData, saleItemsMap = new Map(), onTransactionClick, accountName = '', dateRange, tabLabels }: ModernLedgerTabsProps) {
   const [activeTab, setActiveTab] = useState<'overview' | 'transactions' | 'invoices' | 'payments' | 'aging'>('overview');
+
+  const dataLabel = tabLabels?.dataTabLabel ?? 'Invoices';
+  const agingDesc = tabLabels?.agingDescription ?? 'Receivables aging';
 
   const tabs = [
     { id: 'overview', label: 'Overview', icon: LayoutGrid, description: 'Account summary' },
     { id: 'transactions', label: 'All Transactions', icon: List, description: `${ledgerData.transactions.length} entries` },
-    { id: 'invoices', label: 'Invoices', icon: FileText, description: `${ledgerData.invoices.length} invoices` },
+    { id: 'invoices', label: dataLabel, icon: FileText, description: `${ledgerData.invoices.length} ${dataLabel.toLowerCase()}` },
     { id: 'payments', label: 'Payments', icon: DollarSign, description: 'Payment history' },
-    { id: 'aging', label: 'Aging Report', icon: Clock, description: 'Receivables aging' },
+    { id: 'aging', label: 'Aging Report', icon: Clock, description: agingDesc },
   ];
 
   return (

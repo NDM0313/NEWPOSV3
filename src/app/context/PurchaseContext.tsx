@@ -9,6 +9,7 @@ import { useAccounting } from '@/app/context/AccountingContext';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { purchaseService, Purchase as SupabasePurchase, PurchaseItem as SupabasePurchaseItem } from '@/app/services/purchaseService';
 import { productService } from '@/app/services/productService';
+import { getOrCreateLedger, addLedgerEntry } from '@/app/services/ledgerService';
 import { toast } from 'sonner';
 
 // ============================================
@@ -314,6 +315,42 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
       
       // Update local state
       setPurchases(prev => [newPurchase, ...prev]);
+
+      // Supplier Ledger: Purchase → CREDIT (we owe supplier); post on every purchase create
+      if (companyId && newPurchase.supplier && newPurchase.total != null) {
+        try {
+          const ledger = await getOrCreateLedger(companyId, 'supplier', newPurchase.supplier, newPurchase.supplierName);
+          if (ledger) {
+            await addLedgerEntry({
+              companyId,
+              ledgerId: ledger.id,
+              entryDate: newPurchase.date,
+              debit: 0,
+              credit: newPurchase.total,
+              source: 'purchase',
+              referenceNo: newPurchase.purchaseNo,
+              referenceId: newPurchase.id,
+              remarks: `Purchase ${newPurchase.purchaseNo}`,
+            });
+            // If purchase created with paid amount, also post Payment → DEBIT
+            if (newPurchase.paid > 0) {
+              await addLedgerEntry({
+                companyId,
+                ledgerId: ledger.id,
+                entryDate: newPurchase.date,
+                debit: newPurchase.paid,
+                credit: 0,
+                source: 'payment',
+                referenceNo: newPurchase.purchaseNo,
+                referenceId: newPurchase.id,
+                remarks: `Payment for ${newPurchase.purchaseNo}`,
+              });
+            }
+          }
+        } catch (e) {
+          console.warn('[PurchaseContext] Supplier ledger entry failed:', e);
+        }
+      }
       
       // CRITICAL: Stock update ONLY on 'received' or 'final' status (NOT on 'pending' or 'draft')
       // Rule: Stock sirf Received/Final par update ho, Pending par kabhi nahi
@@ -481,6 +518,28 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
       
       // Record payment in Supabase
       await purchaseService.recordPayment(purchaseId, amount, method, paymentAccountId, companyId, branchId);
+
+      // Supplier Ledger: Payment → DEBIT (we paid)
+      if (companyId && purchase.supplier) {
+        try {
+          const ledger = await getOrCreateLedger(companyId, 'supplier', purchase.supplier, purchase.supplierName);
+          if (ledger) {
+            await addLedgerEntry({
+              companyId,
+              ledgerId: ledger.id,
+              entryDate: new Date().toISOString().split('T')[0],
+              debit: amount,
+              credit: 0,
+              source: 'payment',
+              referenceNo: purchase.purchaseNo,
+              referenceId: purchaseId,
+              remarks: `Payment for ${purchase.purchaseNo}`,
+            });
+          }
+        } catch (e) {
+          console.warn('[PurchaseContext] Supplier ledger (payment) failed:', e);
+        }
+      }
 
       const newPaid = purchase.paid + amount;
       const newDue = purchase.total - newPaid;

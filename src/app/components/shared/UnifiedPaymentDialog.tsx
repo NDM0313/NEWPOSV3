@@ -5,6 +5,7 @@ import { Badge } from '@/app/components/ui/badge';
 import { useAccounting, type PaymentMethod, type Account } from '@/app/context/AccountingContext';
 import { useSettings } from '@/app/context/SettingsContext';
 import { useSupabase } from '@/app/context/SupabaseContext';
+import { useDocumentNumbering } from '@/app/hooks/useDocumentNumbering';
 import { accountHelperService } from '@/app/services/accountHelperService';
 import { toast } from 'sonner';
 
@@ -71,6 +72,7 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
   const accounting = useAccounting();
   const settings = useSettings();
   const { branchId, companyId, user } = useSupabase();
+  const { generateDocumentNumber, incrementNextNumber } = useDocumentNumbering();
   const [amount, setAmount] = useState<number>(0);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('Cash');
   const [selectedAccount, setSelectedAccount] = useState<string>('');
@@ -248,6 +250,7 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
 
     try {
       let success = false;
+      let workerPaymentRef: string | undefined;
 
       // EDIT MODE: Update existing payment
       if (editMode && paymentToEdit) {
@@ -309,7 +312,7 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
           // CRITICAL FIX: branchId can be "all" from context, but purchaseService will get actual branch_id from purchase record
           // So we pass it as optional - purchaseService will use purchase's branch_id instead
           try {
-            // CRITICAL FIX: First create the payment record via purchaseService
+            const paymentRef = generateDocumentNumber('payment');
             const { purchaseService } = await import('@/app/services/purchaseService');
             await purchaseService.recordPayment(
               referenceId,
@@ -317,17 +320,17 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
               paymentMethod,
               selectedAccount,
               companyId,
-              branchId && branchId !== 'all' ? branchId : undefined // Pass undefined if "all"
+              branchId && branchId !== 'all' ? branchId : undefined,
+              paymentRef
             );
-            
-            // Then create journal entry via accounting
+            incrementNextNumber('payment');
             success = await accounting.recordSupplierPayment({
-              purchaseId: referenceId, // CRITICAL FIX: UUID for reference_id
+              purchaseId: referenceId,
               supplierName: entityName,
               supplierId: entityId,
               amount,
               paymentMethod,
-              referenceNo: referenceNo || `PO-${Date.now()}`
+              referenceNo: paymentRef || referenceNo || `PUR-${Date.now()}`
             });
           } catch (paymentError: any) {
             console.error('[UNIFIED PAYMENT] Error recording purchase payment:', paymentError);
@@ -356,8 +359,8 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
             return;
           }
           
-          // CRITICAL FIX: First create the payment record via saleService
           try {
+            const paymentRef = generateDocumentNumber('payment');
             const { saleService } = await import('@/app/services/saleService');
             await saleService.recordPayment(
               referenceId,
@@ -366,19 +369,18 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
               selectedAccount,
               companyId,
               branchId,
-              paymentDateTime.split('T')[0], // Extract date from datetime
-              notes || undefined
+              paymentDateTime.split('T')[0],
+              paymentRef
             );
-            
-            // Then create journal entry via accounting
+            incrementNextNumber('payment');
             success = await accounting.recordSalePayment({
-              saleId: referenceId, // CRITICAL FIX: UUID for reference_id
-              invoiceNo: referenceNo || `INV-${Date.now()}`, // Invoice number for referenceNo
+              saleId: referenceId,
+              invoiceNo: referenceNo || `INV-${Date.now()}`,
               customerName: entityName,
               customerId: entityId,
               amount,
               paymentMethod,
-              accountId: selectedAccount // CRITICAL FIX: Always pass account ID
+              accountId: selectedAccount
             });
           } catch (paymentError: any) {
             console.error('[UNIFIED PAYMENT] Error recording payment:', paymentError);
@@ -390,15 +392,19 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
           }
           break;
 
-        case 'worker':
+        case 'worker': {
+          const paymentRef = generateDocumentNumber('payment');
           success = await accounting.recordWorkerPayment({
             workerName: entityName,
             workerId: entityId,
             amount,
             paymentMethod,
-            referenceNo: referenceNo || `WP-${Date.now()}`
+            referenceNo: paymentRef
           });
+          incrementNextNumber('payment');
+          if (success) workerPaymentRef = paymentRef;
           break;
+        }
 
         case 'rental':
           if (!referenceId || !companyId) {
@@ -429,11 +435,11 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
       if (success) {
         const selectedAccountDetails = accounting.accounts.find(a => a.id === selectedAccount);
         const accountInfo = selectedAccountDetails ? ` from ${selectedAccountDetails.name}` : '';
-        
         toast.success(labels.successMessage, {
           description: `Rs ${amount.toLocaleString()} via ${paymentMethod}${accountInfo} on ${paymentDateTime}`
         });
-        onSuccess?.();
+        if (context === 'worker') onSuccess?.(workerPaymentRef);
+        else onSuccess?.();
         onClose();
       } else {
         toast.error('Payment failed', {

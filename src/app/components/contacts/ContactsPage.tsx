@@ -25,9 +25,9 @@ import { contactService } from '@/app/services/contactService';
 import { saleService } from '@/app/services/saleService';
 import { purchaseService } from '@/app/services/purchaseService';
 import { UnifiedPaymentDialog } from '@/app/components/shared/UnifiedPaymentDialog';
-import { UnifiedLedgerView } from '@/app/components/shared/UnifiedLedgerView';
 import { CustomerLedgerPage } from '@/app/components/accounting/CustomerLedgerPage';
 import CustomerLedgerPageOriginal from '@/app/components/customer-ledger-test/CustomerLedgerPageOriginal';
+import { GenericLedgerView } from '@/app/components/accounting/GenericLedgerView';
 import { ViewContactProfile } from './ViewContactProfile';
 import { toast } from 'sonner';
 import { Pagination } from '@/app/components/ui/pagination';
@@ -79,9 +79,9 @@ const workerRoleLabels: Record<WorkerRole, string> = {
 
 export const ContactsPage = () => {
   const { openDrawer, setCurrentView, createdContactId, setCreatedContactId } = useNavigation();
-  const { companyId, branchId } = useSupabase();
+  const { companyId, branchId, loading: contextLoading } = useSupabase();
   const [contacts, setContacts] = useState<Contact[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<ContactType>('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [filterOpen, setFilterOpen] = useState(false);
@@ -98,35 +98,37 @@ export const ContactsPage = () => {
 
   // Convert Supabase contact to app format (receivables = due from customer, payables = due to supplier/worker)
   const convertFromSupabaseContact = useCallback((supabaseContact: any, index: number, sales: any[], purchases: any[]): Contact => {
-    // Determine contact type first (needed for worker payables)
-    let contactType: 'customer' | 'supplier' | 'worker' = 'customer';
-    if (supabaseContact.type === 'supplier') {
-      contactType = 'supplier';
-    } else if (supabaseContact.type === 'worker') {
-      contactType = 'worker';
-    }
+    // Determine contact type (worker | supplier | customer | both)
+    const isWorker = supabaseContact.type === 'worker';
+    const isSupplier = supabaseContact.type === 'supplier' || supabaseContact.type === 'both';
+    const isCustomer = supabaseContact.type === 'customer' || supabaseContact.type === 'both';
+    let contactType: 'customer' | 'supplier' | 'worker' = isWorker ? 'worker' : isSupplier ? 'supplier' : 'customer';
 
-    // Receivables: from sales where this contact is customer (due balance from them)
+    // Receivables: opening_balance + sales due (for customer or both)
     const contactSales = sales.filter(s =>
       s.customer_id === supabaseContact.id || (s.customer_name && s.customer_name === supabaseContact.name)
     );
-    const receivables = contactSales.reduce((sum, s) => {
+    const salesReceivables = contactSales.reduce((sum, s) => {
       const due = s.due_amount != null ? Number(s.due_amount) : (Number(s.total) || 0) - (Number(s.paid_amount) || 0);
       return sum + Math.max(0, due);
     }, 0);
+    const openingReceivables = isCustomer ? Math.max(0, Number(supabaseContact.opening_balance) || 0) : 0;
+    const receivables = salesReceivables + openingReceivables;
 
-    // Payables: from purchases where this contact is supplier, OR for workers use current_balance (amount we owe)
+    // Payables: supplier_opening/opening + purchases for supplier/both; current_balance/opening for workers
     let payables = 0;
-    if (contactType === 'worker') {
-      payables = Math.max(0, Number(supabaseContact.current_balance) || 0);
-    } else {
+    if (isWorker) {
+      payables = Math.max(0, Number(supabaseContact.current_balance) || Number(supabaseContact.opening_balance) || 0);
+    } else if (isSupplier) {
       const contactPurchases = purchases.filter(p =>
         p.supplier_id === supabaseContact.id || (p.supplier_name && p.supplier_name === supabaseContact.name)
       );
-      payables = contactPurchases.reduce((sum, p) => {
+      const purchasePayables = contactPurchases.reduce((sum, p) => {
         const due = p.due_amount != null ? Number(p.due_amount) : (Number(p.total) || 0) - (Number(p.paid_amount) || 0);
         return sum + Math.max(0, due);
       }, 0);
+      const openingPayables = Math.max(0, Number(supabaseContact.supplier_opening_balance) || Number(supabaseContact.opening_balance) || 0);
+      payables = purchasePayables + openingPayables;
     }
 
     // Generate code if missing
@@ -162,38 +164,47 @@ export const ContactsPage = () => {
     };
   }, []);
 
-  // Load contacts from Supabase
+  // Load contacts from Supabase (with timeout so we never hang on "Loading contacts...")
   const loadContacts = useCallback(async () => {
-    if (!companyId) return;
-    
+    if (!companyId) {
+      setLoading(false);
+      return;
+    }
+
+    const timeoutMs = 20000;
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      timeoutId = setTimeout(() => reject(new Error('Request timed out')), timeoutMs);
+    });
+
     try {
       setLoading(true);
-      
-      // Load contacts
-      const contactsData = await contactService.getAllContacts(companyId);
-      
-      // Load sales and purchases to calculate balances
-      const [salesData, purchasesData] = await Promise.all([
-        saleService.getAllSales(companyId, branchId === 'all' ? undefined : branchId || undefined).catch(() => []),
-        purchaseService.getAllPurchases(companyId, branchId === 'all' ? undefined : branchId || undefined).catch(() => []),
-      ]);
-      
-      // Convert to app format
-      const convertedContacts: Contact[] = contactsData.map((c: any, index: number) => 
-        convertFromSupabaseContact(c, index, salesData, purchasesData)
-      );
-      
-      setContacts(convertedContacts);
+
+      const loadPromise = (async () => {
+        const contactsData = await contactService.getAllContacts(companyId);
+        const [salesData, purchasesData] = await Promise.all([
+          saleService.getAllSales(companyId, branchId === 'all' ? undefined : branchId || undefined).catch(() => []),
+          purchaseService.getAllPurchases(companyId, branchId === 'all' ? undefined : branchId || undefined).catch(() => []),
+        ]);
+        const convertedContacts: Contact[] = contactsData.map((c: any, index: number) =>
+          convertFromSupabaseContact(c, index, salesData, purchasesData)
+        );
+        setContacts(convertedContacts);
+      })();
+
+      await Promise.race([loadPromise, timeoutPromise]);
     } catch (error: any) {
       console.error('[CONTACTS PAGE] Error loading contacts:', error);
       toast.error('Failed to load contacts: ' + (error.message || 'Unknown error'));
       setContacts([]);
     } finally {
+      if (timeoutId) clearTimeout(timeoutId);
       setLoading(false);
     }
   }, [companyId, branchId, convertFromSupabaseContact]);
 
-  // Load contacts on mount (TASK 1 FIX - Ensure data loads on mount)
+  // Load contacts as soon as companyId is available (no click needed)
   useEffect(() => {
     if (companyId) {
       loadContacts();
@@ -201,13 +212,13 @@ export const ContactsPage = () => {
       setLoading(false);
     }
   }, [companyId, loadContacts]);
-  
-  // TASK 1 FIX - Force reload if no data and not loading
+
+  // When companyId becomes available after context loaded, ensure we load (retry if empty)
   useEffect(() => {
-    if (companyId && contacts.length === 0 && !loading) {
+    if (!contextLoading && companyId && contacts.length === 0 && !loading) {
       loadContacts();
     }
-  }, [companyId, contacts.length, loading, loadContacts]);
+  }, [contextLoading, companyId, contacts.length, loading, loadContacts]);
 
   // Refetch list when a new contact is created (e.g. Add Worker) so it shows without refresh
   useEffect(() => {
@@ -887,6 +898,16 @@ export const ContactsPage = () => {
                               <>
                                 <DropdownMenuItem 
                                   onClick={() => {
+                                    setSelectedContact(contact);
+                                    setViewProfileOpen(true);
+                                  }}
+                                  className="hover:bg-gray-800 cursor-pointer"
+                                >
+                                  <Eye size={14} className="mr-2 text-gray-400" />
+                                  View Profile
+                                </DropdownMenuItem>
+                                <DropdownMenuItem 
+                                  onClick={() => {
                                     setCurrentView('sales');
                                     // CRITICAL FIX: Use contact.uuid (database UUID) not contact.id (number)
                                     // sale.customer_id matches contacts.id (UUID) in database
@@ -969,6 +990,16 @@ export const ContactsPage = () => {
                               <>
                                 <DropdownMenuItem 
                                   onClick={() => {
+                                    setSelectedContact(contact);
+                                    setViewProfileOpen(true);
+                                  }}
+                                  className="hover:bg-gray-800 cursor-pointer"
+                                >
+                                  <Eye size={14} className="mr-2 text-gray-400" />
+                                  View Profile
+                                </DropdownMenuItem>
+                                <DropdownMenuItem 
+                                  onClick={() => {
                                     setCurrentView('purchases');
                                     // Store supplier filter in sessionStorage for PurchasesPage to read
                                     sessionStorage.setItem('purchasesFilter_supplierId', contact.id || '');
@@ -1048,6 +1079,16 @@ export const ContactsPage = () => {
                             {/* Worker Actions */}
                             {contact.type === 'worker' && (
                               <>
+                                <DropdownMenuItem 
+                                  onClick={() => {
+                                    setSelectedContact(contact);
+                                    setViewProfileOpen(true);
+                                  }}
+                                  className="hover:bg-gray-800 cursor-pointer"
+                                >
+                                  <Eye size={14} className="mr-2 text-gray-400" />
+                                  View Profile
+                                </DropdownMenuItem>
                                 <DropdownMenuItem 
                                   onClick={() => {
                                     setCurrentView('studio-workflow');
@@ -1179,18 +1220,34 @@ export const ContactsPage = () => {
         </div>
       )}
 
-      {/* Unified Ledger View (for suppliers and workers) */}
-      {selectedContact && selectedContact.type !== 'customer' && (
-        <UnifiedLedgerView
-          isOpen={ledgerOpen}
-          onClose={() => {
-            setLedgerOpen(false);
-            setSelectedContact(null);
-          }}
-          entityType={selectedContact.type === 'supplier' ? 'supplier' : 'worker'}
-          entityName={selectedContact.name}
-          entityId={selectedContact.id.toString()}
-        />
+      {/* Supplier / Worker Ledger - Full screen, same as Customer (real ledger_master + ledger_entries) */}
+      {selectedContact && selectedContact.type !== 'customer' && ledgerOpen && (
+        <div className="fixed inset-0 z-50 bg-[#111827] overflow-y-auto">
+          <div className="sticky top-0 z-10 bg-[#111827] border-b border-gray-800 px-6 py-4 flex items-center justify-between">
+            <h2 className="text-xl font-bold text-white">
+              {selectedContact.type === 'supplier' ? 'Supplier' : 'Worker'} Ledger — {selectedContact.name}
+            </h2>
+            <Button
+              variant="outline"
+              className="border-gray-600 text-gray-300 hover:bg-gray-800"
+              onClick={() => {
+                setLedgerOpen(false);
+                setLedgerType(null);
+                setSelectedContact(null);
+              }}
+            >
+              <X size={18} className="mr-2" />
+              Close
+            </Button>
+          </div>
+          <div className="p-6">
+            <GenericLedgerView
+              ledgerType={selectedContact.type === 'supplier' ? 'supplier' : 'worker'}
+              entityId={selectedContact.uuid ?? ''}
+              entityName={selectedContact.name}
+            />
+          </div>
+        </div>
       )}
 
       {/* View Contact Profile */}

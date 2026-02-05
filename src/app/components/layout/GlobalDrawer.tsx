@@ -8,6 +8,8 @@ import { useNavigation } from '../../context/NavigationContext';
 import { useSupabase } from '../../context/SupabaseContext';
 import { contactService } from '../../services/contactService';
 import { contactGroupService } from '../../services/contactGroupService';
+import { getOrCreateLedger, updateLedgerOpeningBalance } from '../../services/ledgerService';
+import { supabase } from '@/lib/supabase';
 import {
   Sheet,
   SheetContent,
@@ -128,7 +130,7 @@ export const GlobalDrawer = () => {
 
         {/* Sale Form - Edit */}
         <div style={{ display: shouldShowParentDrawer('edit-sale') ? 'block' : 'none' }}>
-          <SaleForm sale={drawerData?.sale} onClose={() => closeDrawer()} />
+          <SaleForm key={`edit-sale-${drawerData?.sale?.id ?? 'none'}`} sale={drawerData?.sale} onClose={() => closeDrawer()} />
         </div>
 
         {/* Purchase Form - Add */}
@@ -156,7 +158,7 @@ export const GlobalDrawer = () => {
 
         {/* Sale Form - Edit */}
         <div style={{ display: shouldShowParentDrawer('edit-sale') ? 'block' : 'none' }}>
-          <SaleForm sale={drawerData?.sale} onClose={() => closeDrawer()} />
+          <SaleForm key={`edit-sale-${drawerData?.sale?.id ?? 'none'}`} sale={drawerData?.sale} onClose={() => closeDrawer()} />
         </div>
 
         {/* Purchase Form - Add */}
@@ -176,7 +178,7 @@ export const GlobalDrawer = () => {
             onSave={() => {
               toast.success('Product created successfully');
               closeDrawer();
-              window.location.reload();
+              window.dispatchEvent(new CustomEvent('products-updated'));
             }}
           />
         )}
@@ -189,7 +191,7 @@ export const GlobalDrawer = () => {
             onSave={() => {
               toast.success('Product updated successfully');
               closeDrawer();
-              window.location.reload();
+              window.dispatchEvent(new CustomEvent('products-updated'));
             }}
           />
         )}
@@ -543,9 +545,38 @@ const ContactFormContent = ({ onClose }: { onClose: () => void }) => {
 
       const createdContact = await contactService.createContact(contactData);
       
-      // Store created contact ID and type for auto-selection in parent form (Sale/Purchase)
-      // Use the ID from the created contact (could be uuid or id field)
-      const contactId = createdContact?.id || createdContact?.uuid || createdContact?.id;
+      // Use the ID from the created contact (uuid)
+      const contactId = createdContact?.id || (createdContact as { uuid?: string })?.uuid;
+      const contactName = (createdContact as { name?: string })?.name || (formData.get('business-name') as string) || '';
+
+      // Link supplier opening balance to ledger_master so balance shows in contacts list and ledger view
+      if (contactId && companyId && (contactRoles.supplier || primaryType === 'supplier')) {
+        const supplierOpening = Number(contactData.supplier_opening_balance ?? contactData.opening_balance ?? 0) || 0;
+        if (supplierOpening > 0) {
+          try {
+            const ledger = await getOrCreateLedger(companyId, 'supplier', contactId, contactName);
+            if (ledger) await updateLedgerOpeningBalance(ledger.id, supplierOpening);
+          } catch (ledgerErr: any) {
+            console.warn('[CONTACT FORM] Could not set supplier opening balance in ledger:', ledgerErr?.message);
+          }
+        }
+      }
+
+      // Link worker opening balance to workers.current_balance so balance shows in contacts list and studio
+      if (contactId && contactRoles.worker) {
+        const workerOpening = Number(contactData.opening_balance ?? 0) || 0;
+        if (workerOpening > 0) {
+          try {
+            await supabase.from('workers').update({
+              current_balance: workerOpening,
+              updated_at: new Date().toISOString(),
+            }).eq('id', contactId);
+          } catch (workerErr: any) {
+            console.warn('[CONTACT FORM] Could not set worker opening balance:', workerErr?.message);
+          }
+        }
+      }
+
       if (contactId && setCreatedContactId) {
         // Determine the contact type for filtering
         let contactTypeForFilter: 'customer' | 'supplier' | 'both' | null = null;

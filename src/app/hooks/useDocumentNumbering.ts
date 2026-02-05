@@ -1,23 +1,35 @@
 // ============================================
-// 🎯 DOCUMENT NUMBERING HOOK
+// 🎯 DOCUMENT NUMBERING HOOK (LOCKED RULES)
 // ============================================
-// Centralized hook for generating document numbers
-// Uses Settings → Numbering Rules (safe when used outside SettingsProvider)
+// Centralized hook for generating document numbers.
+// Uses Settings → Numbering Rules. Each module has its own prefix and counter.
+//
+// LOCKED PREFIXES (do not change):
+//   invoice  → SL   (Regular Sale)
+//   studio   → STD  (Studio Sale)
+//   purchase → PUR  (Purchase)
+//   expense  → EXP  (Expense)
+//   payment  → PAY  (Payment)
+//   job      → JOB  (Worker Job)
+//   journal  → JV   (Journal Voucher)
 
 import { useContext } from 'react';
 import { SettingsContext } from '@/app/context/SettingsContext';
 
-export type DocumentType = 
-  | 'invoice' 
+export type DocumentType =
+  | 'invoice'
   | 'quotation'
   | 'draft'
   | 'order'
   | 'pos'
-  | 'purchase' 
-  | 'rental' 
-  | 'studio' 
+  | 'purchase'
+  | 'rental'
+  | 'studio'
   | 'expense'
-  | 'production';
+  | 'production'
+  | 'payment'
+  | 'job'
+  | 'journal';
 
 interface NumberingConfig {
   prefix: string;
@@ -26,7 +38,7 @@ interface NumberingConfig {
 }
 
 const DEFAULT_NUMBERING = {
-  salePrefix: 'SL-',
+  salePrefix: 'SL-',      // Regular sale invoice: SL-0001
   saleNextNumber: 1,
   quotationPrefix: 'QT-',
   quotationNextNumber: 1,
@@ -36,7 +48,7 @@ const DEFAULT_NUMBERING = {
   orderNextNumber: 1,
   posPrefix: 'POS-',
   posNextNumber: 1,
-  purchasePrefix: 'PO-',
+  purchasePrefix: 'PUR-',
   purchaseNextNumber: 1,
   rentalPrefix: 'RNT-',
   rentalNextNumber: 1,
@@ -48,6 +60,12 @@ const DEFAULT_NUMBERING = {
   studioNextNumber: 1,
   productionPrefix: 'PRD-',
   productionNextNumber: 1,
+  paymentPrefix: 'PAY-',
+  paymentNextNumber: 1,
+  jobPrefix: 'JOB-',
+  jobNextNumber: 1,
+  journalPrefix: 'JV-',
+  journalNextNumber: 1,
 };
 
 export const useDocumentNumbering = () => {
@@ -59,7 +77,7 @@ export const useDocumentNumbering = () => {
     switch (type) {
       case 'invoice':
         return {
-          prefix: numbering.salePrefix || 'SL-', // Regular sale: SL-0001
+          prefix: numbering.salePrefix || 'SL-', // Regular sale only (non-studio). SL-0001.
           nextNumber: numbering.saleNextNumber || 1,
           padding: 4
         };
@@ -94,8 +112,8 @@ export const useDocumentNumbering = () => {
       
       case 'purchase':
         return {
-          prefix: numbering.purchasePrefix,
-          nextNumber: numbering.purchaseNextNumber,
+          prefix: numbering.purchasePrefix ?? 'PUR-',
+          nextNumber: numbering.purchaseNextNumber ?? 1,
           padding: 4
         };
       
@@ -108,15 +126,36 @@ export const useDocumentNumbering = () => {
       
       case 'studio':
         return {
-          prefix: numbering.studioPrefix,
-          nextNumber: numbering.studioNextNumber,
+          prefix: numbering.studioPrefix || 'STD-', // Studio sale only. STD-0001. Separate counter from invoice (SL).
+          nextNumber: numbering.studioNextNumber ?? 1,
           padding: 4
         };
       
       case 'expense':
         return {
-          prefix: numbering.expensePrefix,
-          nextNumber: numbering.expenseNextNumber,
+          prefix: numbering.expensePrefix ?? 'EXP-',
+          nextNumber: numbering.expenseNextNumber ?? 1,
+          padding: 4
+        };
+
+      case 'payment':
+        return {
+          prefix: numbering.paymentPrefix ?? 'PAY-',
+          nextNumber: numbering.paymentNextNumber ?? 1,
+          padding: 4
+        };
+
+      case 'job':
+        return {
+          prefix: numbering.jobPrefix ?? 'JOB-',
+          nextNumber: numbering.jobNextNumber ?? 1,
+          padding: 4
+        };
+
+      case 'journal':
+        return {
+          prefix: numbering.journalPrefix ?? 'JV-',
+          nextNumber: numbering.journalNextNumber ?? 1,
           padding: 4
         };
 
@@ -204,7 +243,16 @@ export const useDocumentNumbering = () => {
         updatedNumbering.studioNextNumber = config.nextNumber + 1;
         break;
       case 'expense':
-        updatedNumbering.expenseNextNumber = config.nextNumber + 1;
+        updatedNumbering.expenseNextNumber = (updatedNumbering.expenseNextNumber ?? config.nextNumber ?? 1) + 1;
+        break;
+      case 'payment':
+        updatedNumbering.paymentNextNumber = (updatedNumbering.paymentNextNumber ?? config.nextNumber ?? 1) + 1;
+        break;
+      case 'job':
+        updatedNumbering.jobNextNumber = (updatedNumbering.jobNextNumber ?? config.nextNumber ?? 1) + 1;
+        break;
+      case 'journal':
+        updatedNumbering.journalNextNumber = (updatedNumbering.journalNextNumber ?? config.nextNumber ?? 1) + 1;
         break;
       case 'production':
         updatedNumbering.productionNextNumber = (config.nextNumber || 1) + 1;

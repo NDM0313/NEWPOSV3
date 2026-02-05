@@ -232,8 +232,8 @@ export const purchaseService = {
     if (error) throw error;
   },
 
-  // Record payment – allowed only when purchase status is final/completed (ERP rule)
-  async recordPayment(purchaseId: string, amount: number, paymentMethod: string, accountId: string, companyId: string, branchId?: string | null) {
+  // Record payment – allowed only when purchase status is final/completed (ERP rule). referenceNumber = PAY-xxxx from Numbering.
+  async recordPayment(purchaseId: string, amount: number, paymentMethod: string, accountId: string, companyId: string, branchId?: string | null, referenceNumber?: string | null) {
     // CRITICAL FIX: Get branch_id from purchase record, not from context (context can be "all")
     const { data: purchase, error: fetchError } = await supabase
       .from('purchases')
@@ -290,14 +290,15 @@ export const purchaseService = {
       .from('payments')
       .insert({
         company_id: companyId,
-        branch_id: validBranchId, // Use purchase's branch_id, not context branchId
+        branch_id: validBranchId,
         payment_type: 'paid',
         reference_type: 'purchase',
         reference_id: purchaseId,
         amount,
-        payment_method: enumPaymentMethod, // CRITICAL: Use lowercase enum value
+        payment_method: enumPaymentMethod,
         payment_account_id: accountId,
         payment_date: new Date().toISOString().split('T')[0],
+        ...(referenceNumber ? { reference_number: referenceNumber } : {}),
       })
       .select('*')
       .single();

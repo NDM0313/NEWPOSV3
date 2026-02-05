@@ -8,6 +8,7 @@ import { useDocumentNumbering } from '@/app/hooks/useDocumentNumbering';
 import { useAccounting } from '@/app/context/AccountingContext';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { expenseService, Expense as SupabaseExpense } from '@/app/services/expenseService';
+import { getOrCreateLedger, addLedgerEntry } from '@/app/services/ledgerService';
 import { toast } from 'sonner';
 
 // ============================================
@@ -230,7 +231,27 @@ export const ExpenseProvider = ({ children }: { children: ReactNode }) => {
       // Update local state
       setExpenses(prev => [newExpense, ...prev]);
 
-      // Salary = User only (Staff/Salesman/Operator). Workers are paid via Production → Worker Ledger only.
+      // Salary = User only → post to User Ledger (Salary paid = DEBIT to user ledger)
+      if (newExpense.status === 'paid' && options?.paidToUserId && companyId) {
+        try {
+          const ledger = await getOrCreateLedger(companyId, 'user', options.paidToUserId, newExpense.payeeName || undefined);
+          if (ledger) {
+            await addLedgerEntry({
+              companyId,
+              ledgerId: ledger.id,
+              entryDate: newExpense.date,
+              debit: newExpense.amount,
+              credit: 0,
+              source: 'expense',
+              referenceNo: newExpense.expenseNo,
+              referenceId: newExpense.id,
+              remarks: newExpense.description || `Salary - ${newExpense.payeeName || 'User'}`,
+            });
+          }
+        } catch (e) {
+          console.warn('[ExpenseContext] User ledger entry failed:', e);
+        }
+      }
 
       // Auto-post to accounting if paid
       if (newExpense.status === 'paid') {

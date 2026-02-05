@@ -24,7 +24,9 @@ import {
   MoreVertical,
   XCircle,
   Star,
-  List
+  List,
+  ChevronDown,
+  X
 } from 'lucide-react';
 import { Button } from '@/app/components/ui/button';
 import { Badge } from '@/app/components/ui/badge';
@@ -41,7 +43,7 @@ import { AccountLedgerView } from './AccountLedgerView';
 import { AccountLedgerPage } from './AccountLedgerPage';
 import { TransactionDetailModal } from './TransactionDetailModal';
 import { AddAccountDrawer } from './AddAccountDrawer';
-import CustomerLedgerPageOriginal from '../customer-ledger-test/CustomerLedgerPageOriginal';
+import { LedgerHub } from './LedgerHub';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { accountService } from '@/app/services/accountService';
 import { toast } from 'sonner';
@@ -71,7 +73,7 @@ export const AccountingDashboard = () => {
   const expenses = useExpenses();
   const { openDrawer } = useNavigation();
   const { companyId, branchId } = useSupabase();
-  const [activeTab, setActiveTab] = useState<'transactions' | 'accounts' | 'receivables' | 'payables' | 'deposits' | 'studio' | 'reports' | 'customer-ledger'>('transactions');
+  const [activeTab, setActiveTab] = useState<'transactions' | 'accounts' | 'ledger' | 'receivables' | 'payables' | 'deposits' | 'studio' | 'reports'>('transactions');
   const [searchTerm, setSearchTerm] = useState('');
   const [pageSize, setPageSize] = useState(25);
   const [currentPage, setCurrentPage] = useState(1);
@@ -88,6 +90,9 @@ export const AccountingDashboard = () => {
   // 🎯 Ledger & Transaction State
   const [ledgerAccount, setLedgerAccount] = useState<any>(null);
   const [transactionReference, setTransactionReference] = useState<string | null>(null);
+  
+  // Ledger: type chosen from dropdown (no inner Ledger dropdown on page)
+  const [ledgerType, setLedgerType] = useState<'customer' | 'supplier' | 'user' | 'worker'>('customer');
   
   // Filters
   const [typeFilter, setTypeFilter] = useState<string>('all');
@@ -129,15 +134,15 @@ export const AccountingDashboard = () => {
     };
   }, [transactions]);
   
-  // Tab configuration
+  // Tab configuration – Ledger: one tab, dropdown on same page for type (Customer/Supplier/User/Worker) + entity
   const tabs = [
     { key: 'transactions', label: 'Transactions', icon: Receipt },
     { key: 'accounts', label: 'Accounts', icon: Wallet },
+    { key: 'ledger', label: 'Ledger', icon: FileText },
     { key: 'receivables', label: 'Receivables', icon: TrendingUp },
     { key: 'payables', label: 'Payables', icon: TrendingDown },
     { key: 'deposits', label: 'Deposits', icon: Shield },
     { key: 'studio', label: 'Studio Costs', icon: Wrench },
-    { key: 'customer-ledger', label: 'Customer Ledger', icon: Users },
     { key: 'reports', label: 'Reports', icon: BarChart3 },
   ];
 
@@ -172,13 +177,26 @@ export const AccountingDashboard = () => {
     return filtered;
   }, [transactions, searchTerm, typeFilter]);
 
-  // If customer-ledger tab is active, render it full screen
-  if (activeTab === 'customer-ledger') {
+  // Ledger full screen – same page, dropdown se select karne par full screen overlay
+  if (activeTab === 'ledger') {
     return (
       <div className="fixed inset-0 z-50 bg-[#111827] overflow-y-auto">
-        <CustomerLedgerPageOriginal 
-          onClose={() => setActiveTab('transactions')}
-        />
+        <div className="sticky top-0 z-10 flex items-center justify-between px-6 py-4 border-b border-gray-800 bg-[#0F1419]">
+          <h2 className="text-lg font-semibold text-white">
+            {ledgerType === 'customer' ? 'Customer Ledger' : ledgerType === 'supplier' ? 'Supplier Ledger' : ledgerType === 'user' ? 'User Ledger' : 'Worker Ledger'}
+          </h2>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="text-gray-400 hover:text-white hover:bg-gray-800"
+            onClick={() => setActiveTab('transactions')}
+          >
+            <X className="h-5 w-5" />
+          </Button>
+        </div>
+        <div className="p-6">
+          <LedgerHub ledgerType={ledgerType} />
+        </div>
       </div>
     );
   }
@@ -285,11 +303,45 @@ export const AccountingDashboard = () => {
         </div>
       </div>
 
-      {/* Tabs */}
+      {/* Tabs – Ledger is dropdown only (no page change on click; select option → same page, same UI) */}
       <div className="shrink-0 px-6 border-b border-gray-800">
         <div className="flex gap-1 -mb-px">
           {tabs.map(tab => {
             const Icon = tab.icon;
+            if (tab.key === 'ledger') {
+              return (
+                <DropdownMenu key="ledger">
+                  <DropdownMenuTrigger asChild>
+                    <button
+                      className={cn(
+                        "flex items-center gap-2 px-4 py-3 text-sm font-medium transition-all border-b-2",
+                        activeTab === 'ledger'
+                          ? "text-blue-400 border-blue-400"
+                          : "text-gray-500 border-transparent hover:text-gray-300 hover:border-gray-700"
+                      )}
+                    >
+                      <FileText size={16} />
+                      Ledger
+                      <ChevronDown size={14} className="opacity-70" />
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start" className="bg-gray-900 border-gray-800">
+                    <DropdownMenuItem onClick={() => { setLedgerType('customer'); setActiveTab('ledger'); }}>
+                      Customer Ledger
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => { setLedgerType('supplier'); setActiveTab('ledger'); }}>
+                      Supplier Ledger
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => { setLedgerType('user'); setActiveTab('ledger'); }}>
+                      User Ledger
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => { setLedgerType('worker'); setActiveTab('ledger'); }}>
+                      Worker Ledger
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              );
+            }
             return (
               <button
                 key={tab.key}

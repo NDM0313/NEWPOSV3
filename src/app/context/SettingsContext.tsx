@@ -21,29 +21,39 @@ export interface DefaultAccounts {
   paymentMethods: PaymentMethodConfig[];
 }
 
+/** LOCKED: Each module has its own prefix and counter. Do not share counters. */
 export interface NumberingRules {
-  salePrefix: string;
+  salePrefix: string;           // SL – Regular Sale
   saleNextNumber: number;
-  quotationPrefix?: string; // CRITICAL FIX: Add quotation prefix
-  quotationNextNumber?: number; // CRITICAL FIX: Add quotation next number
-  draftPrefix?: string; // DRAFT-0001
-  draftNextNumber?: number; // CRITICAL FIX: Add draft next number
-  orderPrefix?: string; // SO-0001
-  orderNextNumber?: number; // CRITICAL FIX: Add order next number
-  purchasePrefix: string;
+  quotationPrefix?: string;
+  quotationNextNumber?: number;
+  draftPrefix?: string;
+  draftNextNumber?: number;
+  orderPrefix?: string;
+  orderNextNumber?: number;
+  purchasePrefix: string;       // PUR – Purchase
   purchaseNextNumber: number;
   rentalPrefix: string;
   rentalNextNumber: number;
-  expensePrefix: string;
+  expensePrefix: string;        // EXP – Expense
   expenseNextNumber: number;
   productPrefix: string;
   productNextNumber: number;
-  studioPrefix: string;
+  studioPrefix: string;         // STD – Studio Sale
   studioNextNumber: number;
   posPrefix: string;
   posNextNumber: number;
   productionPrefix?: string;
   productionNextNumber?: number;
+  /** PAY – Payment (customer/supplier/worker) */
+  paymentPrefix?: string;
+  paymentNextNumber?: number;
+  /** JOB – Worker job (studio stage payable) */
+  jobPrefix?: string;
+  jobNextNumber?: number;
+  /** JV – Journal voucher */
+  journalPrefix?: string;
+  journalNextNumber?: number;
 }
 
 export interface UserPermissions {
@@ -245,7 +255,7 @@ function getDefaultSettingsStub(): SettingsContextType {
     updateAccountingSettings: noop,
     defaultAccounts: { paymentMethods: [] },
     updateDefaultAccounts: noop,
-    numberingRules: { salePrefix: 'SL-', saleNextNumber: 1, purchasePrefix: 'PO-', purchaseNextNumber: 1, rentalPrefix: 'RNT-', rentalNextNumber: 1, expensePrefix: 'EXP-', expenseNextNumber: 1, productPrefix: 'PRD-', productNextNumber: 1, studioPrefix: 'STD-', studioNextNumber: 1, posPrefix: 'POS-', posNextNumber: 1 },
+    numberingRules: { salePrefix: 'SL-', saleNextNumber: 1, purchasePrefix: 'PUR-', purchaseNextNumber: 1, rentalPrefix: 'RNT-', rentalNextNumber: 1, expensePrefix: 'EXP-', expenseNextNumber: 1, productPrefix: 'PRD-', productNextNumber: 1, studioPrefix: 'STD-', studioNextNumber: 1, posPrefix: 'POS-', posNextNumber: 1, paymentPrefix: 'PAY-', paymentNextNumber: 1, jobPrefix: 'JOB-', jobNextNumber: 1, journalPrefix: 'JV-', journalNextNumber: 1 },
     updateNumberingRules: noopSync,
     getNextNumber: async () => '',
     currentUser: { role: 'Admin', canCreateSale: true, canEditSale: true, canDeleteSale: true, canViewReports: true, canManageSettings: true, canManageUsers: true, canAccessAccounting: true, canMakePayments: true, canReceivePayments: true, canManageExpenses: true, canManageProducts: true, canManagePurchases: true, canManageRentals: true },
@@ -360,15 +370,15 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
     ],
   });
 
-  // Numbering Rules
+  // Numbering Rules (LOCKED: SL, STD, PUR, EXP, PAY, JOB, JV – separate counters)
   const [numberingRules, setNumberingRules] = useState<NumberingRules>({
-    salePrefix: 'SL-', // Regular sale: SL-0001
+    salePrefix: 'SL-',
     saleNextNumber: 1,
-    quotationPrefix: 'QT-', // CRITICAL FIX: Add quotation prefix
-    quotationNextNumber: 1, // CRITICAL FIX: Add quotation next number
-    draftNextNumber: 1, // CRITICAL FIX: Add draft next number
-    orderNextNumber: 1, // CRITICAL FIX: Add order next number
-    purchasePrefix: 'PO-',
+    quotationPrefix: 'QT-',
+    quotationNextNumber: 1,
+    draftNextNumber: 1,
+    orderNextNumber: 1,
+    purchasePrefix: 'PUR-',
     purchaseNextNumber: 1,
     rentalPrefix: 'RNT-',
     rentalNextNumber: 1,
@@ -382,6 +392,12 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
     posNextNumber: 1,
     productionPrefix: 'PRD-',
     productionNextNumber: 1,
+    paymentPrefix: 'PAY-',
+    paymentNextNumber: 1,
+    jobPrefix: 'JOB-',
+    jobNextNumber: 1,
+    journalPrefix: 'JV-',
+    journalNextNumber: 1,
   });
 
   // User Permissions
@@ -568,7 +584,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
       setNumberingRules({
         salePrefix: getSequence('sale')?.prefix || 'SL-',
         saleNextNumber: getSequence('sale')?.current_number || 1,
-        purchasePrefix: getSequence('purchase')?.prefix || 'PO-',
+        purchasePrefix: getSequence('purchase')?.prefix || 'PUR-',
         purchaseNextNumber: getSequence('purchase')?.current_number || 1,
         rentalPrefix: getSequence('rental')?.prefix || 'RNT-',
         rentalNextNumber: getSequence('rental')?.current_number || 1,
@@ -580,6 +596,12 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
         studioNextNumber: studioNext,
         posPrefix: getSequence('pos')?.prefix || 'POS-',
         posNextNumber: getSequence('pos')?.current_number || 1,
+        paymentPrefix: getSequence('payment')?.prefix || 'PAY-',
+        paymentNextNumber: getSequence('payment')?.current_number ?? 1,
+        jobPrefix: getSequence('job')?.prefix || 'JOB-',
+        jobNextNumber: getSequence('job')?.current_number ?? 1,
+        journalPrefix: getSequence('journal')?.prefix || 'JV-',
+        journalNextNumber: getSequence('journal')?.current_number ?? 1,
       });
 
       // Load Module Toggles
@@ -781,6 +803,9 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
         product: { prefix: updated.productPrefix, nextNumber: updated.productNextNumber },
         studio: { prefix: updated.studioPrefix, nextNumber: updated.studioNextNumber },
         pos: { prefix: updated.posPrefix, nextNumber: updated.posNextNumber },
+        payment: { prefix: updated.paymentPrefix ?? 'PAY-', nextNumber: updated.paymentNextNumber ?? 1 },
+        job: { prefix: updated.jobPrefix ?? 'JOB-', nextNumber: updated.jobNextNumber ?? 1 },
+        journal: { prefix: updated.journalPrefix ?? 'JV-', nextNumber: updated.journalNextNumber ?? 1 },
       };
 
       // Save each document sequence
@@ -817,6 +842,9 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
       productNextNumber: 'product',
       studioNextNumber: 'studio',
       posNextNumber: 'pos',
+      paymentNextNumber: 'payment',
+      jobNextNumber: 'job',
+      journalNextNumber: 'journal',
     };
 
     const docType = docTypeMap[module];

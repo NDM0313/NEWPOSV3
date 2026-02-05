@@ -17,6 +17,7 @@ import { userService, User as UserType } from '@/app/services/userService';
 import { toast } from 'sonner';
 import { AddUserModal } from '../users/AddUserModal';
 import { AddBranchModal } from '../branches/AddBranchModal';
+import { InventoryMasters, type InventoryMasterTab } from './inventory/InventoryMasters';
 import {
   Dialog,
   DialogContent,
@@ -73,6 +74,7 @@ export const SettingsPageNew = () => {
   const [accountsForm, setAccountsForm] = useState(settings.defaultAccounts);
   const [numberingForm, setNumberingForm] = useState(settings.numberingRules);
   const [modulesForm, setModulesForm] = useState(settings.modules);
+  const [inventorySubTab, setInventorySubTab] = useState<InventoryMasterTab>('general');
 
   // Load users function
   const loadUsers = useCallback(async () => {
@@ -840,7 +842,7 @@ export const SettingsPageNew = () => {
               </div>
             )}
 
-            {/* INVENTORY SETTINGS TAB */}
+            {/* INVENTORY SETTINGS TAB – General + Masters (Units, Categories, Sub-Categories, Brands) */}
             {activeTab === 'inventory' && (
               <div className="space-y-6">
                 <div className="flex items-center gap-3 mb-6">
@@ -849,122 +851,130 @@ export const SettingsPageNew = () => {
                   </div>
                   <div>
                     <h3 className="text-xl font-bold text-white">Inventory Settings</h3>
-                    <p className="text-sm text-gray-400">Configure stock management</p>
+                    <p className="text-sm text-gray-400">Configure stock management and masters (Units, Categories, Sub-Categories, Brands)</p>
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-6">
-                  <div>
-                    <Label className="text-gray-300 mb-2 block">Low Stock Threshold</Label>
-                    <Input
-                      type="number"
-                      value={inventoryForm.lowStockThreshold || ''}
-                      onFocus={(e) => e.target.value === '0' && (e.target.value = '')}
-                      onChange={(e) => {
-                        setInventoryForm({ ...inventoryForm, lowStockThreshold: Number(e.target.value) || 0 });
-                        setHasUnsavedChanges(true);
-                      }}
-                      className="bg-gray-950 border-gray-700 text-white"
-                      placeholder="10"
-                    />
-                  </div>
+                <InventoryMasters
+                  activeSubTab={inventorySubTab}
+                  onSubTabChange={setInventorySubTab}
+                  generalContent={
+                    <>
+                      <div className="grid grid-cols-2 gap-6">
+                        <div>
+                          <Label className="text-gray-300 mb-2 block">Low Stock Threshold</Label>
+                          <Input
+                            type="number"
+                            value={inventoryForm.lowStockThreshold || ''}
+                            onFocus={(e) => e.target.value === '0' && (e.target.value = '')}
+                            onChange={(e) => {
+                              setInventoryForm({ ...inventoryForm, lowStockThreshold: Number(e.target.value) || 0 });
+                              setHasUnsavedChanges(true);
+                            }}
+                            className="bg-gray-950 border-gray-700 text-white"
+                            placeholder="10"
+                          />
+                        </div>
 
-                  <div>
-                    <Label className="text-gray-300 mb-2 block">Reorder Alert Days</Label>
-                    <Input
-                      type="number"
-                      value={inventoryForm.reorderAlertDays || ''}
-                      onFocus={(e) => e.target.value === '0' && (e.target.value = '')}
-                      onChange={(e) => {
-                        setInventoryForm({ ...inventoryForm, reorderAlertDays: Number(e.target.value) || 0 });
-                        setHasUnsavedChanges(true);
-                      }}
-                      className="bg-gray-950 border-gray-700 text-white"
-                      placeholder="30"
-                    />
-                  </div>
+                        <div>
+                          <Label className="text-gray-300 mb-2 block">Reorder Alert Days</Label>
+                          <Input
+                            type="number"
+                            value={inventoryForm.reorderAlertDays || ''}
+                            onFocus={(e) => e.target.value === '0' && (e.target.value = '')}
+                            onChange={(e) => {
+                              setInventoryForm({ ...inventoryForm, reorderAlertDays: Number(e.target.value) || 0 });
+                              setHasUnsavedChanges(true);
+                            }}
+                            className="bg-gray-950 border-gray-700 text-white"
+                            placeholder="30"
+                          />
+                        </div>
 
-                  <div className="col-span-2">
-                    <Label className="text-gray-300 mb-2 block">Valuation Method</Label>
-                    <select
-                      value={inventoryForm.valuationMethod}
-                      onChange={(e) => {
-                        setInventoryForm({ ...inventoryForm, valuationMethod: e.target.value as any });
-                        setHasUnsavedChanges(true);
-                      }}
-                      className="w-full bg-gray-950 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm"
-                    >
-                      <option value="FIFO">FIFO (First In First Out)</option>
-                      <option value="LIFO">LIFO (Last In First Out)</option>
-                      <option value="Weighted Average">Weighted Average</option>
-                    </select>
-                  </div>
-                </div>
+                        <div className="col-span-2">
+                          <Label className="text-gray-300 mb-2 block">Valuation Method</Label>
+                          <select
+                            value={inventoryForm.valuationMethod}
+                            onChange={(e) => {
+                              setInventoryForm({ ...inventoryForm, valuationMethod: e.target.value as any });
+                              setHasUnsavedChanges(true);
+                            }}
+                            className="w-full bg-gray-950 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm"
+                          >
+                            <option value="FIFO">FIFO (First In First Out)</option>
+                            <option value="LIFO">LIFO (Last In First Out)</option>
+                            <option value="Weighted Average">Weighted Average</option>
+                          </select>
+                        </div>
+                      </div>
 
-                <div className="space-y-3 pt-4 border-t border-gray-800">
-                  <h4 className="text-white font-semibold mb-3">Packing (Boxes / Pieces)</h4>
-                  <div className="flex items-center justify-between bg-gray-950 p-4 rounded-lg border border-amber-500/30">
-                    <div>
-                      <p className="text-white font-medium">Enable Packing (Boxes / Pieces)</p>
-                      <p className="text-sm text-gray-400">When ON: packing columns and modal appear in Sale, Purchase, Inventory, Ledger & Print. When OFF: system behaves as quantity-only.</p>
-                    </div>
-                    <Switch
-                      checked={enablePacking}
-                      onCheckedChange={async (val) => {
-                        try {
-                          await setEnablePacking(val);
-                          toast.success(val ? 'Packing enabled' : 'Packing disabled');
-                        } catch (e: any) {
-                          toast.error(e?.message || 'Failed to update');
-                        }
-                      }}
-                    />
-                  </div>
+                      <div className="space-y-3 pt-4 border-t border-gray-800">
+                        <h4 className="text-white font-semibold mb-3">Packing (Boxes / Pieces)</h4>
+                        <div className="flex items-center justify-between bg-gray-950 p-4 rounded-lg border border-amber-500/30">
+                          <div>
+                            <p className="text-white font-medium">Enable Packing (Boxes / Pieces)</p>
+                            <p className="text-sm text-gray-400">When ON: packing columns and modal appear in Sale, Purchase, Inventory, Ledger & Print. When OFF: system behaves as quantity-only.</p>
+                          </div>
+                          <Switch
+                            checked={enablePacking}
+                            onCheckedChange={async (val) => {
+                              try {
+                                await setEnablePacking(val);
+                                toast.success(val ? 'Packing enabled' : 'Packing disabled');
+                              } catch (e: any) {
+                                toast.error(e?.message || 'Failed to update');
+                              }
+                            }}
+                          />
+                        </div>
 
-                  <h4 className="text-white font-semibold mb-3 mt-6">Inventory Control</h4>
-                  
-                  <div className="flex items-center justify-between bg-gray-950 p-4 rounded-lg border border-gray-800">
-                    <div>
-                      <p className="text-white font-medium">Negative Stock Allowed</p>
-                      <p className="text-sm text-gray-400">Stock can go below zero</p>
-                    </div>
-                    <Switch
-                      checked={inventoryForm.negativeStockAllowed}
-                      onCheckedChange={(val) => {
-                        setInventoryForm({ ...inventoryForm, negativeStockAllowed: val });
-                        setHasUnsavedChanges(true);
-                      }}
-                    />
-                  </div>
+                        <h4 className="text-white font-semibold mb-3 mt-6">Inventory Control</h4>
 
-                  <div className="flex items-center justify-between bg-gray-950 p-4 rounded-lg border border-gray-800">
-                    <div>
-                      <p className="text-white font-medium">Auto Reorder Enabled</p>
-                      <p className="text-sm text-gray-400">Auto-create purchase orders</p>
-                    </div>
-                    <Switch
-                      checked={inventoryForm.autoReorderEnabled}
-                      onCheckedChange={(val) => {
-                        setInventoryForm({ ...inventoryForm, autoReorderEnabled: val });
-                        setHasUnsavedChanges(true);
-                      }}
-                    />
-                  </div>
+                        <div className="flex items-center justify-between bg-gray-950 p-4 rounded-lg border border-gray-800">
+                          <div>
+                            <p className="text-white font-medium">Negative Stock Allowed</p>
+                            <p className="text-sm text-gray-400">Stock can go below zero</p>
+                          </div>
+                          <Switch
+                            checked={inventoryForm.negativeStockAllowed}
+                            onCheckedChange={(val) => {
+                              setInventoryForm({ ...inventoryForm, negativeStockAllowed: val });
+                              setHasUnsavedChanges(true);
+                            }}
+                          />
+                        </div>
 
-                  <div className="flex items-center justify-between bg-gray-950 p-4 rounded-lg border border-gray-800">
-                    <div>
-                      <p className="text-white font-medium">Barcode Required</p>
-                      <p className="text-sm text-gray-400">Mandatory for all products</p>
-                    </div>
-                    <Switch
-                      checked={inventoryForm.barcodeRequired}
-                      onCheckedChange={(val) => {
-                        setInventoryForm({ ...inventoryForm, barcodeRequired: val });
-                        setHasUnsavedChanges(true);
-                      }}
-                    />
-                  </div>
-                </div>
+                        <div className="flex items-center justify-between bg-gray-950 p-4 rounded-lg border border-gray-800">
+                          <div>
+                            <p className="text-white font-medium">Auto Reorder Enabled</p>
+                            <p className="text-sm text-gray-400">Auto-create purchase orders</p>
+                          </div>
+                          <Switch
+                            checked={inventoryForm.autoReorderEnabled}
+                            onCheckedChange={(val) => {
+                              setInventoryForm({ ...inventoryForm, autoReorderEnabled: val });
+                              setHasUnsavedChanges(true);
+                            }}
+                          />
+                        </div>
+
+                        <div className="flex items-center justify-between bg-gray-950 p-4 rounded-lg border border-gray-800">
+                          <div>
+                            <p className="text-white font-medium">Barcode Required</p>
+                            <p className="text-sm text-gray-400">Mandatory for all products</p>
+                          </div>
+                          <Switch
+                            checked={inventoryForm.barcodeRequired}
+                            onCheckedChange={(val) => {
+                              setInventoryForm({ ...inventoryForm, barcodeRequired: val });
+                              setHasUnsavedChanges(true);
+                            }}
+                          />
+                        </div>
+                      </div>
+                    </>
+                  }
+                />
               </div>
             )}
 
@@ -1384,11 +1394,11 @@ export const SettingsPageNew = () => {
                     <p className="text-xs text-gray-500 mt-2">Preview: {numberingForm.salePrefix}{String(numberingForm.saleNextNumber).padStart(4, '0')}</p>
                   </div>
 
-                  {/* Purchases */}
+                  {/* Purchases – PUR */}
                   <div className="bg-gray-950 p-5 rounded-lg border border-gray-800">
                     <div className="flex items-center gap-2 mb-4">
                       <ShoppingBag size={18} className="text-orange-400" />
-                      <h4 className="text-white font-semibold">Purchase Order</h4>
+                      <h4 className="text-white font-semibold">Purchase (PUR)</h4>
                     </div>
                     <div className="grid grid-cols-2 gap-3">
                       <div>
@@ -1400,7 +1410,7 @@ export const SettingsPageNew = () => {
                             setHasUnsavedChanges(true);
                           }}
                           className="bg-gray-900 border-gray-700 text-white text-sm"
-                          placeholder="PO-"
+                          placeholder="PUR-"
                         />
                       </div>
                       <div>
@@ -1562,6 +1572,150 @@ export const SettingsPageNew = () => {
                       </div>
                     </div>
                     <p className="text-xs text-gray-500 mt-2">Preview: {numberingForm.productPrefix}{String(numberingForm.productNextNumber).padStart(4, '0')}</p>
+                  </div>
+
+                  {/* Studio Sale – STD */}
+                  <div className="bg-gray-950 p-5 rounded-lg border border-gray-800">
+                    <div className="flex items-center gap-2 mb-4">
+                      <Package size={18} className="text-amber-400" />
+                      <h4 className="text-white font-semibold">Studio Sale (STD)</h4>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <Label className="text-gray-400 text-xs mb-1 block">Prefix</Label>
+                        <Input 
+                          value={numberingForm.studioPrefix ?? 'STD-'}
+                          onChange={(e) => {
+                            setNumberingForm({ ...numberingForm, studioPrefix: e.target.value });
+                            setHasUnsavedChanges(true);
+                          }}
+                          className="bg-gray-900 border-gray-700 text-white text-sm"
+                          placeholder="STD-"
+                        />
+                      </div>
+                      <div>
+                        <Label className="text-gray-400 text-xs mb-1 block">Next #</Label>
+                        <Input 
+                          type="number"
+                          value={numberingForm.studioNextNumber ?? ''}
+                          onFocus={(e) => e.target.value === '0' && (e.target.value = '')}
+                          onChange={(e) => {
+                            setNumberingForm({ ...numberingForm, studioNextNumber: Number(e.target.value) || 0 });
+                            setHasUnsavedChanges(true);
+                          }}
+                          className="bg-gray-900 border-gray-700 text-white text-sm"
+                        />
+                      </div>
+                    </div>
+                    <p className="text-xs text-gray-500 mt-2">Preview: {(numberingForm.studioPrefix || 'STD-')}{String(numberingForm.studioNextNumber ?? 1).padStart(4, '0')}</p>
+                  </div>
+
+                  {/* Payment – PAY */}
+                  <div className="bg-gray-950 p-5 rounded-lg border border-gray-800">
+                    <div className="flex items-center gap-2 mb-4">
+                      <CreditCard size={18} className="text-emerald-400" />
+                      <h4 className="text-white font-semibold">Payment (PAY)</h4>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <Label className="text-gray-400 text-xs mb-1 block">Prefix</Label>
+                        <Input 
+                          value={numberingForm.paymentPrefix ?? 'PAY-'}
+                          onChange={(e) => {
+                            setNumberingForm({ ...numberingForm, paymentPrefix: e.target.value });
+                            setHasUnsavedChanges(true);
+                          }}
+                          className="bg-gray-900 border-gray-700 text-white text-sm"
+                          placeholder="PAY-"
+                        />
+                      </div>
+                      <div>
+                        <Label className="text-gray-400 text-xs mb-1 block">Next #</Label>
+                        <Input 
+                          type="number"
+                          value={numberingForm.paymentNextNumber ?? ''}
+                          onFocus={(e) => e.target.value === '0' && (e.target.value = '')}
+                          onChange={(e) => {
+                            setNumberingForm({ ...numberingForm, paymentNextNumber: Number(e.target.value) || 0 });
+                            setHasUnsavedChanges(true);
+                          }}
+                          className="bg-gray-900 border-gray-700 text-white text-sm"
+                        />
+                      </div>
+                    </div>
+                    <p className="text-xs text-gray-500 mt-2">Preview: {(numberingForm.paymentPrefix || 'PAY-')}{String(numberingForm.paymentNextNumber ?? 1).padStart(4, '0')}</p>
+                  </div>
+
+                  {/* Job (Worker) – JOB */}
+                  <div className="bg-gray-950 p-5 rounded-lg border border-gray-800">
+                    <div className="flex items-center gap-2 mb-4">
+                      <Package size={18} className="text-sky-400" />
+                      <h4 className="text-white font-semibold">Job / Worker (JOB)</h4>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <Label className="text-gray-400 text-xs mb-1 block">Prefix</Label>
+                        <Input 
+                          value={numberingForm.jobPrefix ?? 'JOB-'}
+                          onChange={(e) => {
+                            setNumberingForm({ ...numberingForm, jobPrefix: e.target.value });
+                            setHasUnsavedChanges(true);
+                          }}
+                          className="bg-gray-900 border-gray-700 text-white text-sm"
+                          placeholder="JOB-"
+                        />
+                      </div>
+                      <div>
+                        <Label className="text-gray-400 text-xs mb-1 block">Next #</Label>
+                        <Input 
+                          type="number"
+                          value={numberingForm.jobNextNumber ?? ''}
+                          onFocus={(e) => e.target.value === '0' && (e.target.value = '')}
+                          onChange={(e) => {
+                            setNumberingForm({ ...numberingForm, jobNextNumber: Number(e.target.value) || 0 });
+                            setHasUnsavedChanges(true);
+                          }}
+                          className="bg-gray-900 border-gray-700 text-white text-sm"
+                        />
+                      </div>
+                    </div>
+                    <p className="text-xs text-gray-500 mt-2">Preview: {(numberingForm.jobPrefix || 'JOB-')}{String(numberingForm.jobNextNumber ?? 1).padStart(4, '0')}</p>
+                  </div>
+
+                  {/* Journal – JV */}
+                  <div className="bg-gray-950 p-5 rounded-lg border border-gray-800">
+                    <div className="flex items-center gap-2 mb-4">
+                      <CreditCard size={18} className="text-violet-400" />
+                      <h4 className="text-white font-semibold">Journal (JV)</h4>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <Label className="text-gray-400 text-xs mb-1 block">Prefix</Label>
+                        <Input 
+                          value={numberingForm.journalPrefix ?? 'JV-'}
+                          onChange={(e) => {
+                            setNumberingForm({ ...numberingForm, journalPrefix: e.target.value });
+                            setHasUnsavedChanges(true);
+                          }}
+                          className="bg-gray-900 border-gray-700 text-white text-sm"
+                          placeholder="JV-"
+                        />
+                      </div>
+                      <div>
+                        <Label className="text-gray-400 text-xs mb-1 block">Next #</Label>
+                        <Input 
+                          type="number"
+                          value={numberingForm.journalNextNumber ?? ''}
+                          onFocus={(e) => e.target.value === '0' && (e.target.value = '')}
+                          onChange={(e) => {
+                            setNumberingForm({ ...numberingForm, journalNextNumber: Number(e.target.value) || 0 });
+                            setHasUnsavedChanges(true);
+                          }}
+                          className="bg-gray-900 border-gray-700 text-white text-sm"
+                        />
+                      </div>
+                    </div>
+                    <p className="text-xs text-gray-500 mt-2">Preview: {(numberingForm.journalPrefix || 'JV-')}{String(numberingForm.journalNextNumber ?? 1).padStart(4, '0')}</p>
                   </div>
                 </div>
               </div>

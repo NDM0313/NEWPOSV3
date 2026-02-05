@@ -4,7 +4,12 @@ import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { useSupabase } from '@/app/context/SupabaseContext';
+import { useDocumentNumbering } from '@/app/hooks/useDocumentNumbering';
 import { productService } from '@/app/services/productService';
+import { brandService } from '@/app/services/brandService';
+import { productCategoryService } from '@/app/services/productCategoryService';
+import { unitService } from '@/app/services/unitService';
+import { contactService } from '@/app/services/contactService';
 import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
 import {
@@ -46,11 +51,12 @@ import {
   CollapsibleTrigger,
 } from "../ui/collapsible";
 
-// Define the validation schema
+// Define the validation schema (aligned with submit and DB)
 const productSchema = z.object({
   name: z.string().min(1, "Product name is required"),
   sku: z.string().min(1, "SKU is required"),
   barcodeType: z.string().optional(),
+  barcode: z.string().optional(),
   brand: z.string().optional(),
   category: z.string().optional(),
   subCategory: z.string().optional(),
@@ -62,6 +68,7 @@ const productSchema = z.object({
   sellingPrice: z.coerce
     .number()
     .min(0.01, "Selling price is required"),
+  wholesalePrice: z.coerce.number().min(0).optional(),
   taxType: z.string().optional(),
 
   // Rental Pricing (Optional)
@@ -69,10 +76,11 @@ const productSchema = z.object({
   securityDeposit: z.coerce.number().min(0).optional(),
   rentalDuration: z.coerce.number().min(1).optional(),
 
-  // Inventory
+  // Inventory (initialStock = current_stock, alertQty = min_stock)
   stockManagement: z.boolean().default(true),
   initialStock: z.coerce.number().min(0).optional(),
   alertQty: z.coerce.number().min(0).optional(),
+  maxStock: z.coerce.number().min(0).optional(),
 
   // Details
   description: z.string().optional(),
@@ -84,6 +92,13 @@ const productSchema = z.object({
 });
 
 type ProductFormValues = z.infer<typeof productSchema>;
+
+// Ensure number inputs never show empty on click/clear — store 0 instead of ""
+const setValueAsNumber = (v: unknown): number => {
+  if (v === '' || v === undefined || v === null) return 0;
+  const n = Number(v);
+  return Number.isNaN(n) ? 0 : n;
+};
 
 interface EnhancedProductFormProps {
   product?: any; // Product data for edit mode
@@ -99,13 +114,21 @@ export const EnhancedProductForm = ({
   onSaveAndAdd,
 }: EnhancedProductFormProps) => {
   const { companyId, branchId } = useSupabase();
+  const { generateDocumentNumber, incrementNextNumber } = useDocumentNumbering();
   const [saving, setSaving] = useState(false);
   const [images, setImages] = useState<File[]>([]);
   const [isRentalOptionsOpen, setIsRentalOptionsOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<'basic' | 'pricing' | 'inventory' | 'media' | 'details' | 'variations' | 'combos'>('basic');
-  const [categories, setCategories] = useState<Array<{id: string; name: string}>>([]);
+  const [categories, setCategories] = useState<Array<{ id: string; name: string }>>([]);
+  const [subCategories, setSubCategories] = useState<Array<{ id: string; name: string }>>([]);
   const [loadingCategories, setLoadingCategories] = useState(false);
-  
+  const [brands, setBrands] = useState<Array<{ id: string; name: string }>>([]);
+  const [loadingBrands, setLoadingBrands] = useState(false);
+  const [units, setUnits] = useState<Array<{ id: string; name: string; symbol?: string }>>([]);
+  const [loadingUnits, setLoadingUnits] = useState(false);
+  const [suppliers, setSuppliers] = useState<Array<{ id: string; name: string }>>([]);
+  const [loadingSuppliers, setLoadingSuppliers] = useState(false);
+
   // Variations State
   const [variantAttributes, setVariantAttributes] = useState<Array<{
     name: string;
@@ -164,19 +187,26 @@ export const EnhancedProductForm = ({
     control,
     setValue,
     watch,
+    getValues,
     formState: { errors },
   } = useForm<ProductFormValues>({
     resolver: zodResolver(productSchema),
     defaultValues: {
       name: "",
       sku: "",
+      barcodeType: "code128",
+      barcode: "",
       stockManagement: true,
       purchasePrice: 0,
       margin: 30,
       sellingPrice: 0,
+      wholesalePrice: 0,
       rentalPrice: 0,
       securityDeposit: 0,
-      rentalDuration: 3, // Default 3 days
+      rentalDuration: 3,
+      initialStock: 0,
+      alertQty: 0,
+      maxStock: 1000,
     },
   });
 
@@ -184,27 +214,14 @@ export const EnhancedProductForm = ({
   const purchasePrice = watch("purchasePrice");
   const margin = watch("margin");
 
-  // Load categories from database
+  // Load only parent-level categories (no sub-categories in this dropdown)
   useEffect(() => {
     const loadCategories = async () => {
       if (!companyId) return;
-      
       try {
         setLoadingCategories(true);
-        const { data, error } = await supabase
-          .from('product_categories')
-          .select('id, name')
-          .eq('company_id', companyId)
-          .eq('is_active', true)
-          .order('name');
-        
-        if (error) {
-          console.error('[PRODUCT FORM] Error loading categories:', error);
-          // Don't block - use empty array
-          setCategories([]);
-        } else {
-          setCategories(data || []);
-        }
+        const data = await productCategoryService.getCategories(companyId);
+        setCategories(data.map((c) => ({ id: c.id, name: c.name })));
       } catch (error) {
         console.error('[PRODUCT FORM] Error loading categories:', error);
         setCategories([]);
@@ -212,23 +229,133 @@ export const EnhancedProductForm = ({
         setLoadingCategories(false);
       }
     };
-
     loadCategories();
   }, [companyId]);
 
-  // Pre-populate form when editing (support both list product: purchasePrice/sellingPrice and API product: cost_price/retail_price)
+  // Load brands from database
+  useEffect(() => {
+    const loadBrands = async () => {
+      if (!companyId) return;
+      try {
+        setLoadingBrands(true);
+        const data = await brandService.getAll(companyId);
+        setBrands(data.map((b) => ({ id: b.id, name: b.name })));
+      } catch (error) {
+        console.error('[PRODUCT FORM] Error loading brands:', error);
+        setBrands([]);
+      } finally {
+        setLoadingBrands(false);
+      }
+    };
+    loadBrands();
+  }, [companyId]);
+
+  // Load units from database (Settings → Inventory → Units)
+  useEffect(() => {
+    const loadUnits = async () => {
+      if (!companyId) return;
+      try {
+        setLoadingUnits(true);
+        const data = await unitService.getAll(companyId);
+        setUnits(data.map((u) => ({ id: u.id, name: u.name, symbol: u.symbol })));
+      } catch (error) {
+        console.error('[PRODUCT FORM] Error loading units:', error);
+        setUnits([]);
+      } finally {
+        setLoadingUnits(false);
+      }
+    };
+    loadUnits();
+  }, [companyId]);
+
+  // Load suppliers from contacts (type = supplier)
+  useEffect(() => {
+    const loadSuppliers = async () => {
+      if (!companyId) return;
+      try {
+        setLoadingSuppliers(true);
+        const data = await contactService.getAllContacts(companyId, 'supplier');
+        setSuppliers((data || []).map((c: { id: string; name: string }) => ({ id: c.id, name: c.name || 'Unnamed' })));
+      } catch (error) {
+        console.error('[PRODUCT FORM] Error loading suppliers:', error);
+        setSuppliers([]);
+      } finally {
+        setLoadingSuppliers(false);
+      }
+    };
+    loadSuppliers();
+  }, [companyId]);
+
+  const selectedCategoryId = watch('category');
+
+  // Load sub-categories only when a category is selected (filtered by category)
+  useEffect(() => {
+    if (!companyId || !selectedCategoryId) {
+      setSubCategories([]);
+      return;
+    }
+    const loadSubCategories = async () => {
+      try {
+        const data = await productCategoryService.getSubCategories(companyId, selectedCategoryId);
+        setSubCategories(data.map((c) => ({ id: c.id, name: c.name })));
+      } catch (error) {
+        console.error('[PRODUCT FORM] Error loading sub-categories:', error);
+        setSubCategories([]);
+      }
+    };
+    loadSubCategories();
+  }, [companyId, selectedCategoryId]);
+
+  // PRD-0001 style from Settings → Numbering (must be defined before effect that uses it)
+  const generateSKU = useCallback(() => {
+    const n = generateDocumentNumber('production');
+    return (n && String(n).trim()) ? n : 'PRD-0001';
+  }, [generateDocumentNumber]);
+
+  // Auto-generate SKU for new product (PRD-0001, PRD-0002, ... from Settings → Numbering)
+  useEffect(() => {
+    if (!initialProduct) {
+      setValue('sku', generateSKU());
+    }
+  }, [initialProduct, setValue, generateSKU]);
+
+  // Pre-populate form when editing (support both list product and API product)
   useEffect(() => {
     if (initialProduct) {
       setValue('name', initialProduct.name || '');
       setValue('sku', initialProduct.sku || '');
+      setValue('barcodeType', (initialProduct as any).barcode_type || 'code128');
+      setValue('barcode', initialProduct.barcode || '');
       setValue('purchasePrice', initialProduct.cost_price ?? initialProduct.purchasePrice ?? 0);
       setValue('sellingPrice', initialProduct.retail_price ?? initialProduct.sellingPrice ?? 0);
+      setValue('wholesalePrice', initialProduct.wholesale_price ?? initialProduct.sellingPrice ?? 0);
       setValue('rentalPrice', initialProduct.rental_price_daily ?? 0);
-      setValue('stock', initialProduct.current_stock ?? initialProduct.stock ?? 0);
-      setValue('lowStockThreshold', initialProduct.min_stock ?? initialProduct.lowStockThreshold ?? 0);
+      setValue('initialStock', initialProduct.current_stock ?? initialProduct.stock ?? 0);
+      setValue('alertQty', initialProduct.min_stock ?? initialProduct.lowStockThreshold ?? 0);
+      setValue('maxStock', initialProduct.max_stock ?? 1000);
       setValue('description', initialProduct.description || '');
-      setValue('category', initialProduct.category_id || initialProduct.category || '');
-      // Load variations if product has them
+      setValue('brand', initialProduct.brand_id || '');
+      setValue('unit', initialProduct.unit_id || '');
+      setValue('supplier', (initialProduct as any).supplier_id || (initialProduct as any).supplier || '');
+      setValue('supplierCode', (initialProduct as any).supplier_code || (initialProduct as any).supplierCode || '');
+      const catId = initialProduct.category_id || initialProduct.category?.id || '';
+      if (catId) {
+        productCategoryService.getById(catId).then((cat) => {
+          if (cat.parent_id) {
+            setValue('category', cat.parent_id);
+            setValue('subCategory', cat.id);
+          } else {
+            setValue('category', cat.id);
+            setValue('subCategory', '');
+          }
+        }).catch(() => {
+          setValue('category', catId);
+          setValue('subCategory', '');
+        });
+      } else {
+        setValue('category', '');
+        setValue('subCategory', '');
+      }
       if (initialProduct.variations && initialProduct.variations.length > 0) {
         // TODO: Load variations into state
       }
@@ -255,13 +382,6 @@ export const EnhancedProductForm = ({
 
   const { getRootProps, getInputProps, isDragActive } =
     useDropzone({ onDrop });
-
-  const generateSKU = () => {
-    const newSku =
-      "PRD-" +
-      Math.random().toString(36).substring(2, 9).toUpperCase();
-    return newSku;
-  };
 
   const generateSKUForForm = () => {
     setValue("sku", generateSKU());
@@ -306,16 +426,16 @@ export const EnhancedProductForm = ({
   const generateVariations = () => {
     const attributeValues = variantAttributes.map(attr => attr.values);
     const combinations = cartesianProduct(attributeValues);
+    const baseSku = (getValues('sku') || '').trim() || generateSKU();
     
-    const newVariations = combinations.map(combination => {
+    const newVariations = combinations.map((combination, index) => {
       const combinationObj: Record<string, string> = {};
-      variantAttributes.forEach((attr, index) => {
-        combinationObj[attr.name] = combination[index];
+      variantAttributes.forEach((attr, i) => {
+        combinationObj[attr.name] = combination[i];
       });
-      
       return {
         combination: combinationObj,
-        sku: generateSKU(),
+        sku: `${baseSku}-V${index + 1}`,
         price: 0,
         stock: 0,
         barcode: '',
@@ -407,38 +527,39 @@ export const EnhancedProductForm = ({
         // Continue without barcode
       }
 
-      // Get category ID from category name/ID
+      // Category: use sub-category if selected, else parent category
       let categoryId: string | null = null;
-      if (data.category) {
-        // If it's already a UUID, use it directly
-        if (data.category.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)) {
-          categoryId = data.category;
-        } else {
-          // Try to find category by name
-          const foundCategory = categories.find(c => c.name === data.category || c.id === data.category);
-          if (foundCategory) {
-            categoryId = foundCategory.id;
-          }
-        }
+      if (data.subCategory && data.subCategory.match(/^[0-9a-f-]{36}$/i)) {
+        categoryId = data.subCategory;
+      } else if (data.category && data.category.match(/^[0-9a-f-]{36}$/i)) {
+        categoryId = data.category;
+      } else if (data.category) {
+        const found = categories.find((c) => c.id === data.category) || subCategories.find((c) => c.id === data.category);
+        if (found) categoryId = found.id;
       }
 
-      // Convert to Supabase format
-      const productData = {
+      const brandId = data.brand && data.brand.match(/^[0-9a-f-]{36}$/i) ? data.brand : null;
+      const unitId = data.unit && data.unit.match(/^[0-9a-f-]{36}$/i) ? data.unit : null;
+
+      // Convert to Supabase format (field names match schema)
+      const productData: Record<string, unknown> = {
         company_id: finalCompanyId,
         category_id: categoryId,
+        brand_id: brandId,
+        unit_id: unitId,
         name: data.name,
         sku: finalSKU,
         barcode: barcodeValue,
         description: data.description || null,
-        cost_price: data.purchasePrice || 0,
+        cost_price: data.purchasePrice ?? 0,
         retail_price: data.sellingPrice,
-        wholesale_price: data.wholesalePrice || data.sellingPrice,
-        rental_price_daily: data.rentalPrice || null,
-        current_stock: data.stock || 0,
-        min_stock: data.lowStockThreshold || 0,
-        max_stock: data.maxStock || 1000,
+        wholesale_price: data.wholesalePrice ?? data.sellingPrice ?? 0,
+        rental_price_daily: data.rentalPrice ?? null,
+        current_stock: data.initialStock ?? 0,
+        min_stock: data.alertQty ?? 0,
+        max_stock: data.maxStock ?? 1000,
         has_variations: generatedVariations.length > 0,
-        is_rentable: (data.rentalPrice || 0) > 0,
+        is_rentable: (data.rentalPrice ?? 0) > 0,
         is_sellable: true,
         track_stock: data.stockManagement !== false,
         is_active: true,
@@ -469,6 +590,7 @@ export const EnhancedProductForm = ({
       } else {
         // CREATE new product
         const result = await productService.createProduct(productData);
+        incrementNextNumber('production'); // So next product gets PRD-0002, etc.
         if (generatedVariations.length > 0 && result.id) {
           try {
             const variationsToSave = generatedVariations.map(variation => ({
@@ -693,7 +815,7 @@ export const EnhancedProductForm = ({
                     render={({ field }) => (
                       <Select
                         onValueChange={field.onChange}
-                        defaultValue={field.value}
+                        value={field.value ?? 'code128'}
                       >
                         <SelectTrigger className="bg-gray-800 border-gray-700 text-white mt-1">
                           <SelectValue placeholder="Select Type" />
@@ -714,6 +836,16 @@ export const EnhancedProductForm = ({
                     )}
                   />
                 </div>
+
+                <div>
+                  <Label htmlFor="barcode" className="text-gray-200">Barcode</Label>
+                  <Input
+                    id="barcode"
+                    {...register("barcode")}
+                    placeholder="Optional barcode"
+                    className="bg-gray-800 border-gray-700 text-white mt-1"
+                  />
+                </div>
               </div>
             </div>
 
@@ -731,25 +863,23 @@ export const EnhancedProductForm = ({
                     render={({ field }) => (
                       <Select
                         onValueChange={field.onChange}
-                        defaultValue={field.value}
+                        value={field.value ?? ''}
                       >
                         <SelectTrigger className="bg-gray-800 border-gray-700 text-white mt-1">
                           <SelectValue placeholder="Select Brand" />
                         </SelectTrigger>
                         <SelectContent className="bg-gray-900 border-gray-800 text-white">
-                          <SelectItem value="gul_ahmed">
-                            Gul Ahmed
-                          </SelectItem>
-                          <SelectItem value="sapphire">
-                            Sapphire
-                          </SelectItem>
-                          <SelectItem value="j_dot">J.</SelectItem>
-                          <SelectItem value="khaadi">
-                            Khaadi
-                          </SelectItem>
-                          <SelectItem value="local">
-                            Local Brand
-                          </SelectItem>
+                          {loadingBrands ? (
+                            <div className="px-2 py-1.5 text-sm text-gray-400">Loading brands...</div>
+                          ) : brands.length > 0 ? (
+                            brands.map((b) => (
+                              <SelectItem key={b.id} value={b.id}>
+                                {b.name}
+                              </SelectItem>
+                            ))
+                          ) : (
+                            <div className="px-2 py-1.5 text-sm text-gray-500">No brands. Add in Settings → Inventory → Brands.</div>
+                          )}
                         </SelectContent>
                       </Select>
                     )}
@@ -763,8 +893,11 @@ export const EnhancedProductForm = ({
                     name="category"
                     render={({ field }) => (
                       <Select
-                        onValueChange={field.onChange}
-                        defaultValue={field.value}
+                        onValueChange={(val) => {
+                          field.onChange(val);
+                          setValue('subCategory', '');
+                        }}
+                        value={field.value ?? ''}
                       >
                         <SelectTrigger className="bg-gray-800 border-gray-700 text-white mt-1">
                           <SelectValue placeholder="Select Category" />
@@ -773,18 +906,13 @@ export const EnhancedProductForm = ({
                           {loadingCategories ? (
                             <div className="px-2 py-1.5 text-sm text-gray-400">Loading categories...</div>
                           ) : categories.length > 0 ? (
-                            categories.map(cat => (
+                            categories.map((cat) => (
                               <SelectItem key={cat.id} value={cat.id}>
                                 {cat.name}
                               </SelectItem>
                             ))
                           ) : (
-                            <>
-                              <SelectItem value="unstitched">Unstitched</SelectItem>
-                              <SelectItem value="pret">Pret (Ready to Wear)</SelectItem>
-                              <SelectItem value="bedding">Bedding</SelectItem>
-                              <SelectItem value="fabric">Raw Fabric</SelectItem>
-                            </>
+                            <div className="px-2 py-1.5 text-sm text-gray-500">No categories. Add in Settings → Inventory → Categories.</div>
                           )}
                         </SelectContent>
                       </Select>
@@ -793,31 +921,31 @@ export const EnhancedProductForm = ({
                 </div>
 
                 <div>
-                  <Label className="text-gray-200">
-                    Sub-Category
-                  </Label>
+                  <Label className="text-gray-200">Sub-Category</Label>
                   <Controller
                     control={control}
                     name="subCategory"
                     render={({ field }) => (
                       <Select
                         onValueChange={field.onChange}
-                        defaultValue={field.value}
+                        value={field.value ?? ''}
+                        disabled={!selectedCategoryId}
                       >
                         <SelectTrigger className="bg-gray-800 border-gray-700 text-white mt-1">
-                          <SelectValue placeholder="Select Sub-Category" />
+                          <SelectValue placeholder={selectedCategoryId ? 'Select Sub-Category' : 'Select category first'} />
                         </SelectTrigger>
                         <SelectContent className="bg-gray-900 border-gray-800 text-white">
-                          <SelectItem value="men">
-                            Men's Wear
-                          </SelectItem>
-                          <SelectItem value="women">
-                            Women's Wear
-                          </SelectItem>
-                          <SelectItem value="kids">Kids</SelectItem>
-                          <SelectItem value="accessories">
-                            Accessories
-                          </SelectItem>
+                          {!selectedCategoryId ? (
+                            <div className="px-2 py-1.5 text-sm text-gray-500">Select a category above first.</div>
+                          ) : subCategories.length > 0 ? (
+                            subCategories.map((sc) => (
+                              <SelectItem key={sc.id} value={sc.id}>
+                                {sc.name}
+                              </SelectItem>
+                            ))
+                          ) : (
+                            <div className="px-2 py-1.5 text-sm text-gray-500">No sub-categories. Add in Settings → Inventory → Sub-Categories.</div>
+                          )}
                         </SelectContent>
                       </Select>
                     )}
@@ -832,27 +960,23 @@ export const EnhancedProductForm = ({
                     render={({ field }) => (
                       <Select
                         onValueChange={field.onChange}
-                        defaultValue={field.value}
+                        value={field.value ?? ''}
                       >
                         <SelectTrigger className="bg-gray-800 border-gray-700 text-white mt-1">
                           <SelectValue placeholder="Select Unit" />
                         </SelectTrigger>
                         <SelectContent className="bg-gray-900 border-gray-800 text-white">
-                          <SelectItem value="pcs">
-                            Pieces
-                          </SelectItem>
-                          <SelectItem value="meters">
-                            Meters
-                          </SelectItem>
-                          <SelectItem value="suits">
-                            Suits
-                          </SelectItem>
-                          <SelectItem value="kg">
-                            Kilogram
-                          </SelectItem>
-                          <SelectItem value="yard">
-                            Yards
-                          </SelectItem>
+                          {loadingUnits ? (
+                            <div className="px-2 py-1.5 text-sm text-gray-400">Loading units...</div>
+                          ) : units.length > 0 ? (
+                            units.map((u) => (
+                              <SelectItem key={u.id} value={u.id}>
+                                {u.name}{u.symbol ? ` (${u.symbol})` : ''}
+                              </SelectItem>
+                            ))
+                          ) : (
+                            <div className="px-2 py-1.5 text-sm text-gray-500">No units. Add in Settings → Inventory → Units.</div>
+                          )}
                         </SelectContent>
                       </Select>
                     )}
@@ -874,7 +998,7 @@ export const EnhancedProductForm = ({
                   </Label>
                   <Input
                     type="number"
-                    {...register("purchasePrice")}
+                    {...register("purchasePrice", { setValueAs: setValueAsNumber })}
                     placeholder="0.00"
                     className="bg-gray-800 border-gray-700 text-white mt-1"
                   />
@@ -889,7 +1013,7 @@ export const EnhancedProductForm = ({
                   </Label>
                   <Input
                     type="number"
-                    {...register("sellingPrice")}
+                    {...register("sellingPrice", { setValueAs: setValueAsNumber })}
                     placeholder="0.00"
                     className={clsx(
                       "bg-green-900/30 border-green-700 text-white mt-1 font-bold",
@@ -931,7 +1055,7 @@ export const EnhancedProductForm = ({
                   </Label>
                   <Input
                     type="number"
-                    {...register("purchasePrice")}
+                    {...register("purchasePrice", { setValueAs: setValueAsNumber })}
                     placeholder="0.00"
                     className="bg-gray-800 border-gray-700 text-white mt-1"
                   />
@@ -944,7 +1068,7 @@ export const EnhancedProductForm = ({
                   </Label>
                   <Input
                     type="number"
-                    {...register("margin")}
+                    {...register("margin", { setValueAs: setValueAsNumber })}
                     placeholder="0"
                     className="bg-gray-800 border-gray-700 text-white mt-1"
                   />
@@ -957,7 +1081,7 @@ export const EnhancedProductForm = ({
                   </Label>
                   <Input
                     type="number"
-                    {...register("sellingPrice")}
+                    {...register("sellingPrice", { setValueAs: setValueAsNumber })}
                     placeholder="0.00"
                     className={clsx(
                       "bg-green-900/30 border-green-700 text-white mt-1 font-bold",
@@ -987,6 +1111,7 @@ export const EnhancedProductForm = ({
                   </Label>
                   <Input
                     type="number"
+                    {...register("wholesalePrice", { setValueAs: setValueAsNumber })}
                     placeholder="0.00"
                     className="bg-gray-800 border-gray-700 text-white mt-1"
                   />
@@ -1106,7 +1231,7 @@ export const EnhancedProductForm = ({
                   </Label>
                   <Input
                     type="number"
-                    {...register("rentalPrice")}
+                    {...register("rentalPrice", { setValueAs: setValueAsNumber })}
                     placeholder="0.00"
                     className="bg-gray-800 border-gray-700 text-white mt-1"
                   />
@@ -1118,7 +1243,7 @@ export const EnhancedProductForm = ({
                   </Label>
                   <Input
                     type="number"
-                    {...register("securityDeposit")}
+                    {...register("securityDeposit", { setValueAs: setValueAsNumber })}
                     placeholder="0.00"
                     className="bg-gray-800 border-gray-700 text-white mt-1"
                   />
@@ -1169,7 +1294,7 @@ export const EnhancedProductForm = ({
                     <Input
                       id="initial-stock"
                       type="number"
-                      {...register("initialStock")}
+                      {...register("initialStock", { setValueAs: setValueAsNumber })}
                       placeholder="0"
                       className="bg-gray-800 border-gray-700 text-white mt-1"
                     />
@@ -1185,13 +1310,25 @@ export const EnhancedProductForm = ({
                     <Input
                       id="alert-qty"
                       type="number"
-                      {...register("alertQty")}
+                      {...register("alertQty", { setValueAs: setValueAsNumber })}
                       placeholder="5"
                       className="bg-gray-800 border-red-900/50 text-white mt-1"
                     />
                     <p className="text-xs text-gray-500 mt-1">
                       Get notified when stock falls below this level
                     </p>
+                  </div>
+
+                  <div>
+                    <Label htmlFor="max-stock" className="text-gray-200">Max Stock</Label>
+                    <Input
+                      id="max-stock"
+                      type="number"
+                      {...register("maxStock", { setValueAs: setValueAsNumber })}
+                      placeholder="1000"
+                      className="bg-gray-800 border-gray-700 text-white mt-1"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">Maximum stock capacity</p>
                   </div>
                 </div>
               )}
@@ -1327,21 +1464,23 @@ export const EnhancedProductForm = ({
                     render={({ field }) => (
                       <Select
                         onValueChange={field.onChange}
-                        defaultValue={field.value}
+                        value={field.value ?? ''}
                       >
                         <SelectTrigger className="bg-gray-800 border-gray-700 text-white mt-1">
                           <SelectValue placeholder="Select Supplier" />
                         </SelectTrigger>
                         <SelectContent className="bg-gray-900 border-gray-800 text-white">
-                          <SelectItem value="bilal">
-                            Bilal Fabrics
-                          </SelectItem>
-                          <SelectItem value="chenone">
-                            ChenOne
-                          </SelectItem>
-                          <SelectItem value="sapphire">
-                            Sapphire Mills
-                          </SelectItem>
+                          {loadingSuppliers ? (
+                            <div className="px-2 py-1.5 text-sm text-gray-400">Loading suppliers...</div>
+                          ) : suppliers.length > 0 ? (
+                            suppliers.map((s) => (
+                              <SelectItem key={s.id} value={s.id}>
+                                {s.name}
+                              </SelectItem>
+                            ))
+                          ) : (
+                            <div className="px-2 py-1.5 text-sm text-gray-500">No suppliers. Add in Contacts (type: Supplier).</div>
+                          )}
                         </SelectContent>
                       </Select>
                     )}

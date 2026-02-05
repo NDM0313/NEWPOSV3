@@ -98,7 +98,10 @@ export function TransactionGroupedView({ transactions, saleItemsMap = new Map(),
                   <div
                     className={`inline-flex px-3 py-1 rounded-lg text-xs font-medium ${
                       transaction.documentType === 'Opening Balance' ? 'bg-gray-600/30 text-gray-300 border border-gray-600' :
-                      transaction.documentType === 'Sale' ? 'bg-blue-500/10 text-blue-400' : 'bg-green-500/10 text-green-400'
+                      transaction.documentType === 'Sale' || transaction.documentType === 'Purchase' ? 'bg-blue-500/10 text-blue-400' :
+                      transaction.documentType === 'Payment' ? 'bg-green-500/10 text-green-400' :
+                      transaction.documentType === 'Expense' ? 'bg-amber-500/10 text-amber-400' :
+                      transaction.documentType === 'Job' ? 'bg-purple-500/10 text-purple-400' : 'bg-gray-500/10 text-gray-400'
                     }`}
                   >
                     {transaction.documentType}

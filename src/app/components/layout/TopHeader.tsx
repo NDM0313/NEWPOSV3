@@ -76,6 +76,13 @@ export const TopHeader = () => {
     loadBranches();
   }, [loadBranches]);
 
+  // If business has only one branch, auto-select it so "Select Branch" is not shown
+  useEffect(() => {
+    if (branches.length === 1 && (!branchId || branchId === 'all')) {
+      setBranchId(branches[0].id);
+    }
+  }, [branches, branchId, setBranchId]);
+
   // Get current branch name (All Branches = real option for admin)
   const currentBranch = useMemo(() => {
     if (!branchId) return 'Select Branch';

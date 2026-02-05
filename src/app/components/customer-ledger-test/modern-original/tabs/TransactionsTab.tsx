@@ -67,6 +67,12 @@ export function TransactionsTab({ transactions, saleItemsMap = new Map(), onTran
         return <CreditCard className="w-4 h-4" />;
       case 'Discount':
         return <Tag className="w-4 h-4" />;
+      case 'Purchase':
+        return <FileText className="w-4 h-4" />;
+      case 'Expense':
+        return <FileText className="w-4 h-4" />;
+      case 'Job':
+        return <FileText className="w-4 h-4" />;
       default:
         return <FileText className="w-4 h-4" />;
     }
@@ -81,6 +87,12 @@ export function TransactionsTab({ transactions, saleItemsMap = new Map(), onTran
       case 'Payment':
         return 'text-emerald-400';
       case 'Discount':
+        return 'text-purple-400';
+      case 'Purchase':
+        return 'text-blue-400';
+      case 'Expense':
+        return 'text-amber-400';
+      case 'Job':
         return 'text-purple-400';
       default:
         return 'text-gray-400';

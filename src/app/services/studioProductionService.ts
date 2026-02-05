@@ -7,6 +7,7 @@
 
 import { supabase } from '@/lib/supabase';
 import { productService } from '@/app/services/productService';
+import { settingsService } from '@/app/services/settingsService';
 
 export type StudioProductionStatus = 'draft' | 'in_progress' | 'completed' | 'cancelled';
 
@@ -309,14 +310,26 @@ export const studioProductionService = {
             .limit(1)
             .maybeSingle();
           if (!existingLedger) {
-            const { error: ledgerErr } = await supabase.from('worker_ledger_entries').insert({
+            let jobRef: string | null = null;
+            try {
+              jobRef = await settingsService.getNextDocumentNumber(
+                companyIdForLedger,
+                existing.branch_id || undefined,
+                'job'
+              );
+            } catch (e) {
+              console.warn('[studioProductionService] getNextDocumentNumber(job) failed:', e);
+            }
+            const insertPayload: Record<string, unknown> = {
               company_id: companyIdForLedger,
               worker_id: workerId,
               amount,
               reference_type: 'studio_production_stage',
               reference_id: (stage as any).id,
               notes: `Studio production ${existing.production_no} – stage completed`,
-            });
+              ...(jobRef ? { document_no: jobRef } : {}),
+            };
+            const { error: ledgerErr } = await supabase.from('worker_ledger_entries').insert(insertPayload);
             if (ledgerErr) throw new Error(`Worker ledger failed: ${ledgerErr.message}`);
           }
         }
@@ -548,7 +561,7 @@ export const studioProductionService = {
 
     const { data: prodRow, error: prodErr } = await supabase
       .from('studio_productions')
-      .select('id, company_id, production_no')
+      .select('id, company_id, branch_id, production_no')
       .eq('id', stage.production_id)
       .single();
     if (prodErr || !prodRow) throw new Error('Production not found');
@@ -572,6 +585,16 @@ export const studioProductionService = {
         .limit(1)
         .maybeSingle();
       if (!existingLedger) {
+        let jobRef: string | null = null;
+        try {
+          jobRef = await settingsService.getNextDocumentNumber(
+            production.company_id,
+            production.branch_id || undefined,
+            'job'
+          );
+        } catch (e) {
+          console.warn('[studioProductionService] getNextDocumentNumber(job) failed:', e);
+        }
         const insertPayload: Record<string, unknown> = {
           company_id: production.company_id,
           worker_id: workerId,
@@ -580,6 +603,7 @@ export const studioProductionService = {
           reference_id: stageId,
           notes: notes || `Studio production ${production.production_no} – stage received`,
           status: 'unpaid',
+          ...(jobRef ? { document_no: jobRef } : {}),
         };
         const { data: inserted, error: ledgerErr } = await supabase
           .from('worker_ledger_entries')

@@ -4,6 +4,8 @@ export interface Product {
   id: string;
   company_id: string;
   category_id: string;
+  brand_id?: string;
+  unit_id?: string;
   name: string;
   sku: string;
   barcode?: string;

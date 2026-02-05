@@ -29,11 +29,14 @@ import { toast } from 'sonner';
 interface CustomerLedgerPageOriginalProps {
   initialCustomerId?: string;
   onClose?: () => void;
+  /** When true, render inside LedgerHub (no full-screen, no close, no customer search row) */
+  embedded?: boolean;
 }
 
 export default function CustomerLedgerPageOriginal({ 
   initialCustomerId,
-  onClose 
+  onClose,
+  embedded = false,
 }: CustomerLedgerPageOriginalProps = {}) {
   const { companyId } = useSupabase();
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
@@ -56,15 +59,17 @@ export default function CustomerLedgerPageOriginal({
     }
   }, [companyId]);
 
-  // Select initial customer if provided
+  // Select initial customer if provided (and when embedded, keep in sync with parent dropdown)
   useEffect(() => {
     if (initialCustomerId && customers.length > 0) {
       const customer = customers.find(c => c.id === initialCustomerId);
       if (customer) {
         setSelectedCustomer(customer);
       }
+    } else if (embedded && !initialCustomerId) {
+      setSelectedCustomer(null);
     }
-  }, [initialCustomerId, customers]);
+  }, [initialCustomerId, customers, embedded]);
 
   // Load ledger data when customer or date range changes
   useEffect(() => {
@@ -283,68 +288,74 @@ export default function CustomerLedgerPageOriginal({
     );
   }
 
-  return (
-    <div className="min-h-screen flex flex-col bg-[#0B0F19]">
-      {/* Header – exact match to Products page layout & styles */}
-      <header className="shrink-0 px-6 py-4 border-b border-gray-800">
-        <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center gap-4">
-            {onClose && (
-              <button
-                onClick={onClose}
-                className="p-2 rounded-lg hover:bg-gray-800 transition-colors text-white"
-                title="Close"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            )}
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg flex items-center justify-center bg-blue-500/10">
-                <FileText className="w-5 h-5 text-blue-500" />
-              </div>
-              <div>
-                <h1 className="text-2xl font-bold text-white">Customer Ledger</h1>
-                <p className="text-sm text-gray-400 mt-0.5">Manage and track customer accounts</p>
+  const content = (
+    <>
+      {!embedded && (
+        <header className="shrink-0 px-6 py-4 border-b border-gray-800">
+          <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center gap-4">
+              {onClose && (
+                <button
+                  onClick={onClose}
+                  className="p-2 rounded-lg hover:bg-gray-800 transition-colors text-white"
+                  title="Close"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              )}
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-lg flex items-center justify-center bg-blue-500/10">
+                  <FileText className="w-5 h-5 text-blue-500" />
+                </div>
+                <div>
+                  <h1 className="text-2xl font-bold text-white">Customer Ledger</h1>
+                  <p className="text-sm text-gray-400 mt-0.5">Manage and track customer accounts</p>
+                </div>
               </div>
             </div>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => setPrintOpen(true)}
+                className="px-4 py-2 text-sm rounded-lg transition-colors flex items-center gap-2 bg-gray-900 border border-gray-700 text-white hover:bg-gray-800"
+              >
+                <Download className="w-4 h-4" />
+                Export / PDF
+              </button>
+              <button
+                onClick={() => setPrintOpen(true)}
+                className="px-4 py-2 text-sm rounded-lg transition-colors flex items-center gap-2 bg-gray-900 border border-gray-700 text-white hover:bg-gray-800"
+              >
+                <Printer className="w-4 h-4" />
+                Print
+              </button>
+              <button className="px-4 py-2 text-sm rounded-lg transition-colors flex items-center gap-2 bg-gray-900 border border-gray-700 text-white hover:bg-gray-800">
+                <Filter className="w-4 h-4" />
+                Filters
+              </button>
+            </div>
           </div>
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => setPrintOpen(true)}
-              className="px-4 py-2 text-sm rounded-lg transition-colors flex items-center gap-2 bg-gray-900 border border-gray-700 text-white hover:bg-gray-800"
-            >
-              <Download className="w-4 h-4" />
-              Export / PDF
-            </button>
-            <button
-              onClick={() => setPrintOpen(true)}
-              className="px-4 py-2 text-sm rounded-lg transition-colors flex items-center gap-2 bg-gray-900 border border-gray-700 text-white hover:bg-gray-800"
-            >
-              <Printer className="w-4 h-4" />
-              Print
-            </button>
-            <button className="px-4 py-2 text-sm rounded-lg transition-colors flex items-center gap-2 bg-gray-900 border border-gray-700 text-white hover:bg-gray-800">
-              <Filter className="w-4 h-4" />
-              Filters
-            </button>
+          <div className="flex items-center gap-4">
+            <ModernCustomerSearch
+              customers={customers}
+              selectedCustomer={selectedCustomer}
+              onSelect={setSelectedCustomer}
+            />
+            <ModernDateFilter
+              dateRange={dateRange}
+              onApply={setDateRange}
+            />
           </div>
-        </div>
-        {/* Filters Row – same spacing as Products */}
-        <div className="flex items-center gap-4">
-          <ModernCustomerSearch
-            customers={customers}
-            selectedCustomer={selectedCustomer}
-            onSelect={setSelectedCustomer}
-          />
+        </header>
+      )}
+      {embedded && (
+        <div className="flex items-center gap-4 mb-4">
           <ModernDateFilter
             dateRange={dateRange}
             onApply={setDateRange}
           />
         </div>
-      </header>
-
-      {/* Main Content – same padding as Products */}
-      <div className="flex-1 overflow-auto px-6 py-4">
+      )}
+      <div className={embedded ? '' : 'flex-1 overflow-auto px-6 py-4'}>
         {/* Summary Cards Section – same strip as Products (bg-[#0F1419], border-b) */}
         <div className="shrink-0 pb-6 border-b border-gray-800">
           <ModernSummaryCards ledgerData={ledgerData} />
@@ -397,6 +408,12 @@ export default function CustomerLedgerPageOriginal({
           onClose={() => setPrintOpen(false)}
         />
       )}
+    </>
+  );
+
+  return (
+    <div className={embedded ? 'flex flex-col' : 'min-h-screen flex flex-col bg-[#0B0F19]'}>
+      {content}
     </div>
   );
 }

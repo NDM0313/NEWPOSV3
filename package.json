@@ -5,7 +5,11 @@
   "type": "module",
   "scripts": {
     "build": "vite build",
-    "dev": "vite"
+    "dev": "vite",
+    "seed": "node scripts/run-seed.js",
+    "validate-seed": "node scripts/validate-seed.js",
+    "seed:full": "node scripts/run-phases.js",
+    "link-auth": "node scripts/run-link-auth.js"
   },
   "dependencies": {
     "@emotion/react": "11.14.0",

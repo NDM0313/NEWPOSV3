@@ -37,7 +37,7 @@ export const contactService = {
     // Note: is_active column may not exist - removed filter to avoid errors
     // If needed, filter in application code after fetching
 
-    if (type && type !== 'both') {
+    if (type) {
       query = query.eq('type', type);
     }
 

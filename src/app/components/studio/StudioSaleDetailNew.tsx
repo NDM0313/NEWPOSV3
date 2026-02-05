@@ -2695,11 +2695,11 @@ export const StudioSaleDetailNew = () => {
           entityId={payChoiceAfterReceive.workerId}
           outstandingAmount={payChoiceAfterReceive.amount}
           referenceNo={saleDetail?.invoiceNo ? `STD-${payChoiceAfterReceive.stageId.slice(0, 8)}` : undefined}
-          onSuccess={async () => {
+          onSuccess={async (paymentRef) => {
             try {
               await studioProductionService.markStageLedgerPaid(
                 payChoiceAfterReceive.stageId,
-                undefined
+                paymentRef ?? undefined
               );
               toast.success('Worker payment recorded. Ledger updated.');
             } catch (e: any) {

@@ -149,31 +149,48 @@ export const saleService = {
     return completeSale;
   },
 
-  // Get single sale by ID
+  // Get single sale by ID (with items for edit form).
+  // DB may have sale_items or sales_items; if nested items are empty, fetch items separately.
   async getSaleById(saleId: string) {
-    const { data, error } = await supabase
-      .from('sales')
-      .select(`
+    const selectWithItems = (table: 'sales_items' | 'sale_items') => `
+      *,
+      customer:contacts(*),
+      branch:branches(id, name, code),
+      items:${table}(
         *,
-        customer:contacts(*),
-        branch:branches(id, name, code),
-        items:sales_items(
-          *,
-          product:products(*),
-          variation:product_variations(*)
-        )
-      `)
-      .eq('id', saleId)
-      .single();
+        product:products(*),
+        variation:product_variations(*)
+      )
+    `;
+    let data: any = null;
+    let err: any = null;
 
-    if (error) throw error;
+    const res1 = await supabase.from('sales').select(selectWithItems('sales_items')).eq('id', saleId).single();
+    if (!res1.error && res1.data) {
+      data = res1.data;
+    } else {
+      const res2 = await supabase.from('sales').select(selectWithItems('sale_items')).eq('id', saleId).single();
+      if (!res2.error && res2.data) data = res2.data;
+      else err = res2.error;
+    }
+
+    if (err) throw err;
+    if (!data) throw new Error('Sale not found');
+
+    // If items missing (wrong table or RLS), fetch line items directly
+    if (!data.items || data.items.length === 0) {
+      const { data: rows } = await supabase.from('sale_items').select('*, product:products(*), variation:product_variations(*)').eq('sale_id', saleId);
+      if (rows && rows.length > 0) data.items = rows;
+      else {
+        const { data: rows2 } = await supabase.from('sales_items').select('*, product:products(*), variation:product_variations(*)').eq('sale_id', saleId);
+        if (rows2 && rows2.length > 0) data.items = rows2;
+      }
+    }
     return data;
   },
 
-  // Get all sales
+  // Get all sales (with items for list count and edit)
   async getAllSales(companyId: string, branchId?: string) {
-    // Join with branches table to get branch name and code
-    // CRITICAL FIX: Sort by created_at DESC to show newest first
     let query = supabase
       .from('sales')
       .select(`
@@ -186,18 +203,18 @@ export const saleService = {
           variation:product_variations(*)
         )
       `)
+      .eq('company_id', companyId)
       .order('created_at', { ascending: false })
       .order('invoice_date', { ascending: false });
-    
+
     if (branchId) {
       query = query.eq('branch_id', branchId);
     }
-    
+
     const { data, error } = await query;
-    
-    // If error about sales_items, try sale_items (backward compatibility)
+
     if (error && (error.code === '42P01' || error.message?.includes('sales_items'))) {
-      const retryQuery = supabase
+      let retryQuery = supabase
         .from('sales')
         .select(`
           *,
@@ -209,17 +226,18 @@ export const saleService = {
             variation:product_variations(*)
           )
         `)
+        .eq('company_id', companyId)
         .order('invoice_date', { ascending: false });
-      
+
       if (branchId) {
-        retryQuery.eq('branch_id', branchId);
+        retryQuery = retryQuery.eq('branch_id', branchId);
       }
-      
+
       const { data: retryData, error: retryError } = await retryQuery;
       if (retryError) throw retryError;
       return retryData;
     }
-    
+
     if (error) throw error;
     return data;
   },

@@ -46,9 +46,9 @@ export const settingsService = {
       .select('*')
       .eq('company_id', companyId)
       .eq('key', key)
-      .single();
+      .maybeSingle();
 
-    if (error && error.code !== 'PGRST116') throw error; // PGRST116 = not found
+    if (error) throw error;
     return data;
   },
 
