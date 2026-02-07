@@ -59,8 +59,8 @@ export interface Payment {
 }
 
 export interface InvoiceDetails {
-  id: string;
-  invoiceNo: string;
+  id: string; // UUID (required for all operations)
+  invoiceNo: string; // Display number (UI only, never used for logic)
   date: string;
   customerName: string;
   customerId?: string;
@@ -69,6 +69,8 @@ export interface InvoiceDetails {
   due: number;
   paymentStatus: 'paid' | 'partial' | 'unpaid';
   payments?: Payment[];
+  // 🔒 UUID ARCHITECTURE: Use referenceType instead of parsing invoiceNo
+  referenceType?: 'sale' | 'purchase' | 'rental'; // Entity type (preferred over pattern matching)
 }
 
 interface ViewPaymentsModalProps {
@@ -157,10 +159,29 @@ export const ViewPaymentsModal: React.FC<ViewPaymentsModalProps> = ({
       const fetchPayments = async () => {
         setLoadingPayments(true);
         try {
-          // STEP 2 FIX: Determine if this is a purchase or sale based on invoice number pattern
-          // Purchase: PO-XXX, Sale: INV-XXX or other patterns
-          const isPurchase = invoice.invoiceNo?.startsWith('PO-') || false;
-          const isRental = invoice.invoiceNo?.startsWith('RN-') || false;
+          // 🔒 UUID ARCHITECTURE: Use referenceType (preferred) or fallback to pattern matching
+          // CRITICAL: Display numbers should NEVER be used for business logic
+          // Pattern matching is fallback only when referenceType is not provided
+          let isPurchase = false;
+          let isRental = false;
+          
+          // PRIORITY 1: Use referenceType if provided (UUID-first architecture)
+          if (invoice.referenceType) {
+            isPurchase = invoice.referenceType === 'purchase';
+            isRental = invoice.referenceType === 'rental';
+          } else {
+            // FALLBACK: Pattern matching (legacy support, should be removed in future)
+            // ⚠️ WARNING: This violates UUID-first architecture but kept for backward compatibility
+            const invoiceNoUpper = (invoice.invoiceNo || '').toUpperCase();
+            isPurchase = invoiceNoUpper.startsWith('PUR-') || 
+                        invoiceNoUpper.startsWith('PUR') || 
+                        invoiceNoUpper.startsWith('PO-') || 
+                        invoiceNoUpper.startsWith('PO') || false;
+            isRental = invoiceNoUpper.startsWith('RNT-') || invoiceNoUpper.startsWith('RN-') || false;
+            
+            // Log warning for architecture violation
+            console.warn('[VIEW PAYMENTS] ⚠️ ARCHITECTURE VIOLATION: Using display number pattern matching. Please pass referenceType instead.');
+          }
           
           if (isRental) {
             try {
@@ -177,43 +198,52 @@ export const ViewPaymentsModal: React.FC<ViewPaymentsModalProps> = ({
               })));
             } catch (rentalError: any) {
               console.error('[VIEW PAYMENTS] Error fetching rental payments:', rentalError);
-              setPayments(invoice.payments || []);
+              // 🔒 GOLDEN RULE: Payment history = payments table ONLY
+              // Never fallback to invoice.payments - if payments table fails, show empty
+              setPayments([]);
             }
           } else if (isPurchase) {
-            // Purchase payments
+            // Purchase payments - ALWAYS from payments table
             try {
               const { purchaseService } = await import('@/app/services/purchaseService');
-              console.log('[VIEW PAYMENTS] Fetching purchase payments for:', invoice.id);
+              console.log('[VIEW PAYMENTS] Fetching purchase payments for purchase ID:', invoice.id);
               const fetchedPayments = await purchaseService.getPurchasePayments(invoice.id);
-              console.log('[VIEW PAYMENTS] Purchase payments loaded:', fetchedPayments);
+              console.log('[VIEW PAYMENTS] Purchase payments loaded:', fetchedPayments?.length || 0);
+              // 🔒 GOLDEN RULE: Payment history = payments table ONLY
               setPayments(fetchedPayments || []);
             } catch (purchaseError: any) {
               console.error('[VIEW PAYMENTS] Error fetching purchase payments:', purchaseError);
-              setPayments(invoice.payments || []);
+              // 🔒 GOLDEN RULE: Never fallback to invoice.payments
+              setPayments([]);
             }
           } else {
-            // Sale payments
+            // Sale payments - ALWAYS from payments table
             try {
               const { saleService } = await import('@/app/services/saleService');
               console.log('[VIEW PAYMENTS] Fetching sale payments for:', invoice.id);
               const fetchedPayments = await saleService.getSalePayments(invoice.id);
-              console.log('[VIEW PAYMENTS] Sale payments loaded:', fetchedPayments);
+              console.log('[VIEW PAYMENTS] Sale payments loaded:', fetchedPayments?.length || 0);
+              // 🔒 GOLDEN RULE: Payment history = payments table ONLY
               setPayments(fetchedPayments || []);
             } catch (saleError: any) {
               console.error('[VIEW PAYMENTS] Error fetching sale payments:', saleError);
-              setPayments(invoice.payments || []);
+              // 🔒 GOLDEN RULE: Never fallback to invoice.payments
+              setPayments([]);
             }
           }
         } catch (error: any) {
           console.error('[VIEW PAYMENTS] Error fetching payments:', error);
-          setPayments(invoice.payments || []);
+          // 🔒 GOLDEN RULE: Payment history = payments table ONLY
+          setPayments([]);
         } finally {
           setLoadingPayments(false);
         }
       };
       fetchPayments();
     } else {
-      setPayments(invoice?.payments || []);
+      // 🔒 GOLDEN RULE: Payment history = payments table ONLY
+      // If modal not open or invoice missing, show empty (not invoice.payments)
+      setPayments([]);
     }
   }, [isOpen, invoice?.id, invoice?.invoiceNo, invoice?.payments]);
 

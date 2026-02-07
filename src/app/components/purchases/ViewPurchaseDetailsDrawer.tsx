@@ -9,6 +9,7 @@ import { activityLogService } from '@/app/services/activityLogService';
 import { PurchaseOrderPrintLayout } from '../shared/PurchaseOrderPrintLayout';
 import { PaymentDeleteConfirmationModal } from '../shared/PaymentDeleteConfirmationModal';
 import { UnifiedPaymentDialog } from '../shared/UnifiedPaymentDialog';
+import { ViewPaymentsModal, type InvoiceDetails, type Payment } from '@/app/components/sales/ViewPaymentsModal';
 import { 
   X, 
   Calendar, 
@@ -115,6 +116,7 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
   const [isDeletingPayment, setIsDeletingPayment] = useState(false);
   const [editPaymentDialogOpen, setEditPaymentDialogOpen] = useState(false);
   const [paymentToEdit, setPaymentToEdit] = useState<any | null>(null);
+  const [viewPaymentsModalOpen, setViewPaymentsModalOpen] = useState(false);
 
   // Load branches for location display
   useEffect(() => {
@@ -135,15 +137,41 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
     loadBranches();
   }, [companyId]);
 
+  // CRITICAL FIX: Load payments breakdown (defined first to avoid hoisting issue)
+  const loadPayments = useCallback(async (purchaseId: string) => {
+    if (!purchaseId) {
+      console.warn('[VIEW PURCHASE] loadPayments called without purchaseId');
+      return;
+    }
+    setLoadingPayments(true);
+    try {
+      console.log('[VIEW PURCHASE] Loading payments for purchaseId:', purchaseId);
+      const fetchedPayments = await purchaseService.getPurchasePayments(purchaseId);
+      console.log('[VIEW PURCHASE] Loaded payments:', fetchedPayments);
+      console.log('[VIEW PURCHASE] Payment count:', fetchedPayments?.length || 0);
+      if (fetchedPayments && fetchedPayments.length > 0) {
+        console.log('[VIEW PURCHASE] First payment sample:', fetchedPayments[0]);
+      }
+      setPayments(fetchedPayments || []);
+    } catch (error) {
+      console.error('[VIEW PURCHASE] Error loading payments:', error);
+      setPayments([]);
+    } finally {
+      setLoadingPayments(false);
+    }
+  }, []);
+
   // Load purchase data from context (TASK 2 & 3 FIX - Real data instead of mock)
   useEffect(() => {
     if (isOpen && purchaseId) {
       const loadPurchaseData = async () => {
         setLoading(true);
         try {
+          console.log('[VIEW PURCHASE] Loading purchase data for purchaseId:', purchaseId);
           // CRITICAL FIX: Fetch fresh purchase data from database (not just context)
           const purchaseData = await purchaseService.getPurchase(purchaseId);
           if (purchaseData) {
+            console.log('[VIEW PURCHASE] Purchase data loaded from database:', purchaseData.id);
             const convertedPurchase = convertFromSupabasePurchase(purchaseData);
             setPurchase(convertedPurchase);
             
@@ -165,51 +193,47 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
               setSupplierCode(null);
             }
             
-            // CRITICAL FIX: Load payments breakdown
-            loadPayments(purchaseId);
+            // CRITICAL FIX: Load payments breakdown - use database ID
+            console.log('[VIEW PURCHASE] Loading payments for purchase database ID:', purchaseData.id);
+            await loadPayments(purchaseData.id);
           } else {
             // Fallback to context
+            console.log('[VIEW PURCHASE] Purchase not found in database, trying context...');
             const contextPurchase = getPurchaseById(purchaseId);
             if (contextPurchase) {
+              console.log('[VIEW PURCHASE] Found purchase in context, ID:', contextPurchase.id);
               setPurchase(contextPurchase);
-              loadPayments(purchaseId);
+              // Use context purchase ID (which should be the database UUID)
+              await loadPayments(contextPurchase.id);
+            } else {
+              console.error('[VIEW PURCHASE] Purchase not found in context either, purchaseId:', purchaseId);
             }
           }
-    } catch (error: any) {
+        } catch (error: any) {
           console.error('[VIEW PURCHASE] Error loading purchase:', error?.message || error);
           // Fallback to context
           const contextPurchase = getPurchaseById(purchaseId);
           if (contextPurchase) {
+            console.log('[VIEW PURCHASE] Fallback: Using context purchase, ID:', contextPurchase.id);
             setPurchase(contextPurchase);
-            loadPayments(purchaseId);
+            // Use context purchase ID (which should be the database UUID)
+            await loadPayments(contextPurchase.id);
           } else {
             // If context also doesn't have it, show error
             console.error('[VIEW PURCHASE] Purchase not found in context either');
           }
-    } finally {
-      setLoading(false);
-    }
-  };
+        } finally {
+          setLoading(false);
+        }
+      };
 
       loadPurchaseData();
     } else {
       setLoading(false);
-    }
-  }, [isOpen, purchaseId, getPurchaseById, companyId]);
-  
-  // CRITICAL FIX: Load payments breakdown
-  const loadPayments = useCallback(async (purchaseId: string) => {
-    setLoadingPayments(true);
-    try {
-      const fetchedPayments = await purchaseService.getPurchasePayments(purchaseId);
-      setPayments(fetchedPayments);
-    } catch (error) {
-      console.error('[VIEW PURCHASE] Error loading payments:', error);
+      // Clear payments when drawer closes
       setPayments([]);
-    } finally {
-      setLoadingPayments(false);
     }
-  }, []);
+  }, [isOpen, purchaseId, getPurchaseById, companyId, loadPayments]);
 
   // CRITICAL FIX: Load activity logs
   const loadActivityLogs = useCallback(async (purchaseId: string) => {
@@ -234,8 +258,8 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
       if (purchaseData) {
         const convertedPurchase = convertFromSupabasePurchase(purchaseData);
         setPurchase(convertedPurchase);
-        // Reload payments
-        await loadPayments(purchaseId);
+        // Reload payments - use database ID
+        await loadPayments(purchaseData.id);
       }
     } catch (error: any) {
       console.error('[VIEW PURCHASE] Error reloading purchase:', error?.message || error);
@@ -395,7 +419,13 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
             ].map((tab) => (
               <button
                 key={tab.id}
-                onClick={() => setActiveTab(tab.id as any)}
+                onClick={() => {
+                  setActiveTab(tab.id as any);
+                  // 🔒 CLONE FROM SALE PAGE: Open ViewPaymentsModal when payments tab is clicked
+                  if (tab.id === 'payments' && purchase) {
+                    setViewPaymentsModalOpen(true);
+                  }
+                }}
                 className={cn(
                   "px-4 py-3 text-sm font-medium transition-colors relative",
                   activeTab === tab.id
@@ -637,235 +667,29 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
 
           {activeTab === 'payments' && (
             <div className="space-y-4">
-              {/* Add Payment Button */}
-              <div className="flex justify-between items-center">
-                <h3 className="text-lg font-semibold text-white">Payment History</h3>
+              {/* 🔒 CLONE FROM SALE PAGE: Payment history is shown in ViewPaymentsModal */}
+              <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-5">
+                <p className="text-white font-semibold text-lg">
+                  Rs. {purchase.paid.toLocaleString()}
+                </p>
+                <p className="text-sm text-gray-400 mt-1">
+                  Total paid amount
+                </p>
                 {purchase.due > 0 && (
-                  <Button
-                    onClick={() => {
-                      onAddPayment?.(purchase.id);
-                    }}
-                    className="bg-blue-600 hover:bg-blue-700 text-white"
-                  >
-                    <CreditCard size={16} className="mr-2" />
-                    Add Payment
-                  </Button>
+                  <p className="text-sm text-red-400 mt-2">
+                    Due: Rs. {purchase.due.toLocaleString()}
+                  </p>
                 )}
+                <Button
+                  onClick={() => setViewPaymentsModalOpen(true)}
+                  className="mt-4 bg-blue-600 hover:bg-blue-500 text-white"
+                >
+                  <CreditCard size={16} className="mr-2" />
+                  View Payment History
+                </Button>
               </div>
-
-              {/* Payment Summary with Cash/Bank Breakdown */}
-              {loadingPayments ? (
-                <div className="text-center py-12 text-gray-400">Loading payments...</div>
-              ) : payments.length > 0 ? (
-                <div className="space-y-4">
-                  {/* Summary Cards by Payment Method */}
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    {/* Cash Payments Summary */}
-                    {payments.filter(p => p.method === 'cash').length > 0 && (
-                      <div className="bg-green-500/10 border border-green-500/20 rounded-xl p-4">
-                        <p className="text-xs text-gray-400 mb-1">Paid (Cash)</p>
-                        <p className="text-2xl font-bold text-green-400">
-                          Rs. {payments.filter(p => p.method === 'cash').reduce((sum, p) => sum + p.amount, 0).toLocaleString()}
-                        </p>
-                        <p className="text-xs text-gray-500 mt-1">
-                          {payments.filter(p => p.method === 'cash').length} payment(s)
-                        </p>
-                      </div>
-                    )}
-                    
-                    {/* Bank Payments Summary */}
-                    {payments.filter(p => p.method === 'bank' || p.method === 'card').length > 0 && (
-                      <div className="bg-blue-500/10 border border-blue-500/20 rounded-xl p-4">
-                        <p className="text-xs text-gray-400 mb-1">Paid (Bank/Card)</p>
-                        <p className="text-2xl font-bold text-blue-400">
-                          Rs. {payments.filter(p => p.method === 'bank' || p.method === 'card').reduce((sum, p) => sum + p.amount, 0).toLocaleString()}
-                        </p>
-                        <p className="text-xs text-gray-500 mt-1">
-                          {payments.filter(p => p.method === 'bank' || p.method === 'card').length} payment(s)
-                        </p>
-                      </div>
-                    )}
-                    
-                    {/* Other Payments Summary */}
-                    {payments.filter(p => p.method === 'other' || (p.method !== 'cash' && p.method !== 'bank' && p.method !== 'card')).length > 0 && (
-                      <div className="bg-purple-500/10 border border-purple-500/20 rounded-xl p-4">
-                        <p className="text-xs text-gray-400 mb-1">Paid (Other)</p>
-                        <p className="text-2xl font-bold text-purple-400">
-                          Rs. {payments.filter(p => p.method === 'other' || (p.method !== 'cash' && p.method !== 'bank' && p.method !== 'card')).reduce((sum, p) => sum + p.amount, 0).toLocaleString()}
-                        </p>
-                        <p className="text-xs text-gray-500 mt-1">
-                          {payments.filter(p => p.method === 'other' || (p.method !== 'cash' && p.method !== 'bank' && p.method !== 'card')).length} payment(s)
-                        </p>
-                          </div>
-                    )}
-                          </div>
-                  
-                  {/* Total Paid Summary */}
-                  <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-5">
-                    <div className="flex justify-between items-center mb-4">
-                      <div>
-                        <p className="text-white font-semibold text-xl">
-                          Rs. {purchase.paid.toLocaleString()}
-                        </p>
-                        <p className="text-sm text-gray-400 mt-1">
-                          Total Paid Amount
-                        </p>
-                        </div>
-                      <Badge className={cn(
-                        "text-sm font-semibold",
-                        purchase.paymentStatus === 'paid' ? "bg-green-500/10 text-green-400 border-green-500/20" :
-                        purchase.paymentStatus === 'partial' ? "bg-yellow-500/10 text-yellow-400 border-yellow-500/20" :
-                        "bg-red-500/10 text-red-400 border-red-500/20"
-                      )}>
-                        {purchase.paymentStatus === 'paid' ? 'Paid' : purchase.paymentStatus === 'partial' ? 'Partial' : 'Unpaid'}
-                      </Badge>
-                    </div>
-                    
-                    {purchase.due > 0 && (
-                      <div className="flex justify-between text-sm pt-3 border-t border-gray-800">
-                        <span className="text-gray-400">Amount Due:</span>
-                        <span className="text-red-400 font-medium">
-                          Rs. {purchase.due.toLocaleString()}
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                  
-                  {/* Individual Payment Breakdown */}
-                    <div className="space-y-3">
-                    <h4 className="text-sm font-semibold text-gray-400 uppercase">Payment Details</h4>
-                    {payments.map((payment) => (
-                    <div 
-                      key={payment.id}
-                        className="bg-gray-900/50 border border-gray-800 rounded-xl p-4"
-                      >
-                        <div className="flex justify-between items-start mb-2">
-                          <div className="flex-1">
-                            <div className="flex items-center gap-2 mb-1">
-                              <p className="text-white font-semibold">
-                            Rs. {payment.amount.toLocaleString()}
-                          </p>
-                              {payment.referenceNo && (
-                                <code className="text-xs bg-gray-800 px-2 py-0.5 rounded text-blue-400 border border-gray-700">
-                                  {payment.referenceNo}
-                                </code>
-                              )}
-                        </div>
-                            <p className="text-sm text-gray-400">
-                            {new Date(payment.date).toLocaleDateString('en-US', { 
-                              month: 'short', 
-                              day: 'numeric', 
-                                year: 'numeric'
-                            })}
-                          </p>
-                            {payment.accountName && (
-                              <p className="text-xs text-gray-500 mt-1">
-                                Account: {payment.accountName}
-                              </p>
-                            )}
-                        </div>
-                          <div className="flex items-center gap-2">
-                            <Badge className={cn(
-                              "text-xs font-semibold",
-                              payment.method === 'cash' ? "bg-green-500/10 text-green-400 border-green-500/20" :
-                              payment.method === 'bank' || payment.method === 'card' ? "bg-blue-500/10 text-blue-400 border-blue-500/20" :
-                              "bg-purple-500/10 text-purple-400 border-purple-500/20"
-                            )}>
-                              {payment.method === 'cash' ? 'Cash' : 
-                               payment.method === 'bank' ? 'Bank' :
-                               payment.method === 'card' ? 'Card' : 'Other'}
-                        </Badge>
-                            {/* CRITICAL FIX: Add edit and delete buttons for each payment */}
-                            <button
-                              onClick={() => {
-                                setPaymentToEdit(payment);
-                                setEditPaymentDialogOpen(true);
-                              }}
-                              className="p-1.5 rounded-lg hover:bg-blue-500/20 text-gray-400 hover:text-blue-400 transition-colors"
-                              title="Edit Payment"
-                            >
-                              <Edit size={14} />
-                            </button>
-                            <button
-                              onClick={() => {
-                                setPaymentToDelete(payment);
-                                setDeleteConfirmationOpen(true);
-                              }}
-                              className="p-1.5 rounded-lg hover:bg-red-500/20 text-gray-400 hover:text-red-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                              title="Edit Payment - Not Available (Delete and re-add to modify)"
-                              disabled
-                            >
-                              <Edit size={14} />
-                            </button>
-                            <button
-                              onClick={() => {
-                                setPaymentToDelete(payment);
-                                setDeleteConfirmationOpen(true);
-                              }}
-                              className="p-1.5 rounded-lg hover:bg-red-500/20 text-gray-400 hover:text-red-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                              title="Delete Payment"
-                              disabled={isDeletingPayment || loadingPayments}
-                            >
-                              <Trash2 size={14} />
-                            </button>
-                      </div>
-                        </div>
-                        {/* CRITICAL FIX: Show attachment icon if payment has attachments */}
-                        {payment.attachments && (
-                          <div className="mt-2 flex items-center gap-2">
-                            <span className="text-xs text-gray-500">Attachments:</span>
-                            {Array.isArray(payment.attachments) ? (
-                              payment.attachments.map((att: any, idx: number) => {
-                                const url = att.url || att.fileUrl || att;
-                                const name = att.name || att.fileName || `Attachment ${idx + 1}`;
-                                const isImage = /\.(jpg|jpeg|png|gif|webp)$/i.test(url);
-                                return (
-                                  <button
-                                    key={idx}
-                                    onClick={() => window.open(url, '_blank')}
-                                    className="flex items-center gap-1 px-2 py-1 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/30 rounded text-blue-400 text-xs transition-colors"
-                                  >
-                                    {isImage ? <ImageIcon size={12} /> : <File size={12} />}
-                                    <span>{name}</span>
-                                    <Paperclip size={10} />
-                                  </button>
-                                );
-                              })
-                            ) : typeof payment.attachments === 'string' ? (
-                              <button
-                                onClick={() => window.open(payment.attachments, '_blank')}
-                                className="flex items-center gap-1 px-2 py-1 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/30 rounded text-blue-400 text-xs transition-colors"
-                              >
-                                <Paperclip size={12} />
-                                <span>View Attachment</span>
-                              </button>
-                            ) : null}
-                          </div>
-                        )}
-                        {payment.notes && (
-                          <p className="text-xs text-gray-500 mt-2">{payment.notes}</p>
-                      )}
-                    </div>
-                  ))}
-                  </div>
-                </div>
-              ) : purchase.paid > 0 ? (
-                <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-5">
-                  <p className="text-white font-semibold text-lg">
-                    Rs. {purchase.paid.toLocaleString()}
-                  </p>
-                  <p className="text-sm text-gray-400 mt-1">
-                    Total paid amount (payment details loading...)
-                  </p>
-                </div>
-              ) : (
-                <div className="text-center py-12">
-                  <CreditCard size={48} className="mx-auto text-gray-700 mb-4" />
-                  <p className="text-gray-500">No payments recorded yet</p>
-                        </div>
-                      )}
-                        </div>
-                      )}
+            </div>
+          )}
 
           {activeTab === 'history' && (
             <div className="space-y-3">
@@ -1034,10 +858,15 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
               
               toast.success('Payment deleted successfully. Reverse entry created.');
               
-              await Promise.all([
-                loadPayments(purchase.id),
-                reloadPurchaseData()
-              ]);
+              // Use purchase.id (database UUID) for payment operations
+              if (purchase?.id) {
+                await Promise.all([
+                  loadPayments(purchase.id),
+                  reloadPurchaseData()
+                ]);
+              } else {
+                await reloadPurchaseData();
+              }
               
               setDeleteConfirmationOpen(false);
               setPaymentToDelete(null);
@@ -1084,12 +913,59 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
           }}
           onSuccess={async () => {
             toast.success('Payment updated successfully');
-            await Promise.all([
-              loadPayments(purchase.id),
-              reloadPurchaseData()
-            ]);
+            
+            // Use purchase.id (database UUID) for payment operations
+            const promises: Promise<any>[] = [reloadPurchaseData()];
+            if (purchase?.id) {
+              promises.push(loadPayments(purchase.id));
+            }
+            
+            await Promise.all(promises);
+            
             setEditPaymentDialogOpen(false);
             setPaymentToEdit(null);
+          }}
+        />
+      )}
+      
+      {/* 🔒 CLONE FROM SALE PAGE: ViewPaymentsModal for payment history */}
+      {purchase && (
+        <ViewPaymentsModal
+          isOpen={viewPaymentsModalOpen}
+          onClose={() => {
+            setViewPaymentsModalOpen(false);
+          }}
+          invoice={{
+            id: purchase.id,
+            invoiceNo: purchase.purchaseNo,
+            date: purchase.date,
+            customerName: purchase.supplierName || purchase.supplier,
+            customerId: purchase.supplierId || purchase.supplier,
+            total: purchase.total,
+            paid: purchase.paid,
+            due: purchase.due,
+            paymentStatus: purchase.paymentStatus,
+            referenceType: 'purchase', // 🔒 UUID ARCHITECTURE: Explicit entity type (no pattern matching)
+          }}
+          onAddPayment={() => {
+            setViewPaymentsModalOpen(false);
+            onAddPayment?.(purchase.id);
+          }}
+          onDeletePayment={async (paymentId: string) => {
+            if (!purchase?.id || !paymentId) {
+              throw new Error('Purchase or Payment ID not found');
+            }
+            try {
+              await purchaseService.deletePayment(paymentId, purchase.id);
+              await reloadPurchaseData();
+              window.dispatchEvent(new CustomEvent('paymentAdded'));
+            } catch (error: any) {
+              console.error('[VIEW PURCHASE] Error deleting payment:', error);
+              throw new Error(error?.message || 'Failed to delete payment. Please try again.');
+            }
+          }}
+          onRefresh={async () => {
+            await reloadPurchaseData();
           }}
         />
       )}

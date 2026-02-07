@@ -51,6 +51,8 @@ export function InventoryMasters({ activeSubTab, onSubTabChange, generalContent 
   const [editItem, setEditItem] = useState<Unit | Brand | ProductCategory | null>(null);
   const [formName, setFormName] = useState('');
   const [formSymbol, setFormSymbol] = useState('');
+  const [formShortCode, setFormShortCode] = useState('');
+  const [formAllowDecimal, setFormAllowDecimal] = useState(false);
   const [formParentId, setFormParentId] = useState<string>('');
   const [saving, setSaving] = useState(false);
 
@@ -112,6 +114,8 @@ export function InventoryMasters({ activeSubTab, onSubTabChange, generalContent 
   const openAdd = (type: 'unit' | 'brand' | 'category' | 'sub-category') => {
     setFormName('');
     setFormSymbol('');
+    setFormShortCode('');
+    setFormAllowDecimal(false);
     setFormParentId('');
     setEditItem(null);
     setAddModal(type);
@@ -119,7 +123,16 @@ export function InventoryMasters({ activeSubTab, onSubTabChange, generalContent 
 
   const openEdit = (item: Unit | Brand | ProductCategory, type: 'unit' | 'brand' | 'category' | 'sub-category') => {
     setFormName(item.name);
-    setFormSymbol((item as Unit).symbol ?? '');
+    if (type === 'unit') {
+      const unit = item as Unit;
+      setFormSymbol(unit.symbol ?? '');
+      setFormShortCode(unit.short_code ?? '');
+      setFormAllowDecimal(unit.allow_decimal ?? false);
+    } else {
+      setFormSymbol('');
+      setFormShortCode('');
+      setFormAllowDecimal(false);
+    }
     setFormParentId((item as ProductCategory).parent_id ?? '');
     setEditItem(item);
     setAddModal(type);
@@ -135,13 +148,29 @@ export function InventoryMasters({ activeSubTab, onSubTabChange, generalContent 
       toast.error('Name is required');
       return;
     }
+    if (!formShortCode.trim()) {
+      toast.error('Short code is required (e.g., pcs, m, kg)');
+      return;
+    }
     setSaving(true);
     try {
       if (editItem) {
-        await unitService.update((editItem as Unit).id, { name: formName.trim(), symbol: formSymbol.trim() || undefined });
+        const unit = editItem as Unit;
+        await unitService.update(unit.id, { 
+          name: formName.trim(), 
+          short_code: formShortCode.trim(),
+          symbol: formSymbol.trim() || formShortCode.trim() || undefined,
+          allow_decimal: formAllowDecimal
+        });
         toast.success('Unit updated');
       } else {
-        await unitService.create({ company_id: companyId, name: formName.trim(), symbol: formSymbol.trim() || undefined });
+        await unitService.create({ 
+          company_id: companyId, 
+          name: formName.trim(), 
+          short_code: formShortCode.trim(),
+          symbol: formSymbol.trim() || formShortCode.trim() || undefined,
+          allow_decimal: formAllowDecimal
+        });
         toast.success('Unit added');
       }
       closeModal();
@@ -297,23 +326,43 @@ export function InventoryMasters({ activeSubTab, onSubTabChange, generalContent 
                 <thead className="bg-gray-950 text-gray-400 text-left">
                   <tr>
                     <th className="p-3">Name</th>
-                    <th className="p-3">Symbol</th>
+                    <th className="p-3">Short Code</th>
+                    <th className="p-3">Allow Decimal</th>
                     <th className="p-3">Status</th>
                     <th className="p-3 w-24">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-800">
                   {units.map((u) => (
-                    <tr key={u.id} className="hover:bg-gray-800/30">
-                      <td className="p-3 text-white">{u.name}</td>
-                      <td className="p-3 text-gray-400">{u.symbol || '—'}</td>
+                    <tr key={u.id} className={cn("hover:bg-gray-800/30", u.is_default && "bg-blue-500/5")}>
+                      <td className="p-3">
+                        <div className="flex items-center gap-2">
+                          <span className="text-white">{u.name}</span>
+                          {u.is_default && (
+                            <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/30 text-xs">Default</Badge>
+                          )}
+                        </div>
+                      </td>
+                      <td className="p-3 text-gray-400 font-mono">{u.short_code || u.symbol || '—'}</td>
+                      <td className="p-3">
+                        <Badge className={u.allow_decimal ? 'bg-green-500/20 text-green-400' : 'bg-gray-500/20 text-gray-400'}>
+                          {u.allow_decimal ? 'Yes' : 'No'}
+                        </Badge>
+                      </td>
                       <td className="p-3">
                         <Badge className={u.is_active ? 'bg-green-500/20 text-green-400' : 'bg-gray-500/20 text-gray-400'}>
                           {u.is_active ? 'Active' : 'Inactive'}
                         </Badge>
                       </td>
                       <td className="p-3 flex gap-1">
-                        <Button variant="ghost" size="sm" className="text-gray-400 h-8" onClick={() => openEdit(u, 'unit')}>
+                        <Button 
+                          variant="ghost" 
+                          size="sm" 
+                          className="text-gray-400 h-8" 
+                          onClick={() => openEdit(u, 'unit')}
+                          disabled={u.is_default}
+                          title={u.is_default ? 'Default unit cannot be edited' : 'Edit unit'}
+                        >
                           <Edit size={14} />
                         </Button>
                         <Button
@@ -321,9 +370,32 @@ export function InventoryMasters({ activeSubTab, onSubTabChange, generalContent 
                           size="sm"
                           className={u.is_active ? 'text-amber-400 h-8' : 'text-green-400 h-8'}
                           onClick={() => toggleActive('unit', u, !u.is_active)}
+                          disabled={u.is_default}
+                          title={u.is_default ? 'Default unit cannot be disabled' : u.is_active ? 'Disable unit' : 'Enable unit'}
                         >
                           {u.is_active ? <PowerOff size={14} /> : <Power size={14} />}
                         </Button>
+                        {!u.is_default && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="text-red-400 h-8"
+                            onClick={async () => {
+                              if (confirm(`Delete unit "${u.name}"? This cannot be undone.`)) {
+                                try {
+                                  await unitService.delete(u.id);
+                                  toast.success('Unit deleted');
+                                  loadUnits();
+                                } catch (e: any) {
+                                  toast.error(e?.message || 'Failed to delete');
+                                }
+                              }
+                            }}
+                            title="Delete unit"
+                          >
+                            <X size={14} />
+                          </Button>
+                        )}
                       </td>
                     </tr>
                   ))}
@@ -529,15 +601,49 @@ export function InventoryMasters({ activeSubTab, onSubTabChange, generalContent 
               />
             </div>
             {addModal === 'unit' && (
-              <div>
-                <Label className="text-gray-300">Symbol (optional)</Label>
-                <Input
-                  value={formSymbol}
-                  onChange={(e) => setFormSymbol(e.target.value)}
-                  className="bg-gray-950 border-gray-700 text-white mt-1"
-                  placeholder="e.g. pcs, m"
-                />
-              </div>
+              <>
+                <div>
+                  <Label className="text-gray-300">Short Code *</Label>
+                  <Input
+                    value={formShortCode}
+                    onChange={(e) => setFormShortCode(e.target.value)}
+                    className="bg-gray-950 border-gray-700 text-white mt-1"
+                    placeholder="e.g. pcs, m, kg, yd"
+                    disabled={editItem && (editItem as Unit).is_default}
+                  />
+                  <p className="text-xs text-gray-500 mt-1">Short code for this unit (e.g., pcs for Piece, m for Meter)</p>
+                </div>
+                <div>
+                  <Label className="text-gray-300">Symbol (optional)</Label>
+                  <Input
+                    value={formSymbol}
+                    onChange={(e) => setFormSymbol(e.target.value)}
+                    className="bg-gray-950 border-gray-700 text-white mt-1"
+                    placeholder="e.g. pcs, m (usually same as short code)"
+                    disabled={editItem && (editItem as Unit).is_default}
+                  />
+                </div>
+                <div className="flex items-center gap-3">
+                  <input
+                    type="checkbox"
+                    id="allowDecimal"
+                    checked={formAllowDecimal}
+                    onChange={(e) => setFormAllowDecimal(e.target.checked)}
+                    className="w-4 h-4 rounded border-gray-600 bg-gray-950 text-teal-600 focus:ring-teal-500"
+                    disabled={editItem && (editItem as Unit).is_default}
+                  />
+                  <Label htmlFor="allowDecimal" className="text-gray-300 cursor-pointer">
+                    Allow decimal quantities (e.g., 1.5 meters, 2.3 kg)
+                  </Label>
+                </div>
+                {editItem && (editItem as Unit).is_default && (
+                  <div className="p-3 bg-blue-500/10 border border-blue-500/30 rounded-lg">
+                    <p className="text-xs text-blue-400">
+                      ⚠️ This is the default unit (Piece). Some properties cannot be changed.
+                    </p>
+                  </div>
+                )}
+              </>
             )}
             {addModal === 'sub-category' && (
               <div>

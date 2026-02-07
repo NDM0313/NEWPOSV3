@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { 
   Receipt, 
   Wallet,
@@ -74,6 +74,29 @@ export const AccountingDashboard = () => {
   const { openDrawer } = useNavigation();
   const { companyId, branchId } = useSupabase();
   const [activeTab, setActiveTab] = useState<'transactions' | 'accounts' | 'ledger' | 'receivables' | 'payables' | 'deposits' | 'studio' | 'reports'>('transactions');
+  
+  // 🔒 ACCOUNTS PAGE 2-MODE DESIGN
+  // Check if accounting module is enabled
+  const [isAccountingEnabled, setIsAccountingEnabled] = useState(true);
+  const [accountsViewMode, setAccountsViewMode] = useState<'simple' | 'advanced'>('simple');
+  
+  useEffect(() => {
+    // Check accounting module status from settings
+    try {
+      const savedModules = localStorage.getItem('erp_modules');
+      if (savedModules) {
+        const modules = JSON.parse(savedModules);
+        const accountingEnabled = modules?.accounting?.isEnabled !== false; // Default to true
+        setIsAccountingEnabled(accountingEnabled);
+        // Set view mode based on accounting status
+        setAccountsViewMode(accountingEnabled ? 'advanced' : 'simple');
+      }
+    } catch (e) {
+      // Default to enabled
+      setIsAccountingEnabled(true);
+      setAccountsViewMode('advanced');
+    }
+  }, []);
   const [searchTerm, setSearchTerm] = useState('');
   const [pageSize, setPageSize] = useState(25);
   const [currentPage, setCurrentPage] = useState(1);
@@ -610,18 +633,51 @@ export const AccountingDashboard = () => {
 
         {activeTab === 'accounts' && (
           <div className="space-y-4">
-            {/* Header with Create Button */}
+            {/* Header with Mode Toggle & Create Button */}
             <div className="flex items-center justify-between">
               <div>
                 <h3 className="text-lg font-bold text-white">Accounts</h3>
-                <p className="text-sm text-gray-400">Manage your financial accounts</p>
+                <p className="text-sm text-gray-400">
+                  {isAccountingEnabled 
+                    ? 'Manage your financial accounts (Advanced Mode)' 
+                    : 'Manage your payment accounts (Simple Mode)'}
+                </p>
               </div>
-              <Button
-                onClick={() => setIsAddAccountOpen(true)}
-                className="bg-blue-600 hover:bg-blue-500 text-white gap-2"
-              >
-                <Plus size={16} /> Create New Account
-              </Button>
+              <div className="flex items-center gap-3">
+                {/* Mode Toggle (only show if accounting can be enabled) */}
+                {isAccountingEnabled && (
+                  <div className="flex items-center gap-2 bg-gray-900/50 border border-gray-800 rounded-lg px-3 py-1.5">
+                    <button
+                      onClick={() => setAccountsViewMode('simple')}
+                      className={cn(
+                        "text-xs font-medium px-2 py-1 rounded transition-colors",
+                        accountsViewMode === 'simple'
+                          ? "bg-blue-600 text-white"
+                          : "text-gray-400 hover:text-gray-300"
+                      )}
+                    >
+                      Simple
+                    </button>
+                    <button
+                      onClick={() => setAccountsViewMode('advanced')}
+                      className={cn(
+                        "text-xs font-medium px-2 py-1 rounded transition-colors",
+                        accountsViewMode === 'advanced'
+                          ? "bg-blue-600 text-white"
+                          : "text-gray-400 hover:text-gray-300"
+                      )}
+                    >
+                      Advanced
+                    </button>
+                  </div>
+                )}
+                <Button
+                  onClick={() => setIsAddAccountOpen(true)}
+                  className="bg-blue-600 hover:bg-blue-500 text-white gap-2"
+                >
+                  <Plus size={16} /> Create New Account
+                </Button>
+              </div>
             </div>
 
             {/* Accounts Table */}
@@ -644,15 +700,28 @@ export const AccountingDashboard = () => {
                     <thead className="bg-gray-900 border-b border-gray-800">
                       <tr className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
                         <th className="px-4 py-3 text-left">Account Name</th>
-                        <th className="px-4 py-3 text-left">Account Type</th>
-                        <th className="px-4 py-3 text-left">Scope</th>
+                        {accountsViewMode === 'advanced' && (
+                          <>
+                            <th className="px-4 py-3 text-left">Account Type</th>
+                            <th className="px-4 py-3 text-left">Scope</th>
+                          </>
+                        )}
                         <th className="px-4 py-3 text-right">Balance</th>
                         <th className="px-4 py-3 text-left">Status</th>
                         <th className="px-4 py-3 text-left">Actions</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {accounting.accounts.map((account) => (
+                      {/* 🔒 SIMPLE MODE: Show only Cash, Bank, Mobile Wallet */}
+                      {/* 🔒 ADVANCED MODE: Show all accounts */}
+                      {(accountsViewMode === 'simple' 
+                        ? accounting.accounts.filter(acc => 
+                            (acc.type === 'Cash' || acc.accountType === 'Cash' || acc.code === '1000') ||
+                            (acc.type === 'Bank' || acc.accountType === 'Bank' || acc.code === '1010') ||
+                            (acc.type === 'Mobile Wallet' || acc.accountType === 'Mobile Wallet' || acc.code === '1020')
+                          )
+                        : accounting.accounts
+                      ).map((account) => (
                         <tr 
                           key={account.id} 
                           className="border-b border-gray-800 hover:bg-gray-800/30 transition-colors"
@@ -672,14 +741,18 @@ export const AccountingDashboard = () => {
                               )}
                             </div>
                           </td>
-                          <td className="px-4 py-3 text-xs">
-                            <Badge className="bg-gray-800 text-gray-300 border-gray-700">
-                              {account.type || account.accountType || 'Asset'}
-                            </Badge>
-                          </td>
-                          <td className="px-4 py-3 text-sm text-gray-400">
-                            {account.branch ? 'Branch' : 'Global'}
-                          </td>
+                          {accountsViewMode === 'advanced' && (
+                            <>
+                              <td className="px-4 py-3 text-xs">
+                                <Badge className="bg-gray-800 text-gray-300 border-gray-700">
+                                  {account.type || account.accountType || 'Asset'}
+                                </Badge>
+                              </td>
+                              <td className="px-4 py-3 text-sm text-gray-400">
+                                {account.branch ? 'Branch' : 'Global'}
+                              </td>
+                            </>
+                          )}
                           <td className={cn(
                             "px-4 py-3 text-sm font-semibold text-right tabular-nums",
                             account.balance >= 0 ? "text-green-400" : "text-red-400"
@@ -708,37 +781,42 @@ export const AccountingDashboard = () => {
                                 </Button>
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="end" className="bg-gray-900 border-gray-800">
-                                <DropdownMenuItem
-                                  onClick={() => {
-                                    setLedgerAccount({
-                                      id: account.id,
-                                      name: account.name,
-                                      code: (account as any).code,
-                                      type: account.type || account.accountType || 'Asset',
-                                    });
-                                  }}
-                                  className="text-gray-300 hover:text-white hover:bg-gray-800"
-                                >
-                                  <FileText size={14} className="mr-2" /> View Ledger
-                                </DropdownMenuItem>
-                                <DropdownMenuItem
-                                  onClick={() => {
-                                    // TODO: Implement View Transactions
-                                    toast.info('View Transactions - Coming soon');
-                                  }}
-                                  className="text-gray-300 hover:text-white hover:bg-gray-800"
-                                >
-                                  <List size={14} className="mr-2" /> View Transactions
-                                </DropdownMenuItem>
-                                <DropdownMenuItem
-                                  onClick={() => {
-                                    // TODO: Implement Account Summary
-                                    toast.info('Account Summary - Coming soon');
-                                  }}
-                                  className="text-gray-300 hover:text-white hover:bg-gray-800"
-                                >
-                                  <BarChart3 size={14} className="mr-2" /> Account Summary
-                                </DropdownMenuItem>
+                                {/* Advanced Mode Only Actions */}
+                                {accountsViewMode === 'advanced' && (
+                                  <>
+                                    <DropdownMenuItem
+                                      onClick={() => {
+                                        setLedgerAccount({
+                                          id: account.id,
+                                          name: account.name,
+                                          code: (account as any).code,
+                                          type: account.type || account.accountType || 'Asset',
+                                        });
+                                      }}
+                                      className="text-gray-300 hover:text-white hover:bg-gray-800"
+                                    >
+                                      <FileText size={14} className="mr-2" /> View Ledger
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem
+                                      onClick={() => {
+                                        // TODO: Implement View Transactions
+                                        toast.info('View Transactions - Coming soon');
+                                      }}
+                                      className="text-gray-300 hover:text-white hover:bg-gray-800"
+                                    >
+                                      <List size={14} className="mr-2" /> View Transactions
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem
+                                      onClick={() => {
+                                        // TODO: Implement Account Summary
+                                        toast.info('Account Summary - Coming soon');
+                                      }}
+                                      className="text-gray-300 hover:text-white hover:bg-gray-800"
+                                    >
+                                      <BarChart3 size={14} className="mr-2" /> Account Summary
+                                    </DropdownMenuItem>
+                                  </>
+                                )}
                                 <DropdownMenuItem
                                   onClick={() => {
                                     setEditingAccount(account);

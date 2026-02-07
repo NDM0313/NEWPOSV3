@@ -43,7 +43,81 @@ export async function getSupplierLedgerData(
   let totalDebit = 0;
   let totalCredit = 0;
 
+  // CRITICAL: Filter out entries for deleted purchases
+  // Only show entries where purchase still exists in database
+  const validEntries: LedgerEntryRow[] = [];
+  const purchaseIds = entries
+    .filter(e => e.source === 'purchase' && e.reference_id)
+    .map(e => e.reference_id) as string[];
+  
+  let existingPurchases: Set<string> = new Set();
+  if (purchaseIds.length > 0) {
+    const { data: purchases } = await supabase
+      .from('purchases')
+      .select('id')
+      .in('id', purchaseIds);
+    
+    if (purchases) {
+      existingPurchases = new Set(purchases.map((p: any) => p.id));
+    }
+  }
+  
+  // Also check payment references for deleted purchases
+  const paymentIds = entries
+    .filter(e => e.source === 'payment' && e.reference_id)
+    .map(e => e.reference_id) as string[];
+  
+  let existingPayments: Set<string> = new Set();
+  if (paymentIds.length > 0) {
+    const { data: payments } = await supabase
+      .from('payments')
+      .select('id, reference_id, reference_type')
+      .in('id', paymentIds)
+      .eq('reference_type', 'purchase');
+    
+    if (payments) {
+      // Only include payments where the referenced purchase still exists
+      const paymentPurchaseIds = payments
+        .map((p: any) => p.reference_id)
+        .filter((id: string) => id) as string[];
+      
+      if (paymentPurchaseIds.length > 0) {
+        const { data: paymentPurchases } = await supabase
+          .from('purchases')
+          .select('id')
+          .in('id', paymentPurchaseIds);
+        
+        if (paymentPurchases) {
+          const validPurchaseIds = new Set(paymentPurchases.map((p: any) => p.id));
+          existingPayments = new Set(
+            payments
+              .filter((p: any) => validPurchaseIds.has(p.reference_id))
+              .map((p: any) => p.id)
+          );
+        }
+      }
+    }
+  }
+
+  // Filter entries: only include if purchase/payment still exists
   for (const e of entries as LedgerEntryRow[]) {
+    // Skip entries for deleted purchases
+    if (e.source === 'purchase' && e.reference_id && !existingPurchases.has(e.reference_id)) {
+      console.log(`[SUPPLIER LEDGER] Skipping entry for deleted purchase: ${e.reference_id}`);
+      continue;
+    }
+    
+    // Skip payment entries for deleted purchases
+    if (e.source === 'payment' && e.reference_id && !existingPayments.has(e.reference_id)) {
+      console.log(`[SUPPLIER LEDGER] Skipping payment entry for deleted purchase: ${e.reference_id}`);
+      continue;
+    }
+    
+    validEntries.push(e);
+  }
+
+  // Process only valid entries
+  for (const e of validEntries) {
     const debit = Number(e.debit ?? 0);
     const credit = Number(e.credit ?? 0);
     totalDebit += debit;

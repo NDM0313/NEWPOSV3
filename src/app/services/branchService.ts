@@ -93,6 +93,18 @@ export const branchService = {
         throw error;
       }
       
+      // CRITICAL: Create default accounts for new branch (Cash, Bank, Other)
+      if (data && data.company_id) {
+        try {
+          const { defaultAccountsService } = await import('@/app/services/defaultAccountsService');
+          await defaultAccountsService.ensureDefaultAccounts(data.company_id);
+          console.log('[BRANCH SERVICE] ✅ Default accounts ensured for branch:', data.id);
+        } catch (accountError) {
+          console.warn('[BRANCH SERVICE] Warning: Could not create default accounts:', accountError);
+          // Don't block branch creation if account creation fails
+        }
+      }
+      
       console.log('[BRANCH SERVICE] Branch created successfully:', data);
       return data;
     } catch (error: any) {

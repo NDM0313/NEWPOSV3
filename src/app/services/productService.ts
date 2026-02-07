@@ -438,6 +438,7 @@ export const productService = {
     company_id: string;
     branch_id?: string;
     product_id: string;
+    variation_id?: string; // CRITICAL: For variation-specific stock tracking
     movement_type: string; // 'purchase', 'sale', 'adjustment', 'transfer', 'return'
     quantity: number; // Positive for IN, Negative for OUT
     unit_cost?: number;
@@ -461,6 +462,7 @@ export const productService = {
       company_id: data.company_id,
       branch_id: data.branch_id || null,
       product_id: data.product_id,
+      variation_id: data.variation_id || null, // CRITICAL: Include variation_id for variation-specific stock
       quantity: data.quantity,
       unit_cost: data.unit_cost || 0,
       total_cost: data.total_cost || (data.unit_cost || 0) * Math.abs(data.quantity),
@@ -480,13 +482,31 @@ export const productService = {
       .single();
 
     if (error) {
-      console.error('[CREATE STOCK MOVEMENT] Error:', error);
-      console.error('[CREATE STOCK MOVEMENT] Error details:', {
+      // CRITICAL: Comprehensive error logging (STEP 1 requirement)
+      console.error('[CREATE STOCK MOVEMENT] ❌ ERROR CREATING STOCK MOVEMENT:', {
         code: error.code,
         message: error.message,
         details: error.details,
-        hint: error.hint
+        hint: error.hint,
+        insertData: JSON.stringify(insertData, null, 2)
       });
+      
+      // Log to database/activity log if possible
+      try {
+        // Try to log error to activity_logs if table exists
+        await supabase.from('activity_logs').insert({
+          company_id: data.company_id,
+          module: 'inventory',
+          entity_id: data.product_id,
+          action: 'stock_movement_error',
+          description: `Failed to create stock movement: ${error.message}`,
+          notes: JSON.stringify({ error, insertData })
+        }).catch(() => {
+          // Ignore if activity_logs insert fails
+        });
+      } catch (logError) {
+        // Ignore logging errors
+      }
       
       // If error is about column not found, try with only one column name
       if (error.code === '42703' || error.message?.includes('column') || error.message?.includes('does not exist')) {
@@ -494,7 +514,7 @@ export const productService = {
         
         // Remove one of the columns and retry
         const retryData = { ...insertData };
-        delete retryData.type; // Try with movement_type only
+        // Note: insertData only has movement_type, not type, so no need to delete
         const { data: retryMovement, error: retryError } = await supabase
           .from('stock_movements')
           .insert(retryData)
@@ -532,16 +552,27 @@ export const productService = {
       }
       
       throw error;
-    } else {
-      // Success with movement_type
-      console.log('[CREATE STOCK MOVEMENT] Success (using movement_type column):', {
-        id: movement.id,
-        movement_type: movement.movement_type || movement.type,
-        quantity: movement.quantity,
-        created_at: movement.created_at
-      });
     }
-
+    
+    // CRITICAL: Verify movement was created successfully
+    if (!movement || !movement.id) {
+      const errorMsg = 'Stock movement creation returned null/undefined';
+      console.error('[CREATE STOCK MOVEMENT] ❌ CRITICAL: Movement not created:', errorMsg);
+      throw new Error(errorMsg);
+    }
+    
+    // Success logging
+    console.log('[CREATE STOCK MOVEMENT] ✅ SUCCESS:', {
+      movement_id: movement.id,
+      product_id: movement.product_id,
+      variation_id: movement.variation_id,
+      quantity: movement.quantity,
+      movement_type: movement.movement_type || movement.type,
+      reference_type: movement.reference_type,
+      reference_id: movement.reference_id,
+      created_at: movement.created_at
+    });
+    
     return movement;
   },
 };

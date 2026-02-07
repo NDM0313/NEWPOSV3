@@ -27,6 +27,12 @@ export interface InventoryOverviewRow {
   movement: 'Fast' | 'Slow' | 'Medium' | 'Dead';
   minStock: number;
   reorderLevel: number;
+  hasVariations?: boolean;
+  variations?: Array<{
+    id: string;
+    attributes: any;
+    stock: number;
+  }>;
 }
 
 export interface InventoryMovementRow {
@@ -36,6 +42,7 @@ export interface InventoryMovementRow {
   movement_type: string;
   reference_type: string | null;
   reference_id: string | null;
+  variation_id?: string | null; // CRITICAL: Include variation_id for grouping
   quantity: number;
   box_change?: number;
   piece_change?: number;
@@ -62,13 +69,14 @@ export interface InventoryMovementsFilters {
 export const inventoryService = {
   /**
    * Stock Overview API – for Tab 1
-   * Joins: products, inventory_balance (if exists), product_categories, prices
-   * Fallback: if inventory_balance missing, use products.current_stock and 0 boxes/pieces
+   * CRITICAL: Uses stock_movements as SINGLE SOURCE OF TRUTH
+   * Formula: SUM(quantity) FROM stock_movements WHERE product_id = X GROUP BY product_id, variation_id
    */
   async getInventoryOverview(
     companyId: string,
     branchId?: string | null
   ): Promise<InventoryOverviewRow[]> {
+    // Step 1: Get all active products
     const productsQuery = supabase
       .from('products')
       .select(`
@@ -77,7 +85,6 @@ export const inventoryService = {
         name,
         cost_price,
         retail_price,
-        current_stock,
         min_stock,
         category_id,
         product_categories(id, name)
@@ -93,48 +100,158 @@ export const inventoryService = {
 
     const productIds = products.map((p: any) => p.id);
 
-    let balanceMap: Record<string, { qty: number; boxes: number; pieces: number; unit?: string }> = {};
-    try {
-      let balanceQuery = supabase
-        .from('inventory_balance')
-        .select('product_id, qty, boxes, pieces, unit')
-        .eq('company_id', companyId)
-        .in('product_id', productIds);
+    // Step 2: Calculate stock from stock_movements (SINGLE SOURCE OF TRUTH)
+    // 🔒 DIAGNOSTIC: Include movement_type, reference_type, reference_id, notes, created_at for negative stock diagnosis
+    let stockQuery = supabase
+      .from('stock_movements')
+      .select('product_id, variation_id, quantity, movement_type, reference_type, reference_id, notes, created_at')
+      .eq('company_id', companyId)
+      .in('product_id', productIds);
 
-      if (branchId && branchId !== 'all') {
-        balanceQuery = balanceQuery.eq('branch_id', branchId);
-      } else {
-        balanceQuery = balanceQuery.is('branch_id', null);
-      }
+    // 🔒 CRITICAL FIX: When branchId is 'all' or null, include ALL branches (no filter)
+    // When branchId is a specific UUID, filter by that branch
+    if (branchId && branchId !== 'all') {
+      stockQuery = stockQuery.eq('branch_id', branchId);
+    }
+    // If branchId is 'all' or null, don't filter by branch_id - include all movements
 
-      const { data: balances } = await balanceQuery;
-      if (balances?.length) {
-        balances.forEach((b: any) => {
-          balanceMap[b.product_id] = {
-            qty: Number(b.qty) || 0,
-            boxes: Number(b.boxes) || 0,
-            pieces: Number(b.pieces) || 0,
-            unit: b.unit,
-          };
-        });
-      }
-    } catch {
-      // inventory_balance table may not exist yet – use products.current_stock
+    const { data: movements, error: movementsError } = await stockQuery;
+    
+    // 🔒 DEBUG: Log query results for troubleshooting
+    console.log('[INVENTORY SERVICE] getInventoryOverview:', {
+      companyId,
+      branchId,
+      productCount: productIds.length,
+      movementsFetched: movements?.length || 0,
+      movementsError: movementsError?.message,
+      sampleMovements: movements?.slice(0, 3) // First 3 for debugging
+    });
+
+    // Step 3: Get product variations for products that have them
+    const { data: variations } = await supabase
+      .from('product_variations')
+      .select('id, product_id, attributes, stock')
+      .in('product_id', productIds)
+      .eq('is_active', true);
+
+    const variationMap: Record<string, any[]> = {};
+    if (variations) {
+      variations.forEach((v: any) => {
+        if (!variationMap[v.product_id]) {
+          variationMap[v.product_id] = [];
+        }
+        variationMap[v.product_id].push(v);
+      });
     }
 
+    // Step 4: Calculate stock from stock_movements (SINGLE SOURCE OF TRUTH)
+    // CRITICAL: Group by product_id AND variation_id
+    const productStockMap: Record<string, number> = {}; // Product-level stock (no variation)
+    const variationStockMap: Record<string, number> = {}; // Variation-level stock
+    
+    if (movements && !movementsError) {
+      movements.forEach((m: any) => {
+        const productId = m.product_id;
+        const variationId = m.variation_id;
+        const qty = Number(m.quantity) || 0;
+        
+        // 🔒 SAFETY: Validate product_id is UUID (not null/undefined)
+        if (!productId) {
+          console.warn('[INVENTORY SERVICE] ⚠️ Movement with null product_id:', m);
+          return; // Skip invalid movements
+        }
+        
+        if (variationId) {
+          // Variation-specific stock
+          variationStockMap[variationId] = (variationStockMap[variationId] || 0) + qty;
+        } else {
+          // Product-level stock (no variation)
+          productStockMap[productId] = (productStockMap[productId] || 0) + qty;
+        }
+      });
+      
+      // 🔒 DEBUG: Log calculated stock for verification
+      const totalProductStock = Object.values(productStockMap).reduce((sum, qty) => sum + qty, 0);
+      const totalVariationStock = Object.values(variationStockMap).reduce((sum, qty) => sum + qty, 0);
+      console.log('[INVENTORY SERVICE] Stock calculation summary:', {
+        totalMovements: movements.length,
+        productsWithStock: Object.keys(productStockMap).length,
+        variationsWithStock: Object.keys(variationStockMap).length,
+        totalProductStock,
+        totalVariationStock,
+        sampleProductStocks: Object.entries(productStockMap).slice(0, 5) // First 5 for debugging
+      });
+    } else if (movementsError) {
+      console.error('[INVENTORY SERVICE] ❌ Error fetching stock movements:', movementsError);
+    } else {
+      console.warn('[INVENTORY SERVICE] ⚠️ No movements found or movements is null');
+    }
+
+    // Step 5: Build rows with calculated stock
     const rows: InventoryOverviewRow[] = products.map((p: any) => {
-      const bal = balanceMap[p.id];
-      const stock = bal ? bal.qty : (Number(p.current_stock) ?? 0);
-      const boxes = bal?.boxes ?? 0;
-      const pieces = bal?.pieces ?? 0;
+      // Check if product has variations
+      const hasVariations = (variationMap[p.id]?.length || 0) > 0;
+      
+      let totalStock = 0;
+      
+      if (hasVariations) {
+        // If product has variations, sum all variation stocks
+        totalStock = variationMap[p.id].reduce((sum, v) => {
+          const varStock = variationStockMap[v.id] || 0; // 🔒 FIX: Don't use Math.max here, allow negative for detection
+          return sum + varStock;
+        }, 0);
+      } else {
+        // If no variations, use product-level stock
+        totalStock = productStockMap[p.id] || 0; // 🔒 FIX: Don't use Math.max here, allow negative for detection
+      }
+      
+      // 🔒 SAFETY: Check for negative stock and log warning with diagnostic info
+      // Negative stock indicates data issue (e.g., more sales than purchases)
+      // Allow negative to show in UI for visibility (helps identify data issues)
+      if (totalStock < 0) {
+        // 🔒 DIAGNOSTIC: Fetch detailed movements for this product to help diagnose
+        const productMovements = movements?.filter((m: any) => 
+          m.product_id === p.id && (!m.variation_id || !hasVariations)
+        ) || [];
+        
+        const movementSummary = {
+          purchases: productMovements.filter((m: any) => m.movement_type === 'purchase').reduce((sum: number, m: any) => sum + (Number(m.quantity) || 0), 0),
+          sales: productMovements.filter((m: any) => m.movement_type === 'sale').reduce((sum: number, m: any) => sum + (Number(m.quantity) || 0), 0),
+          adjustments: productMovements.filter((m: any) => m.movement_type === 'adjustment').reduce((sum: number, m: any) => sum + (Number(m.quantity) || 0), 0),
+          totalMovements: productMovements.length
+        };
+        
+        console.warn('[INVENTORY SERVICE] ⚠️ Negative stock calculated:', {
+          productId: p.id,
+          productName: p.name,
+          sku: p.sku,
+          calculatedStock: totalStock,
+          hasVariations,
+          productLevelStock: productStockMap[p.id],
+          variationStocks: hasVariations ? variationMap[p.id].map((v: any) => ({
+            variationId: v.id,
+            stock: variationStockMap[v.id] || 0
+          })) : [],
+          movementSummary,
+          recentMovements: productMovements.slice(-5).map((m: any) => ({
+            type: m.movement_type,
+            quantity: m.quantity,
+            reference: m.reference_type,
+            referenceId: m.reference_id,
+            notes: m.notes,
+            createdAt: m.created_at
+          }))
+        });
+      }
+
       const minStock = Number(p.min_stock) ?? 0;
       const avgCost = Number(p.cost_price) ?? 0;
       const sellingPrice = Number(p.retail_price) ?? 0;
-      const stockValue = stock * avgCost;
+      const stockValue = totalStock * avgCost;
 
       let status: 'Low' | 'OK' | 'Out' = 'OK';
-      if (stock <= 0) status = 'Out';
-      else if (minStock > 0 && stock <= minStock) status = 'Low';
+      if (totalStock <= 0) status = 'Out';
+      else if (minStock > 0 && totalStock <= minStock) status = 'Low';
 
       return {
         id: p.id,
@@ -143,10 +260,10 @@ export const inventoryService = {
         name: p.name || '',
         category: p.product_categories?.name || 'Uncategorized',
         categoryId: p.category_id,
-        stock,
-        boxes,
-        pieces,
-        unit: bal?.unit || 'pcs',
+        stock: totalStock, // Use actual calculated stock (can be negative to indicate data issues)
+        boxes: 0, // TODO: Calculate from packing if needed
+        pieces: totalStock, // For now, pieces = stock
+        unit: 'pcs',
         avgCost,
         sellingPrice,
         stockValue,
@@ -154,7 +271,14 @@ export const inventoryService = {
         movement: 'Medium',
         minStock,
         reorderLevel: minStock,
-      };
+        // Add variation data for UI (STEP 2: Show variations with individual stock)
+        hasVariations: hasVariations,
+        variations: hasVariations ? variationMap[p.id].map(v => ({
+          id: v.id,
+          attributes: v.attributes,
+          stock: Math.max(0, variationStockMap[v.id] || 0),
+        })) : [],
+      } as InventoryOverviewRow & { hasVariations?: boolean; variations?: any[] };
     });
 
     return rows;
@@ -178,6 +302,7 @@ export const inventoryService = {
         movement_type,
         reference_type,
         reference_id,
+        variation_id,
         quantity,
         box_change,
         piece_change,

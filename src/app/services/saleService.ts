@@ -442,15 +442,197 @@ export const saleService = {
   },
 
   // Delete sale (hard delete - removes sale and cascade deletes items)
+  // Delete sale with complete cascade delete (STEP 3: Reverse, not hide)
+  // CRITICAL: This deletes ALL related data in correct order
+  // Order: Payments → Journal Entries → Stock Movements (reverse) → Ledger Entries → Activity Logs → Sale Items → Sale
   async deleteSale(id: string) {
-    // CRITICAL FIX: Use hard delete since 'cancelled' status doesn't exist in enum
-    // Cascade delete will automatically remove related sale_items/sales_items
-    const { error } = await supabase
-      .from('sales')
-      .delete()
-      .eq('id', id);
+    console.log('[SALE SERVICE] Starting cascade delete for sale:', id);
+    
+    try {
+      // STEP 1: Delete all payments for this sale (and their journal entries)
+      const { data: payments } = await supabase
+        .from('payments')
+        .select('id')
+        .eq('reference_type', 'sale')
+        .eq('reference_id', id);
 
-    if (error) throw error;
+      if (payments && payments.length > 0) {
+        console.log(`[SALE SERVICE] Found ${payments.length} payments to delete`);
+        for (const payment of payments) {
+          try {
+            await this.deletePaymentDirect(payment.id, id);
+          } catch (paymentError: any) {
+            console.error(`[SALE SERVICE] Error deleting payment ${payment.id}:`, paymentError);
+            // Continue with other deletions even if one payment fails
+          }
+        }
+      }
+
+      // STEP 2: Reverse stock movements (to restore stock)
+      // CRITICAL: Include variation_id for proper stock reversal
+      const { data: stockMovements } = await supabase
+        .from('stock_movements')
+        .select('id, company_id, branch_id, product_id, variation_id, quantity, unit_cost, total_cost')
+        .eq('reference_type', 'sale')
+        .eq('reference_id', id);
+
+      if (stockMovements && stockMovements.length > 0) {
+        console.log(`[SALE SERVICE] Found ${stockMovements.length} stock movements to reverse`);
+        // Create reverse stock movements before deleting (STEP 3: Reverse, not hide)
+        for (const movement of stockMovements) {
+          try {
+            // Create reverse movement (positive quantity to restore stock - sale was negative)
+            // CRITICAL: Include variation_id for variation-specific stock reversal
+            const reverseMovement = {
+              company_id: movement.company_id,
+              branch_id: movement.branch_id,
+              product_id: movement.product_id,
+              variation_id: movement.variation_id || null, // CRITICAL: Include variation_id
+              movement_type: 'adjustment',
+              quantity: Math.abs(Number(movement.quantity) || 0), // Positive to reverse negative sale
+              unit_cost: Number(movement.unit_cost) || 0,
+              total_cost: Math.abs(Number(movement.total_cost) || 0), // Positive to reverse
+              reference_type: 'sale',
+              reference_id: id,
+              notes: `Reverse stock from deleted sale ${id}`,
+            };
+            
+            console.log('[SALE SERVICE] Creating reverse stock movement:', {
+              product_id: reverseMovement.product_id,
+              variation_id: reverseMovement.variation_id,
+              quantity: reverseMovement.quantity
+            });
+            
+            const { data: reverseData, error: reverseError } = await supabase
+              .from('stock_movements')
+              .insert(reverseMovement)
+              .select()
+              .single();
+            
+            if (reverseError) {
+              console.error('[SALE SERVICE] ❌ Failed to create reverse stock movement:', reverseError);
+              throw reverseError; // Don't allow silent failure
+            }
+            
+            console.log('[SALE SERVICE] ✅ Reverse stock movement created:', reverseData?.id);
+          } catch (reverseError: any) {
+            console.error('[SALE SERVICE] ❌ CRITICAL: Could not create reverse stock movement:', reverseError);
+            throw new Error(`Failed to reverse stock movement: ${reverseError.message || reverseError}`);
+          }
+        }
+        
+        // Delete original stock movements
+        const { error: stockError } = await supabase
+          .from('stock_movements')
+          .delete()
+          .eq('reference_type', 'sale')
+          .eq('reference_id', id);
+
+        if (stockError) {
+          console.error('[SALE SERVICE] Error deleting stock movements:', stockError);
+          throw stockError;
+        }
+      }
+
+      // STEP 3: Delete ledger entries (customer ledger)
+      // CRITICAL: Delete ALL entries related to this sale (sale, payment, discount)
+      const { data: allLedgerEntries } = await supabase
+        .from('ledger_entries')
+        .select('id, source, reference_no, reference_id')
+        .eq('reference_id', id);
+
+      if (allLedgerEntries && allLedgerEntries.length > 0) {
+        console.log(`[SALE SERVICE] Found ${allLedgerEntries.length} ledger entries to delete`);
+        const { error: ledgerError } = await supabase
+          .from('ledger_entries')
+          .delete()
+          .eq('reference_id', id);
+
+        if (ledgerError) {
+          console.error('[SALE SERVICE] Error deleting ledger entries:', ledgerError);
+          throw ledgerError;
+        }
+      }
+
+      // STEP 4: Delete journal entries directly linked to sale
+      const { data: journalEntries } = await supabase
+        .from('journal_entries')
+        .select('id')
+        .eq('reference_type', 'sale')
+        .eq('reference_id', id);
+
+      if (journalEntries && journalEntries.length > 0) {
+        console.log(`[SALE SERVICE] Found ${journalEntries.length} journal entries to delete`);
+        for (const entry of journalEntries) {
+          // Delete journal entry lines first
+          const { error: lineError } = await supabase
+            .from('journal_entry_lines')
+            .delete()
+            .eq('journal_entry_id', entry.id);
+
+          if (lineError) {
+            console.error('[SALE SERVICE] Error deleting journal entry lines:', lineError);
+          }
+
+          // Then delete journal entry
+          const { error: entryError } = await supabase
+            .from('journal_entries')
+            .delete()
+            .eq('id', entry.id);
+
+          if (entryError) {
+            console.error('[SALE SERVICE] Error deleting journal entry:', entryError);
+          }
+        }
+      }
+
+      // STEP 5: Delete activity logs
+      const { error: activityError } = await supabase
+        .from('activity_logs')
+        .delete()
+        .eq('module', 'sale')
+        .eq('entity_id', id);
+
+      if (activityError) {
+        console.warn('[SALE SERVICE] Error deleting activity logs (non-critical):', activityError);
+        // Activity logs deletion failure is non-critical
+      }
+
+      // STEP 6: Delete sale items (cascade should handle this, but explicit for safety)
+      const { error: itemsError } = await supabase
+        .from('sale_items')
+        .delete()
+        .eq('sale_id', id);
+
+      if (itemsError) {
+        // Try sales_items table as well
+        const { error: itemsError2 } = await supabase
+          .from('sales_items')
+          .delete()
+          .eq('sale_id', id);
+        
+        if (itemsError2) {
+          console.error('[SALE SERVICE] Error deleting sale items:', itemsError2);
+          // Continue - sale deletion will cascade
+        }
+      }
+
+      // STEP 7: Finally delete the sale record itself
+      const { error: saleError } = await supabase
+        .from('sales')
+        .delete()
+        .eq('id', id);
+
+      if (saleError) {
+        console.error('[SALE SERVICE] Error deleting sale:', saleError);
+        throw saleError;
+      }
+
+      console.log('[SALE SERVICE] ✅ Cascade delete completed successfully for sale:', id);
+    } catch (error: any) {
+      console.error('[SALE SERVICE] ❌ Cascade delete failed for sale:', id, error);
+      throw new Error(`Failed to delete sale: ${error.message || 'Unknown error'}`);
+    }
   },
 
   // Record payment
@@ -668,6 +850,9 @@ export const saleService = {
 
   // Get payments for a specific sale (by sale ID)
   async getSalePayments(saleId: string) {
+    console.log('[SALE SERVICE] getSalePayments called with saleId:', saleId);
+    
+    // First try: Query by reference_id (standard way)
     const { data, error } = await supabase
       .from('payments')
       .select(`
@@ -687,23 +872,57 @@ export const saleService = {
       .order('payment_date', { ascending: false })
       .order('created_at', { ascending: false });
 
+    console.log('[SALE SERVICE] Payment query result:', { 
+      dataCount: data?.length || 0, 
+      error: error?.message,
+      saleId 
+    });
+
     if (error) {
       console.error('[SALE SERVICE] Error fetching payments:', error);
-      return [];
+      // Don't return empty - try fallback
     }
 
-    // Transform to match Payment interface
-    return (data || []).map((p: any) => ({
-      id: p.id,
-      date: p.payment_date,
-      referenceNo: p.reference_number || '',
-      amount: parseFloat(p.amount || 0),
-      method: p.payment_method || 'cash',
-      accountId: p.payment_account_id,
-      accountName: p.account?.name || '',
-      notes: p.notes || '',
-      createdAt: p.created_at,
-    }));
+    // If we found payments, return them
+    if (data && data.length > 0) {
+      console.log('[SALE SERVICE] Found', data.length, 'payments for sale:', saleId);
+      return data.map((p: any) => ({
+        id: p.id,
+        date: p.payment_date,
+        referenceNo: p.reference_number || '',
+        amount: parseFloat(p.amount || 0),
+        method: p.payment_method || 'cash',
+        accountId: p.payment_account_id,
+        accountName: p.account?.name || '',
+        notes: p.notes || '',
+        createdAt: p.created_at,
+      }));
+    }
+
+    // FALLBACK: If no payments found by reference_id, check if sale has paid_amount > 0
+    // This handles cases where paid_amount was set but payment records are missing
+    console.log('[SALE SERVICE] No payments found by reference_id, checking sale paid_amount...');
+    try {
+      const { data: saleData } = await supabase
+        .from('sales')
+        .select('id, invoice_no, paid_amount, due_amount')
+        .eq('id', saleId)
+        .single();
+
+      if (saleData && saleData.paid_amount > 0) {
+        console.warn('[SALE SERVICE] ⚠️ Sale has paid_amount > 0 but no payment records found!', {
+          saleId,
+          invoiceNo: saleData.invoice_no,
+          paidAmount: saleData.paid_amount
+        });
+        // Return empty array - payments are missing, need to be created
+        // TODO: Could auto-create payment record here, but that's risky without user confirmation
+      }
+    } catch (saleError) {
+      console.error('[SALE SERVICE] Error checking sale paid_amount:', saleError);
+    }
+
+    return [];
   },
 
   // Delete payment (with reverse entry for accounting integrity)

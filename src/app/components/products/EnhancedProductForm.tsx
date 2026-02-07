@@ -257,7 +257,25 @@ export const EnhancedProductForm = ({
       try {
         setLoadingUnits(true);
         const data = await unitService.getAll(companyId);
-        setUnits(data.map((u) => ({ id: u.id, name: u.name, symbol: u.symbol })));
+        setUnits(data.map((u) => ({ 
+          id: u.id, 
+          name: u.name, 
+          symbol: u.symbol,
+          short_code: u.short_code,
+          is_default: u.is_default,
+          allow_decimal: u.allow_decimal
+        })));
+        
+        // Set default unit (Piece) if no unit is selected and not editing
+        if (!initialProduct) {
+          const currentUnit = getValues('unit');
+          if (!currentUnit) {
+            const defaultUnit = data.find(u => u.is_default) || data[0];
+            if (defaultUnit) {
+              setValue('unit', defaultUnit.id);
+            }
+          }
+        }
       } catch (error) {
         console.error('[PRODUCT FORM] Error loading units:', error);
         setUnits([]);
@@ -266,7 +284,7 @@ export const EnhancedProductForm = ({
       }
     };
     loadUnits();
-  }, [companyId]);
+  }, [companyId, initialProduct, setValue, getValues]);
 
   // Load suppliers from contacts (type = supplier)
   useEffect(() => {
@@ -969,13 +987,32 @@ export const EnhancedProductForm = ({
                           {loadingUnits ? (
                             <div className="px-2 py-1.5 text-sm text-gray-400">Loading units...</div>
                           ) : units.length > 0 ? (
-                            units.map((u) => (
-                              <SelectItem key={u.id} value={u.id}>
-                                {u.name}{u.symbol ? ` (${u.symbol})` : ''}
-                              </SelectItem>
-                            ))
+                            <>
+                              {units.map((u) => (
+                                <SelectItem key={u.id} value={u.id}>
+                                  {u.name} ({u.short_code || u.symbol || '—'})
+                                </SelectItem>
+                              ))}
+                              <div className="border-t border-gray-800 mt-1 pt-1">
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.preventDefault();
+                                    // Open Settings → Inventory → Units
+                                    // This would require navigation context
+                                    toast.info('Go to Settings → Inventory → Units to add a new unit');
+                                  }}
+                                  className="w-full px-2 py-1.5 text-sm text-blue-400 hover:text-blue-300 hover:bg-gray-800 rounded flex items-center gap-2"
+                                >
+                                  <Plus size={14} />
+                                  Add New Unit
+                                </button>
+                              </div>
+                            </>
                           ) : (
-                            <div className="px-2 py-1.5 text-sm text-gray-500">No units. Add in Settings → Inventory → Units.</div>
+                            <div className="px-2 py-1.5 text-sm text-gray-500">
+                              No units. <button type="button" onClick={() => toast.info('Go to Settings → Inventory → Units')} className="text-blue-400 hover:underline">Add in Settings → Inventory → Units</button>.
+                            </div>
                           )}
                         </SelectContent>
                       </Select>

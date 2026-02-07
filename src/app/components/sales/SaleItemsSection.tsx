@@ -4,6 +4,7 @@ import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Badge } from "../ui/badge";
 import { InlineVariationSelector, Variation } from "../ui/inline-variation-selector";
+import { cn } from "../ui/utils";
 import {
     Command,
     CommandEmpty,
@@ -45,6 +46,7 @@ interface SaleItem {
     packingDetails?: any;
     stock?: number;
     showVariations?: boolean; // Flag to show variation selector inline
+    unitAllowDecimal?: boolean; // From product's unit
 }
 
 interface SaleItemsSectionProps {
@@ -184,10 +186,10 @@ export const SaleItemsSection: React.FC<SaleItemsSectionProps> = ({
                                 </button>
                             </PopoverTrigger>
                             <PopoverContent className="w-[600px] p-0 bg-gray-950 border-gray-800 text-white shadow-2xl shadow-black/50" align="start">
-                                <Command className="bg-gray-950 text-white">
+                                <Command className="bg-gray-950 text-white" shouldFilter={false}>
                                     <CommandInput 
                                         ref={searchInputRef}
-                                        placeholder="Type to search products..." 
+                                        placeholder="Search by name, SKU, or numeric code (e.g., 001, 22)..." 
                                         value={productSearchTerm}
                                         onValueChange={setProductSearchTerm}
                                         className="h-12 text-base border-b border-gray-800" 
@@ -203,7 +205,7 @@ export const SaleItemsSection: React.FC<SaleItemsSectionProps> = ({
                                                     <p className="text-gray-600 text-xs mb-6">
                                                         {productSearchTerm ? `No results for "${productSearchTerm}"` : 'Start typing to search'}
                                                     </p>
-                                                    {productSearchTerm && (
+                                                    {filteredProducts.length === 0 && productSearchTerm && String(productSearchTerm).trim().length > 0 && (
                                                         <button
                                                             onClick={() => {
                                                                 setProductSearchOpen(false);
@@ -225,7 +227,7 @@ export const SaleItemsSection: React.FC<SaleItemsSectionProps> = ({
                                                 {filteredProducts.map((p) => (
                                                     <CommandItem
                                                         key={p.id}
-                                                        value={p.name}
+                                                        value={`${p.name} ${p.sku}`}
                                                         onSelect={() => handleSelectProduct(p)}
                                                         className="text-white hover:bg-gray-800/80 cursor-pointer px-4 py-3 data-[selected=true]:bg-gray-800"
                                                     >
@@ -415,11 +417,21 @@ export const SaleItemsSection: React.FC<SaleItemsSectionProps> = ({
                                         <Input 
                                             ref={(el) => (itemQtyRefs.current[item.id] = el)}
                                             type="number"
-                                            className="h-7 w-full text-center bg-transparent border-transparent hover:border-gray-700 focus:bg-gray-950 focus:border-blue-500 p-0.5 text-sm font-medium"
+                                            step={item.unitAllowDecimal === false ? "1" : "0.01"}
+                                            className="h-7 w-full text-center bg-transparent border-transparent hover:border-gray-700 focus:bg-gray-950 focus:border-blue-500 p-0.5 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                                             value={item.qty}
-                                            onChange={(e) => updateItem(item.id, 'qty', parseFloat(e.target.value) || 0)}
+                                            onChange={(e) => {
+                                                const value = parseFloat(e.target.value) || 0;
+                                                // Validate: if unit doesn't allow decimals, reject decimal input
+                                                if (item.unitAllowDecimal === false && value % 1 !== 0) {
+                                                    toast.error('This product unit does not allow decimal quantities');
+                                                    return;
+                                                }
+                                                updateItem(item.id, 'qty', value);
+                                            }}
                                             onKeyDown={(e) => handleQtyKeyDown(e, item.id)}
-                                            disabled={!!item.packingDetails}
+                                            disabled={!!item.packingDetails || (item.showVariations && !item.selectedVariationId)}
+                                            placeholder={item.showVariations && !item.selectedVariationId ? "—" : ""}
                                         />
                                     </div>
 
@@ -428,10 +440,12 @@ export const SaleItemsSection: React.FC<SaleItemsSectionProps> = ({
                                         <Input 
                                             ref={(el) => (itemPriceRefs.current[item.id] = el)}
                                             type="number"
-                                            className="h-7 w-full text-right bg-transparent border-transparent hover:border-gray-700 focus:bg-gray-950 focus:border-blue-500 px-2 py-0.5 text-sm font-medium"
+                                            className="h-7 w-full text-right bg-transparent border-transparent hover:border-gray-700 focus:bg-gray-950 focus:border-blue-500 px-2 py-0.5 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                                             value={item.price}
                                             onChange={(e) => updateItem(item.id, 'price', parseFloat(e.target.value) || 0)}
                                             onKeyDown={(e) => handlePriceKeyDown(e, item.id)}
+                                            disabled={item.showVariations && !item.selectedVariationId}
+                                            placeholder={item.showVariations && !item.selectedVariationId ? "—" : ""}
                                         />
                                     </div>
 
@@ -456,44 +470,60 @@ export const SaleItemsSection: React.FC<SaleItemsSectionProps> = ({
 
                                 {/* Inline Variation Selector Row - Shows under product if variations needed */}
                                 {item.showVariations && productVariations[String(item.productId)] && (
-                                    <div className="bg-blue-500/5 border-t border-blue-500/20 px-6 py-4">
-                                        <div className="flex items-center gap-3">
-                                            <span className="text-xs text-blue-400 font-medium">Select Variation:</span>
-                                            <div className="flex flex-wrap gap-2">
-                                                {productVariations[String(item.productId)].map((variation, vIndex) => (
-                                                    <button
-                                                        key={vIndex}
-                                                        ref={(el) => {
-                                                            if (vIndex === 0) {
-                                                                itemVariationRefs.current[item.id] = el;
-                                                            }
-                                                        }}
-                                                        onClick={() => handleInlineVariationSelect(item.id, variation)}
-                                                        onKeyDown={(e) => {
-                                                            const totalVariations = productVariations[String(item.productId)].length;
-                                                            const variationButtons = document.querySelectorAll(`[data-variation-item=\"${item.id}\"]`);
-                                                            
-                                                            if (e.key === 'ArrowRight') {
-                                                                e.preventDefault();
-                                                                const nextIndex = (vIndex + 1) % totalVariations;
-                                                                (variationButtons[nextIndex] as HTMLButtonElement)?.focus();
-                                                            } else if (e.key === 'ArrowLeft') {
-                                                                e.preventDefault();
-                                                                const prevIndex = (vIndex - 1 + totalVariations) % totalVariations;
-                                                                (variationButtons[prevIndex] as HTMLButtonElement)?.focus();
-                                                            } else if (e.key === 'Enter') {
-                                                                e.preventDefault();
-                                                                handleInlineVariationSelect(item.id, variation);
-                                                            }
-                                                        }}
-                                                        data-variation-item={item.id}
-                                                        className="px-3 py-1.5 text-xs bg-gray-800 hover:bg-blue-600 text-gray-300 hover:text-white rounded border border-gray-700 hover:border-blue-500 transition-all focus:bg-blue-600 focus:text-white focus:border-blue-400 focus:ring-2 focus:ring-blue-500/50 focus:outline-none"
-                                                    >
-                                                        {variation.size} / {variation.color}
-                                                    </button>
-                                                ))}
+                                    <div className="bg-blue-500/5 border-t border-blue-500/20 px-4 py-3">
+                                        <div className="flex items-center gap-3 flex-wrap">
+                                            <div className="flex flex-wrap gap-2 flex-1">
+                                                {productVariations[String(item.productId)].map((variation, vIndex) => {
+                                                    const size = variation.size || variation.attributes?.size as string || 'Default';
+                                                    const color = variation.color || variation.attributes?.color as string || 'Default';
+                                                    const isSelected = item.selectedVariationId === variation.id;
+                                                    
+                                                    return (
+                                                        <button
+                                                            key={variation.id || vIndex}
+                                                            ref={(el) => {
+                                                                if (vIndex === 0) {
+                                                                    itemVariationRefs.current[item.id] = el;
+                                                                }
+                                                            }}
+                                                            onClick={() => handleInlineVariationSelect(item.id, variation)}
+                                                            onKeyDown={(e) => {
+                                                                const totalVariations = productVariations[String(item.productId)].length;
+                                                                const variationButtons = document.querySelectorAll(`[data-variation-item=\"${item.id}\"]`);
+                                                                
+                                                                if (e.key === 'ArrowRight') {
+                                                                    e.preventDefault();
+                                                                    const nextIndex = (vIndex + 1) % totalVariations;
+                                                                    (variationButtons[nextIndex] as HTMLButtonElement)?.focus();
+                                                                } else if (e.key === 'ArrowLeft') {
+                                                                    e.preventDefault();
+                                                                    const prevIndex = (vIndex - 1 + totalVariations) % totalVariations;
+                                                                    (variationButtons[prevIndex] as HTMLButtonElement)?.focus();
+                                                                } else if (e.key === 'Enter') {
+                                                                    e.preventDefault();
+                                                                    handleInlineVariationSelect(item.id, variation);
+                                                                }
+                                                            }}
+                                                            data-variation-item={item.id}
+                                                            className={cn(
+                                                                "px-3 py-1.5 text-xs rounded border transition-all focus:ring-2 focus:ring-blue-500/50 focus:outline-none",
+                                                                isSelected
+                                                                    ? "bg-blue-500 text-white border-blue-400"
+                                                                    : "bg-gray-800 hover:bg-blue-600 text-gray-300 hover:text-white border-gray-700 hover:border-blue-500"
+                                                            )}
+                                                        >
+                                                            {size && color ? `${size} / ${color}` : size || color || 'Default'}
+                                                        </button>
+                                                    );
+                                                })}
                                             </div>
                                         </div>
+                                        {/* Show variation-specific SKU when selected */}
+                                        {item.selectedVariationId && (
+                                            <div className="mt-2 text-[10px] text-gray-400 font-mono">
+                                                SKU: {item.sku}
+                                            </div>
+                                        )}
                                     </div>
                                 )}
                             </div>

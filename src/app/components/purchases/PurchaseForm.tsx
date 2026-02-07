@@ -41,7 +41,6 @@ import { Separator } from "../ui/separator";
 import { Badge } from "../ui/badge";
 import { CalendarDatePicker } from "../ui/CalendarDatePicker";
 import { SearchableSelect } from "../ui/searchable-select";
-import { InlineVariationSelector, Variation } from "../ui/inline-variation-selector";
 import {
   Select,
   SelectContent,
@@ -106,12 +105,13 @@ interface PurchaseItem {
     lastPurchasePrice?: number;
     lastSupplier?: string;
     // UI State
-    showVariations?: boolean; // Flag to show variation selector inline under this item
+    showVariations?: boolean; // Flag to show variation selector inline
+    selectedVariationId?: string; // Currently selected variation ID
 }
 
 interface PartialPayment {
     id: string;
-    method: 'cash' | 'bank' | 'other';
+    method: 'cash' | 'bank' | 'Mobile Wallet';
     amount: number;
     reference?: string;
     notes?: string;
@@ -139,7 +139,7 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
     const isAdmin = userRole === 'admin' || userRole === 'Admin';
     const { createPurchase, updatePurchase } = usePurchases();
     const { openDrawer, activeDrawer, createdContactId, createdContactType, setCreatedContactId, openPackingModal } = useNavigation();
-    const { generateDocumentNumber } = useDocumentNumbering();
+    const { generateDocumentNumber, generateDocumentNumberSafe } = useDocumentNumbering();
     
     // STEP 1: Detect edit mode - check for purchase ID in multiple possible fields
     // CRITICAL FIX: Database uses UUID, but frontend might pass numeric id
@@ -198,9 +198,6 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
     // Standard Variation States
     const [pendingSize, setPendingSize] = useState<string>("");
     const [pendingColor, setPendingColor] = useState<string>("");
-    // Inline Variation Selection
-    const [showVariationSelector, setShowVariationSelector] = useState(false);
-    const [selectedProductForVariation, setSelectedProductForVariation] = useState<any | null>(null);
     // Standard Packing States
     const [pendingThaans, setPendingThaans] = useState<number>(0);
     const [pendingMeters, setPendingMeters] = useState<number>(0);
@@ -223,7 +220,7 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
     const [partialPayments, setPartialPayments] = useState<PartialPayment[]>([]);
     
     // Payment Form State
-    const [newPaymentMethod, setNewPaymentMethod] = useState<'cash' | 'bank' | 'other'>('cash');
+    const [newPaymentMethod, setNewPaymentMethod] = useState<'cash' | 'bank' | 'Mobile Wallet'>('cash');
     const [newPaymentAmount, setNewPaymentAmount] = useState<number>(0);
     const [newPaymentReference, setNewPaymentReference] = useState<string>("");
     
@@ -296,21 +293,6 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
         return 'text-gray-500';
     };
 
-    // Variation options from backend only (product.variations) - no dummy data
-    const productVariationsFromBackend = useMemo(() => {
-        const map: Record<number, Array<{ size: string; color: string }>> = {};
-        products.forEach((p) => {
-            if (!p.variations?.length) return;
-            const key = typeof p.id === 'number' ? p.id : (/^\d+$/.test(String(p.id)) ? parseInt(String(p.id), 10) : NaN);
-            if (!Number.isNaN(key)) {
-                map[key] = p.variations.map((v: any) => ({
-                    size: (v.attributes?.size ?? v.size ?? '').toString(),
-                    color: (v.attributes?.color ?? v.color ?? '').toString(),
-                }));
-            }
-        });
-        return map;
-    }, [products]);
 
     // Status helper functions
     const getStatusColor = () => {
@@ -342,14 +324,157 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
         }
     };
 
+    // Display purchase number: actual when editing, generated safe number when new
+    const displayPurchaseNumber = useMemo(() => {
+        if (initialPurchase?.po_no || initialPurchase?.purchaseNo || initialPurchase?.poNo) {
+            return initialPurchase.po_no || initialPurchase.purchaseNo || initialPurchase.poNo;
+        }
+        // CRITICAL FIX: Use the pre-generated safe number from state (generated on form open)
+        if (poNumber) {
+            return poNumber;
+        }
+        // Fallback (shouldn't happen if useEffect ran correctly)
+        if (typeof generateDocumentNumber !== 'function') return 'PO-0001';
+        return generateDocumentNumber('purchase');
+    }, [initialPurchase?.po_no, initialPurchase?.purchaseNo, initialPurchase?.poNo, poNumber, generateDocumentNumber]);
+
     // --- Workflow Handlers ---
 
-    // 1. Select Product -> Immediately add to items list (Selection = Add)
+    // Helper: Extract numeric part from SKU (keep leading zeros for matching)
+    const extractNumericPart = (sku: string): string => {
+        // Extract numeric part (keep leading zeros)
+        return sku.replace(/\D/g, '');
+    };
+
+    // Helper: Normalize numeric part (remove leading zeros for comparison)
+    const normalizeNumeric = (numStr: string): string => {
+        return numStr.replace(/^0+/, '') || '0';
+    };
+
+    // Helper: Check if search term matches SKU (including numeric-only search)
+    const matchesSku = (sku: string, searchTerm: string): boolean => {
+        if (!sku || !searchTerm) return false;
+        
+        const lowerSku = sku.toLowerCase();
+        const lowerSearch = searchTerm.toLowerCase();
+        
+        // 1. Direct text match (full SKU or partial)
+        if (lowerSku.includes(lowerSearch)) {
+            return true;
+        }
+        
+        // 2. Numeric matching (handle leading zeros)
+        const skuNumeric = extractNumericPart(sku);
+        const searchNumeric = extractNumericPart(searchTerm);
+        
+        // If search term has numbers, check numeric matching
+        if (searchNumeric.length > 0) {
+            // If SKU has no numeric part, skip numeric matching
+            if (skuNumeric.length === 0) {
+                return false;
+            }
+            
+            // Match with leading zeros preserved (e.g., "0001" matches "REG-0001")
+            // Special handling for "0" - only match if SKU numeric part starts with "0" or contains "0" as a digit
+            if (searchNumeric === '0') {
+                // "0" should match SKUs that have "0" in their numeric part
+                // But be more precise: match if SKU starts with "0" (like "0001", "001", "002")
+                if (skuNumeric.startsWith('0')) {
+                    return true;
+                }
+            } else {
+                // For other numeric searches, use includes check
+                if (skuNumeric.includes(searchNumeric) || searchNumeric.includes(skuNumeric)) {
+                    return true;
+                }
+            }
+            
+            // Match normalized (without leading zeros) - e.g., "1" matches "0001"
+            const normalizedSku = normalizeNumeric(skuNumeric);
+            const normalizedSearch = normalizeNumeric(searchNumeric);
+            
+            // Special case: if search is "0" after normalization, it should match any SKU with leading zeros
+            // But we already handled this above with includes() check
+            // So only do normalized matching if both are non-zero
+            if (normalizedSearch !== '0' && normalizedSku !== '0') {
+                // Check if normalized values match (exact or partial)
+                if (normalizedSku === normalizedSearch) {
+                    return true;
+                }
+                
+                // Check if one contains the other (for partial matches)
+                if (normalizedSku.includes(normalizedSearch) || normalizedSearch.includes(normalizedSku)) {
+                    return true;
+                }
+            }
+        }
+        
+        return false;
+    };
+
+    // Variation options from backend - for inline selection
+    const productVariationsFromBackend = useMemo(() => {
+        const map: Record<string | number, Array<{ id?: string; size?: string; color?: string; sku?: string; price?: number; stock?: number; attributes?: Record<string, unknown> }>> = {};
+        products.forEach((p) => {
+            if (!p.variations?.length) return;
+            const productId = p.id;
+            const stringKey = String(productId);
+            const numKey = typeof productId === 'number' ? productId : (/^\d+$/.test(stringKey) ? parseInt(stringKey, 10) : null);
+            
+            // Normalize variations to ensure consistent structure
+            const normalizedVariations = p.variations.map((v: any) => {
+                // Extract size and color from various possible structures
+                // Try direct properties first, then attributes object (case-insensitive)
+                let size = v.size || '';
+                let color = v.color || '';
+                
+                // If not found directly, check attributes object
+                if (!size && v.attributes) {
+                    size = v.attributes.size || 
+                           v.attributes.Size || 
+                           v.attributes.SIZE || 
+                           (typeof v.attributes === 'object' ? Object.values(v.attributes).find((val: any) => typeof val === 'string' && ['s', 'm', 'l', 'xl', 'xs'].includes(val.toLowerCase())) : '') || 
+                           '';
+                }
+                
+                if (!color && v.attributes) {
+                    color = v.attributes.color || 
+                            v.attributes.Color || 
+                            v.attributes.COLOR || 
+                            (typeof v.attributes === 'object' ? Object.values(v.attributes).find((val: any) => typeof val === 'string' && ['red', 'blue', 'green', 'white', 'black'].some(c => val.toLowerCase().includes(c))) : '') || 
+                            '';
+                }
+                
+                // Debug log for first variation of first product
+                if (p.id === products[0]?.id && v === p.variations[0]) {
+                    console.log('[VARIATION NORMALIZE] Original variation:', v, 'Extracted size:', size, 'color:', color);
+                }
+                
+                return {
+                    id: v.id,
+                    size: String(size || '').trim(),
+                    color: String(color || '').trim(),
+                    sku: v.sku,
+                    price: v.price,
+                    stock: v.stock,
+                    attributes: v.attributes || {},
+                };
+            });
+            
+            map[stringKey] = normalizedVariations;
+            if (numKey !== null) {
+                map[numKey] = normalizedVariations;
+            }
+        });
+        return map;
+    }, [products]);
+
+    // 1. Select Product -> Add to items, show variation strip if needed
     const handleSelectProduct = (product: any) => {
         const newItemId = Date.now();
         
         // Check if product has variations
-        if (product.hasVariations) {
+        if (product.hasVariations && product.variations && product.variations.length > 0) {
             // Add product with variation selector flag
             const newItem: PurchaseItem = {
                 id: newItemId,
@@ -364,12 +489,11 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                 lastPurchasePrice: product.lastPurchasePrice,
                 lastSupplier: product.lastSupplier,
                 showVariations: true, // Show variation selector inline
+                unitAllowDecimal: product.unitAllowDecimal ?? false, // Pass unit decimal setting
             };
 
             setItems(prev => [newItem, ...prev]);
             toast.success("Item added - Select variation");
-            
-            // Set focus tracking for variation section
             setLastAddedItemId(newItemId);
         } else {
             // No variations - add directly
@@ -385,12 +509,11 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                 stock: product.stock,
                 lastPurchasePrice: product.lastPurchasePrice,
                 lastSupplier: product.lastSupplier,
+                unitAllowDecimal: product.unitAllowDecimal ?? false, // Pass unit decimal setting
             };
 
             setItems(prev => [newItem, ...prev]);
             toast.success("Item added");
-            
-            // Set focus tracking for quantity input
             setLastAddedItemId(newItemId);
         }
         
@@ -399,15 +522,24 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
         setProductSearchTerm("");
     };
     
-    // Handle variation selection from inline row
-    const handleInlineVariationSelect = (itemId: number, variation: { size?: string; color?: string }) => {
+    // Handle variation selection from inline strip
+    const handleInlineVariationSelect = (itemId: number, variation: { id?: string; size?: string; color?: string; sku?: string; price?: number; stock?: number; attributes?: Record<string, unknown> }) => {
         setItems(prev => prev.map(item => {
             if (item.id === itemId) {
+                const size = variation.size || variation.attributes?.size as string;
+                const color = variation.color || variation.attributes?.color as string;
+                const variationSku = variation.sku || `${item.sku}-${size}-${color}`.replace(/\s+/g, '-').toUpperCase();
+                
                 return {
                     ...item,
-                    size: variation.size,
-                    color: variation.color,
+                    size: size,
+                    color: color,
+                    sku: variationSku, // Update SKU to variation-specific SKU
+                    price: variation.price || item.price,
+                    variationId: variation.id,
+                    stock: variation.stock ?? item.stock,
                     showVariations: false, // Hide variation selector
+                    selectedVariationId: variation.id,
                 };
             }
             return item;
@@ -418,11 +550,6 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
         setTimeout(() => {
             itemQtyRefs.current[itemId]?.focus();
         }, 50);
-    };
-    
-    // Handle variation selection (deprecated - kept for compatibility)
-    const handleVariationSelect = (variation: Variation) => {
-        // Deprecated - variations now handled inline in item rows
     };
 
     // 2. Clear Pending Row (Reset to Search) - Deprecated, kept for compatibility
@@ -533,10 +660,46 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
         toast.success("Expense added!");
     };
 
-    const filteredProducts = products.filter(p => 
-        p.name.toLowerCase().includes(productSearchTerm.toLowerCase()) ||
-        p.sku.toLowerCase().includes(productSearchTerm.toLowerCase())
-    );
+    // Enhanced search with SKU numeric matching (parent products only, no variations in results)
+    const filteredProducts = useMemo(() => {
+        if (!productSearchTerm.trim()) return products;
+        
+        const searchTerm = productSearchTerm.trim();
+        const searchLower = searchTerm.toLowerCase();
+        const isNumericOnly = /^\d+$/.test(searchTerm);
+        
+        const results = products.filter(p => {
+            // Match product name
+            const nameMatch = p.name.toLowerCase().includes(searchLower);
+            
+            // Match SKU (full or numeric part)
+            const skuMatch = matchesSku(p.sku, searchTerm);
+            
+            // Debug for "0" search
+            if (isNumericOnly && searchTerm === '0' && skuMatch) {
+                console.log(`[FILTER DEBUG] Product: ${p.name}, SKU: ${p.sku}, nameMatch: ${nameMatch}, skuMatch: ${skuMatch}, Will include: ${nameMatch || skuMatch}`);
+            }
+            
+            return nameMatch || skuMatch;
+        });
+        
+        // Debug: Log results for numeric search
+        if (isNumericOnly) {
+            console.log(`[SKU SEARCH] Search: "${searchTerm}", Results: ${results.length}, Total Products: ${products.length}`);
+            if (results.length === 0) {
+                console.log(`[SKU SEARCH] No matches. Available products:`, products.map(p => ({ 
+                    name: p.name, 
+                    sku: p.sku, 
+                    numeric: extractNumericPart(p.sku),
+                    normalized: normalizeNumeric(extractNumericPart(p.sku))
+                })));
+            } else {
+                console.log(`[SKU SEARCH] Matched products:`, results.map(p => ({ name: p.name, sku: p.sku })));
+            }
+        }
+        
+        return results;
+    }, [products, productSearchTerm]);
     
     // Load data from Supabase
     useEffect(() => {
@@ -548,29 +711,62 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                 
                 // Load suppliers (contacts with type='supplier')
                 const contactsData = await contactService.getAllContacts(companyId);
+                
+                // Load purchases to calculate supplier due balances
+                const purchasesData = await purchaseService.getAllPurchases(companyId);
+                
+                // Calculate due balance for each supplier from purchases
+                const supplierDueMap = new Map<string, number>();
+                purchasesData.forEach((p: any) => {
+                    const supplierId = p.supplier_id || p.supplier?.id;
+                    if (supplierId) {
+                        const currentDue = supplierDueMap.get(supplierId) || 0;
+                        const purchaseDue = p.due_amount || (p.total || 0) - (p.paid_amount || 0);
+                        supplierDueMap.set(supplierId, currentDue + purchaseDue);
+                    }
+                });
+                
                 const supplierContacts = contactsData
                     .filter(c => c.type === 'supplier' || c.type === 'both')
-                    .map(c => ({
-                        id: c.id || c.uuid || '',
-                        name: c.name || '',
-                        dueBalance: c.payables || 0
-                    }));
+                    .map(c => {
+                        const contactId = c.id || c.uuid || '';
+                        const dueBalance = supplierDueMap.get(contactId) || 
+                                          c.supplier_opening_balance || 
+                                          c.current_balance || 
+                                          c.opening_balance || 
+                                          0;
+                        return {
+                            id: contactId,
+                            name: c.name || '',
+                            dueBalance: dueBalance
+                        };
+                    });
                 setSuppliers(supplierContacts);
                 
                 // Load products
                 const productsData = await productService.getAllProducts(companyId);
-                const productsList = productsData.map(p => ({
-                    id: p.id || p.uuid || '',
-                    name: p.name || '',
-                    sku: p.sku || '',
-                    price: (p.cost_price ?? p.costPrice ?? p.price) || 0,
-                    stock: (p.current_stock ?? p.stock) ?? 0,
-                    lastPurchasePrice: (p.cost_price ?? p.costPrice) ?? undefined,
-                    lastSupplier: undefined, // Can be enhanced later
-                    hasVariations: (p.variations && p.variations.length > 0) || false,
-                    needsPacking: false, // Can be enhanced based on product type
-                    variations: p.variations || []
-                }));
+                // Load units for decimal validation
+                const { unitService } = await import('@/app/services/unitService');
+                const unitsData = await unitService.getAll(companyId);
+                const unitsMap = new Map(unitsData.map(u => [u.id, u]));
+                
+                const productsList = productsData.map(p => {
+                    const unit = p.unit_id ? unitsMap.get(p.unit_id) : null;
+                    return {
+                        id: p.id || p.uuid || '',
+                        name: p.name || '',
+                        sku: p.sku || '',
+                        price: (p.cost_price ?? p.costPrice ?? p.price) || 0,
+                        stock: (p.current_stock ?? p.stock) ?? 0,
+                        lastPurchasePrice: (p.cost_price ?? p.costPrice) ?? undefined,
+                        lastSupplier: undefined, // Can be enhanced later
+                        hasVariations: (p.variations && p.variations.length > 0) || false,
+                        needsPacking: false, // Can be enhanced based on product type
+                        variations: p.variations || [],
+                        unitId: p.unit_id || null,
+                        unitAllowDecimal: unit?.allow_decimal ?? false // Default to false if no unit
+                    };
+                });
                 setProducts(productsList);
             } catch (error) {
                 console.error('[PURCHASE FORM] Error loading data:', error);
@@ -726,19 +922,31 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
     // Track if PO number has been generated for new purchases
     const poNumberGeneratedRef = useRef(false);
     
+    // CRITICAL FIX: Generate collision-safe document number when form opens (new purchase only)
     useEffect(() => {
-        if (!initialPurchase && !poNumberGeneratedRef.current) {
-            // New purchase: Generate PO number (only once)
+        if (!initialPurchase && !poNumberGeneratedRef.current && companyId) {
+            // New purchase: Generate collision-safe PO number (only once)
             poNumberGeneratedRef.current = true;
-            const newPoNumber = generateDocumentNumber('purchase');
-            setPoNumber(newPoNumber);
+            const generateSafeNumber = async () => {
+                try {
+                    const safeNumber = await generateDocumentNumberSafe('purchase');
+                    setPoNumber(safeNumber);
+                    console.log('[PURCHASE FORM] Generated safe document number:', safeNumber);
+                } catch (error) {
+                    console.error('[PURCHASE FORM] Error generating safe document number:', error);
+                    // Fallback to sync generation
+                    const fallbackNumber = generateDocumentNumber('purchase');
+                    setPoNumber(fallbackNumber);
+                }
+            };
+            generateSafeNumber();
         }
         
         // Reset when switching to edit mode
         if (initialPurchase) {
             poNumberGeneratedRef.current = false;
         }
-    }, [initialPurchase]); // Removed generateDocumentNumber from dependencies
+    }, [initialPurchase, companyId, generateDocumentNumberSafe, generateDocumentNumber]);
 
     // STEP 2: Load full purchase data from backend when editing
     useEffect(() => {
@@ -866,7 +1074,7 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
             if (purchaseData.payments && purchaseData.payments.length > 0) {
                 const payments = purchaseData.payments.map((payment: any, index: number) => ({
                     id: payment.id?.toString() || (index + 1).toString(),
-                    method: (payment.method || payment.payment_method || 'cash') as 'cash' | 'bank' | 'other',
+                    method: (payment.method || payment.payment_method || 'cash') as 'cash' | 'bank' | 'Mobile Wallet',
                     amount: payment.amount || 0,
                     reference: payment.reference || payment.reference_no || '',
                     attachments: payment.attachments || []
@@ -877,7 +1085,7 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                 const paidAmount = purchaseData.paid || purchaseData.paid_amount || 0;
                 setPartialPayments([{
                     id: '1',
-                    method: (purchaseData.paymentMethod || purchaseData.payment_method || 'cash') as 'cash' | 'bank' | 'other',
+                    method: (purchaseData.paymentMethod || purchaseData.payment_method || 'cash') as 'cash' | 'bank' | 'Mobile Wallet',
                     amount: paidAmount,
                     reference: '',
                     attachments: []
@@ -953,6 +1161,15 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
             return;
         }
         
+        // CRITICAL FIX: Validate unit decimal rules before save
+        for (const item of items) {
+            if (item.unitAllowDecimal === false && item.qty % 1 !== 0) {
+                toast.error(`Item "${item.name}": This product unit does not allow decimal quantities. Please enter a whole number.`);
+                setSaving(false);
+                return;
+            }
+        }
+        
         try {
             setSaving(true);
             
@@ -1021,23 +1238,64 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
             
             // STEP 5: Handle edit vs create mode
             if (isEditMode && purchaseId) {
-                // EDIT MODE: Update existing purchase
-                // Note: Full update with items might need backend enhancement
-                // For now, update basic fields and status
-                // STEP 1 FIX: Include notes (reference number) in update
+                // 🔒 EDIT MODE: Update existing purchase with items
+                // CRITICAL FIX: Pass items to updatePurchase() (like SaleForm does)
+                // PurchaseContext.updatePurchase() handles items update internally with delta-based stock movements
                 await updatePurchase(purchaseId, {
                     status: purchaseStatus as 'draft' | 'ordered' | 'received' | 'final',
                     paymentStatus: paymentStatus as 'paid' | 'partial' | 'unpaid',
                     total: totalAmount,
                     paid: totalPaid,
                     due: balanceDue,
-                    notes: refNumber || undefined, // CRITICAL: Save reference number in notes field
+                    notes: refNumber || undefined,
+                    // 🔒 CRITICAL: Pass items array to updatePurchase (like SaleForm does)
+                    items: purchaseItems,
                 });
+                
                 toast.success('Purchase order updated successfully!');
+                
+                // 🔒 CRITICAL FIX: Dispatch event for inventory refresh (EDIT MODE)
+                console.log('[PURCHASE FORM] 📢 Dispatching purchaseSaved event (EDIT MODE), purchaseId:', purchaseId);
+                window.dispatchEvent(new CustomEvent('purchaseSaved', { 
+                    detail: { purchaseId: purchaseId } 
+                }));
             } else {
                 // CREATE MODE: Create new purchase
-                await createPurchase(purchaseData);
+                const newPurchase = await createPurchase(purchaseData);
+                
+                // Save payments if any were added during purchase creation
+                if (partialPayments.length > 0 && newPurchase?.id && companyId) {
+                    try {
+                        const finalBranchId = isAdmin 
+                            ? (branchId || contextBranchId || '') 
+                            : (contextBranchId || branchId || '');
+                        
+                        for (const payment of partialPayments) {
+                            await purchaseService.recordPayment(
+                                newPurchase.id, // CRITICAL FIX: Use id, not uuid (Purchase interface has id field)
+                                payment.amount,
+                                payment.method,
+                                payment.accountId || undefined,
+                                companyId,
+                                finalBranchId || undefined,
+                                payment.reference || undefined
+                            );
+                        }
+                        console.log('[PURCHASE FORM] Payments saved:', partialPayments.length);
+                    } catch (paymentError: any) {
+                        console.error('[PURCHASE FORM] Error saving payments:', paymentError);
+                        toast.error('Purchase created but failed to save payments: ' + (paymentError.message || 'Unknown error'));
+                    }
+                }
+                
                 toast.success('Purchase order created successfully!');
+                
+                // 🔒 CRITICAL FIX: Dispatch event for inventory refresh (CREATE MODE)
+                // Note: createPurchase already dispatches this event, but we dispatch again here for safety
+                console.log('[PURCHASE FORM] 📢 Dispatching purchaseSaved event (CREATE MODE), purchaseId:', newPurchase?.id);
+                window.dispatchEvent(new CustomEvent('purchaseSaved', { 
+                    detail: { purchaseId: newPurchase?.id } 
+                }));
             }
             
             if (print) {
@@ -1118,12 +1376,9 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                         </div>
                         <div className="flex items-center gap-2 ml-4 pl-4 border-l border-gray-800">
                             <Hash size={14} className="text-cyan-500" />
-                            <span className="text-sm font-mono text-cyan-400">{poNumber || 'PO-001'}</span>
-                            {initialPurchase && (
-                                <Badge variant="outline" className="text-[10px] px-1.5 py-0.5 border-cyan-500/30 text-cyan-400">
-                                    Auto
-                                </Badge>
-                            )}
+                            <span className="text-sm font-mono text-cyan-400">
+                                {displayPurchaseNumber || 'PO-0001'}
+                            </span>
                         </div>
                     </div>
                     <div className="flex items-center gap-4">
@@ -1142,30 +1397,33 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                                 </button>
                             </PopoverTrigger>
                             <PopoverContent className="w-48 bg-gray-900 border-gray-800 text-white p-2" align="start">
-                                <div className="space-y-1">
-                                    {(['draft', 'ordered', 'received', 'final'] as const).map((s) => (
-                                        <button
-                                            key={s}
-                                            type="button"
-                                            onClick={() => { setPurchaseStatus(s); setStatusOpen(false); }}
-                                            className={cn(
-                                                'w-full text-left px-3 py-2 rounded-md text-sm transition-all flex items-center gap-2',
-                                                purchaseStatus === s ? 'bg-gray-800 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'
-                                            )}
-                                        >
-                                            <span
-                                                className={cn(
-                                                    'w-1.5 h-1.5 rounded-full',
-                                                    s === 'draft' && 'bg-gray-500',
-                                                    s === 'ordered' && 'bg-yellow-500',
-                                                    s === 'received' && 'bg-blue-500',
-                                                    s === 'final' && 'bg-green-500'
-                                                )}
-                                            />
-                                            {s.charAt(0).toUpperCase() + s.slice(1)}
-                                        </button>
-                                    ))}
-                                </div>
+                                <Command className="bg-transparent border-0">
+                                    <CommandList>
+                                        <CommandGroup>
+                                            {(['draft', 'ordered', 'received', 'final'] as const).map((s) => (
+                                                <CommandItem
+                                                    key={s}
+                                                    onSelect={() => { setPurchaseStatus(s); setStatusOpen(false); }}
+                                                    className={cn(
+                                                        'cursor-pointer px-3 py-2 rounded-md text-sm transition-all flex items-center gap-2',
+                                                        purchaseStatus === s ? 'bg-gray-800 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'
+                                                    )}
+                                                >
+                                                    <span
+                                                        className={cn(
+                                                            'w-1.5 h-1.5 rounded-full shrink-0',
+                                                            s === 'draft' && 'bg-gray-500',
+                                                            s === 'ordered' && 'bg-yellow-500',
+                                                            s === 'received' && 'bg-blue-500',
+                                                            s === 'final' && 'bg-green-500'
+                                                        )}
+                                                    />
+                                                    {s.charAt(0).toUpperCase() + s.slice(1)}
+                                                </CommandItem>
+                                            ))}
+                                        </CommandGroup>
+                                    </CommandList>
+                                </Command>
                             </PopoverContent>
                         </Popover>
                         {/* Branch Selector - Role-based visibility + Edit mode lock */}
@@ -1193,7 +1451,7 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                                     <div className="flex items-center justify-between mb-1.5">
                                         <Label className="text-orange-400 font-medium text-[10px] uppercase tracking-wide h-[14px]">Supplier</Label>
                                         {supplierId && (
-                                            <span className={cn("text-[10px] font-medium tabular-nums", getDueBalanceColor(selectedSupplierDue))}>
+                                            <span className={cn("text-[15px] font-semibold tabular-nums", getDueBalanceColor(selectedSupplierDue))}>
                                                 {formatDueBalanceCompact(selectedSupplierDue)}
                                             </span>
                                         )}
@@ -1312,20 +1570,14 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                                 qtyInputRef={qtyInputRef}
                                 priceInputRef={priceInputRef}
                                 addBtnRef={addBtnRef}
-                                // Inline variation selection
-                                showVariationSelector={showVariationSelector}
-                                selectedProductForVariation={selectedProductForVariation}
+                                // Variation handling
                                 productVariations={productVariationsFromBackend}
-                                handleVariationSelect={handleVariationSelect}
-                                setShowVariationSelector={setShowVariationSelector}
-                                setSelectedProductForVariation={setSelectedProductForVariation}
                                 handleInlineVariationSelect={handleInlineVariationSelect}
                                 // Update item
                                 updateItem={updateItem}
                                 // Keyboard navigation
                                 itemQtyRefs={itemQtyRefs}
                                 itemPriceRefs={itemPriceRefs}
-                                itemVariationRefs={itemVariationRefs}
                                 handleQtyKeyDown={handleQtyKeyDown}
                                 handlePriceKeyDown={handlePriceKeyDown}
                             />
@@ -1405,7 +1657,7 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                                             <SelectItem value="loading">Loading</SelectItem>
                                             <SelectItem value="unloading">Unloading</SelectItem>
                                             <SelectItem value="customs">Customs</SelectItem>
-                                            <SelectItem value="other">Other</SelectItem>
+                                            <SelectItem value="Mobile Wallet">Mobile Wallet</SelectItem>
                                         </SelectContent>
                                     </Select>
                                     <Input 
@@ -1552,7 +1804,7 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                                         <SelectContent className="bg-gray-950 border-gray-800 text-white">
                                             <SelectItem value="cash">Cash</SelectItem>
                                             <SelectItem value="bank">Bank</SelectItem>
-                                            <SelectItem value="other">Other</SelectItem>
+                                            <SelectItem value="Mobile Wallet">Mobile Wallet</SelectItem>
                                         </SelectContent>
                                     </Select>
                                     <Input 

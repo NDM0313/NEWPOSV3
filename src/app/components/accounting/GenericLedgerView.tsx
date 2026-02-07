@@ -3,7 +3,7 @@
  * Data from ledgerDataAdapters; labels per type: Purchases/Expenses/Jobs, Payments, Aging (Payables).
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { ModernDateFilter } from '@/app/components/customer-ledger-test/modern-original/ModernDateFilter';
 import { ModernSummaryCards } from '@/app/components/customer-ledger-test/modern-original/ModernSummaryCards';
@@ -39,37 +39,54 @@ export function GenericLedgerView({ ledgerType, entityId, entityName }: GenericL
   const [loading, setLoading] = useState(true);
   const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null);
 
-  useEffect(() => {
+  // Load ledger data
+  const loadLedger = useCallback(async () => {
     if (!companyId || !entityId) {
       setLedgerData(null);
       setLoading(false);
       return;
     }
-    let cancelled = false;
     setLoading(true);
-    const load = async () => {
-      try {
-        const data =
-          ledgerType === 'supplier'
-            ? await getSupplierLedgerData(companyId, entityId, entityName, dateRange.from, dateRange.to)
-            : ledgerType === 'user'
-              ? await getUserLedgerData(companyId, entityId, entityName, dateRange.from, dateRange.to)
-              : await getWorkerLedgerData(companyId, entityId, entityName, dateRange.from, dateRange.to);
-        if (!cancelled) setLedgerData(data);
-      } catch (e: any) {
-        if (!cancelled) {
-          console.error('[GenericLedgerView]', e);
-          toast.error(e?.message || 'Failed to load ledger');
-        }
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
+    try {
+      const data =
+        ledgerType === 'supplier'
+          ? await getSupplierLedgerData(companyId, entityId, entityName, dateRange.from, dateRange.to)
+          : ledgerType === 'user'
+            ? await getUserLedgerData(companyId, entityId, entityName, dateRange.from, dateRange.to)
+            : await getWorkerLedgerData(companyId, entityId, entityName, dateRange.from, dateRange.to);
+      setLedgerData(data);
+    } catch (e: any) {
+      console.error('[GenericLedgerView]', e);
+      toast.error(e?.message || 'Failed to load ledger');
+    } finally {
+      setLoading(false);
+    }
+  }, [companyId, entityId, entityName, ledgerType, dateRange.from, dateRange.to]);
+
+  useEffect(() => {
+    loadLedger();
+  }, [loadLedger]);
+
+  // CRITICAL: Listen for purchase/sale delete events to refresh ledger
+  useEffect(() => {
+    const handlePurchaseDelete = () => {
+      console.log('[GenericLedgerView] Purchase deleted, refreshing ledger...');
+      loadLedger();
     };
-    load();
+    
+    const handleSaleDelete = () => {
+      console.log('[GenericLedgerView] Sale deleted, refreshing ledger...');
+      loadLedger();
+    };
+
+    window.addEventListener('purchaseDeleted', handlePurchaseDelete);
+    window.addEventListener('saleDeleted', handleSaleDelete);
+    
     return () => {
-      cancelled = true;
+      window.removeEventListener('purchaseDeleted', handlePurchaseDelete);
+      window.removeEventListener('saleDeleted', handleSaleDelete);
     };
-  }, [companyId, ledgerType, entityId, entityName, dateRange.from, dateRange.to]);
+  }, [loadLedger]);
 
   const displayTransactions = ledgerData
     ? buildTransactionsWithOpeningBalance(ledgerData.openingBalance, ledgerData.transactions, dateRange.from)

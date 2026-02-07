@@ -122,15 +122,17 @@ interface SaleItem {
     stock?: number;
     lastPurchasePrice?: number;
     lastSupplier?: string;
+    unitAllowDecimal?: boolean; // From product's unit
     // UI State
     showVariations?: boolean; // Flag to show variation selector inline under this item
+    selectedVariationId?: string; // Currently selected variation ID
     /** Set when user opens packing modal; cleared on save. Used to block submit if packing not saved. */
     packingTouched?: boolean;
 }
 
 interface PartialPayment {
     id: string;
-    method: 'cash' | 'bank' | 'other';
+    method: 'cash' | 'bank' | 'Mobile Wallet';
     amount: number;
     reference?: string;
     notes?: string;
@@ -179,6 +181,7 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
     const dataLoadedRef = useRef(false); // Track if initial data load has completed
     const [saleDate, setSaleDate] = useState<Date>(new Date());
     const [refNumber, setRefNumber] = useState("");
+    const [saleNotes, setSaleNotes] = useState(""); // Notes field for sale (saves to database)
     const [invoiceNumber, setInvoiceNumber] = useState("");
     
     // Branch State - Locked for regular users, open for admin
@@ -227,7 +230,7 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
     const [partialPayments, setPartialPayments] = useState<PartialPayment[]>([]);
     
     // Payment Form State
-    const [newPaymentMethod, setNewPaymentMethod] = useState<'cash' | 'bank' | 'other'>('cash');
+    const [newPaymentMethod, setNewPaymentMethod] = useState<'cash' | 'bank' | 'Mobile Wallet'>('cash');
     const [newPaymentAmount, setNewPaymentAmount] = useState<number>(0);
     const [newPaymentReference, setNewPaymentReference] = useState<string>("");
     
@@ -324,22 +327,163 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
 
     const getSalesmanName = () => salesmen.find(s => s.id.toString() === salesmanId)?.name || "No Salesman";
 
-    // Filtered products for search
-    const filteredProducts = products.filter(p => 
-        p.name.toLowerCase().includes(productSearchTerm.toLowerCase()) || 
-        p.sku.toLowerCase().includes(productSearchTerm.toLowerCase())
-    );
+    // Helper: Extract numeric part from SKU (keep leading zeros)
+    const extractNumericPart = (sku: string): string => {
+        return sku.replace(/\D/g, '');
+    };
+
+    // Helper: Normalize numeric part (remove leading zeros for comparison)
+    const normalizeNumeric = (numStr: string): string => {
+        return numStr.replace(/^0+/, '') || '0';
+    };
+
+    // Helper: Check if search term matches SKU (including numeric-only search)
+    const matchesSku = (sku: string, searchTerm: string): boolean => {
+        if (!sku || !searchTerm) return false;
+        
+        const lowerSku = sku.toLowerCase();
+        const lowerSearch = searchTerm.toLowerCase();
+        
+        // 1. Direct text match (full SKU or partial)
+        if (lowerSku.includes(lowerSearch)) {
+            return true;
+        }
+        
+        // 2. Numeric matching (handle leading zeros)
+        const skuNumeric = extractNumericPart(sku);
+        const searchNumeric = extractNumericPart(searchTerm);
+        
+        // If search term has numbers, check numeric matching
+        if (searchNumeric.length > 0) {
+            // If SKU has no numeric part, skip numeric matching
+            if (skuNumeric.length === 0) {
+                return false;
+            }
+            
+            // Match with leading zeros preserved (e.g., "0001" matches "REG-0001")
+            // Special handling for "0" - only match if SKU numeric part starts with "0"
+            if (searchNumeric === '0') {
+                // "0" should match SKUs that have "0" in their numeric part
+                // But be more precise: match if SKU starts with "0" (like "0001", "001", "002")
+                if (skuNumeric.startsWith('0')) {
+                    return true;
+                }
+            } else {
+                // For other numeric searches, use includes check
+                if (skuNumeric.includes(searchNumeric) || searchNumeric.includes(skuNumeric)) {
+                    return true;
+                }
+            }
+            
+            // Match normalized (without leading zeros) - e.g., "1" matches "0001"
+            const normalizedSku = normalizeNumeric(skuNumeric);
+            const normalizedSearch = normalizeNumeric(searchNumeric);
+            
+            // Special case: if search normalizes to "0", it means search was all zeros
+            // In this case, we already checked with includes() above, so skip normalized check
+            // Only do normalized matching if search is not all zeros
+            if (normalizedSearch !== '0') {
+                // Check if normalized values match (exact or partial)
+                if (normalizedSku === normalizedSearch) {
+                    return true;
+                }
+                
+                // Check if one contains the other (for partial matches)
+                // But avoid "0" matching everything
+                if (normalizedSku !== '0' && normalizedSearch !== '0') {
+                    if (normalizedSku.includes(normalizedSearch) || normalizedSearch.includes(normalizedSku)) {
+                        return true;
+                    }
+                }
+            }
+        }
+        
+        return false;
+    };
+
+    // Enhanced search with SKU numeric matching (parent products only, no variations in results)
+    const filteredProducts = useMemo(() => {
+        if (!productSearchTerm.trim()) return products;
+        
+        const searchTerm = productSearchTerm.trim();
+        const searchLower = searchTerm.toLowerCase();
+        const isNumericOnly = /^\d+$/.test(searchTerm);
+        
+        const results = products.filter(p => {
+            // Match product name
+            const nameMatch = p.name.toLowerCase().includes(searchLower);
+            
+            // Match SKU (full or numeric part)
+            const skuMatch = matchesSku(p.sku, searchTerm);
+            
+            return nameMatch || skuMatch;
+        });
+        
+        // Debug: Log results for numeric search
+        if (isNumericOnly) {
+            console.log(`[SKU SEARCH] Search: "${searchTerm}", Results: ${results.length}/${products.length}`);
+            if (results.length > 0) {
+                console.log(`[SKU SEARCH] ✅ Matched:`, results.map(p => `${p.name} (${p.sku})`));
+            } else {
+                console.log(`[SKU SEARCH] ❌ No matches. Sample products:`, products.slice(0, 3).map(p => ({ 
+                    name: p.name, 
+                    sku: p.sku, 
+                    numeric: extractNumericPart(p.sku),
+                    normalized: normalizeNumeric(extractNumericPart(p.sku))
+                })));
+            }
+        }
+        
+        return results;
+    }, [products, productSearchTerm]);
     
     // Variation options from backend only (product.variations) - no dummy data
+    // Variation options from backend - for inline selection
     const productVariationsFromBackend = useMemo(() => {
-        const map: Record<string, Array<{ id: string; size: string; color: string }>> = {};
+        const map: Record<string | number, Array<{ id?: string; size?: string; color?: string; sku?: string; price?: number; stock?: number; attributes?: Record<string, unknown> }>> = {};
         products.forEach((p) => {
-            if (p.variations && p.variations.length > 0) {
-                map[String(p.id)] = p.variations.map((v: any) => ({
+            if (!p.variations?.length) return;
+            const productId = p.id;
+            const stringKey = String(productId);
+            const numKey = typeof productId === 'number' ? productId : (/^\d+$/.test(stringKey) ? parseInt(stringKey, 10) : null);
+            
+            // Normalize variations to ensure consistent structure
+            const normalizedVariations = p.variations.map((v: any) => {
+                // Extract size and color from various possible structures
+                let size = v.size || '';
+                let color = v.color || '';
+                
+                // If not found directly, check attributes object
+                if (!size && v.attributes) {
+                    size = v.attributes.size || 
+                           v.attributes.Size || 
+                           v.attributes.SIZE || 
+                           (typeof v.attributes === 'object' ? Object.values(v.attributes).find((val: any) => typeof val === 'string' && ['s', 'm', 'l', 'xl', 'xs'].includes(val.toLowerCase())) : '') || 
+                           '';
+                }
+                
+                if (!color && v.attributes) {
+                    color = v.attributes.color || 
+                            v.attributes.Color || 
+                            v.attributes.COLOR || 
+                            (typeof v.attributes === 'object' ? Object.values(v.attributes).find((val: any) => typeof val === 'string' && ['red', 'blue', 'green', 'white', 'black'].some(c => val.toLowerCase().includes(c))) : '') || 
+                            '';
+                }
+                
+                return {
                     id: v.id,
-                    size: (v.attributes?.size ?? v.size ?? '').toString(),
-                    color: (v.attributes?.color ?? v.color ?? '').toString(),
-                }));
+                    size: String(size || '').trim(),
+                    color: String(color || '').trim(),
+                    sku: v.sku,
+                    price: v.price,
+                    stock: v.stock,
+                    attributes: v.attributes || {},
+                };
+            });
+            
+            map[stringKey] = normalizedVariations;
+            if (numKey !== null) {
+                map[numKey] = normalizedVariations;
             }
         });
         return map;
@@ -392,6 +536,11 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                 // Instead of using products.current_stock, calculate from stock_movements
                 const productsData = await productService.getAllProducts(companyId);
                 
+                // Load units for decimal validation
+                const { unitService } = await import('@/app/services/unitService');
+                const unitsData = await unitService.getAll(companyId);
+                const unitsMap = new Map(unitsData.map(u => [u.id, u]));
+                
                 // Calculate stock for each product from movements (async batch)
                 const productsList = await Promise.all(
                   productsData.map(async (p) => {
@@ -427,6 +576,9 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                       }
                     }
                     
+                    // Get unit data for decimal validation
+                    const unit = p.unit_id ? unitsMap.get(p.unit_id) : null;
+                    
                     return {
                       id: p.id || p.uuid || '',
                       name: p.name || '',
@@ -437,7 +589,8 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                       lastSupplier: undefined, // Can be enhanced later
                       hasVariations: (p.variations && p.variations.length > 0) || false,
                       needsPacking: false, // Can be enhanced based on product type
-                      variations: p.variations || [] // Backend variations for inline selector (no dummy data)
+                      variations: p.variations || [], // Backend variations for inline selector (no dummy data)
+                      unitAllowDecimal: unit?.allow_decimal ?? false // Default to false if no unit
                     };
                   })
                 );
@@ -698,21 +851,90 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
             }
         }
     }, [pendingCustomerId, customers]);
+    
+    // 🔒 CRITICAL FIX: Set customer ID when editing, AFTER customers are loaded
+    // This ensures the customer dropdown shows the correct selected customer
+    useEffect(() => {
+        if (initialSale && initialSale.customer) {
+            const customerIdValue = initialSale.customer || '';
+            
+            // If customers are not loaded yet, set customerId anyway (will be validated when customers load)
+            if (customers.length === 0) {
+                console.log('[SALE FORM] Setting customer ID (customers not loaded yet):', customerIdValue);
+                setCustomerId(customerIdValue);
+                return; // Exit early, will re-run when customers load
+            }
+            
+            // Customers are loaded, now find and set the exact match
+            console.log('[SALE FORM] Setting customer ID in edit mode:', {
+                customerIdValue,
+                customersCount: customers.length,
+                availableIds: customers.map(c => ({ id: c.id, idType: typeof c.id, idString: c.id?.toString() }))
+            });
+            
+            // Find customer using multiple matching strategies (handle UUID format variations)
+            const foundCustomer = customers.find(c => {
+                const cId = c.id?.toString() || '';
+                const cIdNormalized = cId.replace(/-/g, '').toLowerCase();
+                const valueNormalized = customerIdValue.toString().replace(/-/g, '').toLowerCase();
+                
+                // Try multiple matching strategies
+                return (
+                    cId === customerIdValue.toString() ||           // Exact string match
+                    c.id === customerIdValue ||                    // Direct comparison
+                    String(c.id) === String(customerIdValue) ||    // String conversion match
+                    cIdNormalized === valueNormalized              // Normalized UUID match (handles with/without dashes)
+                );
+            });
+            
+            if (foundCustomer) {
+                // Use the exact ID from foundCustomer to ensure consistency with dropdown options
+                const customerIdToSet = foundCustomer.id.toString();
+                setCustomerId(customerIdToSet);
+                console.log('[SALE FORM] ✅ Customer found and set in edit mode:', {
+                    name: foundCustomer.name,
+                    setId: customerIdToSet,
+                    originalId: customerIdValue,
+                    match: 'SUCCESS'
+                });
+            } else {
+                // Customer ID not found in list - still set it but log detailed warning
+                setCustomerId(customerIdValue);
+                console.warn('[SALE FORM] ⚠️ Customer ID not found in customers array:', {
+                    customerIdValue,
+                    customerIdType: typeof customerIdValue,
+                    availableIds: customers.map(c => ({
+                        id: c.id,
+                        idString: c.id?.toString(),
+                        name: c.name
+                    }))
+                });
+            }
+        } else if (initialSale && !initialSale.customer) {
+            // Sale exists but no customer (walk-in) - clear customer selection
+            console.log('[SALE FORM] Sale has no customer (walk-in), clearing selection');
+            setCustomerId('');
+        }
+    }, [initialSale, customers]); // Run when initialSale or customers change
 
     // Pre-populate form when editing (TASK 3 FIX)
     useEffect(() => {
         if (initialSale) {
             // Pre-fill header fields
-            setCustomerId(initialSale.customer || '');
             setSaleDate(initialSale.date ? new Date(initialSale.date) : new Date());
             setInvoiceNumber(initialSale.invoiceNo || '');
             setRefNumber('');
+            // CRITICAL FIX: Load notes from initialSale
+            setSaleNotes(initialSale.notes || '');
             
             // Pre-fill items (from initialSale or fetch if missing)
             const mapItemsToForm = (list: any[]) => {
                 if (!list || list.length === 0) return;
+                // CRITICAL FIX: Generate unique, stable IDs for each item
+                // Use a combination of timestamp and index to ensure uniqueness
+                const baseTimestamp = Date.now();
                 const convertedItems: SaleItem[] = list.map((item: any, index: number) => ({
-                    id: Date.now() + index,
+                    id: baseTimestamp + index, // Unique ID per item
                     productId: item.productId || '',
                     name: item.productName || '',
                     sku: item.sku || '',
@@ -720,6 +942,7 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                     qty: item.quantity || 0,
                     size: item.size,
                     color: item.color,
+                    variationId: item.variationId, // CRITICAL: Preserve variationId from backend
                     stock: 0,
                     lastPurchasePrice: undefined,
                     lastSupplier: undefined,
@@ -728,6 +951,8 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                     thaans: item.packingDetails?.total_boxes,
                     meters: item.packingDetails?.total_meters,
                 }));
+                console.log('[SALE FORM] ✅ Converted items for edit mode:', convertedItems.length, 'items');
+                console.log('[SALE FORM] Item IDs:', convertedItems.map((item, idx) => ({ index: idx, id: item.id, name: item.name, qty: item.qty, price: item.price })));
                 setItems(convertedItems);
             };
             if (initialSale.items && initialSale.items.length > 0) {
@@ -758,7 +983,7 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                                 id: `existing-${p.id || index}`,
                                 method: (p.method === 'cash' ? 'cash' : 
                                         p.method === 'bank' || p.method === 'card' ? 'bank' : 
-                                        'other') as 'cash' | 'bank' | 'other',
+                                        'Mobile Wallet') as 'cash' | 'bank' | 'Mobile Wallet',
                                 amount: p.amount,
                                 reference: p.referenceNo || '',
                                 attachments: [],
@@ -769,7 +994,7 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                             // Fallback: Single payment if no breakdown available
                             setPartialPayments([{
                                 id: '1',
-                                method: (initialSale.paymentMethod || 'cash') as 'cash' | 'bank' | 'other',
+                                method: (initialSale.paymentMethod || 'cash') as 'cash' | 'bank' | 'Mobile Wallet',
                                 amount: initialSale.paid,
                                 reference: '',
                                 attachments: []
@@ -864,18 +1089,41 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
     // Get selected customer - memoized to ensure it updates when customers or customerId changes
     // CRITICAL: This must update immediately when either customers array or customerId changes
     // Using JSON.stringify for customers array to ensure deep equality check
+    // 🔒 CRITICAL FIX: Enhanced customer matching with UUID normalization
     const selectedCustomer = useMemo(() => {
-        if (!customerId || !customers.length) return null;
+        if (!customerId || !customers.length) {
+            console.log('[SALE FORM] selectedCustomer memo: No customerId or customers empty', {
+                customerId,
+                customersCount: customers.length
+            });
+            return null;
+        }
+        
+        const customerIdStr = customerId.toString();
+        const customerIdNormalized = customerIdStr.replace(/-/g, '').toLowerCase();
+        
+        // Try multiple matching strategies to handle UUID format variations
         const customer = customers.find(c => {
             const cId = c.id?.toString() || '';
-            const customerIdStr = customerId.toString();
-            return cId === customerIdStr || c.id === customerId;
+            const cIdNormalized = cId.replace(/-/g, '').toLowerCase();
+            
+            return (
+                cId === customerIdStr ||                    // Exact string match
+                c.id === customerId ||                      // Direct comparison
+                String(c.id) === customerIdStr ||          // String conversion match
+                cIdNormalized === customerIdNormalized      // Normalized UUID match (handles with/without dashes)
+            );
         });
+        
         console.log('[SALE FORM] selectedCustomer memo recalculated:', {
             customerId,
+            customerIdType: typeof customerId,
             customersCount: customers.length,
-            found: customer ? customer.name : 'NOT FOUND'
+            found: customer ? customer.name : 'NOT FOUND',
+            foundId: customer ? customer.id : null,
+            matchType: customer ? 'SUCCESS' : 'FAILED'
         });
+        
         return customer || null;
     }, [customers, customerId]);
     
@@ -934,6 +1182,7 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                 lastPurchasePrice: product.lastPurchasePrice,
                 lastSupplier: product.lastSupplier,
                 showVariations: true, // Show variation selector inline
+                unitAllowDecimal: product.unitAllowDecimal ?? false, // Pass unit decimal setting
             };
 
             setItems(prev => [newItem, ...prev]);
@@ -955,6 +1204,7 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                 stock: product.stock,
                 lastPurchasePrice: product.lastPurchasePrice,
                 lastSupplier: product.lastSupplier,
+                unitAllowDecimal: product.unitAllowDecimal ?? false, // Pass unit decimal setting
             };
 
             setItems(prev => [newItem, ...prev]);
@@ -970,15 +1220,23 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
     };
     
     // Handle variation selection from inline row (variation from backend product.variations)
-    const handleInlineVariationSelect = (itemId: number, variation: { id?: string; size?: string; color?: string }) => {
+    const handleInlineVariationSelect = (itemId: number, variation: { id?: string; size?: string; color?: string; sku?: string; price?: number; stock?: number; attributes?: Record<string, unknown> }) => {
         setItems(prev => prev.map(item => {
             if (item.id === itemId) {
+                const size = variation.size || variation.attributes?.size as string;
+                const color = variation.color || variation.attributes?.color as string;
+                const variationSku = variation.sku || `${item.sku}-${size}-${color}`.replace(/\s+/g, '-').toUpperCase();
+                
                 return {
                     ...item,
                     variationId: variation.id,
-                    size: variation.size,
-                    color: variation.color,
+                    size: size,
+                    color: color,
+                    sku: variationSku, // Update SKU to variation-specific SKU
+                    price: variation.price || item.price,
+                    stock: variation.stock ?? item.stock,
                     showVariations: false, // Hide variation selector
+                    selectedVariationId: variation.id,
                 };
             }
             return item;
@@ -1021,8 +1279,28 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
     };
 
     // Items List Handlers
+    // CRITICAL FIX: Ensure updateItem correctly updates the right item by ID
     const updateItem = (id: number, field: keyof SaleItem, value: number) => {
-        setItems(prev => prev.map(item => item.id === id ? { ...item, [field]: value } : item));
+        setItems(prev => {
+            const updated = prev.map(item => {
+                if (item.id === id) {
+                    const updatedItem = { ...item, [field]: value };
+                    console.log(`[SALE FORM] ✅ Updated item ID ${id} field ${field}:`, {
+                        oldValue: item[field],
+                        newValue: value,
+                        itemName: item.name,
+                        itemIndex: prev.findIndex(i => i.id === id)
+                    });
+                    return updatedItem;
+                }
+                return item;
+            });
+            console.log(`[SALE FORM] ✅ State updated. Total items: ${updated.length}, Updated item count: ${updated.filter((item, idx) => {
+                const original = prev[idx];
+                return original && item[field] !== original[field];
+            }).length}`);
+            return updated;
+        });
     };
 
     const removeItem = (id: number) => {
@@ -1083,15 +1361,20 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
     const addPartialPayment = () => {
         if (newPaymentAmount <= 0) return;
         
+        // 🔧 FIX: Auto-generate unique reference number for each payment
+        // Each payment method gets its own sequential reference number
+        const autoReferenceNumber = generateDocumentNumber('payment');
+        incrementNextNumber('payment');
+        
         setPartialPayments(prev => [...prev, {
             id: Date.now().toString(),
             method: newPaymentMethod,
             amount: newPaymentAmount,
-            reference: newPaymentReference,
+            reference: newPaymentReference || autoReferenceNumber, // Use manual reference if provided, otherwise auto-generate
             attachments: paymentAttachments
         }]);
         setNewPaymentAmount(0); // Reset input
-        setNewPaymentReference("");
+        setNewPaymentReference(""); // Clear manual reference input
         setPaymentAttachments([]);
     };
 
@@ -1127,6 +1410,14 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
             return;
         }
         
+        // CRITICAL FIX: Validate unit decimal rules before save
+        for (const item of items) {
+            if (item.unitAllowDecimal === false && item.qty % 1 !== 0) {
+                toast.error(`Item "${item.name}": This product unit does not allow decimal quantities. Please enter a whole number.`);
+                return;
+            }
+        }
+        
         if (items.length === 0) {
             toast.error('Please add at least one item');
             return;
@@ -1151,8 +1442,18 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
             
             // CRITICAL FIX: Convert items to SaleItem format with variationId
             // Need to find variation_id from size/color if product has variations
+            console.log('[SALE FORM] 🔄 Converting items for save. Total items:', items.length);
+            console.log('[SALE FORM] Items state before conversion:', items.map((item, idx) => ({
+              index: idx,
+              id: item.id,
+              productId: item.productId,
+              name: item.name,
+              qty: item.qty,
+              price: item.price
+            })));
+            
             const saleItems = await Promise.all(
-              items.map(async (item) => {
+              items.map(async (item, index) => {
                 let variationId: string | undefined = undefined;
                 
                 // Use variationId from inline selector (backend) if set; else resolve from size/color
@@ -1174,7 +1475,7 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                   }
                 }
                 
-                return {
+                const saleItem = {
                   id: item.id.toString(),
                   productId: item.productId.toString(),
                   productName: item.name,
@@ -1192,8 +1493,27 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                     meters: item.meters
                   } : { packingDetails: undefined, thaans: undefined, meters: undefined })
                 };
+                
+                console.log(`[SALE FORM] ✅ Converted item ${index}:`, {
+                  id: saleItem.id,
+                  productId: saleItem.productId,
+                  name: saleItem.productName,
+                  qty: saleItem.quantity,
+                  price: saleItem.price
+                });
+                
+                return saleItem;
               })
             );
+            
+            console.log('[SALE FORM] ✅ Final saleItems array length:', saleItems.length);
+            console.log('[SALE FORM] Final saleItems payload:', saleItems.map((item, idx) => ({
+              index: idx,
+              id: item.id,
+              productId: item.productId,
+              qty: item.quantity,
+              price: item.price
+            })));
             
             // CRITICAL FIX: Map sale status correctly
             // Draft → status: 'draft', type: 'quotation'
@@ -1306,7 +1626,7 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                 paymentStatus: finalPaymentStatus,
                 paymentMethod: (saleStatus === 'final' && partialPayments.length > 0) ? partialPayments[0].method : 'cash',
                 shippingStatus: shippingEnabled ? 'pending' as const : 'pending' as const,
-                notes: studioNotes || refNumber || undefined,
+                notes: saleNotes || studioNotes || refNumber || undefined, // CRITICAL: Use saleNotes (saves to database)
                 // CRITICAL: Include extra expenses, commission for accounting
                 extraExpenses: extraExpenses,
                 commissionAmount: commissionAmount,
@@ -1671,7 +1991,11 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                                                             }}
                                                             className={cn(
                                                                 "w-full text-left px-3 py-2 rounded-md text-sm transition-all flex items-center justify-between",
-                                                                customerId === cust.id.toString()
+                                                                // 🔒 CRITICAL FIX: Use normalized comparison for UUID matching
+                                                                (customerId === cust.id.toString() || 
+                                                                 customerId === String(cust.id) ||
+                                                                 (customerId && cust.id && 
+                                                                  customerId.replace(/-/g, '').toLowerCase() === cust.id.toString().replace(/-/g, '').toLowerCase()))
                                                                     ? "bg-gray-800 text-white"
                                                                     : "text-gray-400 hover:bg-gray-800 hover:text-white"
                                                             )}
@@ -1708,16 +2032,6 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                                         </div>
                             </div>
 
-                        {/* Ref # - Soft Input Style */}
-                        <div className="w-24">
-                            <Label className="text-xs text-gray-500 mb-1.5 block">Ref #</Label>
-                            <Input
-                                value={refNumber}
-                                onChange={(e) => setRefNumber(e.target.value)}
-                                className="bg-gray-900/50 border border-gray-800 text-white text-xs h-[28px] px-2.5 py-1 rounded-lg focus-visible:ring-1 focus-visible:ring-gray-700 focus-visible:border-gray-700"
-                                placeholder="REF"
-                            />
-                        </div>
 
                         {/* Type - Chip Style (dropdown closes on select) */}
                         <div className="w-auto">
@@ -1924,7 +2238,7 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                                             <SelectItem value="lining">Lining</SelectItem>
                                             <SelectItem value="dying">Dying</SelectItem>
                                             <SelectItem value="cargo">Cargo</SelectItem>
-                                            <SelectItem value="other">Other</SelectItem>
+                                            <SelectItem value="Mobile Wallet">Mobile Wallet</SelectItem>
                                         </SelectContent>
                                     </Select>
                                     <Input 
@@ -2187,7 +2501,7 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                                         <SelectContent className="bg-gray-950 border-gray-800 text-white">
                                             <SelectItem value="cash">Cash</SelectItem>
                                             <SelectItem value="bank">Bank</SelectItem>
-                                            <SelectItem value="other">Other</SelectItem>
+                                            <SelectItem value="Mobile Wallet">Mobile Wallet</SelectItem>
                                         </SelectContent>
                                     </Select>
                                     <Input 
@@ -2201,13 +2515,18 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                                         <Plus size={16} />
                                     </Button>
                                 </div>
-                                <Input 
-                                    type="text" 
-                                    placeholder="Reference (optional)" 
-                                    className="bg-gray-950 border-gray-700 text-white h-9 text-xs"
-                                    value={newPaymentReference}
-                                    onChange={(e) => setNewPaymentReference(e.target.value)}
-                                />
+                                
+                                {/* Notes - Text Input (saves to database) */}
+                                <div className="space-y-2">
+                                    <Label className="text-xs text-gray-500">Notes</Label>
+                                    <Input
+                                        value={saleNotes}
+                                        onChange={(e) => setSaleNotes(e.target.value)}
+                                        className="bg-gray-950 border-gray-700 text-white h-10 text-xs"
+                                        placeholder="Add notes (saved to database)"
+                                    />
+                                </div>
+                                
                                 <PaymentAttachments
                                     attachments={paymentAttachments}
                                     onAttachmentsChange={setPaymentAttachments}
@@ -2239,11 +2558,16 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                                             <div className="flex items-center gap-2">
                                                 {p.method === 'cash' && <Banknote size={14} className="text-green-500" />}
                                                 {p.method === 'bank' && <CreditCard size={14} className="text-blue-500" />}
-                                                {p.method === 'other' && <Wallet size={14} className="text-purple-500" />}
+                                                {p.method === 'Mobile Wallet' && <Wallet size={14} className="text-purple-500" />}
                                                 <span className="capitalize text-gray-300 text-xs">{p.method}</span>
                                                 {p.reference && (
-                                                    <code className="text-xs bg-gray-800 px-1.5 py-0.5 rounded text-blue-400">
+                                                    <code className="text-xs bg-gray-800 px-1.5 py-0.5 rounded text-blue-400 font-mono">
                                                         {p.reference}
+                                                    </code>
+                                                )}
+                                                {!p.reference && !isExisting && (
+                                                    <code className="text-xs bg-gray-800 px-1.5 py-0.5 rounded text-gray-500 font-mono">
+                                                        Auto
                                                     </code>
                                                 )}
                                                 {isExisting && (

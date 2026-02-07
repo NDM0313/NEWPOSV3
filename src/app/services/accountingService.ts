@@ -51,6 +51,7 @@ export interface AccountLedgerEntry {
 
 export const accountingService = {
   // Get all journal entries with lines
+  // CRITICAL: Filter out entries for deleted purchases/sales
   async getAllEntries(companyId: string, branchId?: string, startDate?: string, endDate?: string) {
     try {
       let query = supabase
@@ -84,44 +85,134 @@ export const accountingService = {
         return [];
       }
       
-      // Handle missing columns gracefully
-      if (error && (error.code === 'PGRST204' || error.message?.includes('column'))) {
-        // Retry without company_id filter if column doesn't exist
-        let retryQuery = supabase
-          .from('journal_entries')
-          .select(`
-            *,
-            lines:journal_entry_lines(*)
-          `)
-          .order('entry_date', { ascending: false })
-          .order('created_at', { ascending: false });
-
-        if (branchId) {
-          retryQuery = retryQuery.eq('branch_id', branchId);
-        }
-
-        if (startDate) {
-          retryQuery = retryQuery.gte('entry_date', startDate);
-        }
-
-        if (endDate) {
-          retryQuery = retryQuery.lte('entry_date', endDate);
-        }
-
-        const { data: retryData, error: retryError } = await retryQuery;
-        if (retryError) {
-          console.warn('[ACCOUNTING SERVICE] Error fetching journal entries:', retryError.message);
-          return [];
-        }
-        return retryData || [];
-      }
-
       if (error) {
-        console.warn('[ACCOUNTING SERVICE] Error fetching journal entries:', error.message);
+        console.error('[ACCOUNTING SERVICE] Error fetching journal entries:', error);
         return [];
       }
+
+      if (!data || data.length === 0) {
+        return [];
+      }
+
+      // CRITICAL: Filter out entries for deleted purchases/sales
+      const purchaseIds = data
+        .filter(e => e.reference_type === 'purchase' && e.reference_id)
+        .map(e => e.reference_id) as string[];
       
-      return data || [];
+      const saleIds = data
+        .filter(e => e.reference_type === 'sale' && e.reference_id)
+        .map(e => e.reference_id) as string[];
+      
+      const paymentIds = data
+        .filter(e => e.reference_type === 'payment' && e.reference_id)
+        .map(e => e.reference_id) as string[];
+
+      // Check which purchases/sales still exist
+      let existingPurchases: Set<string> = new Set();
+      let existingSales: Set<string> = new Set();
+      let validPayments: Set<string> = new Set();
+
+      if (purchaseIds.length > 0) {
+        const { data: purchases } = await supabase
+          .from('purchases')
+          .select('id')
+          .in('id', purchaseIds);
+        
+        if (purchases) {
+          existingPurchases = new Set(purchases.map((p: any) => p.id));
+        }
+      }
+
+      if (saleIds.length > 0) {
+        const { data: sales } = await supabase
+          .from('sales')
+          .select('id')
+          .in('id', saleIds);
+        
+        if (sales) {
+          existingSales = new Set(sales.map((s: any) => s.id));
+        }
+      }
+
+      // For payments, check if the referenced purchase/sale exists
+      if (paymentIds.length > 0) {
+        const { data: payments } = await supabase
+          .from('payments')
+          .select('id, reference_type, reference_id')
+          .in('id', paymentIds);
+        
+        if (payments) {
+          const purchaseRefs = payments
+            .filter((p: any) => p.reference_type === 'purchase' && p.reference_id)
+            .map((p: any) => p.reference_id) as string[];
+          
+          const saleRefs = payments
+            .filter((p: any) => p.reference_type === 'sale' && p.reference_id)
+            .map((p: any) => p.reference_id) as string[];
+
+          // Check if referenced purchases exist
+          if (purchaseRefs.length > 0) {
+            const { data: purchaseChecks } = await supabase
+              .from('purchases')
+              .select('id')
+              .in('id', purchaseRefs);
+            
+            if (purchaseChecks) {
+              const validPurchaseIds = new Set(purchaseChecks.map((p: any) => p.id));
+              payments
+                .filter((p: any) => p.reference_type === 'purchase' && validPurchaseIds.has(p.reference_id))
+                .forEach((p: any) => validPayments.add(p.id));
+            }
+          }
+
+          // Check if referenced sales exist
+          if (saleRefs.length > 0) {
+            const { data: saleChecks } = await supabase
+              .from('sales')
+              .select('id')
+              .in('id', saleRefs);
+            
+            if (saleChecks) {
+              const validSaleIds = new Set(saleChecks.map((s: any) => s.id));
+              payments
+                .filter((p: any) => p.reference_type === 'sale' && validSaleIds.has(p.reference_id))
+                .forEach((p: any) => validPayments.add(p.id));
+            }
+          }
+
+          // Payments without reference_type or with other types are valid
+          payments
+            .filter((p: any) => !p.reference_type || (p.reference_type !== 'purchase' && p.reference_type !== 'sale'))
+            .forEach((p: any) => validPayments.add(p.id));
+        }
+      }
+
+      // Filter entries: only include if purchase/sale/payment still exists
+      const validEntries = data.filter((entry: any) => {
+        // Skip entries for deleted purchases
+        if (entry.reference_type === 'purchase' && entry.reference_id && !existingPurchases.has(entry.reference_id)) {
+          console.log(`[ACCOUNTING SERVICE] Skipping entry for deleted purchase: ${entry.reference_id}`);
+          return false;
+        }
+        
+        // Skip entries for deleted sales
+        if (entry.reference_type === 'sale' && entry.reference_id && !existingSales.has(entry.reference_id)) {
+          console.log(`[ACCOUNTING SERVICE] Skipping entry for deleted sale: ${entry.reference_id}`);
+          return false;
+        }
+        
+        // Skip payment entries for deleted purchases/sales
+        if (entry.reference_type === 'payment' && entry.reference_id && !validPayments.has(entry.reference_id)) {
+          console.log(`[ACCOUNTING SERVICE] Skipping payment entry for deleted purchase/sale: ${entry.reference_id}`);
+          return false;
+        }
+        
+        return true;
+      });
+
+      console.log(`[ACCOUNTING SERVICE] Filtered ${data.length} entries to ${validEntries.length} valid entries`);
+      
+      return validEntries;
     } catch (error: any) {
       console.warn('[ACCOUNTING SERVICE] Error:', error.message);
       return [];

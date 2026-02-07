@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { 
   Package, TrendingDown, DollarSign, AlertTriangle, 
   BarChart3, Search, Filter, Download, Warehouse, Loader2,
-  ExternalLink, SlidersHorizontal, FileDown, Printer
+  ExternalLink, SlidersHorizontal, FileDown, Printer, List, Layers
 } from 'lucide-react';
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
@@ -15,6 +15,7 @@ import { inventoryService, InventoryOverviewRow, InventoryMovementRow } from '..
 import { toast } from 'sonner';
 import { FullStockLedgerView } from '../products/FullStockLedgerView';
 import { StockAdjustmentDrawer } from './StockAdjustmentDrawer';
+import { groupStockMovements, ViewMode, GroupedMovementRow } from '../../utils/stockMovementGrouping';
 
 type InventoryTab = 'overview' | 'analytics';
 
@@ -34,12 +35,21 @@ export const InventoryDashboardNew = () => {
   // Analytics tab
   const [movements, setMovements] = useState<InventoryMovementRow[]>([]);
   const [movementsLoading, setMovementsLoading] = useState(false);
+  const [viewMode, setViewMode] = useState<ViewMode>('detailed'); // 'detailed' | 'grouped'
   const [filters, setFilters] = useState({
     dateFrom: '',
     dateTo: '',
     productId: '',
     movementType: '',
   });
+  
+  // Grouped movements (computed from raw movements)
+  const displayedMovements = useMemo(() => {
+    if (viewMode === 'grouped') {
+      return groupStockMovements(movements);
+    }
+    return movements;
+  }, [movements, viewMode]);
 
   // Stock Overview: single source of truth from inventoryService
   const loadOverview = useCallback(async () => {
@@ -86,6 +96,69 @@ export const InventoryDashboardNew = () => {
       setMovementsLoading(false);
     }
   }, [companyId, branchId, filters.dateFrom, filters.dateTo, filters.productId, filters.movementType]);
+
+  // Listen for purchase/sale events to refresh inventory
+  // 🔒 FIX: Use refs to avoid dependency issues and ensure events are always handled
+  useEffect(() => {
+    const handlePurchaseSaved = () => {
+      console.log('[INVENTORY] Purchase saved - refreshing inventory');
+      // Force refresh both tabs
+      loadOverview();
+      if (activeTab === 'analytics') {
+        loadMovements();
+      }
+    };
+
+    const handlePurchaseDeleted = () => {
+      console.log('[INVENTORY] Purchase deleted - refreshing inventory');
+      loadOverview();
+      if (activeTab === 'analytics') {
+        loadMovements();
+      }
+    };
+
+    const handleSaleSaved = () => {
+      console.log('[INVENTORY] Sale saved - refreshing inventory');
+      loadOverview();
+      if (activeTab === 'analytics') {
+        loadMovements();
+      }
+    };
+
+    const handleSaleDeleted = () => {
+      console.log('[INVENTORY] Sale deleted - refreshing inventory');
+      loadOverview();
+      if (activeTab === 'analytics') {
+        loadMovements();
+      }
+    };
+
+    // Also listen for payment events (payments can affect inventory indirectly)
+    const handlePaymentAdded = () => {
+      console.log('[INVENTORY] Payment added - refreshing inventory');
+      loadOverview();
+      if (activeTab === 'analytics') {
+        loadMovements();
+      }
+    };
+
+    window.addEventListener('purchaseSaved', handlePurchaseSaved);
+    window.addEventListener('purchaseDeleted', handlePurchaseDeleted);
+    window.addEventListener('saleSaved', handleSaleSaved);
+    window.addEventListener('saleDeleted', handleSaleDeleted);
+    window.addEventListener('paymentAdded', handlePaymentAdded);
+
+    return () => {
+      window.removeEventListener('purchaseSaved', handlePurchaseSaved);
+      window.removeEventListener('purchaseDeleted', handlePurchaseDeleted);
+      window.removeEventListener('saleSaved', handleSaleSaved);
+      window.removeEventListener('saleDeleted', handleSaleDeleted);
+      window.removeEventListener('paymentAdded', handlePaymentAdded);
+    };
+    // 🔒 FIX: Remove loadOverview and loadMovements from dependencies to prevent re-registration
+    // These functions are stable (useCallback), but including them causes unnecessary re-renders
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab]); // Only depend on activeTab, functions are stable
 
   useEffect(() => {
     if (companyId && activeTab === 'analytics') loadMovements();
@@ -169,11 +242,20 @@ export const InventoryDashboardNew = () => {
     toast.success('Export downloaded');
   }, [filteredProducts, enablePacking]);
 
-  const exportMovementsCsv = useCallback(() => {
+  const exportMovementsCsv = useCallback((mode: ViewMode = viewMode) => {
+    // Use displayedMovements (already grouped if mode is 'grouped')
+    const dataToExport = mode === 'grouped' ? groupStockMovements(movements) : movements;
+    
     const headers = enablePacking
-      ? ['Date', 'Product', 'SKU', 'Type', 'Qty Change', 'Box Change', 'Piece Change', 'Before Qty', 'After Qty', 'Unit Cost', 'Notes']
-      : ['Date', 'Product', 'SKU', 'Type', 'Qty Change', 'Before Qty', 'After Qty', 'Unit Cost', 'Notes'];
-    const rows = movements.map(m => {
+      ? ['Date', 'Product', 'SKU', 'Type', 'Qty Change', 'Box Change', 'Piece Change', 'Before Qty', 'After Qty', 'Unit Cost', 'Notes', 'View Mode']
+      : ['Date', 'Product', 'SKU', 'Type', 'Qty Change', 'Before Qty', 'After Qty', 'Unit Cost', 'Notes', 'View Mode'];
+    const rows = dataToExport.map(m => {
+      const isGrouped = (m as any).is_grouped === true;
+      const movementCount = (m as any).movement_count || 1;
+      const notes = isGrouped && movementCount > 1 
+        ? `${m.notes || ''} (${movementCount} movements grouped)`
+        : (m.notes || '');
+      
       if (enablePacking) {
         return [
           m.created_at?.slice(0, 19) || '',
@@ -186,7 +268,8 @@ export const InventoryDashboardNew = () => {
           m.before_qty ?? '',
           m.after_qty ?? '',
           m.unit_cost ?? '',
-          (m.notes || '').replace(/,/g, ';'),
+          notes.replace(/,/g, ';'),
+          mode === 'grouped' ? 'Grouped' : 'Detailed',
         ].join(',');
       } else {
         return [
@@ -198,7 +281,8 @@ export const InventoryDashboardNew = () => {
           m.before_qty ?? '',
           m.after_qty ?? '',
           m.unit_cost ?? '',
-          (m.notes || '').replace(/,/g, ';'),
+          notes.replace(/,/g, ';'),
+          mode === 'grouped' ? 'Grouped' : 'Detailed',
         ].join(',');
       }
     });
@@ -250,7 +334,7 @@ export const InventoryDashboardNew = () => {
               <Button variant="outline" className="gap-2 border-gray-700 text-gray-300" onClick={loadMovements}>
                 <Filter size={16} /> Apply Filters
               </Button>
-              <Button variant="outline" className="gap-2 border-gray-700 text-gray-300" onClick={exportMovementsCsv}>
+              <Button variant="outline" className="gap-2 border-gray-700 text-gray-300" onClick={() => exportMovementsCsv(viewMode)}>
                 <Download size={16} /> Export CSV
               </Button>
             </>
@@ -565,14 +649,75 @@ export const InventoryDashboardNew = () => {
 
           {/* Movements Table */}
           <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden">
-            <div className="p-6 border-b border-gray-800 flex justify-between items-center">
-              <div>
-                <h3 className="text-lg font-bold text-white">Stock Movements</h3>
-                <p className="text-sm text-gray-400 mt-1">Filter by date, product, and movement type</p>
+            <div className="p-6 border-b border-gray-800">
+              <div className="flex justify-between items-center mb-4">
+                <div>
+                  <h3 className="text-lg font-bold text-white">Stock Movements</h3>
+                  <p className="text-sm text-gray-400 mt-1">Filter by date, product, and movement type</p>
+                </div>
+                <div className="flex items-center gap-3">
+                  {/* View Mode Toggle */}
+                  <div className="flex items-center gap-2 bg-gray-950/50 border border-gray-700 rounded-lg p-1">
+                    <button
+                      onClick={() => setViewMode('detailed')}
+                      className={cn(
+                        "px-3 py-1.5 text-xs font-medium rounded-md transition-colors flex items-center gap-1.5",
+                        viewMode === 'detailed'
+                          ? "bg-blue-600 text-white"
+                          : "text-gray-400 hover:text-white"
+                      )}
+                      title="Detailed mode shows all individual movements (audit trail)"
+                    >
+                      <List size={14} />
+                      Detailed
+                    </button>
+                    <button
+                      onClick={() => setViewMode('grouped')}
+                      className={cn(
+                        "px-3 py-1.5 text-xs font-medium rounded-md transition-colors flex items-center gap-1.5",
+                        viewMode === 'grouped'
+                          ? "bg-blue-600 text-white"
+                          : "text-gray-400 hover:text-white"
+                      )}
+                      title="Grouped mode shows net effect per document (user-friendly)"
+                    >
+                      <Layers size={14} />
+                      Grouped
+                    </button>
+                  </div>
+                  <Button variant="outline" size="sm" className="gap-2 border-gray-700 text-gray-300" onClick={() => exportMovementsCsv(viewMode)}>
+                    <Download size={16} /> Export CSV
+                  </Button>
+                </div>
               </div>
-              <Button variant="outline" size="sm" className="gap-2 border-gray-700 text-gray-300" onClick={exportMovementsCsv}>
-                <Download size={16} /> Export CSV
-              </Button>
+              
+              {/* Informational Banner */}
+              <div className={cn(
+                "p-3 rounded-lg text-xs border",
+                viewMode === 'detailed'
+                  ? "bg-blue-500/10 border-blue-500/30 text-blue-400"
+                  : "bg-purple-500/10 border-purple-500/30 text-purple-400"
+              )}>
+                <div className="flex items-start gap-2">
+                  <div className="mt-0.5">
+                    {viewMode === 'detailed' ? (
+                      <List size={14} />
+                    ) : (
+                      <Layers size={14} />
+                    )}
+                  </div>
+                  <div>
+                    <strong className="font-semibold">
+                      {viewMode === 'detailed' ? 'Detailed Mode' : 'Grouped Mode'}
+                    </strong>
+                    <span className="ml-2">
+                      {viewMode === 'detailed'
+                        ? 'Shows all individual movements for complete audit trail. Multiple edits of the same sale/purchase appear as separate rows.'
+                        : 'Shows net effect per document. Multiple edits of the same sale/purchase are grouped into a single row with net quantity change.'}
+                    </span>
+                  </div>
+                </div>
+              </div>
             </div>
             <table className="w-full">
               <thead className="bg-gray-950/50 border-b border-gray-800">
@@ -601,14 +746,17 @@ export const InventoryDashboardNew = () => {
                       <p className="text-gray-400 text-sm mt-2">Loading movements...</p>
                     </td>
                   </tr>
-                ) : movements.length === 0 ? (
+                ) : displayedMovements.length === 0 ? (
                   <tr>
                     <td colSpan={enablePacking ? 10 : 8} className="px-6 py-12 text-center text-gray-400 text-sm">
                       No movements found. Adjust filters or ensure stock_movements has data.
                     </td>
                   </tr>
                 ) : (
-                  movements.map((m) => (
+                  displayedMovements.map((m) => {
+                    const isGrouped = (m as any).is_grouped === true;
+                    const movementCount = (m as any).movement_count || 1;
+                    return (
                     <tr key={m.id} className="hover:bg-gray-800/30 transition-colors">
                       <td className="px-6 py-4 text-gray-400 text-sm whitespace-nowrap">
                         {m.created_at ? new Date(m.created_at).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' }) : '-'}
@@ -645,10 +793,18 @@ export const InventoryDashboardNew = () => {
                         {m.unit_cost != null ? `Rs ${Number(m.unit_cost).toLocaleString()}` : '-'}
                       </td>
                       <td className="px-6 py-4 text-gray-400 text-sm max-w-[200px] truncate" title={m.notes || ''}>
-                        {m.notes || '-'}
+                        <div className="flex items-center gap-2">
+                          {m.notes || '-'}
+                          {isGrouped && movementCount > 1 && (
+                            <Badge className="bg-purple-500/20 text-purple-400 border-purple-500/30 text-[10px] px-1.5 py-0.5">
+                              {movementCount} edits
+                            </Badge>
+                          )}
+                        </div>
                       </td>
                     </tr>
-                  ))
+                    );
+                  })
                 )}
               </tbody>
             </table>

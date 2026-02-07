@@ -137,8 +137,10 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
       if (account.type !== paymentMethod) return false;
       
       // Include if: no branch restriction (global) OR matches current branch
-      const isGlobal = !account.branchId || account.branchId === 'global' || account.branchId === '';
-      const isBranchSpecific = account.branchId === branchId;
+      // Account.branch can be string (branch name) or undefined
+      const accountBranch = (account as any).branchId || account.branch || '';
+      const isGlobal = !accountBranch || accountBranch === 'global' || accountBranch === '';
+      const isBranchSpecific = accountBranch === branchId;
       
       return isGlobal || isBranchSpecific;
     });
@@ -146,26 +148,63 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
 
   // Reset account selection when payment method changes + Auto-select default account
   React.useEffect(() => {
-    // 🎯 AUTO-SELECT DEFAULT ACCOUNT FROM SETTINGS
+    if (!companyId || !isOpen) return; // Don't auto-select if dialog not open or no company
+    
+    const filteredAccounts = getFilteredAccounts();
+    if (filteredAccounts.length === 0) {
+      setSelectedAccount('');
+      return;
+    }
+    
+    // 🔧 FIX: Auto-select default account based on payment method
+    // Priority: Settings → Code (1000/1010) → Name (Cash/Bank) → First available
+    
+    // Step 1: Check settings for default account
     const defaultPayment = settings.defaultAccounts?.paymentMethods?.find(
       p => p.method === paymentMethod
     );
     
     if (defaultPayment?.defaultAccount) {
-      // Find matching account by name
-      const matchingAccount = accounting.accounts.find(
-        acc => acc.type === paymentMethod && acc.name === defaultPayment.defaultAccount
+      const matchingAccount = filteredAccounts.find(
+        acc => acc.name === defaultPayment.defaultAccount
       );
-      
       if (matchingAccount) {
         setSelectedAccount(matchingAccount.id);
         return;
       }
     }
     
-    // Fallback: clear selection if no default found
+    // Step 2: For Cash → Look for account with code 1000 or name "Cash"
+    if (paymentMethod === 'Cash') {
+      const cashAccount = filteredAccounts.find(
+        acc => acc.code === '1000' || acc.name.toLowerCase() === 'cash'
+      );
+      if (cashAccount) {
+        setSelectedAccount(cashAccount.id);
+        return;
+      }
+    }
+    
+    // Step 3: For Bank → Look for account with code 1010 or name "Bank"
+    if (paymentMethod === 'Bank') {
+      const bankAccount = filteredAccounts.find(
+        acc => acc.code === '1010' || acc.name.toLowerCase() === 'bank'
+      );
+      if (bankAccount) {
+        setSelectedAccount(bankAccount.id);
+        return;
+      }
+    }
+    
+    // Step 4: Fallback to first available account of this type
+    if (filteredAccounts.length > 0) {
+      setSelectedAccount(filteredAccounts[0].id);
+      return;
+    }
+    
+    // Last resort: clear selection
     setSelectedAccount('');
-  }, [paymentMethod, settings.defaultAccounts, accounting.accounts]);
+  }, [paymentMethod, settings.defaultAccounts, accounting.accounts, companyId, isOpen, branchId]);
 
   // Handle file upload
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -244,6 +283,22 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
 
   // Handle payment submission
   const handleSubmit = async () => {
+    // 🔧 FIX 4: PAYMENT ACCOUNT VALIDATION (MANDATORY)
+    if (!selectedAccount || selectedAccount === '') {
+      toast.error('Payment account is required. Please select an account.');
+      return;
+    }
+    
+    if (amount <= 0) {
+      toast.error('Payment amount must be greater than zero.');
+      return;
+    }
+    
+    if (amount > outstandingAmount) {
+      toast.error(`Payment amount cannot exceed outstanding amount of ${outstandingAmount.toLocaleString()}`);
+      return;
+    }
+    
     if (!canSubmit) return;
 
     setIsProcessing(true);

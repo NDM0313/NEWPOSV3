@@ -391,6 +391,27 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
       loadEntries();
     }
   }, [companyId, branchId, startDate, endDate, loadAccounts, loadEntries]);
+
+  // CRITICAL: Listen for purchase/sale delete events to refresh entries
+  useEffect(() => {
+    const handlePurchaseDelete = () => {
+      console.log('[ACCOUNTING CONTEXT] Purchase deleted, refreshing entries...');
+      loadEntries();
+    };
+    
+    const handleSaleDelete = () => {
+      console.log('[ACCOUNTING CONTEXT] Sale deleted, refreshing entries...');
+      loadEntries();
+    };
+
+    window.addEventListener('purchaseDeleted', handlePurchaseDelete);
+    window.addEventListener('saleDeleted', handleSaleDelete);
+    
+    return () => {
+      window.removeEventListener('purchaseDeleted', handlePurchaseDelete);
+      window.removeEventListener('saleDeleted', handleSaleDelete);
+    };
+  }, [loadEntries]);
   
   // ============================================
   // 🎯 REAL DATA LOADING (NO DEMO DATA)

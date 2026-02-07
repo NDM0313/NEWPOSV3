@@ -14,6 +14,7 @@ import { useSettings, BranchSettings } from '@/app/context/SettingsContext';
 import { branchService } from '@/app/services/branchService';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { userService, User as UserType } from '@/app/services/userService';
+import { useAccounting } from '@/app/context/AccountingContext';
 import { toast } from 'sonner';
 import { AddUserModal } from '../users/AddUserModal';
 import { AddBranchModal } from '../branches/AddBranchModal';
@@ -45,6 +46,7 @@ type SettingsTab =
 export const SettingsPageNew = () => {
   const settings = useSettings();
   const { companyId, enablePacking, setEnablePacking } = useSupabase();
+  const accounting = useAccounting();
   const [activeTab, setActiveTab] = useState<SettingsTab>('company');
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
 
@@ -130,6 +132,68 @@ export const SettingsPageNew = () => {
       loadBranches();
     }
   }, [activeTab, loadBranches]);
+
+  // 🔧 FIX: Auto-select default core accounts if not already set
+  // This runs when accounts tab is opened and accounts are loaded
+  useEffect(() => {
+    if (activeTab === 'accounts' && accounting.accounts.length > 0) {
+      setAccountsForm(prev => {
+        // Check if any default account needs to be auto-selected
+        const cashMethod = prev.paymentMethods.find(p => p.method === 'Cash');
+        const bankMethod = prev.paymentMethods.find(p => p.method === 'Bank');
+        const walletMethod = prev.paymentMethods.find(p => p.method === 'Mobile Wallet');
+        
+        // Only update if at least one account is missing
+        const needsUpdate = 
+          (!cashMethod?.defaultAccount || cashMethod.defaultAccount === '') ||
+          (!bankMethod?.defaultAccount || bankMethod.defaultAccount === '') ||
+          (!walletMethod?.defaultAccount || walletMethod.defaultAccount === '');
+        
+        if (!needsUpdate) {
+          return prev; // No update needed
+        }
+        
+        const updatedMethods = prev.paymentMethods.map(p => {
+          // Auto-select Cash account (code 1000) if not set
+          if (p.method === 'Cash' && (!p.defaultAccount || p.defaultAccount === '')) {
+            const cashAccount = accounting.accounts.find(acc => 
+              acc.code === '1000' || 
+              (acc.type === 'Cash' && acc.isActive)
+            );
+            if (cashAccount) {
+              return { ...p, defaultAccount: cashAccount.name };
+            }
+          }
+          
+          // Auto-select Bank account (code 1010) if not set
+          if (p.method === 'Bank' && (!p.defaultAccount || p.defaultAccount === '')) {
+            const bankAccount = accounting.accounts.find(acc => 
+              acc.code === '1010' || 
+              (acc.type === 'Bank' && acc.isActive)
+            );
+            if (bankAccount) {
+              return { ...p, defaultAccount: bankAccount.name };
+            }
+          }
+          
+          // Auto-select Mobile Wallet account (code 1020) if not set
+          if (p.method === 'Mobile Wallet' && (!p.defaultAccount || p.defaultAccount === '')) {
+            const walletAccount = accounting.accounts.find(acc => 
+              acc.code === '1020' || 
+              (acc.type === 'Mobile Wallet' && acc.isActive)
+            );
+            if (walletAccount) {
+              return { ...p, defaultAccount: walletAccount.name };
+            }
+          }
+          
+          return p;
+        });
+        
+        return { ...prev, paymentMethods: updatedMethods };
+      });
+    }
+  }, [activeTab, accounting.accounts.length]); // Only depend on accounts length to avoid infinite loops
 
   // Listen for userCreated event - Real-time update
   useEffect(() => {
@@ -1283,9 +1347,14 @@ export const SettingsPageNew = () => {
                       }}
                       className="w-full bg-gray-950 border border-gray-700 rounded-lg px-3 py-2 text-white"
                     >
-                      <option value="Cash Drawer">Cash Drawer</option>
-                      <option value="Petty Cash">Petty Cash</option>
-                      <option value="Main Cash Box">Main Cash Box</option>
+                      <option value="">Select Cash Account</option>
+                      {accounting.accounts
+                        .filter(acc => acc.type === 'Cash' && acc.isActive)
+                        .map(acc => (
+                          <option key={acc.id} value={acc.name}>
+                            {acc.name} {acc.code ? `(${acc.code})` : ''} • Balance: Rs {acc.balance.toLocaleString()}
+                          </option>
+                        ))}
                     </select>
                   </div>
 
@@ -1305,17 +1374,21 @@ export const SettingsPageNew = () => {
                       }}
                       className="w-full bg-gray-950 border border-gray-700 rounded-lg px-3 py-2 text-white"
                     >
-                      <option value="Meezan Bank - Business Account">Meezan Bank - Business Account</option>
-                      <option value="HBL Current Account">HBL Current Account</option>
-                      <option value="Allied Bank">Allied Bank</option>
-                      <option value="MCB Business Account">MCB Business Account</option>
+                      <option value="">Select Bank Account</option>
+                      {accounting.accounts
+                        .filter(acc => acc.type === 'Bank' && acc.isActive)
+                        .map(acc => (
+                          <option key={acc.id} value={acc.name}>
+                            {acc.name} {acc.code ? `(${acc.code})` : ''} • Balance: Rs {acc.balance.toLocaleString()}
+                          </option>
+                        ))}
                     </select>
                   </div>
 
                   <div>
                     <Label className="text-gray-300 mb-2 block flex items-center gap-2">
                       <Badge className="bg-purple-500/20 text-purple-400 border-purple-500/30">Mobile</Badge>
-                      Default Mobile Wallet
+                      Default Mobile Wallet Account
                     </Label>
                     <select 
                       value={accountsForm.paymentMethods.find(p => p.method === 'Mobile Wallet')?.defaultAccount || ''}
@@ -1328,10 +1401,14 @@ export const SettingsPageNew = () => {
                       }}
                       className="w-full bg-gray-950 border border-gray-700 rounded-lg px-3 py-2 text-white"
                     >
-                      <option value="JazzCash - Business">JazzCash - Business</option>
-                      <option value="EasyPaisa - Business">EasyPaisa - Business</option>
-                      <option value="SadaPay">SadaPay</option>
-                      <option value="NayaPay">NayaPay</option>
+                      <option value="">Select Mobile Wallet Account</option>
+                      {accounting.accounts
+                        .filter(acc => acc.type === 'Mobile Wallet' && acc.isActive)
+                        .map(acc => (
+                          <option key={acc.id} value={acc.name}>
+                            {acc.name} {acc.code ? `(${acc.code})` : ''} • Balance: Rs {acc.balance.toLocaleString()}
+                          </option>
+                        ))}
                     </select>
                   </div>
                 </div>

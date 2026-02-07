@@ -114,6 +114,77 @@ BEGIN
       NULL;
   END;
   
+  -- Step 6: Create default Piece unit (MANDATORY)
+  -- This is the backbone unit for every business
+  INSERT INTO units (
+    company_id,
+    name,
+    short_code,
+    symbol,
+    allow_decimal,
+    is_default,
+    is_active,
+    sort_order,
+    created_at,
+    updated_at
+  )
+  VALUES (
+    v_company_id,
+    'Piece',
+    'pcs',
+    'pcs',
+    false,  -- Piece does NOT allow decimals
+    true,   -- This is the default unit
+    true,   -- Always active
+    0,      -- First in sort order
+    NOW(),
+    NOW()
+  )
+  ON CONFLICT DO NOTHING;  -- Prevent duplicate if somehow exists
+  
+  -- Step 7: Create CORE PAYMENT ACCOUNTS (NON-NEGOTIABLE)
+  -- ============================================================================
+  -- 🔒 CORE ACCOUNTING BACKBONE RULE:
+  -- These 3 accounts (Cash, Bank, Mobile Wallet) are MANDATORY for EVERY business
+  -- They exist regardless of Accounting Module ON/OFF status
+  -- They CANNOT be deleted, only renamed (optional)
+  -- ============================================================================
+  
+  -- Core Account 1: Cash (code: 1000)
+  IF NOT EXISTS (SELECT 1 FROM accounts WHERE company_id = v_company_id AND code = '1000') THEN
+    INSERT INTO accounts (company_id, code, name, type, is_active)
+    VALUES (v_company_id, '1000', 'Cash', 'cash', true);
+  END IF;
+  
+  -- Core Account 2: Bank (code: 1010)
+  IF NOT EXISTS (SELECT 1 FROM accounts WHERE company_id = v_company_id AND code = '1010') THEN
+    INSERT INTO accounts (company_id, code, name, type, is_active)
+    VALUES (v_company_id, '1010', 'Bank', 'bank', true);
+  END IF;
+  
+  -- Core Account 3: Mobile Wallet (code: 1020)
+  IF NOT EXISTS (SELECT 1 FROM accounts WHERE company_id = v_company_id AND code = '1020') THEN
+    INSERT INTO accounts (company_id, code, name, type, is_active)
+    VALUES (v_company_id, '1020', 'Mobile Wallet', 'mobile_wallet', true);
+  END IF;
+  
+  -- Additional Account: Accounts Receivable (code: 1100)
+  -- Required for customer payment entries (accounting module)
+  IF NOT EXISTS (SELECT 1 FROM accounts WHERE company_id = v_company_id AND code = '1100') THEN
+    INSERT INTO accounts (company_id, code, name, type, is_active)
+    VALUES (v_company_id, '1100', 'Accounts Receivable', 'asset', true);
+  END IF;
+  
+  IF NOT EXISTS (SELECT 1 FROM accounts WHERE company_id = v_company_id AND code = '2000') THEN
+    INSERT INTO accounts (company_id, code, name, type, is_active)
+    VALUES (v_company_id, '2000', 'Accounts Payable', 'liability', true);
+  END IF;
+  
+  IF NOT EXISTS (SELECT 1 FROM accounts WHERE company_id = v_company_id AND code = '5000') THEN
+    INSERT INTO accounts (company_id, code, name, type, is_active)
+    VALUES (v_company_id, '5000', 'Operating Expense', 'expense', true);
+  END IF;  -- Prevent duplicates
+  
   -- Return success result
   v_result := json_build_object(
     'success', true,

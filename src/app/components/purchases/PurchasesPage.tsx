@@ -65,7 +65,7 @@ export const PurchasesPage = () => {
   const { openDrawer } = useNavigation();
   const { companyId, branchId } = useSupabase();
   const { startDate, endDate } = useDateRange();
-  const { purchases: contextPurchases, loading: contextLoading, refreshPurchases } = usePurchases();
+  const { purchases: contextPurchases, loading: contextLoading, refreshPurchases, deletePurchase } = usePurchases();
   const [purchases, setPurchases] = useState<Purchase[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -184,14 +184,21 @@ export const PurchasesPage = () => {
     }
     
     try {
-      await purchaseService.deletePurchase(selectedPurchase.uuid);
+      // Use context delete which handles state refresh
+      await deletePurchase(selectedPurchase.uuid);
       toast.success(`Purchase ${selectedPurchase.poNo} deleted successfully`);
       setDeleteDialogOpen(false);
       setSelectedPurchase(null);
+      
+      // CRITICAL: Refresh both context and local state
+      await refreshPurchases();
       await loadPurchases();
     } catch (error: any) {
       console.error('[PURCHASES PAGE] Error deleting purchase:', error);
       toast.error('Failed to delete purchase: ' + (error.message || 'Unknown error'));
+      // Refresh on error to ensure UI consistency
+      await refreshPurchases();
+      await loadPurchases();
     }
   };
 
@@ -231,12 +238,20 @@ export const PurchasesPage = () => {
       
       // Convert Supabase format to app format
       const convertedPurchases: Purchase[] = data.map((p: any, index: number) => {
-        // Resolve branch NAME from branch_id (UI rule: name only, no code, no UUID)
+        // 🔒 CLONE FROM SALE PAGE: Resolve branch NAME from branch_id (UI rule: name only, no code, no UUID)
         let location = '';
         if (p.branch?.name) {
           location = p.branch.name;
-        } else if (p.branch_id && branchMap.size > 0) {
-          location = branchMap.get(p.branch_id) || '';
+        } else if (p.branch_id) {
+          // Always try to resolve from branchMap (even if empty, will be resolved in render)
+          const resolved = branchMap.get(p.branch_id);
+          if (resolved) {
+            // Extract just the name if branchMap returns "BR-001 | Name" format
+            location = resolved.includes('|') ? resolved.split('|').pop()?.trim() || '' : resolved;
+          } else {
+            // If branchMap not loaded yet, store branch_id (will be resolved in render)
+            location = p.branch_id;
+          }
         }
         
         return {
@@ -259,8 +274,8 @@ export const PurchasesPage = () => {
                    p.status === 'draft' ? 'pending' : 
                    'pending') as PurchaseStatus,
           paymentStatus: p.payment_status || 'unpaid',
-          // STEP 3 FIX: Added By - show user name from created_by_user join
-          addedBy: p.created_by_user?.full_name || p.created_by_user?.email || 'Unknown',
+          // STEP 3 FIX: Added By - show user name from created_by_user join or Purchase.createdBy
+          addedBy: p.created_by_user?.full_name || p.created_by_user?.email || (p as any).createdBy || 'System',
         };
       });
       
@@ -278,14 +293,20 @@ export const PurchasesPage = () => {
   useEffect(() => {
     if (contextPurchases.length > 0) {
       const convertedPurchases: Purchase[] = contextPurchases.map((p: any, index: number) => {
-        // UI Rule: Show branch NAME only (never UUID, never code)
-        // p.location from context should already be branch name
+        // 🔒 CLONE FROM SALE PAGE: UI Rule: Show branch NAME only (never UUID, never code)
+        // p.location from context should already be branch name, but resolve if needed
         let locationDisplay = p.location || '';
         
         // Safety check: if somehow UUID got through, try to resolve it
         const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(locationDisplay);
-        if (isUUID && branchMap.size > 0) {
-          locationDisplay = branchMap.get(locationDisplay) || '';
+        if (isUUID) {
+          const resolved = branchMap.get(locationDisplay);
+          // Extract just the name if branchMap returns "BR-001 | Name" format
+          if (resolved && resolved.includes('|')) {
+            locationDisplay = resolved.split('|').pop()?.trim() || '';
+          } else {
+            locationDisplay = resolved || '';
+          }
         }
         // Strip code prefix if present (e.g., "BR-001 | Name" -> "Name")
         if (locationDisplay.includes('|')) {
@@ -313,7 +334,7 @@ export const PurchasesPage = () => {
                    'pending') as PurchaseStatus,
           paymentStatus: p.paymentStatus || 'unpaid',
           // STEP 3 FIX: Added By - show user name from created_by_user join (context purchases)
-          addedBy: p.created_by_user?.full_name || p.created_by_user?.email || 'Unknown',
+          addedBy: (p as any).createdBy || p.created_by_user?.full_name || p.created_by_user?.email || 'System',
         };
       });
       setPurchases(convertedPurchases);
@@ -333,6 +354,46 @@ export const PurchasesPage = () => {
       loadPurchases();
     }
   }, [companyId, purchases.length, loading, contextLoading, loadPurchases]);
+
+  // Listen for purchase saved event to refresh list
+  useEffect(() => {
+    const handlePurchaseSaved = () => {
+      // 🔒 CLONE FROM SALE PAGE: Refresh both context and local state to ensure location is resolved
+      loadPurchases();
+      if (refreshPurchases) {
+        refreshPurchases();
+      }
+    };
+    
+    window.addEventListener('purchaseSaved', handlePurchaseSaved);
+    return () => {
+      window.removeEventListener('purchaseSaved', handlePurchaseSaved);
+    };
+  }, [loadPurchases, refreshPurchases]);
+  
+  // 🔒 CLONE FROM SALE PAGE: Re-resolve locations when branchMap is updated
+  useEffect(() => {
+    if (branchMap.size > 0 && purchases.length > 0) {
+      // Re-resolve locations for purchases that might have UUIDs
+      const updatedPurchases = purchases.map(p => {
+        const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(p.location);
+        if (isUUID) {
+          const resolved = branchMap.get(p.location);
+          if (resolved) {
+            const locationName = resolved.includes('|') ? resolved.split('|').pop()?.trim() || '' : resolved;
+            return { ...p, location: locationName };
+          }
+        }
+        return p;
+      });
+      // Only update if locations actually changed
+      const hasChanges = updatedPurchases.some((p, i) => p.location !== purchases[i].location);
+      if (hasChanges) {
+        setPurchases(updatedPurchases);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [branchMap]); // Only depend on branchMap, not purchases (to avoid infinite loop)
 
   // Column order state - defines order of columns (same as Sale/Products; reorder in Columns dropdown)
   const [columnOrder, setColumnOrder] = useState([
@@ -547,13 +608,27 @@ export const PurchasesPage = () => {
           </div>
         );
       case 'location': {
+        // 🔒 CLONE FROM SALE PAGE: UI Rule: Show branch NAME only (not code, never UUID)
+        // purchase.location now contains branch name from context (or empty)
+        // Fallback to branchMap for old data that might still have UUID
         let locationText = purchase.location || '';
+        
+        // If it looks like a UUID, try branchMap fallback, then show '—'
         const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(locationText);
-        if (isUUID && branchMap.size > 0) {
+        if (isUUID) {
           const resolved = branchMap.get(locationText);
-          locationText = resolved?.includes('|') ? resolved.split('|').pop()?.trim() || '' : (resolved || '');
+          // Extract just the name if branchMap returns "BR-001 | Name" format
+          if (resolved && resolved.includes('|')) {
+            locationText = resolved.split('|').pop()?.trim() || '';
+          } else {
+            locationText = resolved || '';
+          }
         }
-        if (locationText.includes('|')) locationText = locationText.split('|').pop()?.trim() || '';
+        // If it contains '|' (old format), extract just the name
+        if (locationText.includes('|')) {
+          locationText = locationText.split('|').pop()?.trim() || '';
+        }
+        
         return (
           <div className="flex items-center gap-1.5 text-xs text-gray-400">
             <MapPin size={12} className="text-gray-600" />
@@ -1007,6 +1082,7 @@ export const PurchasesPage = () => {
             paid: selectedPurchase.grandTotal - selectedPurchase.paymentDue,
             due: selectedPurchase.paymentDue,
             paymentStatus: selectedPurchase.paymentStatus,
+            referenceType: 'purchase', // 🔒 UUID ARCHITECTURE: Explicit entity type (no pattern matching)
           }}
           onAddPayment={handleAddPaymentFromModal}
           onDeletePayment={async (paymentId: string) => {
@@ -1081,7 +1157,7 @@ export const PurchasesPage = () => {
                              purchaseData.status === 'draft' ? 'pending' : 
                              'pending') as PurchaseStatus,
                     paymentStatus: purchaseData.payment_status || 'unpaid',
-                    addedBy: purchaseData.created_by_user?.full_name || purchaseData.created_by_user?.email || selectedPurchase.addedBy,
+                    addedBy: purchaseData.created_by_user?.full_name || purchaseData.created_by_user?.email || selectedPurchase.addedBy || 'System',
                   };
                   setSelectedPurchase(convertedPurchase);
                 }
@@ -1141,12 +1217,29 @@ export const PurchasesPage = () => {
       {/* Delete Confirmation Dialog */}
       {selectedPurchase && (
         <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-          <AlertDialogContent className="bg-gray-900 border-gray-700 text-white">
+          <AlertDialogContent className="bg-gray-900 border-gray-700 text-white max-w-md">
             <AlertDialogHeader>
-              <AlertDialogTitle>Delete Purchase Order</AlertDialogTitle>
-              <AlertDialogDescription className="text-gray-400">
-                Are you sure you want to delete <strong>{selectedPurchase.poNo}</strong>? 
-                This action cannot be undone.
+              <AlertDialogTitle className="text-red-400 flex items-center gap-2">
+                <AlertCircle size={20} />
+                Delete Purchase Order
+              </AlertDialogTitle>
+              <AlertDialogDescription className="text-gray-300 space-y-3 mt-4">
+                <p>
+                  Are you sure you want to permanently delete <strong className="text-white">{selectedPurchase.poNo}</strong>?
+                </p>
+                <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3 space-y-2">
+                  <p className="text-sm font-semibold text-red-400">⚠️ This will permanently delete:</p>
+                  <ul className="text-xs text-gray-300 space-y-1 list-disc list-inside ml-2">
+                    <li>Purchase record and all items</li>
+                    <li>All payments (cash/bank) and accounting entries</li>
+                    <li>Stock movements (stock will be reversed)</li>
+                    <li>Supplier ledger entries</li>
+                    <li>All related activity logs</li>
+                  </ul>
+                </div>
+                <p className="text-sm text-red-400 font-semibold">
+                  This action cannot be undone.
+                </p>
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
@@ -1157,7 +1250,7 @@ export const PurchasesPage = () => {
                 onClick={confirmDelete}
                 className="bg-red-600 hover:bg-red-700 text-white"
               >
-                Delete
+                Yes, Delete Purchase
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>

@@ -15,6 +15,8 @@
 
 import { useContext } from 'react';
 import { SettingsContext } from '@/app/context/SettingsContext';
+import { useSupabase } from '@/app/context/SupabaseContext';
+import { documentNumberService } from '@/app/services/documentNumberService';
 
 export type DocumentType =
   | 'invoice'
@@ -70,6 +72,7 @@ const DEFAULT_NUMBERING = {
 
 export const useDocumentNumbering = () => {
   const settings = useContext(SettingsContext);
+  const { companyId } = useSupabase();
   const numbering = settings?.numberingRules ?? DEFAULT_NUMBERING;
 
   // Get numbering config for document type
@@ -175,7 +178,7 @@ export const useDocumentNumbering = () => {
     }
   };
 
-  // Generate next document number
+  // Generate next document number (synchronous - for preview/display)
   const generateDocumentNumber = (type: DocumentType): string => {
     const config = getNumberingConfig(type);
 
@@ -204,6 +207,46 @@ export const useDocumentNumbering = () => {
     }
 
     return result;
+  };
+
+  // Generate collision-safe document number (async - checks database)
+  const generateDocumentNumberSafe = async (type: DocumentType): Promise<string> => {
+    if (!companyId) {
+      console.warn('[DOCUMENT NUMBERING] No companyId, using sync generation');
+      return generateDocumentNumber(type);
+    }
+
+    const config = getNumberingConfig(type);
+    const prefix = config.prefix || 'DOC';
+    let attemptNumber = config.nextNumber;
+    const maxAttempts = 100; // Safety limit
+    let attempts = 0;
+
+    while (attempts < maxAttempts) {
+      const paddedNumber = String(attemptNumber).padStart(config.padding, '0');
+      const candidateNumber = `${prefix}${paddedNumber}`;
+
+      // Check if this number already exists
+      const exists = await documentNumberService.checkDocumentNumberExists(
+        companyId,
+        candidateNumber,
+        type
+      );
+
+      if (!exists) {
+        // Found a unique number
+        return candidateNumber;
+      }
+
+      // Number exists, try next
+      attemptNumber++;
+      attempts++;
+    }
+
+    // Fallback: if all attempts failed, return the next number anyway (shouldn't happen)
+    console.error('[DOCUMENT NUMBERING] Could not find unique number after', maxAttempts, 'attempts');
+    const paddedNumber = String(attemptNumber).padStart(config.padding, '0');
+    return `${prefix}${paddedNumber}`;
   };
 
   // Generate preview (for settings page)
@@ -264,6 +307,7 @@ export const useDocumentNumbering = () => {
 
   return {
     generateDocumentNumber,
+    generateDocumentNumberSafe,
     getNumberPreview,
     incrementNextNumber,
     getNumberingConfig

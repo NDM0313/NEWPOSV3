@@ -222,14 +222,216 @@ export const purchaseService = {
     return data;
   },
 
-  // Delete purchase (soft delete by setting status to cancelled)
+  // Delete purchase with complete cascade delete
+  // CRITICAL: This deletes ALL related data in correct order
+  // Order: Payments → Journal Entries → Stock Movements → Ledger Entries → Activity Logs → Purchase Items → Purchase
   async deletePurchase(id: string) {
-    const { error } = await supabase
-      .from('purchases')
-      .update({ status: 'cancelled' })
-      .eq('id', id);
+    console.log('[PURCHASE SERVICE] Starting cascade delete for purchase:', id);
+    
+    try {
+      // STEP 1: Delete all payments for this purchase (and their journal entries)
+      const { data: payments } = await supabase
+        .from('payments')
+        .select('id')
+        .eq('reference_type', 'purchase')
+        .eq('reference_id', id);
 
-    if (error) throw error;
+      if (payments && payments.length > 0) {
+        console.log(`[PURCHASE SERVICE] Found ${payments.length} payments to delete`);
+        for (const payment of payments) {
+          try {
+            // Delete payment using the existing deletePaymentDirect method
+            await this.deletePaymentDirect(payment.id, id);
+          } catch (paymentError: any) {
+            console.error(`[PURCHASE SERVICE] Error deleting payment ${payment.id}:`, paymentError);
+            // Continue with other deletions even if one payment fails
+          }
+        }
+      }
+
+      // STEP 2: Delete stock movements (to reverse stock)
+      // CRITICAL: Include variation_id for proper stock reversal
+      const { data: stockMovements } = await supabase
+        .from('stock_movements')
+        .select('id, company_id, branch_id, product_id, variation_id, quantity, unit_cost, total_cost')
+        .eq('reference_type', 'purchase')
+        .eq('reference_id', id);
+
+      if (stockMovements && stockMovements.length > 0) {
+        console.log(`[PURCHASE SERVICE] Found ${stockMovements.length} stock movements to reverse`);
+        // Create reverse stock movements before deleting (STEP 3: Reverse, not hide)
+        for (const movement of stockMovements) {
+          try {
+            // Create reverse movement (negative quantity to reverse stock)
+            // CRITICAL: Include variation_id for variation-specific stock reversal
+            const reverseMovement = {
+              company_id: movement.company_id,
+              branch_id: movement.branch_id,
+              product_id: movement.product_id,
+              variation_id: movement.variation_id || null, // CRITICAL: Include variation_id
+              movement_type: 'adjustment',
+              quantity: -(Number(movement.quantity) || 0), // Negative to reverse
+              unit_cost: Number(movement.unit_cost) || 0,
+              total_cost: -(Number(movement.total_cost) || 0), // Negative to reverse
+              reference_type: 'purchase',
+              reference_id: id,
+              notes: `Reverse stock from deleted purchase ${id}`,
+            };
+            
+            console.log('[PURCHASE SERVICE] Creating reverse stock movement:', {
+              product_id: reverseMovement.product_id,
+              variation_id: reverseMovement.variation_id,
+              quantity: reverseMovement.quantity
+            });
+            
+            const { data: reverseData, error: reverseError } = await supabase
+              .from('stock_movements')
+              .insert(reverseMovement)
+              .select()
+              .single();
+            
+            if (reverseError) {
+              console.error('[PURCHASE SERVICE] ❌ Failed to create reverse stock movement:', reverseError);
+              throw reverseError; // Don't allow silent failure
+            }
+            
+            console.log('[PURCHASE SERVICE] ✅ Reverse stock movement created:', reverseData?.id);
+          } catch (reverseError: any) {
+            console.error('[PURCHASE SERVICE] ❌ CRITICAL: Could not create reverse stock movement:', reverseError);
+            throw new Error(`Failed to reverse stock movement: ${reverseError.message || reverseError}`);
+          }
+        }
+        
+        // Delete original stock movements
+        const { error: stockError } = await supabase
+          .from('stock_movements')
+          .delete()
+          .eq('reference_type', 'purchase')
+          .eq('reference_id', id);
+
+        if (stockError) {
+          console.error('[PURCHASE SERVICE] Error deleting stock movements:', stockError);
+          // Continue with other deletions
+        }
+      }
+
+      // STEP 3: Delete ledger entries (supplier ledger)
+      // CRITICAL: Delete ALL entries related to this purchase (purchase, payment, discount, cargo)
+      const { data: ledgerEntries } = await supabase
+        .from('ledger_entries')
+        .select('id, source, reference_no')
+        .or(`and(source.eq.purchase,reference_id.eq.${id}),and(source.eq.payment,reference_id.eq.${id})`)
+        .like('reference_no', `%${id}%`); // Also match by reference_no pattern
+
+      // More comprehensive: Delete by reference_id regardless of source
+      const { data: allLedgerEntries } = await supabase
+        .from('ledger_entries')
+        .select('id, source, reference_no, reference_id')
+        .eq('reference_id', id);
+
+      const entriesToDelete = allLedgerEntries || ledgerEntries || [];
+      
+      if (entriesToDelete.length > 0) {
+        console.log(`[PURCHASE SERVICE] Found ${entriesToDelete.length} ledger entries to delete:`, entriesToDelete.map(e => ({ source: e.source, ref: e.reference_no })));
+        
+        // Delete by reference_id (catches all entries linked to this purchase)
+        const { error: ledgerError } = await supabase
+          .from('ledger_entries')
+          .delete()
+          .eq('reference_id', id);
+
+        if (ledgerError) {
+          console.error('[PURCHASE SERVICE] Error deleting ledger entries:', ledgerError);
+          // Try alternative: delete by source and reference_no pattern
+          const purchaseNo = entriesToDelete[0]?.reference_no;
+          if (purchaseNo) {
+            const { error: altError } = await supabase
+              .from('ledger_entries')
+              .delete()
+              .eq('reference_no', purchaseNo);
+            
+            if (altError) {
+              console.error('[PURCHASE SERVICE] Alternative ledger delete also failed:', altError);
+            } else {
+              console.log('[PURCHASE SERVICE] ✅ Deleted ledger entries by reference_no');
+            }
+          }
+        } else {
+          console.log('[PURCHASE SERVICE] ✅ Deleted ledger entries by reference_id');
+        }
+      }
+
+      // STEP 4: Delete journal entries directly linked to purchase (if any)
+      const { data: journalEntries } = await supabase
+        .from('journal_entries')
+        .select('id')
+        .eq('reference_type', 'purchase')
+        .eq('reference_id', id);
+
+      if (journalEntries && journalEntries.length > 0) {
+        console.log(`[PURCHASE SERVICE] Found ${journalEntries.length} journal entries to delete`);
+        for (const entry of journalEntries) {
+          // Delete journal entry lines first
+          const { error: lineError } = await supabase
+            .from('journal_entry_lines')
+            .delete()
+            .eq('journal_entry_id', entry.id);
+
+          if (lineError) {
+            console.error('[PURCHASE SERVICE] Error deleting journal entry lines:', lineError);
+          }
+
+          // Then delete journal entry
+          const { error: entryError } = await supabase
+            .from('journal_entries')
+            .delete()
+            .eq('id', entry.id);
+
+          if (entryError) {
+            console.error('[PURCHASE SERVICE] Error deleting journal entry:', entryError);
+          }
+        }
+      }
+
+      // STEP 5: Delete activity logs
+      const { error: activityError } = await supabase
+        .from('activity_logs')
+        .delete()
+        .eq('module', 'purchase')
+        .eq('entity_id', id);
+
+      if (activityError) {
+        console.warn('[PURCHASE SERVICE] Error deleting activity logs (non-critical):', activityError);
+        // Activity logs deletion failure is non-critical
+      }
+
+      // STEP 6: Delete purchase items (cascade should handle this, but explicit for safety)
+      const { error: itemsError } = await supabase
+        .from('purchase_items')
+        .delete()
+        .eq('purchase_id', id);
+
+      if (itemsError) {
+        console.error('[PURCHASE SERVICE] Error deleting purchase items:', itemsError);
+        // Continue - purchase deletion will cascade
+      }
+
+      // STEP 7: Finally delete the purchase record itself
+      const { error: purchaseError } = await supabase
+        .from('purchases')
+        .delete()
+        .eq('id', id);
+
+      if (purchaseError) {
+        console.error('[PURCHASE SERVICE] Error deleting purchase:', purchaseError);
+        throw purchaseError;
+      }
+
+      console.log('[PURCHASE SERVICE] ✅ Cascade delete completed successfully for purchase:', id);
+    } catch (error: any) {
+      console.error('[PURCHASE SERVICE] ❌ Cascade delete failed for purchase:', id, error);
+      throw new Error(`Failed to delete purchase: ${error.message || 'Unknown error'}`);
+    }
   },
 
   // Record payment – allowed only when purchase status is final/completed (ERP rule). referenceNumber = PAY-xxxx from Numbering.
@@ -286,6 +488,11 @@ export const purchaseService = {
       enumValue: enumPaymentMethod
     });
 
+    // 🔧 FIX 4: PAYMENT ACCOUNT VALIDATION (MANDATORY)
+    if (!accountId) {
+      throw new Error('Payment account is required. Please select an account.');
+    }
+
     const { data, error } = await supabase
       .from('payments')
       .insert({
@@ -304,6 +511,94 @@ export const purchaseService = {
       .single();
 
     if (error) throw error;
+    
+    // 🔧 FIX 3: PURCHASE PAYMENT JOURNAL ENTRY (MANDATORY)
+    // CRITICAL: ALWAYS create journal entry for purchase payment
+    // Rule: Accounts Payable Dr, Cash/Bank Cr
+    try {
+      // Get Accounts Payable account
+      const { data: apAccounts } = await supabase
+        .from('accounts')
+        .select('id')
+        .eq('company_id', companyId)
+        .or('name.ilike.Accounts Payable,code.eq.2000')
+        .limit(1);
+      
+      const apAccountId = apAccounts?.[0]?.id;
+      
+      // Get payment account (Cash/Bank)
+      const { data: paymentAccount } = await supabase
+        .from('accounts')
+        .select('id, name')
+        .eq('id', accountId)
+        .single();
+      
+      if (!apAccountId || !paymentAccount) {
+        console.error('[PURCHASE SERVICE] ❌ CRITICAL: Missing accounts for payment journal entry');
+        throw new Error('Missing required accounts for payment journal entry');
+      }
+      
+      // Create journal entry for payment
+      const { data: journalEntry, error: journalError } = await supabase
+        .from('journal_entries')
+        .insert({
+          company_id: companyId,
+          branch_id: validBranchId,
+          entry_date: new Date().toISOString().split('T')[0],
+          description: `Payment for purchase ${purchaseId}`,
+          reference_type: 'payment',
+          reference_id: data.id, // Payment ID
+          payment_id: data.id,
+          created_by: (await supabase.auth.getUser()).data.user?.id,
+        })
+        .select()
+        .single();
+      
+      if (journalError || !journalEntry) {
+        console.error('[PURCHASE SERVICE] ❌ CRITICAL: Failed to create payment journal entry:', journalError);
+        throw new Error(`Failed to create payment journal entry: ${journalError?.message || 'Unknown error'}`);
+      }
+      
+      // Debit: Accounts Payable (we paid supplier, reduces what we owe)
+      const { error: debitError } = await supabase
+        .from('journal_entry_lines')
+        .insert({
+          journal_entry_id: journalEntry.id,
+          account_id: apAccountId,
+          debit: amount,
+          credit: 0,
+          description: `Payment to supplier for purchase ${purchaseId}`,
+        });
+      
+      if (debitError) {
+        console.error('[PURCHASE SERVICE] ❌ CRITICAL: Failed to create AP debit line:', debitError);
+        throw debitError;
+      }
+      
+      // Credit: Cash/Bank (money went out)
+      const { error: creditError } = await supabase
+        .from('journal_entry_lines')
+        .insert({
+          journal_entry_id: journalEntry.id,
+          account_id: accountId,
+          debit: 0,
+          credit: amount,
+          description: `Payment from ${paymentAccount.name}`,
+        });
+      
+      if (creditError) {
+        console.error('[PURCHASE SERVICE] ❌ CRITICAL: Failed to create payment account credit line:', creditError);
+        throw creditError;
+      }
+      
+      console.log('[PURCHASE SERVICE] ✅ Created payment journal entry:', journalEntry.id);
+    } catch (journalErr: any) {
+      console.error('[PURCHASE SERVICE] ❌ CRITICAL: Payment journal entry failed:', journalErr);
+      // Don't delete payment if journal fails - payment is already created
+      // But log error for manual correction
+      throw new Error(`Payment recorded but journal entry failed: ${journalErr.message}`);
+    }
+    
     return data;
   },
 
@@ -377,6 +672,8 @@ export const purchaseService = {
 
   // Get purchase payments (STEP 2 FIX: Like Sale module)
   async getPurchasePayments(purchaseId: string) {
+    console.log('[PURCHASE SERVICE] getPurchasePayments called with purchaseId:', purchaseId);
+    
     const { data, error } = await supabase
       .from('payments')
       .select(`
@@ -396,24 +693,39 @@ export const purchaseService = {
       .order('payment_date', { ascending: false })
       .order('created_at', { ascending: false });
 
+    console.log('[PURCHASE SERVICE] Payment query result:', { 
+      dataCount: data?.length || 0, 
+      error: error?.message,
+      purchaseId 
+    });
+
     if (error) {
       console.error('[PURCHASE SERVICE] Error fetching payments:', error);
-      throw error;
+      // Don't throw - return empty array and log warning
     }
 
-    // Transform to Payment format
-    return (data || []).map((p: any) => ({
-      id: p.id,
-      date: p.payment_date || p.created_at?.split('T')[0] || new Date().toISOString().split('T')[0],
-      referenceNo: p.reference_number || '',
-      amount: parseFloat(p.amount || 0),
-      method: p.payment_method || 'cash',
-      accountId: p.payment_account_id,
-      accountName: p.account?.name || '',
-      notes: p.notes || '',
-      attachments: p.attachments || null,
-      createdAt: p.created_at,
-    }));
+    // 🔒 GOLDEN RULE: Payment history = payments table ONLY (no fallback to paid_amount)
+    if (data && data.length > 0) {
+      console.log('[PURCHASE SERVICE] Found', data.length, 'payments for purchase:', purchaseId);
+      return data.map((p: any) => ({
+        id: p.id,
+        date: p.payment_date || p.created_at?.split('T')[0] || new Date().toISOString().split('T')[0],
+        referenceNo: p.reference_number || '',
+        amount: parseFloat(p.amount || 0),
+        method: p.payment_method || 'cash',
+        accountId: p.payment_account_id,
+        accountName: p.account?.name || '',
+        notes: p.notes || '',
+        attachments: p.attachments || null,
+        createdAt: p.created_at,
+      }));
+    }
+
+    // 🔒 GOLDEN RULE: Return empty array if no payments found (never fallback to paid_amount)
+    console.log('[PURCHASE SERVICE] No payments found in payments table for purchase:', purchaseId);
+    return [];
+
+    return [];
   },
 
   // Delete payment (similar to saleService.deletePayment)

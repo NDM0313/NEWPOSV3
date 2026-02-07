@@ -3,7 +3,8 @@ import { Search, Plus, Trash2, Package, ChevronsUpDown, Edit, Sparkles } from 'l
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Badge } from "../ui/badge";
-import { InlineVariationSelector, Variation } from "../ui/inline-variation-selector";
+import { cn } from "../ui/utils";
+import { toast } from 'sonner';
 import {
     Command,
     CommandEmpty,
@@ -28,22 +29,28 @@ interface Product {
     needsPacking: boolean;
     stock?: number;
     lastPurchasePrice?: number;
+    unitId?: string | null;
+    unitAllowDecimal?: boolean;
+    variations?: Array<{ id?: string; size?: string; color?: string; attributes?: Record<string, unknown>; sku?: string; price?: number; stock?: number }>;
 }
 
 interface PurchaseItem {
     id: number;
-    productId: number;
+    productId: number | string;
     name: string;
     sku: string;
     price: number;
     qty: number;
     size?: string;
     color?: string;
+    variationId?: string;
     thaans?: number;
     meters?: number;
     packingDetails?: any;
     stock?: number;
-    showVariations?: boolean; // Flag to show variation selector inline
+    showVariations?: boolean;
+    selectedVariationId?: string;
+    unitAllowDecimal?: boolean; // From product's unit
 }
 
 interface PurchaseItemsSectionProps {
@@ -69,6 +76,9 @@ interface PurchaseItemsSectionProps {
     setPendingMeters: React.Dispatch<React.SetStateAction<number>>;
     filteredProducts: Product[];
     handleSelectProduct: (product: Product) => void;
+    // Variation handling
+    productVariations?: Record<string | number, Array<{ id?: string; size?: string; color?: string; sku?: string; price?: number; stock?: number; attributes?: Record<string, unknown> }>>;
+    handleInlineVariationSelect?: (itemId: number, variation: { id?: string; size?: string; color?: string; sku?: string; price?: number; stock?: number; attributes?: Record<string, unknown> }) => void;
     handleAddItem: () => void;
     handleOpenPackingModal: (itemId: number) => void;
     setPackingModalOpen: React.Dispatch<React.SetStateAction<boolean>>;
@@ -79,14 +89,6 @@ interface PurchaseItemsSectionProps {
     qtyInputRef: React.RefObject<HTMLInputElement>;
     priceInputRef: React.RefObject<HTMLInputElement>;
     addBtnRef: React.RefObject<HTMLButtonElement>;
-    // Inline variation selection
-    showVariationSelector: boolean;
-    selectedProductForVariation: Product | null;
-    productVariations: Record<number, Array<{ size: string; color: string }>>;
-    handleVariationSelect: (variation: Variation) => void;
-    setShowVariationSelector: React.Dispatch<React.SetStateAction<boolean>>;
-    setSelectedProductForVariation: React.Dispatch<React.SetStateAction<Product | null>>;
-    handleInlineVariationSelect: (itemId: number, variation: { size?: string; color?: string }) => void;
     /** When false, Packing column and modal trigger are hidden (global Enable Packing = OFF). */
     enablePacking?: boolean;
     // Update item function
@@ -94,7 +96,6 @@ interface PurchaseItemsSectionProps {
     // Keyboard navigation
     itemQtyRefs: React.MutableRefObject<Record<number, HTMLInputElement | null>>;
     itemPriceRefs: React.MutableRefObject<Record<number, HTMLInputElement | null>>;
-    itemVariationRefs: React.MutableRefObject<Record<number, HTMLButtonElement | null>>;
     handleQtyKeyDown: (e: React.KeyboardEvent, itemId: number) => void;
     handlePriceKeyDown: (e: React.KeyboardEvent, itemId: number) => void;
 }
@@ -122,6 +123,8 @@ export const PurchaseItemsSection: React.FC<PurchaseItemsSectionProps> = ({
     setPendingMeters,
     filteredProducts,
     handleSelectProduct,
+    productVariations = {},
+    handleInlineVariationSelect,
     handleAddItem,
     handleOpenPackingModal,
     setPackingModalOpen,
@@ -132,21 +135,12 @@ export const PurchaseItemsSection: React.FC<PurchaseItemsSectionProps> = ({
     qtyInputRef,
     priceInputRef,
     addBtnRef,
-    // Inline variation selection
-    showVariationSelector,
-    selectedProductForVariation,
-    productVariations,
-    handleVariationSelect,
-    setShowVariationSelector,
-    setSelectedProductForVariation,
-    handleInlineVariationSelect,
     enablePacking = false,
     // Update item function
     updateItem,
     // Keyboard navigation
     itemQtyRefs,
     itemPriceRefs,
-    itemVariationRefs,
     handleQtyKeyDown,
     handlePriceKeyDown,
 }) => {
@@ -173,7 +167,7 @@ export const PurchaseItemsSection: React.FC<PurchaseItemsSectionProps> = ({
                                     <Search size={16} className="text-gray-400 group-hover:text-blue-400 shrink-0 transition-colors relative z-10" />
                                     <div className="flex-1 relative z-10">
                                         <span className="text-xs text-gray-400 group-hover:text-gray-300 transition-colors">
-                                            Search products by name, SKU...
+                                            Search by name, SKU, or numeric code (e.g., 001, 22)...
                                         </span>
                                     </div>
                                     <kbd className="hidden sm:flex items-center gap-1 px-2 py-1 text-xs font-medium text-gray-500 bg-gray-800/50 border border-gray-700 rounded relative z-10">
@@ -183,12 +177,14 @@ export const PurchaseItemsSection: React.FC<PurchaseItemsSectionProps> = ({
                                 </button>
                             </PopoverTrigger>
                             <PopoverContent className="w-[600px] p-0 bg-gray-950 border-gray-800 text-white shadow-2xl shadow-black/50" align="start">
-                                <Command className="bg-gray-950 text-white">
+                                <Command className="bg-gray-950 text-white" shouldFilter={false}>
                                     <CommandInput 
                                         ref={searchInputRef}
-                                        placeholder="Type to search products..." 
-                                        value={productSearchTerm}
-                                        onValueChange={setProductSearchTerm}
+                                        placeholder="Search by name, SKU, or numeric code..." 
+                                        value={productSearchTerm || ''}
+                                        onValueChange={(value) => {
+                                            setProductSearchTerm(value || '');
+                                        }}
                                         className="h-12 text-base border-b border-gray-800" 
                                     />
                                     <CommandList className="max-h-[400px]">
@@ -202,7 +198,20 @@ export const PurchaseItemsSection: React.FC<PurchaseItemsSectionProps> = ({
                                                     <p className="text-gray-600 text-xs mb-6">
                                                         {productSearchTerm ? `No results for "${productSearchTerm}"` : 'Start typing to search'}
                                                     </p>
-                                                    {productSearchTerm && (
+                                                    {/* Always show Add button when search term exists (numeric or alphabetic) */}
+                                                    {/* Show button if: filteredProducts is empty AND search term exists (any value including "00", "0001", etc.) */}
+                                                    {(() => {
+                                                        const searchTermStr = String(productSearchTerm || '').trim();
+                                                        const hasSearchTerm = searchTermStr.length > 0;
+                                                        const noResults = filteredProducts.length === 0;
+                                                        const shouldShow = noResults && hasSearchTerm;
+                                                        
+                                                        // Debug log
+                                                        if (hasSearchTerm) {
+                                                            console.log(`[ADD BUTTON CHECK] Search: "${searchTermStr}", filteredProducts: ${filteredProducts.length}, hasSearchTerm: ${hasSearchTerm}, shouldShow: ${shouldShow}`);
+                                                        }
+                                                        
+                                                        return shouldShow ? (
                                                         <button
                                                             onClick={() => {
                                                                 setProductSearchOpen(false);
@@ -216,7 +225,8 @@ export const PurchaseItemsSection: React.FC<PurchaseItemsSectionProps> = ({
                                                             <span>Create New Product</span>
                                                             <Sparkles size={14} className="opacity-70" />
                                                         </button>
-                                                    )}
+                                                        ) : null;
+                                                    })()}
                                                 </div>
                                             </div>
                                         ) : (
@@ -224,7 +234,7 @@ export const PurchaseItemsSection: React.FC<PurchaseItemsSectionProps> = ({
                                                 {filteredProducts.map((p) => (
                                                     <CommandItem
                                                         key={p.id}
-                                                        value={p.name}
+                                                        value={`${p.name} ${p.sku}`}
                                                         onSelect={() => handleSelectProduct(p)}
                                                         className="text-white hover:bg-gray-800/80 cursor-pointer px-4 py-3 data-[selected=true]:bg-gray-800"
                                                     >
@@ -348,6 +358,14 @@ export const PurchaseItemsSection: React.FC<PurchaseItemsSectionProps> = ({
                                                     <div className="text-sm font-medium text-white leading-tight mb-0.5 truncate">{item.name}</div>
                                                     <div className="flex items-center gap-1 text-[11px] text-gray-500">
                                                         <span className="font-mono">{item.sku}</span>
+                                                        {item.size || item.color ? (
+                                                            <>
+                                                                <span>·</span>
+                                                                <span className="text-blue-400">
+                                                                    {item.size && item.color ? `${item.size} / ${item.color}` : item.size || item.color}
+                                                                </span>
+                                                            </>
+                                                        ) : null}
                                                         <span>·</span>
                                                         <span className={item.stock && item.stock > 0 ? 'text-green-500' : 'text-red-500'}>
                                                             {item.stock || 0}
@@ -414,11 +432,21 @@ export const PurchaseItemsSection: React.FC<PurchaseItemsSectionProps> = ({
                                         <Input 
                                             ref={(el) => (itemQtyRefs.current[item.id] = el)}
                                             type="number"
-                                            className="h-7 w-full text-center bg-transparent border-transparent hover:border-gray-700 focus:bg-gray-950 focus:border-blue-500 p-0.5 text-sm font-medium"
+                                            step={item.unitAllowDecimal === false ? "1" : "0.01"}
+                                            className="h-7 w-full text-center bg-transparent border-transparent hover:border-gray-700 focus:bg-gray-950 focus:border-blue-500 p-0.5 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                                             value={item.qty}
-                                            onChange={(e) => updateItem(item.id, 'qty', parseFloat(e.target.value) || 0)}
+                                            onChange={(e) => {
+                                                const value = parseFloat(e.target.value) || 0;
+                                                // Validate: if unit doesn't allow decimals, round to integer
+                                                if (item.unitAllowDecimal === false && value % 1 !== 0) {
+                                                    toast.error('This product unit does not allow decimal quantities');
+                                                    return;
+                                                }
+                                                updateItem(item.id, 'qty', value);
+                                            }}
                                             onKeyDown={(e) => handleQtyKeyDown(e, item.id)}
-                                            disabled={enablePacking && !!item.packingDetails}
+                                            disabled={(enablePacking && !!item.packingDetails) || (item.showVariations && !item.selectedVariationId)}
+                                            placeholder={item.showVariations && !item.selectedVariationId ? "—" : ""}
                                         />
                                     </div>
 
@@ -427,10 +455,12 @@ export const PurchaseItemsSection: React.FC<PurchaseItemsSectionProps> = ({
                                         <Input 
                                             ref={(el) => (itemPriceRefs.current[item.id] = el)}
                                             type="number"
-                                            className="h-7 w-full text-right bg-transparent border-transparent hover:border-gray-700 focus:bg-gray-950 focus:border-blue-500 px-2 py-0.5 text-sm font-medium"
+                                            className="h-7 w-full text-right bg-transparent border-transparent hover:border-gray-700 focus:bg-gray-950 focus:border-blue-500 px-2 py-0.5 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                                             value={item.price}
                                             onChange={(e) => updateItem(item.id, 'price', parseFloat(e.target.value) || 0)}
                                             onKeyDown={(e) => handlePriceKeyDown(e, item.id)}
+                                            disabled={item.showVariations && !item.selectedVariationId}
+                                            placeholder={item.showVariations && !item.selectedVariationId ? "—" : ""}
                                         />
                                     </div>
 
@@ -453,48 +483,83 @@ export const PurchaseItemsSection: React.FC<PurchaseItemsSectionProps> = ({
                                     </div>
                                 </div>
 
-                                {/* Inline Variation Selector Row - Shows under product if variations needed */}
-                                {item.showVariations && productVariations[item.productId] && (
-                                    <div className="bg-blue-500/5 border-t border-blue-500/20 px-6 py-4">
-                                        <div className="flex items-center gap-3">
-                                            <span className="text-xs text-blue-400 font-medium">Select Variation:</span>
-                                            <div className="flex flex-wrap gap-2">
-                                                {productVariations[item.productId].map((variation, vIndex) => (
-                                                    <button
-                                                        key={vIndex}
-                                                        ref={(el) => {
-                                                            if (vIndex === 0) {
-                                                                itemVariationRefs.current[item.id] = el;
-                                                            }
-                                                        }}
-                                                        onClick={() => handleInlineVariationSelect(item.id, variation)}
-                                                        onKeyDown={(e) => {
-                                                            const totalVariations = productVariations[item.productId].length;
-                                                            const variationButtons = document.querySelectorAll(`[data-variation-item="${item.id}"]`);
-                                                            
-                                                            if (e.key === 'ArrowRight') {
-                                                                e.preventDefault();
-                                                                const nextIndex = (vIndex + 1) % totalVariations;
-                                                                (variationButtons[nextIndex] as HTMLButtonElement)?.focus();
-                                                            } else if (e.key === 'ArrowLeft') {
-                                                                e.preventDefault();
-                                                                const prevIndex = (vIndex - 1 + totalVariations) % totalVariations;
-                                                                (variationButtons[prevIndex] as HTMLButtonElement)?.focus();
-                                                            } else if (e.key === 'Enter') {
-                                                                e.preventDefault();
-                                                                handleInlineVariationSelect(item.id, variation);
-                                                            }
-                                                        }}
-                                                        data-variation-item={item.id}
-                                                        className="px-3 py-1.5 text-xs bg-gray-800 hover:bg-blue-600 text-gray-300 hover:text-white rounded border border-gray-700 hover:border-blue-500 transition-all focus:bg-blue-600 focus:text-white focus:border-blue-400 focus:ring-2 focus:ring-blue-500/50 focus:outline-none"
-                                                    >
-                                                        {variation.size} / {variation.color}
+                                {/* Inline Variation Strip - Shows under product if variations needed */}
+                                {item.showVariations && handleInlineVariationSelect && (() => {
+                                    const variations = productVariations[item.productId] || 
+                                                     productVariations[String(item.productId)] || 
+                                                     productVariations[Number(item.productId)] || [];
+                                    
+                                    if (variations.length === 0) return null;
+                                    
+                                    return (
+                                        <div className="bg-blue-500/5 border-t border-blue-500/20 px-4 py-3">
+                                            <div className="flex items-center gap-3 flex-wrap">
+                                                <span className="text-xs text-blue-400 font-medium shrink-0">Select Variation:</span>
+                                                <div className="flex flex-wrap gap-2 flex-1">
+                                                    {variations.map((variation, vIndex) => {
+                                                        // Extract size and color (already normalized in PurchaseForm)
+                                                        const size = (variation.size || '').toString().trim();
+                                                        const color = (variation.color || '').toString().trim();
+                                                        
+                                                        const variationSku = variation.sku || 
+                                                                             (size && color ? `${item.sku}-${size}-${color}`.replace(/\s+/g, '-').toUpperCase() : 
+                                                                              size ? `${item.sku}-${size}`.replace(/\s+/g, '-').toUpperCase() :
+                                                                              color ? `${item.sku}-${color}`.replace(/\s+/g, '-').toUpperCase() : 
+                                                                              item.sku);
+                                                        const isSelected = item.selectedVariationId === variation.id;
+                                                        
+                                                        // Display text
+                                                        let displayText = 'Default';
+                                                        if (size && color) {
+                                                            displayText = `${size} / ${color}`;
+                                                        } else if (size) {
+                                                            displayText = size;
+                                                        } else if (color) {
+                                                            displayText = color;
+                                                        }
+                                                        
+                                                        // Debug: Log if still showing Default
+                                                        if (displayText === 'Default' && vIndex === 0) {
+                                                            console.log('[VARIATION DEBUG] Variation data:', variation, 'Size:', size, 'Color:', color);
+                                                        }
+                                                        
+                                                        return (
+                                                            <button
+                                                                key={variation.id || vIndex}
+                                                                onClick={() => handleInlineVariationSelect(item.id, variation)}
+                                                                className={cn(
+                                                                    "px-3 py-1.5 text-xs rounded border transition-all",
+                                                                    isSelected
+                                                                        ? "bg-blue-600 text-white border-blue-500 font-semibold"
+                                                                        : "bg-gray-800 text-gray-300 border-gray-700 hover:bg-gray-700 hover:border-gray-600"
+                                                                )}
+                                                                title={variationSku}
+                                                            >
+                                                                {displayText}
                                                     </button>
-                                                ))}
+                                                        );
+                                                    })}
+                                                </div>
                                             </div>
+                                            {/* Variation SKU display */}
+                                            {item.selectedVariationId && (() => {
+                                                const selectedVariation = variations.find(v => v.id === item.selectedVariationId);
+                                                const variationSku = selectedVariation?.sku || 
+                                                                     (selectedVariation ? `${item.sku}-${selectedVariation.size || ''}-${selectedVariation.color || ''}`.replace(/\s+/g, '-').toUpperCase() : item.sku);
+                                                return (
+                                                    <div className="mt-2 text-[10px] text-gray-400 font-mono">
+                                                        SKU: {variationSku}
+                                                    </div>
+                                                );
+                                            })()}
+                                            {!item.selectedVariationId && (
+                                                <div className="mt-2 text-[10px] text-yellow-400">
+                                                    ⚠️ Select variation first
+                                                </div>
+                                            )}
                                         </div>
-                                    </div>
-                                )}
+                                    );
+                                })()}
                             </div>
                             ))}
                         </div>

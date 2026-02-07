@@ -137,7 +137,22 @@ export const accountService = {
   },
 
   // Delete account (soft delete)
-  async deleteAccount(id: string) {
+  // 🔒 CORE ACCOUNTING BACKBONE RULE: Core payment accounts (Cash, Bank, Mobile Wallet) CANNOT be deleted
+  async deleteAccount(id: string, companyId?: string) {
+    // CRITICAL: Check if this is a core payment account
+    if (companyId) {
+      const { defaultAccountsService } = await import('./defaultAccountsService');
+      const account = await this.getAccountById(id);
+      
+      if (account && defaultAccountsService.isCorePaymentAccount(account)) {
+        throw new Error(
+          `Cannot delete core payment account "${account.name}". ` +
+          `Core accounts (Cash, Bank, Mobile Wallet) are mandatory and cannot be deleted. ` +
+          `You can rename the account if needed.`
+        );
+      }
+    }
+    
     const { error } = await supabase
       .from('accounts')
       .update({ is_active: false })

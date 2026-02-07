@@ -67,6 +67,9 @@ export const SalesPage = () => {
   
   // Bulk selection removed - using single-row actions only
   
+  // Store branch_id mapping for sales (for location resolution when location is empty)
+  const [salesBranchIdMap, setSalesBranchIdMap] = useState<Map<string, string>>(new Map());
+  
   // Load branches for location display
   useEffect(() => {
     const loadBranches = async () => {
@@ -80,12 +83,38 @@ export const SalesPage = () => {
           map.set(branch.id, branch.name);
         });
         setBranchMap(map);
+        console.log('[SALES PAGE] ✅ Branch map loaded:', map.size, 'branches');
       } catch (error) {
         console.error('[SALES PAGE] Error loading branches:', error);
       }
     };
     loadBranches();
   }, [companyId]);
+  
+  // Load sales with branch_id for location resolution (only when sales change)
+  useEffect(() => {
+    const loadSalesBranchIds = async () => {
+      if (!companyId || sales.length === 0) return;
+      try {
+        // Fetch sales with branch_id to create mapping
+        const data = await saleService.getAllSales(companyId, branchId === 'all' ? undefined : branchId || undefined);
+        const branchIdMap = new Map<string, string>();
+        data.forEach((sale: any) => {
+          if (sale.branch_id && sale.id) {
+            branchIdMap.set(sale.id, sale.branch_id);
+          }
+        });
+        setSalesBranchIdMap(branchIdMap);
+        console.log('[SALES PAGE] ✅ Sales branch_id map loaded:', branchIdMap.size, 'sales');
+      } catch (error) {
+        console.error('[SALES PAGE] Error loading sales branch_ids:', error);
+      }
+    };
+    // Only load if we have sales but no branch_id mapping yet, or if sales count changed
+    if (sales.length > 0 && (salesBranchIdMap.size === 0 || salesBranchIdMap.size !== sales.length)) {
+      loadSalesBranchIds();
+    }
+  }, [companyId, branchId, sales.length]);
 
   // TASK 1 FIX - Ensure data loads on mount
   useEffect(() => {
@@ -147,7 +176,7 @@ export const SalesPage = () => {
         } catch (e) {
           console.error('[SalesPage] Error loading sale for edit:', e);
           toast.error('Could not load sale details');
-          openDrawer('edit-sale', undefined, { sale });
+        openDrawer('edit-sale', undefined, { sale });
         }
         break;
         
@@ -499,18 +528,26 @@ export const SalesPage = () => {
       case 'location':
         // UI Rule: Show branch NAME only (not code, never UUID)
         // sale.location now contains branch name from context (or empty)
-        // Fallback to branchMap for old data that might still have UUID
+        // Fallback to branchMap for old data that might still have UUID or empty location
         let locationText = sale.location || '';
         
-        // If it looks like a UUID, try branchMap fallback, then show '—'
+        // CRITICAL FIX: If location is empty, try to resolve using branch_id from salesBranchIdMap
+        if (!locationText && branchMap.size > 0) {
+          const saleBranchId = salesBranchIdMap.get(sale.id);
+          if (saleBranchId && branchMap.has(saleBranchId)) {
+            locationText = branchMap.get(saleBranchId) || '';
+          }
+        }
+        
+        // If it looks like a UUID, try branchMap fallback
         const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(locationText);
-        if (isUUID) {
+        if (isUUID && branchMap.size > 0) {
           const resolved = branchMap.get(locationText);
           // Extract just the name if branchMap returns "BR-001 | Name" format
           if (resolved && resolved.includes('|')) {
             locationText = resolved.split('|').pop()?.trim() || '';
           } else {
-            locationText = resolved || '';
+            locationText = resolved || locationText; // Keep UUID if not found (shouldn't happen)
           }
         }
         // If it contains '|' (old format), extract just the name
@@ -538,7 +575,7 @@ export const SalesPage = () => {
               className="cursor-pointer hover:scale-105 transition-transform"
               title="Click to view payments"
             >
-              {getPaymentStatusBadge(sale.paymentStatus)}
+            {getPaymentStatusBadge(sale.paymentStatus)}
             </button>
           </div>
         );
@@ -605,7 +642,7 @@ export const SalesPage = () => {
                   title="Click to change shipping status"
                   onClick={(e) => e.stopPropagation()}
                 >
-                  {getShippingStatusBadge(sale.shippingStatus)}
+            {getShippingStatusBadge(sale.shippingStatus)}
                   <ChevronDown size={12} className="text-gray-500" />
                 </button>
               </PopoverTrigger>
@@ -695,13 +732,13 @@ export const SalesPage = () => {
             >
               Design test
             </Button>
-            <Button 
-              onClick={() => openDrawer('addSale')}
-              className="bg-blue-600 hover:bg-blue-500 text-white h-10 gap-2"
-            >
-              <Plus size={16} />
-              Add Sale
-            </Button>
+          <Button 
+            onClick={() => openDrawer('addSale')}
+            className="bg-blue-600 hover:bg-blue-500 text-white h-10 gap-2"
+          >
+            <Plus size={16} />
+            Add Sale
+          </Button>
           </div>
         </div>
       </div>
@@ -1156,6 +1193,7 @@ export const SalesPage = () => {
             due: selectedSale.due,
             paymentStatus: selectedSale.paymentStatus,
             payments: [], // Will be fetched dynamically in modal
+            referenceType: 'sale', // 🔒 UUID ARCHITECTURE: Explicit entity type (no pattern matching)
           }}
           onAddPayment={() => {
             // Close View Payments and open Receive Payment dialog

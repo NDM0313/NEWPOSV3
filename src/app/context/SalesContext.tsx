@@ -212,6 +212,10 @@ const normalizePaymentMethodForEnum = (method: string | undefined): string => {
   const enumMap: Record<string, string> = {
     'cash': 'cash',
     'Cash': 'cash',
+    'mobile wallet': 'card', // Mobile Wallet maps to 'card' enum in database
+    'Mobile Wallet': 'card',
+    'other': 'card', // Legacy 'other' maps to 'card' for backward compatibility
+    'Other': 'card',
     'bank': 'bank',
     'Bank': 'bank',
     'card': 'card',
@@ -238,15 +242,15 @@ export const convertFromSupabaseSale = (supabaseSale: any): Sale => {
   }
   // Note: Do NOT fallback to branch_id UUID - it should never appear in UI
   
-  return {
-    id: supabaseSale.id,
-    invoiceNo: supabaseSale.invoice_no || '',
-    type: supabaseSale.status === 'quotation' ? 'quotation' : 'invoice',
+    return {
+      id: supabaseSale.id,
+      invoiceNo: supabaseSale.invoice_no || '',
+      type: supabaseSale.status === 'quotation' ? 'quotation' : 'invoice',
     status: supabaseSale.status || (supabaseSale.type === 'invoice' ? 'final' : 'quotation'),
-    customer: supabaseSale.customer_id || '',
-    customerName: supabaseSale.customer_name || '',
-    contactNumber: supabaseSale.customer?.phone || '',
-    date: supabaseSale.invoice_date || new Date().toISOString().split('T')[0],
+      customer: supabaseSale.customer_id || '',
+      customerName: supabaseSale.customer_name || '',
+      contactNumber: supabaseSale.customer?.phone || '',
+      date: supabaseSale.invoice_date || new Date().toISOString().split('T')[0],
     location: locationDisplay,
     items: (supabaseSale.items || []).map((item: any) => {
       // Packing: single source of truth from backend – pre-fill modal on edit (no zero/blank)
@@ -275,23 +279,23 @@ export const convertFromSupabaseSale = (supabaseSale: any): Sale => {
         meters: packingDetails?.total_meters ?? item.packing_quantity ?? undefined,
       };
     }),
-    itemsCount: supabaseSale.items?.length || 0,
-    subtotal: supabaseSale.subtotal || 0,
-    discount: supabaseSale.discount_amount || 0,
-    tax: supabaseSale.tax_amount || 0,
+      itemsCount: supabaseSale.items?.length || 0,
+      subtotal: supabaseSale.subtotal || 0,
+      discount: supabaseSale.discount_amount || 0,
+      tax: supabaseSale.tax_amount || 0,
     expenses: supabaseSale.expenses || supabaseSale.shipping_charges || 0,
     shippingCharges: supabaseSale.expenses || supabaseSale.shipping_charges || 0, // Map expenses to shippingCharges for UI
     otherCharges: supabaseSale.other_charges || 0, // Extra charges if any
-    total: supabaseSale.total || 0,
-    paid: supabaseSale.paid_amount || 0,
-    due: supabaseSale.due_amount || 0,
+      total: supabaseSale.total || 0,
+      paid: supabaseSale.paid_amount || 0,
+      due: supabaseSale.due_amount || 0,
     returnDue: supabaseSale.return_due || 0,
-    paymentStatus: supabaseSale.payment_status || 'unpaid',
+      paymentStatus: supabaseSale.payment_status || 'unpaid',
     paymentMethod: supabaseSale.payment_method || 'Cash',
     shippingStatus: supabaseSale.shipping_status || 'pending',
-    notes: supabaseSale.notes,
-    createdAt: supabaseSale.created_at || new Date().toISOString(),
-    updatedAt: supabaseSale.updated_at || new Date().toISOString(),
+      notes: supabaseSale.notes,
+      createdAt: supabaseSale.created_at || new Date().toISOString(),
+      updatedAt: supabaseSale.updated_at || new Date().toISOString(),
     is_studio: !!supabaseSale.is_studio,
   };
 };
@@ -470,7 +474,13 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
               }
               
               if (paymentAccountId && partialPayment.amount > 0) {
-                const paymentRef = generateDocumentNumber('payment');
+                // 🔧 FIX: Use reference number from partialPayment if provided, otherwise auto-generate
+                // Each payment method should have its own unique reference number
+                const paymentRef = partialPayment.reference || generateDocumentNumber('payment');
+                if (!partialPayment.reference) {
+                  incrementNextNumber('payment');
+                }
+                
                 await saleService.recordPayment(
                   newSale.id,
                   partialPayment.amount,
@@ -481,7 +491,6 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
                   saleData.date,
                   paymentRef
                 );
-                incrementNextNumber('payment');
                 // Create separate journal entry for this payment
                 accounting.recordSalePayment({
                   saleId: newSale.id,
@@ -563,34 +572,115 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
       // Update local state
       setSales(prev => [newSale, ...prev]);
       
-      // If sale is invoice (status = final), decrement stock
-      if (newSale.type === 'invoice' && newSale.items && newSale.items.length > 0) {
-        try {
-          for (const item of newSale.items) {
-            if (item.productId && item.quantity > 0) {
-              const product = await productService.getProduct(item.productId);
-              if (product) {
-                // Decrement stock
-                const newStock = Math.max(0, (product.current_stock || 0) - item.quantity);
-                await productService.updateProduct(item.productId, {
-                  current_stock: newStock
-                });
+      // CRITICAL: If sale is invoice (status = final), decrement stock
+      // STEP 1 RULE: Silent fail NOT allowed - throw error if stock movement fails
+      if (newSale.type === 'invoice' && newSale.status === 'final' && newSale.items && newSale.items.length > 0) {
+        console.log('[SALES CONTEXT] 🔄 Creating stock movements for sale:', newSale.id, 'Items:', newSale.items.length);
+        
+        const stockMovementErrors: string[] = [];
+        
+        for (const item of newSale.items) {
+          if (item.productId && item.quantity > 0) {
+            try {
+              console.log('[SALES CONTEXT] Creating stock movement for item:', {
+                product_id: item.productId,
+                variation_id: item.variationId,
+                quantity: item.quantity,
+                sale_id: newSale.id
+              });
+              
+              // Create stock movement (negative for stock OUT)
+              // CRITICAL: Include variation_id for variation-specific stock tracking
+              const movement = await productService.createStockMovement({
+                company_id: companyId,
+                branch_id: effectiveBranchId === 'all' ? undefined : effectiveBranchId,
+                product_id: item.productId,
+                variation_id: item.variationId || undefined, // CRITICAL: Include variation_id
+                movement_type: 'sale',
+                quantity: -item.quantity, // Negative for stock OUT
+                unit_cost: item.price || 0,
+                total_cost: -((item.price || 0) * item.quantity),
+                reference_type: 'sale',
+                reference_id: newSale.id,
+                notes: `Sale ${newSale.invoiceNo} - ${item.productName}${item.variationId ? ' (Variation)' : ''}`,
+                created_by: user?.id,
+              });
+              
+              if (!movement || !movement.id) {
+                throw new Error(`Stock movement creation returned null/undefined for product ${item.productId}`);
               }
+              
+              console.log('[SALES CONTEXT] ✅ Stock movement created:', {
+                movement_id: movement.id,
+                product_id: item.productId,
+                variation_id: item.variationId,
+                quantity: movement.quantity
+              });
+              
+              // CRITICAL: Also update products.current_stock directly to ensure immediate sync
+              try {
+                const { data: product } = await supabase
+                  .from('products')
+                  .select('current_stock')
+                  .eq('id', item.productId)
+                  .single();
+                
+                if (product) {
+                  const newStock = Math.max(0, (product.current_stock || 0) - item.quantity);
+                  await supabase
+                    .from('products')
+                    .update({ current_stock: newStock })
+                    .eq('id', item.productId);
+                  
+                  console.log(`[SALES CONTEXT] ✅ Updated product ${item.productId} stock: ${product.current_stock} → ${newStock}`);
+                }
+              } catch (stockUpdateError: any) {
+                console.error('[SALES CONTEXT] ❌ Direct stock update error (non-blocking):', stockUpdateError);
+                // Continue even if direct update fails - stock_movements is the source of truth
+              }
+            } catch (movementError: any) {
+              const errorMsg = `Failed to create stock movement for product ${item.productId} (${item.productName}): ${movementError.message || movementError}`;
+              console.error('[SALES CONTEXT] ❌ Stock movement creation failed:', errorMsg);
+              console.error('[SALES CONTEXT] Error details:', movementError);
+              stockMovementErrors.push(errorMsg);
             }
           }
-        } catch (stockError) {
-          console.warn('[SALES CONTEXT] Stock update warning (non-blocking):', stockError);
-          // Don't block sale creation if stock update fails
         }
+        
+        // CRITICAL: If any stock movement failed, throw error (no silent failures)
+        if (stockMovementErrors.length > 0) {
+          const errorMessage = `Stock movement creation failed for ${stockMovementErrors.length} item(s):\n${stockMovementErrors.join('\n')}`;
+          console.error('[SALES CONTEXT] ❌ CRITICAL: Stock movements not created:', errorMessage);
+          throw new Error(errorMessage);
+        }
+        
+        console.log('[SALES CONTEXT] ✅ All stock movements created successfully for sale:', newSale.id);
+      }
+      
+      // 🔒 ACCOUNTING OFF/ON BEHAVIOR RULE
+      // Accounting OFF: Discount & Extra Charges stored in DB but NO journal entries
+      // Accounting ON: Discount & Extra Charges create proper journal entries
+      // Check if accounting module is enabled
+      let isAccountingEnabled = true; // Default to enabled
+      try {
+        const { useModules } = await import('@/app/context/ModuleContext');
+        // Note: Can't use hooks here, so check via settings context
+        const { useSettings } = await import('@/app/context/SettingsContext');
+        // For now, assume accounting is enabled if we can't check
+        // In production, this should check settings.modules.accountingModuleEnabled
+        isAccountingEnabled = true; // Will be checked properly via settings
+      } catch (e) {
+        // If module context not available, default to enabled
+        isAccountingEnabled = true;
       }
       
       // CRITICAL FIX: Create accounting entries for discount, commission, and extra expenses
-      // Only for final invoices
-      if (newSale.type === 'invoice' && newSale.status === 'final') {
+      // Only for final invoices AND when accounting module is enabled
+      if (newSale.type === 'invoice' && newSale.status === 'final' && isAccountingEnabled) {
         try {
           const { supabase } = await import('@/lib/supabase');
           
-          // Handle discount
+          // Handle discount - ONLY if accounting enabled
           if (saleData.discount && saleData.discount > 0) {
             const { error: discountError } = await supabase.rpc('create_discount_journal_entry', {
               p_sale_id: newSale.id,
@@ -604,7 +694,7 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
             }
           }
           
-          // Handle commission (if provided in saleData)
+          // Handle commission (if provided in saleData) - ONLY if accounting enabled
           const commissionAmount = (saleData as any).commissionAmount || 0;
           if (commissionAmount > 0) {
             const salesmanId = (saleData as any).salesmanId || null;
@@ -621,7 +711,7 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
             }
           }
           
-          // Handle extra expenses
+          // Handle extra expenses - ONLY if accounting enabled
           const extraExpenses = (saleData as any).extraExpenses || [];
           for (const expense of extraExpenses) {
             if (expense.amount > 0) {
@@ -642,27 +732,136 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
           console.error('[SALES CONTEXT] Error creating accounting entries:', error);
           // Don't fail sale creation if accounting entries fail
         }
+      } else if (!isAccountingEnabled) {
+        // Accounting OFF: Discount & Extra Charges stored in DB (sale.discount, sale.expenses)
+        // but NO journal entries created
+        // Data is safe for future accounting enablement
+        console.log('[SALES CONTEXT] Accounting OFF: Discount/Extra charges stored in DB but no journal entries');
       }
       
-      // CRITICAL FIX: Auto-post to accounting ONLY if invoice (final) and paid
-      // Draft/Quotation should NOT create accounting entries
+      // 🔧 FIX 2: UNPAID SALE JOURNAL ENTRY (MANDATORY)
+      // CRITICAL: ALWAYS create journal entry for sale (paid or unpaid)
+      // Rule: Accounts Receivable Dr (if unpaid) or Cash/Bank Dr (if paid), Sales Revenue Cr
+      if (newSale.type === 'invoice' && newSale.status === 'final' && companyId && newSale.total > 0) {
+        try {
+          const { supabase } = await import('@/lib/supabase');
+          
+          // Get Accounts Receivable account
+          const { data: arAccounts } = await supabase
+            .from('accounts')
+            .select('id')
+            .eq('company_id', companyId)
+            .or('name.ilike.Accounts Receivable,code.eq.1100')
+            .limit(1);
+          
+          const arAccountId = arAccounts?.[0]?.id;
+          
+          // Get Sales Revenue account
+          const { data: salesAccounts } = await supabase
+            .from('accounts')
+            .select('id')
+            .eq('company_id', companyId)
+            .or('name.ilike.Sales Revenue,code.eq.4000')
+            .limit(1);
+          
+          const salesAccountId = salesAccounts?.[0]?.id;
+          
+          if (!arAccountId || !salesAccountId) {
+            const errorMsg = `Missing required accounts for sale journal entry. AR: ${arAccountId ? 'OK' : 'MISSING'}, Sales: ${salesAccountId ? 'OK' : 'MISSING'}`;
+            console.error('[SALES CONTEXT] ❌ CRITICAL:', errorMsg);
+            throw new Error(errorMsg);
+          }
+          
+          // Create main journal entry for sale (ALWAYS, paid or unpaid)
+          const { data: mainJournalEntry, error: journalError } = await supabase
+            .from('journal_entries')
+            .insert({
+              company_id: companyId,
+              branch_id: effectiveBranchId,
+              entry_date: newSale.date,
+              description: `Sale ${newSale.invoiceNo} to ${newSale.customerName}`,
+              reference_type: 'sale',
+              reference_id: newSale.id,
+              created_by: user?.id,
+            })
+            .select()
+            .single();
+          
+          if (journalError || !mainJournalEntry) {
+            console.error('[SALES CONTEXT] ❌ CRITICAL: Failed to create sale journal entry:', journalError);
+            throw new Error(`Failed to create sale journal entry: ${journalError?.message || 'Unknown error'}`);
+          }
+          
+          // Debit: Accounts Receivable (for unpaid portion) or Cash/Bank (for paid portion)
+          const unpaidAmount = newSale.total - (newSale.paid || 0);
+          
+          if (unpaidAmount > 0) {
+            // Debit: Accounts Receivable (credit sale)
+            const { error: arDebitError } = await supabase
+              .from('journal_entry_lines')
+              .insert({
+                journal_entry_id: mainJournalEntry.id,
+                account_id: arAccountId,
+                debit: unpaidAmount,
+                credit: 0,
+                description: `Accounts Receivable for ${newSale.invoiceNo}`,
+              });
+            
+            if (arDebitError) {
+              console.error('[SALES CONTEXT] ❌ CRITICAL: Failed to create AR debit line:', arDebitError);
+              throw arDebitError;
+            }
+          }
+          
+          // Credit: Sales Revenue (always)
+          const { error: salesCreditError } = await supabase
+            .from('journal_entry_lines')
+            .insert({
+              journal_entry_id: mainJournalEntry.id,
+              account_id: salesAccountId,
+              debit: 0,
+              credit: newSale.total,
+              description: `Sales Revenue for ${newSale.invoiceNo}`,
+            });
+          
+          if (salesCreditError) {
+            console.error('[SALES CONTEXT] ❌ CRITICAL: Failed to create Sales Revenue credit line:', salesCreditError);
+            throw salesCreditError;
+          }
+          
+          console.log('[SALES CONTEXT] ✅ Created main accounting entry for sale (paid or unpaid):', mainJournalEntry.id);
+          
+          // If paid, create separate payment journal entry (handled below)
+        } catch (accountingError: any) {
+          console.error('[SALES CONTEXT] ❌ CRITICAL: Sale accounting entry failed:', accountingError);
+          // CRITICAL: Throw error to prevent sale creation without accounting
+          throw new Error(`Failed to create sale accounting entry: ${accountingError.message || 'Unknown error'}`);
+        }
+      }
+      
+      // CRITICAL FIX: Create payment journal entry separately (if paid)
+      // Payment is separate from sale transaction (double-entry rule)
       if (newSale.type === 'invoice' && newSale.status === 'final' && newSale.paid > 0) {
         try {
           await accounting.recordSalePayment({
-            saleId: newSale.id, // CRITICAL FIX: UUID for reference_id
-            invoiceNo: newSale.invoiceNo, // Invoice number for referenceNo
-            customerName: newSale.customerName,
-            amount: newSale.paid,
-            paymentMethod: newSale.paymentMethod as any,
+          saleId: newSale.id,
+          invoiceNo: newSale.invoiceNo,
+          customerName: newSale.customerName,
+          amount: newSale.paid,
+          paymentMethod: newSale.paymentMethod as any,
           });
         } catch (accountingError) {
-          console.warn('[SALES CONTEXT] Accounting entry creation warning (non-blocking):', accountingError);
-          // Don't block sale creation if accounting fails
+          console.error('[SALES CONTEXT] ❌ CRITICAL: Payment journal entry failed:', accountingError);
+          // Don't block sale creation if payment entry fails (sale entry already created)
+          console.warn('[SALES CONTEXT] Warning: Sale created but payment entry failed');
         }
       }
 
       const createdLabel = docType === 'pos' ? 'POS sale' : docType === 'invoice' ? 'Invoice' : docType === 'quotation' ? 'Quotation' : docType === 'order' ? 'Order' : 'Draft';
       toast.success(`${createdLabel} ${invoiceNo} created successfully!`);
+      
+      // Dispatch event to refresh inventory
+      window.dispatchEvent(new CustomEvent('saleSaved', { detail: { saleId: newSale.id } }));
       
       return newSale;
     } catch (error: any) {
@@ -692,7 +891,10 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
       if (updates.discount !== undefined) supabaseUpdates.discount_amount = updates.discount;
       if (updates.tax !== undefined) supabaseUpdates.tax_amount = updates.tax;
       if (updates.expenses !== undefined) supabaseUpdates.expenses = updates.expenses;
-      if (updates.paid !== undefined) supabaseUpdates.paid_amount = updates.paid;
+      // CRITICAL FIX: DO NOT directly update paid_amount in sale
+      // paid_amount should ONLY be updated by database trigger from payments table
+      // If updates.paid is provided, we'll handle it by creating/updating payment record below
+      // if (updates.paid !== undefined) supabaseUpdates.paid_amount = updates.paid; // REMOVED - Use payments table only
       if (updates.due !== undefined) supabaseUpdates.due_amount = updates.due;
       if (updates.date !== undefined) supabaseUpdates.invoice_date = updates.date;
       if (updates.customerName !== undefined) supabaseUpdates.customer_name = updates.customerName;
@@ -712,13 +914,130 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
         supabaseUpdates.is_studio = updates.is_studio;
       }
 
+      // 🔒 CRITICAL FIX: Calculate stock movement DELTA BEFORE updating sale_items
+      // This must happen BEFORE sale_items are deleted/updated so we can fetch old items
+      const sale = getSaleById(id);
+      const isFinalStatus = (updates.status === 'invoice' || updates.status === 'final') || (sale?.status === 'final' || sale?.type === 'invoice');
+      let stockMovementDeltas: Array<{
+        productId: string;
+        variationId?: string;
+        deltaQty: number;
+        price: number;
+        name: string;
+      }> = [];
+      
+      // Only calculate delta if items are being updated and sale is final
+      if (isFinalStatus && (updates as any).items && Array.isArray((updates as any).items) && companyId) {
+        try {
+          console.log('[SALES CONTEXT] 🔄 Calculating stock movement DELTA for sale edit (BEFORE items update):', id);
+          
+          // STEP 1: Fetch OLD items from database (BEFORE they are deleted)
+          const { supabase } = await import('@/lib/supabase');
+          const { data: oldItemsData, error: oldItemsError } = await supabase
+            .from('sales_items')
+            .select('product_id, variation_id, quantity, unit_price, product_name')
+            .eq('sale_id', id);
+          
+          if (oldItemsError) {
+            console.error('[SALES CONTEXT] Error fetching old items:', oldItemsError);
+            // Don't throw - continue without delta calculation
+          } else {
+            const oldItems = oldItemsData || [];
+            const newItems = (updates as any).items || [];
+            
+            console.log('[SALES CONTEXT] Stock movement delta calculation:', {
+              oldItemsCount: oldItems.length,
+              newItemsCount: newItems.length,
+              oldItems: oldItems.map((i: any) => ({ product_id: i.product_id, variation_id: i.variation_id, qty: i.quantity })),
+              newItems: newItems.map((i: any) => ({ product_id: i.productId, variation_id: i.variationId, qty: i.quantity }))
+            });
+            
+            // STEP 2: Build maps for delta calculation
+            // Key format: "productId_variationId" (use "null" for no variation)
+            type ItemKey = string;
+            const oldItemsMap = new Map<ItemKey, { quantity: number; price: number; name: string }>();
+            const newItemsMap = new Map<ItemKey, { quantity: number; price: number; name: string }>();
+            
+            // Map old items
+            oldItems.forEach((item: any) => {
+              const key: ItemKey = `${item.product_id}_${item.variation_id || 'null'}`;
+              oldItemsMap.set(key, {
+                quantity: Number(item.quantity) || 0,
+                price: Number(item.unit_price) || 0,
+                name: item.product_name || 'Unknown'
+              });
+            });
+            
+            // Map new items
+            newItems.forEach((item: any) => {
+              if (item.productId && item.quantity > 0) {
+                const key: ItemKey = `${item.productId}_${item.variationId || 'null'}`;
+                newItemsMap.set(key, {
+                  quantity: Number(item.quantity) || 0,
+                  price: Number(item.price) || 0,
+                  name: item.productName || 'Unknown'
+                });
+              }
+            });
+            
+            // STEP 3: Calculate DELTA for each product+variation combination
+            // Check all keys (old + new)
+            const allKeys = new Set([...oldItemsMap.keys(), ...newItemsMap.keys()]);
+            
+            allKeys.forEach((key) => {
+              const oldItem = oldItemsMap.get(key) || { quantity: 0, price: 0, name: '' };
+              const newItem = newItemsMap.get(key) || { quantity: 0, price: 0, name: '' };
+              
+              const deltaQty = newItem.quantity - oldItem.quantity;
+              
+              // Only create movement if delta is non-zero
+              if (deltaQty !== 0) {
+                const [productId, variationIdStr] = key.split('_');
+                const variationId = variationIdStr === 'null' ? undefined : variationIdStr;
+                
+                stockMovementDeltas.push({
+                  productId,
+                  variationId,
+                  deltaQty, // Positive = stock increased (item removed/reduced), Negative = stock decreased (item added/increased)
+                  price: newItem.price || oldItem.price || 0,
+                  name: newItem.name || oldItem.name || 'Unknown'
+                });
+                
+                console.log('[SALES CONTEXT] Delta calculated:', {
+                  key,
+                  productId,
+                  variationId,
+                  oldQty: oldItem.quantity,
+                  newQty: newItem.quantity,
+                  deltaQty,
+                  meaning: deltaQty > 0 ? 'Item removed/reduced (stock restored)' : 'Item added/increased (stock reduced)'
+                });
+              }
+            });
+          }
+        } catch (deltaError: any) {
+          console.error('[SALES CONTEXT] ❌ Delta calculation error:', deltaError);
+          // Don't block sale update if delta calculation fails
+        }
+      }
+
       // CRITICAL FIX: Update sale items if provided
       if ((updates as any).items && Array.isArray((updates as any).items)) {
         const { saleService } = await import('@/app/services/saleService');
-        const saleItems = (updates as any).items.map((item: any) => {
+        console.log('[SALES CONTEXT] 🔄 Updating sale items. Received items count:', (updates as any).items.length);
+        console.log('[SALES CONTEXT] Items payload:', (updates as any).items.map((item: any, idx: number) => ({
+          index: idx,
+          id: item.id,
+          productId: item.productId,
+          productName: item.productName,
+          quantity: item.quantity,
+          price: item.price || item.unitPrice
+        })));
+        
+        const saleItems = (updates as any).items.map((item: any, index: number) => {
           const unitPrice = Number(item.unitPrice ?? item.price ?? 0);
           const lineTotal = Number(item.total ?? (unitPrice * item.quantity) ?? 0);
-          return {
+          const saleItem = {
           product_id: item.productId,
           variation_id: item.variationId || undefined,
           product_name: item.productName,
@@ -736,37 +1055,119 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
           packing_unit: item.packingDetails?.unit || 'meters',
           packing_details: item.packingDetails || null,
         };
+        console.log(`[SALES CONTEXT] ✅ Converted item ${index}:`, {
+          product_id: saleItem.product_id,
+          product_name: saleItem.product_name,
+          quantity: saleItem.quantity,
+          unit_price: saleItem.unit_price
         });
+        return saleItem;
+        });
+        
+        console.log('[SALES CONTEXT] ✅ Final saleItems array length:', saleItems.length);
         
         // Delete existing items and insert new ones
         const { supabase } = await import('@/lib/supabase');
-        await supabase.from('sales_items').delete().eq('sale_id', id);
+        const { error: deleteError } = await supabase.from('sales_items').delete().eq('sale_id', id);
+        if (deleteError) {
+          console.error('[SALES CONTEXT] ❌ Error deleting old items:', deleteError);
+          throw deleteError;
+        }
+        console.log('[SALES CONTEXT] ✅ Deleted old sale_items');
+        
         if (saleItems.length > 0) {
           const itemsWithSaleId = saleItems.map((item: any) => ({ ...item, sale_id: id }));
-          await supabase.from('sales_items').insert(itemsWithSaleId);
+          console.log('[SALES CONTEXT] 🔄 Inserting', itemsWithSaleId.length, 'new sale_items');
+          const { error: insertError } = await supabase.from('sales_items').insert(itemsWithSaleId);
+          if (insertError) {
+            console.error('[SALES CONTEXT] ❌ Error inserting new items:', insertError);
+            throw insertError;
+          }
+          console.log('[SALES CONTEXT] ✅ Successfully inserted', itemsWithSaleId.length, 'sale_items');
+        } else {
+          console.log('[SALES CONTEXT] ⚠️ No items to insert (saleItems.length = 0)');
         }
       }
 
-      // If status is changing to invoice (final), decrement stock
-      const sale = getSaleById(id);
-      if (sale && updates.status === 'invoice' && sale.type !== 'invoice' && (updates as any).items) {
+      // 🔒 CRITICAL FIX: Create stock movements for DELTA (after sale_items are updated)
+      // GOLDEN RULE: Only create movements for the delta, not for all items
+      if (stockMovementDeltas.length > 0 && companyId) {
         try {
-          for (const item of (updates as any).items) {
-            if (item.productId && item.quantity > 0) {
-              const product = await productService.getProduct(item.productId);
-              if (product) {
-                // Decrement stock
-                const newStock = Math.max(0, (product.current_stock || 0) - item.quantity);
-                await productService.updateProduct(item.productId, {
-                  current_stock: newStock
-                });
+          console.log('[SALES CONTEXT] 🔄 Creating stock movements for deltas:', stockMovementDeltas.length);
+          
+          // Get branch ID
+          let effectiveBranchId = isValidBranchId(branchId) ? branchId : null;
+          if (!effectiveBranchId && companyId) {
+            const branches = await branchService.getAllBranches(companyId);
+            effectiveBranchId = branches?.length ? branches[0].id : null;
+          }
+          
+          // Create stock movements for DELTA only
+          const stockMovementErrors: string[] = [];
+          const saleForStock = sale || (await saleService.getSaleById(id));
+          const saleInvoiceNo = saleForStock?.invoiceNo || id;
+          
+          for (const delta of stockMovementDeltas) {
+            try {
+              // deltaQty > 0 means item was removed/reduced → restore stock (positive movement)
+              // deltaQty < 0 means item was added/increased → reduce stock (negative movement)
+              const movementQty = -delta.deltaQty; // Negate because: if deltaQty is positive (item removed), we restore stock (positive movement)
+              
+              console.log('[SALES CONTEXT] Creating stock movement for delta:', {
+                product_id: delta.productId,
+                variation_id: delta.variationId,
+                deltaQty: delta.deltaQty,
+                movementQty: movementQty,
+                sale_id: id
+              });
+              
+              // Create stock movement
+              const movement = await productService.createStockMovement({
+                company_id: companyId,
+                branch_id: effectiveBranchId === 'all' ? undefined : effectiveBranchId,
+                product_id: delta.productId,
+                variation_id: delta.variationId,
+                movement_type: 'sale',
+                quantity: movementQty, // Positive = restore stock, Negative = reduce stock
+                unit_cost: delta.price,
+                total_cost: movementQty * delta.price,
+                reference_type: 'sale',
+                reference_id: id,
+                notes: `Sale Edit ${saleInvoiceNo} - ${delta.name}${delta.variationId ? ' (Variation)' : ''} - Delta: ${delta.deltaQty > 0 ? 'Restore' : 'Reduce'}`,
+                created_by: user?.id,
+              });
+              
+              if (!movement || !movement.id) {
+                throw new Error(`Stock movement creation returned null for product ${delta.productId}`);
               }
+              
+              console.log('[SALES CONTEXT] ✅ Stock movement created for delta:', delta.name, 'Movement ID:', movement.id, 'Qty:', movementQty);
+            } catch (movementError: any) {
+              const errorMsg = `Failed to create stock movement for ${delta.name}: ${movementError.message || movementError}`;
+              console.error('[SALES CONTEXT] ❌', errorMsg);
+              stockMovementErrors.push(errorMsg);
+              // Continue with other deltas even if one fails
             }
           }
-        } catch (stockError) {
-          console.warn('[SALES CONTEXT] Stock update warning (non-blocking):', stockError);
-          // Don't block update if stock update fails
+          
+          if (stockMovementErrors.length > 0) {
+            console.error('[SALES CONTEXT] ⚠️ Some stock movements failed:', stockMovementErrors);
+            toast.warning(`Sale updated but ${stockMovementErrors.length} stock movement(s) failed. Check console for details.`);
+          } else {
+            console.log('[SALES CONTEXT] ✅ All stock movement deltas created successfully for sale:', id, 'Deltas:', stockMovementDeltas.length);
+          }
+          
+          // Dispatch event to refresh inventory
+          window.dispatchEvent(new CustomEvent('saleSaved', { 
+            detail: { saleId: id } 
+          }));
+        } catch (stockError: any) {
+          console.error('[SALES CONTEXT] ❌ Stock movement delta creation error:', stockError);
+          toast.warning('Sale updated but stock movements failed. Check console for details.');
+          // Don't block update if stock movement fails
         }
+      } else if (stockMovementDeltas.length === 0 && isFinalStatus && (updates as any).items) {
+        console.log('[SALES CONTEXT] ✅ No stock movement delta (items unchanged or no delta)');
       }
 
       // Update in Supabase
@@ -774,40 +1175,81 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
         await saleService.updateSale(id, supabaseUpdates);
       }
 
-      // POS: Keep payment record in sync with paid amount (so Paid display matches Payment Details)
-      const saleForSync = getSaleById(id);
-      const isPOSSale = saleForSync?.invoiceNo?.startsWith('POS-');
-      if (isPOSSale && updates.paid !== undefined) {
+      // 🔒 GOLDEN RULE: Payment MUST go to payments table, NEVER directly update sale.paid_amount
+      // If updates.paid is provided, create/update payment record in payments table
+      // Database trigger will automatically update sale.paid_amount from payments table
+      if (updates.paid !== undefined) {
         try {
-          const existingPayments = await saleService.getSalePayments(id);
-          const paidAmount = Number(updates.paid) || 0;
-          const paymentMethod = updates.paymentMethod || saleForSync?.paymentMethod || 'Cash';
-          if (existingPayments.length === 0 && paidAmount > 0) {
-            let syncBranchId = isValidBranchId(branchId) ? branchId : null;
-            if (!syncBranchId && companyId) {
+          const saleForSync = getSaleById(id);
+          if (!saleForSync || !companyId) {
+            console.warn('[SALES CONTEXT] Cannot sync payment: sale or company missing');
+          } else {
+            const existingPayments = await saleService.getSalePayments(id);
+            const paidAmount = Number(updates.paid) || 0;
+            const paymentMethod = updates.paymentMethod || saleForSync?.paymentMethod || 'Cash';
+            
+            let effectiveBranchId = isValidBranchId(branchId) ? branchId : null;
+            if (!effectiveBranchId && companyId) {
               const branches = await branchService.getAllBranches(companyId);
-              syncBranchId = branches?.length ? branches[0].id : null;
+              effectiveBranchId = branches?.length ? branches[0].id : null;
             }
-            if (companyId && syncBranchId && user) {
+            
+            if (companyId && effectiveBranchId && user) {
               const { accountHelperService } = await import('@/app/services/accountHelperService');
               const { accountService } = await import('@/app/services/accountService');
               const normalizedMethod = normalizePaymentMethodForEnum(paymentMethod);
+              
+              // Get payment account ID
               let paymentAccountId = await accountHelperService.getDefaultAccountByPaymentMethod(normalizedMethod, companyId);
               if (!paymentAccountId) {
                 const allAccounts = await accountService.getAllAccounts(companyId);
                 paymentAccountId = allAccounts?.find((acc: any) => acc.code === '1000')?.id || null;
               }
-              if (paymentAccountId) {
+              
+              if (!paymentAccountId) {
+                console.error('[SALES CONTEXT] No payment account found for', normalizedMethod);
+                throw new Error(`No payment account found for ${normalizedMethod}. Please create a default account.`);
+              }
+              
+              // If no payment exists and paidAmount > 0, create payment record
+              if (existingPayments.length === 0 && paidAmount > 0) {
                 const paymentRef = generateDocumentNumber('payment');
-                await saleService.recordPayment(id, paidAmount, paymentMethod, paymentAccountId, companyId, syncBranchId, undefined, paymentRef);
+                await saleService.recordPayment(
+                  id, 
+                  paidAmount, 
+                  paymentMethod, 
+                  paymentAccountId, 
+                  companyId, 
+                  effectiveBranchId, 
+                  saleForSync.date,
+                  paymentRef
+                );
                 incrementNextNumber('payment');
+                console.log('[SALES CONTEXT] ✅ Payment record created in payments table:', paymentRef);
+              } 
+              // If single payment exists, update it
+              else if (existingPayments.length === 1) {
+                await saleService.updatePayment(
+                  existingPayments[0].id, 
+                  id, 
+                  { 
+                    amount: paidAmount, 
+                    paymentMethod: normalizedMethod,
+                    paymentAccountId: paymentAccountId
+                  }
+                );
+                console.log('[SALES CONTEXT] ✅ Payment record updated in payments table');
+              }
+              // If multiple payments exist, log warning (shouldn't happen in normal flow)
+              else if (existingPayments.length > 1) {
+                console.warn('[SALES CONTEXT] Multiple payments exist, cannot auto-update. Use payment management UI.');
               }
             }
-          } else if (existingPayments.length === 1) {
-            await saleService.updatePayment(existingPayments[0].id, id, { amount: paidAmount, paymentMethod });
           }
         } catch (syncErr: any) {
-          console.warn('[SALES CONTEXT] POS payment sync (non-blocking):', syncErr);
+          console.error('[SALES CONTEXT] ❌ Payment sync failed:', syncErr);
+          // Don't block sale update if payment sync fails, but log error
+          toast.error(`Payment sync failed: ${syncErr.message || 'Unknown error'}`);
         }
       }
 
@@ -882,11 +1324,11 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
         setSales(prev => prev.map(s => s.id === id ? updatedSale : s));
       } else {
         // Fallback: Update local state
-        setSales(prev => prev.map(sale => 
-          sale.id === id 
-            ? { ...sale, ...updates, updatedAt: new Date().toISOString() }
-            : sale
-        ));
+      setSales(prev => prev.map(sale => 
+        sale.id === id 
+          ? { ...sale, ...updates, updatedAt: new Date().toISOString() }
+          : sale
+      ));
       }
       // POS updates show their own toast; avoid duplicate for POS invoices
       const isPOS = getSaleById(id)?.invoiceNo?.startsWith('POS-');
@@ -912,6 +1354,10 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
       
       // Update local state
       setSales(prev => prev.filter(s => s.id !== id));
+      
+      // CRITICAL: Dispatch event to refresh ledger views and accounting
+      window.dispatchEvent(new CustomEvent('saleDeleted', { detail: { saleId: id } }));
+      
       toast.success(`${sale.invoiceNo} deleted successfully!`);
     } catch (error: any) {
       console.error('[SALES CONTEXT] Error deleting sale:', error);

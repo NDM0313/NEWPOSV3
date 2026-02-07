@@ -13,25 +13,84 @@ export interface DefaultAccount {
   type: string;
 }
 
-// Mandatory default accounts
-const MANDATORY_ACCOUNTS: DefaultAccount[] = [
-  { code: '1000', name: 'Cash', type: 'asset' },
-  { code: '1010', name: 'Bank', type: 'asset' },
+// ============================================
+// 🎯 CORE ACCOUNTING BACKBONE (NON-NEGOTIABLE)
+// ============================================
+// These 3 accounts are MANDATORY for EVERY business
+// They exist regardless of Accounting Module ON/OFF status
+// They CANNOT be deleted, only renamed
+// ============================================
+const CORE_PAYMENT_ACCOUNTS: DefaultAccount[] = [
+  { code: '1000', name: 'Cash', type: 'cash' }, // Core payment account - NEVER DELETE
+  { code: '1010', name: 'Bank', type: 'bank' }, // Core payment account - NEVER DELETE
+  { code: '1020', name: 'Mobile Wallet', type: 'mobile_wallet' }, // Core payment account - NEVER DELETE
+];
+
+// Additional mandatory accounts (for accounting module)
+const ADDITIONAL_MANDATORY_ACCOUNTS: DefaultAccount[] = [
   { code: '1100', name: 'Accounts Receivable', type: 'asset' }, // Required for customer payment entries
   { code: '2000', name: 'Accounts Payable', type: 'liability' }, // Required for supplier/purchase payment entries
 ];
 
+// Combined list (for backward compatibility)
+const MANDATORY_ACCOUNTS: DefaultAccount[] = [
+  ...CORE_PAYMENT_ACCOUNTS,
+  ...ADDITIONAL_MANDATORY_ACCOUNTS,
+];
+
 export const defaultAccountsService = {
   /**
-   * Ensure mandatory default accounts exist for a company
-   * Called on system init or when accounts are missing
+   * 🔒 CORE ACCOUNTING BACKBONE - Ensure mandatory payment accounts exist
+   * 
+   * CRITICAL RULES:
+   * - These 3 accounts (Cash, Bank, Mobile Wallet) are MANDATORY for EVERY business
+   * - They exist regardless of Accounting Module ON/OFF status
+   * - They CANNOT be deleted (enforced in accountService.deleteAccount)
+   * - They are ALWAYS active
+   * - Only rename is allowed (optional)
+   * 
+   * Called on:
+   * - Business creation (create_business_transaction.sql)
+   * - System init (SupabaseContext)
+   * - Branch creation (branchService)
    */
   async ensureDefaultAccounts(companyId: string): Promise<void> {
     try {
       const existingAccounts = await accountService.getAllAccounts(companyId);
       
-      // Check which mandatory accounts are missing
-      for (const mandatoryAccount of MANDATORY_ACCOUNTS) {
+      // 🔒 STEP 1: Ensure CORE payment accounts (NON-NEGOTIABLE)
+      for (const coreAccount of CORE_PAYMENT_ACCOUNTS) {
+        const exists = existingAccounts.some(
+          acc => acc.code === coreAccount.code || 
+          (acc.name?.toLowerCase() === coreAccount.name.toLowerCase() && 
+           (acc.type?.toLowerCase() === coreAccount.type.toLowerCase() || 
+            acc.type?.toLowerCase() === 'asset'))
+        );
+        
+        if (!exists) {
+          try {
+            // Create missing CORE account
+            await accountService.createAccount({
+              company_id: companyId,
+              code: coreAccount.code,
+              name: coreAccount.name,
+              type: coreAccount.type, // 'cash', 'bank', 'mobile_wallet'
+              balance: 0,
+              is_active: true, // ALWAYS active
+            });
+            
+            console.log(`[CORE ACCOUNTS] ✅ Created ${coreAccount.name} account (${coreAccount.code}) - MANDATORY`);
+          } catch (createError: any) {
+            console.error(`[CORE ACCOUNTS] ❌ CRITICAL: Failed to create ${coreAccount.name}:`, createError);
+            // CRITICAL: Core accounts are non-negotiable - throw error
+            throw new Error(`Failed to create mandatory ${coreAccount.name} account: ${createError.message}`);
+          }
+        }
+      }
+      
+      // STEP 2: Ensure additional mandatory accounts (for accounting module)
+      // These are created but not critical for payment flows
+      for (const mandatoryAccount of ADDITIONAL_MANDATORY_ACCOUNTS) {
         const exists = existingAccounts.some(
           acc => acc.code === mandatoryAccount.code || 
           (acc.name?.toLowerCase() === mandatoryAccount.name.toLowerCase() && 
@@ -40,7 +99,6 @@ export const defaultAccountsService = {
         
         if (!exists) {
           try {
-            // Create missing account
             await accountService.createAccount({
               company_id: companyId,
               code: mandatoryAccount.code,
@@ -53,12 +111,12 @@ export const defaultAccountsService = {
             console.log(`[DEFAULT ACCOUNTS] ✅ Created ${mandatoryAccount.name} account (${mandatoryAccount.code})`);
           } catch (createError: any) {
             console.error(`[DEFAULT ACCOUNTS] ❌ Failed to create ${mandatoryAccount.name}:`, createError);
-            // Continue with other accounts even if one fails
+            // Continue with other accounts even if one fails (non-critical)
           }
         }
       }
     } catch (error: any) {
-      console.error('[DEFAULT ACCOUNTS] Error ensuring default accounts:', error);
+      console.error('[CORE ACCOUNTS] ❌ CRITICAL ERROR ensuring default accounts:', error);
       throw error;
     }
   },
@@ -105,12 +163,40 @@ export const defaultAccountsService = {
   },
 
   /**
+   * 🔒 Check if account is a CORE payment account (cannot be deleted)
+   * 
+   * CORE accounts (Cash, Bank, Mobile Wallet) are:
+   * - Non-negotiable
+   * - Cannot be deleted
+   * - Always active
+   * - Only rename allowed
+   */
+  isCorePaymentAccount(account: { code?: string; name?: string; type?: string }): boolean {
+    return CORE_PAYMENT_ACCOUNTS.some(
+      ca => ca.code === account.code || 
+      (ca.name.toLowerCase() === account.name?.toLowerCase() &&
+       (ca.type === account.type?.toLowerCase() || 
+        (ca.type === 'cash' && account.type?.toLowerCase() === 'asset' && account.name?.toLowerCase().includes('cash')) ||
+        (ca.type === 'bank' && account.type?.toLowerCase() === 'asset' && account.name?.toLowerCase().includes('bank')) ||
+        (ca.type === 'mobile_wallet' && account.type?.toLowerCase()?.includes('wallet'))))
+    );
+  },
+
+  /**
    * Check if account is a mandatory default account (cannot be deleted)
+   * @deprecated Use isCorePaymentAccount for payment accounts
    */
   isMandatoryAccount(account: { code?: string; name?: string }): boolean {
     return MANDATORY_ACCOUNTS.some(
       ma => ma.code === account.code || 
       ma.name.toLowerCase() === account.name?.toLowerCase()
     );
+  },
+
+  /**
+   * Get core payment accounts list (for frontend/validation)
+   */
+  getCorePaymentAccounts(): DefaultAccount[] {
+    return [...CORE_PAYMENT_ACCOUNTS];
   },
 };
