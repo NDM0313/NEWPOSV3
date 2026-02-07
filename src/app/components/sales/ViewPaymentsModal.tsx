@@ -5,6 +5,7 @@ import {
   DollarSign,
   Calendar,
   FileText,
+  Paperclip,
   User,
   CreditCard,
   Banknote,
@@ -41,6 +42,7 @@ import {
 } from '@/app/components/ui/alert-dialog';
 import { cn } from '@/app/components/ui/utils';
 import { toast } from 'sonner';
+import { getAttachmentOpenUrl } from '@/app/utils/paymentAttachmentUrl';
 
 // ============================================
 // TYPES
@@ -71,6 +73,8 @@ export interface InvoiceDetails {
   payments?: Payment[];
   // 🔒 UUID ARCHITECTURE: Use referenceType instead of parsing invoiceNo
   referenceType?: 'sale' | 'purchase' | 'rental'; // Entity type (preferred over pattern matching)
+  /** Sale lifecycle: only 'final' allows payments. Omit for purchase/rental. */
+  status?: 'draft' | 'quotation' | 'order' | 'final';
 }
 
 interface ViewPaymentsModalProps {
@@ -152,6 +156,7 @@ export const ViewPaymentsModal: React.FC<ViewPaymentsModalProps> = ({
   const [isDeleting, setIsDeleting] = useState(false);
   const [payments, setPayments] = useState<Payment[]>([]);
   const [loadingPayments, setLoadingPayments] = useState(false);
+  const [attachmentsDialogList, setAttachmentsDialogList] = useState<{ url: string; name: string }[] | null>(null);
 
   // Fetch payments when modal opens or refreshes
   useEffect(() => {
@@ -245,7 +250,7 @@ export const ViewPaymentsModal: React.FC<ViewPaymentsModalProps> = ({
       // If modal not open or invoice missing, show empty (not invoice.payments)
       setPayments([]);
     }
-  }, [isOpen, invoice?.id, invoice?.invoiceNo, invoice?.payments]);
+  }, [isOpen, invoice?.id]);
 
   if (!isOpen || !invoice) return null;
 
@@ -496,6 +501,24 @@ export const ViewPaymentsModal: React.FC<ViewPaymentsModalProps> = ({
                               <FileText size={14} />
                             </button>
                           )}
+                          {payment.attachments && Array.isArray(payment.attachments) && payment.attachments.length > 0 && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const list: { url: string; name: string }[] = [];
+                                payment.attachments.forEach((att: any) => {
+                                  const url = typeof att === 'string' ? att : (att?.url ?? att?.fileUrl ?? '');
+                                  const name = typeof att === 'object' && att?.name ? att.name : (typeof att === 'object' && (att?.fileName || att?.file_name) ? (att.fileName || att.file_name) : 'Attachment');
+                                  if (url) list.push({ url: String(url), name: name || 'Attachment' });
+                                });
+                                if (list.length) setAttachmentsDialogList(list);
+                              }}
+                              className="p-1.5 rounded-lg hover:bg-gray-700 text-gray-400 hover:text-amber-400 transition-colors"
+                              title={`${payment.attachments.length} attachment(s)`}
+                            >
+                              <Paperclip size={14} />
+                            </button>
+                          )}
                         </div>
                       </div>
                     );
@@ -529,7 +552,7 @@ export const ViewPaymentsModal: React.FC<ViewPaymentsModalProps> = ({
               >
                 Close
               </Button>
-              {invoice.due > 0 && (
+              {invoice.due > 0 && (invoice.status === undefined || invoice.status === 'final') && (
                 <Button
                   onClick={onAddPayment}
                   className="bg-green-600 hover:bg-green-500 text-white"
@@ -537,6 +560,9 @@ export const ViewPaymentsModal: React.FC<ViewPaymentsModalProps> = ({
                   <Plus size={16} className="mr-1" />
                   Add Payment
                 </Button>
+              )}
+              {invoice.due > 0 && invoice.status != null && invoice.status !== 'final' && (
+                <p className="text-xs text-amber-400 mt-1">Payments allowed only for final invoices. Convert to Final first.</p>
               )}
             </div>
           </div>
@@ -607,6 +633,39 @@ export const ViewPaymentsModal: React.FC<ViewPaymentsModalProps> = ({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Attachments dialog: list attachments, open in new tab from here */}
+      <Dialog open={!!attachmentsDialogList} onOpenChange={(open) => !open && setAttachmentsDialogList(null)}>
+        <DialogContent className="bg-gray-900 border-gray-700 text-white max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-white">
+              <Paperclip size={20} className="text-amber-400" />
+              Attachments
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-2 max-h-64 overflow-y-auto">
+            {attachmentsDialogList?.map((att, idx) => (
+              <div
+                key={idx}
+                className="flex items-center justify-between gap-2 p-2 rounded-lg bg-gray-800/50 border border-gray-700"
+              >
+                <span className="text-sm text-gray-200 truncate flex-1" title={att.name}>{att.name}</span>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="shrink-0 border-gray-600 text-gray-300 hover:bg-gray-700 hover:text-white"
+                  onClick={async () => {
+                    const openUrl = await getAttachmentOpenUrl(att.url);
+                    window.open(openUrl, '_blank');
+                  }}
+                >
+                  Open in new tab
+                </Button>
+              </div>
+            ))}
+          </div>
+        </DialogContent>
+      </Dialog>
     </>
   );
 };

@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { 
   Plus, ShoppingBag, DollarSign, AlertCircle, 
   MoreVertical, Eye, Edit, Trash2, FileText, Phone, MapPin,
-  Package, CheckCircle, Clock, XCircle, Receipt
+  Package, CheckCircle, Clock, XCircle, Receipt, ChevronDown, ChevronUp
 } from 'lucide-react';
 import { Button } from "@/app/components/ui/button";
 import { Badge } from "@/app/components/ui/badge";
@@ -505,26 +505,59 @@ export const PurchasesPage = () => {
     });
   }, [purchases, searchTerm, dateFilter, supplierFilter, statusFilter, paymentStatusFilter, branchFilter, filterByDateRange]);
 
+  // Sort state: default date descending (latest first)
+  type PurchaseSortKey = keyof Purchase;
+  const [sortKey, setSortKey] = useState<PurchaseSortKey>('date');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
+
+  const getPurchaseSortValue = (p: Purchase, key: PurchaseSortKey): string | number => {
+    const v = (p as any)[key];
+    if (key === 'date' && typeof v === 'string') return new Date(v).getTime();
+    if (typeof v === 'number') return v;
+    return String(v ?? '');
+  };
+
+  const sortedPurchases = useMemo(() => {
+    return [...filteredPurchases].sort((a, b) => {
+      const va = getPurchaseSortValue(a, sortKey);
+      const vb = getPurchaseSortValue(b, sortKey);
+      const cmp = typeof va === 'number' && typeof vb === 'number'
+        ? va - vb
+        : String(va).localeCompare(String(vb), undefined, { numeric: true });
+      return sortDir === 'asc' ? cmp : -cmp;
+    });
+  }, [filteredPurchases, sortKey, sortDir]);
+
+  const handleSort = (key: PurchaseSortKey) => {
+    if (sortKey === key) {
+      setSortDir(prev => prev === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortKey(key);
+      setSortDir('desc');
+    }
+    setCurrentPage(1);
+  };
+
   // Calculate summary
   const summary = useMemo(() => ({
-    totalPurchase: filteredPurchases.reduce((sum, p) => sum + p.grandTotal, 0),
-    totalDue: filteredPurchases.reduce((sum, p) => sum + p.paymentDue, 0),
+    totalPurchase: sortedPurchases.reduce((sum, p) => sum + p.grandTotal, 0),
+    totalDue: sortedPurchases.reduce((sum, p) => sum + p.paymentDue, 0),
     returns: 2500, // Mock value
-    orderCount: filteredPurchases.length,
-  }), [filteredPurchases]);
+    orderCount: sortedPurchases.length,
+  }), [sortedPurchases]);
 
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
   
-  // Paginated purchases
+  // Paginated purchases (from sorted list)
   const paginatedPurchases = useMemo(() => {
     const startIndex = (currentPage - 1) * pageSize;
     const endIndex = startIndex + pageSize;
-    return filteredPurchases.slice(startIndex, endIndex);
-  }, [filteredPurchases, currentPage, pageSize]);
+    return sortedPurchases.slice(startIndex, endIndex);
+  }, [sortedPurchases, currentPage, pageSize]);
 
-  const totalPages = Math.ceil(filteredPurchases.length / pageSize);
+  const totalPages = Math.ceil(sortedPurchases.length / pageSize);
 
   // Reset to page 1 when filters change
   React.useEffect(() => {
@@ -954,7 +987,18 @@ export const PurchasesPage = () => {
                   {columnOrder.map(key => {
                     if (!visibleColumns[key as keyof typeof visibleColumns]) return null;
                     const align = (key === 'status' || key === 'items' || key === 'paymentStatus') ? 'text-center' : (key === 'grandTotal' || key === 'paymentDue') ? 'text-right' : 'text-left';
-                    return <div key={key} className={align}>{columnLabels[key]}</div>;
+                    const isSortable = columnLabels[key] != null;
+                    const isActive = sortKey === key;
+                    return (
+                      <div
+                        key={key}
+                        className={cn(align, isSortable && 'cursor-pointer select-none hover:text-gray-300 flex items-center gap-0.5')}
+                        onClick={() => isSortable && handleSort(key as PurchaseSortKey)}
+                      >
+                        {columnLabels[key]}
+                        {isSortable && isActive && (sortDir === 'asc' ? <ChevronUp size={12} /> : <ChevronDown size={12} />)}
+                      </div>
+                    );
                   })}
                   <div className="text-center">Actions</div>
                 </div>

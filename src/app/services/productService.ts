@@ -22,6 +22,7 @@ export interface Product {
   is_sellable: boolean;
   track_stock: boolean;
   is_active: boolean;
+  image_urls?: string[];
   created_at: string;
   updated_at: string;
 }
@@ -161,7 +162,14 @@ export const productService = {
       .select()
       .single();
 
-    if (error) throw error;
+    if (error) {
+      // Postgres 23505 = unique_violation (e.g. company_id + sku already exists)
+      if (error.code === '23505' || (error.message && /duplicate key value|unique constraint/i.test(error.message))) {
+        const hint = product.sku ? `SKU "${product.sku}" is already in use for this company.` : 'A product with this SKU already exists.';
+        throw new Error(`${hint} Please use a different SKU or generate a new one.`);
+      }
+      throw error;
+    }
     return data;
   },
 

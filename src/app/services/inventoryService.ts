@@ -55,6 +55,7 @@ export interface InventoryMovementRow {
   created_at: string;
   product?: { id: string; name: string; sku: string };
   branch?: { id: string; name: string };
+  variation?: { id: string; attributes: Record<string, string> } | null;
 }
 
 export interface InventoryMovementsFilters {
@@ -76,7 +77,7 @@ export const inventoryService = {
     companyId: string,
     branchId?: string | null
   ): Promise<InventoryOverviewRow[]> {
-    // Step 1: Get all active products
+    // Step 1: Get all active products (has_variations for RULE 3: parent row = SUM of variations)
     const productsQuery = supabase
       .from('products')
       .select(`
@@ -87,6 +88,7 @@ export const inventoryService = {
         retail_price,
         min_stock,
         category_id,
+        has_variations,
         product_categories(id, name)
       `)
       .eq('company_id', companyId)
@@ -187,22 +189,20 @@ export const inventoryService = {
       console.warn('[INVENTORY SERVICE] ⚠️ No movements found or movements is null');
     }
 
-    // Step 5: Build rows with calculated stock
+    // Step 5: Build rows with calculated stock (RULE 3: variation-level tracking, parent = SUM of variations)
     const rows: InventoryOverviewRow[] = products.map((p: any) => {
-      // Check if product has variations
-      const hasVariations = (variationMap[p.id]?.length || 0) > 0;
-      
+      // RULE 1 & 3: Use DB has_variations when set; else derive from variationMap
+      const hasVariations = p.has_variations === true || (variationMap[p.id]?.length || 0) > 0;
+
       let totalStock = 0;
-      
       if (hasVariations) {
-        // If product has variations, sum all variation stocks
-        totalStock = variationMap[p.id].reduce((sum, v) => {
-          const varStock = variationStockMap[v.id] || 0; // 🔒 FIX: Don't use Math.max here, allow negative for detection
+        // RULE 1: Parent cannot hold stock; stock only at variation level. Parent row = SUM of variations.
+        totalStock = (variationMap[p.id] || []).reduce((sum, v) => {
+          const varStock = variationStockMap[v.id] || 0;
           return sum + varStock;
         }, 0);
       } else {
-        // If no variations, use product-level stock
-        totalStock = productStockMap[p.id] || 0; // 🔒 FIX: Don't use Math.max here, allow negative for detection
+        totalStock = productStockMap[p.id] || 0;
       }
       
       // 🔒 SAFETY: Check for negative stock and log warning with diagnostic info
@@ -314,7 +314,8 @@ export const inventoryService = {
         notes,
         created_at,
         product:products(id, name, sku),
-        branch:branches!branch_id(id, name)
+        branch:branches!branch_id(id, name),
+        variation:product_variations!variation_id(id, attributes)
       `)
       .eq('company_id', companyId)
       .order('created_at', { ascending: false })
@@ -329,5 +330,74 @@ export const inventoryService = {
     const { data, error } = await query;
     if (error) throw error;
     return (data || []) as InventoryMovementRow[];
+  },
+
+  /**
+   * Returns the number of stock_movements rows for a product (used to decide if we need opening balance).
+   */
+  async getMovementCountForProduct(productId: string): Promise<number> {
+    const { count, error } = await supabase
+      .from('stock_movements')
+      .select('id', { count: 'exact', head: true })
+      .eq('product_id', productId);
+    if (error) throw error;
+    return count ?? 0;
+  },
+
+  /**
+   * Returns the number of parent-level stock_movements (variation_id IS NULL) for a product.
+   * Used to block enabling variations when product has parent-level stock (RULE 5).
+   */
+  async getParentLevelMovementCount(productId: string): Promise<number> {
+    const { count, error } = await supabase
+      .from('stock_movements')
+      .select('id', { count: 'exact', head: true })
+      .eq('product_id', productId)
+      .is('variation_id', null);
+    if (error) throw error;
+    return count ?? 0;
+  },
+
+  /**
+   * Returns the number of variation-level stock_movements (variation_id IS NOT NULL) for a product.
+   * Used to block disabling variations when product has variation-level stock.
+   */
+  async getVariationLevelMovementCount(productId: string): Promise<number> {
+    const { count, error } = await supabase
+      .from('stock_movements')
+      .select('id', { count: 'exact', head: true })
+      .eq('product_id', productId)
+      .not('variation_id', 'is', null);
+    if (error) throw error;
+    return count ?? 0;
+  },
+
+  /**
+   * Insert a single opening-balance stock movement (accounting standard: stock comes from movements).
+   * When variationId is provided, stock is at variation level (RULE 1: parent cannot hold stock when has_variations).
+   */
+  async insertOpeningBalanceMovement(
+    companyId: string,
+    branchId: string | null,
+    productId: string,
+    quantity: number,
+    unitCost: number = 0,
+    variationId?: string | null
+  ): Promise<{ error: any }> {
+    const totalCost = quantity * unitCost;
+    const { error } = await supabase.from('stock_movements').insert({
+      company_id: companyId,
+      branch_id: branchId && branchId !== 'all' ? branchId : null,
+      product_id: productId,
+      variation_id: variationId ?? null,
+      movement_type: 'adjustment',
+      quantity: Number(quantity),
+      unit_cost: unitCost,
+      total_cost: totalCost,
+      reference_type: 'opening_balance',
+      reference_id: null,
+      notes: variationId ? 'Opening stock (variation)' : 'Opening stock',
+    });
+    return { error };
   },
 };

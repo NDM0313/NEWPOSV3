@@ -1432,6 +1432,14 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                 return;
             }
         }
+
+            // RULE 4: Variation selection required when product has variations
+            const itemWithoutVariation = items.find(i => i.showVariations && !i.selectedVariationId && !i.variationId);
+            if (itemWithoutVariation) {
+                toast.error(`Variation selection required for "${itemWithoutVariation.name}". Please select a size/color (or combination) before saving.`);
+                setSaving(false);
+                return;
+            }
         
         try {
             setSaving(true);

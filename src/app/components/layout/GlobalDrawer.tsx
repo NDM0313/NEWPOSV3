@@ -98,12 +98,12 @@ export const GlobalDrawer = () => {
   if (isMobile) {
     contentClasses += "h-[90vh] rounded-t-xl border-t"; // Bottom sheet style
   } else {
-    contentClasses += "h-full ";
+    contentClasses += "h-full flex flex-col ";
     if (isSale || isPurchase) {
       // Responsive width for Sale/Purchase: full width on mobile/tablet, 1100px on desktop (lg+)
       contentClasses += "w-full lg:w-[1200px]"; // Desktop: 1180px, Mobile/Tablet: full width
     } else if (isProduct) {
-       contentClasses += "!w-[800px] !max-w-[800px] sm:!max-w-[800px]"; // Override Sheet default width (800px for comfortable form layout)
+       contentClasses += "!w-[900px] !max-w-[95vw] sm:!max-w-[900px] flex flex-col min-h-0"; // Product form + variations table; flex so form can scroll
     } else if (isContact) {
       // Contact form: Fixed 580-600px width
       contentClasses += "!w-[580px] !max-w-[600px] sm:!max-w-[600px]"; // Contact form: 580-600px fixed width
@@ -285,7 +285,9 @@ export const GlobalDrawer = () => {
                'Drawer content'}
             </SheetDescription>
           </SheetHeader>
-          {renderContent()}
+          <div className={isProduct ? "flex flex-col flex-1 min-h-0 overflow-hidden" : ""}>
+            {renderContent()}
+          </div>
         </SheetContent>
       </Sheet>
       

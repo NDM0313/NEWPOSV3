@@ -1160,6 +1160,13 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
             toast.error('Please add at least one item');
             return;
         }
+
+        // RULE 4: Variation selection required when product has variations
+        const itemWithoutVariation = items.find(i => i.showVariations && !i.selectedVariationId && !i.variationId);
+        if (itemWithoutVariation) {
+            toast.error(`Variation selection required for "${itemWithoutVariation.name}". Please select a size/color (or combination) before saving.`);
+            return;
+        }
         
         // CRITICAL FIX: Validate unit decimal rules before save
         for (const item of items) {

@@ -72,7 +72,7 @@ export const Sidebar = () => {
       ]
     },
     { id: 'expenses', label: 'Expenses', icon: Receipt },
-    { id: 'accounting', label: 'Accounting', icon: Calculator, isHidden: !settingsModules.accountingModuleEnabled },
+    { id: 'accounting', label: 'Accounting', icon: Calculator },
     { id: 'reports', label: 'Reports', icon: PieChart },
     { id: 'settings', label: 'Settings', icon: Settings },
     { 

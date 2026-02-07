@@ -5,7 +5,6 @@
 // Uses EXISTING accounts table only
 
 import { accountService } from './accountService';
-import { supabase } from './supabase';
 
 export interface DefaultAccount {
   code: string;

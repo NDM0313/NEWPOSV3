@@ -3,7 +3,7 @@ import {
   Plus, ShoppingCart, DollarSign, TrendingUp, 
   MoreVertical, Eye, Edit, Trash2, FileText, Phone, MapPin,
   Package, Truck, CheckCircle, Clock, XCircle, AlertCircle,
-  UserCheck, Receipt, Loader2, PackageCheck, PackageX, ChevronDown
+  UserCheck, Receipt, Loader2, PackageCheck, PackageX, ChevronDown, ChevronUp
 } from 'lucide-react';
 import { Button } from "@/app/components/ui/button";
 import { Badge } from "@/app/components/ui/badge";
@@ -115,13 +115,6 @@ export const SalesPage = () => {
       loadSalesBranchIds();
     }
   }, [companyId, branchId, sales.length]);
-
-  // TASK 1 FIX - Ensure data loads on mount
-  useEffect(() => {
-    if (companyId && sales.length === 0 && !loading) {
-      refreshSales();
-    }
-  }, [companyId, sales.length, loading, refreshSales]);
   
   // 🎯 Payment Dialog & Ledger states
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
@@ -131,6 +124,8 @@ export const SalesPage = () => {
   
   // 🎯 View Payments Modal state
   const [viewPaymentsOpen, setViewPaymentsOpen] = useState(false);
+  // Edit payment: when set, UnifiedPaymentDialog opens in edit mode
+  const [paymentToEdit, setPaymentToEdit] = useState<any>(null);
   
   // 🎯 NEW: Additional dialog states
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -154,6 +149,7 @@ export const SalesPage = () => {
     }
   }, []);
   const [paymentStatusFilter, setPaymentStatusFilter] = useState<'all' | PaymentStatus>('all');
+  const [saleStatusFilter, setSaleStatusFilter] = useState<'all' | 'draft' | 'quotation' | 'order' | 'final'>('all');
   const [shippingStatusFilter, setShippingStatusFilter] = useState<'all' | ShippingStatus>('all');
   const [branchFilter, setBranchFilter] = useState('all');
   const [paymentMethodFilter, setPaymentMethodFilter] = useState('all');
@@ -386,6 +382,9 @@ export const SalesPage = () => {
       // Payment status filter
       if (paymentStatusFilter !== 'all' && sale.paymentStatus !== paymentStatusFilter) return false;
 
+      // Sale lifecycle status filter (draft / quotation / order / final)
+      if (saleStatusFilter !== 'all' && (sale as any).status !== saleStatusFilter) return false;
+
       // Shipping status filter
       if (shippingStatusFilter !== 'all' && sale.shippingStatus !== shippingStatusFilter) return false;
 
@@ -397,33 +396,69 @@ export const SalesPage = () => {
 
       return true;
     });
-  }, [sales, startDate, endDate, searchTerm, dateFilter, customerFilter, paymentStatusFilter, shippingStatusFilter, branchFilter, paymentMethodFilter]);
+  }, [sales, startDate, endDate, searchTerm, dateFilter, customerFilter, paymentStatusFilter, saleStatusFilter, shippingStatusFilter, branchFilter, paymentMethodFilter]);
+
+  // Sort state: default date descending (latest first)
+  type SaleSortKey = 'date' | 'invoiceNo' | 'customer' | 'location' | 'paymentStatus' | 'total' | 'paid' | 'due' | 'returnDue' | 'shipping' | 'items';
+  const [sortKey, setSortKey] = useState<SaleSortKey>('date');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
+
+  const getSaleSortValue = (s: Sale, key: SaleSortKey): string | number => {
+    if (key === 'date') return new Date(s.date).getTime();
+    if (key === 'customer') return s.customerName || s.customer || '';
+    if (key === 'shipping') return s.shippingStatus || '';
+    if (key === 'items') return s.itemsCount ?? s.items?.length ?? 0;
+    const v = (s as any)[key];
+    if (typeof v === 'number') return v;
+    return String(v ?? '');
+  };
+
+  const sortedSales = useMemo(() => {
+    return [...filteredSales].sort((a, b) => {
+      const va = getSaleSortValue(a, sortKey);
+      const vb = getSaleSortValue(b, sortKey);
+      const cmp = typeof va === 'number' && typeof vb === 'number'
+        ? va - vb
+        : String(va).localeCompare(String(vb), undefined, { numeric: true });
+      return sortDir === 'asc' ? cmp : -cmp;
+    });
+  }, [filteredSales, sortKey, sortDir]);
+
+  const handleSort = (key: SaleSortKey) => {
+    if (sortKey === key) {
+      setSortDir(prev => prev === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortKey(key);
+      setSortDir('desc');
+    }
+    setCurrentPage(1);
+  };
 
   // Calculate summary
   const summary = useMemo(() => ({
-    totalSales: filteredSales.reduce((sum, s) => sum + s.total, 0),
-    totalPaid: filteredSales.reduce((sum, s) => sum + s.paid, 0),
-    totalDue: filteredSales.reduce((sum, s) => sum + s.due, 0),
-    invoiceCount: filteredSales.length,
-  }), [filteredSales]);
+    totalSales: sortedSales.reduce((sum, s) => sum + s.total, 0),
+    totalPaid: sortedSales.reduce((sum, s) => sum + s.paid, 0),
+    totalDue: sortedSales.reduce((sum, s) => sum + s.due, 0),
+    invoiceCount: sortedSales.length,
+  }), [sortedSales]);
 
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
   
-  // Paginated sales
+  // Paginated sales (from sorted list)
   const paginatedSales = useMemo(() => {
     const startIndex = (currentPage - 1) * pageSize;
     const endIndex = startIndex + pageSize;
-    return filteredSales.slice(startIndex, endIndex);
-  }, [filteredSales, currentPage, pageSize]);
+    return sortedSales.slice(startIndex, endIndex);
+  }, [sortedSales, currentPage, pageSize]);
 
-  const totalPages = Math.ceil(filteredSales.length / pageSize);
+  const totalPages = Math.ceil(sortedSales.length / pageSize);
 
   // Reset to page 1 when filters change
   React.useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm, dateFilter, customerFilter, paymentStatusFilter, shippingStatusFilter, branchFilter, paymentMethodFilter]);
+  }, [searchTerm, dateFilter, customerFilter, paymentStatusFilter, saleStatusFilter, shippingStatusFilter, branchFilter, paymentMethodFilter]);
 
   const handlePageChange = (page: number) => {
     setCurrentPage(page);
@@ -438,6 +473,7 @@ export const SalesPage = () => {
     setDateFilter('all');
     setCustomerFilter('all');
     setPaymentStatusFilter('all');
+    setSaleStatusFilter('all');
     setShippingStatusFilter('all');
     setBranchFilter('all');
     setPaymentMethodFilter('all');
@@ -447,6 +483,7 @@ export const SalesPage = () => {
     dateFilter !== 'all',
     customerFilter !== 'all',
     paymentStatusFilter !== 'all',
+    saleStatusFilter !== 'all',
     shippingStatusFilter !== 'all',
     branchFilter !== 'all',
     paymentMethodFilter !== 'all',
@@ -897,6 +934,31 @@ export const SalesPage = () => {
                   </div>
                 </div>
 
+                {/* Sale Status (Lifecycle) Filter */}
+                <div>
+                  <label className="text-xs text-gray-400 mb-2 block font-medium">Sale Status</label>
+                  <div className="space-y-2">
+                    {[
+                      { value: 'all', label: 'All' },
+                      { value: 'draft', label: 'Draft' },
+                      { value: 'quotation', label: 'Quotation' },
+                      { value: 'order', label: 'Sales Order' },
+                      { value: 'final', label: 'Final Invoice' },
+                    ].map(opt => (
+                      <label key={opt.value} className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="radio"
+                          name="saleStatus"
+                          checked={saleStatusFilter === opt.value}
+                          onChange={() => setSaleStatusFilter(opt.value as any)}
+                          className="w-4 h-4 bg-gray-950 border-gray-700"
+                        />
+                        <span className="text-sm text-gray-300">{opt.label}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
                 {/* Shipping Status Filter */}
                 <div>
                   <label className="text-xs text-gray-400 mb-2 block font-medium">Shipping Status</label>
@@ -1031,9 +1093,17 @@ export const SalesPage = () => {
                       items: 'Items',
                     };
                     
+                    const isSortable = (['date', 'invoiceNo', 'customer', 'location', 'paymentStatus', 'total', 'paid', 'due', 'returnDue', 'shipping', 'items'] as SaleSortKey[]).includes(key as SaleSortKey);
+                    const isActive = sortKey === key;
+                    
                     return (
-                      <div key={key} className={alignments[key]}>
+                      <div
+                        key={key}
+                        className={cn(alignments[key], isSortable && 'cursor-pointer select-none hover:text-gray-300 flex items-center gap-0.5')}
+                        onClick={() => isSortable && handleSort(key as SaleSortKey)}
+                      >
                         {labels[key]}
+                        {isSortable && isActive && (sortDir === 'asc' ? <ChevronUp size={12} /> : <ChevronDown size={12} />)}
                       </div>
                     );
                   })}
@@ -1118,7 +1188,7 @@ export const SalesPage = () => {
                             </DropdownMenuItem>
                             
                             {/* 🎯 RECEIVE PAYMENT - Only show if there's a due amount */}
-                            {sale.due > 0 && (
+                            {sale.status === 'final' && sale.due > 0 && (
                               <DropdownMenuItem 
                                 className="hover:bg-gray-800 cursor-pointer"
                                 onClick={() => handleSaleAction('receive_payment', sale)}
@@ -1193,10 +1263,15 @@ export const SalesPage = () => {
             due: selectedSale.due,
             paymentStatus: selectedSale.paymentStatus,
             payments: [], // Will be fetched dynamically in modal
-            referenceType: 'sale', // 🔒 UUID ARCHITECTURE: Explicit entity type (no pattern matching)
+            referenceType: 'sale',
+            status: selectedSale.status, // Only 'final' allows Add Payment
           }}
           onAddPayment={() => {
-            // Close View Payments and open Receive Payment dialog
+            setViewPaymentsOpen(false);
+            setPaymentDialogOpen(true);
+          }}
+          onEditPayment={(payment) => {
+            setPaymentToEdit(payment);
             setViewPaymentsOpen(false);
             setPaymentDialogOpen(true);
           }}
@@ -1241,10 +1316,8 @@ export const SalesPage = () => {
           isOpen={paymentDialogOpen}
           onClose={() => {
             setPaymentDialogOpen(false);
-            // Re-open View Payments modal after payment is cancelled
-            if (!viewPaymentsOpen) {
-              setViewPaymentsOpen(true);
-            }
+            setPaymentToEdit(null);
+            if (!viewPaymentsOpen) setViewPaymentsOpen(true);
           }}
           context="customer"
           entityName={selectedSale.customerName}
@@ -1254,21 +1327,25 @@ export const SalesPage = () => {
           paidAmount={selectedSale.paid}
           previousPayments={(selectedSale as any).payments || []}
           referenceNo={selectedSale.invoiceNo}
-          referenceId={selectedSale.id} // CRITICAL FIX: UUID for journal entry reference_id
+          referenceId={selectedSale.id}
+          editMode={!!paymentToEdit}
+          paymentToEdit={paymentToEdit ? {
+            id: paymentToEdit.id,
+            amount: paymentToEdit.amount,
+            method: paymentToEdit.method,
+            accountId: paymentToEdit.accountId,
+            date: paymentToEdit.date,
+            referenceNumber: paymentToEdit.referenceNo,
+            notes: paymentToEdit.notes,
+            attachments: paymentToEdit.attachments,
+          } : undefined}
           onSuccess={async () => {
-            toast.success('Payment recorded successfully');
+            toast.success(paymentToEdit ? 'Payment updated successfully' : 'Payment recorded successfully');
             await refreshSales();
             setPaymentDialogOpen(false);
-            
-            // CRITICAL FIX: Trigger reload in ViewSaleDetailsDrawer if open
+            setPaymentToEdit(null);
             window.dispatchEvent(new CustomEvent('paymentAdded'));
-            
-            // Re-open View Payments modal to show updated data
-            if (viewDetailsOpen) {
-              // ViewSaleDetailsDrawer will reload automatically via event
-            } else {
-              setViewPaymentsOpen(true);
-            }
+            if (!viewDetailsOpen) setViewPaymentsOpen(true);
           }}
         />
       )}

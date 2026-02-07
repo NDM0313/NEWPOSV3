@@ -6,11 +6,15 @@ import * as z from "zod";
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { useDocumentNumbering } from '@/app/hooks/useDocumentNumbering';
 import { productService } from '@/app/services/productService';
+import { inventoryService } from '@/app/services/inventoryService';
 import { brandService } from '@/app/services/brandService';
 import { productCategoryService } from '@/app/services/productCategoryService';
 import { unitService } from '@/app/services/unitService';
 import { contactService } from '@/app/services/contactService';
 import { supabase } from '@/lib/supabase';
+import { uploadProductImages } from '@/app/utils/productImageUpload';
+import { ProductImage } from './ProductImage';
+import { getSupabaseStorageDashboardUrl } from '@/app/utils/paymentAttachmentUrl';
 import { toast } from 'sonner';
 import {
   X,
@@ -50,6 +54,13 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "../ui/collapsible";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "../ui/dialog";
 
 // Define the validation schema (aligned with submit and DB)
 const productSchema = z.object({
@@ -114,9 +125,13 @@ export const EnhancedProductForm = ({
   onSaveAndAdd,
 }: EnhancedProductFormProps) => {
   const { companyId, branchId } = useSupabase();
-  const { generateDocumentNumber, incrementNextNumber } = useDocumentNumbering();
+  const { generateDocumentNumber, generateDocumentNumberSafe, incrementNextNumber } = useDocumentNumbering();
   const [saving, setSaving] = useState(false);
+  /** Enable Variations toggle: default OFF for new product, from DB for edit. When ON, parent stock locked at 0. */
+  const [enableVariations, setEnableVariations] = useState(false);
+  const [blockDisableVariationsModalOpen, setBlockDisableVariationsModalOpen] = useState(false);
   const [images, setImages] = useState<File[]>([]);
+  const [existingImageUrls, setExistingImageUrls] = useState<string[]>([]);
   const [isRentalOptionsOpen, setIsRentalOptionsOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<'basic' | 'pricing' | 'inventory' | 'media' | 'details' | 'variations' | 'combos'>('basic');
   const [categories, setCategories] = useState<Array<{ id: string; name: string }>>([]);
@@ -137,6 +152,7 @@ export const EnhancedProductForm = ({
   const [newAttributeName, setNewAttributeName] = useState('');
   const [newAttributeValue, setNewAttributeValue] = useState('');
   const [selectedAttributeIndex, setSelectedAttributeIndex] = useState<number | null>(null);
+  const [blockVariationsModalOpen, setBlockVariationsModalOpen] = useState(false);
   const [generatedVariations, setGeneratedVariations] = useState<Array<{
     combination: Record<string, string>;
     sku: string;
@@ -330,12 +346,29 @@ export const EnhancedProductForm = ({
     return (n && String(n).trim()) ? n : 'PRD-0001';
   }, [generateDocumentNumber]);
 
-  // Auto-generate SKU for new product (PRD-0001, PRD-0002, ... from Settings → Numbering)
+  // Auto-generate unique SKU for new product only (collision-safe via DB check)
   useEffect(() => {
-    if (!initialProduct) {
-      setValue('sku', generateSKU());
+    if (initialProduct || !companyId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const nextSKU = await generateDocumentNumberSafe('production');
+        if (!cancelled && nextSKU) setValue('sku', nextSKU);
+      } catch (e) {
+        if (!cancelled) setValue('sku', generateSKU());
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [companyId, initialProduct, setValue, generateDocumentNumberSafe, generateSKU]);
+
+  // Sync enableVariations from existing product
+  useEffect(() => {
+    if (initialProduct) {
+      setEnableVariations(!!(initialProduct.has_variations ?? (initialProduct.variations?.length > 0)));
+    } else {
+      setEnableVariations(false);
     }
-  }, [initialProduct, setValue, generateSKU]);
+  }, [initialProduct]);
 
   // Pre-populate form when editing (support both list product and API product)
   useEffect(() => {
@@ -377,6 +410,10 @@ export const EnhancedProductForm = ({
       if (initialProduct.variations && initialProduct.variations.length > 0) {
         // TODO: Load variations into state
       }
+      const urls = (initialProduct as any)?.image_urls;
+      setExistingImageUrls(Array.isArray(urls) ? [...urls] : []);
+    } else {
+      setExistingImageUrls([]);
     }
   }, [initialProduct, setValue]);
 
@@ -399,10 +436,44 @@ export const EnhancedProductForm = ({
   }, []);
 
   const { getRootProps, getInputProps, isDragActive } =
-    useDropzone({ onDrop });
+    useDropzone({ onDrop, accept: { 'image/*': ['.png', '.jpg', '.jpeg', '.webp', '.gif'] }, maxSize: 5 * 1024 * 1024 });
 
-  const generateSKUForForm = () => {
-    setValue("sku", generateSKU());
+  const generateSKUForForm = async () => {
+    if (initialProduct) {
+      setValue("sku", initialProduct.sku || getValues('sku'));
+      return;
+    }
+    const nextSKU = await generateDocumentNumberSafe('production');
+    if (nextSKU) setValue("sku", nextSKU);
+    else setValue("sku", generateSKU());
+  };
+
+  // Enable Variations toggle: with safety checks when editing
+  const handleEnableVariationsChange = async (checked: boolean) => {
+    const productId = initialProduct?.uuid ?? initialProduct?.id;
+    if (checked) {
+      if (productId) {
+        const parentCount = await inventoryService.getParentLevelMovementCount(productId);
+        if (parentCount > 0) {
+          setBlockVariationsModalOpen(true);
+          return;
+        }
+      }
+      setEnableVariations(true);
+      setValue('initialStock', 0, { shouldValidate: false });
+    } else {
+      if (productId && (initialProduct?.has_variations || generatedVariations.length > 0)) {
+        const variationCount = await inventoryService.getVariationLevelMovementCount(productId);
+        if (variationCount > 0) {
+          setBlockDisableVariationsModalOpen(true);
+          return;
+        }
+      }
+      setEnableVariations(false);
+      setGeneratedVariations([]);
+      setVariantAttributes([]);
+      if (activeTab === 'variations') setActiveTab('inventory');
+    }
   };
 
   // Variations Functions
@@ -436,6 +507,9 @@ export const EnhancedProductForm = ({
     setGeneratedVariations([]);
   };
 
+  /** Max variations per product (frontend + backend consistency; avoid runaway combinations) */
+  const MAX_VARIATIONS = 100;
+
   const cartesianProduct = (arrays: string[][]): string[][] => {
     if (arrays.length === 0) return [[]];
     return arrays.reduce((a, b) => a.flatMap(d => b.map(e => [...(Array.isArray(d) ? d : [d]), e])), [[]] as string[][]);
@@ -444,6 +518,10 @@ export const EnhancedProductForm = ({
   const generateVariations = () => {
     const attributeValues = variantAttributes.map(attr => attr.values);
     const combinations = cartesianProduct(attributeValues);
+    if (combinations.length > MAX_VARIATIONS) {
+      toast.error(`Variation limit (${MAX_VARIATIONS}) exceeded. You have ${combinations.length} combinations. Reduce attribute values or use fewer attributes.`);
+      return;
+    }
     const baseSku = (getValues('sku') || '').trim() || generateSKU();
     
     const newVariations = combinations.map((combination, index) => {
@@ -573,10 +651,11 @@ export const EnhancedProductForm = ({
         retail_price: data.sellingPrice,
         wholesale_price: data.wholesalePrice ?? data.sellingPrice ?? 0,
         rental_price_daily: data.rentalPrice ?? null,
-        current_stock: data.initialStock ?? 0,
+        // RULE 1: When variations enabled, parent cannot hold stock (opening stock per variation only)
+        current_stock: enableVariations ? 0 : ((data.initialStock ?? 0) > 0 && !initialProduct?.id ? 0 : (data.initialStock ?? 0)),
         min_stock: data.alertQty ?? 0,
         max_stock: data.maxStock ?? 1000,
-        has_variations: generatedVariations.length > 0,
+        has_variations: enableVariations,
         is_rentable: (data.rentalPrice ?? 0) > 0,
         is_sellable: true,
         track_stock: data.stockManagement !== false,
@@ -587,8 +666,59 @@ export const EnhancedProductForm = ({
       const isEdit = !!productId;
 
       if (isEdit) {
-        // UPDATE existing product – real backend write
+        // UPDATE: merge existing image_urls (including any user-removed) with newly uploaded files
+        let imageUrls: string[] = [...existingImageUrls];
+        if (images.length > 0) {
+          try {
+            const newUrls = await uploadProductImages(finalCompanyId, productId, images);
+            imageUrls = [...imageUrls, ...newUrls];
+          } catch (uploadErr: any) {
+            console.error('[PRODUCT FORM] Image upload failed:', uploadErr);
+            const msg = uploadErr?.message || 'Images failed to upload.';
+            const isBucketMissing = String(msg).toLowerCase().includes('bucket not found');
+            toast.error(msg, isBucketMissing ? { action: { label: 'Open Storage', onClick: () => window.open(getSupabaseStorageDashboardUrl(), '_blank') } } : undefined);
+          }
+        }
+        if (imageUrls.length > 0) (productData as any).image_urls = imageUrls;
+
+        // RULE 5: Block enabling variations when product has parent-level stock (show modal)
+        if (enableVariations) {
+          const parentLevelCount = await inventoryService.getParentLevelMovementCount(productId);
+          if (parentLevelCount > 0) {
+            setBlockVariationsModalOpen(true);
+            setSaving(false);
+            return;
+          }
+        }
+
+        // Opening stock: sync with stock_movements. RULE 1: No parent opening when variations enabled.
+        const hasVariations = enableVariations;
+        const initialStock = Number(data.initialStock) || 0;
+        const movementCount = await inventoryService.getMovementCountForProduct(productId);
+        if (movementCount > 0) {
+          delete (productData as any).current_stock;
+        } else {
+          (productData as any).current_stock = 0;
+        }
+        if (hasVariations) (productData as any).current_stock = 0; // RULE 1: parent never holds stock
+
         const result = await productService.updateProduct(productId, productData);
+
+        // If product had no movements and we have opening stock at parent, add one (only when no variations)
+        if (!hasVariations && movementCount === 0 && initialStock > 0 && finalCompanyId) {
+          const branchIdOrNull = branchId && branchId !== 'all' ? branchId : null;
+          const { error: movErr } = await inventoryService.insertOpeningBalanceMovement(
+            finalCompanyId,
+            branchIdOrNull,
+            productId,
+            initialStock,
+            Number(data.purchasePrice) || 0
+          );
+          if (movErr) {
+            console.error('[PRODUCT FORM] Opening balance movement failed:', movErr);
+            toast.error('Product updated but opening stock could not be recorded. You can add an adjustment in Inventory.');
+          }
+        }
         const payload = {
           ...data,
           sku: finalSKU,
@@ -608,8 +738,45 @@ export const EnhancedProductForm = ({
       } else {
         // CREATE new product
         const result = await productService.createProduct(productData);
-        incrementNextNumber('production'); // So next product gets PRD-0002, etc.
+        incrementNextNumber('production'); // So next product gets next SKU for next product.
+
+        // RULE 1: Opening stock at parent only when variations OFF; with variations ON, opening is per variation
+        const hasVariations = enableVariations;
+        const initialStock = Number(data.initialStock) || 0;
+        if (!hasVariations && initialStock > 0 && result?.id && finalCompanyId) {
+          const branchIdOrNull = branchId && branchId !== 'all' ? branchId : null;
+          const { error: movErr } = await inventoryService.insertOpeningBalanceMovement(
+            finalCompanyId,
+            branchIdOrNull,
+            result.id,
+            initialStock,
+            Number(data.purchasePrice) || 0
+          );
+          if (movErr) {
+            console.error('[PRODUCT FORM] Opening balance movement failed:', movErr);
+            toast.error('Product saved but opening stock could not be recorded. You can add an adjustment in Inventory.');
+          }
+        }
+
+        // Upload product images and save URLs
+        if (images.length > 0 && result?.id) {
+          try {
+            const imageUrls = await uploadProductImages(finalCompanyId, result.id, images);
+            await productService.updateProduct(result.id, { image_urls: imageUrls });
+          } catch (uploadErr: any) {
+            console.error('[PRODUCT FORM] Image upload failed:', uploadErr);
+            const msg = uploadErr?.message || 'Product saved but images failed to upload.';
+            const isBucketMissing = String(msg).toLowerCase().includes('bucket not found');
+            toast.error(msg, isBucketMissing ? { action: { label: 'Open Storage', onClick: () => window.open(getSupabaseStorageDashboardUrl(), '_blank') } } : undefined);
+          }
+        }
+
         if (generatedVariations.length > 0 && result.id) {
+          if (generatedVariations.length > MAX_VARIATIONS) {
+            toast.error(`Variation limit (${MAX_VARIATIONS}) exceeded. Save without variations or reduce to ${MAX_VARIATIONS} or fewer.`);
+            setSaving(false);
+            return;
+          }
           try {
             const variationsToSave = generatedVariations.map(variation => ({
               product_id: result.id,
@@ -621,14 +788,33 @@ export const EnhancedProductForm = ({
               is_active: true,
             }));
 
-            const { error: variationsError } = await supabase
+            const { data: insertedVariations, error: variationsError } = await supabase
               .from('product_variations')
-              .insert(variationsToSave);
+              .insert(variationsToSave)
+              .select('id, stock');
 
             if (variationsError) {
               console.error('[PRODUCT FORM] Error saving variations:', variationsError);
               toast.warning('Product saved but variations could not be saved. Please add them manually.');
             } else {
+              // RULE 1: Opening stock per variation – insert opening_balance movement for each variation with stock > 0
+              const branchIdOrNull = branchId && branchId !== 'all' ? branchId : null;
+              const cost = Number(data.purchasePrice) || 0;
+              for (let i = 0; i < (insertedVariations?.length || 0); i++) {
+                const v = insertedVariations[i];
+                const qty = Number(v?.stock) || (generatedVariations[i]?.stock ?? 0) || 0;
+                if (qty > 0 && v?.id && finalCompanyId) {
+                  const { error: movErr } = await inventoryService.insertOpeningBalanceMovement(
+                    finalCompanyId,
+                    branchIdOrNull,
+                    result.id,
+                    qty,
+                    cost,
+                    v.id
+                  );
+                  if (movErr) console.error('[PRODUCT FORM] Opening balance for variation failed:', movErr);
+                }
+              }
               toast.success(`Product created with ${generatedVariations.length} variations!`);
             }
           } catch (variationsError) {
@@ -659,15 +845,22 @@ export const EnhancedProductForm = ({
       }
     } catch (error: any) {
       const wasEdit = !!(initialProduct?.uuid ?? initialProduct?.id);
+      const msg = error?.message || 'Unknown error';
       console.error('[PRODUCT FORM] Error saving product:', error);
-      toast.error(wasEdit ? 'Failed to update product: ' + (error.message || 'Unknown error') : 'Failed to create product: ' + (error.message || 'Unknown error'));
+      if (msg.includes('SKU') && msg.includes('already') && !wasEdit) {
+        toast.error(msg, { duration: 6000 });
+        incrementNextNumber('production'); // free the duplicate number so next generate is unique
+        setValue('sku', generateSKU());
+      } else {
+        toast.error(wasEdit ? 'Failed to update product: ' + msg : 'Failed to create product: ' + msg);
+      }
     } finally {
       setSaving(false);
     }
   };
 
   return (
-    <div className="flex flex-col h-full bg-gray-900 text-white">
+    <div className="flex flex-col h-full min-h-0 bg-gray-950 text-white">
       <div className="p-6 border-b border-gray-800 flex justify-between items-center bg-gray-900 sticky top-0 z-10">
         <div>
           <h2 className="text-xl font-bold">{initialProduct ? 'Edit Product' : 'Add New Product'}</h2>
@@ -741,17 +934,19 @@ export const EnhancedProductForm = ({
           >
             Details
           </button>
-          <button
-            onClick={() => setActiveTab('variations')}
-            className={clsx(
-              "px-6 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap",
-              activeTab === 'variations'
-                ? "border-blue-500 text-white"
-                : "border-transparent text-gray-400 hover:text-gray-300"
-            )}
-          >
-            Variations {generatedVariations.length > 0 && `(${generatedVariations.length})`}
-          </button>
+          {enableVariations && (
+            <button
+              onClick={() => setActiveTab('variations')}
+              className={clsx(
+                "px-6 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap",
+                activeTab === 'variations'
+                  ? "border-blue-500 text-white"
+                  : "border-transparent text-gray-400 hover:text-gray-300"
+              )}
+            >
+              Variations {generatedVariations.length > 0 && `(${generatedVariations.length} / ${MAX_VARIATIONS})`}
+            </button>
+          )}
           <button
             onClick={() => setActiveTab('combos')}
             className={clsx(
@@ -857,12 +1052,22 @@ export const EnhancedProductForm = ({
 
                 <div>
                   <Label htmlFor="barcode" className="text-gray-200">Barcode</Label>
-                  <Input
-                    id="barcode"
-                    {...register("barcode")}
-                    placeholder="Optional barcode"
-                    className="bg-gray-800 border-gray-700 text-white mt-1"
-                  />
+                  <div className="relative mt-1">
+                    <Input
+                      id="barcode"
+                      {...register("barcode")}
+                      placeholder="Optional barcode"
+                      className="bg-gray-800 border-gray-700 text-white pr-24"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setValue('barcode', getValues('sku') || '')}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white transition-colors text-xs"
+                    >
+                      Use SKU
+                    </button>
+                  </div>
+                  <p className="text-xs text-gray-500 mt-0.5">Default empty. Optional for scanning.</p>
                 </div>
               </div>
             </div>
@@ -1294,6 +1499,29 @@ export const EnhancedProductForm = ({
         {activeTab === 'inventory' && (
           <>
             <div className="space-y-4">
+              {/* Enable Variations toggle (opt-in, default OFF for new product) */}
+              <div className="flex items-center justify-between p-3 bg-gray-800 border border-gray-700 rounded-lg">
+                <div>
+                  <Label htmlFor="enable-variations" className="text-gray-200 font-medium">
+                    Enable Variations
+                  </Label>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    Enable size/color variations. Stock will be tracked per variation.
+                  </p>
+                </div>
+                <Switch
+                  id="enable-variations"
+                  checked={enableVariations}
+                  onCheckedChange={handleEnableVariationsChange}
+                />
+              </div>
+
+              {enableVariations && (
+                <div className="p-3 bg-gray-800 border border-gray-700 rounded-lg">
+                  <p className="text-sm text-gray-400">Parent product does not hold stock when variations are enabled.</p>
+                </div>
+              )}
+
               <div className="flex items-center justify-between">
                 <h3 className="text-lg font-semibold border-l-4 border-yellow-500 pl-3">
                   Stock Management
@@ -1331,10 +1559,14 @@ export const EnhancedProductForm = ({
                     <Input
                       id="initial-stock"
                       type="number"
+                      disabled={enableVariations}
                       {...register("initialStock", { setValueAs: setValueAsNumber })}
                       placeholder="0"
-                      className="bg-gray-800 border-gray-700 text-white mt-1"
+                      className={clsx("mt-1", enableVariations ? "bg-gray-900 border-gray-700 text-gray-500 cursor-not-allowed" : "bg-gray-800 border-gray-700 text-white")}
                     />
+                    {enableVariations && (
+                      <p className="text-xs text-gray-500 mt-1">Opening stock is defined per variation.</p>
+                    )}
                   </div>
 
                   <div>
@@ -1408,8 +1640,33 @@ export const EnhancedProductForm = ({
                 </p>
               </div>
 
+              {existingImageUrls.length > 0 && (
+                <div className="grid grid-cols-4 gap-4 mt-4">
+                  <p className="col-span-full text-sm text-gray-500">Saved images</p>
+                  {existingImageUrls.map((url, idx) => (
+                    <div
+                      key={url + idx}
+                      className="relative group aspect-square bg-gray-800 rounded-lg overflow-hidden border border-gray-700"
+                    >
+                      <ProductImage src={url} alt="product" className="w-full h-full object-cover" />
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setExistingImageUrls(existingImageUrls.filter((_, i) => i !== idx));
+                        }}
+                        className="absolute top-1 right-1 bg-red-500 text-white p-1 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                      >
+                        <X size={12} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
               {images.length > 0 && (
                 <div className="grid grid-cols-4 gap-4 mt-4">
+                  {existingImageUrls.length > 0 && <p className="col-span-full text-sm text-gray-500">New images (will save on Submit)</p>}
                   {images.map((file, idx) => (
                     <div
                       key={idx}
@@ -1421,6 +1678,7 @@ export const EnhancedProductForm = ({
                         className="w-full h-full object-cover"
                       />
                       <button
+                        type="button"
                         onClick={(e) => {
                           e.stopPropagation();
                           setImages(
@@ -1436,7 +1694,7 @@ export const EnhancedProductForm = ({
                 </div>
               )}
 
-              {images.length === 0 && (
+              {images.length === 0 && existingImageUrls.length === 0 && (
                 <div className="bg-gray-800 border border-gray-700 rounded-xl p-6 text-center">
                   <p className="text-gray-400">No images uploaded yet</p>
                   <p className="text-sm text-gray-500 mt-1">Upload images to showcase your product</p>
@@ -1660,27 +1918,52 @@ export const EnhancedProductForm = ({
                 <h3 className="text-lg font-semibold border-l-4 border-green-500 pl-3">
                   Step 2: Generate & Configure Variations
                 </h3>
+
+                <div className="flex items-center justify-between gap-4 flex-wrap">
+                  <p className="text-xs text-gray-400">
+                    Limit: {MAX_VARIATIONS} variations per product. Opening stock is set per row and saved as stock movements on save.
+                  </p>
+                  <span className="text-xs text-gray-500 font-mono">
+                    {generatedVariations.length} / {MAX_VARIATIONS}
+                  </span>
+                </div>
                 
                 <div className="bg-gray-800 border border-gray-700 rounded-xl p-4">
-                  <button
-                    type="button"
-                    onClick={generateVariations}
-                    className="bg-green-500 hover:bg-green-600 text-white px-6 py-3 rounded-xl font-bold transition-colors shadow-lg shadow-green-500/20 flex items-center gap-2"
-                  >
-                    <RefreshCcw size={18} />
-                    Generate {variantAttributes.reduce((acc, attr) => acc * attr.values.length, 1)} Variations
-                  </button>
-                  <p className="text-xs text-gray-400 mt-2">
-                    This will create all possible combinations of your attribute values
-                  </p>
+                  {(() => {
+                    const count = variantAttributes.reduce((acc, attr) => acc * attr.values.length, 1);
+                    const atLimit = count > MAX_VARIATIONS;
+                    return (
+                      <>
+                        <button
+                          type="button"
+                          onClick={generateVariations}
+                          disabled={atLimit}
+                          className={clsx(
+                            "text-white px-6 py-3 rounded-xl font-bold transition-colors flex items-center gap-2",
+                            atLimit
+                              ? "bg-gray-600 cursor-not-allowed opacity-60"
+                              : "bg-green-500 hover:bg-green-600 shadow-lg shadow-green-500/20"
+                          )}
+                        >
+                          <RefreshCcw size={18} />
+                          Generate {count} Variations
+                        </button>
+                        <p className="text-xs text-gray-400 mt-2">
+                          {atLimit
+                            ? `Reduce attributes or values to stay under ${MAX_VARIATIONS} variations.`
+                            : "All possible combinations of your attribute values."}
+                        </p>
+                      </>
+                    );
+                  })()}
                 </div>
 
                 {/* Variations Table */}
                 {generatedVariations.length > 0 && (
                   <div className="bg-gray-800 border border-gray-700 rounded-xl overflow-hidden">
-                    <div className="overflow-x-auto">
-                      <table className="w-full">
-                        <thead className="bg-gray-900 border-b border-gray-700">
+                    <div className="overflow-x-auto overflow-y-auto" style={{ maxHeight: 'min(60vh, 420px)' }}>
+                      <table className="w-full border-collapse">
+                        <thead className="bg-gray-900 border-b border-gray-700 sticky top-0 z-[1]">
                           <tr>
                             <th className="px-4 py-3 text-left text-sm font-semibold text-gray-300">#</th>
                             {variantAttributes.map(attr => (
@@ -1690,7 +1973,7 @@ export const EnhancedProductForm = ({
                             ))}
                             <th className="px-4 py-3 text-left text-sm font-semibold text-gray-300">SKU</th>
                             <th className="px-4 py-3 text-left text-sm font-semibold text-gray-300">Price</th>
-                            <th className="px-4 py-3 text-left text-sm font-semibold text-gray-300">Stock</th>
+                            <th className="px-4 py-3 text-left text-sm font-semibold text-gray-300">Opening Stock</th>
                             <th className="px-4 py-3 text-left text-sm font-semibold text-gray-300">Barcode</th>
                             <th className="px-4 py-3 text-center text-sm font-semibold text-gray-300">Action</th>
                           </tr>
@@ -1734,14 +2017,16 @@ export const EnhancedProductForm = ({
                               <td className="px-4 py-3">
                                 <Input
                                   type="number"
-                                  value={variation.stock || ''}
+                                  min={0}
+                                  value={variation.stock ?? ''}
                                   onChange={(e) => {
                                     const updated = [...generatedVariations];
-                                    updated[index].stock = parseInt(e.target.value) || 0;
+                                    updated[index].stock = parseInt(e.target.value, 10) || 0;
                                     setGeneratedVariations(updated);
                                   }}
                                   className="bg-gray-900 border-gray-700 text-white text-sm w-20"
                                   placeholder="0"
+                                  title="Opening stock for this variation (saved as stock movement on save)"
                                 />
                               </td>
                               <td className="px-4 py-3">
@@ -2062,6 +2347,50 @@ export const EnhancedProductForm = ({
           </button>
         )}
       </div>
+
+      {/* PART 5: Modal when blocking enable variations (parent-level stock exists) */}
+      <Dialog open={blockVariationsModalOpen} onOpenChange={setBlockVariationsModalOpen}>
+        <DialogContent className="bg-gray-900 border-gray-700 text-white max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-white">Cannot enable variations</DialogTitle>
+          </DialogHeader>
+          <p className="text-gray-300 text-sm">
+            Parent-level stock exists. Clear or adjust stock first.
+          </p>
+          <p className="text-gray-400 text-xs mt-2">
+            Clear or adjust stock in Inventory first, then add variations. Opening stock for each size/color can be set in the Variations tab after saving.
+          </p>
+          <DialogFooter className="mt-4">
+            <button
+              type="button"
+              onClick={() => setBlockVariationsModalOpen(false)}
+              className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg text-sm font-medium"
+            >
+              OK
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={blockDisableVariationsModalOpen} onOpenChange={setBlockDisableVariationsModalOpen}>
+        <DialogContent className="bg-gray-900 border-gray-700 text-white max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-white">Cannot disable variations</DialogTitle>
+          </DialogHeader>
+          <p className="text-gray-300 text-sm">
+            Variation-level stock exists. Cannot disable variations until variation stock is cleared or adjusted.
+          </p>
+          <DialogFooter className="mt-4">
+            <button
+              type="button"
+              onClick={() => setBlockDisableVariationsModalOpen(false)}
+              className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg text-sm font-medium"
+            >
+              OK
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

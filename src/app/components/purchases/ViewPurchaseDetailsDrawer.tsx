@@ -55,6 +55,13 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "../ui/dropdown-menu";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/app/components/ui/dialog';
+import { getAttachmentOpenUrl } from '@/app/utils/paymentAttachmentUrl';
 
 interface PurchaseItem {
   id: string;
@@ -117,6 +124,7 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
   const [editPaymentDialogOpen, setEditPaymentDialogOpen] = useState(false);
   const [paymentToEdit, setPaymentToEdit] = useState<any | null>(null);
   const [viewPaymentsModalOpen, setViewPaymentsModalOpen] = useState(false);
+  const [attachmentsDialogList, setAttachmentsDialogList] = useState<{ url: string; name: string }[] | null>(null);
 
   // Load branches for location display
   useEffect(() => {
@@ -419,13 +427,7 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
             ].map((tab) => (
               <button
                 key={tab.id}
-                onClick={() => {
-                  setActiveTab(tab.id as any);
-                  // 🔒 CLONE FROM SALE PAGE: Open ViewPaymentsModal when payments tab is clicked
-                  if (tab.id === 'payments' && purchase) {
-                    setViewPaymentsModalOpen(true);
-                  }
-                }}
+                onClick={() => setActiveTab(tab.id as any)}
                 className={cn(
                   "px-4 py-3 text-sm font-medium transition-colors relative",
                   activeTab === tab.id
@@ -667,27 +669,226 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
 
           {activeTab === 'payments' && (
             <div className="space-y-4">
-              {/* 🔒 CLONE FROM SALE PAGE: Payment history is shown in ViewPaymentsModal */}
-              <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-5">
-                <p className="text-white font-semibold text-lg">
-                  Rs. {purchase.paid.toLocaleString()}
-                </p>
-                <p className="text-sm text-gray-400 mt-1">
-                  Total paid amount
-                </p>
+              {/* Same as ViewSaleDetailsDrawer: Payment History + Add Payment + breakdown */}
+              <div className="flex justify-between items-center">
+                <h3 className="text-lg font-semibold text-white">Payment History</h3>
                 {purchase.due > 0 && (
-                  <p className="text-sm text-red-400 mt-2">
-                    Due: Rs. {purchase.due.toLocaleString()}
-                  </p>
+                  <Button
+                    onClick={() => {
+                      onAddPayment?.(purchase.id);
+                    }}
+                    className="bg-blue-600 hover:bg-blue-700 text-white"
+                  >
+                    <CreditCard size={16} className="mr-2" />
+                    Add Payment
+                  </Button>
                 )}
-                <Button
-                  onClick={() => setViewPaymentsModalOpen(true)}
-                  className="mt-4 bg-blue-600 hover:bg-blue-500 text-white"
-                >
-                  <CreditCard size={16} className="mr-2" />
-                  View Payment History
-                </Button>
               </div>
+
+              {loadingPayments ? (
+                <div className="text-center py-12 text-gray-400">Loading payments...</div>
+              ) : payments.length > 0 ? (
+                <div className="space-y-4">
+                  {/* Summary Cards by Payment Method */}
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    {payments.filter((p: any) => p.method === 'cash').length > 0 && (
+                      <div className="bg-green-500/10 border border-green-500/20 rounded-xl p-4">
+                        <p className="text-xs text-gray-400 mb-1">Paid (Cash)</p>
+                        <p className="text-2xl font-bold text-green-400">
+                          Rs. {payments.filter((p: any) => p.method === 'cash').reduce((sum: number, p: any) => sum + p.amount, 0).toLocaleString()}
+                        </p>
+                        <p className="text-xs text-gray-500 mt-1">
+                          {payments.filter((p: any) => p.method === 'cash').length} payment(s)
+                        </p>
+                      </div>
+                    )}
+                    {payments.filter((p: any) => p.method === 'bank' || p.method === 'card').length > 0 && (
+                      <div className="bg-blue-500/10 border border-blue-500/20 rounded-xl p-4">
+                        <p className="text-xs text-gray-400 mb-1">Paid (Bank/Card)</p>
+                        <p className="text-2xl font-bold text-blue-400">
+                          Rs. {payments.filter((p: any) => p.method === 'bank' || p.method === 'card').reduce((sum: number, p: any) => sum + p.amount, 0).toLocaleString()}
+                        </p>
+                        <p className="text-xs text-gray-500 mt-1">
+                          {payments.filter((p: any) => p.method === 'bank' || p.method === 'card').length} payment(s)
+                        </p>
+                      </div>
+                    )}
+                    {payments.filter((p: any) => p.method === 'other' || (p.method !== 'cash' && p.method !== 'bank' && p.method !== 'card')).length > 0 && (
+                      <div className="bg-purple-500/10 border border-purple-500/20 rounded-xl p-4">
+                        <p className="text-xs text-gray-400 mb-1">Paid (Other)</p>
+                        <p className="text-2xl font-bold text-purple-400">
+                          Rs. {payments.filter((p: any) => p.method === 'other' || (p.method !== 'cash' && p.method !== 'bank' && p.method !== 'card')).reduce((sum: number, p: any) => sum + p.amount, 0).toLocaleString()}
+                        </p>
+                        <p className="text-xs text-gray-500 mt-1">
+                          {payments.filter((p: any) => p.method === 'other' || (p.method !== 'cash' && p.method !== 'bank' && p.method !== 'card')).length} payment(s)
+                        </p>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-5">
+                    <div className="flex justify-between items-center mb-4">
+                      <div>
+                        <p className="text-white font-semibold text-xl">
+                          Rs. {purchase.paid.toLocaleString()}
+                        </p>
+                        <p className="text-sm text-gray-400 mt-1">Total Paid Amount</p>
+                      </div>
+                      <Badge className={cn(
+                        "text-sm font-semibold",
+                        purchase.paymentStatus === 'paid' ? "bg-green-500/10 text-green-400 border-green-500/20" :
+                        purchase.paymentStatus === 'partial' ? "bg-yellow-500/10 text-yellow-400 border-yellow-500/20" :
+                        "bg-red-500/10 text-red-400 border-red-500/20"
+                      )}>
+                        {purchase.paymentStatus === 'paid' ? 'Paid' : purchase.paymentStatus === 'partial' ? 'Partial' : 'Unpaid'}
+                      </Badge>
+                    </div>
+                    {purchase.due > 0 && (
+                      <div className="flex justify-between text-sm pt-3 border-t border-gray-800">
+                        <span className="text-gray-400">Amount Due:</span>
+                        <span className="text-red-400 font-medium">Rs. {purchase.due.toLocaleString()}</span>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="space-y-3">
+                    <h4 className="text-sm font-semibold text-gray-400 uppercase">Payment Details</h4>
+                    {payments.map((payment: any) => (
+                      <div key={payment.id} className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
+                        <div className="flex justify-between items-start mb-2">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2 mb-1">
+                              <p className="text-white font-semibold">Rs. {payment.amount.toLocaleString()}</p>
+                              {payment.referenceNo && (
+                                <code className="text-xs bg-gray-800 px-2 py-0.5 rounded text-blue-400 border border-gray-700">
+                                  {payment.referenceNo}
+                                </code>
+                              )}
+                            </div>
+                            <p className="text-sm text-gray-400">
+                              {new Date(payment.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                            </p>
+                            {payment.accountName && (
+                              <p className="text-xs text-gray-500 mt-1">Account: {payment.accountName}</p>
+                            )}
+                            {payment.notes && (
+                              <p className="text-xs text-gray-400 mt-2 flex items-start gap-1.5">
+                                <FileText size={12} className="text-gray-500 shrink-0 mt-0.5" />
+                                <span><span className="text-gray-500">Note:</span> {payment.notes}</span>
+                              </p>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2">
+                            {payment.attachments && (Array.isArray(payment.attachments) ? payment.attachments.length > 0 : !!payment.attachments) && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const list: { url: string; name: string }[] = [];
+                                  const raw = payment.attachments;
+                                  const arr = Array.isArray(raw) ? raw : (typeof raw === 'string' ? [{ url: raw, name: 'Attachment' }] : []);
+                                  arr.forEach((att: any) => {
+                                    const url = typeof att === 'string' ? att : (att?.url ?? att?.fileUrl ?? '');
+                                    const name = typeof att === 'object' && att?.name ? att.name : (typeof att === 'object' && (att?.fileName || att?.file_name) ? (att.fileName || att.file_name) : 'Attachment');
+                                    if (url) list.push({ url: String(url), name: name || 'Attachment' });
+                                  });
+                                  if (list.length) setAttachmentsDialogList(list);
+                                }}
+                                className="p-1.5 rounded-lg hover:bg-amber-500/20 text-gray-400 hover:text-amber-400 transition-colors"
+                                title={`${Array.isArray(payment.attachments) ? payment.attachments.length : 1} attachment(s)`}
+                              >
+                                <Paperclip size={14} />
+                              </button>
+                            )}
+                            <Badge className={cn(
+                              "text-xs font-semibold",
+                              payment.method === 'cash' ? "bg-green-500/10 text-green-400 border-green-500/20" :
+                              payment.method === 'bank' || payment.method === 'card' ? "bg-blue-500/10 text-blue-400 border-blue-500/20" :
+                              "bg-purple-500/10 text-purple-400 border-purple-500/20"
+                            )}>
+                              {payment.method === 'cash' ? 'Cash' : payment.method === 'bank' ? 'Bank' : payment.method === 'card' ? 'Card' : 'Other'}
+                            </Badge>
+                            <button
+                              onClick={() => {
+                                setPaymentToEdit(payment);
+                                setEditPaymentDialogOpen(true);
+                              }}
+                              className="p-1.5 rounded-lg hover:bg-blue-500/20 text-gray-400 hover:text-blue-400 transition-colors"
+                              title="Edit Payment"
+                            >
+                              <Edit size={14} />
+                            </button>
+                            <button
+                              onClick={() => {
+                                setPaymentToDelete(payment);
+                                setDeleteConfirmationOpen(true);
+                              }}
+                              className="p-1.5 rounded-lg hover:bg-red-500/20 text-gray-400 hover:text-red-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                              title="Delete Payment"
+                              disabled={isDeletingPayment || loadingPayments}
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
+                        </div>
+                        {(payment.attachments && (Array.isArray(payment.attachments) ? payment.attachments.length > 0 : !!payment.attachments)) && (
+                          <div className="mt-3 pt-3 border-t border-gray-800 flex flex-wrap items-center gap-2">
+                            <span className="text-xs text-gray-500 flex items-center gap-1">
+                              <Paperclip size={12} /> Attachments:
+                            </span>
+                            {Array.isArray(payment.attachments) ? (
+                              payment.attachments.map((att: any, idx: number) => {
+                                const url = typeof att === 'string' ? att : (att?.url || att?.fileUrl || att?.href);
+                                const name = typeof att === 'object' && att?.name ? att.name : (typeof att === 'object' && (att?.fileName || att?.file_name) ? (att.fileName || att.file_name) : `Attachment ${idx + 1}`);
+                                if (!url) return null;
+                                return (
+                                  <button
+                                    key={idx}
+                                    type="button"
+                                    onClick={async () => {
+                                      const openUrl = await getAttachmentOpenUrl(url);
+                                      window.open(openUrl, '_blank');
+                                    }}
+                                    className="inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/30 rounded-lg text-blue-400 text-xs transition-colors"
+                                  >
+                                    <File size={14} />
+                                    <span>{name}</span>
+                                  </button>
+                                );
+                              })
+                            ) : typeof payment.attachments === 'string' ? (
+                              <button
+                                type="button"
+                                onClick={async () => {
+                                  const openUrl = await getAttachmentOpenUrl(payment.attachments);
+                                  window.open(openUrl, '_blank');
+                                }}
+                                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/30 rounded-lg text-blue-400 text-xs transition-colors"
+                              >
+                                <Paperclip size={14} />
+                                <span>View attachment</span>
+                              </button>
+                            ) : null}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : purchase.paid > 0 ? (
+                <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-5">
+                  <p className="text-white font-semibold text-lg">Rs. {purchase.paid.toLocaleString()}</p>
+                  <p className="text-sm text-gray-400 mt-1">Total paid amount (payment details loading...)</p>
+                </div>
+              ) : (
+                <div className="text-center py-12">
+                  <CreditCard size={48} className="mx-auto text-gray-700 mb-4" />
+                  <p className="text-gray-500">No payments recorded yet</p>
+                  <Button onClick={() => setViewPaymentsModalOpen(true)} className="mt-4 bg-blue-600 hover:bg-blue-500 text-white">
+                    <CreditCard size={16} className="mr-2" />
+                    View Payment History
+                  </Button>
+                </div>
+              )}
             </div>
           )}
 
@@ -909,7 +1110,8 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
             accountId: paymentToEdit.accountId || paymentToEdit.payment_account_id,
             date: paymentToEdit.date || paymentToEdit.payment_date,
             referenceNumber: paymentToEdit.referenceNo || paymentToEdit.reference_number,
-            notes: paymentToEdit.notes
+            notes: paymentToEdit.notes,
+            attachments: paymentToEdit.attachments,
           }}
           onSuccess={async () => {
             toast.success('Payment updated successfully');
@@ -951,6 +1153,11 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
             setViewPaymentsModalOpen(false);
             onAddPayment?.(purchase.id);
           }}
+          onEditPayment={(payment) => {
+            setViewPaymentsModalOpen(false);
+            setPaymentToEdit(payment);
+            setEditPaymentDialogOpen(true);
+          }}
           onDeletePayment={async (paymentId: string) => {
             if (!purchase?.id || !paymentId) {
               throw new Error('Purchase or Payment ID not found');
@@ -969,6 +1176,39 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
           }}
         />
       )}
+
+      {/* Attachments dialog: list attachments, open in new tab */}
+      <Dialog open={!!attachmentsDialogList} onOpenChange={(open) => !open && setAttachmentsDialogList(null)}>
+        <DialogContent className="bg-gray-900 border-gray-700 text-white max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-white">
+              <Paperclip size={20} className="text-amber-400" />
+              Attachments
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-2 max-h-64 overflow-y-auto">
+            {attachmentsDialogList?.map((att, idx) => (
+              <div
+                key={idx}
+                className="flex items-center justify-between gap-2 p-2 rounded-lg bg-gray-800/50 border border-gray-700"
+              >
+                <span className="text-sm text-gray-200 truncate flex-1" title={att.name}>{att.name}</span>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="shrink-0 border-gray-600 text-gray-300 hover:bg-gray-700 hover:text-white"
+                  onClick={async () => {
+                    const openUrl = await getAttachmentOpenUrl(att.url);
+                    window.open(openUrl, '_blank');
+                  }}
+                >
+                  Open in new tab
+                </Button>
+              </div>
+            ))}
+          </div>
+        </DialogContent>
+      </Dialog>
     </>
   );
 };

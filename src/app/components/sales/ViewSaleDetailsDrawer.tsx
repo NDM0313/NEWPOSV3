@@ -39,6 +39,7 @@ import { Badge } from "../ui/badge";
 import { Separator } from "../ui/separator";
 import { cn } from "../ui/utils";
 import { toast } from 'sonner';
+import { getAttachmentOpenUrl } from '@/app/utils/paymentAttachmentUrl';
 import {
   Table,
   TableBody,
@@ -53,6 +54,12 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "../ui/dropdown-menu";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/app/components/ui/dialog';
 
 interface SaleItem {
   id: number;
@@ -147,6 +154,7 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
   const [isDeletingPayment, setIsDeletingPayment] = useState(false);
   const [editPaymentDialogOpen, setEditPaymentDialogOpen] = useState(false);
   const [paymentToEdit, setPaymentToEdit] = useState<any | null>(null);
+  const [attachmentsDialogList, setAttachmentsDialogList] = useState<{ url: string; name: string }[] | null>(null);
 
   // Load branches for location display
   useEffect(() => {
@@ -724,7 +732,7 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
               {/* Add Payment Button */}
               <div className="flex justify-between items-center">
                 <h3 className="text-lg font-semibold text-white">Payment History</h3>
-                {sale.due > 0 && (
+                {sale.status === 'final' && sale.due > 0 && (
                   <Button
                     onClick={() => {
                       onAddPayment?.(sale.id);
@@ -806,8 +814,8 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
                       </Badge>
                     </div>
                     
-                    {sale.due > 0 && (
-                      <div className="flex justify-between text-sm pt-3 border-t border-gray-800">
+{sale.due > 0 && sale.status === 'final' && (
+                    <div className="flex justify-between text-sm pt-3 border-t border-gray-800">
                         <span className="text-gray-400">Amount Due:</span>
                         <span className="text-red-400 font-medium">
                           Rs. {sale.due.toLocaleString()}
@@ -848,8 +856,34 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
                                 Account: {payment.accountName}
                               </p>
                             )}
+                            {payment.notes && (
+                              <p className="text-xs text-gray-400 mt-2 flex items-start gap-1.5">
+                                <FileText size={12} className="text-gray-500 shrink-0 mt-0.5" />
+                                <span><span className="text-gray-500">Note:</span> {payment.notes}</span>
+                              </p>
+                            )}
                         </div>
                           <div className="flex items-center gap-2">
+                            {payment.attachments && (Array.isArray(payment.attachments) ? payment.attachments.length > 0 : !!payment.attachments) && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const list: { url: string; name: string }[] = [];
+                                  const raw = payment.attachments;
+                                  const arr = Array.isArray(raw) ? raw : (typeof raw === 'string' ? [{ url: raw, name: 'Attachment' }] : []);
+                                  arr.forEach((att: any) => {
+                                    const url = typeof att === 'string' ? att : (att?.url ?? att?.fileUrl ?? '');
+                                    const name = typeof att === 'object' && att?.name ? att.name : (typeof att === 'object' && (att?.fileName || att?.file_name) ? (att.fileName || att.file_name) : 'Attachment');
+                                    if (url) list.push({ url: String(url), name: name || 'Attachment' });
+                                  });
+                                  if (list.length) setAttachmentsDialogList(list);
+                                }}
+                                className="p-1.5 rounded-lg hover:bg-amber-500/20 text-gray-400 hover:text-amber-400 transition-colors"
+                                title={`${Array.isArray(payment.attachments) ? payment.attachments.length : 1} attachment(s)`}
+                              >
+                                <Paperclip size={14} />
+                              </button>
+                            )}
                             <Badge className={cn(
                               "text-xs font-semibold",
                               payment.method === 'cash' ? "bg-green-500/10 text-green-400 border-green-500/20" :
@@ -860,7 +894,6 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
                                payment.method === 'bank' ? 'Bank' :
                                payment.method === 'card' ? 'Card' : 'Other'}
                         </Badge>
-                            {/* CRITICAL FIX: Add edit and delete buttons for each payment */}
                             <button
                               onClick={() => {
                                 setPaymentToEdit(payment);
@@ -884,41 +917,48 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
                             </button>
                       </div>
                         </div>
-                        {/* CRITICAL FIX: Show attachment icon if payment has attachments */}
-                        {payment.attachments && (
-                          <div className="mt-2 flex items-center gap-2">
-                            <span className="text-xs text-gray-500">Attachments:</span>
+                        {/* Note: shown above; attachments section below */}
+                        {(payment.attachments && (Array.isArray(payment.attachments) ? payment.attachments.length > 0 : !!payment.attachments)) && (
+                          <div className="mt-3 pt-3 border-t border-gray-800 flex flex-wrap items-center gap-2">
+                            <span className="text-xs text-gray-500 flex items-center gap-1">
+                              <Paperclip size={12} /> Attachments:
+                            </span>
                             {Array.isArray(payment.attachments) ? (
                               payment.attachments.map((att: any, idx: number) => {
-                                const url = att.url || att.fileUrl || att;
-                                const name = att.name || att.fileName || `Attachment ${idx + 1}`;
-                                const isImage = /\.(jpg|jpeg|png|gif|webp)$/i.test(url);
+                                const url = typeof att === 'string' ? att : (att?.url || att?.fileUrl || att?.href);
+                                const name = typeof att === 'object' && att?.name ? att.name : (typeof att === 'object' && (att?.fileName || att?.file_name)) ? (att.fileName || att.file_name) : `Attachment ${idx + 1}`;
+                                if (!url) return null;
+                                const isImage = /\.(jpg|jpeg|png|gif|webp)$/i.test(String(url));
                                 return (
                                   <button
                                     key={idx}
-                                    onClick={() => window.open(url, '_blank')}
-                                    className="flex items-center gap-1 px-2 py-1 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/30 rounded text-blue-400 text-xs transition-colors"
+                                    type="button"
+                                    onClick={async () => {
+                                      const openUrl = await getAttachmentOpenUrl(url);
+                                      window.open(openUrl, '_blank');
+                                    }}
+                                    className="inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/30 rounded-lg text-blue-400 text-xs transition-colors"
                                   >
-                                    {isImage ? <ImageIcon size={12} /> : <File size={12} />}
+                                    {isImage ? <ImageIcon size={14} /> : <File size={14} />}
                                     <span>{name}</span>
-                                    <Paperclip size={10} />
                                   </button>
                                 );
                               })
                             ) : typeof payment.attachments === 'string' ? (
                               <button
-                                onClick={() => window.open(payment.attachments, '_blank')}
-                                className="flex items-center gap-1 px-2 py-1 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/30 rounded text-blue-400 text-xs transition-colors"
+                                type="button"
+                                onClick={async () => {
+                                  const openUrl = await getAttachmentOpenUrl(payment.attachments);
+                                  window.open(openUrl, '_blank');
+                                }}
+                                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/30 rounded-lg text-blue-400 text-xs transition-colors"
                               >
-                                <Paperclip size={12} />
-                                <span>View Attachment</span>
+                                <Paperclip size={14} />
+                                <span>View attachment</span>
                               </button>
                             ) : null}
-                        </div>
-                      )}
-                        {payment.notes && (
-                          <p className="text-xs text-gray-500 mt-2">{payment.notes}</p>
-                      )}
+                          </div>
+                        )}
                     </div>
                   ))}
                   </div>
@@ -1036,14 +1076,14 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
         </div>
 
         {/* Footer Actions */}
-        {activeTab === 'details' && sale.due > 0 && (
+{activeTab === 'details' && sale.status === 'final' && sale.due > 0 && (
           <div className="border-t border-gray-800 px-6 py-4 bg-gray-900/50 shrink-0">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-gray-400">Amount Due</p>
                 <p className="text-2xl font-bold text-red-400">Rs. {sale.due.toLocaleString()}</p>
               </div>
-              <Button
+          <Button
                 onClick={() => onAddPayment?.(sale.id)}
                 className="bg-blue-600 hover:bg-blue-700 text-white"
               >
@@ -1154,7 +1194,8 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
             accountId: paymentToEdit.accountId || paymentToEdit.payment_account_id,
             date: paymentToEdit.date || paymentToEdit.payment_date,
             referenceNumber: paymentToEdit.referenceNo || paymentToEdit.reference_number,
-            notes: paymentToEdit.notes
+            notes: paymentToEdit.notes,
+            attachments: paymentToEdit.attachments,
           }}
           onSuccess={async () => {
             toast.success('Payment updated successfully');
@@ -1167,6 +1208,39 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
           }}
         />
       )}
+
+      {/* Attachments dialog: list attachments, open in new tab from here */}
+      <Dialog open={!!attachmentsDialogList} onOpenChange={(open) => !open && setAttachmentsDialogList(null)}>
+        <DialogContent className="bg-gray-900 border-gray-700 text-white max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-white">
+              <Paperclip size={20} className="text-amber-400" />
+              Attachments
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-2 max-h-64 overflow-y-auto">
+            {attachmentsDialogList?.map((att, idx) => (
+              <div
+                key={idx}
+                className="flex items-center justify-between gap-2 p-2 rounded-lg bg-gray-800/50 border border-gray-700"
+              >
+                <span className="text-sm text-gray-200 truncate flex-1" title={att.name}>{att.name}</span>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="shrink-0 border-gray-600 text-gray-300 hover:bg-gray-700 hover:text-white"
+                  onClick={async () => {
+                    const openUrl = await getAttachmentOpenUrl(att.url);
+                    window.open(openUrl, '_blank');
+                  }}
+                >
+                  Open in new tab
+                </Button>
+              </div>
+            ))}
+          </div>
+        </DialogContent>
+      </Dialog>
     </>
   );
 };

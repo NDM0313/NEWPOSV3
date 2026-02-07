@@ -307,9 +307,9 @@ export const InventoryDashboardNew = () => {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="flex flex-col h-full min-h-0">
       {/* Header */}
-      <div className="flex justify-between items-start border-b border-gray-800 pb-4">
+      <div className="shrink-0 flex justify-between items-start border-b border-gray-800 pb-4">
         <div>
           <h2 className="text-3xl font-bold text-white tracking-tight flex items-center gap-3">
             <Warehouse size={32} className="text-blue-500" />
@@ -343,7 +343,7 @@ export const InventoryDashboardNew = () => {
       </div>
 
       {/* Tabs */}
-      <div className="border-b border-gray-800">
+      <div className="shrink-0 border-b border-gray-800">
         <div className="flex gap-8">
           <button
             onClick={() => setActiveTab('overview')}
@@ -372,9 +372,49 @@ export const InventoryDashboardNew = () => {
         </div>
       </div>
 
-      {/* OVERVIEW TAB */}
+      {/* OVERVIEW TAB - scrollable content */}
       {activeTab === 'overview' && (
-        <div className="space-y-6 animate-in fade-in duration-300">
+        <div className="flex-1 min-h-0 overflow-auto">
+          <div className="space-y-6 animate-in fade-in duration-300 p-px">
+          {/* Summary cards at top: Slow Moving, Low/Out of Stock, Total Stock Value */}
+          <div className="grid grid-cols-3 gap-6">
+            <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-6">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-orange-500/10 rounded-lg">
+                  <TrendingDown className="text-orange-400" size={20} />
+                </div>
+                <div>
+                  <h3 className="text-white font-bold">Slow Moving</h3>
+                  <p className="text-2xl font-bold text-white mt-1">{slowMovingItems.length}</p>
+                  <p className="text-sm text-gray-400">items</p>
+                </div>
+              </div>
+            </div>
+            <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-6">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-red-500/10 rounded-lg">
+                  <AlertTriangle className="text-red-400" size={20} />
+                </div>
+                <div>
+                  <h3 className="text-white font-bold">Low / Out of Stock</h3>
+                  <p className="text-2xl font-bold text-white mt-1">{lowStockItems.length}</p>
+                  <p className="text-sm text-gray-400">items</p>
+                </div>
+              </div>
+            </div>
+            <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-6">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-green-500/10 rounded-lg">
+                  <DollarSign className="text-green-400" size={20} />
+                </div>
+                <div>
+                  <h3 className="text-white font-bold">Total Stock Value</h3>
+                  <p className="text-2xl font-bold text-white mt-1">Rs {totalStockValue.toLocaleString()}</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
           {/* Key Metrics */}
           <div className="grid grid-cols-4 gap-6">
             <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-6">
@@ -441,9 +481,9 @@ export const InventoryDashboardNew = () => {
             />
           </div>
 
-          {/* Stock Table */}
-          <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden print:border print:rounded">
-            <table className="w-full">
+          {/* Stock Table - horizontal and vertical scroll when needed */}
+          <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-auto print:border print:rounded min-w-0">
+            <table className="w-full min-w-[1000px]">
               <thead className="bg-gray-950/50 border-b border-gray-800">
                 <tr>
                   <th className="px-6 py-4 text-left text-xs font-medium text-gray-400 uppercase">Product</th>
@@ -482,85 +522,122 @@ export const InventoryDashboardNew = () => {
                     </td>
                   </tr>
                 ) : (
-                  filteredProducts.map((product) => (
-                  <tr key={product.id} className="hover:bg-gray-800/30 transition-colors">
-                    <td className="px-6 py-4">
-                      <div className="font-medium text-white">{product.name}</div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className="text-gray-400 font-mono text-sm">{product.sku}</span>
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className="text-gray-400">{product.category}</span>
-                    </td>
-                    <td className="px-6 py-4 text-center">
-                      <span className={cn(
-                        "font-bold font-mono",
-                        product.status === 'Out' || product.status === 'Low' ? "text-red-400" : "text-white"
-                      )}>
-                        {product.stock}
-                      </span>
-                    </td>
-                    {enablePacking && (
-                      <>
-                        <td className="px-6 py-4 text-center text-gray-400">{product.boxes}</td>
-                        <td className="px-6 py-4 text-center text-gray-400">{product.pieces}</td>
-                      </>
-                    )}
-                    <td className="px-6 py-4 text-center text-gray-400">{product.unit}</td>
-                    <td className="px-6 py-4 text-right text-gray-400">
-                      Rs {product.avgCost.toLocaleString()}
-                    </td>
-                    <td className="px-6 py-4 text-right text-white font-medium">
-                      Rs {product.sellingPrice.toLocaleString()}
-                    </td>
-                    <td className="px-6 py-4 text-right text-gray-300">
-                      Rs {product.stockValue.toLocaleString()}
-                    </td>
-                    <td className="px-6 py-4 text-center">
-                      <Badge className={cn("border", getMovementBadge(product.movement))}>
-                        {product.movement}
-                      </Badge>
-                    </td>
-                    <td className="px-6 py-4 text-center">
-                      {product.status === 'Out' ? (
-                        <Badge className="bg-red-500/20 text-red-400 border-red-500/30 border">Out</Badge>
-                      ) : product.status === 'Low' ? (
-                        <Badge className="bg-orange-500/20 text-orange-400 border-orange-500/30 border">
-                          <AlertTriangle size={12} className="mr-1" />
-                          Low
-                        </Badge>
-                      ) : (
-                        <Badge className="bg-green-500/20 text-green-400 border-green-500/30 border">OK</Badge>
-                      )}
-                    </td>
-                    <td className="px-6 py-4 text-center print:hidden">
-                      <div className="flex items-center justify-center gap-2">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="text-blue-400 hover:text-blue-300 hover:bg-blue-500/10"
-                          onClick={() => setLedgerProduct(product)}
-                        >
-                          <ExternalLink size={14} className="mr-1" />
-                          Ledger
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="text-amber-400 hover:text-amber-300 hover:bg-amber-500/10"
-                          onClick={() => setAdjustmentProduct(product)}
-                        >
-                          <SlidersHorizontal size={14} className="mr-1" />
-                          Adjust
-                        </Button>
-                      </div>
-                    </td>
-                  </tr>
-                  ))
+                  filteredProducts.flatMap((product) => {
+                    const rows: React.ReactNode[] = [];
+                    rows.push(
+                      <tr key={product.id} className="hover:bg-gray-800/30 transition-colors">
+                        <td className="px-6 py-4">
+                          <div className="font-medium text-white">{product.name}</div>
+                          {product.hasVariations && (product as any).variations?.length > 0 && (
+                            <p className="text-xs text-gray-500 mt-0.5">(SUM of {((product as any).variations as any[]).length} variations)</p>
+                          )}
+                        </td>
+                        <td className="px-6 py-4">
+                          <span className="text-gray-400 font-mono text-sm">{product.sku}</span>
+                        </td>
+                        <td className="px-6 py-4">
+                          <span className="text-gray-400">{product.category}</span>
+                        </td>
+                        <td className="px-6 py-4 text-center">
+                          <span className={cn(
+                            "font-bold font-mono",
+                            product.status === 'Out' || product.status === 'Low' ? "text-red-400" : "text-white"
+                          )}>
+                            {product.stock}
+                          </span>
+                        </td>
+                        {enablePacking && (
+                          <>
+                            <td className="px-6 py-4 text-center text-gray-400">{product.boxes}</td>
+                            <td className="px-6 py-4 text-center text-gray-400">{product.pieces}</td>
+                          </>
+                        )}
+                        <td className="px-6 py-4 text-center text-gray-400">{product.unit}</td>
+                        <td className="px-6 py-4 text-right text-gray-400">
+                          Rs {product.avgCost.toLocaleString()}
+                        </td>
+                        <td className="px-6 py-4 text-right text-white font-medium">
+                          Rs {product.sellingPrice.toLocaleString()}
+                        </td>
+                        <td className="px-6 py-4 text-right text-gray-300">
+                          Rs {product.stockValue.toLocaleString()}
+                        </td>
+                        <td className="px-6 py-4 text-center">
+                          <Badge className={cn("border", getMovementBadge(product.movement))}>
+                            {product.movement}
+                          </Badge>
+                        </td>
+                        <td className="px-6 py-4 text-center">
+                          {product.status === 'Out' ? (
+                            <Badge className="bg-red-500/20 text-red-400 border-red-500/30 border">Out</Badge>
+                          ) : product.status === 'Low' ? (
+                            <Badge className="bg-orange-500/20 text-orange-400 border-orange-500/30 border">
+                              <AlertTriangle size={12} className="mr-1" />
+                              Low
+                            </Badge>
+                          ) : (
+                            <Badge className="bg-green-500/20 text-green-400 border-green-500/30 border">OK</Badge>
+                          )}
+                        </td>
+                        <td className="px-6 py-4 text-center print:hidden">
+                          <div className="flex items-center justify-center gap-2">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="text-blue-400 hover:text-blue-300 hover:bg-blue-500/10"
+                              onClick={() => setLedgerProduct(product)}
+                            >
+                              <ExternalLink size={14} className="mr-1" />
+                              Ledger
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="text-amber-400 hover:text-amber-300 hover:bg-amber-500/10"
+                              onClick={() => setAdjustmentProduct(product)}
+                            >
+                              <SlidersHorizontal size={14} className="mr-1" />
+                              Adjust
+                            </Button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                    // RULE 3: Display stock per variation (sub-rows under parent)
+                    const variations = (product as any).variations as Array<{ id: string; attributes: any; stock: number }> | undefined;
+                    if (product.hasVariations && variations?.length) {
+                      variations.forEach((v) => {
+                        const attrText = typeof v.attributes === 'object' && v.attributes !== null
+                          ? Object.entries(v.attributes).map(([k, val]) => `${k}: ${val}`).join(', ')
+                          : String(v.attributes || '');
+                        rows.push(
+                          <tr key={`${product.id}-${v.id}`} className="bg-gray-900/40 hover:bg-gray-800/20 transition-colors opacity-90">
+                            <td className="px-6 py-2 pl-10">
+                              <span className="text-gray-400 text-sm">└ {attrText || `Variation`}</span>
+                            </td>
+                            <td className="px-6 py-2 text-gray-500 text-sm">—</td>
+                            <td className="px-6 py-2 text-gray-500 text-sm">—</td>
+                            <td className="px-6 py-2 text-center">
+                              <span className={cn("font-mono text-sm", v.stock <= 0 ? "text-red-400" : "text-gray-300")}>{v.stock}</span>
+                            </td>
+                            {enablePacking && <><td className="px-6 py-2 text-center text-gray-500">—</td><td className="px-6 py-2 text-center text-gray-500">—</td></>}
+                            <td className="px-6 py-2 text-center text-gray-500">—</td>
+                            <td className="px-6 py-2 text-right text-gray-500">—</td>
+                            <td className="px-6 py-2 text-right text-gray-500">—</td>
+                            <td className="px-6 py-2 text-right text-gray-500">—</td>
+                            <td className="px-6 py-2 text-center text-gray-500">—</td>
+                            <td className="px-6 py-2 text-center text-gray-500">—</td>
+                            <td className="px-6 py-2 text-center print:hidden">—</td>
+                          </tr>
+                        );
+                      });
+                    }
+                    return rows;
+                  })
                 )}
               </tbody>
             </table>
+          </div>
           </div>
         </div>
       )}
@@ -591,9 +668,10 @@ export const InventoryDashboardNew = () => {
         onAdjust={handleAdjustSave}
       />
 
-      {/* ANALYTICS TAB */}
+      {/* ANALYTICS TAB - scrollable content */}
       {activeTab === 'analytics' && (
-        <div className="space-y-6 animate-in fade-in duration-300">
+        <div className="flex-1 min-h-0 overflow-auto">
+          <div className="space-y-6 animate-in fade-in duration-300 p-px">
           {/* Filters */}
           <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4 flex flex-wrap items-end gap-4">
             <div>
@@ -647,8 +725,8 @@ export const InventoryDashboardNew = () => {
             </Button>
           </div>
 
-          {/* Movements Table */}
-          <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden">
+          {/* Movements Table - scroll when needed */}
+          <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-auto min-w-0">
             <div className="p-6 border-b border-gray-800">
               <div className="flex justify-between items-center mb-4">
                 <div>
@@ -719,11 +797,12 @@ export const InventoryDashboardNew = () => {
                 </div>
               </div>
             </div>
-            <table className="w-full">
+            <table className="w-full min-w-[900px]">
               <thead className="bg-gray-950/50 border-b border-gray-800">
                 <tr>
                   <th className="px-6 py-4 text-left text-xs font-medium text-gray-400 uppercase">Date</th>
                   <th className="px-6 py-4 text-left text-xs font-medium text-gray-400 uppercase">Product</th>
+                  <th className="px-6 py-4 text-left text-xs font-medium text-gray-400 uppercase">Variation</th>
                   <th className="px-6 py-4 text-left text-xs font-medium text-gray-400 uppercase">Type</th>
                   <th className="px-6 py-4 text-center text-xs font-medium text-gray-400 uppercase">Qty Change</th>
                   {enablePacking && (
@@ -741,14 +820,14 @@ export const InventoryDashboardNew = () => {
               <tbody className="divide-y divide-gray-800">
                 {movementsLoading ? (
                   <tr>
-                    <td colSpan={enablePacking ? 10 : 8} className="px-6 py-12 text-center">
+                    <td colSpan={enablePacking ? 11 : 9} className="px-6 py-12 text-center">
                       <Loader2 size={32} className="mx-auto text-blue-500 animate-spin" />
                       <p className="text-gray-400 text-sm mt-2">Loading movements...</p>
                     </td>
                   </tr>
                 ) : displayedMovements.length === 0 ? (
                   <tr>
-                    <td colSpan={enablePacking ? 10 : 8} className="px-6 py-12 text-center text-gray-400 text-sm">
+                    <td colSpan={enablePacking ? 11 : 9} className="px-6 py-12 text-center text-gray-400 text-sm">
                       No movements found. Adjust filters or ensure stock_movements has data.
                     </td>
                   </tr>
@@ -766,6 +845,15 @@ export const InventoryDashboardNew = () => {
                           <p className="font-medium text-white">{m.product?.name ?? '-'}</p>
                           <p className="text-xs text-gray-500">{m.product?.sku ?? ''}</p>
                         </div>
+                      </td>
+                      <td className="px-6 py-4 text-gray-400 text-sm">
+                        {(m as any).variation_id && (m as any).variation ? (
+                          <span>
+                            {typeof (m as any).variation?.attributes === 'object' && (m as any).variation?.attributes !== null
+                              ? Object.entries((m as any).variation.attributes).map(([k, val]) => `${k}: ${val}`).join(', ')
+                              : '—'}
+                          </span>
+                        ) : '—'}
                       </td>
                       <td className="px-6 py-4">
                         <Badge className={cn(
@@ -809,44 +897,6 @@ export const InventoryDashboardNew = () => {
               </tbody>
             </table>
           </div>
-
-          {/* Summary cards from overview (reuse for context) */}
-          <div className="grid grid-cols-3 gap-6">
-            <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-6">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-orange-500/10 rounded-lg">
-                  <TrendingDown className="text-orange-400" size={20} />
-                </div>
-                <div>
-                  <h3 className="text-white font-bold">Slow Moving</h3>
-                  <p className="text-2xl font-bold text-white mt-1">{slowMovingItems.length}</p>
-                  <p className="text-sm text-gray-400">items</p>
-                </div>
-              </div>
-            </div>
-            <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-6">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-red-500/10 rounded-lg">
-                  <AlertTriangle className="text-red-400" size={20} />
-                </div>
-                <div>
-                  <h3 className="text-white font-bold">Low / Out of Stock</h3>
-                  <p className="text-2xl font-bold text-white mt-1">{lowStockItems.length}</p>
-                  <p className="text-sm text-gray-400">items</p>
-                </div>
-              </div>
-            </div>
-            <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-6">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-green-500/10 rounded-lg">
-                  <DollarSign className="text-green-400" size={20} />
-                </div>
-                <div>
-                  <h3 className="text-white font-bold">Total Stock Value</h3>
-                  <p className="text-2xl font-bold text-white mt-1">Rs {totalStockValue.toLocaleString()}</p>
-                </div>
-              </div>
-            </div>
           </div>
         </div>
       )}

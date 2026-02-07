@@ -23,7 +23,7 @@ export const Dashboard = () => {
   const sales = useSales();
   const purchases = usePurchases();
   const expenses = useExpenses();
-  const { companyId } = useSupabase();
+  const { companyId, signOut } = useSupabase();
   const { dateRange } = useDateRange();
   const startDate = dateRange.startDate;
   const endDate = dateRange.endDate;
@@ -32,8 +32,10 @@ export const Dashboard = () => {
 
   // Load products for low stock items
   const loadProducts = useCallback(async () => {
-    if (!companyId) return;
-    
+    if (!companyId) {
+      setLoading(false);
+      return;
+    }
     try {
       setLoading(true);
       const productsData = await productService.getAllProducts(companyId);
@@ -170,6 +172,30 @@ export const Dashboard = () => {
     return (
       <div className="flex items-center justify-center h-96">
         <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
+      </div>
+    );
+  }
+
+  // Logged in but no company (user not in public.users) — show create-business CTA
+  if (!companyId) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="text-center max-w-md p-8 rounded-xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800">
+          <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-2">Create your business</h2>
+          <p className="text-gray-500 dark:text-gray-400 mb-6">
+            You’re signed in but don’t have a business yet. Sign out and use <strong>Create New Business</strong> on the login page to get started.
+          </p>
+          <button
+            type="button"
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-500"
+            onClick={async () => {
+              await signOut();
+              window.location.href = '/';
+            }}
+          >
+            Sign out and go to login
+          </button>
+        </div>
       </div>
     );
   }

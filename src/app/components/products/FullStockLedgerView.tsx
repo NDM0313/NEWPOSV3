@@ -1,7 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { X, Download, FileText, ArrowUpRight, ArrowDownRight, Loader2, ExternalLink, Filter, Package, Printer } from 'lucide-react';
+import { X, FileText, ArrowUpRight, ArrowDownRight, Loader2, ExternalLink, Package, Printer } from 'lucide-react';
 import { Button } from '../ui/button';
-import { ScrollArea } from '../ui/scroll-area';
 import { Badge } from '../ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 import { Label } from '../ui/label';
@@ -610,6 +609,7 @@ export const FullStockLedgerView: React.FC<FullStockLedgerViewProps> = ({
               getSaleById={getSaleById}
               getPurchaseById={getPurchaseById}
               onClose={() => setShowClassicPrintView(false)}
+              initialOrientation={printOrientation}
             />
             </div>
           </div>
@@ -738,10 +738,9 @@ export const FullStockLedgerView: React.FC<FullStockLedgerViewProps> = ({
           </div>
         </div>
 
-        {/* Table */}
-        <div className="flex-1 bg-[#0B0F17] overflow-hidden flex flex-col">
-          <ScrollArea className="flex-1">
-            <div className="p-6">
+        {/* Table - scrollable area (up/down/left/right) */}
+        <div className="flex-1 min-h-0 bg-[#0B0F17] flex flex-col">
+          <div className="flex-1 min-h-0 overflow-auto p-6">
             {loading ? (
               <div className="flex items-center justify-center py-12">
                 <Loader2 size={32} className="text-blue-500 animate-spin" />
@@ -849,8 +848,7 @@ export const FullStockLedgerView: React.FC<FullStockLedgerViewProps> = ({
                 </table>
               </div>
             )}
-            </div>
-          </ScrollArea>
+          </div>
         </div>
 
         {/* Footer */}
@@ -859,21 +857,9 @@ export const FullStockLedgerView: React.FC<FullStockLedgerViewProps> = ({
             Total {movements.length} {movements.length === 1 ? 'movement' : 'movements'}
           </div>
           <div className="flex items-center gap-2 flex-wrap">
-            <select
-              value={printOrientation}
-              onChange={(e) => setPrintOrientation(e.target.value as 'portrait' | 'landscape')}
-              className="h-8 px-2 rounded bg-gray-800 border border-gray-700 text-gray-300 text-xs"
-            >
-              <option value="portrait">Portrait</option>
-              <option value="landscape">Landscape</option>
-            </select>
             <Button variant="outline" size="sm" className="border-gray-700 text-gray-300 hover:text-white hover:bg-gray-800" onClick={() => setShowClassicPrintView(true)}>
               <Printer size={14} className="mr-2" />
-              Print
-            </Button>
-            <Button variant="outline" size="sm" className="border-gray-700 text-gray-300 hover:text-white hover:bg-gray-800" onClick={() => setShowClassicPrintView(true)}>
-              <Download size={14} className="mr-2" />
-              Save as PDF
+              Print / Save as PDF
             </Button>
             <Button variant="outline" size="sm" className="border-gray-700 text-gray-300 hover:text-white hover:bg-gray-800" onClick={onClose}>
               Close

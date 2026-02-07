@@ -2,7 +2,8 @@ import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { 
   Search, Filter, Download, Upload, Package, DollarSign, AlertCircle, 
   MoreVertical, Eye, Edit, Trash2, FileText, X, ShoppingCart, Tag, Building2, Columns3,
-  CheckCircle, TrendingDown, AlertTriangle, ImageIcon, Box, Check, Loader2
+  CheckCircle, TrendingDown, AlertTriangle, ImageIcon, Box, Check, Loader2,
+  ChevronDown, ChevronUp
 } from 'lucide-react';
 import { Button } from "@/app/components/ui/button";
 import { Input } from "@/app/components/ui/input";
@@ -26,6 +27,7 @@ import { CustomSelect } from '@/app/components/ui/custom-select';
 import { ListToolbar } from '@/app/components/ui/list-toolbar';
 import { ProductStockHistoryDrawer } from './ProductStockHistoryDrawer';
 import { ViewProductDetailsDrawer } from './ViewProductDetailsDrawer';
+import { ProductImage } from './ProductImage';
 import { AdjustPriceDialog } from './AdjustPriceDialog';
 import { AdjustStockDialog } from './AdjustStockDialog';
 import { toast } from 'sonner';
@@ -39,6 +41,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/app/components/ui/alert-dialog";
+import { Dialog, DialogContent, DialogTitle } from "@/app/components/ui/dialog";
 
 type ProductType = 'simple' | 'variable';
 type StockStatus = 'in-stock' | 'low-stock' | 'out-of-stock';
@@ -49,6 +52,7 @@ interface Product {
   sku: string;
   name: string;
   image?: string;
+  image_urls?: string[];
   branch: string;
   unit: string;
   purchasePrice: number;
@@ -85,7 +89,8 @@ export const ProductsPage = () => {
         uuid: p.id, // Store actual Supabase UUID for database operations
         sku: p.sku || '',
         name: p.name || '',
-        image: p.thumbnail || undefined,
+        image: (Array.isArray(p.image_urls) && p.image_urls[0]) ? p.image_urls[0] : (p.thumbnail || undefined),
+        image_urls: Array.isArray(p.image_urls) ? p.image_urls : [],
         branch: p.branch_name || 'Main Branch (HQ)',
         unit: p.unit || 'Piece',
         purchasePrice: p.cost_price || 0,
@@ -116,13 +121,6 @@ export const ProductsPage = () => {
       setLoading(false);
     }
   }, [companyId, loadProducts]);
-  
-  // Force reload if no data and not loading (same pattern as ContactsPage)
-  useEffect(() => {
-    if (companyId && products.length === 0 && !loading) {
-      loadProducts();
-    }
-  }, [companyId, products.length, loading, loadProducts]);
 
   // Refresh list when a product is added/updated from GlobalDrawer (no full page reload)
   useEffect(() => {
@@ -138,6 +136,9 @@ export const ProductsPage = () => {
   const [adjustPriceOpen, setAdjustPriceOpen] = useState(false);
   const [adjustStockOpen, setAdjustStockOpen] = useState(false);
   const [deleteAlertOpen, setDeleteAlertOpen] = useState(false);
+  const [imagePreviewOpen, setImagePreviewOpen] = useState(false);
+  const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
+  const [imagePreviewName, setImagePreviewName] = useState<string>('');
   
   // Filter states
   const [branchFilter, setBranchFilter] = useState('all');
@@ -301,18 +302,80 @@ export const ProductsPage = () => {
     return { margin, marginPercent };
   };
 
+  // Sort state: default SKU descending (latest first)
+  type SortKey = keyof Pick<Product, 'sku' | 'name' | 'branch' | 'unit' | 'purchasePrice' | 'sellingPrice' | 'stock' | 'type' | 'category'> | 'margin';
+  const [sortKey, setSortKey] = useState<SortKey>('sku');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
+
+  const getSortValue = (product: Product, key: SortKey): string | number => {
+    switch (key) {
+      case 'sku': return product.sku ?? '';
+      case 'name': return product.name ?? '';
+      case 'branch': return product.branch ?? '';
+      case 'unit': return product.unit ?? '';
+      case 'purchasePrice': return product.purchasePrice;
+      case 'sellingPrice': return product.sellingPrice;
+      case 'margin': return product.sellingPrice - product.purchasePrice;
+      case 'stock': return product.stock;
+      case 'type': return product.type ?? '';
+      case 'category': return product.category ?? '';
+      default: return '';
+    }
+  };
+
+  const sortedProducts = useMemo(() => {
+    const sorted = [...filteredProducts].sort((a, b) => {
+      const va = getSortValue(a, sortKey);
+      const vb = getSortValue(b, sortKey);
+      const cmp = typeof va === 'number' && typeof vb === 'number'
+        ? va - vb
+        : String(va).localeCompare(String(vb), undefined, { numeric: true });
+      return sortDir === 'asc' ? cmp : -cmp;
+    });
+    return sorted;
+  }, [filteredProducts, sortKey, sortDir]);
+
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
   
-  // Paginated products
+  // Paginated products (from sorted list)
   const paginatedProducts = useMemo(() => {
     const startIndex = (currentPage - 1) * pageSize;
     const endIndex = startIndex + pageSize;
-    return filteredProducts.slice(startIndex, endIndex);
-  }, [filteredProducts, currentPage, pageSize]);
+    return sortedProducts.slice(startIndex, endIndex);
+  }, [sortedProducts, currentPage, pageSize]);
 
-  const totalPages = Math.ceil(filteredProducts.length / pageSize);
+  const totalPages = Math.ceil(sortedProducts.length / pageSize);
+
+  const columnKeyToSortKey = (key: string): SortKey | null => {
+    const map: Record<string, SortKey> = {
+      sku: 'sku', name: 'name', branch: 'branch', unit: 'unit',
+      purchase: 'purchasePrice', selling: 'sellingPrice', margin: 'margin',
+      stock: 'stock', type: 'type', category: 'category',
+    };
+    return map[key] ?? null;
+  };
+  const sortKeyToColumnKey = (k: SortKey): string => {
+    const map: Record<SortKey, string> = {
+      sku: 'sku', name: 'name', branch: 'branch', unit: 'unit',
+      purchasePrice: 'purchase', sellingPrice: 'selling', margin: 'margin',
+      stock: 'stock', type: 'type', category: 'category',
+    };
+    return map[k] ?? 'sku';
+  };
+
+  const handleSort = (columnKey: string) => {
+    const key = columnKeyToSortKey(columnKey);
+    if (key == null) return;
+    if (sortKey === key) {
+      setSortDir(prev => prev === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortKey(key);
+      setSortDir('desc');
+    }
+    setCurrentPage(1);
+  };
 
   // Reset to page 1 when filters change
   React.useEffect(() => {
@@ -410,9 +473,26 @@ export const ProductsPage = () => {
       case 'image':
         return (
           <div className="flex justify-center">
-            <div className="w-10 h-10 rounded-lg bg-gray-800 border border-gray-700 flex items-center justify-center">
-              <ImageIcon size={16} className="text-gray-600" />
-            </div>
+            <button
+              type="button"
+              onClick={() => {
+                if (product.image) {
+                  setImagePreviewUrl(product.image);
+                  setImagePreviewName(product.name);
+                  setImagePreviewOpen(true);
+                }
+              }}
+              className={cn(
+                'w-10 h-10 rounded-lg bg-gray-800 border border-gray-700 flex items-center justify-center overflow-hidden shrink-0',
+                product.image && 'cursor-pointer hover:ring-2 hover:ring-blue-500/50 transition-shadow'
+              )}
+            >
+              {product.image ? (
+                <ProductImage src={product.image} alt="" className="w-full h-full object-cover pointer-events-none" />
+              ) : (
+                <ImageIcon size={16} className="text-gray-600" />
+              )}
+            </button>
           </div>
         );
       case 'name':
@@ -778,7 +858,18 @@ export const ProductsPage = () => {
                   {columnOrder.map(key => {
                     if (!visibleColumns[key as keyof typeof visibleColumns]) return null;
                     const align = (key === 'image' || key === 'stock') ? 'text-center' : (key === 'purchase' || key === 'selling' || key === 'margin') ? 'text-right' : 'text-left';
-                    return <div key={key} className={align}>{columnLabels[key]}</div>;
+                    const isSortable = columnKeyToSortKey(key) != null;
+                    const isActive = sortKeyToColumnKey(sortKey) === key;
+                    return (
+                      <div
+                        key={key}
+                        className={cn(align, isSortable && 'cursor-pointer select-none hover:text-gray-300 flex items-center gap-0.5')}
+                        onClick={() => isSortable && handleSort(key)}
+                      >
+                        {columnLabels[key]}
+                        {isSortable && isActive && (sortDir === 'asc' ? <ChevronUp size={12} /> : <ChevronDown size={12} />)}
+                      </div>
+                    );
                   })}
                   <div className="text-center">Actions</div>
                 </div>
@@ -1016,6 +1107,27 @@ export const ProductsPage = () => {
           </AlertDialogContent>
         </AlertDialog>
       )}
+
+      {/* Product image preview (medium size) */}
+      <Dialog open={imagePreviewOpen} onOpenChange={setImagePreviewOpen}>
+        <DialogContent className="bg-gray-900 border-gray-700 text-white max-w-2xl p-4">
+          <DialogTitle className="text-white sr-only">{imagePreviewName}</DialogTitle>
+          {imagePreviewUrl && (
+            <div className="flex flex-col items-center gap-3">
+              {imagePreviewName && (
+                <p className="text-sm text-gray-400 truncate w-full text-center">{imagePreviewName}</p>
+              )}
+              <div className="max-w-full max-h-[70vh] w-full flex items-center justify-center rounded-lg overflow-hidden bg-gray-800 border border-gray-700">
+                <ProductImage
+                  src={imagePreviewUrl}
+                  alt={imagePreviewName}
+                  className="max-w-full max-h-[70vh] w-auto h-auto object-contain"
+                />
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

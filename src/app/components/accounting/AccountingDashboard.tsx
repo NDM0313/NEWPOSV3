@@ -75,28 +75,8 @@ export const AccountingDashboard = () => {
   const { companyId, branchId } = useSupabase();
   const [activeTab, setActiveTab] = useState<'transactions' | 'accounts' | 'ledger' | 'receivables' | 'payables' | 'deposits' | 'studio' | 'reports'>('transactions');
   
-  // 🔒 ACCOUNTS PAGE 2-MODE DESIGN
-  // Check if accounting module is enabled
-  const [isAccountingEnabled, setIsAccountingEnabled] = useState(true);
-  const [accountsViewMode, setAccountsViewMode] = useState<'simple' | 'advanced'>('simple');
-  
-  useEffect(() => {
-    // Check accounting module status from settings
-    try {
-      const savedModules = localStorage.getItem('erp_modules');
-      if (savedModules) {
-        const modules = JSON.parse(savedModules);
-        const accountingEnabled = modules?.accounting?.isEnabled !== false; // Default to true
-        setIsAccountingEnabled(accountingEnabled);
-        // Set view mode based on accounting status
-        setAccountsViewMode(accountingEnabled ? 'advanced' : 'simple');
-      }
-    } catch (e) {
-      // Default to enabled
-      setIsAccountingEnabled(true);
-      setAccountsViewMode('advanced');
-    }
-  }, []);
+  // UI-only view mode: Operational (day-to-day accounts) vs Professional (full Chart of Accounts)
+  const [accountsViewMode, setAccountsViewMode] = useState<'operational' | 'professional'>('operational');
   const [searchTerm, setSearchTerm] = useState('');
   const [pageSize, setPageSize] = useState(25);
   const [currentPage, setCurrentPage] = useState(1);
@@ -638,39 +618,36 @@ export const AccountingDashboard = () => {
               <div>
                 <h3 className="text-lg font-bold text-white">Accounts</h3>
                 <p className="text-sm text-gray-400">
-                  {isAccountingEnabled 
-                    ? 'Manage your financial accounts (Advanced Mode)' 
-                    : 'Manage your payment accounts (Simple Mode)'}
+                  {accountsViewMode === 'operational'
+                    ? 'Operational View: Cash, Bank, Wallet, Expense, Income, Payable, Receivable'
+                    : 'Professional View: Full Chart of Accounts'}
                 </p>
               </div>
               <div className="flex items-center gap-3">
-                {/* Mode Toggle (only show if accounting can be enabled) */}
-                {isAccountingEnabled && (
-                  <div className="flex items-center gap-2 bg-gray-900/50 border border-gray-800 rounded-lg px-3 py-1.5">
-                    <button
-                      onClick={() => setAccountsViewMode('simple')}
-                      className={cn(
-                        "text-xs font-medium px-2 py-1 rounded transition-colors",
-                        accountsViewMode === 'simple'
-                          ? "bg-blue-600 text-white"
-                          : "text-gray-400 hover:text-gray-300"
-                      )}
-                    >
-                      Simple
-                    </button>
-                    <button
-                      onClick={() => setAccountsViewMode('advanced')}
-                      className={cn(
-                        "text-xs font-medium px-2 py-1 rounded transition-colors",
-                        accountsViewMode === 'advanced'
-                          ? "bg-blue-600 text-white"
-                          : "text-gray-400 hover:text-gray-300"
-                      )}
-                    >
-                      Advanced
-                    </button>
-                  </div>
-                )}
+                <div className="flex items-center gap-2 bg-gray-900/50 border border-gray-800 rounded-lg px-3 py-1.5">
+                  <button
+                    onClick={() => setAccountsViewMode('operational')}
+                    className={cn(
+                      "text-xs font-medium px-2 py-1 rounded transition-colors",
+                      accountsViewMode === 'operational'
+                        ? "bg-blue-600 text-white"
+                        : "text-gray-400 hover:text-gray-300"
+                    )}
+                  >
+                    Operational
+                  </button>
+                  <button
+                    onClick={() => setAccountsViewMode('professional')}
+                    className={cn(
+                      "text-xs font-medium px-2 py-1 rounded transition-colors",
+                      accountsViewMode === 'professional'
+                        ? "bg-blue-600 text-white"
+                        : "text-gray-400 hover:text-gray-300"
+                    )}
+                  >
+                    Professional
+                  </button>
+                </div>
                 <Button
                   onClick={() => setIsAddAccountOpen(true)}
                   className="bg-blue-600 hover:bg-blue-500 text-white gap-2"
@@ -700,7 +677,7 @@ export const AccountingDashboard = () => {
                     <thead className="bg-gray-900 border-b border-gray-800">
                       <tr className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
                         <th className="px-4 py-3 text-left">Account Name</th>
-                        {accountsViewMode === 'advanced' && (
+                        {accountsViewMode === 'professional' && (
                           <>
                             <th className="px-4 py-3 text-left">Account Type</th>
                             <th className="px-4 py-3 text-left">Scope</th>
@@ -712,14 +689,19 @@ export const AccountingDashboard = () => {
                       </tr>
                     </thead>
                     <tbody>
-                      {/* 🔒 SIMPLE MODE: Show only Cash, Bank, Mobile Wallet */}
-                      {/* 🔒 ADVANCED MODE: Show all accounts */}
-                      {(accountsViewMode === 'simple' 
-                        ? accounting.accounts.filter(acc => 
-                            (acc.type === 'Cash' || acc.accountType === 'Cash' || acc.code === '1000') ||
-                            (acc.type === 'Bank' || acc.accountType === 'Bank' || acc.code === '1010') ||
-                            (acc.type === 'Mobile Wallet' || acc.accountType === 'Mobile Wallet' || acc.code === '1020')
-                          )
+                      {/* Operational: Cash, Bank, Wallet, Expense, Income, Payable, Receivable only */}
+                      {/* Professional: All accounts (full Chart of Accounts) */}
+                      {(accountsViewMode === 'operational'
+                        ? accounting.accounts.filter(acc => {
+                            const t = String(acc.type || acc.accountType || acc.code || '').toLowerCase();
+                            return (
+                              t.includes('cash') || t.includes('bank') || t.includes('wallet') ||
+                              t.includes('expense') || t.includes('revenue') || t.includes('income') ||
+                              t.includes('receivable') || t.includes('payable') ||
+                              acc.code === '1000' || acc.code === '1010' || acc.code === '1020' ||
+                              acc.code === '1100' || acc.code === '2000'
+                            );
+                          })
                         : accounting.accounts
                       ).map((account) => (
                         <tr 
@@ -741,8 +723,8 @@ export const AccountingDashboard = () => {
                               )}
                             </div>
                           </td>
-                          {accountsViewMode === 'advanced' && (
-                            <>
+                          {accountsViewMode === 'professional' && (
+                              <>
                               <td className="px-4 py-3 text-xs">
                                 <Badge className="bg-gray-800 text-gray-300 border-gray-700">
                                   {account.type || account.accountType || 'Asset'}
@@ -782,7 +764,7 @@ export const AccountingDashboard = () => {
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="end" className="bg-gray-900 border-gray-800">
                                 {/* Advanced Mode Only Actions */}
-                                {accountsViewMode === 'advanced' && (
+                                {accountsViewMode === 'professional' && (
                                   <>
                                     <DropdownMenuItem
                                       onClick={() => {

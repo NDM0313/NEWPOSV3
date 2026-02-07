@@ -435,7 +435,7 @@ export const purchaseService = {
   },
 
   // Record payment – allowed only when purchase status is final/completed (ERP rule). referenceNumber = PAY-xxxx from Numbering.
-  async recordPayment(purchaseId: string, amount: number, paymentMethod: string, accountId: string, companyId: string, branchId?: string | null, referenceNumber?: string | null) {
+  async recordPayment(purchaseId: string, amount: number, paymentMethod: string, accountId: string, companyId: string, branchId?: string | null, referenceNumber?: string | null, options?: { notes?: string; attachments?: any }) {
     // CRITICAL FIX: Get branch_id from purchase record, not from context (context can be "all")
     const { data: purchase, error: fetchError } = await supabase
       .from('purchases')
@@ -493,20 +493,25 @@ export const purchaseService = {
       throw new Error('Payment account is required. Please select an account.');
     }
 
+    const insertPayload: any = {
+      company_id: companyId,
+      branch_id: validBranchId,
+      payment_type: 'paid',
+      reference_type: 'purchase',
+      reference_id: purchaseId,
+      amount,
+      payment_method: enumPaymentMethod,
+      payment_account_id: accountId,
+      payment_date: new Date().toISOString().split('T')[0],
+      ...(referenceNumber ? { reference_number: referenceNumber } : {}),
+    };
+    if (options?.notes !== undefined && options.notes !== '') insertPayload.notes = options.notes;
+    if (options?.attachments !== undefined && options.attachments != null) {
+      insertPayload.attachments = Array.isArray(options.attachments) ? options.attachments : (options.attachments ? [options.attachments] : null);
+    }
     const { data, error } = await supabase
       .from('payments')
-      .insert({
-        company_id: companyId,
-        branch_id: validBranchId,
-        payment_type: 'paid',
-        reference_type: 'purchase',
-        reference_id: purchaseId,
-        amount,
-        payment_method: enumPaymentMethod,
-        payment_account_id: accountId,
-        payment_date: new Date().toISOString().split('T')[0],
-        ...(referenceNumber ? { reference_number: referenceNumber } : {}),
-      })
+      .insert(insertPayload)
       .select('*')
       .single();
 
@@ -613,6 +618,7 @@ export const purchaseService = {
       paymentDate?: string;
       referenceNumber?: string;
       notes?: string;
+      attachments?: any;
     }
   ) {
     try {
@@ -646,6 +652,7 @@ export const purchaseService = {
       if (updates.paymentDate) updateData.payment_date = updates.paymentDate;
       if (updates.referenceNumber !== undefined) updateData.reference_number = updates.referenceNumber;
       if (updates.notes !== undefined) updateData.notes = updates.notes;
+      if (updates.attachments !== undefined) updateData.attachments = updates.attachments;
 
       const { data, error } = await supabase
         .from('payments')

@@ -12,6 +12,7 @@ import { Switch } from "../ui/switch";
 import { cn } from "../ui/utils";
 import { useSettings, BranchSettings } from '@/app/context/SettingsContext';
 import { branchService } from '@/app/services/branchService';
+import { accountService } from '@/app/services/accountService';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { userService, User as UserType } from '@/app/services/userService';
 import { useAccounting } from '@/app/context/AccountingContext';
@@ -45,7 +46,7 @@ type SettingsTab =
 
 export const SettingsPageNew = () => {
   const settings = useSettings();
-  const { companyId, enablePacking, setEnablePacking } = useSupabase();
+  const { companyId, refreshEnablePacking } = useSupabase();
   const accounting = useAccounting();
   const [activeTab, setActiveTab] = useState<SettingsTab>('company');
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
@@ -94,23 +95,30 @@ export const SettingsPageNew = () => {
     }
   }, [companyId]);
 
-  // Load branches from database
+  // Load branches from database and resolve default account names
   const loadBranches = useCallback(async () => {
     if (!companyId) return;
     try {
-      const branchesData = await branchService.getAllBranches(companyId);
-      // Convert Branch[] to BranchSettings[] format
-      const branchSettings: BranchSettings[] = branchesData.map(branch => ({
+      const [branchesData, accountsList] = await Promise.all([
+        branchService.getAllBranches(companyId),
+        accountService.getAllAccounts(companyId),
+      ]);
+      const accountNameById = new Map<string, string>();
+      (accountsList || []).forEach((a: any) => { if (a.id && a.name) accountNameById.set(a.id, a.name); });
+      const branchSettings: BranchSettings[] = (branchesData || []).map((branch: any) => ({
         id: branch.id,
         branchName: branch.name,
         branchCode: branch.code || '',
         address: branch.address || '',
         phone: branch.phone || '',
         isActive: branch.is_active ?? true,
-        isDefault: false, // You may need to add this to Branch interface
-        cashAccount: '', // These might need to be loaded separately
-        bankAccount: '',
-        posCashDrawer: '',
+        isDefault: !!branch.is_default,
+        cashAccount: (branch.default_cash_account_id && accountNameById.get(branch.default_cash_account_id)) || '',
+        bankAccount: (branch.default_bank_account_id && accountNameById.get(branch.default_bank_account_id)) || '',
+        posCashDrawer: (branch.default_pos_drawer_account_id && accountNameById.get(branch.default_pos_drawer_account_id)) || '',
+        cashAccountId: branch.default_cash_account_id || undefined,
+        bankAccountId: branch.default_bank_account_id || undefined,
+        posCashDrawerId: branch.default_pos_drawer_account_id || undefined,
       }));
       settings.updateBranches(branchSettings);
     } catch (error) {
@@ -118,6 +126,11 @@ export const SettingsPageNew = () => {
       toast.error('Failed to load branches');
     }
   }, [companyId, settings]);
+
+  // Sync inventory form when user switches to Inventory tab (so toggles show saved values)
+  useEffect(() => {
+    if (activeTab === 'inventory') setInventoryForm(settings.inventorySettings);
+  }, [activeTab]);
 
   // Load users when users tab is active
   useEffect(() => {
@@ -209,9 +222,8 @@ export const SettingsPageNew = () => {
     };
   }, [activeTab, loadUsers]);
 
-  // Handle branch edit (using new modal)
+  // Handle branch edit (using new modal) – pass default account IDs so modal can prefill
   const handleEditBranch = (branch: BranchSettings) => {
-    // Convert BranchSettings to Branch format for AddBranchModal
     const branchForModal = {
       id: branch.id,
       company_id: companyId || '',
@@ -222,6 +234,9 @@ export const SettingsPageNew = () => {
       city: undefined,
       state: undefined,
       is_active: branch.isActive ?? true,
+      default_cash_account_id: branch.cashAccountId || null,
+      default_bank_account_id: branch.bankAccountId || null,
+      default_pos_drawer_account_id: branch.posCashDrawerId || null,
     };
     setEditingBranchForModal(branchForModal);
     setAddBranchModalOpen(true);
@@ -980,10 +995,11 @@ export const SettingsPageNew = () => {
                             <p className="text-sm text-gray-400">When ON: packing columns and modal appear in Sale, Purchase, Inventory, Ledger & Print. When OFF: system behaves as quantity-only.</p>
                           </div>
                           <Switch
-                            checked={enablePacking}
+                            checked={settings.inventorySettings.enablePacking}
                             onCheckedChange={async (val) => {
                               try {
-                                await setEnablePacking(val);
+                                await settings.updateInventorySettings({ enablePacking: val }, { silent: true });
+                                await refreshEnablePacking?.();
                                 toast.success(val ? 'Packing enabled' : 'Packing disabled');
                               } catch (e: any) {
                                 toast.error(e?.message || 'Failed to update');
@@ -1001,9 +1017,15 @@ export const SettingsPageNew = () => {
                           </div>
                           <Switch
                             checked={inventoryForm.negativeStockAllowed}
-                            onCheckedChange={(val) => {
-                              setInventoryForm({ ...inventoryForm, negativeStockAllowed: val });
-                              setHasUnsavedChanges(true);
+                            onCheckedChange={async (val) => {
+                              setInventoryForm((prev) => ({ ...prev, negativeStockAllowed: val }));
+                              try {
+                                await settings.updateInventorySettings({ negativeStockAllowed: val }, { silent: true });
+                                toast.success(val ? 'Negative stock allowed' : 'Negative stock disabled');
+                              } catch (e: any) {
+                                toast.error(e?.message || 'Failed to update');
+                                setInventoryForm((prev) => ({ ...prev, negativeStockAllowed: !val }));
+                              }
                             }}
                           />
                         </div>
@@ -1015,9 +1037,15 @@ export const SettingsPageNew = () => {
                           </div>
                           <Switch
                             checked={inventoryForm.autoReorderEnabled}
-                            onCheckedChange={(val) => {
-                              setInventoryForm({ ...inventoryForm, autoReorderEnabled: val });
-                              setHasUnsavedChanges(true);
+                            onCheckedChange={async (val) => {
+                              setInventoryForm((prev) => ({ ...prev, autoReorderEnabled: val }));
+                              try {
+                                await settings.updateInventorySettings({ autoReorderEnabled: val }, { silent: true });
+                                toast.success(val ? 'Auto reorder enabled' : 'Auto reorder disabled');
+                              } catch (e: any) {
+                                toast.error(e?.message || 'Failed to update');
+                                setInventoryForm((prev) => ({ ...prev, autoReorderEnabled: !val }));
+                              }
                             }}
                           />
                         </div>
@@ -1029,9 +1057,15 @@ export const SettingsPageNew = () => {
                           </div>
                           <Switch
                             checked={inventoryForm.barcodeRequired}
-                            onCheckedChange={(val) => {
-                              setInventoryForm({ ...inventoryForm, barcodeRequired: val });
-                              setHasUnsavedChanges(true);
+                            onCheckedChange={async (val) => {
+                              setInventoryForm((prev) => ({ ...prev, barcodeRequired: val }));
+                              try {
+                                await settings.updateInventorySettings({ barcodeRequired: val }, { silent: true });
+                                toast.success(val ? 'Barcode required' : 'Barcode optional');
+                              } catch (e: any) {
+                                toast.error(e?.message || 'Failed to update');
+                                setInventoryForm((prev) => ({ ...prev, barcodeRequired: !val }));
+                              }
                             }}
                           />
                         </div>

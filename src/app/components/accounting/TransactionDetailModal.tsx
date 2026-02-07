@@ -9,6 +9,7 @@ import { accountingService } from '@/app/services/accountingService';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { format } from 'date-fns';
 import { cn } from '@/app/components/ui/utils';
+import { getAttachmentOpenUrl } from '@/app/utils/paymentAttachmentUrl';
 
 interface TransactionDetailModalProps {
   isOpen: boolean;
@@ -246,7 +247,10 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
                                 return (
                                   <button
                                     key={idx}
-                                    onClick={() => setSelectedAttachment(url)}
+                                    onClick={async () => {
+                                      const openUrl = await getAttachmentOpenUrl(url);
+                                      setSelectedAttachment(openUrl);
+                                    }}
                                     className="flex items-center gap-2 px-3 py-1.5 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/30 rounded-lg text-blue-400 transition-colors"
                                   >
                                     {isImage ? <ImageIcon size={16} /> : <File size={16} />}
@@ -257,7 +261,10 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
                               })
                             ) : typeof payment.attachments === 'string' ? (
                               <button
-                                onClick={() => setSelectedAttachment(payment.attachments)}
+                                onClick={async () => {
+                                  const openUrl = await getAttachmentOpenUrl(payment.attachments);
+                                  setSelectedAttachment(openUrl);
+                                }}
                                 className="flex items-center gap-2 px-3 py-1.5 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/30 rounded-lg text-blue-400 transition-colors"
                               >
                                 <Paperclip size={16} />

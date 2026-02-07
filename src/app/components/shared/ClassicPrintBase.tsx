@@ -30,6 +30,8 @@ export interface ClassicPrintBaseProps {
   onPrint?: () => void;
   onClose?: () => void;
   showActions?: boolean;
+  /** When set, replaces default Print/Close with custom actions (e.g. orientation + Print + Save as PDF) */
+  actionChildren?: React.ReactNode;
 }
 
 export const ClassicPrintBase: React.FC<ClassicPrintBaseProps> = ({
@@ -41,6 +43,7 @@ export const ClassicPrintBase: React.FC<ClassicPrintBaseProps> = ({
   onPrint,
   onClose,
   showActions = true,
+  actionChildren,
 }) => {
   const handlePrint = () => {
     window.print();
@@ -299,23 +302,27 @@ export const ClassicPrintBase: React.FC<ClassicPrintBaseProps> = ({
         {/* Actions - Hidden when printing */}
         {showActions && (
           <div className="classic-print-actions">
-            {onPrint && (
-              <Button
-                onClick={handlePrint}
-                className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
-              >
-                <Printer size={16} className="mr-2" />
-                Print
-              </Button>
-            )}
-            {onClose && (
-              <Button
-                onClick={onClose}
-                className="bg-gray-600 text-white px-4 py-2 rounded-lg hover:bg-gray-700"
-              >
-                <X size={16} className="mr-2" />
-                Close
-              </Button>
+            {actionChildren ?? (
+              <>
+                {onPrint && (
+                  <Button
+                    onClick={handlePrint}
+                    className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
+                  >
+                    <Printer size={16} className="mr-2" />
+                    Print
+                  </Button>
+                )}
+                {onClose && (
+                  <Button
+                    onClick={onClose}
+                    className="bg-gray-600 text-white px-4 py-2 rounded-lg hover:bg-gray-700"
+                  >
+                    <X size={16} className="mr-2" />
+                    Close
+                  </Button>
+                )}
+              </>
             )}
           </div>
         )}

@@ -213,13 +213,6 @@ export const ContactsPage = () => {
     }
   }, [companyId, loadContacts]);
 
-  // When companyId becomes available after context loaded, ensure we load (retry if empty)
-  useEffect(() => {
-    if (!contextLoading && companyId && contacts.length === 0 && !loading) {
-      loadContacts();
-    }
-  }, [contextLoading, companyId, contacts.length, loading, loadContacts]);
-
   // Refetch list when a new contact is created (e.g. Add Worker) so it shows without refresh
   useEffect(() => {
     if (createdContactId) {

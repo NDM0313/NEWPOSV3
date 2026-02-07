@@ -129,19 +129,7 @@ const AppContent = () => {
     );
   }
 
-  if (currentView === 'accounting' && !modules.accountingModuleEnabled) {
-    return (
-      <Layout>
-        <div className="flex items-center justify-center h-full">
-          <div className="text-center">
-            <h2 className="text-2xl font-bold text-white mb-2">Accounting Module Disabled</h2>
-            <p className="text-gray-400">Please enable Accounting module in Settings to access this page.</p>
-          </div>
-        </div>
-      </Layout>
-    );
-  }
-
+  // Accounting is always available - single engine, no module toggle gate
   if (currentView === 'pos') {
     return (
       <>

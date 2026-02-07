@@ -12,6 +12,9 @@ export interface Branch {
   city?: string;
   state?: string;
   is_active: boolean;
+  default_cash_account_id?: string | null;
+  default_bank_account_id?: string | null;
+  default_pos_drawer_account_id?: string | null;
   created_at?: string;
   updated_at?: string;
 }

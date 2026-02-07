@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect, useCallback, Rea
 import { useSupabase } from './SupabaseContext';
 import { settingsService } from '@/app/services/settingsService';
 import { branchService } from '@/app/services/branchService';
+import { accountService } from '@/app/services/accountService';
 import { saleService } from '@/app/services/saleService';
 import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
@@ -94,6 +95,9 @@ export interface BranchSettings {
   cashAccount: string;
   bankAccount: string;
   posCashDrawer: string;
+  cashAccountId?: string;
+  bankAccountId?: string;
+  posCashDrawerId?: string;
 }
 
 export interface POSSettings {
@@ -193,7 +197,7 @@ interface SettingsContextType {
   
   // Inventory Settings
   inventorySettings: InventorySettings;
-  updateInventorySettings: (settings: Partial<InventorySettings>) => Promise<void>;
+  updateInventorySettings: (settings: Partial<InventorySettings>, options?: { silent?: boolean }) => Promise<void>;
   
   // Rental Settings
   rentalSettings: RentalSettings;
@@ -458,19 +462,27 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
         });
       }
 
-      // Load branches
-      const branchesData = await branchService.getAllBranches(companyId);
-      const convertedBranches: BranchSettings[] = branchesData.map(b => ({
+      // Load branches and resolve default account names
+      const [branchesData, accountsList] = await Promise.all([
+        branchService.getAllBranches(companyId),
+        accountService.getAllAccounts(companyId),
+      ]);
+      const accountNameById = new Map<string, string>();
+      (accountsList || []).forEach((a: any) => { if (a.id && a.name) accountNameById.set(a.id, a.name); });
+      const convertedBranches: BranchSettings[] = (branchesData || []).map((b: any) => ({
         id: b.id,
         branchCode: b.code || '',
         branchName: b.name || '',
         address: b.address || '',
         phone: b.phone || '',
         isActive: b.is_active !== false,
-        isDefault: false, // TODO: Get from user_branches or branch settings
-        cashAccount: '', // TODO: Load from branch settings
-        bankAccount: '', // TODO: Load from branch settings
-        posCashDrawer: '', // TODO: Load from branch settings
+        isDefault: !!b.is_default,
+        cashAccount: (b.default_cash_account_id && accountNameById.get(b.default_cash_account_id)) || '',
+        bankAccount: (b.default_bank_account_id && accountNameById.get(b.default_bank_account_id)) || '',
+        posCashDrawer: (b.default_pos_drawer_account_id && accountNameById.get(b.default_pos_drawer_account_id)) || '',
+        cashAccountId: b.default_cash_account_id || undefined,
+        bankAccountId: b.default_bank_account_id || undefined,
+        posCashDrawerId: b.default_pos_drawer_account_id || undefined,
       }));
       setBranches(convertedBranches);
 
@@ -719,7 +731,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
     }
   };
 
-  const updateInventorySettings = async (settings: Partial<InventorySettings>) => {
+  const updateInventorySettings = async (settings: Partial<InventorySettings>, options?: { silent?: boolean }) => {
     if (!companyId) return;
     
     const updated = { ...inventorySettings, ...settings };
@@ -735,7 +747,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
         await settingsService.setEnablePacking(companyId, settings.enablePacking);
       }
       
-      toast.success('Inventory settings saved');
+      if (!options?.silent) toast.success('Inventory settings saved');
     } catch (error) {
       console.error('[SETTINGS] Error saving inventory settings:', error);
       toast.error('Failed to save inventory settings');

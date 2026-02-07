@@ -7,7 +7,9 @@ import { useSettings } from '@/app/context/SettingsContext';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { useDocumentNumbering } from '@/app/hooks/useDocumentNumbering';
 import { accountHelperService } from '@/app/services/accountHelperService';
+import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
+import { getAttachmentOpenUrl, getSupabaseStorageDashboardUrl } from '@/app/utils/paymentAttachmentUrl';
 
 // ============================================
 // 🎯 TYPES
@@ -46,6 +48,7 @@ export interface PaymentDialogProps {
     date: string;
     referenceNumber?: string;
     notes?: string;
+    attachments?: any; // saved: { url, name }[] or url string
   };
 }
 
@@ -90,20 +93,43 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
     return `${year}-${month}-${day}T${hours}:${minutes}`;
   });
   
-  // 🎯 NEW: Attachment state
+  // New files to upload
   const [attachments, setAttachments] = useState<File[]>([]);
+  // Existing attachments (when editing) – from DB, so they show and are re-sent on save
+  const [existingAttachments, setExistingAttachments] = useState<{ url: string; name: string }[]>([]);
 
   // Reset form when dialog opens
   React.useEffect(() => {
     if (isOpen) {
       if (editMode && paymentToEdit) {
-        // Edit mode: populate with existing payment data
         setAmount(paymentToEdit.amount);
         setPaymentMethod((paymentToEdit.method.charAt(0).toUpperCase() + paymentToEdit.method.slice(1)) as PaymentMethod || 'Cash');
         setSelectedAccount(paymentToEdit.accountId || '');
         setNotes(paymentToEdit.notes || '');
-        
-        // Format date for datetime-local input
+        let raw: any = paymentToEdit.attachments;
+        if (typeof raw === 'string' && raw.trim()) {
+          const trimmed = raw.trim();
+          if (trimmed.startsWith('[') || trimmed.startsWith('{')) {
+            try {
+              raw = JSON.parse(raw);
+            } catch {
+              raw = null;
+            }
+          }
+        }
+        const list: { url: string; name: string }[] = [];
+        if (Array.isArray(raw)) {
+          raw.forEach((a: any) => {
+            const url = typeof a === 'string' ? a : (a?.url || a?.fileUrl || a?.href);
+            const name = (typeof a === 'object' && a?.name) ? a.name : (typeof a === 'object' && (a?.fileName || a?.file_name)) ? (a.fileName || a.file_name) : 'Attachment';
+            if (url) list.push({ url, name });
+          });
+        } else if (typeof raw === 'object' && raw && !Array.isArray(raw) && (raw.url || raw.fileUrl)) {
+          list.push({ url: raw.url || raw.fileUrl || '', name: raw.name || raw.fileName || 'Attachment' });
+        } else if (typeof raw === 'string' && raw) {
+          list.push({ url: raw, name: 'Attachment' });
+        }
+        setExistingAttachments(list);
         const paymentDate = new Date(paymentToEdit.date);
         const year = paymentDate.getFullYear();
         const month = String(paymentDate.getMonth() + 1).padStart(2, '0');
@@ -112,11 +138,11 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
         const minutes = String(paymentDate.getMinutes() || 0).padStart(2, '0');
         setPaymentDateTime(`${year}-${month}-${day}T${hours}:${minutes}`);
       } else {
-        // Add mode: reset to defaults
         setAmount(0);
         setPaymentMethod('Cash');
         setSelectedAccount('');
         setNotes('');
+        setExistingAttachments([]);
         const now = new Date();
         const year = now.getFullYear();
         const month = String(now.getMonth() + 1).padStart(2, '0');
@@ -129,19 +155,37 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
     }
   }, [isOpen, editMode, paymentToEdit]);
 
+  // Normalize payment method for matching DB types (cash, bank, mobile_wallet)
+  const normalizePaymentType = (t: string) => String(t || '').toLowerCase().trim().replace(/\s+/g, '_');
+
   // 🎯 Filter accounts based on payment method AND branch
-  // Include: branch-specific accounts + global accounts
+  // Match UI (Cash/Bank/Mobile Wallet) and DB (cash/bank/mobile_wallet) and by code (1000/1010/1020)
   const getFilteredAccounts = (): Account[] => {
+    const methodNorm = normalizePaymentType(paymentMethod);
+    const isCash = methodNorm === 'cash';
+    const isBank = methodNorm === 'bank';
+    const isWallet = methodNorm === 'mobile_wallet' || methodNorm === 'mobilewallet';
+
     return accounting.accounts.filter(account => {
-      // Filter by payment method type
-      if (account.type !== paymentMethod) return false;
-      
+      if (account.isActive === false) return false;
+
+      const accType = normalizePaymentType(String((account as any).type ?? account.accountType ?? ''));
+      const accCode = (account as any).code ?? '';
+      const accName = (account.name || '').toLowerCase();
+
+      const typeMatches =
+        accType === methodNorm ||
+        (isCash && (accType === 'cash' || accCode === '1000' || accName.includes('cash'))) ||
+        (isBank && (accType === 'bank' || accCode === '1010' || accName.includes('bank'))) ||
+        (isWallet && (accType === 'mobile_wallet' || accType === 'wallet' || accCode === '1020' || accName.includes('wallet')));
+
+      if (!typeMatches) return false;
+
       // Include if: no branch restriction (global) OR matches current branch
-      // Account.branch can be string (branch name) or undefined
       const accountBranch = (account as any).branchId || account.branch || '';
       const isGlobal = !accountBranch || accountBranch === 'global' || accountBranch === '';
       const isBranchSpecific = accountBranch === branchId;
-      
+
       return isGlobal || isBranchSpecific;
     });
   };
@@ -307,39 +351,59 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
       let success = false;
       let workerPaymentRef: string | undefined;
 
-      // EDIT MODE: Update existing payment
+      // EDIT MODE: Update existing payment (keep existing attachments + upload new ones)
       if (editMode && paymentToEdit) {
         const paymentDate = paymentDateTime.split('T')[0];
-        
+        let mergedAttachments: { url: string; name: string }[] = [...existingAttachments];
+        if (attachments.length > 0 && companyId) {
+          let anyUploadFailed = false;
+          try {
+            const bucket = 'payment-attachments';
+            const prefix = `${companyId}/${referenceId}/${Date.now()}`;
+            for (let i = 0; i < attachments.length; i++) {
+              const file = attachments[i];
+              const safeName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
+              const path = `${prefix}_${i}_${safeName}`;
+              const { error: upError } = await supabase.storage.from(bucket).upload(path, file, {
+                upsert: true,
+                contentType: file.type || 'application/octet-stream',
+              });
+              if (!upError) {
+                const { data: urlData } = supabase.storage.from(bucket).getPublicUrl(path);
+                mergedAttachments.push({ url: urlData?.publicUrl || path, name: file.name });
+              } else {
+                anyUploadFailed = true;
+                console.warn('[UnifiedPaymentDialog] Edit: upload failed', upError);
+                if (String(upError?.message || '').toLowerCase().includes('bucket not found')) {
+                  toast.warning('Storage bucket "payment-attachments" not found. Create it in Supabase, then run migration 20.', {
+                    duration: 10000,
+                    action: { label: 'Open Storage', onClick: () => window.open(getSupabaseStorageDashboardUrl(), '_blank') },
+                  });
+                }
+              }
+            }
+            if (anyUploadFailed) toast.warning('Some attachments could not be uploaded; payment will save without them.', { duration: 5000 });
+          } catch (e) {
+            console.warn('[UnifiedPaymentDialog] Edit: attachment upload failed', e);
+            toast.warning('Attachment upload failed; payment will save without new files.');
+          }
+        }
+        const updatePayload = {
+          amount,
+          paymentMethod,
+          accountId: selectedAccount,
+          paymentDate,
+          referenceNumber: (paymentToEdit as any).referenceNumber ?? undefined,
+          notes: notes || undefined,
+          attachments: mergedAttachments.length ? mergedAttachments : undefined,
+        };
         if (context === 'customer' && referenceId) {
           const { saleService } = await import('@/app/services/saleService');
-          await saleService.updatePayment(
-            paymentToEdit.id,
-            referenceId,
-            {
-              amount,
-              paymentMethod,
-              accountId: selectedAccount,
-              paymentDate,
-              referenceNumber: notes || undefined,
-              notes: notes || undefined
-            }
-          );
+          await saleService.updatePayment(paymentToEdit.id, referenceId, updatePayload);
           success = true;
         } else if (context === 'supplier' && referenceId) {
           const { purchaseService } = await import('@/app/services/purchaseService');
-          await purchaseService.updatePayment(
-            paymentToEdit.id,
-            referenceId,
-            {
-              amount,
-              paymentMethod,
-              accountId: selectedAccount,
-              paymentDate,
-              referenceNumber: notes || undefined,
-              notes: notes || undefined
-            }
-          );
+          await purchaseService.updatePayment(paymentToEdit.id, referenceId, updatePayload);
           success = true;
         }
       } else {
@@ -368,6 +432,40 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
           // So we pass it as optional - purchaseService will use purchase's branch_id instead
           try {
             const paymentRef = generateDocumentNumber('payment');
+            let attachmentPayload: { url: string; name: string }[] = [];
+            if (attachments.length > 0 && companyId) {
+              let anyUploadFailed = false;
+              try {
+                const bucket = 'payment-attachments';
+                const prefix = `${companyId}/${referenceId}/${Date.now()}`;
+                for (let i = 0; i < attachments.length; i++) {
+                  const file = attachments[i];
+                  const safeName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
+                  const path = `${prefix}_${i}_${safeName}`;
+                  const { error: upError } = await supabase.storage.from(bucket).upload(path, file, {
+                    upsert: true,
+                    contentType: file.type || 'application/octet-stream',
+                  });
+                  if (!upError) {
+                    const { data: urlData } = supabase.storage.from(bucket).getPublicUrl(path);
+                    attachmentPayload.push({ url: urlData?.publicUrl || path, name: file.name });
+                  } else {
+                    anyUploadFailed = true;
+                    console.warn('[UnifiedPaymentDialog] Supplier upload failed', upError);
+                    if (String(upError?.message || '').toLowerCase().includes('bucket not found')) {
+                      toast.warning('Storage bucket "payment-attachments" not found. Create it in Supabase, then run migration 20.', {
+                        duration: 10000,
+                        action: { label: 'Open Storage', onClick: () => window.open(getSupabaseStorageDashboardUrl(), '_blank') },
+                      });
+                    }
+                  }
+                }
+                if (anyUploadFailed) toast.warning('Some attachments could not be uploaded; payment will save without them.', { duration: 5000 });
+              } catch (storageErr) {
+                console.warn('[UnifiedPaymentDialog] Attachment upload failed:', storageErr);
+                toast.warning('Attachment upload failed; payment will save without attachments.');
+              }
+            }
             const { purchaseService } = await import('@/app/services/purchaseService');
             await purchaseService.recordPayment(
               referenceId,
@@ -376,7 +474,8 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
               selectedAccount,
               companyId,
               branchId && branchId !== 'all' ? branchId : undefined,
-              paymentRef
+              paymentRef,
+              { notes: notes.trim() || undefined, attachments: attachmentPayload.length ? attachmentPayload : undefined }
             );
             incrementNextNumber('payment');
             success = await accounting.recordSupplierPayment({
@@ -416,6 +515,40 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
           
           try {
             const paymentRef = generateDocumentNumber('payment');
+            let attachmentPayload: { url: string; name: string }[] = [];
+            if (attachments.length > 0 && companyId) {
+              let anyUploadFailed = false;
+              try {
+                const bucket = 'payment-attachments';
+                const prefix = `${companyId}/${referenceId}/${Date.now()}`;
+                for (let i = 0; i < attachments.length; i++) {
+                  const file = attachments[i];
+                  const safeName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
+                  const path = `${prefix}_${i}_${safeName}`;
+                  const { error: upError } = await supabase.storage.from(bucket).upload(path, file, {
+                    upsert: true,
+                    contentType: file.type || 'application/octet-stream',
+                  });
+                  if (!upError) {
+                    const { data: urlData } = supabase.storage.from(bucket).getPublicUrl(path);
+                    attachmentPayload.push({ url: urlData?.publicUrl || path, name: file.name });
+                  } else {
+                    anyUploadFailed = true;
+                    console.warn('[UnifiedPaymentDialog] Customer upload failed', upError);
+                    if (String(upError?.message || '').toLowerCase().includes('bucket not found')) {
+                      toast.warning('Storage bucket "payment-attachments" not found. Create it in Supabase, then run migration 20.', {
+                        duration: 10000,
+                        action: { label: 'Open Storage', onClick: () => window.open(getSupabaseStorageDashboardUrl(), '_blank') },
+                      });
+                    }
+                  }
+                }
+                if (anyUploadFailed) toast.warning('Some attachments could not be uploaded; payment will save without them.', { duration: 5000 });
+              } catch (storageErr) {
+                console.warn('[UnifiedPaymentDialog] Attachment upload failed, saving payment without attachments:', storageErr);
+                toast.warning('Attachment upload failed; payment will save without attachments.');
+              }
+            }
             const { saleService } = await import('@/app/services/saleService');
             await saleService.recordPayment(
               referenceId,
@@ -425,7 +558,8 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
               companyId,
               branchId,
               paymentDateTime.split('T')[0],
-              paymentRef
+              paymentRef,
+              { notes: notes.trim() || undefined, attachments: attachmentPayload.length ? attachmentPayload : undefined }
             );
             incrementNextNumber('payment');
             success = await accounting.recordSalePayment({
@@ -801,6 +935,29 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
                   <label className="block text-sm font-semibold text-gray-300 mb-2">
                     Attachments (Optional)
                   </label>
+
+                  {/* Existing attachments (edit mode) – saved in DB, shown so they persist */}
+                  {existingAttachments.length > 0 && (
+                    <div className="mb-3">
+                      <p className="text-xs text-gray-500 mb-2">Saved attachments (included on save):</p>
+                      <div className="flex flex-wrap gap-2">
+                        {existingAttachments.map((att, idx) => (
+                          <button
+                            key={idx}
+                            type="button"
+                            onClick={async () => {
+                              const url = await getAttachmentOpenUrl(att.url);
+                              window.open(url, '_blank');
+                            }}
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/30 rounded-lg text-blue-400 text-xs"
+                          >
+                            <FileText size={14} />
+                            <span className="truncate max-w-[140px]">{att.name}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                   
                   {/* Upload Area */}
                   <label className="block cursor-pointer">
@@ -820,7 +977,7 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
                     />
                   </label>
 
-                  {/* Uploaded Files */}
+                  {/* New files to upload */}
                   {attachments.length > 0 && (
                     <div className="mt-3 space-y-2">
                       {attachments.map((file, index) => (
@@ -868,10 +1025,12 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
           {/* Footer */}
           <div className="flex items-center justify-between p-5 border-t border-gray-800 bg-gray-950/50">
             <div className="text-xs text-gray-400">
-              {attachments.length > 0 && (
+              {(existingAttachments.length > 0 || attachments.length > 0) && (
                 <span className="flex items-center gap-1.5">
                   <FileText size={12} />
-                  {attachments.length} file{attachments.length > 1 ? 's' : ''} attached
+                  {existingAttachments.length > 0 && `${existingAttachments.length} saved`}
+                  {existingAttachments.length > 0 && attachments.length > 0 && ' · '}
+                  {attachments.length > 0 && `${attachments.length} new file${attachments.length > 1 ? 's' : ''}`}
                 </span>
               )}
             </div>

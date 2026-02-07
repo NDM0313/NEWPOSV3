@@ -6,6 +6,7 @@ import { ScrollArea } from '../ui/scroll-area';
 import { productService } from '@/app/services/productService';
 import { toast } from 'sonner';
 import { Loader2 } from 'lucide-react';
+import { ProductImage } from './ProductImage';
 
 interface Product {
   id: number;
@@ -13,6 +14,7 @@ interface Product {
   sku: string;
   name: string;
   image?: string;
+  image_urls?: string[];
   branch: string;
   unit: string;
   purchasePrice: number;
@@ -46,9 +48,29 @@ export const ViewProductDetailsDrawer: React.FC<ViewProductDetailsDrawerProps> =
     }
   }, [isOpen, product?.uuid]);
 
+  // Prevent body scroll and focus trap when drawer is open (must run before any early return)
+  useEffect(() => {
+    if (isOpen) {
+      document.body.style.overflow = 'hidden';
+      setTimeout(() => {
+        if (drawerRef.current) {
+          const firstFocusable = drawerRef.current.querySelector<HTMLElement>(
+            'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+          );
+          firstFocusable?.focus();
+        }
+      }, 100);
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, [isOpen]);
+
   const loadProductDetails = async () => {
     if (!product?.uuid) return;
-    
+
     try {
       setLoading(true);
       const data = await productService.getProduct(product.uuid);
@@ -75,27 +97,6 @@ export const ViewProductDetailsDrawer: React.FC<ViewProductDetailsDrawerProps> =
   };
 
   const stockStatus = getStockStatus();
-
-  // Prevent body scroll and focus trap when drawer is open
-  React.useEffect(() => {
-    if (isOpen) {
-      document.body.style.overflow = 'hidden';
-      // Focus trap: focus first focusable element in drawer
-      setTimeout(() => {
-        if (drawerRef.current) {
-          const firstFocusable = drawerRef.current.querySelector<HTMLElement>(
-            'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
-          );
-          firstFocusable?.focus();
-        }
-      }, 100);
-    } else {
-      document.body.style.overflow = '';
-    }
-    return () => {
-      document.body.style.overflow = '';
-    };
-  }, [isOpen]);
 
   return (
     <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex justify-end animate-in fade-in duration-200" onClick={onClose}>
@@ -138,8 +139,16 @@ export const ViewProductDetailsDrawer: React.FC<ViewProductDetailsDrawerProps> =
                 {/* Product Header */}
                 <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-6">
                   <div className="flex items-start gap-4">
-                    <div className="w-20 h-20 rounded-lg bg-gray-800 border border-gray-700 flex items-center justify-center shrink-0">
-                      <Package size={32} className="text-gray-600" />
+                    <div className="w-20 h-20 rounded-lg bg-gray-800 border border-gray-700 flex items-center justify-center shrink-0 overflow-hidden">
+                      {(product.image || (product as any).image_urls?.[0] || productDetails?.image_urls?.[0]) ? (
+                        <ProductImage
+                          src={product.image || (product as any).image_urls?.[0] || productDetails?.image_urls?.[0]}
+                          alt={product.name}
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <Package size={32} className="text-gray-600" />
+                      )}
                     </div>
                     <div className="flex-1 min-w-0">
                       <h3 className="text-xl font-bold text-white mb-1">{product.name}</h3>

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { X, Sparkles } from 'lucide-react';
+import { X, Sparkles, ExternalLink, Wallet } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
@@ -15,6 +15,7 @@ import {
   DialogTitle,
 } from '../ui/dialog';
 import { useSupabase } from '../../context/SupabaseContext';
+import { useNavigation } from '../../context/NavigationContext';
 import { branchService, Branch } from '../../services/branchService';
 import { accountService, Account } from '../../services/accountService';
 import { settingsService } from '../../services/settingsService';
@@ -34,6 +35,7 @@ export const AddBranchModal: React.FC<AddBranchModalProps> = ({
   editingBranch,
 }) => {
   const { companyId } = useSupabase();
+  const { setCurrentView } = useNavigation();
   const [saving, setSaving] = useState(false);
   const [loadingAccounts, setLoadingAccounts] = useState(false);
   const [accounts, setAccounts] = useState<Account[]>([]);
@@ -52,49 +54,30 @@ export const AddBranchModal: React.FC<AddBranchModalProps> = ({
     posCashDrawerId: '',
   });
 
-  // Load accounts
+  // Normalize account role/type (DB: type or account_role)
+  const getAccountRole = (acc: Account) =>
+    String((acc as any).account_role ?? (acc as any).type ?? (acc as any).accountType ?? '').toLowerCase().trim();
+
+  // Load accounts for branch defaults only: cash, bank, wallet. No module/simple mode dependency.
   const loadAccounts = useCallback(async () => {
-    if (!companyId) {
-      console.log('[ADD BRANCH MODAL] No companyId, skipping account load');
-      return;
-    }
+    if (!companyId) return;
     setLoadingAccounts(true);
     try {
-      const allAccounts = await accountService.getAllAccounts(companyId);
-      console.log('[ADD BRANCH MODAL] Loaded accounts:', allAccounts?.length || 0, 'accounts');
-      console.log('[ADD BRANCH MODAL] Account types:', allAccounts?.map(a => ({ name: a.name, type: a.type, account_type: a.account_type })));
-      setAccounts(allAccounts || []);
-      
-      // Filter by type - case-insensitive comparison with multiple variations
-      const cash = (allAccounts || []).filter(acc => {
-        const type = (acc.type || '').toLowerCase().trim();
-        const accountType = (acc.account_type || '').toLowerCase().trim();
-        const isActive = acc.is_active !== false; // Default to true if undefined
-        // Match various cash-related types
-        const isCashType = type === 'cash' || type === 'pos' || type === 'cash drawer' || 
-                          type.includes('cash') || accountType === 'cash' || accountType.includes('cash');
-        return isCashType && isActive;
+      const operational = await accountService.getAccountsForBranchDefaults(companyId);
+      setAccounts(operational);
+      const cash = operational.filter((acc: Account) => {
+        const r = getAccountRole(acc);
+        return r === 'cash' || r === 'pos' || r === 'mobile_wallet' || r === 'mobile wallet' || r.includes('cash') || r.includes('wallet');
       });
-      const bank = (allAccounts || []).filter(acc => {
-        const type = (acc.type || '').toLowerCase().trim();
-        const accountType = (acc.account_type || '').toLowerCase().trim();
-        const isActive = acc.is_active !== false;
-        // Match various bank-related types
-        const isBankType = type === 'bank' || type.includes('bank') || 
-                          accountType === 'bank' || accountType.includes('bank');
-        return isBankType && isActive;
+      const bank = operational.filter((acc: Account) => {
+        const r = getAccountRole(acc);
+        return r === 'bank' || r.includes('bank');
       });
-      
-      console.log('[ADD BRANCH MODAL] Filtered - Cash accounts:', cash.length, 'Bank accounts:', bank.length);
-      if (cash.length > 0) console.log('[ADD BRANCH MODAL] Cash accounts:', cash.map(a => a.name));
-      if (bank.length > 0) console.log('[ADD BRANCH MODAL] Bank accounts:', bank.map(a => a.name));
-      
       setCashAccounts(cash);
       setBankAccounts(bank);
     } catch (error) {
       console.error('[ADD BRANCH MODAL] Error loading accounts:', error);
       toast.error('Failed to load accounts');
-      // Set empty arrays on error to prevent UI issues
       setCashAccounts([]);
       setBankAccounts([]);
     } finally {
@@ -137,7 +120,7 @@ export const AddBranchModal: React.FC<AddBranchModalProps> = ({
   useEffect(() => {
     if (open) {
       if (editingBranch) {
-        // Edit mode - prefill form
+        // Edit mode - prefill form (including saved default account IDs)
         setFormData({
           name: editingBranch.name || '',
           code: editingBranch.code || '',
@@ -146,9 +129,9 @@ export const AddBranchModal: React.FC<AddBranchModalProps> = ({
           city: editingBranch.city || '',
           state: editingBranch.state || '',
           is_active: editingBranch.is_active ?? true,
-          cashAccountId: '', // These need to be loaded from branch settings
-          bankAccountId: '',
-          posCashDrawerId: '',
+          cashAccountId: editingBranch.default_cash_account_id || '',
+          bankAccountId: editingBranch.default_bank_account_id || '',
+          posCashDrawerId: editingBranch.default_pos_drawer_account_id || '',
         });
       } else {
         // Add mode - reset form
@@ -209,6 +192,9 @@ export const AddBranchModal: React.FC<AddBranchModalProps> = ({
         city: formData.city.trim() || undefined,
         state: formData.state.trim() || undefined,
         is_active: formData.is_active,
+        default_cash_account_id: formData.cashAccountId?.trim() || null,
+        default_bank_account_id: formData.bankAccountId?.trim() || null,
+        default_pos_drawer_account_id: formData.posCashDrawerId?.trim() || null,
       };
 
       console.log('[ADD BRANCH MODAL] Saving branch with data:', JSON.stringify(branchData, null, 2));
@@ -334,14 +320,47 @@ export const AddBranchModal: React.FC<AddBranchModalProps> = ({
             </div>
           </div>
 
-          {/* Default Accounts */}
+          {/* Default Accounts - linked to Accounting (Account) page */}
           <div className="space-y-4 pt-4 border-t border-gray-800">
-            <div className="flex items-center justify-between">
-              <Label className="text-gray-200 font-medium">Default Accounts (Optional)</Label>
-              {loadingAccounts && (
-                <span className="text-xs text-gray-500">Loading accounts...</span>
-              )}
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <Label className="text-gray-200 font-medium">Default Accounts (Optional)</Label>
+                <p className="text-xs text-gray-500 mt-0.5">These accounts are from Accounting. Add or edit them on the Account page.</p>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="border-gray-600 text-gray-300 hover:text-white hover:bg-gray-800 shrink-0 gap-1.5"
+                onClick={() => {
+                  onClose();
+                  setCurrentView('accounting');
+                }}
+              >
+                <Wallet size={14} />
+                Open Accounting
+              </Button>
             </div>
+            {loadingAccounts && (
+              <p className="text-xs text-gray-500">Loading accounts...</p>
+            )}
+            {!loadingAccounts && cashAccounts.length === 0 && bankAccounts.length === 0 && (
+              <div className="p-3 rounded-lg bg-gray-900/50 border border-gray-700 text-sm text-gray-400">
+                No accounts found. Add Cash and Bank accounts in Accounting to use them here.
+                <Button
+                  type="button"
+                  variant="link"
+                  className="text-blue-400 hover:text-blue-300 p-0 h-auto ml-2 inline-flex items-center gap-1"
+                  onClick={() => {
+                    onClose();
+                    setCurrentView('accounting');
+                  }}
+                >
+                  Go to Accounting
+                  <ExternalLink size={12} />
+                </Button>
+              </div>
+            )}
             
             {/* Cash Account */}
             <div className="space-y-2">
@@ -354,14 +373,14 @@ export const AddBranchModal: React.FC<AddBranchModalProps> = ({
                 <SelectTrigger className="bg-gray-900 border-gray-700 text-white">
                   <SelectValue placeholder={loadingAccounts ? "Loading..." : "Select cash account (optional)"} />
                 </SelectTrigger>
-                <SelectContent className="bg-gray-900 border-gray-800 text-white">
+                <SelectContent className="bg-gray-900 border-gray-800 text-white z-[120]" position="popper">
                   {loadingAccounts ? (
                     <SelectItem value="loading" disabled>Loading accounts...</SelectItem>
                   ) : cashAccounts.length === 0 ? (
                     <SelectItem value="no-accounts" disabled>No cash accounts available</SelectItem>
                   ) : (
                     cashAccounts.map((account) => (
-                      <SelectItem key={account.id} value={account.id || 'invalid'}>
+                      <SelectItem key={account.id} value={account.id || String(account.id)}>
                         {account.name} ({account.code || 'N/A'})
                       </SelectItem>
                     ))
@@ -381,14 +400,14 @@ export const AddBranchModal: React.FC<AddBranchModalProps> = ({
                 <SelectTrigger className="bg-gray-900 border-gray-700 text-white">
                   <SelectValue placeholder={loadingAccounts ? "Loading..." : "Select bank account (optional)"} />
                 </SelectTrigger>
-                <SelectContent className="bg-gray-900 border-gray-800 text-white">
+                <SelectContent className="bg-gray-900 border-gray-800 text-white z-[120]" position="popper">
                   {loadingAccounts ? (
                     <SelectItem value="loading" disabled>Loading accounts...</SelectItem>
                   ) : bankAccounts.length === 0 ? (
                     <SelectItem value="no-accounts" disabled>No bank accounts available</SelectItem>
                   ) : (
                     bankAccounts.map((account) => (
-                      <SelectItem key={account.id} value={account.id || 'invalid'}>
+                      <SelectItem key={account.id} value={account.id || String(account.id)}>
                         {account.name} ({account.code || 'N/A'})
                       </SelectItem>
                     ))
@@ -408,14 +427,14 @@ export const AddBranchModal: React.FC<AddBranchModalProps> = ({
                 <SelectTrigger className="bg-gray-900 border-gray-700 text-white">
                   <SelectValue placeholder={loadingAccounts ? "Loading..." : "Select POS drawer account (optional)"} />
                 </SelectTrigger>
-                <SelectContent className="bg-gray-900 border-gray-800 text-white">
+                <SelectContent className="bg-gray-900 border-gray-800 text-white z-[120]" position="popper">
                   {loadingAccounts ? (
                     <SelectItem value="loading" disabled>Loading accounts...</SelectItem>
                   ) : cashAccounts.length === 0 ? (
                     <SelectItem value="no-accounts" disabled>No cash accounts available</SelectItem>
                   ) : (
                     cashAccounts.map((account) => (
-                      <SelectItem key={account.id} value={account.id || 'invalid'}>
+                      <SelectItem key={account.id} value={account.id || String(account.id)}>
                         {account.name} ({account.code || 'N/A'})
                       </SelectItem>
                     ))

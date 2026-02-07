@@ -89,6 +89,8 @@ BEGIN
   DELETE FROM document_sequences WHERE company_id = cid;
   DELETE FROM workers WHERE company_id = cid;
   DELETE FROM contacts WHERE company_id = cid;
+  -- stock_movements references products; delete before products
+  DELETE FROM stock_movements WHERE product_id IN (SELECT id FROM products WHERE company_id = cid);
   DELETE FROM products WHERE company_id = cid;
   DELETE FROM product_categories WHERE company_id = cid;
   -- activity_logs and journal_entries reference accounts; delete first

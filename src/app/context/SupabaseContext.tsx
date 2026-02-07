@@ -126,56 +126,48 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         .from('users')
         .select('company_id, role, is_active')
         .eq('id', userId)
-        .single();
+        .maybeSingle();
 
       if (error) {
-        console.error('[FETCH USER DATA ERROR]', {
-          error: error,
-          message: error.message,
-          code: error.code,
-          details: error.details,
-          hint: error.hint,
-          userId: userId
-        });
-        
-        // If user doesn't exist in public.users, log warning and clear state
-        if (error.code === 'PGRST116' || error.message.includes('No rows')) {
+        // RLS or permission errors - treat as "need onboarding"
+        if (error.code === '42501' || error.message?.includes('permission denied') || error.code === 'PGRST301') {
+          if (process.env.NODE_ENV === 'development') {
+            console.warn('[FETCH USER DATA] Permission error. User may need to create a business first.');
+          }
+          setCompanyId(null);
+          setUserRole(null);
+          setBranchId(null);
+          setDefaultBranchId(null);
+          return;
+        }
+        console.error('[FETCH USER DATA ERROR]', { message: error.message, code: error.code, userId });
+        return;
+      }
+
+      if (!data) {
+        if (process.env.NODE_ENV === 'development') {
           console.warn('[FETCH USER DATA] User not found in public.users. User must create a business first.');
-          setCompanyId(null);
-          setUserRole(null);
-          setBranchId(null);
-          setDefaultBranchId(null);
-          return;
         }
-        
-        // RLS policy violation or other errors - clear state
-        if (error.code === '42501' || error.message.includes('permission denied') || error.status === 400 || error.code === 'PGRST301') {
-          console.warn('[FETCH USER DATA] Error fetching user data. User may need to create a business first.');
-          setCompanyId(null);
-          setUserRole(null);
-          setBranchId(null);
-          setDefaultBranchId(null);
-          return;
-        }
-      } else if (data) {
-        if (import.meta.env?.DEV) console.log('[FETCH USER DATA SUCCESS]', { companyId: data.company_id, role: data.role });
-        setCompanyId(data.company_id);
-        setUserRole(data.role);
-        fetchedRef.current.add(userId);
-        lastFetchedUserIdRef.current = userId;
-        
-        // CRITICAL: Ensure default accounts exist for this company
-        if (data.company_id) {
-          // Initialize default accounts asynchronously (don't block login)
-          import('@/app/services/defaultAccountsService').then(({ defaultAccountsService }) => {
-            defaultAccountsService.ensureDefaultAccounts(data.company_id).catch((error: any) => {
-              console.error('[SUPABASE CONTEXT] Error ensuring default accounts:', error);
-            });
+        setCompanyId(null);
+        setUserRole(null);
+        setBranchId(null);
+        setDefaultBranchId(null);
+        return;
+      }
+
+      if (import.meta.env?.DEV) console.log('[FETCH USER DATA SUCCESS]', { companyId: data.company_id, role: data.role });
+      setCompanyId(data.company_id);
+      setUserRole(data.role);
+      fetchedRef.current.add(userId);
+      lastFetchedUserIdRef.current = userId;
+
+      if (data.company_id) {
+        import('@/app/services/defaultAccountsService').then(({ defaultAccountsService }) => {
+          defaultAccountsService.ensureDefaultAccounts(data.company_id).catch((error: any) => {
+            console.error('[SUPABASE CONTEXT] Error ensuring default accounts:', error);
           });
-          
-          // Load user's default branch (admin → All Branches; normal user → assigned/first branch)
-          loadUserBranch(userId, data.company_id, data.role);
-        }
+        });
+        loadUserBranch(userId, data.company_id, data.role);
       }
     } catch (error) {
       console.error('[FETCH USER DATA EXCEPTION]', error);

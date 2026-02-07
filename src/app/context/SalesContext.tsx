@@ -222,8 +222,6 @@ const normalizePaymentMethodForEnum = (method: string | undefined): string => {
     'Card': 'card',
     'cheque': 'other',
     'Cheque': 'other',
-    'mobile wallet': 'other',
-    'Mobile Wallet': 'other',
     'wallet': 'other',
     'Wallet': 'other',
   };
@@ -659,24 +657,8 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
       
       // 🔒 ACCOUNTING OFF/ON BEHAVIOR RULE
       // Accounting OFF: Discount & Extra Charges stored in DB but NO journal entries
-      // Accounting ON: Discount & Extra Charges create proper journal entries
-      // Check if accounting module is enabled
-      let isAccountingEnabled = true; // Default to enabled
-      try {
-        const { useModules } = await import('@/app/context/ModuleContext');
-        // Note: Can't use hooks here, so check via settings context
-        const { useSettings } = await import('@/app/context/SettingsContext');
-        // For now, assume accounting is enabled if we can't check
-        // In production, this should check settings.modules.accountingModuleEnabled
-        isAccountingEnabled = true; // Will be checked properly via settings
-      } catch (e) {
-        // If module context not available, default to enabled
-        isAccountingEnabled = true;
-      }
-      
-      // CRITICAL FIX: Create accounting entries for discount, commission, and extra expenses
-      // Only for final invoices AND when accounting module is enabled
-      if (newSale.type === 'invoice' && newSale.status === 'final' && isAccountingEnabled) {
+      // Single accounting engine: always create journal entries (no module toggle)
+      if (newSale.type === 'invoice' && newSale.status === 'final') {
         try {
           const { supabase } = await import('@/lib/supabase');
           
@@ -730,16 +712,10 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
           }
         } catch (error: any) {
           console.error('[SALES CONTEXT] Error creating accounting entries:', error);
-          // Don't fail sale creation if accounting entries fail
         }
-      } else if (!isAccountingEnabled) {
-        // Accounting OFF: Discount & Extra Charges stored in DB (sale.discount, sale.expenses)
-        // but NO journal entries created
-        // Data is safe for future accounting enablement
-        console.log('[SALES CONTEXT] Accounting OFF: Discount/Extra charges stored in DB but no journal entries');
       }
-      
-      // 🔧 FIX 2: UNPAID SALE JOURNAL ENTRY (MANDATORY)
+
+      // 🔧 UNPAID SALE JOURNAL ENTRY (MANDATORY)
       // CRITICAL: ALWAYS create journal entry for sale (paid or unpaid)
       // Rule: Accounts Receivable Dr (if unpaid) or Cash/Bank Dr (if paid), Sales Revenue Cr
       if (newSale.type === 'invoice' && newSale.status === 'final' && companyId && newSale.total > 0) {

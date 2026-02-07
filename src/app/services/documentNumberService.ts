@@ -7,7 +7,7 @@
 
 import { supabase } from '@/lib/supabase';
 
-export type DocumentType = 'invoice' | 'quotation' | 'draft' | 'order' | 'purchase' | 'rental' | 'studio' | 'expense' | 'payment' | 'job' | 'journal';
+export type DocumentType = 'invoice' | 'quotation' | 'draft' | 'order' | 'purchase' | 'rental' | 'studio' | 'expense' | 'payment' | 'job' | 'journal' | 'production';
 
 interface DocumentNumberCheck {
   exists: boolean;
@@ -38,6 +38,7 @@ export const documentNumberService = {
         'payment': { table: 'payments', column: 'reference_number' },
         'job': { table: 'jobs', column: 'job_no' },
         'journal': { table: 'journal_entries', column: 'entry_no' },
+        'production': { table: 'products', column: 'sku' },
       };
 
       const mapping = tableColumnMap[documentType];
@@ -88,6 +89,7 @@ export const documentNumberService = {
         'payment': { table: 'payments', column: 'reference_number' },
         'job': { table: 'jobs', column: 'job_no' },
         'journal': { table: 'journal_entries', column: 'entry_no' },
+        'production': { table: 'products', column: 'sku' },
       };
 
       const mapping = tableColumnMap[documentType];

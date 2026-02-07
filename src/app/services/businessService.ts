@@ -1,31 +1,4 @@
-import { createClient, SupabaseClient } from '@supabase/supabase-js';
-
-// Service role client (bypasses RLS) – only for createBusiness; created lazily to avoid "Multiple GoTrueClient instances" on normal app load
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || import.meta.env.NEXT_PUBLIC_SUPABASE_URL;
-const serviceRoleKey = import.meta.env.VITE_SUPABASE_SERVICE_ROLE_KEY || import.meta.env.SUPABASE_SERVICE_ROLE_KEY;
-
-let supabaseAdmin: SupabaseClient | null = null;
-
-function getSupabaseAdmin(): SupabaseClient | null {
-  if (supabaseAdmin) return supabaseAdmin;
-  if (!supabaseUrl || !serviceRoleKey) {
-    console.error('Missing Supabase credentials for business creation');
-    return null;
-  }
-  const memoryStorage: { [key: string]: string } = {};
-  supabaseAdmin = createClient(supabaseUrl, serviceRoleKey, {
-    auth: {
-      autoRefreshToken: false,
-      persistSession: false,
-      storage: {
-        getItem: (key: string) => memoryStorage[key] ?? null,
-        setItem: (key: string, value: string) => { memoryStorage[key] = value; },
-        removeItem: (key: string) => { delete memoryStorage[key]; },
-      },
-    },
-  });
-  return supabaseAdmin;
-}
+import { supabase } from '@/lib/supabase';
 
 export interface CreateBusinessRequest {
   businessName: string;
@@ -42,84 +15,56 @@ export interface CreateBusinessResponse {
   error?: string;
 }
 
+/**
+ * Create a new business: sign up the user with Supabase Auth, then run the DB transaction.
+ * Uses the anon client only (no service role in the browser) to avoid 401 and Multiple GoTrueClient.
+ */
 export const businessService = {
-  /**
-   * Create a new business with company, branch, and admin user
-   * This uses service_role key to bypass RLS
-   */
   async createBusiness(data: CreateBusinessRequest): Promise<CreateBusinessResponse> {
-    const admin = getSupabaseAdmin();
-    if (!admin) {
-      return {
-        success: false,
-        error: 'Service role key not configured',
-      };
-    }
-
     try {
-      // Step 1: Create auth user
-      const { data: authUser, error: authError } = await admin.auth.admin.createUser({
+      // Step 1: Create auth user with the main Supabase client (no admin API)
+      const { data: signUpData, error: authError } = await supabase.auth.signUp({
         email: data.email,
         password: data.password,
-        email_confirm: true, // Auto-confirm email
-        user_metadata: {
-          full_name: data.ownerName,
+        options: {
+          data: { full_name: data.ownerName },
+          emailRedirectTo: undefined,
         },
       });
 
-      if (authError || !authUser.user) {
-        return {
-          success: false,
-          error: authError?.message || 'Failed to create user',
-        };
+      if (authError) {
+        return { success: false, error: authError.message };
       }
 
-      const userId = authUser.user.id;
+      const user = signUpData?.user;
+      if (!user?.id) {
+        return { success: false, error: 'Failed to create user' };
+      }
 
-      // Step 2: Use database transaction function to create company, branch, and user
-      // This ensures all-or-nothing: if any step fails, everything rolls back
-      const { data: transactionResult, error: transactionError } = await admin
-        .rpc('create_business_transaction', {
+      // Step 2: Create company, branch, and public.users row via RPC (allowed for authenticated after migration 22)
+      const { data: transactionResult, error: transactionError } = await supabase.rpc(
+        'create_business_transaction',
+        {
           p_business_name: data.businessName,
           p_owner_name: data.ownerName,
           p_email: data.email,
-          p_user_id: userId,
-        });
+          p_password: data.password,
+          p_user_id: user.id,
+        }
+      );
 
       if (transactionError) {
-        // Rollback: Delete auth user
-        await admin.auth.admin.deleteUser(userId);
         return {
           success: false,
           error: transactionError.message || 'Failed to create business in database',
         };
       }
 
-      // Parse transaction result
-      const result = transactionResult as any;
-      
-      if (!result || !result.success) {
-        // Rollback: Delete auth user
-        await admin.auth.admin.deleteUser(userId);
+      const result = transactionResult as { success?: boolean; userId?: string; companyId?: string; branchId?: string; error?: string } | null;
+      if (!result || result.success !== true) {
         return {
           success: false,
-          error: result?.error || 'Failed to create business in database',
-        };
-      }
-
-      // Verify data was actually created in database
-      const { data: verifyCompany, error: verifyError } = await admin
-        .from('companies')
-        .select('id, name, email')
-        .eq('id', result.companyId)
-        .single();
-
-      if (verifyError || !verifyCompany) {
-        // Data not found - transaction may have failed silently
-        await admin.auth.admin.deleteUser(userId);
-        return {
-          success: false,
-          error: 'Business created but verification failed. Please try again.',
+          error: (result as any)?.error || 'Failed to create business in database',
         };
       }
 
@@ -132,7 +77,7 @@ export const businessService = {
     } catch (error: any) {
       return {
         success: false,
-        error: error.message || 'Unknown error occurred',
+        error: error?.message || 'Unknown error occurred',
       };
     }
   },

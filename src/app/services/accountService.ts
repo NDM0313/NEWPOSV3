@@ -72,10 +72,41 @@ export const accountService = {
     return data;
   },
 
+  /** Alias for getAccount (used by deleteAccount and callers expecting getAccountById) */
+  async getAccountById(id: string) {
+    return this.getAccount(id);
+  },
+
+  /**
+   * Get accounts for branch default dropdowns (cash, bank, wallet only).
+   * Single source of truth: company_id + is_active + operational role.
+   * Does NOT depend on module toggle or UI mode. Uses type; if DB has account_role column, it is used first.
+   */
+  async getAccountsForBranchDefaults(companyId: string) {
+    const all = await this.getAllAccounts(companyId);
+    const active = (all || []).filter((a: any) => a.is_active !== false);
+    const roleOrType = (a: any) =>
+      String(a.account_role ?? a.type ?? '').toLowerCase().trim();
+    const operational = active.filter((a: any) => {
+      const r = roleOrType(a);
+      return (
+        r === 'cash' ||
+        r === 'bank' ||
+        r === 'wallet' ||
+        r === 'mobile_wallet' ||
+        r === 'mobile wallet' ||
+        r.includes('cash') ||
+        r.includes('bank') ||
+        r.includes('wallet')
+      );
+    });
+    return operational;
+  },
+
   // Create account
   async createAccount(account: Partial<Account>) {
     // Clean data - only include fields that exist in actual schema
-    // Actual schema: id, company_id, code, name, type, parent_id, balance, is_active, created_at, updated_at
+    // Actual schema may or may not include description (add via 17_accounts_description.sql)
     const cleanData: any = {
       company_id: account.company_id,
       code: account.code,
@@ -84,22 +115,23 @@ export const accountService = {
       balance: account.balance || 0,
       is_active: account.is_active !== false,
     };
-    
-    // Add optional fields only if provided
+
     if (account.parent_id !== undefined && account.parent_id !== null) {
       cleanData.parent_id = account.parent_id;
     }
-    
-    // DO NOT include: account_type, branch_id, branch_name, subtype, opening_balance, current_balance, is_system
-    
-    const { data, error } = await supabase
-      .from('accounts')
-      .insert(cleanData)
-      .select()
-      .single();
+    if (account.description !== undefined && account.description !== null && String(account.description).trim() !== '') {
+      cleanData.description = String(account.description).trim();
+    }
 
-    if (error) throw error;
-    return data;
+    let result = await supabase.from('accounts').insert(cleanData).select().single();
+
+    if (result.error && result.error.code === 'PGRST204' && result.error.message?.includes('description')) {
+      delete cleanData.description;
+      result = await supabase.from('accounts').insert(cleanData).select().single();
+    }
+
+    if (result.error) throw result.error;
+    return result.data;
   },
 
   // Update account
@@ -113,36 +145,57 @@ export const accountService = {
     if (updates.balance !== undefined) cleanData.balance = updates.balance;
     if (updates.is_active !== undefined) cleanData.is_active = updates.is_active;
     if (updates.parent_id !== undefined) cleanData.parent_id = updates.parent_id;
+    if (updates.description !== undefined) cleanData.description = updates.description === '' ? null : updates.description;
     
     // DO NOT include: account_type, branch_id, branch_name, subtype, opening_balance, current_balance, is_system, is_default_cash, is_default_bank
     
     // Filter out any non-existent fields that might have been passed
-    const allowedFields = ['code', 'name', 'type', 'balance', 'is_active', 'parent_id'];
+    const allowedFields = ['code', 'name', 'type', 'balance', 'is_active', 'parent_id', 'description'];
     const filteredData: any = {};
     for (const key of allowedFields) {
       if (cleanData[key] !== undefined) {
         filteredData[key] = cleanData[key];
       }
     }
-    
+
+    let result = await supabase.from('accounts').update(filteredData).eq('id', id).select().single();
+    if (result.error && result.error.code === 'PGRST204' && result.error.message?.includes('description')) {
+      delete filteredData.description;
+      result = await supabase.from('accounts').update(filteredData).eq('id', id).select().single();
+    }
+    if (result.error) throw result.error;
+    return result.data;
+  },
+
+  /**
+   * Get child accounts (accounts that have this account as parent).
+   * Used to prevent deleting a parent that has sub-accounts.
+   */
+  async getChildAccounts(parentId: string): Promise<any[]> {
     const { data, error } = await supabase
       .from('accounts')
-      .update(filteredData)
-      .eq('id', id)
-      .select()
-      .single();
+      .select('id, name')
+      .eq('parent_id', parentId);
 
     if (error) throw error;
-    return data;
+    return data || [];
   },
 
   // Delete account (soft delete)
   // 🔒 CORE ACCOUNTING BACKBONE RULE: Core payment accounts (Cash, Bank, Mobile Wallet) CANNOT be deleted
+  // 🔒 PARENT RULE: Cannot delete an account that has sub-accounts (children)
   async deleteAccount(id: string, companyId?: string) {
-    // CRITICAL: Check if this is a core payment account
+    const children = await this.getChildAccounts(id);
+    if (children.length > 0) {
+      throw new Error(
+        `Cannot delete "${(await this.getAccount(id))?.name || 'this account'}": it has ${children.length} sub-account(s). ` +
+        `Remove or reassign sub-accounts first.`
+      );
+    }
+
     if (companyId) {
       const { defaultAccountsService } = await import('./defaultAccountsService');
-      const account = await this.getAccountById(id);
+      const account = await this.getAccount(id);
       
       if (account && defaultAccountsService.isCorePaymentAccount(account)) {
         throw new Error(
