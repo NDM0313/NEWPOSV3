@@ -27,6 +27,7 @@ import {
   UserCheck,
   Printer,
   Paperclip,
+  Upload,
   Palette,
   Scissors,
   Sparkles,
@@ -74,15 +75,28 @@ import { PurchaseItemsSection } from './PurchaseItemsSection';
 import { PaymentAttachments, PaymentAttachment } from '../payments/PaymentAttachments';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { useSettings } from '@/app/context/SettingsContext';
+import { formatCurrency } from '@/app/utils/formatCurrency';
 import { contactService } from '@/app/services/contactService';
 import { productService } from '@/app/services/productService';
 import { branchService } from '@/app/services/branchService';
 import { purchaseService } from '@/app/services/purchaseService';
+import { inventoryService } from '@/app/services/inventoryService';
 import { usePurchases } from '@/app/context/PurchaseContext';
 import { useNavigation } from '@/app/context/NavigationContext';
 import { useDocumentNumbering } from '@/app/hooks/useDocumentNumbering';
 import { Loader2 } from 'lucide-react';
-import { format } from "date-fns";
+import { format, parseISO } from "date-fns";
+import {
+    AlertDialog,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+    AlertDialogCancel,
+} from "@/app/components/ui/alert-dialog";
+import { UnifiedPaymentDialog } from '@/app/components/shared/UnifiedPaymentDialog';
+import { uploadPurchaseAttachments } from '@/app/utils/uploadTransactionAttachments';
 
 interface PurchaseItem {
     id: number;
@@ -132,8 +146,8 @@ interface PurchaseFormProps {
 
 export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFormProps) => {
     // Supabase & Context
-    const { companyId, branchId: contextBranchId, userRole } = useSupabase();
-    const { inventorySettings } = useSettings();
+    const { companyId, branchId: contextBranchId, userRole, supabaseClient } = useSupabase();
+    const { inventorySettings, company } = useSettings();
     const enablePacking = inventorySettings.enablePacking;
     // CRITICAL FIX: Check if user is admin
     const isAdmin = userRole === 'admin' || userRole === 'Admin';
@@ -168,6 +182,8 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
     // Data State
     const [suppliers, setSuppliers] = useState<Array<{ id: number | string; name: string; dueBalance: number }>>([]);
     const [products, setProducts] = useState<Array<{ id: number | string; name: string; sku: string; price: number; stock: number; lastPurchasePrice?: number; lastSupplier?: string; hasVariations: boolean; needsPacking: boolean; variations?: Array<{ id: string; attributes?: Record<string, unknown>; size?: string; color?: string }> }>>([]);
+    /** Edit mode: variations for products in loaded purchase (so strip has options even before products list loads) */
+    const [editModeProductVariations, setEditModeProductVariations] = useState<Record<string, Array<{ id?: string; size?: string; color?: string; sku?: string; price?: number; stock?: number; attributes?: Record<string, unknown> }>>>({});
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     
@@ -218,6 +234,10 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
 
     // Payment State
     const [partialPayments, setPartialPayments] = useState<PartialPayment[]>([]);
+    const [paymentChoiceDialogOpen, setPaymentChoiceDialogOpen] = useState(false);
+    const [pendingSaveAction, setPendingSaveAction] = useState<{ print: boolean } | null>(null);
+    const [savedPurchaseIdForPayment, setSavedPurchaseIdForPayment] = useState<string | null>(null);
+    const [unifiedPaymentDialogOpen, setUnifiedPaymentDialogOpen] = useState(false);
     
     // Payment Form State
     const [newPaymentMethod, setNewPaymentMethod] = useState<'cash' | 'bank' | 'Mobile Wallet'>('cash');
@@ -226,6 +246,9 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
     
     // Payment Attachments State
     const [paymentAttachments, setPaymentAttachments] = useState<PaymentAttachment[]>([]);
+    // Purchase-level attachments (bill, etc.) – uploaded in form, included when user records payment
+    const [purchaseAttachmentFiles, setPurchaseAttachmentFiles] = useState<File[]>([]);
+    const purchaseAttachmentInputRef = useRef<HTMLInputElement>(null);
 
     // Extra Expenses State
     const [extraExpenses, setExtraExpenses] = useState<ExtraExpense[]>([]);
@@ -282,14 +305,16 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
         }
     }, [purchaseStatus]);
 
+    // Format supplier due balance as currency; green = they owe us, red = we owe them
     const formatDueBalanceCompact = (due: number) => {
-        if (due === 0) return '0';
-        if (due < 0) return `-${Math.abs(due).toLocaleString()}`;
-        return `+${due.toLocaleString()}`;
+        const currency = company?.currency || 'Rs';
+        if (due === 0) return formatCurrency(0, currency);
+        if (due < 0) return `-${formatCurrency(Math.abs(due), currency)}`;
+        return formatCurrency(due, currency);
     };
     const getDueBalanceColor = (due: number) => {
-        if (due < 0) return 'text-green-400';
-        if (due > 0) return 'text-red-400';
+        if (due < 0) return 'text-green-400'; // Supplier owes us (credit)
+        if (due > 0) return 'text-red-400';   // We owe supplier
         return 'text-gray-500';
     };
 
@@ -412,7 +437,30 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
         return false;
     };
 
-    // Variation options from backend - for inline selection
+    // Helper to normalize a single variation (shared by products list and edit-mode fetch)
+    const normalizeVariation = (v: any) => {
+        let size = v.size || '';
+        let color = v.color || '';
+        if (!size && v.attributes) {
+            size = v.attributes.size || v.attributes.Size || v.attributes.SIZE ||
+                (typeof v.attributes === 'object' ? Object.values(v.attributes).find((val: any) => typeof val === 'string' && ['s', 'm', 'l', 'xl', 'xs'].includes((val as string).toLowerCase())) : '') || '';
+        }
+        if (!color && v.attributes) {
+            color = v.attributes.color || v.attributes.Color || v.attributes.COLOR ||
+                (typeof v.attributes === 'object' ? Object.values(v.attributes).find((val: any) => typeof val === 'string' && ['red', 'blue', 'green', 'white', 'black'].some(c => (val as string).toLowerCase().includes(c))) : '') || '';
+        }
+        return {
+            id: v.id,
+            size: String(size || '').trim(),
+            color: String(color || '').trim(),
+            sku: v.sku,
+            price: v.price,
+            stock: v.stock,
+            attributes: v.attributes || {},
+        };
+    };
+
+    // Variation options from backend - for inline selection (products list + edit-mode loaded variations)
     const productVariationsFromBackend = useMemo(() => {
         const map: Record<string | number, Array<{ id?: string; size?: string; color?: string; sku?: string; price?: number; stock?: number; attributes?: Record<string, unknown> }>> = {};
         products.forEach((p) => {
@@ -420,54 +468,19 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
             const productId = p.id;
             const stringKey = String(productId);
             const numKey = typeof productId === 'number' ? productId : (/^\d+$/.test(stringKey) ? parseInt(stringKey, 10) : null);
-            
-            // Normalize variations to ensure consistent structure
-            const normalizedVariations = p.variations.map((v: any) => {
-                // Extract size and color from various possible structures
-                // Try direct properties first, then attributes object (case-insensitive)
-                let size = v.size || '';
-                let color = v.color || '';
-                
-                // If not found directly, check attributes object
-                if (!size && v.attributes) {
-                    size = v.attributes.size || 
-                           v.attributes.Size || 
-                           v.attributes.SIZE || 
-                           (typeof v.attributes === 'object' ? Object.values(v.attributes).find((val: any) => typeof val === 'string' && ['s', 'm', 'l', 'xl', 'xs'].includes(val.toLowerCase())) : '') || 
-                           '';
-                }
-                
-                if (!color && v.attributes) {
-                    color = v.attributes.color || 
-                            v.attributes.Color || 
-                            v.attributes.COLOR || 
-                            (typeof v.attributes === 'object' ? Object.values(v.attributes).find((val: any) => typeof val === 'string' && ['red', 'blue', 'green', 'white', 'black'].some(c => val.toLowerCase().includes(c))) : '') || 
-                            '';
-                }
-                
-                // Debug log for first variation of first product
-                if (p.id === products[0]?.id && v === p.variations[0]) {
-                    console.log('[VARIATION NORMALIZE] Original variation:', v, 'Extracted size:', size, 'color:', color);
-                }
-                
-                return {
-                    id: v.id,
-                    size: String(size || '').trim(),
-                    color: String(color || '').trim(),
-                    sku: v.sku,
-                    price: v.price,
-                    stock: v.stock,
-                    attributes: v.attributes || {},
-                };
-            });
-            
+            const normalizedVariations = p.variations.map((v: any) => normalizeVariation(v));
             map[stringKey] = normalizedVariations;
-            if (numKey !== null) {
-                map[numKey] = normalizedVariations;
-            }
+            if (numKey !== null) map[numKey] = normalizedVariations;
+        });
+        // Edit mode: merge variations for products in loaded purchase (so strip has options even before products list loads)
+        Object.entries(editModeProductVariations).forEach(([productIdKey, list]) => {
+            if (!list?.length) return;
+            map[productIdKey] = list;
+            const numKey = /^\d+$/.test(productIdKey) ? parseInt(productIdKey, 10) : null;
+            if (numKey !== null) map[numKey] = list;
         });
         return map;
-    }, [products]);
+    }, [products, editModeProductVariations]);
 
     // 1. Select Product -> Add to items, show variation strip if needed
     const handleSelectProduct = (product: any) => {
@@ -808,6 +821,47 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
         loadBranches();
     }, [companyId, branchId, contextBranchId]);
 
+    // Merge live stock from inventory overview (same source as Inventory page) into products for search dropdown
+    useEffect(() => {
+        if (!companyId || !products.length) return;
+        const branchToUse = branchId && branchId !== 'all' ? branchId : null;
+        let cancelled = false;
+        (async () => {
+            try {
+                const overview = await inventoryService.getInventoryOverview(companyId, branchToUse);
+                if (cancelled || !overview?.length) return;
+                const overviewByProductId: Record<string, { stock: number; hasVariations?: boolean; variations?: Array<{ id: string; stock: number }> }> = {};
+                overview.forEach((row: any) => {
+                    const key = String(row.id ?? row.productId);
+                    overviewByProductId[key] = {
+                        stock: row.stock ?? 0,
+                        hasVariations: row.hasVariations,
+                        variations: row.variations?.map((v: any) => ({ id: v.id, stock: v.stock ?? 0 })),
+                    };
+                });
+                setProducts(prev => prev.map(p => {
+                    const key = String(p.id);
+                    const row = overviewByProductId[key];
+                    if (!row) return p;
+                    if (row.hasVariations && row.variations?.length) {
+                        return {
+                            ...p,
+                            stock: row.stock,
+                            variations: (p.variations || []).map(v => {
+                                const vStock = row.variations?.find((vv: any) => String(vv.id) === String(v.id));
+                                return { ...v, stock: vStock?.stock ?? (v as any).stock };
+                            }),
+                        };
+                    }
+                    return { ...p, stock: row.stock };
+                }));
+            } catch {
+                if (!cancelled) { /* keep existing product stock on error */ }
+            }
+        })();
+        return () => { cancelled = true; };
+    }, [companyId, branchId, products.length]);
+
     // Reload suppliers when contact drawer closes (in case a new contact was added)
     useEffect(() => {
         const reloadSuppliers = async () => {
@@ -972,6 +1026,20 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                 }
                 
                 setLoadedPurchaseData(fullPurchaseData);
+                
+                // Load full payment history from payments table (getPurchase does not include payments)
+                const paymentsList = await purchaseService.getPurchasePayments(purchaseId);
+                if (paymentsList && paymentsList.length > 0) {
+                    const mapped: PartialPayment[] = paymentsList.map((p: any, index: number) => ({
+                        id: p.id?.toString() || String(index + 1),
+                        method: (p.method === 'bank' || p.method === 'card' ? 'bank' : p.method === 'mobile_wallet' ? 'Mobile Wallet' : 'cash') as 'cash' | 'bank' | 'Mobile Wallet',
+                        amount: Number(p.amount) || 0,
+                        reference: p.referenceNo || p.reference_number || '',
+                        notes: p.notes || '',
+                        attachments: Array.isArray(p.attachments) ? p.attachments : (p.attachments ? [p.attachments] : []),
+                    }));
+                    setPartialPayments(mapped);
+                }
             } catch (error: any) {
                 console.error('[PURCHASE FORM] Error loading purchase data:', error);
                 toast.error('Failed to load purchase data: ' + (error.message || 'Unknown error'));
@@ -987,21 +1055,85 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
         loadPurchaseData();
     }, [purchaseId]); // Only depend on purchaseId, not initialPurchase
 
+    // Edit mode: fetch variations for products in loaded purchase so variation strip has options even if products list hasn't loaded yet
+    useEffect(() => {
+        if (!loadedPurchaseData?.items?.length || !supabaseClient) {
+            setEditModeProductVariations({});
+            return;
+        }
+        const productIds = [...new Set((loadedPurchaseData.items as any[]).map((i: any) => i.product_id || i.productId).filter(Boolean))] as string[];
+        if (productIds.length === 0) {
+            setEditModeProductVariations({});
+            return;
+        }
+        let cancelled = false;
+        (async () => {
+            const { data: variations } = await supabaseClient
+                .from('product_variations')
+                .select('id, product_id, sku, attributes')
+                .in('product_id', productIds);
+            if (cancelled || !variations?.length) {
+                if (!cancelled) setEditModeProductVariations({});
+                return;
+            }
+            const byProduct: Record<string, Array<{ id?: string; size?: string; color?: string; sku?: string; price?: number; stock?: number; attributes?: Record<string, unknown> }>> = {};
+            variations.forEach((v: any) => {
+                const pid = String(v.product_id);
+                if (!byProduct[pid]) byProduct[pid] = [];
+                let size = '';
+                let color = '';
+                if (v.attributes && typeof v.attributes === 'object') {
+                    const a = v.attributes as Record<string, unknown>;
+                    size = String(a.size ?? a.Size ?? a.SIZE ?? '').trim();
+                    color = String(a.color ?? a.Color ?? a.COLOR ?? '').trim();
+                    if (!size && !color) {
+                        const vals = Object.values(a).filter((x): x is string => typeof x === 'string');
+                        const sizeLike = vals.find((val: string) => ['s', 'm', 'l', 'xl', 'xs'].includes(val.toLowerCase()));
+                        const colorLike = vals.find((val: string) => ['red', 'blue', 'green', 'white', 'black'].some(c => val.toLowerCase().includes(c)));
+                        if (sizeLike) size = sizeLike;
+                        if (colorLike) color = colorLike;
+                    }
+                }
+                byProduct[pid].push({
+                    id: v.id,
+                    size,
+                    color,
+                    sku: v.sku,
+                    price: undefined,
+                    stock: undefined,
+                    attributes: v.attributes || {},
+                });
+            });
+            if (!cancelled) setEditModeProductVariations(byProduct);
+        })();
+        return () => { cancelled = true; };
+    }, [loadedPurchaseData, supabaseClient]);
+
     // STEP 3: Pre-populate form when editing - wait for loadedPurchaseData
-    // Use ref to track if form has been initialized to prevent infinite loops
+    // Use ref to track which purchase we initialized so we re-run when opening a different purchase
     const formInitializedRef = useRef(false);
+    const lastInitializedPurchaseIdRef = useRef<string | null>(null);
+    const variationStockHydratedRef = useRef(false);
     
     useEffect(() => {
         // In edit mode, wait for loadedPurchaseData from backend
         // In create mode, use initialPurchase if provided (shouldn't happen, but safe fallback)
         const purchaseData = isEditMode ? loadedPurchaseData : (initialPurchase || null);
+        const purchaseId = purchaseData?.id ?? null;
+        
+        // CRITICAL: When opening a different purchase in edit mode, allow re-init (so date/fields come from DB)
+        if (isEditMode && purchaseId && lastInitializedPurchaseIdRef.current !== purchaseId) {
+            formInitializedRef.current = false;
+            lastInitializedPurchaseIdRef.current = null;
+        }
         
         // Only run when:
         // 1. We have purchase data
-        // 2. Form hasn't been initialized yet
+        // 2. Form hasn't been initialized yet for this purchase
         // 3. In edit mode, wait for loadedPurchaseData (not null)
         if (purchaseData && !formInitializedRef.current && (!isEditMode || loadedPurchaseData !== null)) {
             formInitializedRef.current = true;
+            lastInitializedPurchaseIdRef.current = purchaseId;
             
             console.log('[PURCHASE FORM] Pre-populating form with data:', purchaseData);
             
@@ -1012,9 +1144,34 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                                    '';
             setSupplierId(supplierIdValue.toString());
             
-            // Handle date - can be po_date, date, or purchaseDate
-            const purchaseDateValue = purchaseData.po_date || purchaseData.date || purchaseData.purchaseDate;
-            setPurchaseDate(purchaseDateValue ? new Date(purchaseDateValue) : new Date());
+            // Handle date + time: DB may return DATE (date only) or TIMESTAMPTZ (with time). Parse so picker shows saved date/time.
+            const raw = purchaseData.po_date || purchaseData.date || purchaseData.purchaseDate;
+            if (raw) {
+                try {
+                    if (typeof raw === 'object' && raw instanceof Date) {
+                        setPurchaseDate(raw);
+                    } else if (typeof raw === 'string') {
+                        const str = raw.trim();
+                        if (/^\d{4}-\d{2}-\d{2}T/.test(str)) {
+                            setPurchaseDate(parseISO(str));
+                        } else {
+                            const match = str.match(/^(\d{4})-(\d{2})-(\d{2})/);
+                            if (match) {
+                                const [, y, m, d] = match.map(Number);
+                                setPurchaseDate(new Date(y, m - 1, d));
+                            } else {
+                                setPurchaseDate(parseISO(str) || new Date(raw));
+                            }
+                        }
+                    } else {
+                        setPurchaseDate(new Date(raw));
+                    }
+                } catch {
+                    setPurchaseDate(new Date(raw));
+                }
+            } else {
+                setPurchaseDate(new Date());
+            }
             
             // Load PO number (read-only, auto-generated)
             setPoNumber(purchaseData.po_no || purchaseData.purchaseNo || purchaseData.poNo || generateDocumentNumber('purchase'));
@@ -1034,14 +1191,19 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                     const product = item.product || {};
                     const variation = item.variation || item.product_variations || {};
                     
-                    // Get variation ID if available
-                    const variationId = item.variation_id || 
-                                       item.variationId || 
-                                       variation.id || 
+                    // CRITICAL: Get variation_id from DB (required for edit form to preselect dropdown)
+                    const variationId = item.variation_id ??
+                                       item.variationId ??
+                                       (variation?.id) ??
                                        undefined;
                     
                     // Get variation attributes
-                    const variationAttrs = variation.attributes || {};
+                    const variationAttrs = variation?.attributes || {};
+                    
+                    // CRITICAL: If variant_id exists → variation mode: show selector and preselect it
+                    const hasVariations = Boolean(product?.has_variations ?? variationId);
+                    const showVariations = hasVariations;
+                    const selectedVariationId = variationId ?? undefined;
                     
                     // Handle packing details from backend
                     const packingDetails = item.packing_details || item.packingDetails || null;
@@ -1054,16 +1216,18 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                         price: item.unit_price || item.price || 0,
                         qty: item.quantity || item.qty || 0,
                         receivedQty: item.received_quantity || item.receivedQty || item.quantity || item.qty || 0,
-                        size: item.size || variationAttrs.size || variation.size,
-                        color: item.color || variationAttrs.color || variation.color,
-                        variationId: variationId, // Store variation ID for proper mapping
-                        stock: 0, // Will be loaded from product if needed
+                        size: item.size || variationAttrs.size || variation?.size,
+                        color: item.color || variationAttrs.color || variation?.color,
+                        variationId: variationId, // For save
+                        selectedVariationId: selectedVariationId, // For UI dropdown preselect
+                        showVariations: showVariations, // Show variation column when product has variations or we have saved variation
+                        stock: (variation?.stock != null ? Number(variation.stock) : 0) as number,
                         lastPurchasePrice: undefined,
                         lastSupplier: undefined,
-                        showVariations: false,
                         packingDetails: packingDetails,
                         thaans: packingDetails?.total_boxes || packingDetails?.boxes || 0,
                         meters: packingDetails?.total_meters || packingDetails?.meters || 0,
+                        unitAllowDecimal: product?.unit_allow_decimal ?? product?.unit?.allow_decimal ?? false,
                     };
                 });
                 setItems(convertedItems);
@@ -1134,9 +1298,50 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
         // Reset ref when purchase data is cleared (form closed or new purchase selected)
         if (!purchaseData && !isEditMode) {
             formInitializedRef.current = false;
+            lastInitializedPurchaseIdRef.current = null;
+            variationStockHydratedRef.current = false;
         }
     }, [loadedPurchaseData, initialPurchase, isEditMode]); // Watch loadedPurchaseData, initialPurchase, and isEditMode
-    
+
+    const lastHydratedPurchaseIdRef = useRef<string | null>(null);
+    // Edit mode: hydrate variation-level stock from inventory overview (movement-based) for items with selectedVariationId
+    useEffect(() => {
+        const purchaseId = loadedPurchaseData?.id;
+        if (purchaseId && lastHydratedPurchaseIdRef.current !== purchaseId) {
+            lastHydratedPurchaseIdRef.current = null;
+            variationStockHydratedRef.current = false;
+        }
+        if (!loadedPurchaseData || !companyId || !items.length) return;
+        const withVariation = items.filter(i => i.selectedVariationId);
+        if (withVariation.length === 0 || variationStockHydratedRef.current) return;
+        let cancelled = false;
+        (async () => {
+            try {
+                const branchToUse = branchId || (loadedPurchaseData as any)?.branch_id || null;
+                const overview = await inventoryService.getInventoryOverview(companyId, branchToUse);
+                if (cancelled) return;
+                const variationStockMap: Record<string, number> = {};
+                (overview || []).forEach((row: any) => {
+                    (row.variations || []).forEach((v: any) => {
+                        if (v.id != null) variationStockMap[v.id] = v.stock ?? 0;
+                    });
+                });
+                setItems(prev => prev.map(item =>
+                    item.selectedVariationId
+                        ? { ...item, stock: variationStockMap[item.selectedVariationId!] ?? item.stock }
+                        : item
+                ));
+                if (!cancelled) {
+                    variationStockHydratedRef.current = true;
+                    lastHydratedPurchaseIdRef.current = loadedPurchaseData?.id ?? null;
+                }
+            } catch {
+                if (!cancelled) variationStockHydratedRef.current = false;
+            }
+        })();
+        return () => { cancelled = true; };
+    }, [loadedPurchaseData, companyId, branchId, items.length, items.map(i => i.selectedVariationId).filter(Boolean).join(',')]);
+
     // Handle Save
     const handleSave = async (print: boolean = false) => {
         // RULE 2 FIX: Branch validation - Required for Admin/Owner
@@ -1168,15 +1373,27 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
             return;
         }
         
-        // CRITICAL FIX: Validate unit decimal rules before save
+        // CRITICAL FIX: Validate unit decimal rules before save (unit allows decimal → allow; else whole numbers only)
         for (const item of items) {
-            if (item.unitAllowDecimal === false && item.qty % 1 !== 0) {
+            if (item.unitAllowDecimal !== true && item.qty % 1 !== 0) {
                 toast.error(`Item "${item.name}": This product unit does not allow decimal quantities. Please enter a whole number.`);
                 setSaving(false);
                 return;
             }
         }
-        
+
+        // When status is Received or Final, show payment option (Pay Now / Credit) – only for NEW purchase, not when updating
+        const isPaymentStatus = purchaseStatus === 'received' || purchaseStatus === 'final';
+        if (isPaymentStatus && !isEditMode) {
+            setPendingSaveAction({ print });
+            setPaymentChoiceDialogOpen(true);
+            return;
+        }
+
+        await proceedWithSave(print, false);
+    };
+
+    const proceedWithSave = async (print: boolean, openPaymentDialogAfter: boolean): Promise<string | null> => {
         try {
             setSaving(true);
             
@@ -1219,12 +1436,15 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                 return;
             }
             
+            const paidToUse = openPaymentDialogAfter ? 0 : totalPaid;
+            const dueToUse = openPaymentDialogAfter ? totalAmount : balanceDue;
+            const paymentStatusToUse = openPaymentDialogAfter ? 'unpaid' : paymentStatus;
             // Create purchase data
             const purchaseData = {
                 supplier: supplierUuid,
                 supplierName: supplierName,
                 contactNumber: '', // Can be enhanced to get from supplier
-                date: format(purchaseDate, 'yyyy-MM-dd'),
+                date: format(purchaseDate, "yyyy-MM-dd'T'HH:mm:ss"),
                 expectedDelivery: undefined,
                 location: finalBranchId, // Branch name for display
                 branchId: finalBranchId, // CRITICAL: Branch UUID for database
@@ -1236,9 +1456,9 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                 tax: 0, // Can be enhanced later
                 shippingCost: expensesTotal,
                 total: totalAmount,
-                paid: totalPaid,
-                due: balanceDue,
-                paymentStatus: paymentStatus as 'paid' | 'partial' | 'unpaid',
+                paid: paidToUse,
+                due: dueToUse,
+                paymentStatus: paymentStatusToUse as 'paid' | 'partial' | 'unpaid',
                 paymentMethod: partialPayments.length > 0 ? partialPayments[0].method : 'cash',
                 notes: refNumber || undefined
             };
@@ -1250,15 +1470,28 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                 // PurchaseContext.updatePurchase() handles items update internally with delta-based stock movements
                 await updatePurchase(purchaseId, {
                     status: purchaseStatus as 'draft' | 'ordered' | 'received' | 'final',
-                    paymentStatus: paymentStatus as 'paid' | 'partial' | 'unpaid',
+                    paymentStatus: paymentStatusToUse as 'paid' | 'partial' | 'unpaid',
                     total: totalAmount,
-                    paid: totalPaid,
-                    due: balanceDue,
+                    paid: paidToUse,
+                    due: dueToUse,
                     notes: refNumber || undefined,
+                    date: format(purchaseDate, "yyyy-MM-dd'T'HH:mm:ss"),
                     // 🔒 CRITICAL: Pass items array to updatePurchase (like SaleForm does)
                     items: purchaseItems,
                 });
-                
+                if (purchaseAttachmentFiles.length > 0 && companyId) {
+                    try {
+                        const uploaded = await uploadPurchaseAttachments(companyId, purchaseId, purchaseAttachmentFiles);
+                        const existing = (loadedPurchaseData as any)?.attachments || [];
+                        const merged = Array.isArray(existing) ? [...existing, ...uploaded] : uploaded;
+                        if (merged.length > 0) await updatePurchase(purchaseId, { attachments: merged } as any);
+                        setPurchaseAttachmentFiles([]);
+                        setLoadedPurchaseData((prev: any) => prev ? { ...prev, attachments: merged } : null);
+                    } catch (e) {
+                        console.warn('[PURCHASE FORM] Attachment upload failed:', e);
+                        toast.warning('Purchase saved but some attachments could not be uploaded.');
+                    }
+                }
                 toast.success('Purchase order updated successfully!');
                 
                 // 🔒 CRITICAL FIX: Dispatch event for inventory refresh (EDIT MODE)
@@ -1266,12 +1499,28 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                 window.dispatchEvent(new CustomEvent('purchaseSaved', { 
                     detail: { purchaseId: purchaseId } 
                 }));
+                if (openPaymentDialogAfter) {
+                    setSavedPurchaseIdForPayment(purchaseId);
+                    setUnifiedPaymentDialogOpen(true);
+                } else {
+                    onClose();
+                }
+                return purchaseId;
             } else {
                 // CREATE MODE: Create new purchase
                 const newPurchase = await createPurchase(purchaseData);
-                
-                // Save payments if any were added during purchase creation
-                if (partialPayments.length > 0 && newPurchase?.id && companyId) {
+                if (newPurchase?.id && purchaseAttachmentFiles.length > 0 && companyId) {
+                    try {
+                        const uploaded = await uploadPurchaseAttachments(companyId, newPurchase.id, purchaseAttachmentFiles);
+                        if (uploaded.length > 0) await updatePurchase(newPurchase.id, { attachments: uploaded } as any);
+                        setPurchaseAttachmentFiles([]);
+                    } catch (e) {
+                        console.warn('[PURCHASE FORM] Attachment upload failed:', e);
+                        toast.warning('Purchase created but some attachments could not be uploaded.');
+                    }
+                }
+                // Save payments only when NOT opening payment dialog (user already added in form or chose Credit)
+                if (!openPaymentDialogAfter && partialPayments.length > 0 && newPurchase?.id && companyId) {
                     try {
                         const finalBranchId = isAdmin 
                             ? (branchId || contextBranchId || '') 
@@ -1279,7 +1528,7 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                         
                         for (const payment of partialPayments) {
                             await purchaseService.recordPayment(
-                                newPurchase.id, // CRITICAL FIX: Use id, not uuid (Purchase interface has id field)
+                                newPurchase.id,
                                 payment.amount,
                                 payment.method,
                                 payment.accountId || undefined,
@@ -1297,24 +1546,23 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                 
                 toast.success('Purchase order created successfully!');
                 
-                // 🔒 CRITICAL FIX: Dispatch event for inventory refresh (CREATE MODE)
-                // Note: createPurchase already dispatches this event, but we dispatch again here for safety
                 console.log('[PURCHASE FORM] 📢 Dispatching purchaseSaved event (CREATE MODE), purchaseId:', newPurchase?.id);
                 window.dispatchEvent(new CustomEvent('purchaseSaved', { 
                     detail: { purchaseId: newPurchase?.id } 
                 }));
+                if (openPaymentDialogAfter && newPurchase?.id) {
+                    setSavedPurchaseIdForPayment(newPurchase.id);
+                    setUnifiedPaymentDialogOpen(true);
+                    return newPurchase.id;
+                }
+                onClose();
+                return newPurchase?.id ?? null;
             }
             
-            if (print) {
-                // TODO: Implement print functionality
-                toast.info('Print functionality coming soon');
-            }
-            
-            // Close form
-            onClose();
         } catch (error: any) {
             console.error('[PURCHASE FORM] Error saving purchase:', error);
             toast.error(`Failed to save purchase: ${error.message || 'Unknown error'}`);
+            return null;
         } finally {
             setSaving(false);
         }
@@ -1451,14 +1699,14 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
 
                 {/* Form Row – Supplier, Date, Ref # only (no Invoice #, Status in top bar) */}
                 <div className="px-6 py-4 bg-[#0F1419]">
-                    <div className="invoice-container mx-auto w-full">
-                        <div className="bg-gray-900/30 border border-gray-800/50 rounded-lg p-3">
+                    <div className="invoice-container mx-auto w-full max-w-[1151px]">
+                        <div className="bg-gray-900/30 border border-gray-800/50 rounded-lg p-3 min-h-[85px] w-full">
                             <div className="flex items-end gap-3 w-full flex-wrap">
                                 <div className="flex flex-col flex-1 min-w-0 min-w-[200px]">
                                     <div className="flex items-center justify-between mb-1.5">
                                         <Label className="text-orange-400 font-medium text-[10px] uppercase tracking-wide h-[14px]">Supplier</Label>
                                         {supplierId && (
-                                            <span className={cn("text-[15px] font-semibold tabular-nums", getDueBalanceColor(selectedSupplierDue))}>
+                                            <span className={cn("absolute left-[677px] text-[15px] font-semibold tabular-nums", getDueBalanceColor(selectedSupplierDue))}>
                                                 {formatDueBalanceCompact(selectedSupplierDue)}
                                             </span>
                                         )}
@@ -1494,7 +1742,7 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                                         )}
                                     />
                                 </div>
-                                <div className="flex flex-col w-32">
+                                <div className="flex flex-col w-[184px] absolute left-[798px] top-[77px] z-0">
                                     <Label className="text-gray-500 font-medium text-xs uppercase tracking-wide h-[14px] mb-1.5">Date</Label>
                                     <div className="[&>div>button]:bg-gray-900/50 [&>div>button]:border-gray-800 [&>div>button]:text-white [&>div>button]:text-xs [&>div>button]:h-10 [&>div>button]:min-h-[40px] [&>div>button]:px-2.5 [&>div>button]:py-1 [&>div>button]:rounded-lg [&>div>button]:border [&>div>button]:hover:bg-gray-800 [&>div>button]:w-full [&>div>button]:justify-start">
                                         <CalendarDatePicker
@@ -1505,7 +1753,7 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                                         />
                                     </div>
                                 </div>
-                                <div className="flex flex-col w-24">
+                                <div className="flex flex-col absolute left-[987px] w-[132px]">
                                     <Label className="text-gray-500 font-medium text-xs uppercase tracking-wide h-[14px] mb-1.5">Ref #</Label>
                                     <div className="relative">
                                         <FileText className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-600" size={14} />
@@ -1580,7 +1828,7 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                                 // Variation handling
                                 productVariations={productVariationsFromBackend}
                                 handleInlineVariationSelect={handleInlineVariationSelect}
-                                // Update item
+                                isEditMode={isEditMode}
                                 updateItem={updateItem}
                                 // Keyboard navigation
                                 itemQtyRefs={itemQtyRefs}
@@ -1591,67 +1839,11 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                             </div>
                         </div>
 
-                        {/* RIGHT PANEL - Summary + Payment + Expenses (Independent Scroll) */}
+                        {/* RIGHT PANEL - Extra Expenses first, then Summary (Independent Scroll) */}
                         <div className="flex flex-col h-full overflow-y-auto space-y-3 pb-3">
-                            {/* Summary Card */}
-                            <div className="bg-gradient-to-br from-gray-900/80 to-gray-900/50 border border-gray-800 rounded-lg p-4 shrink-0">
-                                <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">Purchase Summary</h3>
-                                <div className="space-y-2">
-                                    <div className="flex justify-between text-xs">
-                                        <span className="text-gray-400">Items Subtotal</span>
-                                        <span className="text-white font-medium">${subtotal.toLocaleString()}</span>
-                                    </div>
-                                    
-                                    {/* Discount - Inline Input */}
-                                    <div className="flex items-center justify-between gap-2 py-1">
-                                        <div className="flex items-center gap-1.5">
-                                            <Percent size={12} className="text-red-400" />
-                                            <span className="text-xs text-gray-400">Discount</span>
-                                        </div>
-                                        <div className="flex items-center gap-1.5">
-                                            <Select value={discountType} onValueChange={(v: any) => setDiscountType(v)}>
-                                                <SelectTrigger className="w-14 h-8 bg-gray-950 border-gray-700 text-white text-xs px-2">
-                                                    <SelectValue />
-                                                </SelectTrigger>
-                                                <SelectContent className="bg-gray-950 border-gray-800 text-white min-w-[60px]">
-                                                    <SelectItem value="percentage">%</SelectItem>
-                                                    <SelectItem value="fixed">$</SelectItem>
-                                                </SelectContent>
-                                            </Select>
-                                            <Input 
-                                                type="number"
-                                                placeholder="0"
-                                                className="w-20 h-8 bg-gray-950 border-gray-700 text-white text-xs text-right px-2"
-                                                value={discountValue > 0 ? discountValue : ''}
-                                                onChange={(e) => setDiscountValue(parseFloat(e.target.value) || 0)}
-                                            />
-                                            {discountAmount > 0 && (
-                                                <span className="text-xs text-red-400 font-medium min-w-[60px] text-right">
-                                                    -${discountAmount.toLocaleString()}
-                                                </span>
-                                            )}
-                                        </div>
-                                    </div>
-
-                                    {expensesTotal > 0 && (
-                                        <div className="flex justify-between text-xs">
-                                            <span className="text-purple-400">Extra Expenses</span>
-                                            <span className="text-purple-400 font-medium">+${expensesTotal.toLocaleString()}</span>
-                                        </div>
-                                    )}
-                                    
-                                    <Separator className="bg-gray-800" />
-                                    
-                                    <div className="flex justify-between items-center pt-1">
-                                        <span className="text-sm font-semibold text-white">Grand Total</span>
-                                        <span className="text-2xl font-bold text-orange-500">${totalAmount.toLocaleString()}</span>
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* Extra Expenses Card */}
+                            {/* Extra Expenses Card – above Summary */}
                             <div className="bg-gray-900/50 border border-gray-800 rounded-lg p-4 space-y-3 shrink-0">
-                                <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Extra Expenses</h3>
+                                <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wide">Extra Expenses</h3>
                                 
                                 {/* Add Expense Form */}
                                 <div className="grid grid-cols-3 gap-2">
@@ -1687,10 +1879,10 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                                 {extraExpenses.length > 0 && (
                                     <div className="space-y-2 max-h-32 overflow-y-auto">
                                         {extraExpenses.map((exp) => (
-                                            <div key={exp.id} className="flex items-center justify-between bg-gray-950 rounded p-2 text-xs">
+                                            <div key={exp.id} className="flex items-center justify-between bg-gray-950 rounded p-2 text-sm">
                                                 <span className="text-purple-400 capitalize">{exp.type}</span>
                                                 <div className="flex items-center gap-2">
-                                                    <span className="text-white font-medium">${exp.amount}</span>
+                                                    <span className="text-white font-medium text-sm">{exp.amount.toLocaleString()}</span>
                                                     <button
                                                         onClick={() => setExtraExpenses(extraExpenses.filter(e => e.id !== exp.id))}
                                                         className="text-red-400 hover:text-red-300"
@@ -1704,183 +1896,313 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                                 )}
                             </div>
 
-                            {/* Payment Section – enabled when Status = Received or Final (STEP 2 FIX) */}
-                            <div className={cn(
-                                "bg-gray-900/50 border border-gray-800 rounded-lg p-4 space-y-4 shrink-0 transition-opacity",
-                                !isPaymentEnabled && "opacity-50 pointer-events-none"
-                            )}>
-                                {!isPaymentEnabled && (
-                                    <div className="text-xs text-yellow-400 mb-2 rounded-md bg-yellow-500/10 border border-yellow-500/30 px-3 py-2">
-                                        Payment sirf Received ya Final status par allowed hai. Status ko Received ya Final par set karein.
-                                    </div>
-                                )}
-                                {/* Header with Status Badge */}
-                                <div className="flex items-center justify-between">
-                                    <h3 className="text-sm font-semibold text-gray-300 uppercase tracking-wide">Payment</h3>
-                                    <Badge className={cn(
-                                        "text-xs font-medium px-3 py-1",
-                                        paymentStatus === 'paid' && "bg-green-600 text-white",
-                                        paymentStatus === 'partial' && "bg-blue-600 text-white",
-                                        paymentStatus === 'unpaid' && "bg-orange-600 text-white"
-                                    )}>
-                                        {paymentStatus === 'paid' && '✓ Paid'}
-                                        {paymentStatus === 'partial' && '◐ Partial'}
-                                        {paymentStatus === 'unpaid' && '○ Unpaid'}
-                                    </Badge>
-                                </div>
-
-                            {/* 1. AMOUNT SUMMARY SECTION */}
-                            <div className="bg-gray-950 border border-gray-800 rounded-lg p-4 space-y-3">
-                                {/* Purchase Amount */}
-                                <div className="flex items-center justify-between">
-                                    <span className="text-xs text-gray-500 uppercase tracking-wide">Purchase Amount</span>
-                                    <span className="text-xl font-bold text-white">${totalAmount.toLocaleString()}</span>
-                                </div>
-                                
-                                {/* Total Paid */}
-                                {totalPaid > 0 && (
-                                    <>
-                                        <Separator className="bg-gray-800" />
-                                        <div className="flex items-center justify-between">
-                                            <span className="text-xs text-gray-400">Total Paid</span>
-                                            <span className="text-sm font-medium text-green-400">${totalPaid.toLocaleString()}</span>
-                                        </div>
-                                    </>
-                                )}
-                                
-                                {/* Balance Due */}
-                                <Separator className="bg-gray-800" />
-                                <div className="flex justify-between items-center">
-                                    <span className="text-sm font-semibold text-gray-400">Balance Due</span>
-                                    <span className={cn(
-                                        "text-xl font-bold",
-                                        balanceDue === 0 ? "text-green-500" : balanceDue < totalAmount ? "text-blue-500" : "text-orange-500"
-                                    )}>
-                                        ${balanceDue.toLocaleString()}
-                                    </span>
-                                </div>
-                            </div>
-
-                            {/* Quick Payment Buttons */}
-                            <div className="space-y-2">
-                                <Label className="text-xs text-gray-500">Quick Pay</Label>
-                                <div className="grid grid-cols-4 gap-2">
-                                    <Button 
-                                        type="button"
-                                        disabled={!isPaymentEnabled}
-                                        onClick={() => setNewPaymentAmount(totalAmount * 0.25)}
-                                        className="h-9 bg-gray-800 hover:bg-gray-700 text-white text-xs border border-gray-700 disabled:opacity-50 disabled:pointer-events-none"
-                                    >
-                                        25%
-                                    </Button>
-                                    <Button 
-                                        type="button"
-                                        disabled={!isPaymentEnabled}
-                                        onClick={() => setNewPaymentAmount(totalAmount * 0.50)}
-                                        className="h-9 bg-gray-800 hover:bg-gray-700 text-white text-xs border border-gray-700 disabled:opacity-50 disabled:pointer-events-none"
-                                    >
-                                        50%
-                                    </Button>
-                                    <Button 
-                                        type="button"
-                                        disabled={!isPaymentEnabled}
-                                        onClick={() => setNewPaymentAmount(totalAmount * 0.75)}
-                                        className="h-9 bg-gray-800 hover:bg-gray-700 text-white text-xs border border-gray-700 disabled:opacity-50 disabled:pointer-events-none"
-                                    >
-                                        75%
-                                    </Button>
-                                    <Button 
-                                        type="button"
-                                        disabled={!isPaymentEnabled}
-                                        onClick={() => setNewPaymentAmount(totalAmount)}
-                                        className="h-9 bg-green-700 hover:bg-green-600 text-white text-xs border border-green-600 disabled:opacity-50 disabled:pointer-events-none"
-                                    >
-                                        Full
-                                    </Button>
-                                </div>
-                            </div>
-
-                            {/* Add Payment Form */}
-                            <div className="space-y-2">
-                                <Label className="text-xs text-gray-500">Add Payment</Label>
-                                <div className="grid grid-cols-2 gap-2">
-                                    <Select value={newPaymentMethod} onValueChange={(v: any) => setNewPaymentMethod(v)} disabled={!isPaymentEnabled}>
-                                        <SelectTrigger className="h-9 bg-gray-950 border-gray-700 text-white text-xs disabled:opacity-50">
-                                            <SelectValue />
-                                        </SelectTrigger>
-                                        <SelectContent className="bg-gray-950 border-gray-800 text-white">
-                                            <SelectItem value="cash">Cash</SelectItem>
-                                            <SelectItem value="bank">Bank</SelectItem>
-                                            <SelectItem value="Mobile Wallet">Mobile Wallet</SelectItem>
-                                        </SelectContent>
-                                    </Select>
-                                    <Input 
-                                        type="number"
-                                        placeholder="Amount"
-                                        disabled={!isPaymentEnabled}
-                                        value={newPaymentAmount > 0 ? newPaymentAmount : ''}
-                                        onChange={(e) => setNewPaymentAmount(parseFloat(e.target.value) || 0)}
-                                        className="h-9 bg-gray-950 border-gray-700 text-white text-xs disabled:opacity-50"
-                                    />
-                                </div>
-                                <Input 
-                                    placeholder="Reference (optional)"
-                                    disabled={!isPaymentEnabled}
-                                    value={newPaymentReference}
-                                    onChange={(e) => setNewPaymentReference(e.target.value)}
-                                    className="h-9 bg-gray-950 border-gray-700 text-white text-xs disabled:opacity-50"
-                                />
-                                <PaymentAttachments
-                                    attachments={paymentAttachments}
-                                    onAttachmentsChange={setPaymentAttachments}
-                                />
-                                <Button
-                                    onClick={handleAddPayment}
-                                    disabled={!isPaymentEnabled}
-                                    className="w-full h-9 bg-blue-600 hover:bg-blue-500 text-white text-xs disabled:opacity-50 disabled:pointer-events-none"
-                                >
-                                    <Plus size={14} className="mr-1" /> Add Payment
-                                </Button>
-                            </div>
-
-                            {/* Payment List */}
-                            {partialPayments.length > 0 && (
+                            {/* Summary Card */}
+                            <div className="bg-gradient-to-br from-gray-900/80 to-gray-900/50 border border-gray-800 rounded-lg p-4 shrink-0">
+                                <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-3">Purchase Summary</h3>
                                 <div className="space-y-2">
-                                    <Label className="text-xs text-gray-500">Payments Received</Label>
-                                    <div className="bg-gray-950 rounded-lg border border-gray-800 p-3 space-y-2 max-h-48 overflow-y-auto">
-                                        {partialPayments.map((payment) => (
-                                            <div key={payment.id} className="flex items-center justify-between bg-gray-900 rounded p-2.5 text-xs border border-gray-800/50">
-                                                <div>
-                                                    <div className="text-blue-400 capitalize font-medium">{payment.method}</div>
-                                                    {payment.reference && <div className="text-gray-500 text-[10px] mt-0.5">{payment.reference}</div>}
-                                                    {payment.attachments && payment.attachments.length > 0 && (
-                                                        <div className="text-gray-500 text-[10px] mt-0.5 flex items-center gap-1">
-                                                            <Paperclip size={10} />
-                                                            {payment.attachments.length} file(s)
+                                    <div className="flex justify-between text-sm">
+                                        <span className="text-gray-400">Items Subtotal</span>
+                                        <span className="text-white font-medium">{subtotal.toLocaleString()}</span>
+                                    </div>
+                                    
+                                    {/* Discount - Inline Input */}
+                                    <div className="flex items-center justify-between gap-2 py-1">
+                                        <div className="flex items-center gap-1.5">
+                                            <Percent size={14} className="text-red-400" />
+                                            <span className="text-sm text-gray-400">Discount</span>
+                                        </div>
+                                        <div className="flex items-center gap-1.5">
+                                            <Select value={discountType} onValueChange={(v: any) => setDiscountType(v)}>
+                                                <SelectTrigger className="w-14 h-8 bg-gray-950 border-gray-700 text-white text-sm px-2">
+                                                    <SelectValue />
+                                                </SelectTrigger>
+                                                <SelectContent className="bg-gray-950 border-gray-800 text-white min-w-[60px]">
+                                                    <SelectItem value="percentage">%</SelectItem>
+                                                    <SelectItem value="fixed">$</SelectItem>
+                                                </SelectContent>
+                                            </Select>
+                                            <Input 
+                                                type="number"
+                                                placeholder="0"
+                                                className="w-20 h-8 bg-gray-950 border-gray-700 text-white text-sm text-right px-2"
+                                                value={discountValue > 0 ? discountValue : ''}
+                                                onChange={(e) => setDiscountValue(parseFloat(e.target.value) || 0)}
+                                            />
+                                            {discountAmount > 0 && (
+                                                <span className="text-sm text-red-400 font-medium min-w-[60px] text-right">
+                                                    -{discountAmount.toLocaleString()}
+                                                </span>
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    {expensesTotal > 0 && (
+                                        <div className="flex justify-between text-sm">
+                                            <span className="text-purple-400">Extra Expenses</span>
+                                            <span className="text-purple-400 font-medium">+{expensesTotal.toLocaleString()}</span>
+                                        </div>
+                                    )}
+
+                                    {/* Payment history – directly under Extra Expenses, detail per payment */}
+                                    {partialPayments.length > 0 && (
+                                        <>
+                                            <div className="pt-1">
+                                                <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide flex items-center gap-1.5 mb-1.5">
+                                                    <Wallet size={14} />
+                                                    Payment history {partialPayments.length > 0 && `(${partialPayments.length})`}
+                                                </h4>
+                                                <div className="space-y-1.5 max-h-48 overflow-y-auto">
+                                                    {partialPayments.map((p) => (
+                                                        <div key={p.id} className="flex items-center justify-between gap-2 bg-gray-950/80 rounded-md px-2.5 py-2 border border-gray-800/50">
+                                                            <div className="flex items-center gap-2 min-w-0 flex-1">
+                                                                {p.method === 'cash' && <Banknote size={14} className="text-green-500 shrink-0" />}
+                                                                {p.method === 'bank' && <CreditCard size={14} className="text-blue-500 shrink-0" />}
+                                                                {p.method === 'Mobile Wallet' && <Wallet size={14} className="text-amber-500 shrink-0" />}
+                                                                <span className="text-sm text-white capitalize truncate">{p.method}</span>
+                                                                {(p.reference || p.notes || (p.attachments?.length ?? 0) > 0) && (
+                                                                    <span className="text-xs text-gray-500 truncate">
+                                                                        {p.reference && `Ref: ${p.reference}`}
+                                                                        {p.reference && (p.notes || (p.attachments?.length ?? 0) > 0) && ' · '}
+                                                                        {(p.attachments?.length ?? 0) > 0 && `${p.attachments!.length} file(s)`}
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                            <span className="text-sm font-semibold text-green-400 shrink-0 tabular-nums">{Number(p.amount).toLocaleString()}</span>
                                                         </div>
-                                                    )}
+                                                    ))}
                                                 </div>
-                                                <div className="flex items-center gap-2">
-                                                    <span className="text-white font-medium">${payment.amount.toLocaleString()}</span>
-                                                    <button
-                                                        type="button"
-                                                        disabled={!isPaymentEnabled}
-                                                        onClick={() => setPartialPayments(partialPayments.filter(p => p.id !== payment.id))}
-                                                        className="text-red-400 hover:text-red-300 p-1 disabled:opacity-50 disabled:pointer-events-none"
-                                                    >
-                                                        <Trash2 size={12} />
-                                                    </button>
-                                                </div>
+                                            </div>
+                                        </>
+                                    )}
+                                    
+                                    <Separator className="bg-gray-800" />
+                                    
+                                    <div className="flex justify-between items-center pt-1">
+                                        <span className="text-gray-400">Grand Total</span>
+                                        <span className="text-xl font-semibold text-white">${totalAmount.toLocaleString()}</span>
+                                    </div>
+                                    <div className="flex justify-between items-center pt-1">
+                                        <span className="text-sm font-semibold text-white">Due balance</span>
+                                        <span className="text-xl font-semibold text-orange-500">${Math.max(0, balanceDue).toLocaleString()}</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Attachments Card – upload purchase bill / docs; saved with payment when you Pay Now */}
+                            <div className="bg-gray-900/50 border border-gray-800 rounded-lg p-4 space-y-3 shrink-0">
+                                <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wide flex items-center gap-2">
+                                    <Paperclip size={14} />
+                                    Attachments
+                                </h3>
+                                <input
+                                    ref={purchaseAttachmentInputRef}
+                                    type="file"
+                                    accept="image/*,.pdf,application/pdf"
+                                    multiple
+                                    className="hidden"
+                                    onChange={(e) => {
+                                        const files = e.target.files;
+                                        if (files?.length) {
+                                            const valid = Array.from(files).filter((f) => f.type.startsWith('image/') || f.type === 'application/pdf');
+                                            setPurchaseAttachmentFiles((prev) => [...prev, ...valid]);
+                                            if (valid.length < (files.length || 0)) toast.error('Only images and PDF allowed.');
+                                        }
+                                        e.target.value = '';
+                                    }}
+                                />
+                                <label className="block cursor-pointer">
+                                    <div
+                                        className="border-2 border-dashed border-gray-700 rounded-lg p-3 hover:border-blue-500/50 hover:bg-gray-800/30 transition-all text-center"
+                                        onClick={() => purchaseAttachmentInputRef.current?.click()}
+                                        onDragOver={(e) => { e.preventDefault(); e.currentTarget.classList.add('border-blue-500/50', 'bg-gray-800/30'); }}
+                                        onDragLeave={(e) => { e.currentTarget.classList.remove('border-blue-500/50', 'bg-gray-800/30'); }}
+                                        onDrop={(e) => {
+                                            e.preventDefault();
+                                            e.currentTarget.classList.remove('border-blue-500/50', 'bg-gray-800/30');
+                                            const files = e.dataTransfer.files;
+                                            if (files?.length) {
+                                                const valid = Array.from(files).filter((f) => f.type.startsWith('image/') || f.type === 'application/pdf');
+                                                setPurchaseAttachmentFiles((prev) => [...prev, ...valid]);
+                                            }
+                                        }}
+                                    >
+                                        <Upload className="mx-auto mb-1 text-gray-500" size={20} />
+                                        <p className="text-xs text-gray-400">Click or drop files (images, PDF)</p>
+                                        <p className="text-[10px] text-gray-500 mt-0.5">Saved with purchase when you save</p>
+                                    </div>
+                                </label>
+                                {purchaseAttachmentFiles.length > 0 && (
+                                    <div className="space-y-1.5 max-h-28 overflow-y-auto">
+                                        {purchaseAttachmentFiles.map((file, idx) => (
+                                            <div key={idx} className="flex items-center justify-between gap-2 bg-gray-950 rounded-md px-2.5 py-2 border border-gray-800/50">
+                                                <FileText size={14} className="text-gray-500 shrink-0" />
+                                                <span className="text-sm text-gray-300 truncate flex-1 min-w-0">{file.name}</span>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setPurchaseAttachmentFiles((prev) => prev.filter((_, i) => i !== idx))}
+                                                    className="text-red-400 hover:text-red-300 shrink-0 p-0.5"
+                                                >
+                                                    <Trash2 size={14} />
+                                                </button>
                                             </div>
                                         ))}
                                     </div>
-                                </div>
-                            )}
+                                )}
+                                {(() => {
+                                    const raw = (loadedPurchaseData as any)?.attachments;
+                                    let purchaseSaved: { url: string; name?: string }[] = [];
+                                    if (Array.isArray(raw)) purchaseSaved = raw;
+                                    else if (raw && typeof raw === 'string') {
+                                        try { purchaseSaved = JSON.parse(raw) || []; } catch { purchaseSaved = []; }
+                                    }
+                                    const fromPayments = partialPayments.flatMap((p) => (p.attachments || []).map((a) => ({ ...a, paymentMethod: p.method })));
+                                    const hasPurchaseSaved = purchaseSaved.length > 0;
+                                    return (
+                                        <>
+                                            {hasPurchaseSaved && (
+                                                <div className="space-y-1.5 pt-1 border-t border-gray-800">
+                                                    <p className="text-[10px] text-gray-500 uppercase tracking-wide">Saved with purchase</p>
+                                                    <div className="space-y-1.5 max-h-24 overflow-y-auto">
+                                                        {purchaseSaved.map((att: { url: string; name?: string }, idx: number) => (
+                                                            <div key={idx} className="flex items-center justify-between gap-2 bg-gray-950 rounded-md px-2.5 py-1.5 border border-gray-800/50">
+                                                                <FileText size={12} className="text-gray-500 shrink-0" />
+                                                                <span className="text-xs text-gray-300 truncate flex-1 min-w-0">{att.name || 'Attachment'}</span>
+                                                                <Button
+                                                                    type="button"
+                                                                    variant="ghost"
+                                                                    size="sm"
+                                                                    className="h-6 text-xs text-blue-400 hover:text-blue-300 shrink-0"
+                                                                    onClick={async () => {
+                                                                        const { getAttachmentOpenUrl } = await import('@/app/utils/paymentAttachmentUrl');
+                                                                        const url = await getAttachmentOpenUrl(att.url);
+                                                                        window.open(url, '_blank');
+                                                                    }}
+                                                                >
+                                                                    Open
+                                                                </Button>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            )}
+                                            {fromPayments.length > 0 && (
+                                                <div className="space-y-1.5 pt-1 border-t border-gray-800">
+                                                    <p className="text-[10px] text-gray-500 uppercase tracking-wide">From payments</p>
+                                                    <div className="space-y-1.5 max-h-24 overflow-y-auto">
+                                                        {fromPayments.map((att, idx) => (
+                                                            <div key={idx} className="flex items-center justify-between gap-2 bg-gray-950 rounded-md px-2.5 py-1.5 border border-gray-800/50">
+                                                                <FileText size={12} className="text-gray-500 shrink-0" />
+                                                                <span className="text-xs text-gray-300 truncate flex-1 min-w-0">{att.name || 'Attachment'}</span>
+                                                                <Button
+                                                                    type="button"
+                                                                    variant="ghost"
+                                                                    size="sm"
+                                                                    className="h-6 text-xs text-blue-400 hover:text-blue-300 shrink-0"
+                                                                    onClick={async () => {
+                                                                        const { getAttachmentOpenUrl } = await import('@/app/utils/paymentAttachmentUrl');
+                                                                        const url = await getAttachmentOpenUrl(att.url);
+                                                                        window.open(url, '_blank');
+                                                                    }}
+                                                                >
+                                                                    Open
+                                                                </Button>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </>
+                                    );
+                                })()}
+                                {purchaseAttachmentFiles.length === 0 && partialPayments.flatMap((p) => p.attachments || []).length === 0 && !(Array.isArray((loadedPurchaseData as any)?.attachments) && (loadedPurchaseData as any).attachments.length > 0) && (
+                                    <p className="text-xs text-gray-500">No files yet. Add above; they’ll be saved with the purchase when you save.</p>
+                                )}
                             </div>
+
                         </div>
                     </div>
                 </div>
             </div>
+
+            {/* ============ PAYMENT CHOICE DIALOG (like Sale – Pay Now / Credit) ============ */}
+            <AlertDialog open={paymentChoiceDialogOpen} onOpenChange={setPaymentChoiceDialogOpen}>
+                <AlertDialogContent className="bg-gray-900 border-gray-700 text-white max-w-md">
+                    <AlertDialogHeader>
+                        <AlertDialogTitle className="text-xl font-bold flex items-center gap-2">
+                            <DollarSign size={20} className="text-blue-400" />
+                            Payment Option
+                        </AlertDialogTitle>
+                        <AlertDialogDescription className="text-gray-400 pt-2">
+                            Is purchase ki payment ab record karein ya credit par chhorein?
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <div className="space-y-3 py-4">
+                        <Button
+                            onClick={async () => {
+                                setPaymentChoiceDialogOpen(false);
+                                const printFlag = pendingSaveAction?.print ?? false;
+                                setPendingSaveAction(null);
+                                try {
+                                    await proceedWithSave(printFlag, true);
+                                } catch (e) {
+                                    console.error('[PURCHASE FORM] Save for payment failed:', e);
+                                }
+                            }}
+                            className="w-full h-14 bg-blue-600 hover:bg-blue-700 text-white text-base font-semibold flex items-center justify-center gap-2"
+                        >
+                            <DollarSign size={20} />
+                            Pay Now
+                        </Button>
+                        <Button
+                            onClick={async () => {
+                                setPaymentChoiceDialogOpen(false);
+                                if (pendingSaveAction) {
+                                    await proceedWithSave(pendingSaveAction.print, false);
+                                }
+                                setPendingSaveAction(null);
+                            }}
+                            className="w-full h-14 bg-gray-700 hover:bg-gray-600 text-white text-base font-semibold flex items-center justify-center gap-2"
+                        >
+                            <CreditCard size={20} />
+                            Credit (Save without payment)
+                        </Button>
+                    </div>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel
+                            onClick={() => setPendingSaveAction(null)}
+                            className="bg-gray-800 hover:bg-gray-700 text-white border-gray-700"
+                        >
+                            Cancel
+                        </AlertDialogCancel>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
+
+            <UnifiedPaymentDialog
+                isOpen={unifiedPaymentDialogOpen && !!savedPurchaseIdForPayment}
+                onClose={() => {
+                    setUnifiedPaymentDialogOpen(false);
+                    setSavedPurchaseIdForPayment(null);
+                    setPurchaseAttachmentFiles([]);
+                    onClose();
+                }}
+                context="supplier"
+                entityName={suppliers.find(s => s.id.toString() === supplierId)?.name || 'Supplier'}
+                entityId={supplierId || undefined}
+                outstandingAmount={totalAmount}
+                totalAmount={totalAmount}
+                paidAmount={0}
+                previousPayments={[]}
+                referenceNo={poNumber || undefined}
+                referenceId={savedPurchaseIdForPayment || undefined}
+                onSuccess={() => {
+                    setUnifiedPaymentDialogOpen(false);
+                    setSavedPurchaseIdForPayment(null);
+                    setPurchaseAttachmentFiles([]);
+                    window.dispatchEvent(new CustomEvent('paymentAdded'));
+                    onClose();
+                }}
+            />
 
             {/* ============ LAYER 3: FIXED FOOTER ============ */}
             <div className="shrink-0 bg-[#0B1019] border-t border-gray-800">
@@ -1929,7 +2251,7 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                                 disabled={saving}
                             >
                                 <Save size={15} className="mr-1.5" />
-                                {saving ? 'Saving...' : 'Save'}
+                                {saving ? (isEditMode ? 'Updating...' : 'Saving...') : (isEditMode ? 'Update' : 'Save')}
                             </Button>
                             <Button 
                                 type="button"
@@ -1938,7 +2260,7 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                                 disabled={saving}
                             >
                                 <Printer size={15} className="mr-1.5" />
-                                {saving ? 'Saving...' : 'Save & Print'}
+                                {saving ? (isEditMode ? 'Updating...' : 'Saving...') : (isEditMode ? 'Update & Print' : 'Save & Print')}
                             </Button>
                     </div>
                 </div>

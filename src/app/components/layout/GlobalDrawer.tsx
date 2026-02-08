@@ -105,8 +105,8 @@ export const GlobalDrawer = () => {
     } else if (isProduct) {
        contentClasses += "!w-[900px] !max-w-[95vw] sm:!max-w-[900px] flex flex-col min-h-0"; // Product form + variations table; flex so form can scroll
     } else if (isContact) {
-      // Contact form: Fixed 580-600px width
-      contentClasses += "!w-[580px] !max-w-[600px] sm:!max-w-[600px]"; // Contact form: 580-600px fixed width
+      // Contact form: Fixed 580-600px width; min-h-0 + overflow-hidden so inner form can scroll
+      contentClasses += "!w-[580px] !max-w-[600px] sm:!max-w-[600px] min-h-0 overflow-hidden flex flex-col";
     } else {
       contentClasses += "w-[400px] sm:w-[540px]"; // Standard for simple forms
     }
@@ -196,9 +196,11 @@ export const GlobalDrawer = () => {
           />
         )}
 
-        {/* Contact Form - Only mount when active */}
+        {/* Contact Form - Only mount when active; wrapper ensures scroll works */}
         {activeDrawer === 'addContact' && (
-          <ContactFormContent onClose={() => closeDrawer()} />
+          <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+            <ContactFormContent onClose={() => closeDrawer()} />
+          </div>
         )}
 
       </>
@@ -231,13 +233,15 @@ export const GlobalDrawer = () => {
         
         {/* Child Drawer (Contact) - Higher z-index, appears on top, proper overflow */}
         <Sheet open={isOpen} onOpenChange={handleOpenChange}>
-          <SheetContent side={side} className={contentClasses + " overflow-y-auto"}>
+          <SheetContent side={side} className={contentClasses}>
             <SheetHeader className="sr-only">
               <SheetTitle>Add Contact</SheetTitle>
               <SheetDescription className="sr-only">Create a new contact</SheetDescription>
             </SheetHeader>
             {activeDrawer === 'addContact' && (
-              <ContactFormContent onClose={() => closeDrawer()} />
+              <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+                <ContactFormContent onClose={() => closeDrawer()} />
+              </div>
             )}
           </SheetContent>
         </Sheet>
@@ -285,7 +289,7 @@ export const GlobalDrawer = () => {
                'Drawer content'}
             </SheetDescription>
           </SheetHeader>
-          <div className={isProduct ? "flex flex-col flex-1 min-h-0 overflow-hidden" : ""}>
+          <div className={isProduct || isContact ? "flex flex-col flex-1 min-h-0 overflow-hidden" : ""}>
             {renderContent()}
           </div>
         </SheetContent>
@@ -314,7 +318,7 @@ export const GlobalDrawer = () => {
 
 // Contact Form Component
 const ContactFormContent = ({ onClose }: { onClose: () => void }) => {
-  const { drawerContactType, setCreatedContactId, parentDrawer, drawerPrefillName, drawerPrefillPhone } = useNavigation();
+  const { drawerContactType, setCreatedContactId, parentDrawer, drawerPrefillName, drawerPrefillPhone, drawerData } = useNavigation();
   const { companyId, branchId, user } = useSupabase();
   const [contactRoles, setContactRoles] = useState<{
     customer: boolean;
@@ -472,11 +476,11 @@ const ContactFormContent = ({ onClose }: { onClose: () => void }) => {
       const phone = formData.get('mobile') as string;
       const name = formData.get('business-name') as string;
       
-      if (phone) {
+      const editingId = drawerData?.contact?.uuid;
+      if (phone && phone.trim() !== '') {
         const duplicateByPhone = existingContacts.find(
-          (c: any) => (c.phone === phone || c.mobile === phone) && phone.trim() !== ''
+          (c: any) => c.id !== editingId && (c.phone === phone || c.mobile === phone)
         );
-        
         if (duplicateByPhone) {
           toast.error(`Ye number pehle se "${duplicateByPhone.name}" ke naam se save hai`);
           setSaving(false);
@@ -543,6 +547,16 @@ const ContactFormContent = ({ onClose }: { onClose: () => void }) => {
           setSaving(false);
           return;
         }
+      }
+
+      const editingContactId = drawerData?.contact?.uuid;
+      if (editingContactId) {
+        await contactService.updateContact(editingContactId, contactData as any);
+        toast.success('Contact updated successfully');
+        setCreatedContactId?.(editingContactId);
+        onClose();
+        setSaving(false);
+        return;
       }
 
       const createdContact = await contactService.createContact(contactData);
@@ -660,11 +674,13 @@ const ContactFormContent = ({ onClose }: { onClose: () => void }) => {
   };
   
   return (
-    <div className="flex flex-col h-full">
-      <div className="p-6 border-b border-gray-800 bg-gray-950 sticky top-0 z-10">
-        <h2 className="text-xl font-bold text-white">Add New Contact</h2>
+    <div className="flex flex-col h-full min-h-0">
+      <div className="p-6 border-b border-gray-800 bg-gray-950 sticky top-0 z-10 shrink-0">
+        <h2 className="text-xl font-bold text-white">{drawerData?.contact ? 'Edit Contact' : 'Add New Contact'}</h2>
         <p className="text-sm text-gray-400 mt-1">
-          {drawerContactType 
+          {drawerData?.contact
+            ? 'Update contact details below.'
+            : drawerContactType 
             ? `Adding new ${drawerContactType}. Other roles disabled.`
             : 'Select contact roles (Customer/Supplier can be combined, Worker is separate)'}
         </p>
@@ -754,7 +770,7 @@ const ContactFormContent = ({ onClose }: { onClose: () => void }) => {
         </div>
       </div>
 
-      <form onSubmit={handleContactSubmit} className="flex-1 overflow-y-auto p-6 space-y-6">
+      <form onSubmit={handleContactSubmit} className="flex-1 min-h-0 overflow-y-auto p-6 space-y-6">
         {/* Contact Group / Category - Show for Customer and Supplier, hide for Worker */}
         {(contactRoles.customer || contactRoles.supplier) && (
           <div className="space-y-2">

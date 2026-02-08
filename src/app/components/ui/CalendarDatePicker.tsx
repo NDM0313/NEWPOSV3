@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Calendar, ChevronLeft, ChevronRight, Clock, X } from 'lucide-react';
 import { Button } from './button';
 import { cn } from './utils';
@@ -43,6 +43,20 @@ export const CalendarDatePicker: React.FC<CalendarDatePickerProps> = ({
     }
     return '00:00';
   });
+
+  // Sync internal state when value prop changes (e.g. parent loads saved date in edit mode)
+  useEffect(() => {
+    if (value) {
+      setSelectedDate(value);
+      setCurrentMonth(value);
+      const hours = value.getHours().toString().padStart(2, '0');
+      const minutes = value.getMinutes().toString().padStart(2, '0');
+      setSelectedTime(`${hours}:${minutes}`);
+    } else {
+      setSelectedDate(null);
+      setSelectedTime('00:00');
+    }
+  }, [value?.getTime?.() ?? value]);
 
   const formatDate = (date: Date | null | undefined) => {
     if (!date) return '';

@@ -42,6 +42,8 @@ import { ProductionOrderDetail } from './components/production/ProductionOrderDe
 import { CustomerOrderTracking } from './components/tracking/CustomerOrderTracking';
 import { InventoryDashboard } from './components/inventory/InventoryDashboard';
 import { InventoryDashboardNew } from './components/inventory/InventoryDashboardNew';
+import { InventoryDesignTestPage } from './components/inventory/InventoryDesignTestPage';
+import { InventoryAnalyticsTestPage } from './components/inventory/InventoryAnalyticsTestPage';
 import { StudioDashboard } from './components/studio/StudioDashboard';
 import { SettingsPage } from './components/settings/SettingsPage';
 import { SettingsPageNew } from './components/settings/SettingsPageNew';
@@ -79,7 +81,6 @@ import { SupabaseProvider } from './context/SupabaseContext';
 import { ProtectedRoute } from './components/auth/ProtectedRoute';
 import { useSettings } from './context/SettingsContext';
 import { DateRangeProvider } from './context/DateRangeContext';
-import { GitHubPullRequestsPage } from './components/github/GitHubPullRequestsPage';
 
 // v1.0.1 - Enhanced Product Form with SKU auto-generation and global access
 
@@ -190,8 +191,9 @@ const AppContent = () => {
       {currentView === 'test-ledger' && <TestLedger />}
       {currentView === 'customer-ledger-interactive-test' && <CustomerLedgerInteractiveTest />}
       {currentView === 'sales-list-design-test' && <SalesListDesignTestPage />}
-      {currentView === 'github-prs' && <GitHubPullRequestsPage />}
-      
+      {currentView === 'inventory-design-test' && <InventoryDesignTestPage />}
+      {currentView === 'inventory-analytics-test' && <InventoryAnalyticsTestPage />}
+
       <GlobalDrawer />
     </Layout>
   );

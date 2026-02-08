@@ -48,7 +48,8 @@ type View =
   | 'customer-ledger-interactive-test'
   | 'sales-list-design-test'
   | 'worker-detail'
-  | 'github-prs';
+  | 'inventory-design-test'
+  | 'inventory-analytics-test';
 
 type DrawerType = 'none' | 'addUser' | 'addProduct' | 'edit-product' | 'addSale' | 'edit-sale' | 'addPurchase' | 'edit-purchase' | 'addContact';
 
@@ -58,7 +59,7 @@ interface NavigationContextType {
   isSidebarOpen: boolean;
   toggleSidebar: () => void;
   activeDrawer: DrawerType;
-  openDrawer: (drawer: DrawerType, parentDrawer?: DrawerType, options?: { contactType?: 'customer' | 'supplier' | 'worker'; product?: any; sale?: any; purchase?: any; prefillName?: string; prefillPhone?: string }) => void;
+  openDrawer: (drawer: DrawerType, parentDrawer?: DrawerType, options?: { contactType?: 'customer' | 'supplier' | 'worker'; product?: any; sale?: any; purchase?: any; contact?: any; prefillName?: string; prefillPhone?: string }) => void;
   closeDrawer: () => void;
   parentDrawer: DrawerType | null;
   selectedStudioSaleId?: string;
@@ -144,10 +145,13 @@ export const NavigationProvider = ({ children }: { children: ReactNode }) => {
 
   const toggleSidebar = () => setIsSidebarOpen(!isSidebarOpen);
   
-  const openDrawer = (drawer: DrawerType, parent?: DrawerType, options?: { contactType?: 'customer' | 'supplier' | 'worker'; product?: any; sale?: any; purchase?: any; prefillName?: string; prefillPhone?: string }) => {
-    // Set contact type if provided
+  const openDrawer = (drawer: DrawerType, parent?: DrawerType, options?: { contactType?: 'customer' | 'supplier' | 'worker'; product?: any; sale?: any; purchase?: any; contact?: any; prefillName?: string; prefillPhone?: string }) => {
+    // Set contact type if provided (or from contact when editing)
     if (options?.contactType) {
       setDrawerContactType(options.contactType);
+    } else if (options?.contact?.type) {
+      const t = options.contact.type;
+      setDrawerContactType(t === 'customer' || t === 'supplier' || t === 'worker' ? t : undefined);
     } else {
       setDrawerContactType(undefined);
     }
@@ -172,6 +176,8 @@ export const NavigationProvider = ({ children }: { children: ReactNode }) => {
       setDrawerData({ purchase: options.purchase });
     } else if (options?.product) {
       setDrawerData({ product: options.product });
+    } else if (options?.contact) {
+      setDrawerData({ contact: options.contact });
     } else {
       setDrawerData(undefined);
     }

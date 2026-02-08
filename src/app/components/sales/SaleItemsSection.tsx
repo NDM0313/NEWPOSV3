@@ -46,6 +46,7 @@ interface SaleItem {
     packingDetails?: any;
     stock?: number;
     showVariations?: boolean; // Flag to show variation selector inline
+    selectedVariationId?: string; // Currently selected variation ID (for edit preselect + read-only)
     unitAllowDecimal?: boolean; // From product's unit
 }
 
@@ -85,13 +86,15 @@ interface SaleItemsSectionProps {
     // Inline variation selection (from backend product.variations - no dummy data)
     showVariationSelector: boolean;
     selectedProductForVariation: Product | null;
-    productVariations: Record<string, Array<{ id: string; size: string; color: string }>>;
+    productVariations: Record<string, Array<{ id: string; size?: string; color?: string; sku?: string; attributes?: Record<string, unknown> }>>;
     handleVariationSelect: (variation: Variation) => void;
     setShowVariationSelector: React.Dispatch<React.SetStateAction<boolean>>;
     setSelectedProductForVariation: React.Dispatch<React.SetStateAction<Product | null>>;
     handleInlineVariationSelect: (itemId: number, variation: { id?: string; size?: string; color?: string }) => void;
     /** When false, Packing column and modal trigger are hidden (global Enable Packing = OFF). */
     enablePacking?: boolean;
+    /** Edit mode: variation is read-only (locked); no re-select – delete row + re-add to change. */
+    isEditMode?: boolean;
     // Update item function
     updateItem: (id: number, field: 'qty' | 'price', value: number) => void;
     // Keyboard navigation
@@ -144,7 +147,7 @@ export const SaleItemsSection: React.FC<SaleItemsSectionProps> = ({
     setSelectedProductForVariation,
     handleInlineVariationSelect,
     enablePacking = false,
-    // Update item function
+    isEditMode = false,
     updateItem,
     // Keyboard navigation
     itemQtyRefs,
@@ -468,64 +471,84 @@ export const SaleItemsSection: React.FC<SaleItemsSectionProps> = ({
                                     </div>
                                 </div>
 
-                                {/* Inline Variation Selector Row - Shows under product if variations needed */}
-                                {item.showVariations && productVariations[String(item.productId)] && (
-                                    <div className="bg-blue-500/5 border-t border-blue-500/20 px-4 py-3">
-                                        <div className="flex items-center gap-3 flex-wrap">
-                                            <div className="flex flex-wrap gap-2 flex-1">
-                                                {productVariations[String(item.productId)].map((variation, vIndex) => {
-                                                    const size = variation.size || variation.attributes?.size as string || 'Default';
-                                                    const color = variation.color || variation.attributes?.color as string || 'Default';
-                                                    const isSelected = item.selectedVariationId === variation.id;
-                                                    
-                                                    return (
-                                                        <button
-                                                            key={variation.id || vIndex}
-                                                            ref={(el) => {
-                                                                if (vIndex === 0) {
-                                                                    itemVariationRefs.current[item.id] = el;
-                                                                }
-                                                            }}
-                                                            onClick={() => handleInlineVariationSelect(item.id, variation)}
-                                                            onKeyDown={(e) => {
-                                                                const totalVariations = productVariations[String(item.productId)].length;
-                                                                const variationButtons = document.querySelectorAll(`[data-variation-item=\"${item.id}\"]`);
-                                                                
-                                                                if (e.key === 'ArrowRight') {
-                                                                    e.preventDefault();
-                                                                    const nextIndex = (vIndex + 1) % totalVariations;
-                                                                    (variationButtons[nextIndex] as HTMLButtonElement)?.focus();
-                                                                } else if (e.key === 'ArrowLeft') {
-                                                                    e.preventDefault();
-                                                                    const prevIndex = (vIndex - 1 + totalVariations) % totalVariations;
-                                                                    (variationButtons[prevIndex] as HTMLButtonElement)?.focus();
-                                                                } else if (e.key === 'Enter') {
-                                                                    e.preventDefault();
-                                                                    handleInlineVariationSelect(item.id, variation);
-                                                                }
-                                                            }}
-                                                            data-variation-item={item.id}
-                                                            className={cn(
-                                                                "px-3 py-1.5 text-xs rounded border transition-all focus:ring-2 focus:ring-blue-500/50 focus:outline-none",
-                                                                isSelected
-                                                                    ? "bg-blue-500 text-white border-blue-400"
-                                                                    : "bg-gray-800 hover:bg-blue-600 text-gray-300 hover:text-white border-gray-700 hover:border-blue-500"
-                                                            )}
-                                                        >
-                                                            {size && color ? `${size} / ${color}` : size || color || 'Default'}
-                                                        </button>
-                                                    );
-                                                })}
+                                {/* Inline Variation: Edit mode = read-only (locked). Create mode = selector buttons. */}
+                                {item.showVariations && productVariations[String(item.productId)] && (() => {
+                                    const variations = productVariations[String(item.productId)];
+                                    const selectedVariation = item.selectedVariationId ? variations.find((v: { id: string }) => v.id === item.selectedVariationId) : null;
+                                    const getDisplayText = (v: { size?: string; color?: string; attributes?: Record<string, unknown> }) => {
+                                        const size = (v.size || '').toString().trim();
+                                        const color = (v.color || '').toString().trim();
+                                        if (size && color) return `${size} / ${color}`;
+                                        if (size) return size;
+                                        if (color) return color;
+                                        if (v.attributes && typeof v.attributes === 'object') {
+                                            const firstVal = Object.values(v.attributes).find((val): val is string => typeof val === 'string' && String(val).trim().length > 0);
+                                            if (firstVal) return String(firstVal).trim();
+                                        }
+                                        return 'Default';
+                                    };
+
+                                    if (isEditMode && item.selectedVariationId && selectedVariation) {
+                                        const variationSku = (selectedVariation as { sku?: string }).sku || item.sku;
+                                        return (
+                                            <div className="bg-gray-800/50 border-t border-gray-700 px-4 py-3">
+                                                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
+                                                    <span className="text-gray-400 font-medium shrink-0">Variation:</span>
+                                                    <span className="text-white font-medium">{getDisplayText(selectedVariation)}</span>
+                                                    <span className="text-gray-500 font-mono">SKU: {variationSku}</span>
+                                                    {item.stock != null && (
+                                                        <span className={cn("font-medium tabular-nums", item.stock >= 0 ? "text-green-500" : "text-red-500")}>
+                                                            Stock: {item.stock}
+                                                        </span>
+                                                    )}
+                                                </div>
                                             </div>
+                                        );
+                                    }
+
+                                    return (
+                                        <div className="bg-blue-500/5 border-t border-blue-500/20 px-4 py-3">
+                                            <div className="flex items-center gap-3 flex-wrap">
+                                                <div className="flex flex-wrap gap-2 flex-1">
+                                                    {variations.map((variation: { id: string; size?: string; color?: string; attributes?: Record<string, unknown> }, vIndex: number) => {
+                                                        const isSelected = item.selectedVariationId === variation.id;
+                                                        return (
+                                                            <button
+                                                                key={variation.id || vIndex}
+                                                                ref={(el) => { if (vIndex === 0) itemVariationRefs.current[item.id] = el; }}
+                                                                onClick={() => handleInlineVariationSelect(item.id, variation)}
+                                                                onKeyDown={(e) => {
+                                                                    const totalVariations = variations.length;
+                                                                    const variationButtons = document.querySelectorAll(`[data-variation-item="${item.id}"]`);
+                                                                    if (e.key === 'ArrowRight') {
+                                                                        e.preventDefault();
+                                                                        (variationButtons[(vIndex + 1) % totalVariations] as HTMLButtonElement)?.focus();
+                                                                    } else if (e.key === 'ArrowLeft') {
+                                                                        e.preventDefault();
+                                                                        (variationButtons[(vIndex - 1 + totalVariations) % totalVariations] as HTMLButtonElement)?.focus();
+                                                                    } else if (e.key === 'Enter') {
+                                                                        e.preventDefault();
+                                                                        handleInlineVariationSelect(item.id, variation);
+                                                                    }
+                                                                }}
+                                                                data-variation-item={item.id}
+                                                                className={cn(
+                                                                    "px-3 py-1.5 text-xs rounded border transition-all focus:ring-2 focus:ring-blue-500/50 focus:outline-none",
+                                                                    isSelected ? "bg-blue-500 text-white border-blue-400" : "bg-gray-800 hover:bg-blue-600 text-gray-300 hover:text-white border-gray-700 hover:border-blue-500"
+                                                                )}
+                                                            >
+                                                                {getDisplayText(variation)}
+                                                            </button>
+                                                        );
+                                                    })}
+                                                </div>
+                                            </div>
+                                            {item.selectedVariationId && (
+                                                <div className="mt-2 text-[10px] text-gray-400 font-mono">SKU: {item.sku}</div>
+                                            )}
                                         </div>
-                                        {/* Show variation-specific SKU when selected */}
-                                        {item.selectedVariationId && (
-                                            <div className="mt-2 text-[10px] text-gray-400 font-mono">
-                                                SKU: {item.sku}
-                                            </div>
-                                        )}
-                                    </div>
-                                )}
+                                    );
+                                })()}
                             </div>
                         ))}
                     </div>

@@ -38,6 +38,8 @@ export interface PaymentDialogProps {
   referenceNo?: string; // Invoice number (string) for display
   referenceId?: string; // UUID of sale/purchase/rental (for journal entry reference_id)
   onSuccess?: () => void;
+  /** Pre-filled attachment files (e.g. from purchase form Attachments card) – included when recording payment */
+  initialAttachmentFiles?: File[];
   // Edit mode props
   editMode?: boolean;
   paymentToEdit?: {
@@ -50,6 +52,26 @@ export interface PaymentDialogProps {
     notes?: string;
     attachments?: any; // saved: { url, name }[] or url string
   };
+}
+
+// Resolve URL and show image for existing attachment (medium size)
+function ExistingAttachmentImage({ att }: { att: { url: string; name: string } }) {
+  const [resolvedUrl, setResolvedUrl] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    getAttachmentOpenUrl(att.url).then((url) => {
+      if (!cancelled) setResolvedUrl(url);
+    });
+    return () => { cancelled = true; };
+  }, [att.url]);
+  if (!resolvedUrl) return <div className="h-24 bg-gray-800 rounded animate-pulse" />;
+  return (
+    <img
+      src={resolvedUrl}
+      alt={att.name}
+      className="max-w-md max-h-48 w-auto h-auto object-contain rounded border border-gray-700"
+    />
+  );
 }
 
 // ============================================
@@ -69,6 +91,7 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
   referenceNo,
   referenceId, // CRITICAL FIX: UUID for journal entry reference_id
   onSuccess,
+  initialAttachmentFiles,
   editMode = false,
   paymentToEdit
 }) => {
@@ -97,10 +120,13 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
   const [attachments, setAttachments] = useState<File[]>([]);
   // Existing attachments (when editing) – from DB, so they show and are re-sent on save
   const [existingAttachments, setExistingAttachments] = useState<{ url: string; name: string }[]>([]);
+  const prevOpenRef = React.useRef(false);
 
-  // Reset form when dialog opens
+  // Reset form when dialog opens; set attachments from initialAttachmentFiles only when opening (so purchase-form files are not overwritten)
   React.useEffect(() => {
     if (isOpen) {
+      const justOpened = !prevOpenRef.current;
+      prevOpenRef.current = true;
       if (editMode && paymentToEdit) {
         setAmount(paymentToEdit.amount);
         setPaymentMethod((paymentToEdit.method.charAt(0).toUpperCase() + paymentToEdit.method.slice(1)) as PaymentMethod || 'Cash');
@@ -151,9 +177,13 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
         const minutes = String(now.getMinutes()).padStart(2, '0');
         setPaymentDateTime(`${year}-${month}-${day}T${hours}:${minutes}`);
       }
-      setAttachments([]);
+      if (justOpened) {
+        setAttachments(initialAttachmentFiles?.length ? [...initialAttachmentFiles] : []);
+      }
+    } else {
+      prevOpenRef.current = false;
     }
-  }, [isOpen, editMode, paymentToEdit]);
+  }, [isOpen, editMode, paymentToEdit, initialAttachmentFiles]);
 
   // Normalize payment method for matching DB types (cash, bank, mobile_wallet)
   const normalizePaymentType = (t: string) => String(t || '').toLowerCase().trim().replace(/\s+/g, '_');
@@ -936,25 +966,37 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
                     Attachments (Optional)
                   </label>
 
-                  {/* Existing attachments (edit mode) – saved in DB, shown so they persist */}
+                  {/* Existing attachments (edit mode) – saved in DB; show image preview for images */}
                   {existingAttachments.length > 0 && (
-                    <div className="mb-3">
+                    <div className="mb-3 space-y-2">
                       <p className="text-xs text-gray-500 mb-2">Saved attachments (included on save):</p>
-                      <div className="flex flex-wrap gap-2">
-                        {existingAttachments.map((att, idx) => (
-                          <button
-                            key={idx}
-                            type="button"
-                            onClick={async () => {
-                              const url = await getAttachmentOpenUrl(att.url);
-                              window.open(url, '_blank');
-                            }}
-                            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/30 rounded-lg text-blue-400 text-xs"
-                          >
-                            <FileText size={14} />
-                            <span className="truncate max-w-[140px]">{att.name}</span>
-                          </button>
-                        ))}
+                      <div className="flex flex-col gap-2">
+                        {existingAttachments.map((att, idx) => {
+                          const isImage = /\.(jpg|jpeg|png|gif|webp)$/i.test(att.name || '');
+                          return (
+                            <div key={idx} className="flex flex-col gap-1.5 p-2 rounded-lg bg-gray-800/50 border border-gray-700">
+                              {isImage ? (
+                                <ExistingAttachmentImage att={att} />
+                              ) : null}
+                              <div className="flex items-center justify-between gap-2">
+                                {!isImage && <FileText size={14} className="text-blue-400 shrink-0" />}
+                                <span className="text-xs text-gray-200 truncate flex-1">{att.name}</span>
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="outline"
+                                  className="shrink-0 border-gray-600 text-gray-300 hover:bg-gray-700 text-xs h-7"
+                                  onClick={async () => {
+                                    const url = await getAttachmentOpenUrl(att.url);
+                                    window.open(url, '_blank');
+                                  }}
+                                >
+                                  Open in new tab
+                                </Button>
+                              </div>
+                            </div>
+                          );
+                        })}
                       </div>
                     </div>
                   )}

@@ -91,7 +91,7 @@ export const SearchableSelect: React.FC<SearchableSelectProps> = ({
           role="combobox"
           aria-expanded={open}
           className={cn(
-            'w-full justify-between bg-gray-950 border-gray-700 text-white hover:bg-gray-900 h-10',
+            'w-full max-w-[750px] justify-between bg-gray-950 border-gray-700 text-white hover:bg-gray-900 h-10',
             className
           )}
         >

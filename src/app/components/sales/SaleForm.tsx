@@ -35,9 +35,10 @@ import {
   Edit,
   ChevronRight,
   Hash,
-  Tag
+  Tag,
+  Upload
 } from 'lucide-react';
-import { format } from "date-fns";
+import { format, parseISO } from "date-fns";
 import { cn } from "../ui/utils";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
@@ -97,11 +98,14 @@ import { BranchSelector, currentUser } from '@/app/components/layout/BranchSelec
 import { SaleItemsSection } from './SaleItemsSection';
 import { PaymentAttachments, PaymentAttachment } from '../payments/PaymentAttachments';
 import { UnifiedPaymentDialog } from '@/app/components/shared/UnifiedPaymentDialog';
+import { uploadSaleAttachments } from '@/app/utils/uploadTransactionAttachments';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { useSettings } from '@/app/context/SettingsContext';
+import { formatCurrency } from '@/app/utils/formatCurrency';
 import { contactService } from '@/app/services/contactService';
 import { saleService } from '@/app/services/saleService';
 import { productService } from '@/app/services/productService';
+import { inventoryService } from '@/app/services/inventoryService';
 import { branchService, Branch } from '@/app/services/branchService';
 import { useSales, convertFromSupabaseSale } from '@/app/context/SalesContext';
 import { useNavigation } from '@/app/context/NavigationContext';
@@ -165,7 +169,7 @@ interface SaleFormProps {
 export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
     // Supabase & Context
     const { companyId, branchId: contextBranchId, user, userRole } = useSupabase();
-    const { inventorySettings, loading: settingsLoading } = useSettings();
+    const { inventorySettings, loading: settingsLoading, company } = useSettings();
     const enablePacking = inventorySettings.enablePacking;
     const { createSale, updateSale } = useSales();
     const { openDrawer, closeDrawer, activeDrawer, createdContactId, createdContactType, setCreatedContactId, openPackingModal, setCurrentView, setSelectedStudioSaleId } = useNavigation();
@@ -254,6 +258,9 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
     
     // Payment Attachments State
     const [paymentAttachments, setPaymentAttachments] = useState<PaymentAttachment[]>([]);
+    const [saleAttachmentFiles, setSaleAttachmentFiles] = useState<File[]>([]);
+    const saleAttachmentInputRef = useRef<HTMLInputElement>(null);
+    const [savedSaleAttachments, setSavedSaleAttachments] = useState<{ url: string; name: string }[]>([]);
 
     // Extra Expenses State
     const [extraExpenses, setExtraExpenses] = useState<ExtraExpense[]>([]);
@@ -701,6 +708,48 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
         loadBranches();
     }, [companyId, branchId, contextBranchId]);
 
+    // Merge live stock from inventory overview (same source as Inventory page) into products for search dropdown
+    useEffect(() => {
+        if (!companyId || !products.length) return;
+        const rawBranch = branchId || contextBranchId;
+        const branchToUse = (rawBranch && rawBranch !== 'all') ? rawBranch : null;
+        let cancelled = false;
+        (async () => {
+            try {
+                const overview = await inventoryService.getInventoryOverview(companyId, branchToUse || undefined);
+                if (cancelled || !overview?.length) return;
+                const overviewByProductId: Record<string, { stock: number; hasVariations?: boolean; variations?: Array<{ id: string; stock: number }> }> = {};
+                overview.forEach((row: any) => {
+                    const key = String(row.id ?? row.productId);
+                    overviewByProductId[key] = {
+                        stock: row.stock ?? 0,
+                        hasVariations: row.hasVariations,
+                        variations: row.variations?.map((v: any) => ({ id: v.id, stock: v.stock ?? 0 })),
+                    };
+                });
+                setProducts(prev => prev.map(p => {
+                    const key = String(p.id);
+                    const row = overviewByProductId[key];
+                    if (!row) return p;
+                    if (row.hasVariations && row.variations?.length) {
+                        return {
+                            ...p,
+                            stock: row.stock,
+                            variations: (p.variations || []).map(v => {
+                                const vStock = row.variations?.find((vv: any) => String(vv.id) === String(v.id));
+                                return { ...v, stock: vStock?.stock ?? (v as any).stock };
+                            }),
+                        };
+                    }
+                    return { ...p, stock: row.stock };
+                }));
+            } catch {
+                if (!cancelled) { /* keep existing product stock on error */ }
+            }
+        })();
+        return () => { cancelled = true; };
+    }, [companyId, branchId, contextBranchId, products.length]);
+
     // Load salesmen from userService
     useEffect(() => {
         const loadSalesmen = async () => {
@@ -978,11 +1027,27 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
         }
     }, [initialSale, customers]); // Run when initialSale or customers change
 
-    // Pre-populate form when editing (TASK 3 FIX)
+    // Pre-populate form when editing (TASK 3 FIX) – date must come from DB, not current date
     useEffect(() => {
         if (initialSale) {
-            // Pre-fill header fields
-            setSaleDate(initialSale.date ? new Date(initialSale.date) : new Date());
+            // Pre-fill header fields – use DB date so picker shows saved date (never current for saved sale)
+            const dateRaw = initialSale.date || (initialSale as any).createdAt || (initialSale as any).invoice_date;
+            if (dateRaw) {
+                try {
+                    if (typeof dateRaw === 'object' && dateRaw instanceof Date) {
+                        setSaleDate(dateRaw);
+                    } else {
+                        const dateStr = typeof dateRaw === 'string' ? dateRaw.trim() : String(dateRaw);
+                        const parsed = /^\d{4}-\d{2}-\d{2}T/.test(dateStr) ? parseISO(dateStr) : parseISO(dateStr);
+                        setSaleDate(parsed);
+                    }
+                } catch {
+                    setSaleDate(new Date(dateRaw));
+                }
+            } else {
+                setSaleDate(new Date());
+            }
+            setSavedSaleAttachments(Array.isArray((initialSale as any)?.attachments) ? (initialSale as any).attachments : []);
             setInvoiceNumber(initialSale.invoiceNo || '');
             setRefNumber('');
             // CRITICAL FIX: Load notes from initialSale
@@ -991,27 +1056,31 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
             // Pre-fill items (from initialSale or fetch if missing)
             const mapItemsToForm = (list: any[]) => {
                 if (!list || list.length === 0) return;
-                // CRITICAL FIX: Generate unique, stable IDs for each item
-                // Use a combination of timestamp and index to ensure uniqueness
                 const baseTimestamp = Date.now();
-                const convertedItems: SaleItem[] = list.map((item: any, index: number) => ({
-                    id: baseTimestamp + index, // Unique ID per item
-                    productId: item.productId || '',
-                    name: item.productName || '',
-                    sku: item.sku || '',
-                    price: item.price || 0,
-                    qty: item.quantity || 0,
-                    size: item.size,
-                    color: item.color,
-                    variationId: item.variationId, // CRITICAL: Preserve variationId from backend
-                    stock: 0,
-                    lastPurchasePrice: undefined,
-                    lastSupplier: undefined,
-                    showVariations: false,
-                    packingDetails: item.packingDetails,
-                    thaans: item.packingDetails?.total_boxes,
-                    meters: item.packingDetails?.total_meters,
-                }));
+                // CRITICAL: Preselect variation when editing – use variation_id from DB so dropdown is not blank
+                const convertedItems: SaleItem[] = list.map((item: any, index: number) => {
+                    const variationId = item.variation_id ?? item.variationId ?? undefined;
+                    const hasVariation = Boolean(variationId);
+                    return {
+                        id: baseTimestamp + index,
+                        productId: item.productId || item.product_id || '',
+                        name: item.productName || item.product_name || '',
+                        sku: item.sku || '',
+                        price: item.price ?? item.unit_price ?? 0,
+                        qty: item.quantity || 0,
+                        size: item.size,
+                        color: item.color,
+                        variationId,
+                        selectedVariationId: variationId, // For UI dropdown preselect
+                        showVariations: hasVariation || Boolean(item.product?.has_variations), // Show variation column when we have saved variation or product has variations
+                        stock: 0,
+                        lastPurchasePrice: undefined,
+                        lastSupplier: undefined,
+                        packingDetails: item.packingDetails,
+                        thaans: item.packingDetails?.total_boxes,
+                        meters: item.packingDetails?.total_meters,
+                    };
+                });
                 console.log('[SALE FORM] ✅ Converted items for edit mode:', convertedItems.length, 'items');
                 console.log('[SALE FORM] Item IDs:', convertedItems.map((item, idx) => ({ index: idx, id: item.id, name: item.name, qty: item.qty, price: item.price })));
                 setItems(convertedItems);
@@ -1195,17 +1264,18 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
         c.name.toLowerCase().includes(customerSearchTerm.toLowerCase())
     );
 
-    // Helper to format due balance (compact for dropdown)
+    // Helper to format due balance as currency (compact for header & dropdown)
     const formatDueBalanceCompact = (due: number) => {
-        if (due === 0) return '0';
-        if (due < 0) return `-${Math.abs(due).toLocaleString()}`;
-        return `+${due.toLocaleString()}`;
+        const currency = company?.currency || 'Rs';
+        if (due === 0) return formatCurrency(0, currency);
+        if (due < 0) return `-${formatCurrency(Math.abs(due), currency)}`;
+        return `+${formatCurrency(due, currency)}`;
     };
 
-    // Helper to get due balance color
+    // Helper to get due balance color: green = customer owes us, red = we owe customer
     const getDueBalanceColor = (due: number) => {
-        if (due < 0) return 'text-green-400'; // Credit/Advance (green)
-        if (due > 0) return 'text-red-400'; // Due amount (red)
+        if (due > 0) return 'text-green-400'; // Customer owes us (we took)
+        if (due < 0) return 'text-red-400';   // We owe customer (we gave)
         return 'text-gray-500'; // Zero
     };
 
@@ -1502,14 +1572,14 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
             return;
         }
 
-        // If status is final, show payment choice dialog
-        if (saleStatus === 'final') {
+        // If status is final, show payment choice dialog – only for NEW sale, not when updating
+        if (saleStatus === 'final' && !initialSale) {
             setPendingSaveAction({ print });
             setPaymentChoiceDialogOpen(true);
             return;
         }
 
-        // For draft/quotation/order, save directly without payment
+        // For draft/quotation/order, or when editing, save directly without payment
         await proceedWithSave(print);
     };
 
@@ -1694,7 +1764,7 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                 customer: customerUuid || '',
                 customerName: customerName,
                 contactNumber: '', // Can be enhanced to get from customer
-                date: format(saleDate, 'yyyy-MM-dd'),
+                date: format(saleDate, "yyyy-MM-dd'T'HH:mm:ss"),
                 location: finalBranchId, // CRITICAL: Always use validated branch ID
                 items: saleItems,
                 itemsCount: items.length,
@@ -1725,6 +1795,19 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
             if (initialSale && initialSale.id) {
                 // EDIT MODE: Update existing sale (invoice number updated when converting to Studio)
                 await updateSale(initialSale.id, saleData);
+                if (saleAttachmentFiles.length > 0 && companyId) {
+                    try {
+                        const uploaded = await uploadSaleAttachments(companyId, initialSale.id, saleAttachmentFiles);
+                        const existing = (initialSale as any)?.attachments || [];
+                        const merged = Array.isArray(existing) ? [...existing, ...uploaded] : uploaded;
+                        if (merged.length > 0) await updateSale(initialSale.id, { attachments: merged } as any);
+                        setSaleAttachmentFiles([]);
+                        setSavedSaleAttachments(merged);
+                    } catch (e) {
+                        console.warn('[SALE FORM] Attachment upload failed:', e);
+                        toast.warning('Sale saved but some attachments could not be uploaded.');
+                    }
+                }
                 // If we regenerated invoice for Studio conversion, consume studio number so next studio sale gets next STD
                 if (isStudioSale && !initialSale.invoiceNo.startsWith('STD-') && !initialSale.invoiceNo.startsWith('ST-')) {
                     incrementNextNumber('studio');
@@ -1752,6 +1835,17 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
             } else {
                 // NEW SALE: Create new sale
                 const created = await createSale(saleData);
+                if (created?.id && saleAttachmentFiles.length > 0 && companyId) {
+                    try {
+                        const uploaded = await uploadSaleAttachments(companyId, created.id, saleAttachmentFiles);
+                        if (uploaded.length > 0) await updateSale(created.id, { attachments: uploaded } as any);
+                        setSaleAttachmentFiles([]);
+                        setSavedSaleAttachments(uploaded);
+                    } catch (e) {
+                        console.warn('[SALE FORM] Attachment upload failed:', e);
+                        toast.warning('Sale created but some attachments could not be uploaded.');
+                    }
+                }
                 // Increment document number after successful save
                 incrementNextNumber(documentType);
                 toast.success(`${saleType === 'invoice' ? 'Invoice' : 'Quotation'} created successfully!`);
@@ -2030,26 +2124,26 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
 
                 {/* FORM HEADER: Customer, Date, Ref #, Type */}
                 <div className="px-6 py-4 bg-[#0F1419]">
-                    <div className="flex items-center gap-3 w-full">
-                        {/* Customer - Chip Style with Search */}
-                        <div className="flex-1 min-w-0">
-                            {/* Label with Due Balance on Right Side */}
-                            <div className="flex items-center justify-between mb-1.5">
-                                <Label className="text-xs text-gray-500">Customer</Label>
-                                {/* Due Balance Display - Plain Text (Option A) */}
-                                {customerId && (
-                                    <span className={cn("text-[10px] font-medium tabular-nums", getDueBalanceColor(selectedCustomerDue))}>
-                                        {formatDueBalanceCompact(selectedCustomerDue)}
-                                    </span>
-                                )}
-                                        </div>
+                    <div className="invoice-container mx-auto w-full max-w-[1151px]">
+                        <div className="bg-gray-900/30 border border-gray-800/50 rounded-lg p-3 min-h-[85px] w-full">
+                            <div className="flex items-end gap-3 w-full flex-wrap">
+                                {/* Customer – same layout as Purchase Supplier */}
+                                <div className="flex flex-col flex-1 min-w-0 min-w-[200px]">
+                                    <div className="flex items-center justify-between mb-1.5">
+                                        <Label className="text-orange-400 font-medium text-[10px] uppercase tracking-wide h-[14px]">Customer</Label>
+                                        {customerId && (
+                                            <span className={cn("absolute left-[702px] text-[15px] font-semibold tabular-nums", getDueBalanceColor(selectedCustomerDue))}>
+                                                {formatDueBalanceCompact(selectedCustomerDue)}
+                                            </span>
+                                        )}
+                                    </div>
                             <Popover 
                                 key={`customer-select-${customerId || 'none'}-${customers.length}-${selectedCustomer?.id || 'none'}`} 
                                 open={customerSearchOpen} 
                                 onOpenChange={setCustomerSearchOpen}
                             >
                                 <PopoverTrigger asChild>
-                                    <div className="flex items-center gap-2 bg-gray-900/50 border border-gray-800 rounded-lg px-2.5 py-1 hover:bg-gray-800 transition-colors cursor-pointer w-full">
+                                    <div className="flex items-center gap-2 bg-gray-900/50 border border-gray-800 rounded-lg px-2.5 py-1 hover:bg-gray-800 transition-colors cursor-pointer w-[748px] h-10 min-h-[40px]">
                                         <User size={14} className="text-gray-500 shrink-0" />
                                         <span 
                                             className="text-xs text-white flex-1 truncate text-left"
@@ -2124,8 +2218,8 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                                                             <span className="font-medium">{cust.name}</span>
                                                             <span className={cn(
                                                                 "text-xs font-semibold tabular-nums ml-2",
-                                                                cust.dueBalance < 0 && "text-green-400",
-                                                                cust.dueBalance > 0 && "text-red-400",
+                                                                cust.dueBalance > 0 && "text-green-400",
+                                                                cust.dueBalance < 0 && "text-red-400",
                                                                 cust.dueBalance === 0 && "text-gray-500"
                                                             )}>
                                                                 {formatDueBalanceCompact(cust.dueBalance)}
@@ -2138,36 +2232,33 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                                     </div>
                                 </PopoverContent>
                             </Popover>
-                            </div>
-
-                        {/* Date - Soft Input Style */}
-                        <div className="w-32">
-                            <Label className="text-xs text-gray-500 mb-1.5 block">Date</Label>
-                            <div className="[&>div>button]:bg-gray-900/50 [&>div>button]:border-gray-800 [&>div>button]:text-white [&>div>button]:text-xs [&>div>button]:h-[28px] [&>div>button]:min-h-[28px] [&>div>button]:px-2.5 [&>div>button]:py-1 [&>div>button]:rounded-lg [&>div>button]:border [&>div>button]:hover:bg-gray-800 [&>div>button]:w-full [&>div>button]:justify-start [&>div>button>span]:text-xs [&>div>button>svg]:h-3 [&>div>button>svg]:w-3">
-                                <CalendarDatePicker
-                                    value={saleDate}
-                                    onChange={(date) => setSaleDate(date || new Date())}
-                                    showTime={true}
-                                    required
-                                />
-                                        </div>
-                            </div>
-
-
-                        {/* Type - Chip Style (dropdown closes on select) */}
-                        <div className="w-auto">
-                            <Label className="text-xs text-gray-500 mb-1.5 block">Type</Label>
-                            <Popover open={typeDropdownOpen} onOpenChange={setTypeDropdownOpen}>
-                                <PopoverTrigger asChild>
-                                    <button
-                                        type="button"
-                                        className="flex items-center gap-2 bg-gray-900/50 border border-gray-800 rounded-lg px-2.5 py-1 hover:bg-gray-800 transition-colors cursor-pointer"
-                                    >
-                                        <Tag size={14} className="text-gray-500 shrink-0" />
-                                        <span className="text-xs text-white capitalize">{isStudioSale ? 'studio' : 'regular'}</span>
-                                        <ChevronRight size={12} className="text-gray-500 rotate-90" />
-                                    </button>
-                                </PopoverTrigger>
+                                </div>
+                                {/* Date – same as Purchase */}
+                                <div className="flex flex-col w-[184px] absolute left-[798px] top-[77px] z-0">
+                                    <Label className="text-gray-500 font-medium text-xs uppercase tracking-wide h-[14px] mb-1.5">Date</Label>
+                                    <div className="[&>div>button]:bg-gray-900/50 [&>div>button]:border-gray-800 [&>div>button]:text-white [&>div>button]:text-xs [&>div>button]:h-10 [&>div>button]:min-h-[40px] [&>div>button]:px-2.5 [&>div>button]:py-1 [&>div>button]:rounded-lg [&>div>button]:border [&>div>button]:hover:bg-gray-800 [&>div>button]:w-full [&>div>button]:justify-start">
+                                        <CalendarDatePicker
+                                            value={saleDate}
+                                            onChange={(date) => setSaleDate(date || new Date())}
+                                            showTime={true}
+                                            required
+                                        />
+                                    </div>
+                                </div>
+                                {/* Type – same slot as Purchase Ref # */}
+                                <div className="flex flex-col absolute left-[987px] w-[132px]">
+                                    <Label className="text-gray-500 font-medium text-xs uppercase tracking-wide h-[14px] mb-1.5">Type</Label>
+                                    <Popover open={typeDropdownOpen} onOpenChange={setTypeDropdownOpen}>
+                                        <PopoverTrigger asChild>
+                                            <button
+                                                type="button"
+                                                className="flex items-center gap-2 bg-gray-900/50 border border-gray-800 rounded-lg px-2.5 py-1 hover:bg-gray-800 transition-colors cursor-pointer w-full h-10 min-h-[40px] justify-start text-sm"
+                                            >
+                                                <Tag size={14} className="text-gray-500 shrink-0" />
+                                                <span className="text-xs text-white capitalize">{isStudioSale ? 'studio' : 'regular'}</span>
+                                                <ChevronRight size={12} className="text-gray-500 rotate-90 shrink-0 ml-auto" />
+                                            </button>
+                                        </PopoverTrigger>
                                 <PopoverContent 
                                     className="w-48 bg-gray-900 border-gray-800 text-white p-2"
                                     align="start"
@@ -2195,17 +2286,17 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                                                 <span className="capitalize">{t}</span>
                                             </button>
                                         ))}
-                                            </div>
+                                    </div>
                                 </PopoverContent>
                             </Popover>
-                        </div>
+                                </div>
 
-                        {/* Shipping Toggle (only for regular sales) */}
-                                    {!isStudioSale && (
-                            <div className="w-auto flex items-end">
+                                {/* Shipping Toggle (only for regular sales) */}
+                                {!isStudioSale && (
+                                    <div className="w-auto flex items-end">
                                         <button
                                             onClick={() => setShippingEnabled(!shippingEnabled)}
-                                    className={`w-[28px] h-[28px] rounded-lg transition-all flex items-center justify-center shrink-0 ${ 
+                                    className={`${shippingEnabled ? 'w-fit min-w-[38px] max-w-[100px]' : 'w-[28px]'} h-[42px] rounded-lg transition-all flex items-center justify-center shrink-0 ${ 
                                                 shippingEnabled
                                                     ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30'
                                                     : 'bg-gray-800 text-gray-500 border border-gray-700 hover:bg-gray-750'
@@ -2214,8 +2305,10 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                                         >
                                             <Truck size={14} />
                                         </button>
+                                    </div>
+                                )}
                             </div>
-                                    )}
+                        </div>
                     </div>
 
                     {/* Studio Details - Inline when active */}
@@ -2289,6 +2382,7 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                     setShowVariationSelector={setShowVariationSelector}
                     setSelectedProductForVariation={setSelectedProductForVariation}
                     handleInlineVariationSelect={handleInlineVariationSelect}
+                    isEditMode={Boolean(initialSale)}
                     updateItem={updateItem}
                     itemQtyRefs={itemQtyRefs}
                     itemPriceRefs={itemPriceRefs}
@@ -2471,10 +2565,47 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                                 )}
                                 
                                 <Separator className="bg-gray-800" />
-                                
+
+                                {/* Payment history – same as Purchase */}
+                                {partialPayments.length > 0 && (
+                                    <>
+                                        <div className="pt-1">
+                                            <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide flex items-center gap-1.5 mb-1.5">
+                                                <Wallet size={14} />
+                                                Payment history ({partialPayments.length})
+                                            </h4>
+                                            <div className="space-y-1.5 max-h-48 overflow-y-auto">
+                                                {partialPayments.map((p) => (
+                                                    <div key={p.id} className="flex items-center justify-between gap-2 bg-gray-950/80 rounded-md px-2.5 py-2 border border-gray-800/50">
+                                                        <div className="flex items-center gap-2 min-w-0 flex-1">
+                                                            {p.method === 'cash' && <Banknote size={14} className="text-green-500 shrink-0" />}
+                                                            {p.method === 'bank' && <CreditCard size={14} className="text-blue-500 shrink-0" />}
+                                                            {p.method === 'Mobile Wallet' && <Wallet size={14} className="text-amber-500 shrink-0" />}
+                                                            <span className="text-sm text-white capitalize truncate">{p.method}</span>
+                                                            {(p.reference || p.notes || (p.attachments?.length ?? 0) > 0) && (
+                                                                <span className="text-xs text-gray-500 truncate">
+                                                                    {p.reference && `Ref: ${p.reference}`}
+                                                                    {p.reference && (p.notes || (p.attachments?.length ?? 0) > 0) && ' · '}
+                                                                    {(p.attachments?.length ?? 0) > 0 && `${p.attachments!.length} file(s)`}
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                        <span className="text-sm font-semibold text-green-400 shrink-0 tabular-nums">${Number(p.amount).toLocaleString()}</span>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                        <Separator className="bg-gray-800" />
+                                    </>
+                                )}
+
                                 <div className="flex justify-between items-center pt-1">
                                     <span className="text-sm font-semibold text-white">Grand Total</span>
                                     <span className="text-2xl font-bold text-blue-500">${totalAmount.toLocaleString()}</span>
+                                </div>
+                                <div className="flex justify-between items-center pt-1">
+                                    <span className="text-sm font-semibold text-white">Due balance</span>
+                                    <span className="text-xl font-semibold text-orange-500">${Math.max(0, balanceDue).toLocaleString()}</span>
                                 </div>
 
                                 {/* Salesman Commission - Info Only (not added to total) */}
@@ -2515,6 +2646,126 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                                     </>
                                 )}
                                 </div>
+                            </div>
+
+                            {/* Attachments Card – same as Purchase; saved with payment when you Pay Now */}
+                            <div className="bg-gray-900/50 border border-gray-800 rounded-lg p-4 space-y-3 shrink-0">
+                                <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wide flex items-center gap-2">
+                                    <Paperclip size={14} />
+                                    Attachments
+                                </h3>
+                                <input
+                                    ref={saleAttachmentInputRef}
+                                    type="file"
+                                    accept="image/*,.pdf,application/pdf"
+                                    multiple
+                                    className="hidden"
+                                    onChange={(e) => {
+                                        const files = e.target.files;
+                                        if (files?.length) {
+                                            const valid = Array.from(files).filter((f) => f.type.startsWith('image/') || f.type === 'application/pdf');
+                                            setSaleAttachmentFiles((prev) => [...prev, ...valid]);
+                                            if (valid.length < (files.length || 0)) toast.error('Only images and PDF allowed.');
+                                        }
+                                        e.target.value = '';
+                                    }}
+                                />
+                                <label className="block cursor-pointer">
+                                    <div
+                                        className="border-2 border-dashed border-gray-700 rounded-lg p-3 hover:border-blue-500/50 hover:bg-gray-800/30 transition-all text-center"
+                                        onClick={() => saleAttachmentInputRef.current?.click()}
+                                        onDragOver={(e) => { e.preventDefault(); e.currentTarget.classList.add('border-blue-500/50', 'bg-gray-800/30'); }}
+                                        onDragLeave={(e) => { e.currentTarget.classList.remove('border-blue-500/50', 'bg-gray-800/30'); }}
+                                        onDrop={(e) => {
+                                            e.preventDefault();
+                                            e.currentTarget.classList.remove('border-blue-500/50', 'bg-gray-800/30');
+                                            const files = e.dataTransfer.files;
+                                            if (files?.length) {
+                                                const valid = Array.from(files).filter((f) => f.type.startsWith('image/') || f.type === 'application/pdf');
+                                                setSaleAttachmentFiles((prev) => [...prev, ...valid]);
+                                            }
+                                        }}
+                                    >
+                                        <Upload className="mx-auto mb-1 text-gray-500" size={20} />
+                                        <p className="text-xs text-gray-400">Click or drop files (images, PDF)</p>
+                                        <p className="text-[10px] text-gray-500 mt-0.5">Saved with sale when you save</p>
+                                    </div>
+                                </label>
+                                {saleAttachmentFiles.length > 0 && (
+                                    <div className="space-y-1.5 max-h-28 overflow-y-auto">
+                                        {saleAttachmentFiles.map((file, idx) => (
+                                            <div key={idx} className="flex items-center justify-between gap-2 bg-gray-950 rounded-md px-2.5 py-2 border border-gray-800/50">
+                                                <FileText size={14} className="text-gray-500 shrink-0" />
+                                                <span className="text-sm text-gray-300 truncate flex-1 min-w-0">{file.name}</span>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setSaleAttachmentFiles((prev) => prev.filter((_, i) => i !== idx))}
+                                                    className="text-red-400 hover:text-red-300 shrink-0 p-0.5"
+                                                >
+                                                    <Trash2 size={14} />
+                                                </button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                                {savedSaleAttachments.length > 0 && (
+                                    <div className="space-y-1.5 pt-1 border-t border-gray-800">
+                                        <p className="text-[10px] text-gray-500 uppercase tracking-wide">Saved with sale</p>
+                                        <div className="space-y-1.5 max-h-24 overflow-y-auto">
+                                            {savedSaleAttachments.map((att, idx) => (
+                                                <div key={idx} className="flex items-center justify-between gap-2 bg-gray-950 rounded-md px-2.5 py-1.5 border border-gray-800/50">
+                                                    <FileText size={12} className="text-gray-500 shrink-0" />
+                                                    <span className="text-xs text-gray-300 truncate flex-1 min-w-0">{att.name || 'Attachment'}</span>
+                                                    <Button
+                                                        type="button"
+                                                        variant="ghost"
+                                                        size="sm"
+                                                        className="h-6 text-xs text-blue-400 hover:text-blue-300 shrink-0"
+                                                        onClick={async () => {
+                                                            const { getAttachmentOpenUrl } = await import('@/app/utils/paymentAttachmentUrl');
+                                                            const url = await getAttachmentOpenUrl(att.url);
+                                                            window.open(url, '_blank');
+                                                        }}
+                                                    >
+                                                        Open
+                                                    </Button>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+                                {(() => {
+                                    const fromPayments = partialPayments.flatMap((p) => (p.attachments || []).map((a) => ({ ...a, paymentMethod: p.method })));
+                                    return fromPayments.length > 0 ? (
+                                        <div className="space-y-1.5 pt-1 border-t border-gray-800">
+                                            <p className="text-[10px] text-gray-500 uppercase tracking-wide">From payments</p>
+                                            <div className="space-y-1.5 max-h-24 overflow-y-auto">
+                                                {fromPayments.map((att, idx) => (
+                                                    <div key={idx} className="flex items-center justify-between gap-2 bg-gray-950 rounded-md px-2.5 py-1.5 border border-gray-800/50">
+                                                        <FileText size={12} className="text-gray-500 shrink-0" />
+                                                        <span className="text-xs text-gray-300 truncate flex-1 min-w-0">{att.name || 'Attachment'}</span>
+                                                        <Button
+                                                            type="button"
+                                                            variant="ghost"
+                                                            size="sm"
+                                                            className="h-6 text-xs text-blue-400 hover:text-blue-300 shrink-0"
+                                                            onClick={async () => {
+                                                                const { getAttachmentOpenUrl } = await import('@/app/utils/paymentAttachmentUrl');
+                                                                const url = await getAttachmentOpenUrl(att.url);
+                                                                window.open(url, '_blank');
+                                                            }}
+                                                        >
+                                                            Open
+                                                        </Button>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    ) : null;
+                                })()}
+                                {saleAttachmentFiles.length === 0 && partialPayments.flatMap((p) => p.attachments || []).length === 0 && savedSaleAttachments.length === 0 && (
+                                    <p className="text-xs text-gray-500">No files yet. Add above; they’ll be saved with the sale when you save.</p>
+                                )}
                             </div>
 
                         </div>
@@ -2620,11 +2871,8 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                     setUnifiedPaymentDialogOpen(false);
                     setSavedSaleId(null);
                     setSavedSaleInvoiceNo(null);
-                    
-                    // Dispatch event to refresh sales list
+                    setSaleAttachmentFiles([]);
                     window.dispatchEvent(new CustomEvent('paymentAdded'));
-                    
-                    // Close sale form after payment is added
                     onClose();
                 }}
             />
@@ -2682,7 +2930,7 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                                 disabled={saving}
                             >
                                 <Save size={15} className="mr-1.5" />
-                                {saving ? 'Saving...' : 'Save'}
+                                {saving ? (initialSale ? 'Updating...' : 'Saving...') : (initialSale ? 'Update' : 'Save')}
                             </Button>
                             <Button 
                                 type="button"
@@ -2691,7 +2939,7 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                                 disabled={saving}
                             >
                                 <Printer size={15} className="mr-1.5" />
-                                {saving ? 'Saving...' : 'Save & Print'}
+                                {saving ? (initialSale ? 'Updating...' : 'Saving...') : (initialSale ? 'Update & Print' : 'Save & Print')}
                             </Button>
                         </div>
                     </div>

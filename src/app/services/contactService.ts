@@ -214,12 +214,12 @@ export const contactService = {
       return existing as Contact;
     }
 
-    // Create walking customer
+    // Create walking customer (display name matches UI "Walk-in Customer")
     const walkingCustomer: Partial<Contact> = {
       company_id: companyId,
       branch_id: branchId,
       type: 'customer',
-      name: 'Walking Customer',
+      name: 'Walk-in Customer',
       is_active: true,
       is_system_generated: true,
       system_type: 'walking_customer',
@@ -268,6 +268,32 @@ export const contactService = {
     }
 
     return (data as Contact) || null;
+  },
+
+  /**
+   * Ensure default Walk-in Customer exists for the company (e.g. when business is created or first opening Contacts).
+   * Uses current branch or first branch if branchId is 'all' / null.
+   */
+  async ensureDefaultWalkingCustomerForCompany(companyId: string, branchId?: string | null): Promise<void> {
+    let targetBranchId: string | null = null;
+    if (branchId && branchId !== 'all') {
+      targetBranchId = branchId;
+    } else {
+      const { data: branches } = await supabase
+        .from('branches')
+        .select('id')
+        .eq('company_id', companyId)
+        .eq('is_active', true)
+        .order('name')
+        .limit(1);
+      if (branches?.[0]?.id) targetBranchId = branches[0].id;
+    }
+    if (!targetBranchId) return;
+    try {
+      await this.createDefaultWalkingCustomer(companyId, targetBranchId);
+    } catch (_) {
+      // Already exists or other error – ignore so load can continue
+    }
   },
 
   // Search contacts

@@ -875,7 +875,9 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
       if (updates.total !== undefined) supabaseUpdates.total = updates.total;
       if (updates.paid !== undefined) supabaseUpdates.paid_amount = updates.paid;
       if (updates.due !== undefined) supabaseUpdates.due_amount = updates.due;
-      
+
+      if (updates.date !== undefined) supabaseUpdates.po_date = updates.date;
+
       // STEP 1 FIX: Reference number - save in notes field (like Sale module)
       if (updates.notes !== undefined) {
         supabaseUpdates.notes = updates.notes;
@@ -883,6 +885,7 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
         // If reference field is passed, save it in notes
         supabaseUpdates.notes = updates.reference;
       }
+      if ((updates as any).attachments !== undefined) supabaseUpdates.attachments = (updates as any).attachments;
 
       // 🔒 CRITICAL FIX: Calculate stock movement DELTA BEFORE updating purchase_items
       // This must happen BEFORE purchase_items are deleted/updated so we can fetch old items

@@ -572,12 +572,11 @@ export const SalesPage = () => {
   const renderColumnCell = (columnKey: string, sale: Sale) => {
     switch (columnKey) {
       case 'date':
-        // CRITICAL FIX: Show date + time (created_at)
+        // Show date + time in one line: "08 Feb 2026 02:09 PM"
         const dateTime = formatDateAndTime(sale.createdAt);
         return (
-          <div className="text-sm">
-            <div className="text-gray-400">{dateTime.date}</div>
-            <div className="text-xs text-gray-500 mt-0.5">{dateTime.time}</div>
+          <div className="text-sm text-gray-400">
+            {dateTime.date} {dateTime.time}
           </div>
         );
       

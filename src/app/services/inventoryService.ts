@@ -2,6 +2,11 @@
  * Inventory Management – Single Source of Truth
  * Design: docs/INVENTORY_MANAGEMENT_DESIGN.md
  *
+ * Rules: (1) Stock = movement-based only (stock_movements); no product.current_stock.
+ * (2) Parent product stock = sum of variation stocks (can be negative). (3) Variation
+ * stock shown as-is (negative allowed, no clamping). (4) Packing columns (boxes/pieces)
+ * only when enablePacking ON; 0 when product has no packing. (5) Unit from product.unit_id → units.short_code.
+ *
  * APIs:
  * - getInventoryOverview: Stock Overview tab (products + balance + categories + prices)
  * - getInventoryMovements: Stock Analytics tab (movements with filters)
@@ -33,6 +38,9 @@ export interface InventoryOverviewRow {
     attributes: any;
     stock: number;
   }>;
+  /** Combo/bundle: product is a virtual bundle; stock from components */
+  isComboProduct?: boolean;
+  comboItemCount?: number;
 }
 
 export interface InventoryMovementRow {
@@ -89,6 +97,8 @@ export const inventoryService = {
         min_stock,
         category_id,
         has_variations,
+        is_combo_product,
+        unit_id,
         product_categories(id, name)
       `)
       .eq('company_id', companyId)
@@ -101,6 +111,28 @@ export const inventoryService = {
     if (!products?.length) return [];
 
     const productIds = products.map((p: any) => p.id);
+
+    // Step 1b: Combo item counts for combo products (for "Bundle (X items)" display)
+    const comboProductIds = products.filter((p: any) => p.is_combo_product).map((p: any) => p.id);
+    let comboItemCountMap: Record<string, number> = {};
+    if (comboProductIds.length > 0) {
+      const { data: combos } = await supabase
+        .from('product_combos')
+        .select('id, combo_product_id')
+        .in('combo_product_id', comboProductIds)
+        .eq('company_id', companyId)
+        .eq('is_active', true);
+      if (combos?.length) {
+        const comboIds = combos.map((c: any) => c.id);
+        const { data: comboItems } = await supabase
+          .from('product_combo_items')
+          .select('combo_id')
+          .in('combo_id', comboIds);
+        const countByComboId: Record<string, number> = {};
+        comboItems?.forEach((i: any) => { countByComboId[i.combo_id] = (countByComboId[i.combo_id] || 0) + 1; });
+        combos.forEach((c: any) => { comboItemCountMap[c.combo_product_id] = countByComboId[c.id] ?? 0; });
+      }
+    }
 
     // Step 2: Calculate stock from stock_movements (SINGLE SOURCE OF TRUTH)
     // 🔒 DIAGNOSTIC: Include movement_type, reference_type, reference_id, notes, created_at for negative stock diagnosis
@@ -118,16 +150,6 @@ export const inventoryService = {
     // If branchId is 'all' or null, don't filter by branch_id - include all movements
 
     const { data: movements, error: movementsError } = await stockQuery;
-    
-    // 🔒 DEBUG: Log query results for troubleshooting
-    console.log('[INVENTORY SERVICE] getInventoryOverview:', {
-      companyId,
-      branchId,
-      productCount: productIds.length,
-      movementsFetched: movements?.length || 0,
-      movementsError: movementsError?.message,
-      sampleMovements: movements?.slice(0, 3) // First 3 for debugging
-    });
 
     // Step 3: Get product variations for products that have them
     const { data: variations } = await supabase
@@ -144,6 +166,21 @@ export const inventoryService = {
         }
         variationMap[v.product_id].push(v);
       });
+    }
+
+    // Step 3b: Get units for product unit display (unit_id -> short_code)
+    const unitIds = [...new Set((products || []).map((p: any) => p.unit_id).filter(Boolean))] as string[];
+    let unitMap: Record<string, { short_code: string }> = {};
+    if (unitIds.length > 0) {
+      const { data: units } = await supabase
+        .from('units')
+        .select('id, short_code')
+        .in('id', unitIds);
+      if (units) {
+        units.forEach((u: any) => {
+          unitMap[u.id] = { short_code: u.short_code || 'pcs' };
+        });
+      }
     }
 
     // Step 4: Calculate stock from stock_movements (SINGLE SOURCE OF TRUTH)
@@ -170,18 +207,6 @@ export const inventoryService = {
           // Product-level stock (no variation)
           productStockMap[productId] = (productStockMap[productId] || 0) + qty;
         }
-      });
-      
-      // 🔒 DEBUG: Log calculated stock for verification
-      const totalProductStock = Object.values(productStockMap).reduce((sum, qty) => sum + qty, 0);
-      const totalVariationStock = Object.values(variationStockMap).reduce((sum, qty) => sum + qty, 0);
-      console.log('[INVENTORY SERVICE] Stock calculation summary:', {
-        totalMovements: movements.length,
-        productsWithStock: Object.keys(productStockMap).length,
-        variationsWithStock: Object.keys(variationStockMap).length,
-        totalProductStock,
-        totalVariationStock,
-        sampleProductStocks: Object.entries(productStockMap).slice(0, 5) // First 5 for debugging
       });
     } else if (movementsError) {
       console.error('[INVENTORY SERVICE] ❌ Error fetching stock movements:', movementsError);
@@ -260,10 +285,10 @@ export const inventoryService = {
         name: p.name || '',
         category: p.product_categories?.name || 'Uncategorized',
         categoryId: p.category_id,
-        stock: totalStock, // Use actual calculated stock (can be negative to indicate data issues)
-        boxes: 0, // TODO: Calculate from packing if needed
-        pieces: totalStock, // For now, pieces = stock
-        unit: 'pcs',
+        stock: totalStock, // Movement-based; can be negative (no clamping)
+        boxes: 0, // When packing ON + product has packing: calculated; else 0
+        pieces: 0, // When packing ON + product has packing: remainder; else 0
+        unit: p.unit_id && unitMap[p.unit_id] ? unitMap[p.unit_id].short_code : 'pcs',
         avgCost,
         sellingPrice,
         stockValue,
@@ -275,9 +300,12 @@ export const inventoryService = {
         hasVariations: hasVariations,
         variations: hasVariations ? variationMap[p.id].map(v => ({
           id: v.id,
+          sku: v.sku,
           attributes: v.attributes,
-          stock: Math.max(0, variationStockMap[v.id] || 0),
+          stock: variationStockMap[v.id] ?? 0, // Allow negative; no clamping
         })) : [],
+        isComboProduct: !!p.is_combo_product,
+        comboItemCount: comboItemCountMap[p.id] ?? 0,
       } as InventoryOverviewRow & { hasVariations?: boolean; variations?: any[] };
     });
 
@@ -287,6 +315,7 @@ export const inventoryService = {
   /**
    * Stock Analytics / Movements API – for Tab 2
    * Filters: product, branch, date range, movement_type
+   * Fetches variation details in a separate query to avoid schema relationship requirement.
    */
   async getInventoryMovements(
     filters: InventoryMovementsFilters
@@ -314,8 +343,7 @@ export const inventoryService = {
         notes,
         created_at,
         product:products(id, name, sku),
-        branch:branches!branch_id(id, name),
-        variation:product_variations!variation_id(id, attributes)
+        branch:branches!branch_id(id, name)
       `)
       .eq('company_id', companyId)
       .order('created_at', { ascending: false })
@@ -329,7 +357,26 @@ export const inventoryService = {
 
     const { data, error } = await query;
     if (error) throw error;
-    return (data || []) as InventoryMovementRow[];
+    const rows = (data || []) as InventoryMovementRow[];
+
+    // Fetch variation details separately (avoids stock_movements->product_variations FK in schema cache)
+    const variationIds = [...new Set(rows.map((r: any) => r.variation_id).filter(Boolean))] as string[];
+    let variationMap: Record<string, { id: string; attributes: Record<string, string> }> = {};
+    if (variationIds.length > 0) {
+      const { data: variations } = await supabase
+        .from('product_variations')
+        .select('id, attributes')
+        .in('id', variationIds);
+      if (variations) {
+        variations.forEach((v: any) => {
+          variationMap[v.id] = { id: v.id, attributes: v.attributes || {} };
+        });
+      }
+    }
+    return rows.map((r: any) => ({
+      ...r,
+      variation: r.variation_id && variationMap[r.variation_id] ? variationMap[r.variation_id] : null,
+    })) as InventoryMovementRow[];
   },
 
   /**

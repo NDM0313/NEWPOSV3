@@ -451,14 +451,18 @@ export const EnhancedProductForm = ({
     if (!companyId) return;
     setLoadingProducts(true);
     try {
-      const { data, error } = await supabase
+      const currentProductId = initialProduct?.uuid || initialProduct?.id;
+      const isValidUuid = typeof currentProductId === 'string' && currentProductId.length === 36 && /^[0-9a-f-]{36}$/i.test(currentProductId);
+      let query = supabase
         .from('products')
         .select('id, name, sku, retail_price, has_variations')
         .eq('company_id', companyId)
         .eq('is_active', true)
-        .eq('is_combo_product', false) // Exclude combo products
-        .neq('id', initialProduct?.id || initialProduct?.uuid || '00000000-0000-0000-0000-000000000000') // Exclude current product
-        .order('name');
+        .eq('is_combo_product', false); // Exclude combo products
+      if (isValidUuid) {
+        query = query.neq('id', currentProductId); // Exclude current product only when id is a valid UUID
+      }
+      const { data, error } = await query.order('name');
       
       if (error) throw error;
       setAvailableProducts(data || []);
@@ -714,7 +718,7 @@ export const EnhancedProductForm = ({
 
     const productId = initialProduct?.uuid || initialProduct?.id;
     if (!productId) {
-      toast.error('Product must be saved first before creating combo');
+      toast.error('Save the product first (Basic tab), then you can add combos here.');
       return;
     }
 
@@ -2307,6 +2311,17 @@ export const EnhancedProductForm = ({
         {/* TAB 3 - COMBOS */}
         {activeTab === 'combos' && modules.combosEnabled && isComboProduct && (
           <>
+            {/* Require product to be saved before adding combos */}
+            {!(initialProduct?.uuid || initialProduct?.id) ? (
+              <div className="bg-amber-900/30 border border-amber-700 rounded-xl p-6 text-center">
+                <p className="text-amber-200 font-medium">Save the product first to add combos</p>
+                <p className="text-amber-200/80 text-sm mt-2">
+                  Go to the <strong>Basic</strong> tab, fill in name and other required fields, then click <strong>Save</strong>. 
+                  After the product is saved, you can return here to create combo bundles.
+                </p>
+              </div>
+            ) : (
+            <>
             {/* Info Banner */}
             <div className="bg-blue-900/20 border border-blue-800 rounded-xl p-4">
               <p className="text-sm text-blue-300">
@@ -2549,6 +2564,8 @@ export const EnhancedProductForm = ({
                   Start adding products above to create your first combo package
                 </p>
               </div>
+            )}
+            </>
             )}
           </>
         )}

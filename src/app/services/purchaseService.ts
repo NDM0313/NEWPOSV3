@@ -18,6 +18,7 @@ export interface Purchase {
   paid_amount: number;
   due_amount: number;
   notes?: string;
+  attachments?: { url: string; name: string }[] | null;
   created_by: string;
 }
 
@@ -188,12 +189,13 @@ export const purchaseService = {
     return data;
   },
 
-  // Get single purchase
+  // Get single purchase (include attachments so edit form shows saved files)
   async getPurchase(id: string) {
     const { data, error } = await supabase
       .from('purchases')
       .select(`
         *,
+        attachments,
         supplier:contacts(*),
         created_by_user:users(id, full_name, email),
         items:purchase_items(

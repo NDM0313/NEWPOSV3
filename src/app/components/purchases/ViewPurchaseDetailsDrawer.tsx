@@ -63,6 +63,25 @@ import {
 } from '@/app/components/ui/dialog';
 import { getAttachmentOpenUrl } from '@/app/utils/paymentAttachmentUrl';
 
+function AttachmentImage({ att }: { att: { url: string; name: string } }) {
+  const [src, setSrc] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    getAttachmentOpenUrl(att.url).then((url) => {
+      if (!cancelled) setSrc(url);
+    });
+    return () => { cancelled = true; };
+  }, [att.url]);
+  if (!src) return <div className="h-32 flex items-center justify-center text-gray-500 text-sm">Loading...</div>;
+  return (
+    <img
+      src={src}
+      alt={att.name || 'Attachment'}
+      className="w-full max-w-md max-h-48 object-contain rounded border border-gray-700 bg-gray-900"
+    />
+  );
+}
+
 interface PurchaseItem {
   id: string;
   productId: string;
@@ -1187,25 +1206,50 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-2 max-h-64 overflow-y-auto">
-            {attachmentsDialogList?.map((att, idx) => (
-              <div
-                key={idx}
-                className="flex items-center justify-between gap-2 p-2 rounded-lg bg-gray-800/50 border border-gray-700"
-              >
-                <span className="text-sm text-gray-200 truncate flex-1" title={att.name}>{att.name}</span>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="shrink-0 border-gray-600 text-gray-300 hover:bg-gray-700 hover:text-white"
-                  onClick={async () => {
-                    const openUrl = await getAttachmentOpenUrl(att.url);
-                    window.open(openUrl, '_blank');
-                  }}
+            {attachmentsDialogList?.map((att, idx) => {
+              const isImage = /\.(jpg|jpeg|png|gif|webp)$/i.test(att.name || '');
+              return (
+                <div
+                  key={idx}
+                  className="flex flex-col gap-2 p-2 rounded-lg bg-gray-800/50 border border-gray-700"
                 >
-                  Open in new tab
-                </Button>
-              </div>
-            ))}
+                  {isImage ? (
+                    <>
+                      <AttachmentImage att={att} />
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-sm text-gray-200 truncate flex-1" title={att.name}>{att.name}</span>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="shrink-0 border-gray-600 text-gray-300 hover:bg-gray-700 hover:text-white"
+                          onClick={async () => {
+                            const openUrl = await getAttachmentOpenUrl(att.url);
+                            window.open(openUrl, '_blank');
+                          }}
+                        >
+                          Open in new tab
+                        </Button>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-sm text-gray-200 truncate flex-1" title={att.name}>{att.name}</span>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="shrink-0 border-gray-600 text-gray-300 hover:bg-gray-700 hover:text-white"
+                        onClick={async () => {
+                          const openUrl = await getAttachmentOpenUrl(att.url);
+                          window.open(openUrl, '_blank');
+                        }}
+                      >
+                        Open in new tab
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         </DialogContent>
       </Dialog>

@@ -32,7 +32,7 @@ import { purchaseService } from '@/app/services/purchaseService';
 import { branchService, Branch } from '@/app/services/branchService';
 import { Pagination } from '@/app/components/ui/pagination';
 import { ListToolbar } from '@/app/components/ui/list-toolbar';
-import { formatLongDate } from '@/app/components/ui/utils';
+import { formatDateAndTime } from '@/app/components/ui/utils';
 import { UnifiedPaymentDialog } from '@/app/components/shared/UnifiedPaymentDialog';
 import { UnifiedLedgerView } from '@/app/components/shared/UnifiedLedgerView';
 import { ViewPurchaseDetailsDrawer } from './ViewPurchaseDetailsDrawer';
@@ -358,16 +358,18 @@ export const PurchasesPage = () => {
   // Listen for purchase saved event to refresh list
   useEffect(() => {
     const handlePurchaseSaved = () => {
-      // 🔒 CLONE FROM SALE PAGE: Refresh both context and local state to ensure location is resolved
       loadPurchases();
-      if (refreshPurchases) {
-        refreshPurchases();
-      }
+      if (refreshPurchases) refreshPurchases();
     };
-    
+    const handlePaymentAdded = () => {
+      loadPurchases();
+      if (refreshPurchases) refreshPurchases();
+    };
     window.addEventListener('purchaseSaved', handlePurchaseSaved);
+    window.addEventListener('paymentAdded', handlePaymentAdded);
     return () => {
       window.removeEventListener('purchaseSaved', handlePurchaseSaved);
+      window.removeEventListener('paymentAdded', handlePaymentAdded);
     };
   }, [loadPurchases, refreshPurchases]);
   
@@ -624,8 +626,14 @@ export const PurchasesPage = () => {
 
   const renderPurchaseCell = (purchase: Purchase, key: string): React.ReactNode => {
     switch (key) {
-      case 'date':
-        return <div className="text-sm text-gray-400">{formatLongDate(purchase.date)}</div>;
+      case 'date': {
+        const dateTime = formatDateAndTime(purchase.date);
+        return (
+          <div className="text-sm text-gray-400">
+            {dateTime.date} {dateTime.time}
+          </div>
+        );
+      }
       case 'poNo':
         return <div className="text-sm text-orange-400 font-mono font-semibold">{purchase.poNo}</div>;
       case 'reference':
@@ -681,7 +689,7 @@ export const PurchasesPage = () => {
       case 'grandTotal':
         return (
           <div className="text-right">
-            <div className="text-sm font-semibold text-white tabular-nums">${purchase.grandTotal.toLocaleString()}</div>
+            <div className="text-sm font-semibold text-white tabular-nums">{purchase.grandTotal.toLocaleString()}</div>
           </div>
         );
       case 'paymentDue':
@@ -689,7 +697,7 @@ export const PurchasesPage = () => {
           <div className="text-right">
             {purchase.paymentDue > 0 ? (
               <button onClick={() => handleMakePayment(purchase)} className="text-sm font-semibold text-red-400 tabular-nums hover:text-red-300 hover:underline cursor-pointer transition-colors" title="Click to make payment">
-                ${purchase.paymentDue.toLocaleString()}
+                {purchase.paymentDue.toLocaleString()}
               </button>
             ) : (
               <div className="text-sm text-gray-600">-</div>
@@ -742,7 +750,7 @@ export const PurchasesPage = () => {
             <div className="flex items-start justify-between mb-3">
               <div>
                 <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Total Purchase</p>
-                <p className="text-2xl font-bold text-white mt-1">${summary.totalPurchase.toLocaleString()}</p>
+                <p className="text-2xl font-bold text-white mt-1">{summary.totalPurchase.toLocaleString()}</p>
                 <p className="text-xs text-gray-500 mt-1">This month</p>
               </div>
               <div className="w-12 h-12 rounded-full bg-orange-500/10 flex items-center justify-center">
@@ -756,7 +764,7 @@ export const PurchasesPage = () => {
             <div className="flex items-start justify-between mb-3">
               <div>
                 <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Amount Due</p>
-                <p className="text-2xl font-bold text-red-400 mt-1">${summary.totalDue.toLocaleString()}</p>
+                <p className="text-2xl font-bold text-red-400 mt-1">{summary.totalDue.toLocaleString()}</p>
                 <p className="text-xs text-gray-500 mt-1">Pending payments</p>
               </div>
               <div className="w-12 h-12 rounded-full bg-red-500/10 flex items-center justify-center">
@@ -770,7 +778,7 @@ export const PurchasesPage = () => {
             <div className="flex items-start justify-between mb-3">
               <div>
                 <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Returns</p>
-                <p className="text-2xl font-bold text-yellow-400 mt-1">${summary.returns.toLocaleString()}</p>
+                <p className="text-2xl font-bold text-yellow-400 mt-1">{summary.returns.toLocaleString()}</p>
                 <p className="text-xs text-gray-500 mt-1">2 items returned</p>
               </div>
               <div className="w-12 h-12 rounded-full bg-yellow-500/10 flex items-center justify-center">

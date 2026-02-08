@@ -989,6 +989,7 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
       if (updates.is_studio !== undefined) {
         supabaseUpdates.is_studio = updates.is_studio;
       }
+      if ((updates as any).attachments !== undefined) supabaseUpdates.attachments = (updates as any).attachments;
 
       // 🔒 CRITICAL FIX: Calculate stock movement DELTA BEFORE updating sale_items
       // This must happen BEFORE sale_items are deleted/updated so we can fetch old items

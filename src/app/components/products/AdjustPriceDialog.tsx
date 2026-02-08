@@ -115,6 +115,7 @@ export const AdjustPriceDialog: React.FC<AdjustPriceDialogProps> = ({
         retail_price: selling,
       });
       toast.success('Price updated successfully');
+      window.dispatchEvent(new CustomEvent('products-updated'));
       onSuccess?.();
       onClose();
     } catch (error: any) {

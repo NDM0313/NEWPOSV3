@@ -21,6 +21,7 @@ import { useSupabase } from '@/app/context/SupabaseContext';
 import { useSales } from '@/app/context/SalesContext';
 import { usePurchases } from '@/app/context/PurchaseContext';
 import { productService } from '@/app/services/productService';
+import { inventoryService } from '@/app/services/inventoryService';
 import { Pagination } from '@/app/components/ui/pagination';
 import { ImportProductsModal } from './ImportProductsModal';
 import { CustomSelect } from '@/app/components/ui/custom-select';
@@ -43,7 +44,7 @@ import {
 } from "@/app/components/ui/alert-dialog";
 import { Dialog, DialogContent, DialogTitle } from "@/app/components/ui/dialog";
 
-type ProductType = 'simple' | 'variable';
+type ProductType = 'simple' | 'variable' | 'combo';
 type StockStatus = 'in-stock' | 'low-stock' | 'out-of-stock';
 
 interface Product {
@@ -81,9 +82,14 @@ export const ProductsPage = () => {
     
     try {
       setLoading(true);
-      const data = await productService.getAllProducts(companyId);
+      const [data, overviewRows] = await Promise.all([
+        productService.getAllProducts(companyId),
+        inventoryService.getInventoryOverview(companyId, null),
+      ]);
+      const stockByProductId: Record<string, number> = {};
+      overviewRows.forEach((row) => { stockByProductId[row.productId] = row.stock; });
       
-      // Convert Supabase format to app format
+      // Convert Supabase format to app format; stock from inventory overview (stock_movements) when available
       const convertedProducts: Product[] = data.map((p: any, index: number) => ({
         id: index + 1, // Use index-based ID for compatibility with existing UI
         uuid: p.id, // Store actual Supabase UUID for database operations
@@ -95,8 +101,8 @@ export const ProductsPage = () => {
         unit: p.unit || 'Piece',
         purchasePrice: p.cost_price || 0,
         sellingPrice: p.retail_price || 0,
-        stock: p.current_stock || 0,
-        type: p.has_variations ? 'variable' : 'simple',
+        stock: stockByProductId[p.id] ?? p.current_stock ?? 0,
+        type: p.is_combo_product ? 'combo' : (p.has_variations ? 'variable' : 'simple'),
         category: p.category?.name || 'Uncategorized',
         brand: p.brand || '',
         status: p.is_active ? 'active' : 'inactive',
@@ -296,9 +302,12 @@ export const ProductsPage = () => {
     );
   };
 
+  // Margin = Selling price − Purchase price (from backend: retail_price − cost_price)
   const getMargin = (product: Product) => {
     const margin = product.sellingPrice - product.purchasePrice;
-    const marginPercent = ((margin / product.purchasePrice) * 100).toFixed(1);
+    const marginPercent = product.purchasePrice > 0
+      ? ((margin / product.purchasePrice) * 100).toFixed(1)
+      : '0';
     return { margin, marginPercent };
   };
 
@@ -523,7 +532,7 @@ export const ProductsPage = () => {
         return (
           <div className="text-right">
             <div className="text-sm font-semibold text-green-400 tabular-nums">+{marginPercent}%</div>
-            <div className="text-[10px] text-gray-500 tabular-nums">${margin.toLocaleString()}</div>
+            <div className="text-[10px] text-gray-500 tabular-nums" title="Margin = Selling − Purchase (from product cost & retail price)">Margin ${margin.toLocaleString()}</div>
           </div>
         );
       }
@@ -546,7 +555,8 @@ export const ProductsPage = () => {
           <Badge className={cn(
             'text-xs font-medium capitalize w-fit px-2 py-0.5 h-5',
             product.type === 'simple' && 'bg-gray-500/20 text-gray-400 border-gray-500/30',
-            product.type === 'variable' && 'bg-purple-500/20 text-purple-400 border-purple-500/30'
+            product.type === 'variable' && 'bg-purple-500/20 text-purple-400 border-purple-500/30',
+            product.type === 'combo' && 'bg-amber-500/20 text-amber-400 border-amber-500/30'
           )}>
             {product.type}
           </Badge>
@@ -768,6 +778,7 @@ export const ProductsPage = () => {
                         { value: 'all', label: 'All Types' },
                         { value: 'simple', label: 'Simple Product' },
                         { value: 'variable', label: 'Variable Product' },
+                        { value: 'combo', label: 'Combo Product' },
                       ].map(opt => (
                         <label key={opt.value} className="flex items-center gap-2 cursor-pointer">
                           <input

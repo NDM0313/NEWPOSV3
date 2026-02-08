@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { 
   Package, TrendingDown, DollarSign, AlertTriangle, 
   BarChart3, Search, Filter, Download, Warehouse, Loader2,
-  ExternalLink, SlidersHorizontal, FileDown, Printer, List, Layers
+  ExternalLink, SlidersHorizontal, FileDown, Printer, List, Layers, Upload
 } from 'lucide-react';
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
@@ -15,6 +15,8 @@ import { inventoryService, InventoryOverviewRow, InventoryMovementRow } from '..
 import { toast } from 'sonner';
 import { FullStockLedgerView } from '../products/FullStockLedgerView';
 import { StockAdjustmentDrawer } from './StockAdjustmentDrawer';
+import { ListToolbar } from '../ui/list-toolbar';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../ui/dialog';
 import { groupStockMovements, ViewMode, GroupedMovementRow } from '../../utils/stockMovementGrouping';
 
 type InventoryTab = 'overview' | 'analytics';
@@ -25,8 +27,46 @@ export const InventoryDashboardNew = () => {
   const enablePacking = inventorySettings.enablePacking;
   const [activeTab, setActiveTab] = useState<InventoryTab>('overview');
   const [searchTerm, setSearchTerm] = useState('');
+  const [pageSize, setPageSize] = useState(25);
   const [overviewRows, setOverviewRows] = useState<InventoryOverviewRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [overviewFilterOpen, setOverviewFilterOpen] = useState(false);
+  const [overviewCategoryFilter, setOverviewCategoryFilter] = useState('all');
+  const [overviewStatusFilter, setOverviewStatusFilter] = useState('all');
+  const [overviewMovementFilter, setOverviewMovementFilter] = useState('all');
+  const [importInventoryModalOpen, setImportInventoryModalOpen] = useState(false);
+  const [importRows, setImportRows] = useState<Array<{ sku: string; quantity: number; productId?: string; name?: string }>>([]);
+  const [importing, setImporting] = useState(false);
+
+  // Packing OFF: sirf Stock; Unit, Boxes, Pieces HIDE. Packing ON: Boxes, Pieces, Unit, Stock sab show.
+  const overviewColumnOrder = useMemo(() => {
+    const base = ['product', 'sku', 'category', 'stockQty'] as const;
+    const packingCols = enablePacking ? (['boxes', 'pieces', 'unit'] as const) : [];
+    return [...base, ...packingCols, 'avgCost', 'sellingPrice', 'stockValue', 'movement', 'status', 'actions'] as const;
+  }, [enablePacking]);
+  const [visibleOverviewColumns, setVisibleOverviewColumns] = useState<Record<string, boolean>>({
+    product: true, sku: true, category: true, stockQty: true, boxes: true, pieces: true,
+    unit: true, avgCost: true, sellingPrice: true, stockValue: true, movement: true, status: true, actions: true,
+  });
+  const overviewColumnsList = useMemo(() => [
+    { key: 'product', label: 'Product' },
+    { key: 'sku', label: 'SKU' },
+    { key: 'category', label: 'Category' },
+    { key: 'stockQty', label: 'Stock' },
+    ...(enablePacking ? [{ key: 'boxes', label: 'Boxes' }, { key: 'pieces', label: 'Pieces' }, { key: 'unit', label: 'Unit' }] : []),
+    { key: 'avgCost', label: 'Avg Cost' },
+    { key: 'sellingPrice', label: 'Selling Price' },
+    { key: 'stockValue', label: 'Stock Value' },
+    { key: 'movement', label: 'Movement' },
+    { key: 'status', label: 'Status' },
+    { key: 'actions', label: 'Actions' },
+  ], [enablePacking]);
+  const toggleOverviewColumn = (key: string) => {
+    setVisibleOverviewColumns((prev) => ({ ...prev, [key]: !prev[key] }));
+  };
+  const showAllOverviewColumns = () => {
+    setVisibleOverviewColumns((prev) => Object.fromEntries(Object.keys(prev).map((k) => [k, true])));
+  };
 
   // Ledger & Adjustment modals
   const [ledgerProduct, setLedgerProduct] = useState<InventoryOverviewRow | null>(null);
@@ -181,14 +221,33 @@ export const InventoryDashboardNew = () => {
     [overviewRows]
   );
 
-  const filteredProducts = useMemo(() => 
-    overviewRows.filter(p => 
+  const filteredProducts = useMemo(() => {
+    let list = overviewRows.filter(p =>
       p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       p.sku.toLowerCase().includes(searchTerm.toLowerCase()) ||
       p.category.toLowerCase().includes(searchTerm.toLowerCase())
-    ),
-    [overviewRows, searchTerm]
-  );
+    );
+    if (overviewCategoryFilter !== 'all') list = list.filter(p => p.category === overviewCategoryFilter);
+    if (overviewStatusFilter !== 'all') list = list.filter(p => p.status === overviewStatusFilter);
+    if (overviewMovementFilter !== 'all') list = list.filter(p => p.movement === overviewMovementFilter);
+    return list;
+  }, [overviewRows, searchTerm, overviewCategoryFilter, overviewStatusFilter, overviewMovementFilter]);
+
+  const displayedProducts = useMemo(() => {
+    const size = typeof pageSize === 'number' && pageSize > 0 ? pageSize : filteredProducts.length;
+    return filteredProducts.slice(0, size);
+  }, [filteredProducts, pageSize]);
+
+  const overviewFilterActiveCount = [
+    overviewCategoryFilter !== 'all',
+    overviewStatusFilter !== 'all',
+    overviewMovementFilter !== 'all',
+  ].filter(Boolean).length;
+
+  const uniqueCategories = useMemo(() => {
+    const set = new Set(overviewRows.map(p => p.category).filter(Boolean));
+    return Array.from(set).sort();
+  }, [overviewRows]);
 
   const handleAdjustSave = useCallback(async (data: {
     productId: string;
@@ -201,7 +260,7 @@ export const InventoryDashboardNew = () => {
   }) => {
     if (!companyId) return;
     try {
-      await productService.updateProduct(data.productId, { current_stock: data.newStock });
+      // Inventory = movement-based only; do not update product.current_stock
       const qty = data.type === 'add' ? data.quantity : -data.quantity;
       await productService.createStockMovement({
         company_id: companyId,
@@ -222,14 +281,14 @@ export const InventoryDashboardNew = () => {
   }, [companyId, branchId, user?.id, loadOverview]);
 
   const exportOverviewCsv = useCallback(() => {
-    const headers = enablePacking 
-      ? ['Product', 'SKU', 'Category', 'Stock Qty', 'Boxes', 'Pieces', 'Unit', 'Avg Cost', 'Selling Price', 'Stock Value', 'Status', 'Movement']
-      : ['Product', 'SKU', 'Category', 'Stock Qty', 'Unit', 'Avg Cost', 'Selling Price', 'Stock Value', 'Status', 'Movement'];
+    const headers = enablePacking
+      ? ['Product', 'SKU', 'Category', 'Stock', 'Boxes', 'Pieces', 'Unit', 'Avg Cost', 'Selling Price', 'Stock Value', 'Status', 'Movement']
+      : ['Product', 'SKU', 'Category', 'Stock', 'Avg Cost', 'Selling Price', 'Stock Value', 'Status', 'Movement'];
     const rows = filteredProducts.map(p => {
       if (enablePacking) {
-        return [p.name, p.sku, p.category, p.stock, p.boxes, p.pieces, p.unit, p.avgCost, p.sellingPrice, p.stockValue, p.status, p.movement].join(',');
+        return [p.name, p.sku, p.category, p.stock, p.boxes ?? 0, p.pieces ?? 0, p.unit, p.avgCost, p.sellingPrice, p.stockValue, p.status, p.movement].join(',');
       } else {
-        return [p.name, p.sku, p.category, p.stock, p.unit, p.avgCost, p.sellingPrice, p.stockValue, p.status, p.movement].join(',');
+        return [p.name, p.sku, p.category, p.stock, p.avgCost, p.sellingPrice, p.stockValue, p.status, p.movement].join(',');
       }
     });
     const csv = [headers.join(','), ...rows].join('\n');
@@ -470,141 +529,235 @@ export const InventoryDashboardNew = () => {
             </div>
           </div>
 
-          {/* Search */}
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={20} />
-            <Input 
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="Search by product name, SKU, or category..."
-              className="pl-10 bg-gray-900 border-gray-700 text-white"
+          {/* Search & Actions Bar - same as ProductsPage (ListToolbar has same bar styling) */}
+          <ListToolbar
+              search={{
+                value: searchTerm,
+                onChange: setSearchTerm,
+                placeholder: 'Search by product name, SKU, or category...',
+              }}
+              rowsSelector={{
+                value: pageSize,
+                onChange: setPageSize,
+                totalItems: filteredProducts.length,
+              }}
+              columnsManager={{
+                columns: overviewColumnsList,
+                visibleColumns: visibleOverviewColumns,
+                onToggle: toggleOverviewColumn,
+                onShowAll: showAllOverviewColumns,
+              }}
+              filter={{
+                isOpen: overviewFilterOpen,
+                onToggle: () => setOverviewFilterOpen((o) => !o),
+                activeCount: overviewFilterActiveCount,
+                renderPanel: () => (
+                  <div className="absolute right-0 top-12 w-72 bg-gray-900 border border-gray-700 rounded-lg shadow-2xl p-4 z-50">
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="text-sm font-semibold text-white">Overview filters</h3>
+                      <button
+                        onClick={() => {
+                          setOverviewCategoryFilter('all');
+                          setOverviewStatusFilter('all');
+                          setOverviewMovementFilter('all');
+                        }}
+                        className="text-xs text-blue-400 hover:text-blue-300 transition-colors"
+                      >
+                        Clear All
+                      </button>
+                    </div>
+                    <div className="space-y-4 max-h-[400px] overflow-y-auto">
+                      <div>
+                        <label className="text-xs text-gray-400 mb-2 block font-medium">Category</label>
+                        <select
+                          value={overviewCategoryFilter}
+                          onChange={(e) => setOverviewCategoryFilter(e.target.value)}
+                          className="w-full rounded-md bg-gray-800 border border-gray-700 text-white text-sm px-3 py-2"
+                        >
+                          <option value="all">All categories</option>
+                          {uniqueCategories.map((c) => (
+                            <option key={c} value={c}>{c}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="text-xs text-gray-400 mb-2 block font-medium">Status</label>
+                        <select
+                          value={overviewStatusFilter}
+                          onChange={(e) => setOverviewStatusFilter(e.target.value)}
+                          className="w-full rounded-md bg-gray-800 border border-gray-700 text-white text-sm px-3 py-2"
+                        >
+                          <option value="all">All status</option>
+                          <option value="OK">OK</option>
+                          <option value="Low">Low</option>
+                          <option value="Out">Out</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="text-xs text-gray-400 mb-2 block font-medium">Movement</label>
+                        <select
+                          value={overviewMovementFilter}
+                          onChange={(e) => setOverviewMovementFilter(e.target.value)}
+                          className="w-full rounded-md bg-gray-800 border border-gray-700 text-white text-sm px-3 py-2"
+                        >
+                          <option value="all">All</option>
+                          <option value="Fast">Fast</option>
+                          <option value="Medium">Medium</option>
+                          <option value="Slow">Slow</option>
+                          <option value="Dead">Dead</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+                ),
+              }}
+              importConfig={{ onImport: () => setImportInventoryModalOpen(true) }}
+              exportConfig={{
+                onExportCSV: () => {
+                  const headers = enablePacking ? ['Product', 'SKU', 'Category', 'Stock', 'Unit', 'Avg Cost', 'Selling Price', 'Stock Value', 'Movement', 'Status'] : ['Product', 'SKU', 'Category', 'Stock', 'Avg Cost', 'Selling Price', 'Stock Value', 'Movement', 'Status'];
+                  const rows = filteredProducts.map((p) =>
+                    enablePacking
+                      ? [p.name, p.sku, p.category, p.stock, p.unit, p.avgCost, p.sellingPrice, p.stockValue, p.movement, p.status].join(',')
+                      : [p.name, p.sku, p.category, p.stock, p.avgCost, p.sellingPrice, p.stockValue, p.movement, p.status].join(',')
+                  );
+                  const csv = [headers.join(','), ...rows].join('\n');
+                  const blob = new Blob([csv], { type: 'text/csv' });
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement('a');
+                  a.href = url;
+                  a.download = `inventory-overview-${new Date().toISOString().slice(0, 10)}.csv`;
+                  a.click();
+                  URL.revokeObjectURL(url);
+                },
+                onExportExcel: () => {},
+                onExportPDF: () => {},
+              }}
             />
-          </div>
 
           {/* Stock Table - horizontal and vertical scroll when needed */}
           <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-auto print:border print:rounded min-w-0">
             <table className="w-full min-w-[1000px]">
               <thead className="bg-gray-950/50 border-b border-gray-800">
                 <tr>
-                  <th className="px-6 py-4 text-left text-xs font-medium text-gray-400 uppercase">Product</th>
-                  <th className="px-6 py-4 text-left text-xs font-medium text-gray-400 uppercase">SKU</th>
-                  <th className="px-6 py-4 text-left text-xs font-medium text-gray-400 uppercase">Category</th>
-                  <th className="px-6 py-4 text-center text-xs font-medium text-gray-400 uppercase">Stock Qty</th>
-                  {enablePacking && (
-                    <>
-                      <th className="px-6 py-4 text-center text-xs font-medium text-gray-400 uppercase">Boxes</th>
-                      <th className="px-6 py-4 text-center text-xs font-medium text-gray-400 uppercase">Pieces</th>
-                    </>
-                  )}
-                  <th className="px-6 py-4 text-center text-xs font-medium text-gray-400 uppercase">Unit</th>
-                  <th className="px-6 py-4 text-right text-xs font-medium text-gray-400 uppercase">Avg Cost</th>
-                  <th className="px-6 py-4 text-right text-xs font-medium text-gray-400 uppercase">Selling Price</th>
-                  <th className="px-6 py-4 text-right text-xs font-medium text-gray-400 uppercase">Stock Value</th>
-                  <th className="px-6 py-4 text-center text-xs font-medium text-gray-400 uppercase">Movement</th>
-                  <th className="px-6 py-4 text-center text-xs font-medium text-gray-400 uppercase">Status</th>
-                  <th className="px-6 py-4 text-center text-xs font-medium text-gray-400 uppercase print:hidden">Actions</th>
+                  {overviewColumnOrder.filter((key) => visibleOverviewColumns[key] !== false).map((key) => {
+                    const align = ['avgCost', 'sellingPrice', 'stockValue'].includes(key) ? 'text-right' : ['stockQty', 'unit', 'boxes', 'pieces', 'movement', 'status', 'actions'].includes(key) ? 'text-center' : 'text-left';
+                    const label = overviewColumnsList.find((c) => c.key === key)?.label ?? key;
+                    return (
+                      <th key={key} className={`px-4 py-2.5 ${align} text-xs font-medium text-gray-400 uppercase ${key === 'actions' ? 'print:hidden' : ''}`}>
+                        {label}
+                      </th>
+                    );
+                  })}
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-800">
                 {loading ? (
                   <tr>
-                    <td colSpan={enablePacking ? 13 : 11} className="px-6 py-12 text-center">
+                    <td colSpan={overviewColumnOrder.filter((k) => visibleOverviewColumns[k] !== false).length} className="px-6 py-12 text-center">
                       <Loader2 size={48} className="mx-auto text-blue-500 mb-3 animate-spin" />
                       <p className="text-gray-400 text-sm">Loading inventory...</p>
                     </td>
                   </tr>
                 ) : filteredProducts.length === 0 ? (
                   <tr>
-                    <td colSpan={enablePacking ? 13 : 11} className="px-6 py-12 text-center">
+                    <td colSpan={overviewColumnOrder.filter((k) => visibleOverviewColumns[k] !== false).length} className="px-6 py-12 text-center">
                       <Package size={48} className="mx-auto text-gray-600 mb-3" />
                       <p className="text-gray-400 text-sm">No products found</p>
-                      <p className="text-gray-600 text-xs mt-1">Try adjusting your search</p>
+                      <p className="text-gray-600 text-xs mt-1">Try adjusting your search or filters</p>
                     </td>
                   </tr>
                 ) : (
-                  filteredProducts.flatMap((product) => {
+                  displayedProducts.flatMap((product) => {
+                    const visibleCols = overviewColumnOrder.filter((k) => visibleOverviewColumns[k] !== false);
+                    const renderProductCell = (key: string) => {
+                      switch (key) {
+                        case 'product':
+                          return (
+                            <td key={key} className="px-4 py-2">
+                              <div className="font-medium text-white text-sm">{product.name}</div>
+                              {product.hasVariations && (product as any).variations?.length > 0 && (
+                                <p className="text-[11px] text-gray-500 mt-0.5">
+                                  <span className="bg-gray-800/50 border border-gray-700 px-1.5 py-0.5 rounded text-[10px]">
+                                    SUM of {((product as any).variations as any[]).length} variations
+                                  </span>
+                                </p>
+                              )}
+                            </td>
+                          );
+                        case 'sku':
+                          return <td key={key} className="px-4 py-2"><span className="text-gray-400 font-mono text-xs">{product.sku}</span></td>;
+                        case 'category':
+                          return <td key={key} className="px-4 py-2"><span className="text-gray-400 text-sm">{product.category}</span></td>;
+                        case 'stockQty':
+                          return (
+                            <td key={key} className="px-4 py-2 text-center">
+                              <span className={cn("font-bold font-mono text-sm tabular-nums", product.stock < 0 ? "text-red-400" : product.status === 'Out' || product.status === 'Low' ? "text-red-400" : "text-white")}>{product.stock}</span>
+                              {enablePacking && <span className="text-gray-500 text-xs ml-1">{product.unit || 'pcs'}</span>}
+                            </td>
+                          );
+                        case 'boxes':
+                          return <td key={key} className="px-4 py-2 text-center text-gray-400 text-sm">{product.boxes ?? 0}</td>;
+                        case 'pieces':
+                          return <td key={key} className="px-4 py-2 text-center text-gray-400 text-sm">{product.pieces ?? 0}</td>;
+                        case 'unit':
+                          return <td key={key} className="px-4 py-2 text-center text-gray-400 text-sm">{product.unit || 'pcs'}</td>;
+                        case 'avgCost':
+                          return (
+                            <td key={key} className={cn('px-4 py-2 text-right text-sm font-medium tabular-nums', product.avgCost < 0 ? 'text-red-400' : 'text-green-400')}>
+                              {product.avgCost.toLocaleString()}
+                            </td>
+                          );
+                        case 'sellingPrice':
+                          return (
+                            <td key={key} className={cn('px-4 py-2 text-right text-sm font-medium tabular-nums', product.sellingPrice < 0 ? 'text-red-400' : 'text-green-400')}>
+                              {product.sellingPrice.toLocaleString()}
+                            </td>
+                          );
+                        case 'stockValue':
+                          return (
+                            <td key={key} className={cn('px-4 py-2 text-right text-sm tabular-nums', product.stockValue < 0 ? 'text-red-400' : 'text-gray-300')}>
+                              {product.stockValue.toLocaleString()}
+                            </td>
+                          );
+                        case 'movement':
+                          return (
+                            <td key={key} className="px-4 py-2 text-center">
+                              <Badge className={cn("border text-xs", getMovementBadge(product.movement))}>{product.movement}</Badge>
+                            </td>
+                          );
+                        case 'status':
+                          return (
+                            <td key={key} className="px-4 py-2 text-center">
+                              {product.status === 'Out' ? (
+                                <Badge className="bg-red-500/20 text-red-400 border-red-500/30 border text-xs">Out</Badge>
+                              ) : product.status === 'Low' ? (
+                                <Badge className="bg-orange-500/20 text-orange-400 border-orange-500/30 border text-xs"><AlertTriangle size={10} className="mr-0.5" /> Low</Badge>
+                              ) : (
+                                <Badge className="bg-green-500/20 text-green-400 border-green-500/30 border text-xs">OK</Badge>
+                              )}
+                            </td>
+                          );
+                        case 'actions':
+                          return (
+                            <td key={key} className="px-4 py-2 text-center print:hidden">
+                              <div className="flex items-center justify-center gap-1.5">
+                                <Button variant="ghost" size="sm" className="h-7 text-xs text-blue-400 hover:text-blue-300 hover:bg-blue-500/10 px-2" onClick={() => setLedgerProduct(product)}>
+                                  <ExternalLink size={12} className="mr-1" /> Ledger
+                                </Button>
+                                <Button variant="ghost" size="sm" className="h-7 text-xs text-amber-400 hover:text-amber-300 hover:bg-amber-500/10 px-2" onClick={() => setAdjustmentProduct(product)}>
+                                  <SlidersHorizontal size={12} className="mr-1" /> Adjust
+                                </Button>
+                              </div>
+                            </td>
+                          );
+                        default:
+                          return null;
+                      }
+                    };
                     const rows: React.ReactNode[] = [];
                     rows.push(
                       <tr key={product.id} className="hover:bg-gray-800/30 transition-colors">
-                        <td className="px-6 py-4">
-                          <div className="font-medium text-white">{product.name}</div>
-                          {product.hasVariations && (product as any).variations?.length > 0 && (
-                            <p className="text-xs text-gray-500 mt-0.5">
-                              <span className="bg-gray-800/50 border border-gray-700 px-1.5 py-0.5 rounded text-[10px]">
-                                SUM of {((product as any).variations as any[]).length} variations
-                              </span>
-                            </p>
-                          )}
-                        </td>
-                        <td className="px-6 py-4">
-                          <span className="text-gray-400 font-mono text-sm">{product.sku}</span>
-                        </td>
-                        <td className="px-6 py-4">
-                          <span className="text-gray-400">{product.category}</span>
-                        </td>
-                        <td className="px-6 py-4 text-center">
-                          <span className={cn(
-                            "font-bold font-mono",
-                            product.status === 'Out' || product.status === 'Low' ? "text-red-400" : "text-white"
-                          )}>
-                            {product.stock}
-                          </span>
-                        </td>
-                        {enablePacking && (
-                          <>
-                            <td className="px-6 py-4 text-center text-gray-400">{product.boxes}</td>
-                            <td className="px-6 py-4 text-center text-gray-400">{product.pieces}</td>
-                          </>
-                        )}
-                        <td className="px-6 py-4 text-center text-gray-400">{product.unit}</td>
-                        <td className="px-6 py-4 text-right text-gray-400">
-                          Rs {product.avgCost.toLocaleString()}
-                        </td>
-                        <td className="px-6 py-4 text-right text-white font-medium">
-                          Rs {product.sellingPrice.toLocaleString()}
-                        </td>
-                        <td className="px-6 py-4 text-right text-gray-300">
-                          Rs {product.stockValue.toLocaleString()}
-                        </td>
-                        <td className="px-6 py-4 text-center">
-                          <Badge className={cn("border", getMovementBadge(product.movement))}>
-                            {product.movement}
-                          </Badge>
-                        </td>
-                        <td className="px-6 py-4 text-center">
-                          {product.status === 'Out' ? (
-                            <Badge className="bg-red-500/20 text-red-400 border-red-500/30 border">Out</Badge>
-                          ) : product.status === 'Low' ? (
-                            <Badge className="bg-orange-500/20 text-orange-400 border-orange-500/30 border">
-                              <AlertTriangle size={12} className="mr-1" />
-                              Low
-                            </Badge>
-                          ) : (
-                            <Badge className="bg-green-500/20 text-green-400 border-green-500/30 border">OK</Badge>
-                          )}
-                        </td>
-                        <td className="px-6 py-4 text-center print:hidden">
-                          <div className="flex items-center justify-center gap-2">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="text-blue-400 hover:text-blue-300 hover:bg-blue-500/10"
-                              onClick={() => setLedgerProduct(product)}
-                            >
-                              <ExternalLink size={14} className="mr-1" />
-                              Ledger
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="text-amber-400 hover:text-amber-300 hover:bg-amber-500/10"
-                              onClick={() => setAdjustmentProduct(product)}
-                            >
-                              <SlidersHorizontal size={14} className="mr-1" />
-                              Adjust
-                            </Button>
-                          </div>
-                        </td>
+                        {visibleCols.map((key) => renderProductCell(key))}
                       </tr>
                     );
                     // RULE 3: Display stock per variation (sub-rows under parent)
@@ -614,29 +767,47 @@ export const InventoryDashboardNew = () => {
                         const attrText = typeof v.attributes === 'object' && v.attributes !== null
                           ? Object.entries(v.attributes).map(([k, val]) => `${k}: ${val}`).join(', ')
                           : String(v.attributes || '');
+                        const renderVariationCell = (key: string) => {
+                          const dash = <td key={key} className="px-4 py-1.5 text-center text-gray-500 text-xs">—</td>;
+                          const dashRight = <td key={key} className="px-4 py-1.5 text-right text-gray-500 text-xs">—</td>;
+                          const dashLeft = <td key={key} className="px-4 py-1.5 text-gray-500 text-xs">—</td>;
+                          if (key === 'product') {
+                            return (
+                              <td key={key} className="px-4 py-1.5 pl-10">
+                                <div className="text-gray-400 text-[11px]">
+                                  <span className="font-mono">└ SKU: {v.sku || 'N/A'}</span>
+                                  {attrText && <p className="text-gray-500 mt-0.5 text-[10px]">{attrText}</p>}
+                                </div>
+                              </td>
+                            );
+                          }
+                          if (key === 'stockQty') {
+                            const vStock = v.stock ?? 0;
+                            return (
+                              <td key={key} className="px-4 py-1.5 text-center">
+                                <span className={cn("font-mono text-xs tabular-nums", vStock < 0 ? "text-red-400" : "text-gray-300")}>{vStock}</span>
+                                {enablePacking && <span className="text-gray-500 text-[10px] ml-1">{product.unit || 'pcs'}</span>}
+                              </td>
+                            );
+                          }
+                          if (key === 'boxes') return <td key={key} className="px-4 py-1.5 text-center text-gray-500 text-xs">0</td>;
+                          if (key === 'pieces') return <td key={key} className="px-4 py-1.5 text-center text-gray-500 text-xs">0</td>;
+                          if (key === 'unit') return <td key={key} className="px-4 py-1.5 text-center text-gray-500 text-xs">{product.unit || 'pcs'}</td>;
+                          if (key === 'stockValue') {
+                            const val = (v.stock ?? 0) * product.sellingPrice;
+                            return (
+                              <td key={key} className={cn('px-4 py-1.5 text-right text-xs tabular-nums', val < 0 ? 'text-red-400' : 'text-green-400/80')}>
+                                {val.toLocaleString()}
+                              </td>
+                            );
+                          }
+                          if (['sku', 'category', 'avgCost', 'sellingPrice', 'movement', 'status'].includes(key)) return key === 'sku' ? dashLeft : dash;
+                          if (key === 'actions') return <td key={key} className="px-4 py-1.5 text-center print:hidden text-xs">—</td>;
+                          return dash;
+                        };
                         rows.push(
                           <tr key={`${product.id}-${v.id}`} className="bg-gray-900/40 hover:bg-gray-800/20 transition-colors opacity-90">
-                            <td className="px-6 py-2 pl-10">
-                              <div className="text-gray-400 text-xs">
-                                <span className="font-mono">└ SKU: {v.sku || 'N/A'}</span>
-                                {attrText && (
-                                  <p className="text-gray-500 mt-0.5 text-[11px]">{attrText}</p>
-                                )}
-                              </div>
-                            </td>
-                            <td className="px-6 py-2 text-gray-500 text-sm">—</td>
-                            <td className="px-6 py-2 text-gray-500 text-sm">—</td>
-                            <td className="px-6 py-2 text-center">
-                              <span className={cn("font-mono text-sm", v.stock <= 0 ? "text-red-400" : "text-gray-300")}>{v.stock}</span>
-                            </td>
-                            {enablePacking && <><td className="px-6 py-2 text-center text-gray-500">—</td><td className="px-6 py-2 text-center text-gray-500">—</td></>}
-                            <td className="px-6 py-2 text-center text-gray-500">—</td>
-                            <td className="px-6 py-2 text-right text-gray-500">—</td>
-                            <td className="px-6 py-2 text-right text-gray-500">—</td>
-                            <td className="px-6 py-2 text-right text-gray-500">—</td>
-                            <td className="px-6 py-2 text-center text-gray-500">—</td>
-                            <td className="px-6 py-2 text-center text-gray-500">—</td>
-                            <td className="px-6 py-2 text-center print:hidden">—</td>
+                            {visibleCols.map((key) => renderVariationCell(key))}
                           </tr>
                         );
                       });
@@ -676,6 +847,106 @@ export const InventoryDashboardNew = () => {
         } : null}
         onAdjust={handleAdjustSave}
       />
+
+      {/* Import Inventory CSV modal */}
+      <Dialog open={importInventoryModalOpen} onOpenChange={(open) => { if (!open) { setImportInventoryModalOpen(false); setImportRows([]); } }}>
+        <DialogContent className="bg-gray-900 border-gray-700 text-white max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="text-white flex items-center gap-2">
+              <Upload size={20} />
+              Import inventory
+            </DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-gray-400">Upload a CSV with columns <code className="bg-gray-800 px-1 rounded">sku</code> and <code className="bg-gray-800 px-1 rounded">quantity</code>. Quantities will be added as opening balance.</p>
+          <div>
+            <input
+              type="file"
+              accept=".csv"
+              className="block w-full text-sm text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:bg-gray-700 file:text-white file:text-sm"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = () => {
+                  const text = String(reader.result ?? '');
+                  const lines = text.split(/\r?\n/).filter(Boolean);
+                  const header = (lines[0] ?? '').toLowerCase().split(',').map((h) => h.trim());
+                  const skuIdx = header.findIndex((h) => h === 'sku');
+                  const qtyIdx = header.findIndex((h) => h === 'quantity' || h === 'qty');
+                  if (skuIdx < 0 || qtyIdx < 0) {
+                    toast.error('CSV must have columns: sku, quantity (or qty)');
+                    return;
+                  }
+                  const rows: Array<{ sku: string; quantity: number; productId?: string; name?: string }> = [];
+                  for (let i = 1; i < lines.length; i++) {
+                    const cells = lines[i].split(',').map((c) => c.trim());
+                    const sku = cells[skuIdx] ?? '';
+                    const qty = parseInt(cells[qtyIdx] ?? '0', 10);
+                    if (!sku || isNaN(qty) || qty < 0) continue;
+                    const product = overviewRows.find((p) => p.sku === sku);
+                    rows.push({ sku, quantity: qty, productId: product?.productId, name: product?.name });
+                  }
+                  setImportRows(rows);
+                };
+                reader.readAsText(file);
+                e.target.value = '';
+              }}
+            />
+          </div>
+          {importRows.length > 0 && (
+            <div className="max-h-48 overflow-y-auto rounded-lg border border-gray-700">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-800 sticky top-0">
+                  <tr>
+                    <th className="text-left px-3 py-2 text-gray-400">SKU</th>
+                    <th className="text-left px-3 py-2 text-gray-400">Product</th>
+                    <th className="text-right px-3 py-2 text-gray-400">Qty</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {importRows.slice(0, 20).map((r, i) => (
+                    <tr key={i} className="border-t border-gray-800">
+                      <td className="px-3 py-1.5 font-mono">{r.sku}</td>
+                      <td className="px-3 py-1.5 text-gray-400">{r.name ?? '—'}</td>
+                      <td className="px-3 py-1.5 text-right">{r.quantity}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {importRows.length > 20 && <p className="text-xs text-gray-500 px-3 py-1">+ {importRows.length - 20} more</p>}
+            </div>
+          )}
+          <DialogFooter className="gap-2">
+            <Button variant="outline" className="border-gray-700" onClick={() => { setImportInventoryModalOpen(false); setImportRows([]); }}>Cancel</Button>
+            <Button
+              className="bg-blue-600 hover:bg-blue-500"
+              disabled={importRows.length === 0 || importing || importRows.every((r) => !r.productId)}
+              onClick={async () => {
+                const valid = importRows.filter((r) => r.productId && r.quantity > 0);
+                if (!companyId || valid.length === 0) return;
+                setImporting(true);
+                try {
+                  const branchIdOrNull = branchId && branchId !== 'all' ? branchId : null;
+                  for (const row of valid) {
+                    if (row.productId)
+                      await inventoryService.insertOpeningBalanceMovement(companyId, branchIdOrNull, row.productId, row.quantity, 0);
+                  }
+                  await loadOverview();
+                  toast.success(`Imported ${valid.length} item(s).`);
+                  setImportInventoryModalOpen(false);
+                  setImportRows([]);
+                } catch (err: any) {
+                  toast.error('Import failed: ' + (err?.message ?? 'Unknown error'));
+                } finally {
+                  setImporting(false);
+                }
+              }}
+            >
+              {importing ? 'Importing…' : `Apply ${importRows.filter((r) => r.productId).length} row(s)`}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* ANALYTICS TAB - scrollable content */}
       {activeTab === 'analytics' && (

@@ -186,6 +186,7 @@ export const ContactsPage = () => {
       setLoading(true);
 
       const loadPromise = (async () => {
+        await contactService.ensureDefaultWalkingCustomerForCompany(companyId, branchId ?? undefined);
         const contactsData = await contactService.getAllContacts(companyId);
         const [salesData, purchasesData] = await Promise.all([
           saleService.getAllSales(companyId, branchId === 'all' ? undefined : branchId || undefined).catch(() => []),
@@ -762,6 +763,15 @@ export const ContactsPage = () => {
             <div className="py-12 text-center">
               <Loader2 size={48} className="mx-auto text-blue-500 mb-3 animate-spin" />
               <p className="text-gray-400 text-sm">Loading contacts...</p>
+              <Button
+                type="button"
+                variant="outline"
+                className="mt-4 border-gray-600 text-gray-300 hover:bg-gray-800"
+                onClick={() => openDrawer('addContact')}
+              >
+                <Users size={16} className="mr-2" />
+                Add Contact
+              </Button>
             </div>
           ) : (
             <>
@@ -789,6 +799,14 @@ export const ContactsPage = () => {
                     <Users size={48} className="mx-auto text-gray-600 mb-3" />
                     <p className="text-gray-400 text-sm">No contacts found</p>
                     <p className="text-gray-600 text-xs mt-1">Try adjusting your search or filters</p>
+                    <Button
+                      variant="outline"
+                      className="mt-4 border-gray-600 text-gray-300 hover:bg-gray-800"
+                      onClick={() => openDrawer('addContact')}
+                    >
+                      <Users size={16} className="mr-2" />
+                      Add Contact
+                    </Button>
                   </div>
                 ) : (
                   paginatedContacts.map((contact, index) => (
@@ -967,10 +985,7 @@ export const ContactsPage = () => {
                                 </DropdownMenuSub>
                                 <DropdownMenuSeparator className="bg-gray-700" />
                                 <DropdownMenuItem 
-                                  onClick={() => {
-                                    setSelectedContact(contact);
-                                    setEditContactOpen(true);
-                                  }}
+                                  onClick={() => openDrawer('addContact', undefined, { contact, prefillName: contact.name, prefillPhone: contact.phone })}
                                   className="hover:bg-gray-800 cursor-pointer"
                                 >
                                   <Edit size={14} className="mr-2 text-gray-400" />
@@ -1063,10 +1078,7 @@ export const ContactsPage = () => {
                                 </DropdownMenuSub>
                                 <DropdownMenuSeparator className="bg-gray-700" />
                                 <DropdownMenuItem 
-                                  onClick={() => {
-                                    setSelectedContact(contact);
-                                    setEditContactOpen(true);
-                                  }}
+                                  onClick={() => openDrawer('addContact', undefined, { contact, prefillName: contact.name, prefillPhone: contact.phone })}
                                   className="hover:bg-gray-800 cursor-pointer"
                                 >
                                   <Edit size={14} className="mr-2 text-gray-400" />
@@ -1136,10 +1148,7 @@ export const ContactsPage = () => {
                                 </DropdownMenuItem>
                                 <DropdownMenuSeparator className="bg-gray-700" />
                                 <DropdownMenuItem 
-                                  onClick={() => {
-                                    setSelectedContact(contact);
-                                    setEditContactOpen(true);
-                                  }}
+                                  onClick={() => openDrawer('addContact', undefined, { contact, prefillName: contact.name, prefillPhone: contact.phone })}
                                   className="hover:bg-gray-800 cursor-pointer"
                                 >
                                   <Edit size={14} className="mr-2 text-gray-400" />

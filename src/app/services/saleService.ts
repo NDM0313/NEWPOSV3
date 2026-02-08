@@ -23,6 +23,7 @@ export interface Sale {
   due_amount: number;
   return_due?: number;
   notes?: string;
+  attachments?: { url: string; name: string }[] | null;
   created_by: string;
   is_studio?: boolean;
 }
