@@ -65,6 +65,8 @@ interface Contact {
   branch: string;
   address?: string;
   lastTransaction?: string;
+  is_system_generated?: boolean;
+  system_type?: string;
 }
 
 const workerRoleLabels: Record<WorkerRole, string> = {
@@ -161,6 +163,8 @@ export const ContactsPage = () => {
       branch: supabaseContact.branch_id || 'Main Branch (HQ)',
       address: supabaseContact.address,
       lastTransaction: supabaseContact.updated_at ? new Date(supabaseContact.updated_at).toISOString().split('T')[0] : undefined,
+      is_system_generated: supabaseContact.is_system_generated || false,
+      system_type: supabaseContact.system_type || undefined,
     };
   }, []);
 
@@ -805,7 +809,14 @@ export const ContactsPage = () => {
                           </AvatarFallback>
                         </Avatar>
                         <div className="min-w-0 flex-1">
-                          <div className="text-sm font-medium text-white truncate leading-[1.3]">{contact.name}</div>
+                          <div className="flex items-center gap-2">
+                            <div className="text-sm font-medium text-white truncate leading-[1.3]">{contact.name}</div>
+                            {contact.is_system_generated && contact.system_type === 'walking_customer' && (
+                              <Badge className="bg-gray-700/50 text-gray-300 border-gray-600 text-[10px] px-1.5 py-0 h-4">
+                                System
+                              </Badge>
+                            )}
+                          </div>
                           <div className="text-xs text-gray-500 font-mono leading-[1.3] mt-0.5">{contact.code}</div>
                         </div>
                       </div>
@@ -970,7 +981,12 @@ export const ContactsPage = () => {
                                     setSelectedContact(contact);
                                     setDeleteDialogOpen(true);
                                   }}
-                                  className="hover:bg-gray-800 cursor-pointer text-red-400"
+                                  disabled={contact.is_system_generated && contact.system_type === 'walking_customer'}
+                                  className={cn(
+                                    "hover:bg-gray-800 cursor-pointer text-red-400",
+                                    contact.is_system_generated && contact.system_type === 'walking_customer' && "opacity-50 cursor-not-allowed"
+                                  )}
+                                  title={contact.is_system_generated && contact.system_type === 'walking_customer' ? 'System-generated contacts cannot be deleted' : ''}
                                 >
                                   <Trash2 size={14} className="mr-2" />
                                   Delete
@@ -1061,7 +1077,12 @@ export const ContactsPage = () => {
                                     setSelectedContact(contact);
                                     setDeleteDialogOpen(true);
                                   }}
-                                  className="hover:bg-gray-800 cursor-pointer text-red-400"
+                                  disabled={contact.is_system_generated && contact.system_type === 'walking_customer'}
+                                  className={cn(
+                                    "hover:bg-gray-800 cursor-pointer text-red-400",
+                                    contact.is_system_generated && contact.system_type === 'walking_customer' && "opacity-50 cursor-not-allowed"
+                                  )}
+                                  title={contact.is_system_generated && contact.system_type === 'walking_customer' ? 'System-generated contacts cannot be deleted' : ''}
                                 >
                                   <Trash2 size={14} className="mr-2" />
                                   Delete
@@ -1129,7 +1150,12 @@ export const ContactsPage = () => {
                                     setSelectedContact(contact);
                                     setDeleteDialogOpen(true);
                                   }}
-                                  className="hover:bg-gray-800 cursor-pointer text-red-400"
+                                  disabled={contact.is_system_generated && contact.system_type === 'walking_customer'}
+                                  className={cn(
+                                    "hover:bg-gray-800 cursor-pointer text-red-400",
+                                    contact.is_system_generated && contact.system_type === 'walking_customer' && "opacity-50 cursor-not-allowed"
+                                  )}
+                                  title={contact.is_system_generated && contact.system_type === 'walking_customer' ? 'System-generated contacts cannot be deleted' : ''}
                                 >
                                   <Trash2 size={14} className="mr-2" />
                                   Delete

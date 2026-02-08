@@ -81,11 +81,22 @@ import {
     PopoverContent,
     PopoverTrigger,
 } from "../ui/popover";
+import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+} from "../ui/alert-dialog";
 import { PackingDetails } from '../transactions/PackingEntryModal';
 import { toast } from "sonner";
 import { BranchSelector, currentUser } from '@/app/components/layout/BranchSelector';
 import { SaleItemsSection } from './SaleItemsSection';
 import { PaymentAttachments, PaymentAttachment } from '../payments/PaymentAttachments';
+import { UnifiedPaymentDialog } from '@/app/components/shared/UnifiedPaymentDialog';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { useSettings } from '@/app/context/SettingsContext';
 import { contactService } from '@/app/services/contactService';
@@ -232,6 +243,13 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
     // Payment Form State
     const [newPaymentMethod, setNewPaymentMethod] = useState<'cash' | 'bank' | 'Mobile Wallet'>('cash');
     const [newPaymentAmount, setNewPaymentAmount] = useState<number>(0);
+    
+    // Payment Dialog State
+    const [paymentChoiceDialogOpen, setPaymentChoiceDialogOpen] = useState(false);
+    const [pendingSaveAction, setPendingSaveAction] = useState<{ print: boolean } | null>(null);
+    const [unifiedPaymentDialogOpen, setUnifiedPaymentDialogOpen] = useState(false);
+    const [savedSaleId, setSavedSaleId] = useState<string | null>(null);
+    const [savedSaleInvoiceNo, setSavedSaleInvoiceNo] = useState<string | null>(null);
     const [newPaymentReference, setNewPaymentReference] = useState<string>("");
     
     // Payment Attachments State
@@ -526,11 +544,54 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                         };
                     });
                 
-                // Add walk-in customer option
-                setCustomers([
+                // Get walking customer for auto-selection
+                let walkingCustomerId: string | null = null;
+                try {
+                    const walkingCustomer = await contactService.getWalkingCustomer(
+                        companyId,
+                        contextBranchId === 'all' ? undefined : contextBranchId || undefined
+                    );
+                    if (walkingCustomer) {
+                        walkingCustomerId = walkingCustomer.id || null;
+                        console.log('[SALE FORM] Found walking customer:', walkingCustomerId);
+                    }
+                } catch (error) {
+                    console.warn('[SALE FORM] Could not fetch walking customer:', error);
+                }
+
+                // Add walk-in customer option (for backward compatibility)
+                // But prefer actual walking customer if it exists
+                const customerList = [
                     { id: 'walk-in', name: "Walk-in Customer", dueBalance: 0 },
                     ...customerContacts
-                ]);
+                ];
+
+                // If walking customer exists, add it to the list (or replace walk-in)
+                if (walkingCustomerId) {
+                    const walkingCustomerInList = customerContacts.find(c => c.id === walkingCustomerId);
+                    if (!walkingCustomerInList) {
+                        // Add walking customer to list
+                        customerList.push({
+                            id: walkingCustomerId,
+                            name: "Walking Customer",
+                            dueBalance: 0
+                        });
+                    }
+                }
+
+                setCustomers(customerList);
+
+                // Auto-select walking customer if no customer is selected
+                if (!customerId && !initialSale) {
+                    if (walkingCustomerId) {
+                        console.log('[SALE FORM] Auto-selecting walking customer:', walkingCustomerId);
+                        setCustomerId(walkingCustomerId);
+                    } else {
+                        // Fallback to walk-in customer
+                        console.log('[SALE FORM] Auto-selecting walk-in customer (fallback)');
+                        setCustomerId('walk-in');
+                    }
+                }
                 
                 // CRITICAL FIX: Load products with calculated stock from movements
                 // Instead of using products.current_stock, calculate from stock_movements
@@ -1433,14 +1494,28 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
             }
         }
 
-            // RULE 4: Variation selection required when product has variations
-            const itemWithoutVariation = items.find(i => i.showVariations && !i.selectedVariationId && !i.variationId);
-            if (itemWithoutVariation) {
-                toast.error(`Variation selection required for "${itemWithoutVariation.name}". Please select a size/color (or combination) before saving.`);
-                setSaving(false);
-                return;
-            }
-        
+        // RULE 4: Variation selection required when product has variations
+        const itemWithoutVariation = items.find(i => i.showVariations && !i.selectedVariationId && !i.variationId);
+        if (itemWithoutVariation) {
+            toast.error(`Variation selection required for "${itemWithoutVariation.name}". Please select a size/color (or combination) before saving.`);
+            setSaving(false);
+            return;
+        }
+
+        // If status is final, show payment choice dialog
+        if (saleStatus === 'final') {
+            setPendingSaveAction({ print });
+            setPaymentChoiceDialogOpen(true);
+            return;
+        }
+
+        // For draft/quotation/order, save directly without payment
+        await proceedWithSave(print);
+    };
+
+    // Actual save logic (extracted from handleSave)
+    // Returns the created/updated sale ID and invoice number if payment dialog should open
+    const proceedWithSave = async (print: boolean = false, shouldOpenPaymentDialog: boolean = false): Promise<{ saleId: string | null; invoiceNo: string | null }> => {
         try {
             setSaving(true);
             
@@ -1655,31 +1730,69 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                     incrementNextNumber('studio');
                 }
                 toast.success(`Sale ${documentNumber} updated successfully!`);
+                
+                // Store sale ID and invoice number for payment dialog (edit mode)
+                setSavedSaleId(initialSale.id);
+                setSavedSaleInvoiceNo(documentNumber);
+                
+                if (print) {
+                    // TODO: Implement print functionality
+                    toast.info('Print functionality coming soon');
+                }
+                
+                // If payment dialog should open, don't close form yet
+                if (shouldOpenPaymentDialog) {
+                    // Don't close form - payment dialog will open
+                    return { saleId: initialSale.id, invoiceNo: documentNumber };
+                }
+                
+                // Close form
+                onClose();
+                return { saleId: initialSale.id, invoiceNo: documentNumber };
             } else {
                 // NEW SALE: Create new sale
                 const created = await createSale(saleData);
                 // Increment document number after successful save
                 incrementNextNumber(documentType);
                 toast.success(`${saleType === 'invoice' ? 'Invoice' : 'Quotation'} created successfully!`);
+                
+                // Store sale ID and invoice number for payment dialog
+                if (created?.id) {
+                    setSavedSaleId(created.id);
+                    setSavedSaleInvoiceNo(documentNumber);
+                }
+                
                 // Studio sale: after save, open Studio Sale Detail for this sale (single master page)
                 if (isStudioSale && created?.id && setSelectedStudioSaleId && setCurrentView) {
                   setSelectedStudioSaleId(created.id);
                   closeDrawer();
                   setCurrentView('studio-sale-detail-new');
-                  return; // Don't call onClose – we already closed and navigated
+                  return { saleId: null, invoiceNo: null }; // Don't call onClose – we already closed and navigated
                 }
+                
+                if (print) {
+                    // TODO: Implement print functionality
+                    toast.info('Print functionality coming soon');
+                }
+                
+                // If payment dialog should open, don't close form yet
+                if (shouldOpenPaymentDialog && created?.id) {
+                    // Don't close form - payment dialog will open
+                    return { saleId: created.id, invoiceNo: documentNumber };
+                }
+                
+                // Close form (unless payment dialog will open)
+                if (!shouldOpenPaymentDialog) {
+                    onClose();
+                }
+                
+                // Return sale ID and invoice number for payment dialog
+                return { saleId: created?.id || null, invoiceNo: documentNumber || null };
             }
-            
-            if (print) {
-                // TODO: Implement print functionality
-                toast.info('Print functionality coming soon');
-            }
-            
-            // Close form
-            onClose();
         } catch (error: any) {
             console.error('[SALE FORM] Error saving sale:', error);
             toast.error(`Failed to save sale: ${error.message || 'Unknown error'}`);
+            return { saleId: null, invoiceNo: null };
         } finally {
             setSaving(false);
         }
@@ -2404,204 +2517,117 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                                 </div>
                             </div>
 
-                            {/* Payment Section - DISABLED for Draft/Quotation, ENABLED for Final */}
-                            <div className={cn(
-                                "bg-gray-900/50 border border-gray-800 rounded-lg p-4 shrink-0",
-                                (saleStatus === 'draft' || saleStatus === 'quotation') && "opacity-50 pointer-events-none"
-                            )}>
-                                {/* Header with Status Badge */}
-                                <div className="flex items-center justify-between mb-4">
-                                    <h3 className="text-sm font-semibold text-gray-300 uppercase tracking-wide">
-                                        Payment
-                                        {(saleStatus === 'draft' || saleStatus === 'quotation') && (
-                                            <span className="ml-2 text-xs text-yellow-500">(Disabled for {saleStatus})</span>
-                                        )}
-                                    </h3>
-                                    <Badge className={cn(
-                                        "text-xs font-medium px-3 py-1",
-                                        paymentStatus === 'paid' && "bg-green-600 text-white",
-                                        paymentStatus === 'partial' && "bg-blue-600 text-white",
-                                        paymentStatus === 'unpaid' && "bg-orange-600 text-white"
-                                    )}>
-                                        {paymentStatus === 'paid' && '✓ Paid'}
-                                        {paymentStatus === 'partial' && '◐ Partial'}
-                                        {paymentStatus === 'unpaid' && '○ Unpaid'}
-                                    </Badge>
-                                </div>
-
-                                {/* 1. AMOUNT SUMMARY SECTION */}
-                                <div className="bg-gray-950 border border-gray-800 rounded-lg p-4 space-y-3">
-                                {/* Invoice Amount */}
-                                <div className="flex items-center justify-between">
-                                    <span className="text-xs text-gray-500 uppercase tracking-wide">Invoice Amount</span>
-                                    <span className="text-xl font-bold text-white">${totalAmount.toLocaleString()}</span>
-                                </div>
-                                
-                                {/* Total Paid */}
-                                {totalPaid > 0 && (
-                                    <>
-                                        <Separator className="bg-gray-800" />
-                                        <div className="flex items-center justify-between">
-                                            <span className="text-xs text-gray-400">Total Paid</span>
-                                            <span className="text-sm font-medium text-green-400">${totalPaid.toLocaleString()}</span>
-                                        </div>
-                                    </>
-                                )}
-                                
-                                {/* Balance Due */}
-                                <Separator className="bg-gray-800" />
-                                <div className="flex justify-between items-center">
-                                    <span className="text-sm font-semibold text-gray-400">Balance Due</span>
-                                    <span className={cn(
-                                        "text-xl font-bold",
-                                        balanceDue === 0 ? "text-green-500" : balanceDue < totalAmount ? "text-blue-500" : "text-orange-500"
-                                    )}>
-                                        ${Math.max(0, balanceDue).toLocaleString()}
-                                    </span>
-                                </div>
-                                </div>
-
-                                {/* Quick Payment Buttons & Payment Entry - DISABLED for Draft/Quotation */}
-                                {saleStatus === 'final' ? (
-                                    <>
-                                <div className="space-y-2">
-                                <Label className="text-xs text-gray-500">Quick Pay</Label>
-                                <div className="grid grid-cols-4 gap-2">
-                                    <Button 
-                                        type="button"
-                                        onClick={() => setNewPaymentAmount(totalAmount * 0.25)}
-                                        className="h-9 bg-gray-800 hover:bg-gray-700 text-white text-xs border border-gray-700"
-                                    >
-                                        25%
-                                    </Button>
-                                    <Button 
-                                        type="button"
-                                        onClick={() => setNewPaymentAmount(totalAmount * 0.50)}
-                                        className="h-9 bg-gray-800 hover:bg-gray-700 text-white text-xs border border-gray-700"
-                                    >
-                                        50%
-                                    </Button>
-                                    <Button 
-                                        type="button"
-                                        onClick={() => setNewPaymentAmount(totalAmount * 0.75)}
-                                        className="h-9 bg-gray-800 hover:bg-gray-700 text-white text-xs border border-gray-700"
-                                    >
-                                        75%
-                                    </Button>
-                                    <Button 
-                                        type="button"
-                                        onClick={() => setNewPaymentAmount(totalAmount)}
-                                        className="h-9 bg-green-700 hover:bg-green-600 text-white text-xs border border-green-600"
-                                    >
-                                        100%
-                                    </Button>
-                                </div>
-                            </div>
-
-                                {/* Payment Entry Form */}
-                                <div className="space-y-2">
-                                    <Label className="text-xs text-gray-500">Add Payment</Label>
-                                    <div className="flex gap-2">
-                                    <Select value={newPaymentMethod} onValueChange={(v: any) => setNewPaymentMethod(v)}>
-                                        <SelectTrigger className="w-[110px] bg-gray-950 border-gray-700 text-white h-10 text-xs">
-                                            <SelectValue />
-                                        </SelectTrigger>
-                                        <SelectContent className="bg-gray-950 border-gray-800 text-white">
-                                            <SelectItem value="cash">Cash</SelectItem>
-                                            <SelectItem value="bank">Bank</SelectItem>
-                                            <SelectItem value="Mobile Wallet">Mobile Wallet</SelectItem>
-                                        </SelectContent>
-                                    </Select>
-                                    <Input 
-                                        type="number" 
-                                        placeholder="Amount" 
-                                        className="bg-gray-950 border-gray-700 text-white h-10 flex-1"
-                                        value={newPaymentAmount > 0 ? newPaymentAmount : ''}
-                                        onChange={(e) => setNewPaymentAmount(parseFloat(e.target.value) || 0)}
-                                    />
-                                    <Button onClick={addPartialPayment} className="bg-blue-600 hover:bg-blue-500 h-10 w-10 p-0" >
-                                        <Plus size={16} />
-                                    </Button>
-                                </div>
-                                
-                                {/* Notes - Text Input (saves to database) */}
-                                <div className="space-y-2">
-                                    <Label className="text-xs text-gray-500">Notes</Label>
-                                    <Input
-                                        value={saleNotes}
-                                        onChange={(e) => setSaleNotes(e.target.value)}
-                                        className="bg-gray-950 border-gray-700 text-white h-10 text-xs"
-                                        placeholder="Add notes (saved to database)"
-                                    />
-                                </div>
-                                
-                                <PaymentAttachments
-                                    attachments={paymentAttachments}
-                                    onAttachmentsChange={setPaymentAttachments}
-                                />
-                                </div>
-                                    </>
-                                ) : (
-                                    <div className="text-center py-4 text-xs text-gray-500">
-                                        Payment section is disabled for {saleStatus === 'draft' ? 'Draft' : 'Quotation'} sales.
-                                        <br />
-                                        Change status to "Final" to enable payment.
-                                    </div>
-                                )}
-
-                                {/* Payments List - Show for all statuses */}
-                                <div className="bg-gray-950 rounded-lg border border-gray-800 p-3 space-y-2 min-h-[100px] mt-4">
-                                {partialPayments.length === 0 ? (
-                                    <div className="text-center text-gray-600 text-xs py-4">No payments added</div>
-                                ) : (
-                                    partialPayments.map((p) => {
-                                        const isExisting = (p as any).isExisting;
-                                        return (
-                                        <div key={p.id} className={cn(
-                                            "flex justify-between items-center text-sm p-2 rounded border",
-                                            isExisting 
-                                                ? "bg-gray-800/50 border-gray-700/50 opacity-75" 
-                                                : "bg-gray-900 border-gray-800/50"
-                                        )}>
-                                            <div className="flex items-center gap-2">
-                                                {p.method === 'cash' && <Banknote size={14} className="text-green-500" />}
-                                                {p.method === 'bank' && <CreditCard size={14} className="text-blue-500" />}
-                                                {p.method === 'Mobile Wallet' && <Wallet size={14} className="text-purple-500" />}
-                                                <span className="capitalize text-gray-300 text-xs">{p.method}</span>
-                                                {p.reference && (
-                                                    <code className="text-xs bg-gray-800 px-1.5 py-0.5 rounded text-blue-400 font-mono">
-                                                        {p.reference}
-                                                    </code>
-                                                )}
-                                                {!p.reference && !isExisting && (
-                                                    <code className="text-xs bg-gray-800 px-1.5 py-0.5 rounded text-gray-500 font-mono">
-                                                        Auto
-                                                    </code>
-                                                )}
-                                                {isExisting && (
-                                                    <Badge variant="outline" className="text-xs border-gray-600 text-gray-500">
-                                                        Existing
-                                                    </Badge>
-                                                )}
-                                            </div>
-                                            <div className="flex items-center gap-3">
-                                                <span className="font-medium text-white">Rs {p.amount.toLocaleString()}</span>
-                                                {!isExisting && (
-                                                    <button onClick={() => removePartialPayment(p.id)} className="text-gray-500 hover:text-red-400">
-                                                        <X size={12} />
-                                                    </button>
-                                                )}
-                                            </div>
-                                        </div>
-                                        );
-                                    })
-                                )}
-                                </div>
-                            </div>
                         </div>
                     </div>
                 </div>
             </div>
+
+            {/* ============ PAYMENT CHOICE DIALOG ============ */}
+            <AlertDialog open={paymentChoiceDialogOpen} onOpenChange={setPaymentChoiceDialogOpen}>
+                <AlertDialogContent className="bg-gray-900 border-gray-700 text-white max-w-md">
+                    <AlertDialogHeader>
+                        <AlertDialogTitle className="text-xl font-bold flex items-center gap-2">
+                            <DollarSign size={20} className="text-blue-400" />
+                            Payment Option
+                        </AlertDialogTitle>
+                        <AlertDialogDescription className="text-gray-400 pt-2">
+                            How would you like to handle payment for this sale?
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <div className="space-y-3 py-4">
+                        <Button
+                            onClick={async () => {
+                                setPaymentChoiceDialogOpen(false);
+                                const printFlag = pendingSaveAction?.print || false;
+                                setPendingSaveAction(null);
+                                
+                                try {
+                                    // Save first, then open payment dialog
+                                    // Pass shouldOpenPaymentDialog=true so form doesn't close
+                                    const result = await proceedWithSave(printFlag, true);
+                                    
+                                    // If sale was created/updated, open payment dialog
+                                    if (result.saleId) {
+                                        console.log('[SALE FORM] ✅ Sale saved, opening payment dialog:', {
+                                            saleId: result.saleId,
+                                            invoiceNo: result.invoiceNo
+                                        });
+                                        setSavedSaleId(result.saleId);
+                                        setSavedSaleInvoiceNo(result.invoiceNo);
+                                        // Open dialog immediately after state is set
+                                        setUnifiedPaymentDialogOpen(true);
+                                    } else {
+                                        console.warn('[SALE FORM] ⚠️ Sale saved but no saleId returned');
+                                        toast.error('Sale saved but could not open payment dialog. Please add payment manually.');
+                                    }
+                                } catch (error) {
+                                    console.error('[SALE FORM] Error saving sale for payment:', error);
+                                    toast.error('Failed to save sale. Please try again.');
+                                }
+                            }}
+                            className="w-full h-14 bg-blue-600 hover:bg-blue-700 text-white text-base font-semibold flex items-center justify-center gap-2"
+                        >
+                            <DollarSign size={20} />
+                            Pay Now
+                        </Button>
+                        <Button
+                            onClick={async () => {
+                                setPaymentChoiceDialogOpen(false);
+                                if (pendingSaveAction) {
+                                    await proceedWithSave(pendingSaveAction.print);
+                                }
+                                setPendingSaveAction(null);
+                            }}
+                            className="w-full h-14 bg-gray-700 hover:bg-gray-600 text-white text-base font-semibold flex items-center justify-center gap-2"
+                        >
+                            <CreditCard size={20} />
+                            Credit Bill (Save without payment)
+                        </Button>
+                    </div>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel 
+                            onClick={() => {
+                                setPendingSaveAction(null);
+                            }}
+                            className="bg-gray-800 hover:bg-gray-700 text-white border-gray-700"
+                        >
+                            Cancel
+                        </AlertDialogCancel>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
+
+            {/* ============ UNIFIED PAYMENT DIALOG ============ */}
+            <UnifiedPaymentDialog
+                isOpen={unifiedPaymentDialogOpen && !!savedSaleId}
+                onClose={() => {
+                    setUnifiedPaymentDialogOpen(false);
+                    setSavedSaleId(null);
+                    setSavedSaleInvoiceNo(null);
+                    onClose(); // Close sale form after payment
+                }}
+                context="customer"
+                entityName={customers.find(c => c.id.toString() === customerId)?.name || 'Customer'}
+                entityId={customerId === 'walk-in' ? undefined : customerId.toString()}
+                outstandingAmount={totalAmount}
+                totalAmount={totalAmount}
+                paidAmount={0}
+                previousPayments={[]}
+                referenceNo={savedSaleInvoiceNo || undefined}
+                referenceId={savedSaleId || undefined}
+                onSuccess={() => {
+                    console.log('[SALE FORM] ✅ Payment saved successfully, refreshing sales list');
+                    setUnifiedPaymentDialogOpen(false);
+                    setSavedSaleId(null);
+                    setSavedSaleInvoiceNo(null);
+                    
+                    // Dispatch event to refresh sales list
+                    window.dispatchEvent(new CustomEvent('paymentAdded'));
+                    
+                    // Close sale form after payment is added
+                    onClose();
+                }}
+            />
 
             {/* ============ LAYER 3: FIXED FOOTER ============ */}
             <div className="shrink-0 bg-[#0B1019] border-t border-gray-800">

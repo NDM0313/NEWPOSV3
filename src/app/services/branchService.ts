@@ -107,6 +107,18 @@ export const branchService = {
           // Don't block branch creation if account creation fails
         }
       }
+
+      // CRITICAL: Create default "Walking Customer" for new branch
+      if (data && data.company_id && data.id) {
+        try {
+          const { contactService } = await import('@/app/services/contactService');
+          await contactService.createDefaultWalkingCustomer(data.company_id, data.id);
+          console.log('[BRANCH SERVICE] ✅ Default walking customer created for branch:', data.id);
+        } catch (customerError) {
+          console.warn('[BRANCH SERVICE] Warning: Could not create default walking customer:', customerError);
+          // Don't block branch creation if customer creation fails
+        }
+      }
       
       console.log('[BRANCH SERVICE] Branch created successfully:', data);
       return data;

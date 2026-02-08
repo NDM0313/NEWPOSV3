@@ -23,7 +23,8 @@ import {
   Warehouse,
   Sparkles,
   Factory,
-  FlaskConical
+  FlaskConical,
+  GitBranch
 } from 'lucide-react';
 import { useNavigation } from '../../context/NavigationContext';
 import { useModules } from '../../context/ModuleContext';
@@ -74,6 +75,7 @@ export const Sidebar = () => {
     { id: 'expenses', label: 'Expenses', icon: Receipt },
     { id: 'accounting', label: 'Accounting', icon: Calculator },
     { id: 'reports', label: 'Reports', icon: PieChart },
+    { id: 'github-prs', label: 'GitHub PRs', icon: GitBranch },
     { id: 'settings', label: 'Settings', icon: Settings },
     { 
       id: 'test-pages-group', 

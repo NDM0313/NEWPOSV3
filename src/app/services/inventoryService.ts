@@ -132,7 +132,7 @@ export const inventoryService = {
     // Step 3: Get product variations for products that have them
     const { data: variations } = await supabase
       .from('product_variations')
-      .select('id, product_id, attributes, stock')
+      .select('id, product_id, sku, attributes, stock')
       .in('product_id', productIds)
       .eq('is_active', true);
 

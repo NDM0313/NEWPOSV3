@@ -79,6 +79,7 @@ import { SupabaseProvider } from './context/SupabaseContext';
 import { ProtectedRoute } from './components/auth/ProtectedRoute';
 import { useSettings } from './context/SettingsContext';
 import { DateRangeProvider } from './context/DateRangeContext';
+import { GitHubPullRequestsPage } from './components/github/GitHubPullRequestsPage';
 
 // v1.0.1 - Enhanced Product Form with SKU auto-generation and global access
 
@@ -189,6 +190,7 @@ const AppContent = () => {
       {currentView === 'test-ledger' && <TestLedger />}
       {currentView === 'customer-ledger-interactive-test' && <CustomerLedgerInteractiveTest />}
       {currentView === 'sales-list-design-test' && <SalesListDesignTestPage />}
+      {currentView === 'github-prs' && <GitHubPullRequestsPage />}
       
       <GlobalDrawer />
     </Layout>

@@ -47,7 +47,8 @@ type View =
   | 'test-ledger'
   | 'customer-ledger-interactive-test'
   | 'sales-list-design-test'
-  | 'worker-detail';
+  | 'worker-detail'
+  | 'github-prs';
 
 type DrawerType = 'none' | 'addUser' | 'addProduct' | 'edit-product' | 'addSale' | 'edit-sale' | 'addPurchase' | 'edit-purchase' | 'addContact';
 

@@ -10,6 +10,8 @@ import { useSupabase } from '@/app/context/SupabaseContext';
 import { saleService, Sale as SupabaseSale, SaleItem as SupabaseSaleItem } from '@/app/services/saleService';
 import { productService } from '@/app/services/productService';
 import { branchService } from '@/app/services/branchService';
+import { comboService } from '@/app/services/comboService';
+import { useSettings } from '@/app/context/SettingsContext';
 import { toast } from 'sonner';
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -304,6 +306,7 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
   const { generateDocumentNumber, incrementNextNumber } = useDocumentNumbering();
   const accounting = useAccounting();
   const { companyId, branchId, user } = useSupabase();
+  const { modules } = useSettings();
 
   // Load sales from database
   const loadSales = useCallback(async () => {
@@ -580,7 +583,103 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
         for (const item of newSale.items) {
           if (item.productId && item.quantity > 0) {
             try {
-              console.log('[SALES CONTEXT] Creating stock movement for item:', {
+              // ============================================
+              // COMBO HANDLING: Virtual Bundle Model
+              // ============================================
+              // If product is a combo, create stock movements for combo items
+              // NOT for the combo product itself (combo product has no stock)
+              // ============================================
+              
+              if (modules.combosEnabled) {
+                const isCombo = await comboService.isComboProduct(item.productId, companyId);
+                
+                if (isCombo) {
+                  console.log('[SALES CONTEXT] 🔄 Product is a combo, processing combo items:', {
+                    combo_product_id: item.productId,
+                    combo_quantity: item.quantity,
+                    sale_id: newSale.id
+                  });
+                  
+                  // Get combo details
+                  const combo = await comboService.getComboByProductId(item.productId, companyId);
+                  
+                  if (!combo || !combo.items || combo.items.length === 0) {
+                    throw new Error(`Combo product ${item.productId} has no items defined`);
+                  }
+                  
+                  // Create stock movements for each combo item
+                  for (const comboItem of combo.items) {
+                    // Calculate quantity: combo_item.qty * sale_item.quantity
+                    const componentQty = comboItem.qty * item.quantity;
+                    
+                    console.log('[SALES CONTEXT] Creating stock movement for combo item:', {
+                      component_product_id: comboItem.product_id,
+                      component_variation_id: comboItem.variation_id,
+                      component_qty: componentQty,
+                      combo_item_qty: comboItem.qty,
+                      sale_item_qty: item.quantity
+                    });
+                    
+                    // Create stock movement for component product (negative for stock OUT)
+                    const movement = await productService.createStockMovement({
+                      company_id: companyId,
+                      branch_id: effectiveBranchId === 'all' ? undefined : effectiveBranchId,
+                      product_id: comboItem.product_id,
+                      variation_id: comboItem.variation_id || undefined,
+                      movement_type: 'sale',
+                      quantity: -componentQty, // Negative for stock OUT
+                      unit_cost: comboItem.unit_price || 0,
+                      total_cost: -(componentQty * (comboItem.unit_price || 0)),
+                      reference_type: 'sale',
+                      reference_id: newSale.id,
+                      notes: `Combo sale ${newSale.invoiceNo}: ${combo.combo_name} - Component: ${comboItem.product_id}${comboItem.variation_id ? ' (Variation)' : ''}`,
+                      created_by: user?.id,
+                    });
+                    
+                    if (!movement || !movement.id) {
+                      throw new Error(`Stock movement creation returned null for combo component ${comboItem.product_id}`);
+                    }
+                    
+                    console.log('[SALES CONTEXT] ✅ Stock movement created for combo component:', {
+                      movement_id: movement.id,
+                      product_id: comboItem.product_id,
+                      variation_id: comboItem.variation_id,
+                      quantity: movement.quantity
+                    });
+                    
+                    // Update component product stock
+                    try {
+                      const { supabase: sb } = await import('@/lib/supabase');
+                      const { data: componentProduct } = await sb
+                        .from('products')
+                        .select('current_stock')
+                        .eq('id', comboItem.product_id)
+                        .single();
+                      
+                      if (componentProduct) {
+                        const newStock = Math.max(0, (componentProduct.current_stock || 0) - componentQty);
+                        await sb
+                          .from('products')
+                          .update({ current_stock: newStock })
+                          .eq('id', comboItem.product_id);
+                        
+                        console.log(`[SALES CONTEXT] ✅ Updated combo component ${comboItem.product_id} stock: ${componentProduct.current_stock} → ${newStock}`);
+                      }
+                    } catch (stockUpdateError: any) {
+                      console.error('[SALES CONTEXT] ❌ Direct stock update error for combo component (non-blocking):', stockUpdateError);
+                    }
+                  }
+                  
+                  // Skip creating stock movement for combo product itself (virtual bundle - no stock)
+                  console.log('[SALES CONTEXT] ✅ Combo sale processed - stock movements created for all components');
+                  continue;
+                }
+              }
+              
+              // ============================================
+              // REGULAR PRODUCT HANDLING
+              // ============================================
+              console.log('[SALES CONTEXT] Creating stock movement for regular item:', {
                 product_id: item.productId,
                 variation_id: item.variationId,
                 quantity: item.quantity,
@@ -617,7 +716,8 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
               
               // CRITICAL: Also update products.current_stock directly to ensure immediate sync
               try {
-                const { data: product } = await supabase
+                const { supabase: sb } = await import('@/lib/supabase');
+                const { data: product } = await sb
                   .from('products')
                   .select('current_stock')
                   .eq('id', item.productId)
@@ -625,7 +725,7 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
                 
                 if (product) {
                   const newStock = Math.max(0, (product.current_stock || 0) - item.quantity);
-                  await supabase
+                  await sb
                     .from('products')
                     .update({ current_stock: newStock })
                     .eq('id', item.productId);
@@ -732,12 +832,12 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
           
           const arAccountId = arAccounts?.[0]?.id;
           
-          // Get Sales Revenue account
+          // Get Sales Revenue account (can be "Sales" or "Sales Revenue")
           const { data: salesAccounts } = await supabase
             .from('accounts')
             .select('id')
             .eq('company_id', companyId)
-            .or('name.ilike.Sales Revenue,code.eq.4000')
+            .or('name.ilike.Sales Revenue,name.ilike.Sales,code.eq.4000')
             .limit(1);
           
           const salesAccountId = salesAccounts?.[0]?.id;

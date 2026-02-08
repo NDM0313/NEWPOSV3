@@ -3,6 +3,7 @@ import { supabase } from '@/lib/supabase';
 export interface Contact {
   id?: string;
   company_id: string;
+  branch_id?: string;
   type: 'customer' | 'supplier' | 'both';
   name: string;
   email?: string;
@@ -22,6 +23,8 @@ export interface Contact {
   tax_number?: string;
   notes?: string;
   is_active?: boolean;
+  is_system_generated?: boolean;
+  system_type?: string;
   created_by?: string;
 }
 
@@ -128,7 +131,27 @@ export const contactService = {
   },
 
   // Update contact
+  // PROTECTION: Cannot change name or type for system-generated contacts
   async updateContact(id: string, updates: Partial<Contact>) {
+    // Check if contact is system-generated
+    const { data: contact, error: fetchError } = await supabase
+      .from('contacts')
+      .select('is_system_generated, system_type')
+      .eq('id', id)
+      .single();
+
+    if (fetchError) throw fetchError;
+
+    // Block name and type changes for system-generated contacts
+    if (contact?.is_system_generated && contact?.system_type === 'walking_customer') {
+      if (updates.name !== undefined && updates.name !== 'Walking Customer') {
+        throw new Error('Cannot rename default Walking Customer. This is a system-generated contact.');
+      }
+      if (updates.type !== undefined && updates.type !== 'customer') {
+        throw new Error('Cannot change type of default Walking Customer. This is a system-generated contact.');
+      }
+    }
+
     const { data, error } = await supabase
       .from('contacts')
       .update(updates)
@@ -141,13 +164,110 @@ export const contactService = {
   },
 
   // Delete contact (soft delete)
+  // PROTECTION: Cannot delete system-generated contacts
   async deleteContact(id: string) {
+    // Check if contact is system-generated
+    const { data: contact, error: fetchError } = await supabase
+      .from('contacts')
+      .select('is_system_generated, system_type')
+      .eq('id', id)
+      .single();
+
+    if (fetchError) throw fetchError;
+
+    // Block deletion of system-generated contacts
+    if (contact?.is_system_generated && contact?.system_type === 'walking_customer') {
+      throw new Error('Default Walking Customer cannot be deleted. This is a system-generated contact.');
+    }
+
     const { error } = await supabase
       .from('contacts')
       .update({ is_active: false })
       .eq('id', id);
 
     if (error) throw error;
+  },
+
+  // ============================================================================
+  // SYSTEM-GENERATED CONTACTS
+  // ============================================================================
+
+  /**
+   * Create default "Walking Customer" for a branch
+   * This is auto-created when a new branch is created
+   */
+  async createDefaultWalkingCustomer(companyId: string, branchId: string): Promise<Contact> {
+    console.log('[CONTACT SERVICE] Creating default walking customer:', { companyId, branchId });
+
+    // Check if walking customer already exists for this branch
+    const { data: existing } = await supabase
+      .from('contacts')
+      .select('*')
+      .eq('company_id', companyId)
+      .eq('branch_id', branchId)
+      .eq('system_type', 'walking_customer')
+      .eq('is_active', true)
+      .maybeSingle();
+
+    if (existing) {
+      console.log('[CONTACT SERVICE] Walking customer already exists:', existing.id);
+      return existing as Contact;
+    }
+
+    // Create walking customer
+    const walkingCustomer: Partial<Contact> = {
+      company_id: companyId,
+      branch_id: branchId,
+      type: 'customer',
+      name: 'Walking Customer',
+      is_active: true,
+      is_system_generated: true,
+      system_type: 'walking_customer',
+      opening_balance: 0,
+      credit_limit: 0,
+      payment_terms: 0,
+    };
+
+    try {
+      const created = await this.createContact(walkingCustomer);
+      console.log('[CONTACT SERVICE] ✅ Default walking customer created:', created.id);
+      return created as Contact;
+    } catch (error: any) {
+      console.error('[CONTACT SERVICE] ❌ Failed to create walking customer:', error);
+      throw new Error(`Failed to create default walking customer: ${error.message}`);
+    }
+  },
+
+  /**
+   * Get walking customer for a branch
+   * Used in SaleForm to auto-select customer
+   */
+  async getWalkingCustomer(companyId: string, branchId?: string): Promise<Contact | null> {
+    let query = supabase
+      .from('contacts')
+      .select('*')
+      .eq('company_id', companyId)
+      .eq('system_type', 'walking_customer')
+      .eq('is_active', true)
+      .eq('is_system_generated', true);
+
+    // If branchId provided, filter by branch
+    if (branchId) {
+      query = query.eq('branch_id', branchId);
+    } else {
+      // If no branchId, get first available (for backward compatibility)
+      query = query.is('branch_id', null);
+    }
+
+    const { data, error } = await query.limit(1).maybeSingle();
+
+    if (error && error.code !== 'PGRST116') {
+      // PGRST116 = no rows returned (acceptable)
+      console.error('[CONTACT SERVICE] Error fetching walking customer:', error);
+      return null;
+    }
+
+    return (data as Contact) || null;
   },
 
   // Search contacts

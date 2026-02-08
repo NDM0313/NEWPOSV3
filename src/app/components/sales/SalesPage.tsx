@@ -3,7 +3,8 @@ import {
   Plus, ShoppingCart, DollarSign, TrendingUp, 
   MoreVertical, Eye, Edit, Trash2, FileText, Phone, MapPin,
   Package, Truck, CheckCircle, Clock, XCircle, AlertCircle,
-  UserCheck, Receipt, Loader2, PackageCheck, PackageX, ChevronDown, ChevronUp
+  UserCheck, Receipt, Loader2, PackageCheck, PackageX, ChevronDown, ChevronUp,
+  RotateCcw
 } from 'lucide-react';
 import { Button } from "@/app/components/ui/button";
 import { Badge } from "@/app/components/ui/badge";
@@ -49,6 +50,7 @@ import { formatLongDate, formatDateAndTime } from '@/app/components/ui/utils';
 import { UnifiedPaymentDialog } from '@/app/components/shared/UnifiedPaymentDialog';
 import { UnifiedLedgerView } from '@/app/components/shared/UnifiedLedgerView';
 import { ViewSaleDetailsDrawer } from './ViewSaleDetailsDrawer';
+import { SaleReturnForm } from './SaleReturnForm';
 import { ViewPaymentsModal, type InvoiceDetails, type Payment } from './ViewPaymentsModal';
 import { toast } from 'sonner';
 
@@ -115,6 +117,19 @@ export const SalesPage = () => {
       loadSalesBranchIds();
     }
   }, [companyId, branchId, sales.length]);
+
+  // 🎯 Listen for payment added event to refresh sales list
+  useEffect(() => {
+    const handlePaymentAdded = async () => {
+      console.log('[SALES PAGE] Payment added event received, refreshing sales list...');
+      await refreshSales();
+    };
+
+    window.addEventListener('paymentAdded', handlePaymentAdded);
+    return () => {
+      window.removeEventListener('paymentAdded', handlePaymentAdded);
+    };
+  }, [refreshSales]);
   
   // 🎯 Payment Dialog & Ledger states
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
@@ -130,6 +145,8 @@ export const SalesPage = () => {
   // 🎯 NEW: Additional dialog states
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [shippingDialogOpen, setShippingDialogOpen] = useState(false);
+  const [saleReturnFormOpen, setSaleReturnFormOpen] = useState(false);
+  const [saleReturnSaleId, setSaleReturnSaleId] = useState<string | null>(null);
   
   // Filter states
   const [dateFilter, setDateFilter] = useState('all');
@@ -194,6 +211,11 @@ export const SalesPage = () => {
         setLedgerOpen(true);
         break;
         
+      case 'create_return':
+        setSaleReturnSaleId(sale.id);
+        setSaleReturnFormOpen(true);
+        break;
+        
       case 'update_shipping':
         setShippingDialogOpen(true);
         break;
@@ -248,6 +270,7 @@ export const SalesPage = () => {
     customer: true,
     contact: false, // REMOVED from default view
     location: true,
+    saleStatus: true, // Show sale status (draft/quotation/order only, final hidden)
     paymentStatus: true,
     paymentMethod: false, // REMOVED from default view
     total: true,
@@ -267,6 +290,7 @@ export const SalesPage = () => {
     'invoiceNo',
     'customer',
     'location',
+    'saleStatus', // Sale status (draft/quotation/order only)
     'paymentStatus',
     'total',
     'paid',
@@ -284,6 +308,7 @@ export const SalesPage = () => {
       customer: 'Customer',
       contact: 'Contact',
       location: 'Location',
+      saleStatus: 'Sale Status',
       paymentStatus: 'Payment Status',
       paymentMethod: 'Payment Method',
       total: 'Total Amount',
@@ -328,6 +353,7 @@ export const SalesPage = () => {
       customer: '200px',
       contact: '140px',
       location: '150px',
+      saleStatus: '120px',
       paymentStatus: '130px',
       paymentMethod: '130px',
       total: '110px',
@@ -399,7 +425,7 @@ export const SalesPage = () => {
   }, [sales, startDate, endDate, searchTerm, dateFilter, customerFilter, paymentStatusFilter, saleStatusFilter, shippingStatusFilter, branchFilter, paymentMethodFilter]);
 
   // Sort state: default date descending (latest first)
-  type SaleSortKey = 'date' | 'invoiceNo' | 'customer' | 'location' | 'paymentStatus' | 'total' | 'paid' | 'due' | 'returnDue' | 'shipping' | 'items';
+  type SaleSortKey = 'date' | 'invoiceNo' | 'customer' | 'location' | 'saleStatus' | 'paymentStatus' | 'total' | 'paid' | 'due' | 'returnDue' | 'shipping' | 'items';
   const [sortKey, setSortKey] = useState<SaleSortKey>('date');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
 
@@ -519,6 +545,29 @@ export const SalesPage = () => {
     );
   };
 
+  // Get sale status badge - Only show for non-final statuses (draft/quotation/order)
+  // Final sales don't show badge (clean UI - final is the default/expected state)
+  const getSaleStatusBadge = (status: 'draft' | 'quotation' | 'order' | 'final') => {
+    // Hide badge for final sales
+    if (status === 'final') {
+      return null;
+    }
+
+    const config = {
+      draft: { bg: 'bg-gray-500/20', text: 'text-gray-400', border: 'border-gray-500/30', icon: FileText },
+      quotation: { bg: 'bg-blue-500/20', text: 'text-blue-400', border: 'border-blue-500/30', icon: FileText },
+      order: { bg: 'bg-purple-500/20', text: 'text-purple-400', border: 'border-purple-500/30', icon: Package },
+    };
+    
+    const { bg, text, border, icon: Icon } = config[status];
+    return (
+      <Badge className={cn('text-xs font-medium capitalize h-6 px-2 flex items-center gap-1', bg, text, border)}>
+        <Icon size={12} />
+        {status}
+      </Badge>
+    );
+  };
+
   // Render column cell based on column key
   const renderColumnCell = (columnKey: string, sale: Sale) => {
     switch (columnKey) {
@@ -596,6 +645,15 @@ export const SalesPage = () => {
           <div className="flex items-center gap-1.5 text-xs text-gray-400">
             <MapPin size={12} className="text-gray-600" />
             <span className="truncate">{locationText || '—'}</span>
+          </div>
+        );
+      
+      case 'saleStatus':
+        // Sale status badge - Only shows for draft/quotation/order (final is hidden)
+        const statusBadge = getSaleStatusBadge(sale.status);
+        return (
+          <div className="flex justify-center">
+            {statusBadge || <span className="text-xs text-gray-600">—</span>}
           </div>
         );
       
@@ -1067,6 +1125,7 @@ export const SalesPage = () => {
                       customer: 'text-left',
                       contact: 'text-left',
                       location: 'text-left',
+                      saleStatus: 'text-center',
                       paymentStatus: 'text-center',
                       paymentMethod: 'text-center',
                       total: 'text-right',
@@ -1083,6 +1142,7 @@ export const SalesPage = () => {
                       customer: 'Customer',
                       contact: 'Contact',
                       location: 'Location',
+                      saleStatus: 'Status',
                       paymentStatus: 'Payment',
                       paymentMethod: 'Method',
                       total: 'Total',
@@ -1093,7 +1153,7 @@ export const SalesPage = () => {
                       items: 'Items',
                     };
                     
-                    const isSortable = (['date', 'invoiceNo', 'customer', 'location', 'paymentStatus', 'total', 'paid', 'due', 'returnDue', 'shipping', 'items'] as SaleSortKey[]).includes(key as SaleSortKey);
+                    const isSortable = (['date', 'invoiceNo', 'customer', 'location', 'saleStatus', 'paymentStatus', 'total', 'paid', 'due', 'returnDue', 'shipping', 'items'] as SaleSortKey[]).includes(key as SaleSortKey);
                     const isActive = sortKey === key;
                     
                     return (
@@ -1208,6 +1268,16 @@ export const SalesPage = () => {
                             </DropdownMenuItem>
                             
                             <DropdownMenuSeparator className="bg-gray-700" />
+                            {/* 🎯 CREATE SALE RETURN - Only for final sales */}
+                            {sale.status === 'final' && (
+                              <DropdownMenuItem 
+                                className="hover:bg-gray-800 cursor-pointer"
+                                onClick={() => handleSaleAction('create_return', sale)}
+                              >
+                                <RotateCcw size={14} className="mr-2 text-purple-400" />
+                                Create Sale Return
+                              </DropdownMenuItem>
+                            )}
                             <DropdownMenuItem 
                               className="hover:bg-gray-800 cursor-pointer"
                               onClick={() => handleSaleAction('update_shipping', sale)}
@@ -1413,6 +1483,20 @@ export const SalesPage = () => {
           onAddPayment={() => {
             setViewDetailsOpen(false);
             handleSaleAction('receive_payment', selectedSale);
+          }}
+        />
+      )}
+
+      {/* 🎯 SALE RETURN FORM */}
+      {saleReturnFormOpen && saleReturnSaleId && (
+        <SaleReturnForm
+          saleId={saleReturnSaleId}
+          onClose={() => {
+            setSaleReturnFormOpen(false);
+            setSaleReturnSaleId(null);
+          }}
+          onSuccess={async () => {
+            await refreshSales();
           }}
         />
       )}

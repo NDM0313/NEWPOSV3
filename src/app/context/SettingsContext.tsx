@@ -168,6 +168,7 @@ export interface ModuleToggles {
   accountingModuleEnabled: boolean;
   productionModuleEnabled: boolean;
   posModuleEnabled: boolean;
+  combosEnabled: boolean;
 }
 
 interface SettingsContextType {
@@ -264,7 +265,7 @@ function getDefaultSettingsStub(): SettingsContextType {
     getNextNumber: async () => '',
     currentUser: { role: 'Admin', canCreateSale: true, canEditSale: true, canDeleteSale: true, canViewReports: true, canManageSettings: true, canManageUsers: true, canAccessAccounting: true, canMakePayments: true, canReceivePayments: true, canManageExpenses: true, canManageProducts: true, canManagePurchases: true, canManageRentals: true },
     updatePermissions: noop,
-    modules: { rentalModuleEnabled: true, studioModuleEnabled: true, accountingModuleEnabled: true, productionModuleEnabled: true, posModuleEnabled: true },
+    modules: { rentalModuleEnabled: true, studioModuleEnabled: true, accountingModuleEnabled: true, productionModuleEnabled: true, posModuleEnabled: true, combosEnabled: false },
     updateModules: noop,
     refreshSettings: noop,
   };
@@ -429,6 +430,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
     accountingModuleEnabled: false,
     productionModuleEnabled: false,
     posModuleEnabled: false,
+    combosEnabled: false,
   });
 
   // ============================================
@@ -631,6 +633,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
         accountingModuleEnabled: getModuleEnabled('accounting'),
         productionModuleEnabled: getModuleEnabled('production'),
         posModuleEnabled: getModuleEnabled('pos'),
+        combosEnabled: getModuleEnabled('combos'),
       });
 
       if (import.meta.env?.DEV) console.log('✅ Settings loaded');
@@ -918,6 +921,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
         accountingModuleEnabled: 'accounting',
         productionModuleEnabled: 'production',
         posModuleEnabled: 'pos',
+        combosEnabled: 'combos',
       };
 
       for (const [key, moduleName] of Object.entries(moduleNameMap)) {

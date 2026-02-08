@@ -529,7 +529,11 @@ export const InventoryDashboardNew = () => {
                         <td className="px-6 py-4">
                           <div className="font-medium text-white">{product.name}</div>
                           {product.hasVariations && (product as any).variations?.length > 0 && (
-                            <p className="text-xs text-gray-500 mt-0.5">(SUM of {((product as any).variations as any[]).length} variations)</p>
+                            <p className="text-xs text-gray-500 mt-0.5">
+                              <span className="bg-gray-800/50 border border-gray-700 px-1.5 py-0.5 rounded text-[10px]">
+                                SUM of {((product as any).variations as any[]).length} variations
+                              </span>
+                            </p>
                           )}
                         </td>
                         <td className="px-6 py-4">
@@ -604,7 +608,7 @@ export const InventoryDashboardNew = () => {
                       </tr>
                     );
                     // RULE 3: Display stock per variation (sub-rows under parent)
-                    const variations = (product as any).variations as Array<{ id: string; attributes: any; stock: number }> | undefined;
+                    const variations = (product as any).variations as Array<{ id: string; sku?: string; attributes: any; stock: number }> | undefined;
                     if (product.hasVariations && variations?.length) {
                       variations.forEach((v) => {
                         const attrText = typeof v.attributes === 'object' && v.attributes !== null
@@ -613,7 +617,12 @@ export const InventoryDashboardNew = () => {
                         rows.push(
                           <tr key={`${product.id}-${v.id}`} className="bg-gray-900/40 hover:bg-gray-800/20 transition-colors opacity-90">
                             <td className="px-6 py-2 pl-10">
-                              <span className="text-gray-400 text-sm">└ {attrText || `Variation`}</span>
+                              <div className="text-gray-400 text-xs">
+                                <span className="font-mono">└ SKU: {v.sku || 'N/A'}</span>
+                                {attrText && (
+                                  <p className="text-gray-500 mt-0.5 text-[11px]">{attrText}</p>
+                                )}
+                              </div>
                             </td>
                             <td className="px-6 py-2 text-gray-500 text-sm">—</td>
                             <td className="px-6 py-2 text-gray-500 text-sm">—</td>
@@ -726,7 +735,7 @@ export const InventoryDashboardNew = () => {
           </div>
 
           {/* Movements Table - scroll when needed */}
-          <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-auto min-w-0">
+          <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden min-w-0">
             <div className="p-6 border-b border-gray-800">
               <div className="flex justify-between items-center mb-4">
                 <div>
@@ -797,8 +806,9 @@ export const InventoryDashboardNew = () => {
                 </div>
               </div>
             </div>
+            <div className="max-h-[420px] overflow-y-auto">
             <table className="w-full min-w-[900px]">
-              <thead className="bg-gray-950/50 border-b border-gray-800">
+              <thead className="bg-gray-950/50 border-b border-gray-800 sticky top-0 z-10">
                 <tr>
                   <th className="px-6 py-4 text-left text-xs font-medium text-gray-400 uppercase">Date</th>
                   <th className="px-6 py-4 text-left text-xs font-medium text-gray-400 uppercase">Product</th>
@@ -896,6 +906,7 @@ export const InventoryDashboardNew = () => {
                 )}
               </tbody>
             </table>
+            </div>
           </div>
           </div>
         </div>

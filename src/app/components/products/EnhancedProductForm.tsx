@@ -4,6 +4,7 @@ import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { useSupabase } from '@/app/context/SupabaseContext';
+import { useSettings } from '@/app/context/SettingsContext';
 import { useDocumentNumbering } from '@/app/hooks/useDocumentNumbering';
 import { productService } from '@/app/services/productService';
 import { inventoryService } from '@/app/services/inventoryService';
@@ -11,6 +12,7 @@ import { brandService } from '@/app/services/brandService';
 import { productCategoryService } from '@/app/services/productCategoryService';
 import { unitService } from '@/app/services/unitService';
 import { contactService } from '@/app/services/contactService';
+import { comboService } from '@/app/services/comboService';
 import { supabase } from '@/lib/supabase';
 import { uploadProductImages } from '@/app/utils/productImageUpload';
 import { ProductImage } from './ProductImage';
@@ -125,11 +127,17 @@ export const EnhancedProductForm = ({
   onSaveAndAdd,
 }: EnhancedProductFormProps) => {
   const { companyId, branchId } = useSupabase();
+  const { modules } = useSettings();
   const { generateDocumentNumber, generateDocumentNumberSafe, incrementNextNumber } = useDocumentNumbering();
   const [saving, setSaving] = useState(false);
   /** Enable Variations toggle: default OFF for new product, from DB for edit. When ON, parent stock locked at 0. */
   const [enableVariations, setEnableVariations] = useState(false);
   const [blockDisableVariationsModalOpen, setBlockDisableVariationsModalOpen] = useState(false);
+  
+  /** Enable Combo Product toggle: default OFF for new product, from DB for edit. When ON, product becomes virtual bundle - no stock. */
+  const [isComboProduct, setIsComboProduct] = useState(false);
+  const [blockEnableComboModalOpen, setBlockEnableComboModalOpen] = useState(false);
+  const [blockDisableComboModalOpen, setBlockDisableComboModalOpen] = useState(false);
   const [images, setImages] = useState<File[]>([]);
   const [existingImageUrls, setExistingImageUrls] = useState<string[]>([]);
   const [isRentalOptionsOpen, setIsRentalOptionsOpen] = useState(false);
@@ -164,38 +172,38 @@ export const EnhancedProductForm = ({
   // Combos State
   const [combos, setCombos] = useState<Array<{
     id: string;
-    name: string;
-    products: Array<{ name: string; quantity: number; price: number }>;
-    totalPrice: number;
-    comboPrice: number;
-    discount: number;
+    combo_name: string;
+    combo_price: number;
+    items: Array<{
+      id?: string;
+      product_id: string;
+      product_name?: string;
+      product_sku?: string;
+      variation_id?: string | null;
+      qty: number;
+      unit_price?: number | null;
+    }>;
   }>>([]);
-  const [currentCombo, setCurrentCombo] = useState<Array<{ name: string; quantity: number; price: number }>>([]);
-  const [newComboProduct, setNewComboProduct] = useState('');
-  const [newComboQuantity, setNewComboQuantity] = useState(1);
-  const [newComboPrice, setNewComboPrice] = useState(0);
+  const [currentComboItems, setCurrentComboItems] = useState<Array<{
+    product_id: string;
+    product_name: string;
+    product_sku: string;
+    variation_id?: string | null;
+    qty: number;
+    unit_price?: number | null;
+  }>>([]);
   const [comboName, setComboName] = useState('');
   const [comboFinalPrice, setComboFinalPrice] = useState(0);
   const [productSearchQuery, setProductSearchQuery] = useState('');
   const [showProductDropdown, setShowProductDropdown] = useState(false);
-  
-  // Mock saved products - In real app, this would come from API/database
-  const [savedProducts] = useState([
-    { id: 1, name: 'Premium Cotton Shirt - White', price: 2500, sku: 'PRD-001' },
-    { id: 2, name: 'Premium Cotton Shirt - Blue', price: 2500, sku: 'PRD-002' },
-    { id: 3, name: 'Silk Dupatta - Red', price: 3500, sku: 'PRD-003' },
-    { id: 4, name: 'Embroidered Suit - Black', price: 8500, sku: 'PRD-004' },
-    { id: 5, name: 'Lawn Suit 3-Piece - Floral', price: 4500, sku: 'PRD-005' },
-    { id: 6, name: 'Chiffon Dupatta - Green', price: 2000, sku: 'PRD-006' },
-    { id: 7, name: 'Karandi Suit - Brown', price: 6500, sku: 'PRD-007' },
-    { id: 8, name: 'Cotton Trouser - Black', price: 1500, sku: 'PRD-008' },
-  ]);
-
-  // Filter products based on search
-  const filteredProducts = savedProducts.filter(product =>
-    product.name.toLowerCase().includes(productSearchQuery.toLowerCase()) ||
-    product.sku.toLowerCase().includes(productSearchQuery.toLowerCase())
-  );
+  const [availableProducts, setAvailableProducts] = useState<Array<{
+    id: string;
+    name: string;
+    sku: string;
+    retail_price: number;
+    has_variations: boolean;
+  }>>([]);
+  const [loadingProducts, setLoadingProducts] = useState(false);
 
   const {
     register,
@@ -412,10 +420,83 @@ export const EnhancedProductForm = ({
       }
       const urls = (initialProduct as any)?.image_urls;
       setExistingImageUrls(Array.isArray(urls) ? [...urls] : []);
+      
+      // Load combo product flag
+      if (initialProduct.is_combo_product !== undefined) {
+        setIsComboProduct(initialProduct.is_combo_product);
+      }
+      
+      // Load existing combos for this product
+      if (initialProduct.id || initialProduct.uuid) {
+        const productId = initialProduct.uuid || initialProduct.id;
+        loadProductCombos(productId);
+      }
     } else {
       setExistingImageUrls([]);
+      setIsComboProduct(false);
     }
   }, [initialProduct, setValue]);
+
+  // Load available products for combo search (exclude combo products and current product)
+  useEffect(() => {
+    if (modules.combosEnabled && isComboProduct && companyId) {
+      loadAvailableProducts();
+    } else {
+      setAvailableProducts([]);
+    }
+  }, [modules.combosEnabled, isComboProduct, companyId]);
+
+  // Load available products for combo (non-combo products only)
+  const loadAvailableProducts = async () => {
+    if (!companyId) return;
+    setLoadingProducts(true);
+    try {
+      const { data, error } = await supabase
+        .from('products')
+        .select('id, name, sku, retail_price, has_variations')
+        .eq('company_id', companyId)
+        .eq('is_active', true)
+        .eq('is_combo_product', false) // Exclude combo products
+        .neq('id', initialProduct?.id || initialProduct?.uuid || '00000000-0000-0000-0000-000000000000') // Exclude current product
+        .order('name');
+      
+      if (error) throw error;
+      setAvailableProducts(data || []);
+    } catch (error: any) {
+      console.error('[PRODUCT FORM] Error loading products for combo:', error);
+      toast.error('Failed to load products');
+    } finally {
+      setLoadingProducts(false);
+    }
+  };
+
+  // Load existing combos for product
+  const loadProductCombos = async (productId: string) => {
+    if (!companyId || !productId) return;
+    try {
+      const combo = await comboService.getComboByProductId(productId, companyId);
+      if (combo) {
+        // Load items with product details
+        const itemsWithDetails = await comboService.getComboItemsWithDetails(combo.id, companyId);
+        setCombos([{
+          id: combo.id,
+          combo_name: combo.combo_name,
+          combo_price: combo.combo_price,
+          items: itemsWithDetails.map(item => ({
+            id: item.id,
+            product_id: item.product_id,
+            product_name: item.product_name,
+            product_sku: item.product_sku,
+            variation_id: item.variation_id,
+            qty: item.qty,
+            unit_price: item.unit_price,
+          })),
+        }]);
+      }
+    } catch (error: any) {
+      console.error('[PRODUCT FORM] Error loading combos:', error);
+    }
+  };
 
   // Auto-calculate selling price when purchase price or margin changes
   useEffect(() => {
@@ -473,6 +554,39 @@ export const EnhancedProductForm = ({
       setGeneratedVariations([]);
       setVariantAttributes([]);
       if (activeTab === 'variations') setActiveTab('inventory');
+    }
+  };
+
+  // Enable Combo Product toggle: with safety checks (like variations)
+  const handleEnableComboChange = async (checked: boolean) => {
+    const productId = initialProduct?.uuid ?? initialProduct?.id;
+    if (checked) {
+      // BLOCK 1: If product has stock movements, cannot enable combo
+      if (productId) {
+        const parentCount = await inventoryService.getParentLevelMovementCount(productId);
+        if (parentCount > 0) {
+          setBlockEnableComboModalOpen(true);
+          return;
+        }
+      }
+      setIsComboProduct(true);
+      setValue('initialStock', 0, { shouldValidate: false });
+      if (!modules.combosEnabled) {
+        toast.error('Combo module is disabled. Enable it in Settings first.');
+        return;
+      }
+    } else {
+      // BLOCK 2: If product has combo items, cannot disable combo
+      if (productId && combos.length > 0) {
+        setBlockDisableComboModalOpen(true);
+        return;
+      }
+      setIsComboProduct(false);
+      setCombos([]);
+      setCurrentComboItems([]);
+      setComboName('');
+      setComboFinalPrice(0);
+      if (activeTab === 'combos') setActiveTab('inventory');
     }
   };
 
@@ -542,54 +656,128 @@ export const EnhancedProductForm = ({
   };
 
   // Combos Functions
-  const addComboProduct = () => {
-    if (newComboProduct.trim() && newComboQuantity > 0 && newComboPrice >= 0) {
-      const newProduct = { name: newComboProduct.trim(), quantity: newComboQuantity, price: newComboPrice };
-      setCurrentCombo([...currentCombo, newProduct]);
-      setNewComboProduct('');
-      setProductSearchQuery('');
-      setNewComboQuantity(1);
-      setNewComboPrice(0);
-      setShowProductDropdown(false);
+  // Filter available products based on search query
+  const filteredProducts = availableProducts.filter(product =>
+    product.name.toLowerCase().includes(productSearchQuery.toLowerCase()) ||
+    product.sku.toLowerCase().includes(productSearchQuery.toLowerCase())
+  );
+
+  const selectProduct = (product: { id: string; name: string; retail_price: number; sku: string; has_variations: boolean }) => {
+    // Check if product already in current combo
+    if (currentComboItems.some(item => item.product_id === product.id && !item.variation_id)) {
+      toast.error('Product already added to combo');
+      return;
     }
+    
+    // If product has variations, we need variation_id (will be handled in UI)
+    // For now, add without variation (user can edit later if needed)
+    setCurrentComboItems([...currentComboItems, {
+      product_id: product.id,
+      product_name: product.name,
+      product_sku: product.sku,
+      variation_id: null, // TODO: Add variation selection if has_variations
+      qty: 1,
+      unit_price: product.retail_price,
+    }]);
+      setProductSearchQuery('');
+      setShowProductDropdown(false);
   };
 
-  const selectProduct = (product: { id: number; name: string; price: number; sku: string }) => {
-    setNewComboProduct(product.name);
-    setNewComboPrice(product.price);
-    setProductSearchQuery(product.name);
-    setShowProductDropdown(false);
+  const removeComboItem = (index: number) => {
+    setCurrentComboItems(currentComboItems.filter((_, i) => i !== index));
   };
 
-  const removeComboProduct = (index: number) => {
-    const updatedCombo = [...currentCombo];
-    updatedCombo.splice(index, 1);
-    setCurrentCombo(updatedCombo);
+  const updateComboItemQty = (index: number, qty: number) => {
+    if (qty <= 0) return;
+    const updated = [...currentComboItems];
+    updated[index].qty = qty;
+    setCurrentComboItems(updated);
   };
 
-  const saveCombo = () => {
-    if (currentCombo.length > 0 && comboName.trim()) {
-      const totalPrice = currentCombo.reduce((sum, product) => sum + product.quantity * product.price, 0);
-      const discount = totalPrice - comboFinalPrice;
+  const updateComboItemPrice = (index: number, price: number) => {
+    if (price < 0) return;
+    const updated = [...currentComboItems];
+    updated[index].unit_price = price;
+    setCurrentComboItems(updated);
+  };
+
+  const saveCombo = async () => {
+    if (!comboName.trim() || comboFinalPrice <= 0 || currentComboItems.length === 0) {
+      toast.error('Please fill all combo fields and add at least one product');
+      return;
+    }
+    
+    if (!companyId) {
+      toast.error('Company ID missing');
+      return;
+    }
+
+    const productId = initialProduct?.uuid || initialProduct?.id;
+    if (!productId) {
+      toast.error('Product must be saved first before creating combo');
+      return;
+    }
+
+    try {
+      // Create or update combo
+      if (combos.length > 0 && combos[0].id) {
+        // Update existing combo
+        await comboService.updateCombo(combos[0].id, companyId, {
+          combo_name: comboName,
+          combo_price: comboFinalPrice,
+        });
+        await comboService.updateComboItems(combos[0].id, companyId, currentComboItems);
+        toast.success('Combo updated!');
+      } else {
+        // Create new combo
+        const newCombo = await comboService.createCombo({
+          company_id: companyId,
+          combo_product_id: productId,
+          combo_name: comboName,
+          combo_price: comboFinalPrice,
+          items: currentComboItems,
+        });
+        
+        setCombos([{
+          id: newCombo.id,
+          combo_name: newCombo.combo_name,
+          combo_price: newCombo.combo_price,
+          items: newCombo.items.map(item => ({
+            id: item.id,
+            product_id: item.product_id,
+            variation_id: item.variation_id,
+            qty: item.qty,
+            unit_price: item.unit_price,
+          })),
+        }]);
+        toast.success('Combo saved!');
+      }
       
-      const newCombo = {
-        id: Date.now().toString(),
-        name: comboName.trim(),
-        products: currentCombo,
-        totalPrice,
-        comboPrice: comboFinalPrice,
-        discount,
-      };
-      
-      setCombos([...combos, newCombo]);
-      setCurrentCombo([]);
+      // Reset form
+      setCurrentComboItems([]);
       setComboName('');
       setComboFinalPrice(0);
+      setProductSearchQuery('');
+    } catch (error: any) {
+      console.error('[PRODUCT FORM] Error saving combo:', error);
+      toast.error(error?.message || 'Failed to save combo');
     }
   };
 
-  const deleteCombo = (id: string) => {
-    setCombos(combos.filter(combo => combo.id !== id));
+  const deleteCombo = async (id: string) => {
+    if (!companyId) {
+      toast.error('Company ID missing');
+      return;
+    }
+    
+    try {
+      await comboService.deleteCombo(id, companyId);
+      setCombos(combos.filter(c => c.id !== id));
+      toast.success('Combo deleted!');
+    } catch (error: any) {
+      console.error('[PRODUCT FORM] Error deleting combo:', error);
+      toast.error(error?.message || 'Failed to delete combo');
+    }
   };
 
   const onSubmit = async (
@@ -652,10 +840,12 @@ export const EnhancedProductForm = ({
         wholesale_price: data.wholesalePrice ?? data.sellingPrice ?? 0,
         rental_price_daily: data.rentalPrice ?? null,
         // RULE 1: When variations enabled, parent cannot hold stock (opening stock per variation only)
-        current_stock: enableVariations ? 0 : ((data.initialStock ?? 0) > 0 && !initialProduct?.id ? 0 : (data.initialStock ?? 0)),
+        // RULE 2: When combo enabled, product cannot hold stock (virtual bundle - stock from components)
+        current_stock: (enableVariations || isComboProduct) ? 0 : ((data.initialStock ?? 0) > 0 && !initialProduct?.id ? 0 : (data.initialStock ?? 0)),
         min_stock: data.alertQty ?? 0,
         max_stock: data.maxStock ?? 1000,
         has_variations: enableVariations,
+        is_combo_product: isComboProduct, // Save combo flag
         is_rentable: (data.rentalPrice ?? 0) > 0,
         is_sellable: true,
         track_stock: data.stockManagement !== false,
@@ -947,6 +1137,7 @@ export const EnhancedProductForm = ({
               Variations {generatedVariations.length > 0 && `(${generatedVariations.length} / ${MAX_VARIATIONS})`}
             </button>
           )}
+          {modules.combosEnabled && isComboProduct && (
           <button
             onClick={() => setActiveTab('combos')}
             className={clsx(
@@ -958,6 +1149,7 @@ export const EnhancedProductForm = ({
           >
             Combos {combos.length > 0 && `(${combos.length})`}
           </button>
+          )}
         </div>
       </div>
 
@@ -1522,6 +1714,33 @@ export const EnhancedProductForm = ({
                 </div>
               )}
 
+              {/* Enable Combo Product toggle (only if module enabled) */}
+              {modules.combosEnabled && (
+                <>
+                  <div className="flex items-center justify-between p-3 bg-gray-800 border border-gray-700 rounded-lg">
+                    <div>
+                      <Label htmlFor="enable-combo" className="text-gray-200 font-medium">
+                        Enable Combo Product
+                      </Label>
+                      <p className="text-xs text-gray-500 mt-0.5">
+                        Make this product a combo/bundle. Stock will be managed through component products.
+                      </p>
+                    </div>
+                    <Switch
+                      id="enable-combo"
+                      checked={isComboProduct}
+                      onCheckedChange={handleEnableComboChange}
+                    />
+                  </div>
+
+                  {isComboProduct && (
+                    <div className="p-3 bg-gray-800 border border-gray-700 rounded-lg">
+                      <p className="text-sm text-gray-400">Combo products do not hold stock. Stock is managed through component products.</p>
+                    </div>
+                  )}
+                </>
+              )}
+
               <div className="flex items-center justify-between">
                 <h3 className="text-lg font-semibold border-l-4 border-yellow-500 pl-3">
                   Stock Management
@@ -1559,13 +1778,16 @@ export const EnhancedProductForm = ({
                     <Input
                       id="initial-stock"
                       type="number"
-                      disabled={enableVariations}
+                      disabled={enableVariations || isComboProduct}
                       {...register("initialStock", { setValueAs: setValueAsNumber })}
                       placeholder="0"
-                      className={clsx("mt-1", enableVariations ? "bg-gray-900 border-gray-700 text-gray-500 cursor-not-allowed" : "bg-gray-800 border-gray-700 text-white")}
+                      className={clsx("mt-1", (enableVariations || isComboProduct) ? "bg-gray-900 border-gray-700 text-gray-500 cursor-not-allowed" : "bg-gray-800 border-gray-700 text-white")}
                     />
                     {enableVariations && (
                       <p className="text-xs text-gray-500 mt-1">Opening stock is defined per variation.</p>
+                    )}
+                    {isComboProduct && (
+                      <p className="text-xs text-gray-500 mt-1">Combo products do not hold stock. Stock is managed through component products.</p>
                     )}
                   </div>
 
@@ -1809,7 +2031,7 @@ export const EnhancedProductForm = ({
 
             {/* Step 1: Add Attributes */}
             <div className="space-y-4">
-              <h3 className="text-lg font-semibold border-l-4 border-purple-500 pl-3">
+              <h3 className="text-lg font-semibold border-l-4 border-blue-500 pl-3">
                 Step 1: Define Variation Attributes
               </h3>
               
@@ -1878,7 +2100,7 @@ export const EnhancedProductForm = ({
                               setSelectedAttributeIndex(attrIndex);
                               addAttributeValue();
                             }}
-                            className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap"
+                            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap"
                           >
                             Add Value
                           </button>
@@ -1915,7 +2137,7 @@ export const EnhancedProductForm = ({
             {/* Step 2: Generate Variations */}
             {variantAttributes.length > 0 && variantAttributes.every(attr => attr.values.length > 0) && (
               <div className="space-y-4">
-                <h3 className="text-lg font-semibold border-l-4 border-green-500 pl-3">
+                <h3 className="text-lg font-semibold border-l-4 border-blue-500 pl-3">
                   Step 2: Generate & Configure Variations
                 </h3>
 
@@ -1942,7 +2164,7 @@ export const EnhancedProductForm = ({
                             "text-white px-6 py-3 rounded-xl font-bold transition-colors flex items-center gap-2",
                             atLimit
                               ? "bg-gray-600 cursor-not-allowed opacity-60"
-                              : "bg-green-500 hover:bg-green-600 shadow-lg shadow-green-500/20"
+                              : "bg-blue-500 hover:bg-blue-600 shadow-lg shadow-blue-500/20"
                           )}
                         >
                           <RefreshCcw size={18} />
@@ -2083,11 +2305,11 @@ export const EnhancedProductForm = ({
         )}
 
         {/* TAB 3 - COMBOS */}
-        {activeTab === 'combos' && (
+        {activeTab === 'combos' && modules.combosEnabled && isComboProduct && (
           <>
             {/* Info Banner */}
-            <div className="bg-green-900/20 border border-green-800 rounded-xl p-4">
-              <p className="text-sm text-green-300">
+            <div className="bg-blue-900/20 border border-blue-800 rounded-xl p-4">
+              <p className="text-sm text-blue-300">
                 <strong>Product Combos:</strong> Create bundled packages by combining multiple products. 
                 Set a special combo price to offer discounts on bundle purchases.
               </p>
@@ -2095,7 +2317,7 @@ export const EnhancedProductForm = ({
 
             {/* Step 1: Create Combo */}
             <div className="space-y-4">
-              <h3 className="text-lg font-semibold border-l-4 border-purple-500 pl-3">
+              <h3 className="text-lg font-semibold border-l-4 border-blue-500 pl-3">
                 Create New Combo
               </h3>
               
@@ -2142,67 +2364,74 @@ export const EnhancedProductForm = ({
                                 <p className="text-white text-sm font-medium">{product.name}</p>
                                 <p className="text-gray-500 text-xs mt-1">SKU: {product.sku}</p>
                               </div>
-                              <span className="text-green-400 text-sm font-semibold">₨{product.price}</span>
+                              <span className="text-green-400 text-sm font-semibold">₨{product.retail_price}</span>
                             </div>
                           </button>
                         ))}
                       </div>
                     )}
                     
-                    {showProductDropdown && productSearchQuery && filteredProducts.length === 0 && (
+                    {showProductDropdown && productSearchQuery && filteredProducts.length === 0 && !loadingProducts && (
                       <div className="absolute z-50 w-full mt-1 bg-gray-900 border border-gray-700 rounded-lg shadow-xl p-4 text-center">
-                        <p className="text-gray-500 text-sm">No products found</p>
+                        <p className="text-gray-500 text-sm">No products available to add.</p>
                       </div>
                     )}
+                    {loadingProducts && (
+                      <div className="absolute z-50 w-full mt-1 bg-gray-900 border border-gray-700 rounded-lg shadow-xl p-4 text-center">
+                        <p className="text-gray-500 text-sm">Loading products...</p>
                   </div>
-                  
-                  <Input
-                    type="number"
-                    value={newComboQuantity || ''}
-                    onChange={(e) => setNewComboQuantity(parseInt(e.target.value) || 1)}
-                    placeholder="Qty"
-                    className="bg-gray-900 border-gray-700 text-white text-sm"
-                  />
-                  <Input
-                    type="number"
-                    value={newComboPrice || ''}
-                    onChange={(e) => setNewComboPrice(parseFloat(e.target.value) || 0)}
-                    placeholder="Price"
-                    className="bg-gray-900 border-gray-700 text-white text-sm"
-                  />
+                    )}
                 </div>
-                <button
-                  type="button"
-                  onClick={addComboProduct}
-                  className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2"
-                >
-                  <Plus size={16} />
-                  Add Product
-                </button>
+                </div>
+                {availableProducts.length === 0 && !loadingProducts && (
+                  <div className="bg-gray-900 border border-gray-700 rounded-lg p-4 text-center">
+                    <p className="text-gray-500 text-sm">No products available to add.</p>
+                    <p className="text-gray-600 text-xs mt-1">Create products first, then add them to this combo.</p>
+                  </div>
+                )}
               </div>
 
-              {/* Current Combo Products */}
-              {currentCombo.length > 0 && (
+              {/* Current Combo Items */}
+              {currentComboItems.length > 0 && (
                 <div className="bg-gray-800 border border-gray-700 rounded-xl p-4 space-y-3">
                   <Label className="text-gray-200 block">Products in This Combo</Label>
                   <div className="space-y-2">
-                    {currentCombo.map((product, index) => (
+                    {currentComboItems.map((item, index) => (
                       <div
                         key={index}
                         className="bg-gray-900 border border-gray-700 px-4 py-3 rounded-lg flex items-center justify-between"
                       >
-                        <div className="flex items-center gap-4">
-                          <span className="text-white font-medium">{product.name}</span>
-                          <span className="text-gray-400 text-sm">Qty: {product.quantity}</span>
-                          <span className="text-green-400 text-sm font-medium">₨{product.price.toFixed(2)}</span>
-                          <span className="text-gray-500 text-sm">
-                            Subtotal: ₨{(product.quantity * product.price).toFixed(2)}
+                        <div className="flex items-center gap-4 flex-1">
+                          <div className="flex-1">
+                            <span className="text-white font-medium">{item.product_name}</span>
+                            <p className="text-gray-500 text-xs mt-0.5">SKU: {item.product_sku}</p>
+                          </div>
+                          <Input
+                            type="number"
+                            min={0.01}
+                            step={0.01}
+                            value={item.qty || ''}
+                            onChange={(e) => updateComboItemQty(index, parseFloat(e.target.value) || 1)}
+                            className="bg-gray-800 border-gray-700 text-white text-sm w-20"
+                            placeholder="Qty"
+                          />
+                          <Input
+                            type="number"
+                            min={0}
+                            step={0.01}
+                            value={item.unit_price || ''}
+                            onChange={(e) => updateComboItemPrice(index, parseFloat(e.target.value) || 0)}
+                            className="bg-gray-800 border-gray-700 text-white text-sm w-24"
+                            placeholder="Price"
+                          />
+                          <span className="text-gray-500 text-sm w-24 text-right">
+                            Subtotal: ₨{((item.qty || 0) * (item.unit_price || 0)).toFixed(2)}
                           </span>
                         </div>
                         <button
                           type="button"
-                          onClick={() => removeComboProduct(index)}
-                          className="text-red-500 hover:text-red-400 transition-colors p-2"
+                          onClick={() => removeComboItem(index)}
+                          className="text-red-500 hover:text-red-400 transition-colors p-2 ml-2"
                         >
                           <Trash2 size={16} />
                         </button>
@@ -2215,13 +2444,15 @@ export const EnhancedProductForm = ({
                     <div className="flex justify-between items-center">
                       <span className="text-gray-400">Total Individual Price:</span>
                       <span className="text-white font-semibold">
-                        ₨{currentCombo.reduce((sum, p) => sum + p.quantity * p.price, 0).toFixed(2)}
+                        ₨{currentComboItems.reduce((sum, item) => sum + (item.qty || 0) * (item.unit_price || 0), 0).toFixed(2)}
                       </span>
                     </div>
                     <div className="flex items-center gap-4">
                       <Label className="text-gray-200">Combo Price:</Label>
                       <Input
                         type="number"
+                        min={0}
+                        step={0.01}
                         value={comboFinalPrice || ''}
                         onChange={(e) => setComboFinalPrice(parseFloat(e.target.value) || 0)}
                         placeholder="Enter combo price"
@@ -2232,7 +2463,7 @@ export const EnhancedProductForm = ({
                       <div className="flex justify-between items-center text-sm">
                         <span className="text-green-400">Discount:</span>
                         <span className="text-green-400 font-semibold">
-                          ₨{(currentCombo.reduce((sum, p) => sum + p.quantity * p.price, 0) - comboFinalPrice).toFixed(2)}
+                          ₨{(currentComboItems.reduce((sum, item) => sum + (item.qty || 0) * (item.unit_price || 0), 0) - comboFinalPrice).toFixed(2)}
                         </span>
                       </div>
                     )}
@@ -2241,8 +2472,8 @@ export const EnhancedProductForm = ({
                   <button
                     type="button"
                     onClick={saveCombo}
-                    disabled={!comboName.trim() || comboFinalPrice <= 0}
-                    className="bg-green-500 hover:bg-green-600 disabled:bg-gray-700 disabled:cursor-not-allowed text-white px-6 py-3 rounded-xl font-bold transition-colors shadow-lg shadow-green-500/20 w-full"
+                    disabled={!comboName.trim() || comboFinalPrice <= 0 || currentComboItems.length === 0}
+                    className="bg-blue-500 hover:bg-blue-600 disabled:bg-gray-700 disabled:cursor-not-allowed text-white px-6 py-3 rounded-xl font-bold transition-colors shadow-lg shadow-blue-500/20 w-full"
                   >
                     Save Combo
                   </button>
@@ -2253,7 +2484,7 @@ export const EnhancedProductForm = ({
             {/* Saved Combos */}
             {combos.length > 0 && (
               <div className="space-y-4">
-                <h3 className="text-lg font-semibold border-l-4 border-green-500 pl-3">
+                <h3 className="text-lg font-semibold border-l-4 border-blue-500 pl-3">
                   Saved Combos ({combos.length})
                 </h3>
                 
@@ -2261,7 +2492,7 @@ export const EnhancedProductForm = ({
                   {combos.map((combo) => (
                     <div key={combo.id} className="bg-gray-800 border border-gray-700 rounded-xl p-4">
                       <div className="flex items-center justify-between mb-3">
-                        <h4 className="text-lg font-semibold text-white">{combo.name}</h4>
+                        <h4 className="text-lg font-semibold text-white">{combo.combo_name}</h4>
                         <button
                           type="button"
                           onClick={() => deleteCombo(combo.id)}
@@ -2272,13 +2503,18 @@ export const EnhancedProductForm = ({
                       </div>
                       
                       <div className="space-y-2 mb-3">
-                        {combo.products.map((product, idx) => (
+                        {combo.items.map((item, idx) => (
                           <div key={idx} className="bg-gray-900 border border-gray-700 px-3 py-2 rounded-lg flex items-center justify-between text-sm">
-                            <span className="text-white">{product.name}</span>
+                            <div>
+                              <span className="text-white">{item.product_name || 'Unknown Product'}</span>
+                              {item.product_sku && (
+                                <p className="text-gray-500 text-xs mt-0.5">SKU: {item.product_sku}</p>
+                              )}
+                            </div>
                             <div className="flex items-center gap-4 text-gray-400">
-                              <span>Qty: {product.quantity}</span>
-                              <span>₨{product.price.toFixed(2)}</span>
-                              <span className="text-white">₨{(product.quantity * product.price).toFixed(2)}</span>
+                              <span>Qty: {item.qty}</span>
+                              {item.unit_price && <span>₨{item.unit_price.toFixed(2)}</span>}
+                              <span className="text-white">₨{((item.qty || 0) * (item.unit_price || 0)).toFixed(2)}</span>
                             </div>
                           </div>
                         ))}
@@ -2287,15 +2523,15 @@ export const EnhancedProductForm = ({
                       <div className="border-t border-gray-700 pt-3 space-y-1">
                         <div className="flex justify-between text-sm">
                           <span className="text-gray-400">Total Individual Price:</span>
-                          <span className="text-white">₨{combo.totalPrice.toFixed(2)}</span>
+                          <span className="text-white">₨{combo.items.reduce((sum, item) => sum + (item.qty || 0) * (item.unit_price || 0), 0).toFixed(2)}</span>
                         </div>
                         <div className="flex justify-between text-sm">
                           <span className="text-green-400">Combo Price:</span>
-                          <span className="text-green-400 font-bold">₨{combo.comboPrice.toFixed(2)}</span>
+                          <span className="text-green-400 font-bold">₨{combo.combo_price.toFixed(2)}</span>
                         </div>
                         <div className="flex justify-between text-sm">
                           <span className="text-blue-400">You Save:</span>
-                          <span className="text-blue-400 font-semibold">₨{combo.discount.toFixed(2)}</span>
+                          <span className="text-blue-400 font-semibold">₨{(combo.items.reduce((sum, item) => sum + (item.qty || 0) * (item.unit_price || 0), 0) - combo.combo_price).toFixed(2)}</span>
                         </div>
                       </div>
                     </div>
@@ -2305,7 +2541,7 @@ export const EnhancedProductForm = ({
             )}
 
             {/* Empty State */}
-            {combos.length === 0 && currentCombo.length === 0 && (
+            {combos.length === 0 && currentComboItems.length === 0 && (
               <div className="bg-gray-800 border border-gray-700 rounded-xl p-8 text-center">
                 <Package size={48} className="text-gray-600 mx-auto mb-3" />
                 <p className="text-gray-400 mb-2">No combos created yet</p>
@@ -2384,6 +2620,54 @@ export const EnhancedProductForm = ({
             <button
               type="button"
               onClick={() => setBlockDisableVariationsModalOpen(false)}
+              className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg text-sm font-medium"
+            >
+              OK
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* PART 6: Modal when blocking enable combo (parent-level stock exists) */}
+      <Dialog open={blockEnableComboModalOpen} onOpenChange={setBlockEnableComboModalOpen}>
+        <DialogContent className="bg-gray-900 border-gray-700 text-white max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-white">Cannot enable combo</DialogTitle>
+          </DialogHeader>
+          <p className="text-gray-300 text-sm">
+            This product already has stock. Clear stock before enabling Combo mode.
+          </p>
+          <p className="text-gray-400 text-xs mt-2">
+            Clear or adjust stock in Inventory first, then enable Combo mode. Combo products do not hold stock - stock is managed through component products.
+          </p>
+          <DialogFooter className="mt-4">
+            <button
+              type="button"
+              onClick={() => setBlockEnableComboModalOpen(false)}
+              className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg text-sm font-medium"
+            >
+              OK
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* PART 7: Modal when blocking disable combo (combo items exist) */}
+      <Dialog open={blockDisableComboModalOpen} onOpenChange={setBlockDisableComboModalOpen}>
+        <DialogContent className="bg-gray-900 border-gray-700 text-white max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-white">Cannot disable combo</DialogTitle>
+          </DialogHeader>
+          <p className="text-gray-300 text-sm">
+            This product has combo components. Remove them before disabling Combo mode.
+          </p>
+          <p className="text-gray-400 text-xs mt-2">
+            Delete all combo items in the Combos tab first, then you can disable Combo mode.
+          </p>
+          <DialogFooter className="mt-4">
+            <button
+              type="button"
+              onClick={() => setBlockDisableComboModalOpen(false)}
               className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg text-sm font-medium"
             >
               OK
