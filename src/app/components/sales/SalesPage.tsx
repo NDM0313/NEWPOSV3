@@ -4,7 +4,7 @@ import {
   MoreVertical, Eye, Edit, Trash2, FileText, Phone, MapPin,
   Package, Truck, CheckCircle, Clock, XCircle, AlertCircle,
   UserCheck, Receipt, Loader2, PackageCheck, PackageX, ChevronDown, ChevronUp,
-  RotateCcw
+  RotateCcw, Paperclip, X, Zap, Store, Printer, Download
 } from 'lucide-react';
 import { Button } from "@/app/components/ui/button";
 import { Badge } from "@/app/components/ui/badge";
@@ -44,6 +44,7 @@ import { useSupabase } from '@/app/context/SupabaseContext';
 import { useDateRange } from '@/app/context/DateRangeContext';
 import { saleService } from '@/app/services/saleService';
 import { branchService, Branch } from '@/app/services/branchService';
+import { saleReturnService } from '@/app/services/saleReturnService';
 import { Pagination } from '@/app/components/ui/pagination';
 import { ListToolbar } from '@/app/components/ui/list-toolbar';
 import { formatLongDate, formatDateAndTime } from '@/app/components/ui/utils';
@@ -51,7 +52,9 @@ import { UnifiedPaymentDialog } from '@/app/components/shared/UnifiedPaymentDial
 import { UnifiedLedgerView } from '@/app/components/shared/UnifiedLedgerView';
 import { ViewSaleDetailsDrawer } from './ViewSaleDetailsDrawer';
 import { SaleReturnForm } from './SaleReturnForm';
+import { ReturnPaymentAdjustment } from './ReturnPaymentAdjustment';
 import { ViewPaymentsModal, type InvoiceDetails, type Payment } from './ViewPaymentsModal';
+import { AttachmentViewer } from '@/app/components/shared/AttachmentViewer';
 import { toast } from 'sonner';
 
 // Mock data removed - using SalesContext which loads from Supabase
@@ -118,6 +121,32 @@ export const SalesPage = () => {
     }
   }, [companyId, branchId, sales.length]);
 
+  // Track which sales have returns
+  const [salesWithReturns, setSalesWithReturns] = useState<Set<string>>(new Set());
+
+  // Load sales with returns
+  useEffect(() => {
+    const loadSalesWithReturns = async () => {
+      if (!companyId || sales.length === 0) return;
+      try {
+        const returns = await saleReturnService.getSaleReturns(companyId, branchId === 'all' ? undefined : branchId || undefined);
+        const saleIdsWithReturns = new Set<string>();
+        returns.forEach((ret: any) => {
+          if (ret.original_sale_id) {
+            saleIdsWithReturns.add(ret.original_sale_id);
+          }
+        });
+        setSalesWithReturns(saleIdsWithReturns);
+        console.log('[SALES PAGE] ✅ Sales with returns loaded:', saleIdsWithReturns.size, 'returns found');
+        console.log('[SALES PAGE] Sale IDs with returns:', Array.from(saleIdsWithReturns));
+        console.log('[SALES PAGE] Current sales IDs:', sales.map(s => s.id));
+      } catch (error) {
+        console.error('[SALES PAGE] Error loading sales with returns:', error);
+      }
+    };
+    loadSalesWithReturns();
+  }, [companyId, branchId, sales.length]);
+
   // 🎯 Listen for payment added event to refresh sales list
   useEffect(() => {
     const handlePaymentAdded = async () => {
@@ -147,6 +176,26 @@ export const SalesPage = () => {
   const [shippingDialogOpen, setShippingDialogOpen] = useState(false);
   const [saleReturnFormOpen, setSaleReturnFormOpen] = useState(false);
   const [saleReturnSaleId, setSaleReturnSaleId] = useState<string | null>(null);
+  const [returnPaymentDialogOpen, setReturnPaymentDialogOpen] = useState(false);
+  const [returnPaymentSaleId, setReturnPaymentSaleId] = useState<string | null>(null);
+  
+  // State for viewing sale returns
+  const [viewReturnsDialogOpen, setViewReturnsDialogOpen] = useState(false);
+  const [selectedSaleForReturns, setSelectedSaleForReturns] = useState<Sale | null>(null);
+  const [saleReturns, setSaleReturns] = useState<any[]>([]);
+  const [loadingReturns, setLoadingReturns] = useState(false);
+  
+  // State for viewing attachments
+  const [attachmentsDialogList, setAttachmentsDialogList] = useState<{ url: string; name: string }[] | null>(null);
+  
+  // Tab state - All, POS, Regular, Returns
+  const [activeTab, setActiveTab] = useState<'all' | 'pos' | 'regular' | 'returns'>('all');
+  
+  // Return details dialog state
+  const [selectedReturn, setSelectedReturn] = useState<any | null>(null);
+  const [viewReturnDetailsOpen, setViewReturnDetailsOpen] = useState(false);
+  const [deleteReturnDialogOpen, setDeleteReturnDialogOpen] = useState(false);
+  const [returnToDelete, setReturnToDelete] = useState<any | null>(null);
   
   // Filter states
   const [dateFilter, setDateFilter] = useState('all');
@@ -216,6 +265,11 @@ export const SalesPage = () => {
         setSaleReturnFormOpen(true);
         break;
         
+      case 'return_payment':
+        setReturnPaymentSaleId(sale.id);
+        setReturnPaymentDialogOpen(true);
+        break;
+        
       case 'update_shipping':
         setShippingDialogOpen(true);
         break;
@@ -277,6 +331,7 @@ export const SalesPage = () => {
     paid: true,
     due: true,
     returnDue: false,
+    return: true, // New column for return icon
     shipping: true,
     items: true,
   });
@@ -296,6 +351,7 @@ export const SalesPage = () => {
     'paid',
     'due',
     'returnDue',
+    'return', // New column for return icon
     'shipping',
     'items',
   ]);
@@ -315,6 +371,7 @@ export const SalesPage = () => {
       paid: 'Paid',
       due: 'Due',
       returnDue: 'Return Due',
+      return: 'Return',
       shipping: 'Shipping Status',
       items: 'Items',
     };
@@ -360,10 +417,30 @@ export const SalesPage = () => {
       paid: '110px',
       due: '110px',
       returnDue: '110px',
+      return: '80px',
       shipping: '120px',
       items: '80px',
     };
     return widths[key] || '100px';
+  };
+
+  // Column alignments - shared between header and data cells
+  const alignments: Record<string, string> = {
+    date: 'text-left',
+    invoiceNo: 'text-left',
+    customer: 'text-left',
+    contact: 'text-left',
+    location: 'text-left',
+    saleStatus: 'text-center',
+    paymentStatus: 'text-center',
+    paymentMethod: 'text-center',
+    total: 'text-right',
+    paid: 'text-right',
+    due: 'text-right',
+    returnDue: 'text-right',
+    return: 'text-center',
+    shipping: 'text-center',
+    items: 'text-center',
   };
 
   // Build grid template columns string based on column order
@@ -375,9 +452,48 @@ export const SalesPage = () => {
     return `${columns} 60px`.trim(); // 60px for Actions column (checkbox removed)
   }, [columnOrder, visibleColumns]);
 
+  // Helper function to detect if sale is POS (Walk-in Customer + Final)
+  const isLikelyPOS = (sale: Sale): boolean => {
+    const walkIn = sale.customerName?.toLowerCase().includes('walk-in') || sale.customer === 'walk-in';
+    const final = sale.status === 'final';
+    return !!(walkIn && final);
+  };
+
+  // Load sale returns for Returns tab
+  const [saleReturnsList, setSaleReturnsList] = useState<any[]>([]);
+  const [loadingReturnsList, setLoadingReturnsList] = useState(false);
+
+  useEffect(() => {
+    const loadSaleReturns = async () => {
+      if (!companyId || activeTab !== 'returns') return;
+      try {
+        setLoadingReturnsList(true);
+        const returns = await saleReturnService.getSaleReturns(companyId, branchId === 'all' ? undefined : branchId || undefined);
+        setSaleReturnsList(returns);
+      } catch (error) {
+        console.error('[SALES PAGE] Error loading sale returns:', error);
+        toast.error('Failed to load sale returns');
+      } finally {
+        setLoadingReturnsList(false);
+      }
+    };
+    loadSaleReturns();
+  }, [companyId, branchId, activeTab]);
+
   // Filtered sales - Use real data from context (TASK 1 FIX - "All" means no filter)
   const filteredSales = useMemo(() => {
+    // If Returns tab is active, return empty (returns are shown separately)
+    if (activeTab === 'returns') return [];
+    
     return sales.filter((sale: Sale) => {
+      // Tab filter - POS vs Regular
+      if (activeTab === 'pos') {
+        if (!isLikelyPOS(sale)) return false;
+      } else if (activeTab === 'regular') {
+        if (isLikelyPOS(sale)) return false;
+      }
+      // activeTab === 'all' shows all
+
       // Date range filter (from global date range context) - TASK 1 FIX: Only filter if dates are set
       if (startDate && endDate) {
         const saleDate = new Date(sale.date);
@@ -425,7 +541,7 @@ export const SalesPage = () => {
   }, [sales, startDate, endDate, searchTerm, dateFilter, customerFilter, paymentStatusFilter, saleStatusFilter, shippingStatusFilter, branchFilter, paymentMethodFilter]);
 
   // Sort state: default date descending (latest first)
-  type SaleSortKey = 'date' | 'invoiceNo' | 'customer' | 'location' | 'saleStatus' | 'paymentStatus' | 'total' | 'paid' | 'due' | 'returnDue' | 'shipping' | 'items';
+  type SaleSortKey = 'date' | 'invoiceNo' | 'customer' | 'location' | 'saleStatus' | 'paymentStatus' | 'total' | 'paid' | 'due' | 'returnDue' | 'return' | 'shipping' | 'items';
   const [sortKey, setSortKey] = useState<SaleSortKey>('date');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
 
@@ -548,15 +664,11 @@ export const SalesPage = () => {
   // Get sale status badge - Only show for non-final statuses (draft/quotation/order)
   // Final sales don't show badge (clean UI - final is the default/expected state)
   const getSaleStatusBadge = (status: 'draft' | 'quotation' | 'order' | 'final') => {
-    // Hide badge for final sales
-    if (status === 'final') {
-      return null;
-    }
-
     const config = {
       draft: { bg: 'bg-gray-500/20', text: 'text-gray-400', border: 'border-gray-500/30', icon: FileText },
       quotation: { bg: 'bg-blue-500/20', text: 'text-blue-400', border: 'border-blue-500/30', icon: FileText },
       order: { bg: 'bg-purple-500/20', text: 'text-purple-400', border: 'border-purple-500/30', icon: Package },
+      final: { bg: 'bg-green-500/20', text: 'text-green-400', border: 'border-green-500/30', icon: CheckCircle },
     };
     
     const { bg, text, border, icon: Icon } = config[status];
@@ -572,11 +684,13 @@ export const SalesPage = () => {
   const renderColumnCell = (columnKey: string, sale: Sale) => {
     switch (columnKey) {
       case 'date':
-        // Show date + time in one line: "08 Feb 2026 02:09 PM"
-        const dateTime = formatDateAndTime(sale.createdAt);
+        // Show date on one line, time on next line (smaller)
+        // Use sale.date (the actual sale date) instead of sale.createdAt (database timestamp)
+        const dateTime = formatDateAndTime(sale.date || sale.createdAt);
         return (
-          <div className="text-sm text-gray-400">
-            {dateTime.date} {dateTime.time}
+          <div className="flex flex-col text-sm text-gray-400">
+            <span>{dateTime.date}</span>
+            <span className="text-xs text-gray-500">{dateTime.time}</span>
           </div>
         );
       
@@ -648,88 +762,150 @@ export const SalesPage = () => {
         );
       
       case 'saleStatus':
-        // Sale status badge - Only shows for draft/quotation/order (final is hidden)
+        // Enhanced Status Column: Badge + Return Icon + Attachment Icon
         const statusBadge = getSaleStatusBadge(sale.status);
+        const hasReturn = sale.status === 'final' && salesWithReturns.has(sale.id);
+        const hasAttachments = sale.attachments && Array.isArray(sale.attachments) && sale.attachments.length > 0;
+        
         return (
-          <div className="flex justify-center">
+          <div className={cn("flex items-center gap-2", alignments['saleStatus'])}>
             {statusBadge || <span className="text-xs text-gray-600">—</span>}
+            {hasReturn && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setSelectedSaleForReturns(sale);
+                  setViewReturnsDialogOpen(true);
+                  // Load returns for this sale
+                  const loadReturns = async () => {
+                    if (!companyId) return;
+                    setLoadingReturns(true);
+                    try {
+                      const allReturns = await saleReturnService.getSaleReturns(companyId, branchId === 'all' ? undefined : branchId || undefined);
+                      const saleReturns = allReturns.filter(r => r.original_sale_id === sale.id);
+                      setSaleReturns(saleReturns);
+                    } catch (error: any) {
+                      toast.error(error.message || 'Failed to load returns');
+                    } finally {
+                      setLoadingReturns(false);
+                    }
+                  };
+                  loadReturns();
+                }}
+                className="p-0.5 hover:bg-purple-500/20 rounded transition-colors"
+                title="View sale returns"
+              >
+                <RotateCcw 
+                  size={14} 
+                  className="text-purple-400" 
+                />
+              </button>
+            )}
+            {hasAttachments && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  const attachments: { url: string; name: string }[] = [];
+                  sale.attachments?.forEach((att: any) => {
+                    const url = typeof att === 'string' ? att : (att?.url || att?.fileUrl || '');
+                    const name = typeof att === 'object' && att?.name ? att.name : (typeof att === 'object' && (att?.fileName || att?.file_name) ? (att.fileName || att.file_name) : 'Attachment');
+                    if (url) attachments.push({ url: String(url), name: name || 'Attachment' });
+                  });
+                  if (attachments.length) setAttachmentsDialogList(attachments);
+                }}
+                className="p-0.5 hover:bg-amber-500/20 rounded transition-colors"
+                title="View attachment"
+              >
+                <Paperclip 
+                  size={14} 
+                  className="text-amber-400" 
+                />
+              </button>
+            )}
           </div>
         );
       
       case 'paymentStatus':
         // Payment status badge is clickable to open View Payments modal
         return (
-          <div className="flex justify-center">
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                setSelectedSale(sale);
-                setViewPaymentsOpen(true);
-              }}
-              className="cursor-pointer hover:scale-105 transition-transform"
-              title="Click to view payments"
-            >
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              setSelectedSale(sale);
+              setViewPaymentsOpen(true);
+            }}
+            className="cursor-pointer hover:scale-105 transition-transform"
+            title="Click to view payments"
+          >
             {getPaymentStatusBadge(sale.paymentStatus)}
-            </button>
-          </div>
+          </button>
         );
       
       case 'paymentMethod':
         return (
-          <div className="flex justify-center">
-            <span className="text-xs text-gray-400">{sale.paymentMethod}</span>
-          </div>
+          <span className="text-xs text-gray-400">{sale.paymentMethod}</span>
         );
       
       case 'total':
         return (
-          <div className="text-right">
-            <div className="text-sm font-semibold text-white tabular-nums">
-              ${sale.total.toLocaleString()}
-            </div>
+          <div className="text-sm font-semibold text-white tabular-nums">
+            ${sale.total.toLocaleString()}
           </div>
         );
       
       case 'paid':
         return (
-          <div className="text-right">
-            <div className="text-sm font-semibold text-green-400 tabular-nums">
-              ${sale.paid.toLocaleString()}
-            </div>
+          <div className="text-sm font-semibold text-green-400 tabular-nums">
+            ${sale.paid.toLocaleString()}
           </div>
         );
       
       case 'due':
         return (
-          <div className="text-right">
-            {sale.due > 0 ? (
-              <div className="text-sm font-semibold text-red-400 tabular-nums">
-                ${sale.due.toLocaleString()}
-              </div>
-            ) : (
-              <div className="text-sm text-gray-600">-</div>
-            )}
-          </div>
+          sale.due > 0 ? (
+            <div className="text-sm font-semibold text-red-400 tabular-nums">
+              ${sale.due.toLocaleString()}
+            </div>
+          ) : (
+            <div className="text-sm text-gray-600">-</div>
+          )
         );
       
       case 'returnDue':
         return (
-          <div className="text-right">
-            {sale.returnDue > 0 ? (
-              <div className="text-sm font-semibold text-orange-400 tabular-nums">
-                ${sale.returnDue.toLocaleString()}
-              </div>
-            ) : (
-              <div className="text-sm text-gray-600">-</div>
-            )}
-          </div>
+          sale.returnDue > 0 ? (
+            <div className="text-sm font-semibold text-orange-400 tabular-nums">
+              ${sale.returnDue.toLocaleString()}
+            </div>
+          ) : (
+            <div className="text-sm text-gray-600">-</div>
+          )
+        );
+      
+      case 'return':
+        // Show return icon if sale has returns AND sale is final (only final sales can have returns)
+        const saleHasReturn = sale.status === 'final' && salesWithReturns.has(sale.id);
+        return (
+          saleHasReturn ? (
+            <RotateCcw 
+              size={16} 
+              className="text-purple-400" 
+              title="This sale has returns"
+            />
+          ) : (
+            <span className="text-xs text-gray-600">—</span>
+          )
         );
       
       case 'shipping':
         // Shipping status is clickable with dropdown to change status
+        // Hide badge if status is "pending" - show "—" instead
+        if (sale.shippingStatus === 'pending') {
+          return <span className="text-xs text-gray-600">—</span>;
+        }
+        
         return (
-          <div className="flex justify-center">
-            <Popover>
+          <Popover>
               <PopoverTrigger asChild>
                 <button 
                   className="cursor-pointer hover:scale-105 transition-transform flex items-center gap-1"
@@ -790,14 +966,13 @@ export const SalesPage = () => {
                 </div>
               </PopoverContent>
             </Popover>
-          </div>
         );
       
       case 'items':
         // Handle both array and number types for items
         const itemsCount = Array.isArray(sale.items) ? sale.items.length : (sale.itemsCount || sale.items || 0);
         return (
-          <div className="flex items-center justify-center gap-1 text-gray-300">
+          <div className="flex items-center gap-1 text-gray-300">
             <Package size={12} className="text-gray-500" />
             <span className="text-sm font-medium">{itemsCount}</span>
           </div>
@@ -1103,6 +1278,33 @@ export const SalesPage = () => {
         }}
       />
 
+      {/* Source Tabs: All | POS | Regular | Returns */}
+      <div className="shrink-0 px-6 py-3 border-b border-gray-800 bg-[#0F1419]">
+        <p className="text-xs text-gray-500 uppercase tracking-wider mb-2 font-medium">Source</p>
+        <div className="flex gap-2 flex-wrap">
+          {[
+            { id: 'all' as const, label: 'All', icon: ShoppingCart },
+            { id: 'pos' as const, label: 'POS', icon: Zap },
+            { id: 'regular' as const, label: 'Regular', icon: Store },
+            { id: 'returns' as const, label: 'Returns', icon: RotateCcw },
+          ].map(({ id, label, icon: Icon }) => (
+            <button
+              key={id}
+              onClick={() => setActiveTab(id)}
+              className={cn(
+                'flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all border',
+                activeTab === id
+                  ? 'bg-blue-600 text-white border-blue-500 shadow-lg shadow-blue-900/30'
+                  : 'bg-gray-800/50 text-gray-400 border-gray-700 hover:bg-gray-800 hover:text-white'
+              )}
+            >
+              <Icon size={16} />
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
+
       {/* Sales Table - Scrollable */}
       <div className="flex-1 overflow-auto px-6 py-4">
         <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden">
@@ -1110,69 +1312,227 @@ export const SalesPage = () => {
             <div className="min-w-[1400px]">
               {/* Table Header - full-width background (w-max so it spans full table when scrolling) */}
               <div className="sticky top-0 z-10 min-w-[1400px] w-max bg-gray-900 border-b border-gray-800">
-                <div className="grid gap-3 px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider"
-                  style={{
-                    gridTemplateColumns: gridTemplateColumns
-                  }}
-                >
-                  {columnOrder.map(key => {
-                    if (!visibleColumns[key as keyof typeof visibleColumns]) return null;
-                    
-                    const alignments: Record<string, string> = {
-                      date: 'text-left',
-                      invoiceNo: 'text-left',
-                      customer: 'text-left',
-                      contact: 'text-left',
-                      location: 'text-left',
-                      saleStatus: 'text-center',
-                      paymentStatus: 'text-center',
-                      paymentMethod: 'text-center',
-                      total: 'text-right',
-                      paid: 'text-right',
-                      due: 'text-right',
-                      returnDue: 'text-right',
-                      shipping: 'text-center',
-                      items: 'text-center',
-                    };
-                    
-                    const labels: Record<string, string> = {
-                      date: 'Date',
-                      invoiceNo: 'Invoice No.',
-                      customer: 'Customer',
-                      contact: 'Contact',
-                      location: 'Location',
-                      saleStatus: 'Status',
-                      paymentStatus: 'Payment',
-                      paymentMethod: 'Method',
-                      total: 'Total',
-                      paid: 'Paid',
-                      due: 'Due',
-                      returnDue: 'Return Due',
-                      shipping: 'Shipping',
-                      items: 'Items',
-                    };
-                    
-                    const isSortable = (['date', 'invoiceNo', 'customer', 'location', 'saleStatus', 'paymentStatus', 'total', 'paid', 'due', 'returnDue', 'shipping', 'items'] as SaleSortKey[]).includes(key as SaleSortKey);
-                    const isActive = sortKey === key;
-                    
-                    return (
-                      <div
-                        key={key}
-                        className={cn(alignments[key], isSortable && 'cursor-pointer select-none hover:text-gray-300 flex items-center gap-0.5')}
-                        onClick={() => isSortable && handleSort(key as SaleSortKey)}
-                      >
-                        {labels[key]}
-                        {isSortable && isActive && (sortDir === 'asc' ? <ChevronUp size={12} /> : <ChevronDown size={12} />)}
-                      </div>
-                    );
-                  })}
-                  <div className="text-center">Actions</div>
-                </div>
+                {activeTab === 'returns' ? (
+                  // Returns Tab Header - Enhanced with more columns
+                  <div className="grid gap-3 px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider"
+                    style={{ gridTemplateColumns: '120px 130px 180px 150px 150px 130px 120px 100px 150px 60px' }}
+                  >
+                    <div className="text-left">Date & Time</div>
+                    <div className="text-left">Return No</div>
+                    <div className="text-left">Customer</div>
+                    <div className="text-left">Original Invoice</div>
+                    <div className="text-left">Location</div>
+                    <div className="text-center">Status</div>
+                    <div className="text-right">Total</div>
+                    <div className="text-right">Items</div>
+                    <div className="text-left">Reason</div>
+                    <div className="text-center">Actions</div>
+                  </div>
+                ) : (
+                  // Sales Tab Header
+                  <div className="grid gap-3 px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider"
+                    style={{
+                      gridTemplateColumns: gridTemplateColumns
+                    }}
+                  >
+                    {columnOrder.map(key => {
+                      if (!visibleColumns[key as keyof typeof visibleColumns]) return null;
+                      
+                      const labels: Record<string, string> = {
+                        date: 'Date',
+                        invoiceNo: 'Invoice No.',
+                        customer: 'Customer',
+                        contact: 'Contact',
+                        location: 'Location',
+                        saleStatus: 'Status',
+                        paymentStatus: 'Payment',
+                        paymentMethod: 'Method',
+                        total: 'Total',
+                        paid: 'Paid',
+                        due: 'Due',
+                        returnDue: 'Return Due',
+                        return: 'Return',
+                        shipping: 'Shipping',
+                        items: 'Items',
+                      };
+                      
+                      const isSortable = (['date', 'invoiceNo', 'customer', 'location', 'saleStatus', 'paymentStatus', 'total', 'paid', 'due', 'returnDue', 'return', 'shipping', 'items'] as SaleSortKey[]).includes(key as SaleSortKey);
+                      const isActive = sortKey === key;
+                      
+                      return (
+                        <div
+                          key={key}
+                          className={cn(
+                            alignments[key],
+                            isSortable && 'cursor-pointer select-none hover:text-gray-300',
+                            // Use flex for all sortable headers to align icon consistently
+                            isSortable && 'flex items-center gap-0.5',
+                            // For right-aligned, use justify-end to keep text right
+                            alignments[key] === 'text-right' && 'justify-end',
+                            // For center-aligned, use justify-center
+                            alignments[key] === 'text-center' && 'justify-center',
+                            // For left-aligned, use justify-start (default)
+                            alignments[key] === 'text-left' && 'justify-start'
+                          )}
+                          onClick={() => isSortable && handleSort(key as SaleSortKey)}
+                        >
+                          {labels[key]}
+                          {isSortable && isActive && (sortDir === 'asc' ? <ChevronUp size={12} /> : <ChevronDown size={12} />)}
+                        </div>
+                      );
+                    })}
+                    <div className="text-center">Actions</div>
+                  </div>
+                )}
               </div>
 
               {/* Table Body - w-max so row lines span full table width (no short lines on right) */}
               <div className="min-w-[1400px] w-max">
-                {loading ? (
+                {activeTab === 'returns' ? (
+                  // Returns Tab - Show Sale Returns List
+                  loadingReturnsList ? (
+                    <div className="py-12 text-center">
+                      <Loader2 size={48} className="mx-auto text-blue-500 mb-3 animate-spin" />
+                      <p className="text-gray-400 text-sm">Loading returns...</p>
+                    </div>
+                  ) : saleReturnsList.length === 0 ? (
+                    <div className="py-12 text-center">
+                      <RotateCcw size={48} className="mx-auto text-gray-600 mb-3" />
+                      <p className="text-gray-400 text-sm">No returns found</p>
+                      <p className="text-gray-600 text-xs mt-1">Create a return from a sale invoice</p>
+                    </div>
+                  ) : (
+                    <div className="divide-y divide-gray-800/50">
+                      {saleReturnsList.map((ret: any) => {
+                        const originalSale = ret.original_sale_id ? sales.find(s => s.id === ret.original_sale_id) : null;
+                        const dateTime = formatDateAndTime(ret.return_date || ret.created_at);
+                        return (
+                          <div
+                            key={ret.id}
+                            onClick={() => {
+                              setSelectedReturn(ret);
+                              setViewReturnDetailsOpen(true);
+                            }}
+                            className="grid gap-3 px-4 h-auto min-h-[60px] py-3 min-w-[1400px] w-max hover:bg-gray-800/30 transition-colors items-center border-b border-gray-800 last:border-b-0 cursor-pointer"
+                            style={{ gridTemplateColumns: '120px 130px 180px 150px 150px 130px 120px 100px 150px 60px' }}
+                          >
+                            <div className="flex flex-col">
+                              <div className="text-sm text-gray-300 font-medium">{dateTime.date}</div>
+                              <div className="text-xs text-gray-500">{dateTime.time}</div>
+                            </div>
+                            <div className="text-sm text-purple-400 font-mono font-semibold">{ret.return_no || `RET-${ret.id?.slice(0, 8).toUpperCase()}`}</div>
+                            <div className="text-sm text-white font-medium">{ret.customer_name}</div>
+                            <div className="text-sm text-blue-400 font-mono">
+                              {originalSale ? (
+                                <span className="hover:text-blue-300 hover:underline" onClick={(e) => {
+                                  e.stopPropagation();
+                                  setSelectedSale(originalSale);
+                                  setViewDetailsOpen(true);
+                                }}>
+                                  {originalSale.invoiceNo}
+                                </span>
+                              ) : ret.original_sale_id ? (
+                                <span className="text-gray-500">Sale ID: {ret.original_sale_id.slice(0, 8)}</span>
+                              ) : (
+                                <span className="text-gray-500">—</span>
+                              )}
+                            </div>
+                            <div className="text-sm text-gray-400">{branchMap.get(ret.branch_id) || '—'}</div>
+                            <div className="flex justify-center">
+                              <Badge className={ret.status === 'final' ? 'bg-green-500/20 text-green-400 border-green-500/30' : 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30'}>
+                                {ret.status === 'final' ? 'Final' : 'Draft'}
+                              </Badge>
+                            </div>
+                            <div className="text-right">
+                              <div className="text-sm font-semibold text-red-400 tabular-nums">-PKR {ret.total?.toLocaleString() || '0'}</div>
+                            </div>
+                            <div className="text-right text-sm text-gray-400">{ret.items_count || ret.items?.length || 0} items</div>
+                            <div className="text-sm text-gray-400 truncate" title={ret.reason || ''}>{ret.reason || '—'}</div>
+                            <div className="flex justify-center" onClick={(e) => e.stopPropagation()}>
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <button className="w-8 h-8 rounded-lg bg-gray-800/50 hover:bg-gray-700 transition-all flex items-center justify-center text-gray-400 hover:text-white">
+                                    <MoreVertical size={16} />
+                                  </button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end" className="bg-gray-900 border-gray-700 text-white w-56">
+                                  <DropdownMenuItem 
+                                    onClick={() => {
+                                      setSelectedReturn(ret);
+                                      setViewReturnDetailsOpen(true);
+                                    }}
+                                    className="hover:bg-gray-800 cursor-pointer"
+                                  >
+                                    <Eye size={14} className="mr-2 text-blue-400" />
+                                    View Return Details
+                                  </DropdownMenuItem>
+                                  {ret.original_sale_id && originalSale && (
+                                    <DropdownMenuItem 
+                                      onClick={() => {
+                                        setSelectedSale(originalSale);
+                                        setViewDetailsOpen(true);
+                                      }}
+                                      className="hover:bg-gray-800 cursor-pointer"
+                                    >
+                                      <FileText size={14} className="mr-2 text-green-400" />
+                                      View Original Sale
+                                    </DropdownMenuItem>
+                                  )}
+                                  {ret.status === 'draft' && (
+                                    <>
+                                      <DropdownMenuItem 
+                                        onClick={() => {
+                                          // TODO: Implement edit return
+                                          toast.info('Edit return functionality coming soon');
+                                        }}
+                                        className="hover:bg-gray-800 cursor-pointer"
+                                      >
+                                        <Edit size={14} className="mr-2 text-yellow-400" />
+                                        Edit Return
+                                      </DropdownMenuItem>
+                                      <DropdownMenuSeparator />
+                                      <DropdownMenuItem 
+                                        onClick={() => {
+                                          setReturnToDelete(ret);
+                                          setDeleteReturnDialogOpen(true);
+                                        }}
+                                        className="hover:bg-gray-800 cursor-pointer text-red-400"
+                                      >
+                                        <Trash2 size={14} className="mr-2" />
+                                        Delete Return
+                                      </DropdownMenuItem>
+                                    </>
+                                  )}
+                                  <DropdownMenuSeparator />
+                                  <DropdownMenuItem 
+                                    onClick={() => {
+                                      // TODO: Implement print return
+                                      toast.info('Print return functionality coming soon');
+                                    }}
+                                    className="hover:bg-gray-800 cursor-pointer"
+                                  >
+                                    <Printer size={14} className="mr-2 text-purple-400" />
+                                    Print Return
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem 
+                                    onClick={() => {
+                                      // TODO: Implement export return
+                                      toast.info('Export return functionality coming soon');
+                                    }}
+                                    className="hover:bg-gray-800 cursor-pointer"
+                                  >
+                                    <Download size={14} className="mr-2 text-blue-400" />
+                                    Export Return
+                                  </DropdownMenuItem>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )
+                ) : loading ? (
                   <div className="py-12 text-center">
                     <Loader2 size={48} className="mx-auto text-blue-500 mb-3 animate-spin" />
                     <p className="text-gray-400 text-sm">Loading sales...</p>
@@ -1197,7 +1557,23 @@ export const SalesPage = () => {
                       {/* Render columns in order */}
                       {columnOrder.map(key => {
                         if (!visibleColumns[key as keyof typeof visibleColumns]) return null;
-                        return <div key={key}>{renderColumnCell(key, sale)}</div>;
+                        // Apply same alignment classes as headers
+                        const alignment = alignments[key] || 'text-left';
+                        return (
+                          <div 
+                            key={key} 
+                            className={cn(
+                              alignment,
+                              'flex items-center',
+                              // Match header alignment with justify classes
+                              alignment === 'text-right' && 'justify-end',
+                              alignment === 'text-center' && 'justify-center',
+                              alignment === 'text-left' && 'justify-start'
+                            )}
+                          >
+                            {renderColumnCell(key, sale)}
+                          </div>
+                        );
                       })}
 
                       {/* Actions */}
@@ -1269,13 +1645,25 @@ export const SalesPage = () => {
                             <DropdownMenuSeparator className="bg-gray-700" />
                             {/* 🎯 CREATE SALE RETURN - Only for final sales */}
                             {sale.status === 'final' && (
-                              <DropdownMenuItem 
-                                className="hover:bg-gray-800 cursor-pointer"
-                                onClick={() => handleSaleAction('create_return', sale)}
-                              >
-                                <RotateCcw size={14} className="mr-2 text-purple-400" />
-                                Create Sale Return
-                              </DropdownMenuItem>
+                              <>
+                                <DropdownMenuItem 
+                                  className="hover:bg-gray-800 cursor-pointer"
+                                  onClick={() => handleSaleAction('create_return', sale)}
+                                >
+                                  <RotateCcw size={14} className="mr-2 text-purple-400" />
+                                  Create Sale Return
+                                </DropdownMenuItem>
+                                {/* 🎯 RETURN PAYMENT / ADJUSTMENT - Only if sale has returns */}
+                                {salesWithReturns.has(sale.id) && (
+                                  <DropdownMenuItem 
+                                    className="hover:bg-gray-800 cursor-pointer"
+                                    onClick={() => handleSaleAction('return_payment', sale)}
+                                  >
+                                    <DollarSign size={14} className="mr-2 text-green-400" />
+                                    Return Payment / Adjustment
+                                  </DropdownMenuItem>
+                                )}
+                              </>
                             )}
                             <DropdownMenuItem 
                               className="hover:bg-gray-800 cursor-pointer"
@@ -1496,6 +1884,37 @@ export const SalesPage = () => {
           }}
           onSuccess={async () => {
             await refreshSales();
+            // Reload sales with returns after creating a return
+            if (companyId) {
+              try {
+                const returns = await saleReturnService.getSaleReturns(companyId, branchId === 'all' ? undefined : branchId || undefined);
+                const saleIdsWithReturns = new Set<string>();
+                returns.forEach((ret: any) => {
+                  if (ret.original_sale_id) {
+                    saleIdsWithReturns.add(ret.original_sale_id);
+                  }
+                });
+                setSalesWithReturns(saleIdsWithReturns);
+              } catch (error) {
+                console.error('[SALES PAGE] Error reloading sales with returns:', error);
+              }
+            }
+          }}
+        />
+      )}
+
+      {/* 🎯 RETURN PAYMENT / ADJUSTMENT DIALOG */}
+      {returnPaymentDialogOpen && returnPaymentSaleId && (
+        <ReturnPaymentAdjustment
+          saleId={returnPaymentSaleId}
+          isOpen={returnPaymentDialogOpen}
+          onClose={() => {
+            setReturnPaymentDialogOpen(false);
+            setReturnPaymentSaleId(null);
+          }}
+          onSuccess={async () => {
+            await refreshSales();
+            await loadSalesWithReturns();
           }}
         />
       )}
@@ -1548,6 +1967,259 @@ export const SalesPage = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* 🎯 VIEW SALE RETURNS DIALOG */}
+      <Dialog open={viewReturnsDialogOpen} onOpenChange={setViewReturnsDialogOpen}>
+        <DialogContent className="bg-gray-900 border-gray-700 text-white max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-white">
+              <RotateCcw size={20} className="text-purple-400" />
+              Sale Returns for {selectedSaleForReturns?.invoiceNo}
+            </DialogTitle>
+          </DialogHeader>
+          {loadingReturns ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="animate-spin text-blue-400" size={24} />
+            </div>
+          ) : saleReturns.length === 0 ? (
+            <div className="text-center py-8 text-gray-400">
+              No returns found for this sale.
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {saleReturns.map((ret: any) => (
+                <div key={ret.id} className="bg-gray-800/50 border border-gray-700 rounded-lg p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-semibold text-white">Return #{ret.return_no || ret.id?.slice(0, 8)}</span>
+                        <Badge className={ret.status === 'final' ? 'bg-green-500/20 text-green-400 border-green-500/30' : 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30'}>
+                          {ret.status}
+                        </Badge>
+                      </div>
+                      <p className="text-xs text-gray-400 mt-1">
+                        Date: {(() => {
+                          const dt = formatDateAndTime(ret.return_date || ret.created_at);
+                          return `${dt.date} ${dt.time}`;
+                        })()}
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-sm font-semibold text-red-400">-PKR {ret.total?.toLocaleString() || '0'}</p>
+                    </div>
+                  </div>
+                  {ret.items && ret.items.length > 0 && (
+                    <div className="mt-3 pt-3 border-t border-gray-700">
+                      <p className="text-xs text-gray-500 mb-2">Returned Items:</p>
+                      <div className="space-y-1">
+                        {ret.items.map((item: any, idx: number) => (
+                          <div key={idx} className="flex items-center justify-between text-sm">
+                            <span className="text-gray-300">{item.product_name} {item.sku ? `(${item.sku})` : ''}</span>
+                            <span className="text-gray-400">Qty: {item.quantity} × PKR {item.unit_price?.toLocaleString() || '0'}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {ret.reason && (
+                    <div className="mt-2 pt-2 border-t border-gray-700">
+                      <p className="text-xs text-gray-500">Reason:</p>
+                      <p className="text-sm text-gray-300">{ret.reason}</p>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setViewReturnsDialogOpen(false)}
+              className="bg-gray-800 hover:bg-gray-700 text-white border-gray-700"
+            >
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* 🎯 ATTACHMENTS VIEWER - Shared Component */}
+      {attachmentsDialogList && (
+        <AttachmentViewer
+          attachments={attachmentsDialogList}
+          isOpen={!!attachmentsDialogList}
+          onClose={() => setAttachmentsDialogList(null)}
+        />
+      )}
+
+      {/* View Return Details Dialog */}
+      {selectedReturn && (
+        <Dialog open={viewReturnDetailsOpen} onOpenChange={setViewReturnDetailsOpen}>
+          <DialogContent className="bg-[#0B0F19] border-gray-800 text-white !w-[800px] !max-w-[800px] sm:!max-w-[800px] max-h-[90vh] overflow-y-auto">
+            <DialogHeader className="border-b border-gray-800 pb-4">
+              <DialogTitle className="text-2xl font-bold text-white flex items-center gap-2">
+                <div className="w-10 h-10 rounded-lg bg-purple-500/20 flex items-center justify-center">
+                  <RotateCcw size={20} className="text-purple-400" />
+                </div>
+                <div>
+                  <div>Return Details</div>
+                  <div className="text-sm font-mono text-purple-400 font-normal">{selectedReturn.return_no || `RET-${selectedReturn.id?.slice(0, 8).toUpperCase()}`}</div>
+                </div>
+              </DialogTitle>
+            </DialogHeader>
+            <div className="space-y-6 mt-4">
+              {/* Return Header Info */}
+              <div className="grid grid-cols-2 gap-4 p-4 bg-[#0F1419] rounded-lg border border-gray-800">
+                <div>
+                  <p className="text-xs text-gray-400 uppercase mb-1">Return Date</p>
+                  <p className="text-sm text-white font-medium">{formatDateAndTime(selectedReturn.return_date || selectedReturn.created_at).date} {formatDateAndTime(selectedReturn.return_date || selectedReturn.created_at).time}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-400 uppercase mb-1">Status</p>
+                  <Badge className={selectedReturn.status === 'final' ? 'bg-green-500/20 text-green-400 border-green-500/30' : 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30'}>
+                    {selectedReturn.status === 'final' ? 'Final' : 'Draft'}
+                  </Badge>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-400 uppercase mb-1">Customer</p>
+                  <p className="text-sm text-white font-medium">{selectedReturn.customer_name}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-400 uppercase mb-1">Location</p>
+                  <p className="text-sm text-white">{branchMap.get(selectedReturn.branch_id) || '—'}</p>
+                </div>
+                {selectedReturn.original_sale_id && (
+                  <div>
+                    <p className="text-xs text-gray-400 uppercase mb-1">Original Sale</p>
+                    <button
+                      onClick={() => {
+                        const sale = sales.find(s => s.id === selectedReturn.original_sale_id);
+                        if (sale) {
+                          setViewReturnDetailsOpen(false);
+                          setSelectedSale(sale);
+                          setViewDetailsOpen(true);
+                        }
+                      }}
+                      className="text-sm text-blue-400 hover:text-blue-300 hover:underline font-mono"
+                    >
+                      {sales.find(s => s.id === selectedReturn.original_sale_id)?.invoiceNo || `Sale ID: ${selectedReturn.original_sale_id.slice(0, 8)}`}
+                    </button>
+                  </div>
+                )}
+                {selectedReturn.reason && (
+                  <div className="col-span-2">
+                    <p className="text-xs text-gray-400 uppercase mb-1">Reason</p>
+                    <p className="text-sm text-white">{selectedReturn.reason}</p>
+                  </div>
+                )}
+                {selectedReturn.notes && (
+                  <div className="col-span-2">
+                    <p className="text-xs text-gray-400 uppercase mb-1">Notes</p>
+                    <p className="text-sm text-gray-300">{selectedReturn.notes}</p>
+                  </div>
+                )}
+              </div>
+
+              {/* Return Items */}
+              <div>
+                <h3 className="text-lg font-semibold text-white mb-3">Return Items</h3>
+                {selectedReturn.items && selectedReturn.items.length > 0 ? (
+                  <div className="bg-[#0F1419] border border-gray-800 rounded-lg overflow-hidden">
+                    <table className="w-full">
+                      <thead className="bg-[#0B0F19] border-b border-gray-800">
+                        <tr>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase">Product</th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase">SKU</th>
+                          <th className="px-4 py-3 text-center text-xs font-medium text-gray-400 uppercase">Qty</th>
+                          <th className="px-4 py-3 text-right text-xs font-medium text-gray-400 uppercase">Unit Price</th>
+                          <th className="px-4 py-3 text-right text-xs font-medium text-gray-400 uppercase">Total</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-800">
+                        {selectedReturn.items.map((item: any, idx: number) => (
+                          <tr key={idx} className="hover:bg-[#0B0F19] transition-colors">
+                            <td className="px-4 py-3 text-sm text-white">{item.product_name}</td>
+                            <td className="px-4 py-3 text-sm text-gray-400 font-mono">{item.sku}</td>
+                            <td className="px-4 py-3 text-sm text-gray-300 text-center">{item.quantity}</td>
+                            <td className="px-4 py-3 text-sm text-gray-300 text-right tabular-nums">PKR {item.unit_price?.toLocaleString() || '0'}</td>
+                            <td className="px-4 py-3 text-sm font-semibold text-red-400 text-right tabular-nums">-PKR {item.total?.toLocaleString() || '0'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                      <tfoot className="bg-[#0B0F19] border-t border-gray-800">
+                        <tr>
+                          <td colSpan={4} className="px-4 py-3 text-sm font-semibold text-gray-300 text-right">Total Return Amount:</td>
+                          <td className="px-4 py-3 text-lg font-bold text-red-400 text-right tabular-nums">-PKR {selectedReturn.total?.toLocaleString() || '0'}</td>
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </div>
+                ) : (
+                  <div className="text-center py-8 text-gray-400">
+                    <Package size={48} className="mx-auto mb-3 text-gray-600" />
+                    <p>No items found in this return</p>
+                  </div>
+                )}
+              </div>
+            </div>
+            <DialogFooter className="mt-6 border-t border-gray-800 pt-4">
+              <Button
+                variant="outline"
+                onClick={() => setViewReturnDetailsOpen(false)}
+                className="border-gray-800 text-gray-300 hover:text-white hover:bg-gray-800"
+              >
+                Close
+              </Button>
+              <Button
+                onClick={() => {
+                  toast.info('Print return functionality coming soon');
+                }}
+                className="bg-blue-600 hover:bg-blue-700 text-white"
+              >
+                <Printer size={16} className="mr-2" />
+                Print Return
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {/* Delete Return Confirmation Dialog */}
+      <AlertDialog open={deleteReturnDialogOpen} onOpenChange={setDeleteReturnDialogOpen}>
+        <AlertDialogContent className="bg-gray-900 border-gray-700 text-white">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Return?</AlertDialogTitle>
+            <AlertDialogDescription className="text-gray-300">
+              Are you sure you want to delete return <span className="font-semibold text-white">{returnToDelete?.return_no || `RET-${returnToDelete?.id?.slice(0, 8).toUpperCase()}`}</span>?
+              This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="border-gray-700 text-gray-300 hover:text-white hover:bg-gray-800">
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={async () => {
+                if (!returnToDelete || !companyId) return;
+                try {
+                  await saleReturnService.deleteSaleReturn(returnToDelete.id, companyId);
+                  toast.success('Return deleted successfully');
+                  setDeleteReturnDialogOpen(false);
+                  setReturnToDelete(null);
+                  // Reload returns list
+                  const returns = await saleReturnService.getSaleReturns(companyId, branchId === 'all' ? undefined : branchId || undefined);
+                  setSaleReturnsList(returns);
+                } catch (error: any) {
+                  toast.error(error.message || 'Failed to delete return');
+                }
+              }}
+              className="bg-red-600 hover:bg-red-700 text-white"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };

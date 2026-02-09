@@ -62,6 +62,7 @@ import {
   DialogTitle,
 } from '@/app/components/ui/dialog';
 import { getAttachmentOpenUrl } from '@/app/utils/paymentAttachmentUrl';
+import { AttachmentViewer } from '@/app/components/shared/AttachmentViewer';
 
 function AttachmentImage({ att }: { att: { url: string; name: string } }) {
   const [src, setSrc] = useState<string | null>(null);
@@ -200,6 +201,25 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
           if (purchaseData) {
             console.log('[VIEW PURCHASE] Purchase data loaded from database:', purchaseData.id);
             const convertedPurchase = convertFromSupabasePurchase(purchaseData);
+            // Preserve variation data from raw purchase data for display
+            if (purchaseData.items && convertedPurchase.items) {
+              convertedPurchase.items = convertedPurchase.items.map((item, idx) => {
+                const rawItem = purchaseData.items[idx];
+                if (rawItem) {
+                  return {
+                    ...item,
+                    // Preserve variation object for display
+                    variation: rawItem.variation || rawItem.product_variations || null,
+                  } as any;
+                }
+                return item;
+              });
+            }
+            // CRITICAL FIX: Ensure attachments are preserved
+            if (purchaseData.attachments) {
+              convertedPurchase.attachments = purchaseData.attachments;
+            }
+            console.log('[VIEW PURCHASE] Purchase attachments:', convertedPurchase.attachments);
             setPurchase(convertedPurchase);
             
             // CRITICAL FIX: Load supplier code if supplier ID exists
@@ -578,6 +598,18 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
                         const productName = item.productName || 'Unknown Product';
                         const displaySku = item.sku || 'N/A';
                         const qty = item.quantity ?? 0;
+                        
+                        // Extract variation data
+                        const variation = (item as any).variation || (item as any).product_variations || null;
+                        const variationAttrs = variation?.attributes || {};
+                        const variationSku = variation?.sku || null;
+                        const variationText = variationAttrs 
+                          ? Object.entries(variationAttrs)
+                              .filter(([_, v]) => v != null && v !== '')
+                              .map(([k, v]) => `${k.charAt(0).toUpperCase() + k.slice(1)}: ${v}`)
+                              .join(', ')
+                          : null;
+                        
                         // Packing: structured – Boxes + Pieces
                         const pd = item.packingDetails || {};
                         const totalBoxes = pd.total_boxes ?? 0;
@@ -587,19 +619,27 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
                         if (Number(totalPieces) > 0) packingParts.push(`${totalPieces} Piece${Number(totalPieces) !== 1 ? 's' : ''}`);
                         const packingText = packingParts.length ? packingParts.join(', ') : '—';
                         const unitDisplay = item.unit ?? 'piece';
+                        
+                        // Use variation SKU if available, otherwise use product SKU
+                        const finalSku = variationSku || displaySku;
+                        
                         return (
                         <TableRow key={item.id} className="border-gray-800">
                           <TableCell>
                             <div>
                               <p className="font-medium text-white">{productName}</p>
-                              {displaySku && displaySku !== 'N/A' && (
-                                <p className="text-xs text-gray-500">SKU: {displaySku}</p>
+                              {finalSku && finalSku !== 'N/A' && (
+                                <p className="text-xs text-gray-500">SKU: {finalSku}</p>
                               )}
                             </div>
                           </TableCell>
-                          <TableCell className="text-gray-400">{displaySku}</TableCell>
+                          <TableCell className="text-gray-400">{finalSku}</TableCell>
                           <TableCell>
-                            <span className="text-gray-600">-</span>
+                            {variationText ? (
+                              <span className="text-gray-300 text-sm">{variationText}</span>
+                            ) : (
+                              <span className="text-gray-600">—</span>
+                            )}
                           </TableCell>
                           {enablePacking && <TableCell className="text-gray-400">{packingText}</TableCell>}
                           <TableCell className="text-right text-white">
@@ -683,6 +723,74 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
                   <p className="text-white text-sm leading-relaxed">{purchase.notes}</p>
                 </div>
               )}
+
+              {/* Attachments */}
+              {(() => {
+                const hasAttachments = purchase.attachments && (
+                  Array.isArray(purchase.attachments) 
+                    ? purchase.attachments.length > 0 
+                    : !!purchase.attachments
+                );
+                
+                if (!hasAttachments) {
+                  console.log('[VIEW PURCHASE] No attachments found:', {
+                    attachments: purchase.attachments,
+                    type: typeof purchase.attachments,
+                    isArray: Array.isArray(purchase.attachments),
+                  });
+                  return null;
+                }
+                
+                console.log('[VIEW PURCHASE] Rendering attachments:', purchase.attachments);
+                
+                return (
+                  <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-5">
+                    <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-3 flex items-center gap-2">
+                      <Paperclip size={16} />
+                      Attachments ({Array.isArray(purchase.attachments) ? purchase.attachments.length : 1})
+                    </h3>
+                    <div className="flex flex-wrap gap-2">
+                      {Array.isArray(purchase.attachments) ? (
+                        purchase.attachments.map((att: any, idx: number) => {
+                          const url = typeof att === 'string' ? att : (att?.url || att?.fileUrl || '');
+                          const name = typeof att === 'object' && att?.name ? att.name : (typeof att === 'object' && (att?.fileName || att?.file_name) ? (att.fileName || att.file_name) : `Attachment ${idx + 1}`);
+                          if (!url) {
+                            console.warn('[VIEW PURCHASE] Attachment missing URL:', att);
+                            return null;
+                          }
+                          const isImage = /\.(jpg|jpeg|png|gif|webp)$/i.test(name || '');
+                          return (
+                            <button
+                              key={idx}
+                              type="button"
+                              onClick={async () => {
+                                const openUrl = await getAttachmentOpenUrl(url);
+                                window.open(openUrl, '_blank');
+                              }}
+                              className="inline-flex items-center gap-2 px-3 py-2 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/30 rounded-lg text-blue-400 text-sm transition-colors"
+                            >
+                              {isImage ? <ImageIcon size={16} /> : <File size={16} />}
+                              <span>{name}</span>
+                            </button>
+                          );
+                        })
+                      ) : typeof purchase.attachments === 'string' ? (
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            const openUrl = await getAttachmentOpenUrl(purchase.attachments as string);
+                            window.open(openUrl, '_blank');
+                          }}
+                          className="inline-flex items-center gap-2 px-3 py-2 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/30 rounded-lg text-blue-400 text-sm transition-colors"
+                        >
+                          <Paperclip size={16} />
+                          <span>View attachment</span>
+                        </button>
+                      ) : null}
+                    </div>
+                  </div>
+                );
+              })()}
             </>
           )}
 
@@ -1196,63 +1304,14 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
         />
       )}
 
-      {/* Attachments dialog: list attachments, open in new tab */}
-      <Dialog open={!!attachmentsDialogList} onOpenChange={(open) => !open && setAttachmentsDialogList(null)}>
-        <DialogContent className="bg-gray-900 border-gray-700 text-white max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-white">
-              <Paperclip size={20} className="text-amber-400" />
-              Attachments
-            </DialogTitle>
-          </DialogHeader>
-          <div className="space-y-2 max-h-64 overflow-y-auto">
-            {attachmentsDialogList?.map((att, idx) => {
-              const isImage = /\.(jpg|jpeg|png|gif|webp)$/i.test(att.name || '');
-              return (
-                <div
-                  key={idx}
-                  className="flex flex-col gap-2 p-2 rounded-lg bg-gray-800/50 border border-gray-700"
-                >
-                  {isImage ? (
-                    <>
-                      <AttachmentImage att={att} />
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="text-sm text-gray-200 truncate flex-1" title={att.name}>{att.name}</span>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="shrink-0 border-gray-600 text-gray-300 hover:bg-gray-700 hover:text-white"
-                          onClick={async () => {
-                            const openUrl = await getAttachmentOpenUrl(att.url);
-                            window.open(openUrl, '_blank');
-                          }}
-                        >
-                          Open in new tab
-                        </Button>
-                      </div>
-                    </>
-                  ) : (
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-sm text-gray-200 truncate flex-1" title={att.name}>{att.name}</span>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="shrink-0 border-gray-600 text-gray-300 hover:bg-gray-700 hover:text-white"
-                        onClick={async () => {
-                          const openUrl = await getAttachmentOpenUrl(att.url);
-                          window.open(openUrl, '_blank');
-                        }}
-                      >
-                        Open in new tab
-                      </Button>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </DialogContent>
-      </Dialog>
+      {/* Attachments viewer - Shared Component */}
+      {attachmentsDialogList && (
+        <AttachmentViewer
+          attachments={attachmentsDialogList}
+          isOpen={!!attachmentsDialogList}
+          onClose={() => setAttachmentsDialogList(null)}
+        />
+      )}
     </>
   );
 };

@@ -70,6 +70,7 @@ export interface Sale {
   paymentMethod: string;
   shippingStatus: ShippingStatus;
   notes?: string;
+  attachments?: { url: string; name: string }[] | null; // Sale attachments
   createdAt: string;
   updatedAt: string;
   is_studio?: boolean;
@@ -294,6 +295,8 @@ export const convertFromSupabaseSale = (supabaseSale: any): Sale => {
     paymentMethod: supabaseSale.payment_method || 'Cash',
     shippingStatus: supabaseSale.shipping_status || 'pending',
       notes: supabaseSale.notes,
+      // CRITICAL FIX: Preserve attachments from database
+      attachments: supabaseSale.attachments || null,
       createdAt: supabaseSale.created_at || new Date().toISOString(),
       updatedAt: supabaseSale.updated_at || new Date().toISOString(),
     is_studio: !!supabaseSale.is_studio,

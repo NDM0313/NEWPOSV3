@@ -34,7 +34,7 @@ import {
   Lock,
   Hash
 } from 'lucide-react';
-import { cn } from "../ui/utils";
+import { cn, formatDateWithTimezone } from "../ui/utils";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
@@ -1444,7 +1444,7 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                 supplier: supplierUuid,
                 supplierName: supplierName,
                 contactNumber: '', // Can be enhanced to get from supplier
-                date: format(purchaseDate, "yyyy-MM-dd'T'HH:mm:ss"),
+                date: formatDateWithTimezone(purchaseDate),
                 expectedDelivery: undefined,
                 location: finalBranchId, // Branch name for display
                 branchId: finalBranchId, // CRITICAL: Branch UUID for database
@@ -1475,21 +1475,30 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                     paid: paidToUse,
                     due: dueToUse,
                     notes: refNumber || undefined,
-                    date: format(purchaseDate, "yyyy-MM-dd'T'HH:mm:ss"),
+                    date: formatDateWithTimezone(purchaseDate),
                     // 🔒 CRITICAL: Pass items array to updatePurchase (like SaleForm does)
                     items: purchaseItems,
                 });
                 if (purchaseAttachmentFiles.length > 0 && companyId) {
                     try {
                         const uploaded = await uploadPurchaseAttachments(companyId, purchaseId, purchaseAttachmentFiles);
-                        const existing = (loadedPurchaseData as any)?.attachments || [];
-                        const merged = Array.isArray(existing) ? [...existing, ...uploaded] : uploaded;
-                        if (merged.length > 0) await updatePurchase(purchaseId, { attachments: merged } as any);
+                        if (uploaded.length > 0) {
+                            const existing = (loadedPurchaseData as any)?.attachments || [];
+                            const merged = Array.isArray(existing) ? [...existing, ...uploaded] : uploaded;
+                            await updatePurchase(purchaseId, { attachments: merged } as any);
+                            setLoadedPurchaseData((prev: any) => prev ? { ...prev, attachments: merged } : null);
+                            if (uploaded.length < purchaseAttachmentFiles.length) {
+                                toast.warning(`Purchase saved. ${uploaded.length}/${purchaseAttachmentFiles.length} attachments uploaded.`);
+                            } else {
+                                toast.success(`Purchase saved with ${uploaded.length} attachment(s).`);
+                            }
+                        } else {
+                            toast.warning('Purchase saved but attachments could not be uploaded. Check if storage bucket exists.');
+                        }
                         setPurchaseAttachmentFiles([]);
-                        setLoadedPurchaseData((prev: any) => prev ? { ...prev, attachments: merged } : null);
-                    } catch (e) {
-                        console.warn('[PURCHASE FORM] Attachment upload failed:', e);
-                        toast.warning('Purchase saved but some attachments could not be uploaded.');
+                    } catch (e: any) {
+                        console.error('[PURCHASE FORM] Attachment upload failed:', e);
+                        toast.error(`Purchase saved but attachments failed: ${e?.message || 'Unknown error'}`);
                     }
                 }
                 toast.success('Purchase order updated successfully!');
@@ -1512,11 +1521,20 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                 if (newPurchase?.id && purchaseAttachmentFiles.length > 0 && companyId) {
                     try {
                         const uploaded = await uploadPurchaseAttachments(companyId, newPurchase.id, purchaseAttachmentFiles);
-                        if (uploaded.length > 0) await updatePurchase(newPurchase.id, { attachments: uploaded } as any);
+                        if (uploaded.length > 0) {
+                            await updatePurchase(newPurchase.id, { attachments: uploaded } as any);
+                            if (uploaded.length < purchaseAttachmentFiles.length) {
+                                toast.warning(`Purchase saved. ${uploaded.length}/${purchaseAttachmentFiles.length} attachments uploaded.`);
+                            } else {
+                                toast.success(`Purchase saved with ${uploaded.length} attachment(s).`);
+                            }
+                        } else {
+                            toast.warning('Purchase saved but attachments could not be uploaded. Check if storage bucket exists.');
+                        }
                         setPurchaseAttachmentFiles([]);
-                    } catch (e) {
-                        console.warn('[PURCHASE FORM] Attachment upload failed:', e);
-                        toast.warning('Purchase created but some attachments could not be uploaded.');
+                    } catch (e: any) {
+                        console.error('[PURCHASE FORM] Attachment upload failed:', e);
+                        toast.error(`Purchase saved but attachments failed: ${e?.message || 'Unknown error'}`);
                     }
                 }
                 // Save payments only when NOT opening payment dialog (user already added in form or chose Credit)

@@ -2,7 +2,8 @@ import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { 
   Plus, ShoppingBag, DollarSign, AlertCircle, 
   MoreVertical, Eye, Edit, Trash2, FileText, Phone, MapPin,
-  Package, CheckCircle, Clock, XCircle, Receipt, ChevronDown, ChevronUp
+  Package, CheckCircle, Clock, XCircle, Receipt, ChevronDown, ChevronUp,
+  Paperclip
 } from 'lucide-react';
 import { Button } from "@/app/components/ui/button";
 import { Badge } from "@/app/components/ui/badge";
@@ -37,6 +38,7 @@ import { UnifiedPaymentDialog } from '@/app/components/shared/UnifiedPaymentDial
 import { UnifiedLedgerView } from '@/app/components/shared/UnifiedLedgerView';
 import { ViewPurchaseDetailsDrawer } from './ViewPurchaseDetailsDrawer';
 import { ViewPaymentsModal, type InvoiceDetails, type Payment } from '@/app/components/sales/ViewPaymentsModal';
+import { AttachmentViewer } from '@/app/components/shared/AttachmentViewer';
 import { toast } from 'sonner';
 
 type PurchaseStatus = 'received' | 'ordered' | 'pending' | 'final' | 'draft';
@@ -57,6 +59,7 @@ interface Purchase {
   status: PurchaseStatus;
   paymentStatus: PaymentStatus;
   addedBy: string;
+  attachments?: { url: string; name: string }[] | null; // Purchase attachments
 }
 
 // Mock data removed - using purchaseService which loads from Supabase
@@ -124,6 +127,9 @@ export const PurchasesPage = () => {
   
   // STEP 2 FIX: View Payments Modal state (like Sale module)
   const [viewPaymentsOpen, setViewPaymentsOpen] = useState(false);
+  
+  // State for viewing attachments
+  const [attachmentsDialogList, setAttachmentsDialogList] = useState<{ url: string; name: string }[] | null>(null);
 
   // Column visibility state
   const [visibleColumns, setVisibleColumns] = useState({
@@ -276,6 +282,8 @@ export const PurchasesPage = () => {
           paymentStatus: p.payment_status || 'unpaid',
           // STEP 3 FIX: Added By - show user name from created_by_user join or Purchase.createdBy
           addedBy: p.created_by_user?.full_name || p.created_by_user?.email || (p as any).createdBy || 'System',
+          // Attachments from purchase
+          attachments: p.attachments || null,
         };
       });
       
@@ -335,6 +343,8 @@ export const PurchasesPage = () => {
           paymentStatus: p.paymentStatus || 'unpaid',
           // STEP 3 FIX: Added By - show user name from created_by_user join (context purchases)
           addedBy: (p as any).createdBy || p.created_by_user?.full_name || p.created_by_user?.email || 'System',
+          // Attachments from purchase
+          attachments: p.attachments || null,
         };
       });
       setPurchases(convertedPurchases);
@@ -396,6 +406,21 @@ export const PurchasesPage = () => {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [branchMap]); // Only depend on branchMap, not purchases (to avoid infinite loop)
+
+  // Column alignments - shared between header and data cells
+  const alignments: Record<string, string> = {
+    date: 'text-left',
+    poNo: 'text-left',
+    reference: 'text-left',
+    supplier: 'text-left',
+    location: 'text-left',
+    status: 'text-center',
+    items: 'text-center',
+    grandTotal: 'text-right',
+    paymentDue: 'text-right',
+    paymentStatus: 'text-center',
+    addedBy: 'text-left',
+  };
 
   // Column order state - defines order of columns (same as Sale/Products; reorder in Columns dropdown)
   const [columnOrder, setColumnOrder] = useState([
@@ -629,8 +654,9 @@ export const PurchasesPage = () => {
       case 'date': {
         const dateTime = formatDateAndTime(purchase.date);
         return (
-          <div className="text-sm text-gray-400">
-            {dateTime.date} {dateTime.time}
+          <div className="flex flex-col text-sm text-gray-400">
+            <span>{dateTime.date}</span>
+            <span className="text-xs text-gray-500">{dateTime.time}</span>
           </div>
         );
       }
@@ -677,8 +703,54 @@ export const PurchasesPage = () => {
           </div>
         );
       }
-      case 'status':
-        return <div className="flex justify-center">{getPurchaseStatusBadge(purchase.status)}</div>;
+      case 'status': {
+        // Enhanced Status Column: Badge + Attachment Icon
+        const statusBadge = getPurchaseStatusBadge(purchase.status);
+        // Check for attachments - handle both array and object formats
+        const hasAttachments = purchase.attachments && (
+          (Array.isArray(purchase.attachments) && purchase.attachments.length > 0) ||
+          (typeof purchase.attachments === 'object' && Object.keys(purchase.attachments).length > 0)
+        );
+        
+        return (
+          <div className="flex items-center gap-2">
+            {statusBadge}
+            {hasAttachments && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  const attachments: { url: string; name: string }[] = [];
+                  
+                  // Handle different attachment formats
+                  if (Array.isArray(purchase.attachments)) {
+                    purchase.attachments.forEach((att: any) => {
+                      const url = typeof att === 'string' ? att : (att?.url || att?.fileUrl || '');
+                      const name = typeof att === 'object' && att?.name ? att.name : (typeof att === 'object' && (att?.fileName || att?.file_name) ? (att.fileName || att.file_name) : 'Attachment');
+                      if (url) attachments.push({ url: String(url), name: name || 'Attachment' });
+                    });
+                  } else if (typeof purchase.attachments === 'object' && purchase.attachments !== null) {
+                    // Handle object format
+                    Object.entries(purchase.attachments).forEach(([key, att]: [string, any]) => {
+                      const url = typeof att === 'string' ? att : (att?.url || att?.fileUrl || key);
+                      const name = typeof att === 'object' && att?.name ? att.name : (typeof att === 'object' && (att?.fileName || att?.file_name) ? (att.fileName || att.file_name) : key);
+                      if (url) attachments.push({ url: String(url), name: name || 'Attachment' });
+                    });
+                  }
+                  
+                  if (attachments.length) setAttachmentsDialogList(attachments);
+                }}
+                className="p-0.5 hover:bg-amber-500/20 rounded transition-colors"
+                title="View attachment"
+              >
+                <Paperclip 
+                  size={14} 
+                  className="text-amber-400" 
+                />
+              </button>
+            )}
+          </div>
+        );
+      }
       case 'items':
         return (
           <div className="flex items-center justify-center gap-1 text-gray-300">
@@ -688,13 +760,11 @@ export const PurchasesPage = () => {
         );
       case 'grandTotal':
         return (
-          <div className="text-right">
-            <div className="text-sm font-semibold text-white tabular-nums">{purchase.grandTotal.toLocaleString()}</div>
-          </div>
+          <div className="text-sm font-semibold text-white tabular-nums">{purchase.grandTotal.toLocaleString()}</div>
         );
       case 'paymentDue':
         return (
-          <div className="text-right">
+          <>
             {purchase.paymentDue > 0 ? (
               <button onClick={() => handleMakePayment(purchase)} className="text-sm font-semibold text-red-400 tabular-nums hover:text-red-300 hover:underline cursor-pointer transition-colors" title="Click to make payment">
                 {purchase.paymentDue.toLocaleString()}
@@ -702,11 +772,11 @@ export const PurchasesPage = () => {
             ) : (
               <div className="text-sm text-gray-600">-</div>
             )}
-          </div>
+          </>
         );
       case 'paymentStatus':
         return (
-          <div className="flex justify-center">
+          <>
             {purchase.paymentDue > 0 ? (
               <button onClick={() => handleMakePayment(purchase)} className="hover:opacity-80 transition-opacity" title="Click to make payment">
                 {getPaymentStatusBadge(purchase.paymentStatus)}
@@ -714,7 +784,7 @@ export const PurchasesPage = () => {
             ) : (
               getPaymentStatusBadge(purchase.paymentStatus)
             )}
-          </div>
+          </>
         );
       case 'addedBy':
         return <div className="text-xs text-gray-400">{purchase.addedBy}</div>;
@@ -994,13 +1064,23 @@ export const PurchasesPage = () => {
                 >
                   {columnOrder.map(key => {
                     if (!visibleColumns[key as keyof typeof visibleColumns]) return null;
-                    const align = (key === 'status' || key === 'items' || key === 'paymentStatus') ? 'text-center' : (key === 'grandTotal' || key === 'paymentDue') ? 'text-right' : 'text-left';
                     const isSortable = columnLabels[key] != null;
                     const isActive = sortKey === key;
                     return (
                       <div
                         key={key}
-                        className={cn(align, isSortable && 'cursor-pointer select-none hover:text-gray-300 flex items-center gap-0.5')}
+                        className={cn(
+                          alignments[key] || 'text-left',
+                          isSortable && 'cursor-pointer select-none hover:text-gray-300',
+                          // Use flex for all sortable headers to align icon consistently
+                          isSortable && 'flex items-center gap-0.5',
+                          // For right-aligned, use justify-end to keep text right
+                          alignments[key] === 'text-right' && 'justify-end',
+                          // For center-aligned, use justify-center
+                          alignments[key] === 'text-center' && 'justify-center',
+                          // For left-aligned, use justify-start (default)
+                          alignments[key] === 'text-left' && 'justify-start'
+                        )}
                         onClick={() => isSortable && handleSort(key as PurchaseSortKey)}
                       >
                         {columnLabels[key]}
@@ -1031,7 +1111,23 @@ export const PurchasesPage = () => {
                     >
                       {columnOrder.map(key => {
                         if (!visibleColumns[key as keyof typeof visibleColumns]) return null;
-                        return <div key={key}>{renderPurchaseCell(purchase, key)}</div>;
+                        // Apply same alignment classes as headers
+                        const alignment = alignments[key] || 'text-left';
+                        return (
+                          <div 
+                            key={key} 
+                            className={cn(
+                              alignment,
+                              'flex items-center',
+                              // Match header alignment with justify classes
+                              alignment === 'text-right' && 'justify-end',
+                              alignment === 'text-center' && 'justify-center',
+                              alignment === 'text-left' && 'justify-start'
+                            )}
+                          >
+                            {renderPurchaseCell(purchase, key)}
+                          </div>
+                        );
                       })}
                       {/* Actions - visible delete icon + dropdown (same as Sale) */}
                       <div className="flex items-center justify-center gap-1">
@@ -1307,6 +1403,15 @@ export const PurchasesPage = () => {
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
+      )}
+
+      {/* 🎯 ATTACHMENTS VIEWER - Shared Component */}
+      {attachmentsDialogList && (
+        <AttachmentViewer
+          attachments={attachmentsDialogList}
+          isOpen={!!attachmentsDialogList}
+          onClose={() => setAttachmentsDialogList(null)}
+        />
       )}
     </div>
   );

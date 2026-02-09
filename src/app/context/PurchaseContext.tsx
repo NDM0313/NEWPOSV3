@@ -88,6 +88,7 @@ export interface Purchase {
   paymentStatus: PaymentStatus;
   paymentMethod: string;
   notes?: string;
+  attachments?: { url: string; name: string }[] | null; // Purchase attachments
   reference?: string; // STEP 1 FIX: Reference number field
   createdBy?: string; // CRITICAL FIX: User who created the purchase (for "Added By" display)
   createdAt: string;
@@ -189,6 +190,8 @@ export const convertFromSupabasePurchase = (supabasePurchase: any): Purchase => 
     paymentMethod: 'Cash',
     // STEP 1 FIX: Reference number from notes field (consistent with Sale module)
     notes: supabasePurchase.notes,
+    // CRITICAL FIX: Preserve attachments from database
+    attachments: supabasePurchase.attachments || null,
     reference: supabasePurchase.notes || supabasePurchase.reference || undefined,
     createdAt: supabasePurchase.created_at || new Date().toISOString(),
     updatedAt: supabasePurchase.updated_at || new Date().toISOString(),

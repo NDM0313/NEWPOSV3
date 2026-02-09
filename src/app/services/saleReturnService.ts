@@ -59,6 +59,9 @@ export interface CreateSaleReturnData {
   reason?: string;
   notes?: string;
   created_by?: string;
+  subtotal?: number; // Optional: if provided, use it; otherwise calculate from items
+  discount_amount?: number; // Optional: discount on return amount
+  total?: number; // Optional: final adjusted total; if provided, use it; otherwise calculate
 }
 
 export const saleReturnService = {
@@ -66,13 +69,13 @@ export const saleReturnService = {
    * Create a new sale return (draft or final)
    */
   async createSaleReturn(data: CreateSaleReturnData): Promise<SaleReturn> {
-    const { company_id, branch_id, original_sale_id, return_date, customer_id, customer_name, items, reason, notes, created_by } = data;
+    const { company_id, branch_id, original_sale_id, return_date, customer_id, customer_name, items, reason, notes, created_by, subtotal: providedSubtotal, discount_amount: providedDiscount, total: providedTotal } = data;
 
-    // Calculate totals
-    const subtotal = items.reduce((sum, item) => sum + item.total, 0);
-    const discount_amount = 0; // Can be enhanced later
+    // Calculate totals - use provided values if available, otherwise calculate
+    const subtotal = providedSubtotal !== undefined ? providedSubtotal : items.reduce((sum, item) => sum + item.total, 0);
+    const discount_amount = providedDiscount !== undefined ? providedDiscount : 0;
     const tax_amount = 0; // Can be enhanced later
-    const total = subtotal - discount_amount + tax_amount;
+    const total = providedTotal !== undefined ? providedTotal : (subtotal - discount_amount + tax_amount);
 
     // Generate return number
     const return_no = await this.generateReturnNumber(company_id, branch_id);
@@ -167,12 +170,33 @@ export const saleReturnService = {
     }
 
     // Validate: Check if return quantity exceeds original quantity
-    const { data: originalItems } = await supabase
-      .from('sale_items')
+    // Try sales_items first (new table), fallback to sale_items (old table)
+    let originalItems: any[] = [];
+    
+    const { data: salesItemsData, error: salesItemsError } = await supabase
+      .from('sales_items')
       .select('id, product_id, variation_id, quantity')
       .eq('sale_id', saleReturn.original_sale_id);
 
-    if (originalItems) {
+    if (salesItemsError) {
+      // If sales_items fails, try sale_items (backward compatibility)
+      if (salesItemsError.code === '42P01' || salesItemsError.message?.includes('does not exist')) {
+        const { data: saleItemsData, error: saleItemsError } = await supabase
+          .from('sale_items')
+          .select('id, product_id, variation_id, quantity')
+          .eq('sale_id', saleReturn.original_sale_id);
+        
+        if (!saleItemsError && saleItemsData) {
+          originalItems = saleItemsData;
+        }
+      } else {
+        console.warn('[SALE RETURN] Error loading original items for validation:', salesItemsError);
+      }
+    } else if (salesItemsData) {
+      originalItems = salesItemsData;
+    }
+
+    if (originalItems && originalItems.length > 0) {
       for (const returnItem of saleReturn.items) {
         const originalItem = originalItems.find(
           oi => oi.product_id === returnItem.product_id &&
@@ -184,13 +208,31 @@ export const saleReturnService = {
         }
 
         // Check already returned quantity
-        const { data: existingReturns } = await supabase
-          .from('sale_return_items')
-          .select('quantity')
-          .eq('sale_item_id', originalItem.id)
-          .eq('sale_return_id', returnId);
-
-        const alreadyReturned = existingReturns?.reduce((sum, r) => sum + Number(r.quantity), 0) || 0;
+        // If sale_item_id is null (items from sales_items), we need to check by product_id + variation_id
+        let alreadyReturned = 0;
+        
+        if (returnItem.sale_item_id) {
+          // Items from sale_items table - use sale_item_id
+          const { data: existingReturns } = await supabase
+            .from('sale_return_items')
+            .select('quantity')
+            .eq('sale_item_id', returnItem.sale_item_id)
+            .neq('sale_return_id', returnId); // Exclude current return
+          
+          alreadyReturned = existingReturns?.reduce((sum, r) => sum + Number(r.quantity), 0) || 0;
+        } else {
+          // Items from sales_items table - check by product_id + variation_id
+          const { data: existingReturns } = await supabase
+            .from('sale_return_items')
+            .select('quantity')
+            .eq('product_id', returnItem.product_id)
+            .eq('variation_id', returnItem.variation_id || null)
+            .is('sale_item_id', null) // Only items without sale_item_id (from sales_items)
+            .neq('sale_return_id', returnId); // Exclude current return
+          
+          alreadyReturned = existingReturns?.reduce((sum, r) => sum + Number(r.quantity), 0) || 0;
+        }
+        
         const totalReturned = alreadyReturned + Number(returnItem.quantity);
 
         if (totalReturned > Number(originalItem.quantity)) {
@@ -199,6 +241,8 @@ export const saleReturnService = {
           );
         }
       }
+    } else {
+      console.warn('[SALE RETURN] No original items found for validation. Skipping quantity check.');
     }
 
     // Create stock movements (POSITIVE - stock IN)
@@ -286,16 +330,66 @@ export const saleReturnService = {
     unit_price: number;
     total: number;
     already_returned?: number;
+    size?: string;
+    color?: string;
+    variation?: {
+      id?: string;
+      size?: string;
+      color?: string;
+      attributes?: Record<string, unknown>;
+      sku?: string;
+    };
   }>> {
-    // Get original sale items
-    const { data: saleItems, error: itemsError } = await supabase
-      .from('sale_items')
-      .select('*')
+    // Get original sale items with variation data
+    // Try sales_items first (new table), fallback to sale_items (old table)
+    let saleItems: any[] = [];
+    let itemsError: any = null;
+    let itemsFromSalesItems = false; // Track which table items came from
+    
+    const { data: salesItemsData, error: salesItemsError } = await supabase
+      .from('sales_items')
+      .select(`
+        *,
+        variation:product_variations(*)
+      `)
       .eq('sale_id', saleId)
       .order('created_at');
 
-    if (itemsError) throw itemsError;
-    if (!saleItems) return [];
+    if (salesItemsError) {
+      // If sales_items fails, try sale_items (backward compatibility)
+      if (salesItemsError.code === '42P01' || salesItemsError.message?.includes('does not exist')) {
+        const { data: saleItemsData, error: saleItemsError } = await supabase
+          .from('sale_items')
+          .select(`
+            *,
+            variation:product_variations(*)
+          `)
+          .eq('sale_id', saleId)
+          .order('created_at');
+        
+        if (saleItemsError) {
+          itemsError = saleItemsError;
+        } else {
+          saleItems = saleItemsData || [];
+          itemsFromSalesItems = false; // Items from sale_items table
+        }
+      } else {
+        itemsError = salesItemsError;
+      }
+    } else {
+      saleItems = salesItemsData || [];
+      itemsFromSalesItems = true; // Items from sales_items table
+    }
+
+    if (itemsError) {
+      console.error('[SALE RETURN] Error loading sale items:', itemsError);
+      throw itemsError;
+    }
+    
+    if (!saleItems || saleItems.length === 0) {
+      console.warn('[SALE RETURN] No items found for sale:', saleId);
+      return [];
+    }
 
     // Get already returned quantities
     const { data: returns } = await supabase
@@ -319,18 +413,41 @@ export const saleReturnService = {
       });
     }
 
-    return saleItems.map(item => ({
-      id: item.id,
-      product_id: item.product_id,
-      variation_id: item.variation_id || undefined,
-      product_name: item.product_name,
-      sku: item.sku,
-      quantity: Number(item.quantity),
-      unit: item.unit,
-      unit_price: Number(item.unit_price),
-      total: Number(item.total),
-      already_returned: returnedMap[item.id] || 0,
-    }));
+    return saleItems.map(item => {
+      // Handle SKU - might be in item, variation, or product
+      const sku = item.sku || item.variation?.sku || item.product?.sku || 'N/A';
+      
+      // CRITICAL: sale_item_id FK points to sale_items table only
+      // If items are from sales_items table, we must set sale_item_id to null
+      // to avoid foreign key constraint violation
+      const saleItemId = itemsFromSalesItems ? null : item.id;
+      
+      return {
+        id: item.id,
+        product_id: item.product_id,
+        variation_id: item.variation_id || undefined,
+        product_name: item.product_name,
+        sku: sku,
+        quantity: Number(item.quantity),
+        unit: item.unit || 'piece',
+        unit_price: Number(item.unit_price || item.price || 0),
+        total: Number(item.total || 0),
+        already_returned: returnedMap[item.id] || 0,
+        size: item.size || item.variation?.size || undefined,
+        color: item.color || item.variation?.color || undefined,
+        variation: item.variation ? {
+          id: item.variation.id,
+          size: item.variation.size,
+          color: item.variation.color,
+          attributes: item.variation.attributes,
+          sku: item.variation.sku,
+        } : undefined,
+        // Store which table this came from for later use
+        _fromSalesItems: itemsFromSalesItems,
+        // Store the actual ID for reference (even if we can't use it as FK)
+        _originalId: item.id,
+      };
+    });
   },
 
   /**

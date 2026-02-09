@@ -185,6 +185,25 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
           const saleData = await saleService.getSaleById(saleId);
           if (saleData) {
             const convertedSale = convertFromSupabaseSale(saleData);
+            // Preserve variation data from raw sale data for display
+            if (saleData.items && convertedSale.items) {
+              convertedSale.items = convertedSale.items.map((item, idx) => {
+                const rawItem = saleData.items[idx];
+                if (rawItem) {
+                  return {
+                    ...item,
+                    // Preserve variation object for display
+                    variation: rawItem.variation || rawItem.product_variations || null,
+                  } as any;
+                }
+                return item;
+              });
+            }
+            // CRITICAL FIX: Ensure attachments are preserved
+            if (saleData.attachments) {
+              convertedSale.attachments = saleData.attachments;
+            }
+            console.log('[VIEW SALE] Sale attachments:', convertedSale.attachments);
             setSale(convertedSale);
             
             // CRITICAL FIX: Load customer code if customer ID exists (not UUID display)
@@ -574,6 +593,18 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
                         const productName = item.productName || item.name || 'Unknown Product';
                         const displaySku = item.sku || 'N/A';
                         const qty = item.quantity ?? (item as any).qty ?? 0;
+                        
+                        // Extract variation data
+                        const variation = (item as any).variation || (item as any).product_variations || null;
+                        const variationAttrs = variation?.attributes || {};
+                        const variationSku = variation?.sku || null;
+                        const variationText = variationAttrs 
+                          ? Object.entries(variationAttrs)
+                              .filter(([_, v]) => v != null && v !== '')
+                              .map(([k, v]) => `${k.charAt(0).toUpperCase() + k.slice(1)}: ${v}`)
+                              .join(', ')
+                          : null;
+                        
                         // Packing: structured – Boxes + Pieces (same contract as ledger)
                         const pd = item.packingDetails || {};
                         const totalBoxes = pd.total_boxes ?? 0;
@@ -587,33 +618,26 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
                             ? [item.thaans != null && item.thaans > 0 ? `${item.thaans} Thaan${item.thaans !== 1 ? 's' : ''}` : null, item.meters != null && item.meters > 0 ? `${item.meters}m` : null].filter(Boolean).join(' · ') || '—'
                             : '—';
                         const unitDisplay = item.unit ?? 'piece';
+                        
+                        // Use variation SKU if available, otherwise use product SKU
+                        const finalSku = variationSku || displaySku;
+                        
                         return (
                         <TableRow key={item.id} className="border-gray-800">
                           <TableCell>
                             <div>
                               <p className="font-medium text-white">{productName}</p>
-                              {displaySku && displaySku !== 'N/A' && (
-                                <p className="text-xs text-gray-500">SKU: {displaySku}</p>
+                              {finalSku && finalSku !== 'N/A' && (
+                                <p className="text-xs text-gray-500">SKU: {finalSku}</p>
                               )}
                             </div>
                           </TableCell>
-                          <TableCell className="text-gray-400">{displaySku}</TableCell>
+                          <TableCell className="text-gray-400">{finalSku}</TableCell>
                           <TableCell>
-                            {(item.size || item.color) ? (
-                              <div className="flex flex-wrap gap-1">
-                                {item.size && (
-                                  <Badge variant="outline" className="text-xs border-gray-700 text-gray-400">
-                                    {item.size}
-                                  </Badge>
-                                )}
-                                {item.color && (
-                                  <Badge variant="outline" className="text-xs border-gray-700 text-gray-400">
-                                    {item.color}
-                                  </Badge>
-                                )}
-                              </div>
+                            {variationText ? (
+                              <span className="text-gray-300 text-sm">{variationText}</span>
                             ) : (
-                              <span className="text-gray-600">-</span>
+                              <span className="text-gray-600">—</span>
                             )}
                           </TableCell>
                           {enablePacking && <TableCell className="text-gray-400">{packingText}</TableCell>}
@@ -724,6 +748,74 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
                   <p className="text-white text-sm leading-relaxed">{sale.notes}</p>
                 </div>
               )}
+
+              {/* Attachments */}
+              {(() => {
+                const hasAttachments = sale.attachments && (
+                  Array.isArray(sale.attachments) 
+                    ? sale.attachments.length > 0 
+                    : !!sale.attachments
+                );
+                
+                if (!hasAttachments) {
+                  console.log('[VIEW SALE] No attachments found:', {
+                    attachments: sale.attachments,
+                    type: typeof sale.attachments,
+                    isArray: Array.isArray(sale.attachments),
+                  });
+                  return null;
+                }
+                
+                console.log('[VIEW SALE] Rendering attachments:', sale.attachments);
+                
+                return (
+                  <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-5">
+                    <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-3 flex items-center gap-2">
+                      <Paperclip size={16} />
+                      Attachments ({Array.isArray(sale.attachments) ? sale.attachments.length : 1})
+                    </h3>
+                    <div className="flex flex-wrap gap-2">
+                      {Array.isArray(sale.attachments) ? (
+                        sale.attachments.map((att: any, idx: number) => {
+                          const url = typeof att === 'string' ? att : (att?.url || att?.fileUrl || '');
+                          const name = typeof att === 'object' && att?.name ? att.name : (typeof att === 'object' && (att?.fileName || att?.file_name) ? (att.fileName || att.file_name) : `Attachment ${idx + 1}`);
+                          if (!url) {
+                            console.warn('[VIEW SALE] Attachment missing URL:', att);
+                            return null;
+                          }
+                          const isImage = /\.(jpg|jpeg|png|gif|webp)$/i.test(name || '');
+                          return (
+                            <button
+                              key={idx}
+                              type="button"
+                              onClick={async () => {
+                                const openUrl = await getAttachmentOpenUrl(url);
+                                window.open(openUrl, '_blank');
+                              }}
+                              className="inline-flex items-center gap-2 px-3 py-2 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/30 rounded-lg text-blue-400 text-sm transition-colors"
+                            >
+                              {isImage ? <ImageIcon size={16} /> : <File size={16} />}
+                              <span>{name}</span>
+                            </button>
+                          );
+                        })
+                      ) : typeof sale.attachments === 'string' ? (
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            const openUrl = await getAttachmentOpenUrl(sale.attachments as string);
+                            window.open(openUrl, '_blank');
+                          }}
+                          className="inline-flex items-center gap-2 px-3 py-2 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/30 rounded-lg text-blue-400 text-sm transition-colors"
+                        >
+                          <Paperclip size={16} />
+                          <span>View attachment</span>
+                        </button>
+                      ) : null}
+                    </div>
+                  </div>
+                );
+              })()}
             </>
           )}
 

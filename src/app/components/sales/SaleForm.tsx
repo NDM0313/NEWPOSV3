@@ -39,7 +39,7 @@ import {
   Upload
 } from 'lucide-react';
 import { format, parseISO } from "date-fns";
-import { cn } from "../ui/utils";
+import { cn, formatDateWithTimezone } from "../ui/utils";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
@@ -1267,9 +1267,22 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
     // Helper to format due balance as currency (compact for header & dropdown)
     const formatDueBalanceCompact = (due: number) => {
         const currency = company?.currency || 'Rs';
-        if (due === 0) return formatCurrency(0, currency);
-        if (due < 0) return `-${formatCurrency(Math.abs(due), currency)}`;
-        return `+${formatCurrency(due, currency)}`;
+        if (due === 0) {
+            return `${currency} ${(0).toLocaleString('en-US', { 
+                minimumFractionDigits: 2, 
+                maximumFractionDigits: 2 
+            })}`;
+        }
+        if (due < 0) {
+            return `-${currency} ${Math.abs(due).toLocaleString('en-US', { 
+                minimumFractionDigits: 2, 
+                maximumFractionDigits: 2 
+            })}`;
+        }
+        return `${currency} ${due.toLocaleString('en-US', { 
+            minimumFractionDigits: 2, 
+            maximumFractionDigits: 2 
+        })}`;
     };
 
     // Helper to get due balance color: green = customer owes us, red = we owe customer
@@ -1764,7 +1777,7 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                 customer: customerUuid || '',
                 customerName: customerName,
                 contactNumber: '', // Can be enhanced to get from customer
-                date: format(saleDate, "yyyy-MM-dd'T'HH:mm:ss"),
+                date: formatDateWithTimezone(saleDate),
                 location: finalBranchId, // CRITICAL: Always use validated branch ID
                 items: saleItems,
                 itemsCount: items.length,
@@ -1968,14 +1981,21 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                     <div className="flex items-center gap-4">
                         
                         {/* Status - Chip Style */}
-                        <Popover open={statusDropdownOpen} onOpenChange={setStatusDropdownOpen}>
+                        <Popover open={statusDropdownOpen} onOpenChange={(open) => {
+                            if (!(initialSale && initialSale.type !== 'quotation')) {
+                                setStatusDropdownOpen(open);
+                            }
+                        }}>
                             <PopoverTrigger asChild>
                                 <button
                                     type="button"
+                                    disabled={initialSale && initialSale.type !== 'quotation'}
                                     className={cn(
                                         "px-3 py-1 rounded-lg text-xs font-medium border transition-all flex items-center gap-1.5",
                                         getStatusChipColor(),
-                                        "hover:opacity-80 cursor-pointer"
+                                        initialSale && initialSale.type !== 'quotation' 
+                                            ? "opacity-50 cursor-not-allowed" 
+                                            : "hover:opacity-80 cursor-pointer"
                                     )}
                                 >
                                     <span className="w-1.5 h-1.5 rounded-full bg-current"></span>
@@ -1987,19 +2007,26 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                                 align="start"
                             >
                                 <div className="space-y-1">
-                                    {(['draft', 'quotation', 'order', 'final'] as const).map((s) => (
+                                    {(['draft', 'quotation', 'order', 'final'] as const).map((s) => {
+                                        const isFinalSale = initialSale && initialSale.type !== 'quotation';
+                                        const isDisabled = isFinalSale && s === 'draft';
+                                        return (
                                         <button
                                             key={s}
                                             type="button"
+                                            disabled={isDisabled}
                                             onClick={() => {
-                                                setSaleStatus(s);
-                                                setStatusDropdownOpen(false);
+                                                if (!isDisabled) {
+                                                    setSaleStatus(s);
+                                                    setStatusDropdownOpen(false);
+                                                }
                                             }}
                                             className={cn(
                                                 "w-full text-left px-3 py-2 rounded-md text-sm transition-all flex items-center gap-2",
                                                 saleStatus === s
                                                     ? "bg-gray-800 text-white"
-                                                    : "text-gray-400 hover:bg-gray-800 hover:text-white"
+                                                    : "text-gray-400 hover:bg-gray-800 hover:text-white",
+                                                isDisabled && "opacity-50 cursor-not-allowed"
                                             )}
                                         >
                                             <span className={cn(
@@ -2011,7 +2038,7 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                                             )}></span>
                                             {s.charAt(0).toUpperCase() + s.slice(1)}
                                         </button>
-                                    ))}
+                                    )})}
                                         </div>
                             </PopoverContent>
                         </Popover>
@@ -2132,7 +2159,7 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                                     <div className="flex items-center justify-between mb-1.5">
                                         <Label className="text-orange-400 font-medium text-[10px] uppercase tracking-wide h-[14px]">Customer</Label>
                                         {customerId && (
-                                            <span className={cn("absolute left-[702px] text-[15px] font-semibold tabular-nums", getDueBalanceColor(selectedCustomerDue))}>
+                                            <span className={cn("absolute left-[672px] text-[15px] font-semibold tabular-nums", getDueBalanceColor(selectedCustomerDue))}>
                                                 {formatDueBalanceCompact(selectedCustomerDue)}
                                             </span>
                                         )}
@@ -2236,7 +2263,7 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                                 {/* Date – same as Purchase */}
                                 <div className="flex flex-col w-[184px] absolute left-[798px] top-[77px] z-0">
                                     <Label className="text-gray-500 font-medium text-xs uppercase tracking-wide h-[14px] mb-1.5">Date</Label>
-                                    <div className="[&>div>button]:bg-gray-900/50 [&>div>button]:border-gray-800 [&>div>button]:text-white [&>div>button]:text-xs [&>div>button]:h-10 [&>div>button]:min-h-[40px] [&>div>button]:px-2.5 [&>div>button]:py-1 [&>div>button]:rounded-lg [&>div>button]:border [&>div>button]:hover:bg-gray-800 [&>div>button]:w-full [&>div>button]:justify-start">
+                                    <div className="[&>div>button]:bg-gray-900/50 [&>div>button]:border-gray-800 [&>div>button]:text-white [&>div>button]:text-xs [&>div>button]:h-10 [&>div>button]:min-h-[40px] [&>div>button]:px-2.5 [&>div>button]:py-1 [&>div>button]:rounded-lg [&>div>button]:border [&>div>button]:hover:bg-gray-800 [&>div>button]:w-full [&>div>button]:justify-start" style={{ width: '209px' }}>
                                         <CalendarDatePicker
                                             value={saleDate}
                                             onChange={(date) => setSaleDate(date || new Date())}
@@ -2247,12 +2274,13 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                                 </div>
                                 {/* Type – same slot as Purchase Ref # */}
                                 <div className="flex flex-col absolute left-[987px] w-[132px]">
-                                    <Label className="text-gray-500 font-medium text-xs uppercase tracking-wide h-[14px] mb-1.5">Type</Label>
+                                    <Label className="text-gray-500 font-medium text-xs uppercase tracking-wide h-[14px] mb-1.5" style={{ position: 'absolute', top: '-59px', left: '30px' }}>Type</Label>
                                     <Popover open={typeDropdownOpen} onOpenChange={setTypeDropdownOpen}>
                                         <PopoverTrigger asChild>
                                             <button
                                                 type="button"
                                                 className="flex items-center gap-2 bg-gray-900/50 border border-gray-800 rounded-lg px-2.5 py-1 hover:bg-gray-800 transition-colors cursor-pointer w-full h-10 min-h-[40px] justify-start text-sm"
+                                                style={{ position: 'absolute', top: '-41px', left: '26px', width: '107px', height: '40px' }}
                                             >
                                                 <Tag size={14} className="text-gray-500 shrink-0" />
                                                 <span className="text-xs text-white capitalize">{isStudioSale ? 'studio' : 'regular'}</span>
@@ -2301,6 +2329,7 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                                                     ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30'
                                                     : 'bg-gray-800 text-gray-500 border border-gray-700 hover:bg-gray-750'
                                             }`}
+                                            style={{ transform: 'none' }}
                                             title="Shipping"
                                         >
                                             <Truck size={14} />
@@ -2389,6 +2418,7 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                     itemVariationRefs={itemVariationRefs}
                     handleQtyKeyDown={handleQtyKeyDown}
                     handlePriceKeyDown={handlePriceKeyDown}
+                    lastAddedItemId={lastAddedItemId}
                             />
                         </div>
 
@@ -2436,8 +2466,8 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                                     Extra Expenses
                                 </h3>
                                 {extraExpenses.length > 0 && (
-                                    <Badge className="bg-purple-600 text-white text-xs px-2 py-0.5">
-                                        ${expensesTotal.toLocaleString()}
+                                    <Badge className="bg-purple-600 text-white text-sm px-2 py-0.5">
+                                        {expensesTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                     </Badge>
                                 )}
                                 </div>
@@ -2490,7 +2520,7 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                                                     </div>
                                                 </div>
                                                 <div className="flex items-center gap-2">
-                                                    <span className="text-xs font-medium text-white">${expense.amount.toLocaleString()}</span>
+                                                    <span className="text-sm font-medium text-white">{expense.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                                                     <button onClick={() => removeExtraExpense(expense.id)} className="text-gray-500 hover:text-red-400">
                                                         <X size={12} />
                                                     </button>
@@ -2507,7 +2537,7 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                                 <div className="space-y-2">
                                 <div className="flex justify-between text-xs">
                                     <span className="text-gray-400">Items Subtotal</span>
-                                    <span className="text-white font-medium">${subtotal.toLocaleString()}</span>
+                                    <span className="text-white font-medium text-sm">{subtotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                                 </div>
                                 
                                 {/* Discount - Inline Input */}
@@ -2534,8 +2564,8 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                                             onChange={(e) => setDiscountValue(parseFloat(e.target.value) || 0)}
                                         />
                                         {discountAmount > 0 && (
-                                            <span className="text-xs text-red-400 font-medium min-w-[60px] text-right">
-                                                -${discountAmount.toLocaleString()}
+                                            <span className="text-sm text-red-400 font-medium min-w-[60px] text-right">
+                                                -{discountAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                             </span>
                                         )}
                                     </div>
@@ -2544,7 +2574,7 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                                 {expensesTotal > 0 && (
                                     <div className="flex justify-between text-xs">
                                         <span className="text-purple-400">Extra Expenses</span>
-                                        <span className="text-purple-400 font-medium">+${expensesTotal.toLocaleString()}</span>
+                                        <span className="text-purple-400 font-medium text-sm">+{expensesTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                                     </div>
                                 )}
                                 
@@ -2560,7 +2590,7 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                                 ) : finalShippingCharges > 0 && (
                                     <div className="flex justify-between text-xs">
                                         <span className="text-blue-400">Shipping</span>
-                                        <span className="text-blue-400 font-medium">+${finalShippingCharges.toLocaleString()}</span>
+                                        <span className="text-blue-400 font-medium text-sm">+{finalShippingCharges.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                                     </div>
                                 )}
                                 
@@ -2590,7 +2620,7 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                                                                 </span>
                                                             )}
                                                         </div>
-                                                        <span className="text-sm font-semibold text-green-400 shrink-0 tabular-nums">${Number(p.amount).toLocaleString()}</span>
+                                                        <span className="text-base font-semibold text-green-400 shrink-0 tabular-nums">{Number(p.amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                                                     </div>
                                                 ))}
                                             </div>
@@ -2601,11 +2631,11 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
 
                                 <div className="flex justify-between items-center pt-1">
                                     <span className="text-sm font-semibold text-white">Grand Total</span>
-                                    <span className="text-2xl font-bold text-blue-500">${totalAmount.toLocaleString()}</span>
+                                    <span className="text-xl font-bold text-blue-500">{totalAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                                 </div>
                                 <div className="flex justify-between items-center pt-1">
                                     <span className="text-sm font-semibold text-white">Due balance</span>
-                                    <span className="text-xl font-semibold text-orange-500">${Math.max(0, balanceDue).toLocaleString()}</span>
+                                    <span className="text-xl font-semibold text-orange-500">{Math.max(0, balanceDue).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                                 </div>
 
                                 {/* Salesman Commission - Info Only (not added to total) */}
@@ -2639,7 +2669,7 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                                             </div>
                                             {commissionAmount > 0 && (
                                                 <div className="text-xs text-green-400 font-medium text-right bg-green-500/10 px-2 py-1 rounded">
-                                                    Commission: ${commissionAmount.toLocaleString()}
+                                                    Commission: {commissionAmount.toLocaleString()}
                                                 </div>
                                             )}
                                         </div>
@@ -2914,7 +2944,7 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                         <span className="w-0.5 h-0.5 rounded-full bg-gray-600" />
                         
                         {/* Grand Total */}
-                        <span className="text-xs font-bold text-green-400">Total: ${totalAmount.toLocaleString()}</span>
+                        <span className="text-xs font-bold text-green-400">Total: {totalAmount.toLocaleString()}</span>
                     </div>
                 </div>
 
@@ -2971,7 +3001,7 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                     <span className="w-1 h-1 rounded-full bg-gray-600" />
                     
                     {/* Grand Total */}
-                    <span>Total: ${totalAmount.toLocaleString()}</span>
+                    <span>Total: {totalAmount.toLocaleString()}</span>
                 </div>
                 <div className="flex items-center gap-3">
                     <Button variant="outline" onClick={onClose} className="border-gray-700 text-gray-300 h-10">

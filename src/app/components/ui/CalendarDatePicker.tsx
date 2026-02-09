@@ -33,12 +33,32 @@ export const CalendarDatePicker: React.FC<CalendarDatePickerProps> = ({
   maxDate,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
-  const [selectedDate, setSelectedDate] = useState<Date | null>(value || null);
-  const [currentMonth, setCurrentMonth] = useState(value || new Date());
+  // Helper to safely convert value to Date
+  const getDateValue = (val: Date | undefined): Date | null => {
+    if (!val) return null;
+    if (val instanceof Date) {
+      if (isNaN(val.getTime())) {
+        console.warn('[CalendarDatePicker] Invalid Date object:', val);
+        return null;
+      }
+      return val;
+    }
+    // Try to convert string/number to Date
+    const dateVal = new Date(val);
+    if (isNaN(dateVal.getTime())) {
+      console.warn('[CalendarDatePicker] Invalid date value:', val);
+      return null;
+    }
+    return dateVal;
+  };
+  
+  const initialDate = getDateValue(value);
+  const [selectedDate, setSelectedDate] = useState<Date | null>(initialDate);
+  const [currentMonth, setCurrentMonth] = useState(initialDate || new Date());
   const [selectedTime, setSelectedTime] = useState(() => {
-    if (value) {
-      const hours = value.getHours().toString().padStart(2, '0');
-      const minutes = value.getMinutes().toString().padStart(2, '0');
+    if (initialDate) {
+      const hours = initialDate.getHours().toString().padStart(2, '0');
+      const minutes = initialDate.getMinutes().toString().padStart(2, '0');
       return `${hours}:${minutes}`;
     }
     return '00:00';
@@ -46,11 +66,12 @@ export const CalendarDatePicker: React.FC<CalendarDatePickerProps> = ({
 
   // Sync internal state when value prop changes (e.g. parent loads saved date in edit mode)
   useEffect(() => {
-    if (value) {
-      setSelectedDate(value);
-      setCurrentMonth(value);
-      const hours = value.getHours().toString().padStart(2, '0');
-      const minutes = value.getMinutes().toString().padStart(2, '0');
+    const dateValue = getDateValue(value);
+    if (dateValue) {
+      setSelectedDate(dateValue);
+      setCurrentMonth(dateValue);
+      const hours = dateValue.getHours().toString().padStart(2, '0');
+      const minutes = dateValue.getMinutes().toString().padStart(2, '0');
       setSelectedTime(`${hours}:${minutes}`);
     } else {
       setSelectedDate(null);

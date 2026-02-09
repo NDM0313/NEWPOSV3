@@ -59,7 +59,7 @@ export const StockAdjustmentDrawer: React.FC<StockAdjustmentDrawerProps> = ({
       setQuantity(0);
       setReason('correction');
       setNotes('');
-      setDate(new Date().toISOString().split('T')[0]);
+      setDate(new Date()); // Set to Date object, not string
     }
   }, [product]);
 
@@ -88,7 +88,7 @@ export const StockAdjustmentDrawer: React.FC<StockAdjustmentDrawerProps> = ({
       quantity,
       reason,
       notes,
-      date,
+      date: date instanceof Date ? date.toISOString().split('T')[0] : date, // Convert Date to string for API
       newStock: calculatedNewStock
     });
 

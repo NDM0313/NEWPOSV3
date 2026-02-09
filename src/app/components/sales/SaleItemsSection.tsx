@@ -3,8 +3,8 @@ import { Search, Plus, Trash2, Package, ChevronsUpDown, Edit, Sparkles } from 'l
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Badge } from "../ui/badge";
-import { InlineVariationSelector, Variation } from "../ui/inline-variation-selector";
 import { cn } from "../ui/utils";
+import type { Variation } from "../ui/inline-variation-selector";
 import {
     Command,
     CommandEmpty,
@@ -86,7 +86,7 @@ interface SaleItemsSectionProps {
     // Inline variation selection (from backend product.variations - no dummy data)
     showVariationSelector: boolean;
     selectedProductForVariation: Product | null;
-    productVariations: Record<string, Array<{ id: string; size?: string; color?: string; sku?: string; attributes?: Record<string, unknown> }>>;
+    productVariations: Record<string, Array<{ id: string; size?: string; color?: string; sku?: string; stock?: number; price?: number; attributes?: Record<string, unknown> }>>;
     handleVariationSelect: (variation: Variation) => void;
     setShowVariationSelector: React.Dispatch<React.SetStateAction<boolean>>;
     setSelectedProductForVariation: React.Dispatch<React.SetStateAction<Product | null>>;
@@ -103,6 +103,7 @@ interface SaleItemsSectionProps {
     itemVariationRefs: React.MutableRefObject<Record<number, HTMLButtonElement | null>>;
     handleQtyKeyDown: (e: React.KeyboardEvent, itemId: number) => void;
     handlePriceKeyDown: (e: React.KeyboardEvent, itemId: number) => void;
+    lastAddedItemId?: number | null; // ID of the most recently added item (for auto-focus)
 }
 
 export const SaleItemsSection: React.FC<SaleItemsSectionProps> = ({
@@ -155,6 +156,7 @@ export const SaleItemsSection: React.FC<SaleItemsSectionProps> = ({
     itemVariationRefs,
     handleQtyKeyDown,
     handlePriceKeyDown,
+    lastAddedItemId = null,
 }) => {
     const { openDrawer, activeDrawer } = useNavigation();
 
@@ -281,21 +283,6 @@ export const SaleItemsSection: React.FC<SaleItemsSectionProps> = ({
                         </Popover>
                     </div>
 
-                    {/* Add New Product Button - Redesigned */}
-                    <button
-                        onClick={() => openDrawer('addProduct', 'addSale')}
-                        className="group relative h-12 px-5 bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-500 hover:to-emerald-600 text-white font-medium rounded-xl transition-all duration-300 shadow-lg shadow-emerald-500/25 hover:shadow-emerald-500/40 hover:scale-105 flex items-center gap-2 overflow-hidden"
-                    >
-                        {/* Animated shine effect */}
-                        <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700"></div>
-                        
-                        <div className="relative z-10 flex items-center gap-2">
-                            <div className="w-5 h-5 rounded-full bg-white/20 flex items-center justify-center">
-                                <Plus size={14} className="shrink-0" />
-                            </div>
-                            <span className="text-sm whitespace-nowrap">New Product</span>
-                        </div>
-                    </button>
                 </div>
                 
                 {/* Quick Info Helper Text */}
@@ -333,7 +320,66 @@ export const SaleItemsSection: React.FC<SaleItemsSectionProps> = ({
                 <div className="flex-1 overflow-y-auto">
                     {items.length > 0 ? (
                         <div className="divide-y divide-gray-800/50">
-                            {items.map((item, index) => (
+                            {items.map((item, index) => {
+                                // In edit mode, if item has variation but missing size/color/sku, use selected variation from productVariations for display (same as add-mode row)
+                                const variations = productVariations?.[item.productId] ?? productVariations?.[String(item.productId)] ?? productVariations?.[Number(item.productId)] ?? [];
+                                // Find variation by ID (handle both string and number comparison)
+                                const selectedVariationForDisplay = item.selectedVariationId ? variations.find((v: { id?: string }) => {
+                                    if (!v.id) return false;
+                                    // Try multiple comparison methods to handle type mismatches
+                                    return v.id === item.selectedVariationId || 
+                                           String(v.id) === String(item.selectedVariationId) ||
+                                           v.id?.toString() === item.selectedVariationId?.toString() ||
+                                           (typeof v.id === 'string' && typeof item.selectedVariationId === 'string' && v.id.trim() === item.selectedVariationId.trim());
+                                }) : null;
+                                
+                                // Extract variation attributes properly
+                                const variationAttrs = selectedVariationForDisplay?.attributes || {};
+                                
+                                // Build variation text - prioritize direct size/color, then attributes, then item's own size/color
+                                let variationText: string | null = null;
+                                
+                                // First try: Direct size/color from selected variation
+                                if (selectedVariationForDisplay?.size || selectedVariationForDisplay?.color) {
+                                    variationText = [selectedVariationForDisplay.size, selectedVariationForDisplay.color].filter(Boolean).join(' / ');
+                                }
+                                // Second try: Attributes from selected variation
+                                else if (variationAttrs && Object.keys(variationAttrs).length > 0) {
+                                    const attrEntries = Object.entries(variationAttrs)
+                                        .filter(([_, v]) => v != null && v !== '')
+                                        .map(([k, v]) => `${k.charAt(0).toUpperCase() + k.slice(1)}: ${v}`);
+                                    if (attrEntries.length > 0) {
+                                        variationText = attrEntries.join(', ');
+                                    }
+                                }
+                                // Third try: Item's own size/color (set when variation was selected)
+                                if (!variationText && (item.size || item.color)) {
+                                    variationText = [item.size, item.color].filter(Boolean).join(' / ');
+                                }
+                                
+                                // When a variation is selected, show variation SKU (not base product SKU)
+                                const displaySku = selectedVariationForDisplay
+                                    ? (selectedVariationForDisplay.sku || `${item.sku}-${selectedVariationForDisplay.size || ''}-${selectedVariationForDisplay.color || ''}`.replace(/\s+/g, '-').toUpperCase())
+                                    : item.sku;
+                                const displaySize = item.size ?? selectedVariationForDisplay?.size ?? '';
+                                const displayColor = item.color ?? selectedVariationForDisplay?.color ?? '';
+                                
+                                // Get latest stock dynamically from productVariations or filteredProducts
+                                let displayStock = 0;
+                                if (selectedVariationForDisplay && (selectedVariationForDisplay as any).stock !== undefined) {
+                                    // If variation is selected, use variation stock
+                                    displayStock = (selectedVariationForDisplay as any).stock ?? 0;
+                                } else {
+                                    // Otherwise, get stock from filteredProducts
+                                    const currentProduct = filteredProducts.find(p => 
+                                        p.id === item.productId || 
+                                        String(p.id) === String(item.productId) || 
+                                        Number(p.id) === Number(item.productId)
+                                    );
+                                    displayStock = currentProduct?.stock ?? item.stock ?? 0;
+                                }
+
+                                return (
                                 <div key={item.id}>
                                     {/* Main Item Row - FIXED SPACING (Packing cell when enablePacking) */}
                                     <div className={enablePacking
@@ -347,22 +393,30 @@ export const SaleItemsSection: React.FC<SaleItemsSectionProps> = ({
                                             </span>
                                         </div>
 
-                                        {/* Product Name & SKU (Max Space) */}
+                                        {/* Product Name & SKU (Max Space) - use display values so edit mode shows full line like add mode */}
                                         <div className="min-w-0">
                                             <div className="flex items-start">
                                                 <div className="flex-1 min-w-0">
                                                     <div className="text-sm font-medium text-white leading-tight mb-0.5 truncate">{item.name}</div>
                                                     <div className="flex items-center gap-1 text-[11px] text-gray-500">
-                                                        <span className="font-mono">{item.sku}</span>
+                                                        <span className="font-mono">{displaySku}</span>
+                                                        {variationText && (
+                                                            <>
+                                                                <span>·</span>
+                                                                <span className="text-blue-400">
+                                                                    {variationText}
+                                                                </span>
+                                                            </>
+                                                        )}
                                                         <span>·</span>
-                                                        <span className={item.stock && item.stock > 0 ? 'text-green-500' : 'text-red-500'}>
-                                                            {item.stock || 0}
+                                                        <span className={displayStock > 0 ? 'text-green-500' : 'text-red-500'}>
+                                                            {displayStock}
                                                         </span>
                                                         {item.lastPurchasePrice && (
                                                             <>
                                                                 <span>·</span>
                                                                 <span className="text-amber-500">
-                                                                    ${item.lastPurchasePrice}
+                                                                    {item.lastPurchasePrice}
                                                                 </span>
                                                             </>
                                                         )}
@@ -371,14 +425,15 @@ export const SaleItemsSection: React.FC<SaleItemsSectionProps> = ({
                                             </div>
                                         </div>
 
-                                        {/* Variation (Fixed Width) */}
+                                        {/* Variation (Fixed Width) - use variation attributes properly */}
                                         <div className="w-[100px]">
-                                            <div className="flex items-center gap-1 text-[10px] text-gray-500">
-                                                {item.size && <span>{item.size}</span>}
-                                                {item.size && item.color && <span>·</span>}
-                                                {item.color && <span>{item.color}</span>}
-                                                {!item.size && !item.color && <span className="text-gray-700">-</span>}
-                                            </div>
+                                            {variationText ? (
+                                                <div className="text-[10px] text-gray-300 leading-tight">
+                                                    {variationText}
+                                                </div>
+                                            ) : (
+                                                <span className="text-[10px] text-gray-700">-</span>
+                                            )}
                                         </div>
 
                                     {/* Packing (Fixed Width) - only when enablePacking */}
@@ -455,7 +510,7 @@ export const SaleItemsSection: React.FC<SaleItemsSectionProps> = ({
                                     {/* Total (Fixed 80px - RIGHT ALIGNED) */}
                                     <div className="w-[80px]">
                                         <div className="text-right text-sm font-bold text-white">
-                                            ${(item.price * item.qty).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                                            {(item.price * item.qty).toLocaleString('en-US', { minimumFractionDigits: 2 })}
                                         </div>
                                     </div>
 
@@ -471,11 +526,13 @@ export const SaleItemsSection: React.FC<SaleItemsSectionProps> = ({
                                     </div>
                                 </div>
 
-                                {/* Inline Variation: Edit mode = read-only (locked). Create mode = selector buttons. */}
-                                {item.showVariations && productVariations[String(item.productId)] && (() => {
-                                    const variations = productVariations[String(item.productId)];
-                                    const selectedVariation = item.selectedVariationId ? variations.find((v: { id: string }) => v.id === item.selectedVariationId) : null;
-                                    const getDisplayText = (v: { size?: string; color?: string; attributes?: Record<string, unknown> }) => {
+                                {/* Inline Variation Selector: Show when item needs variation selection */}
+                                {item.showVariations && (() => {
+                                    const variations = productVariations[item.productId] || 
+                                                     productVariations[String(item.productId)] || 
+                                                     productVariations[Number(item.productId)] || [];
+                                    const selectedVariation = item.selectedVariationId ? variations.find((v: { id?: string }) => v.id === item.selectedVariationId) : null;
+                                    const getDisplayText = (v: any) => {
                                         const size = (v.size || '').toString().trim();
                                         const color = (v.color || '').toString().trim();
                                         if (size && color) return `${size} / ${color}`;
@@ -488,54 +545,32 @@ export const SaleItemsSection: React.FC<SaleItemsSectionProps> = ({
                                         return 'Default';
                                     };
 
+                                    // Edit mode + persisted item: no extra row – variation is already shown in main row
                                     if (isEditMode && item.selectedVariationId && selectedVariation) {
-                                        const variationSku = (selectedVariation as { sku?: string }).sku || item.sku;
-                                        return (
-                                            <div className="bg-gray-800/50 border-t border-gray-700 px-4 py-3">
-                                                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
-                                                    <span className="text-gray-400 font-medium shrink-0">Variation:</span>
-                                                    <span className="text-white font-medium">{getDisplayText(selectedVariation)}</span>
-                                                    <span className="text-gray-500 font-mono">SKU: {variationSku}</span>
-                                                    {item.stock != null && (
-                                                        <span className={cn("font-medium tabular-nums", item.stock >= 0 ? "text-green-500" : "text-red-500")}>
-                                                            Stock: {item.stock}
-                                                        </span>
-                                                    )}
-                                                </div>
-                                            </div>
-                                        );
+                                        return null;
                                     }
 
+                                    if (variations.length === 0) return null;
+                                    if (!handleInlineVariationSelect) return null;
+
+                                    // Create mode: show BLUE / WHITE (or other) selector buttons
                                     return (
                                         <div className="bg-blue-500/5 border-t border-blue-500/20 px-4 py-3">
                                             <div className="flex items-center gap-3 flex-wrap">
+                                                <span className="text-xs text-blue-400 font-medium shrink-0">{item.selectedVariationId ? 'Variation:' : 'Select Variation:'}</span>
                                                 <div className="flex flex-wrap gap-2 flex-1">
-                                                    {variations.map((variation: { id: string; size?: string; color?: string; attributes?: Record<string, unknown> }, vIndex: number) => {
+                                                    {variations.map((variation: any, vIndex: number) => {
+                                                        const variationSku = variation.sku || (variation.size && variation.color ? `${item.sku}-${variation.size}-${variation.color}` : variation.size ? `${item.sku}-${variation.size}` : variation.color ? `${item.sku}-${variation.color}` : item.sku).replace(/\s+/g, '-').toUpperCase();
                                                         const isSelected = item.selectedVariationId === variation.id;
                                                         return (
                                                             <button
                                                                 key={variation.id || vIndex}
-                                                                ref={(el) => { if (vIndex === 0) itemVariationRefs.current[item.id] = el; }}
                                                                 onClick={() => handleInlineVariationSelect(item.id, variation)}
-                                                                onKeyDown={(e) => {
-                                                                    const totalVariations = variations.length;
-                                                                    const variationButtons = document.querySelectorAll(`[data-variation-item="${item.id}"]`);
-                                                                    if (e.key === 'ArrowRight') {
-                                                                        e.preventDefault();
-                                                                        (variationButtons[(vIndex + 1) % totalVariations] as HTMLButtonElement)?.focus();
-                                                                    } else if (e.key === 'ArrowLeft') {
-                                                                        e.preventDefault();
-                                                                        (variationButtons[(vIndex - 1 + totalVariations) % totalVariations] as HTMLButtonElement)?.focus();
-                                                                    } else if (e.key === 'Enter') {
-                                                                        e.preventDefault();
-                                                                        handleInlineVariationSelect(item.id, variation);
-                                                                    }
-                                                                }}
-                                                                data-variation-item={item.id}
                                                                 className={cn(
-                                                                    "px-3 py-1.5 text-xs rounded border transition-all focus:ring-2 focus:ring-blue-500/50 focus:outline-none",
-                                                                    isSelected ? "bg-blue-500 text-white border-blue-400" : "bg-gray-800 hover:bg-blue-600 text-gray-300 hover:text-white border-gray-700 hover:border-blue-500"
+                                                                    "px-3 py-1.5 text-xs rounded border transition-all",
+                                                                    isSelected ? "bg-blue-600 text-white border-blue-500 font-semibold" : "bg-gray-800 text-gray-300 border-gray-700 hover:bg-gray-700 hover:border-gray-600"
                                                                 )}
+                                                                title={variationSku}
                                                             >
                                                                 {getDisplayText(variation)}
                                                             </button>
@@ -543,14 +578,18 @@ export const SaleItemsSection: React.FC<SaleItemsSectionProps> = ({
                                                     })}
                                                 </div>
                                             </div>
-                                            {item.selectedVariationId && (
-                                                <div className="mt-2 text-[10px] text-gray-400 font-mono">SKU: {item.sku}</div>
-                                            )}
+                                            {item.selectedVariationId && (() => {
+                                                const v = variations.find((x: any) => x.id === item.selectedVariationId);
+                                                const variationSku = v?.sku || (v ? `${item.sku}-${v.size || ''}-${v.color || ''}`.replace(/\s+/g, '-').toUpperCase() : item.sku);
+                                                return <div className="mt-2 text-[10px] text-gray-400 font-mono">SKU: {variationSku}</div>;
+                                            })()}
+                                            {!item.selectedVariationId && <div className="mt-2 text-[10px] text-amber-400">Select a variation above</div>}
                                         </div>
                                     );
                                 })()}
                             </div>
-                        ))}
+                            );
+                        })}
                     </div>
                 ) : (
                     <div className="py-20 text-center text-gray-500">
