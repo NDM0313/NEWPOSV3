@@ -63,6 +63,9 @@ export interface PurchaseItem {
   discount: number;
   tax: number;
   total: number;
+  unit?: string; // Short code (pcs, m, yd) for view
+  packingDetails?: { total_boxes?: number; total_pieces?: number; total_meters?: number; [k: string]: unknown };
+  variation?: { id: string; sku?: string; attributes?: Record<string, string> };
 }
 
 export interface Purchase {
@@ -174,6 +177,9 @@ export const convertFromSupabasePurchase = (supabasePurchase: any): Purchase => 
       discount: item.discount || 0,
       tax: item.tax || 0,
       total: item.total || 0,
+      unit: item.unit || undefined,
+      packingDetails: item.packing_details || undefined,
+      variation: item.variation || item.product_variations || undefined,
     })),
     // 🔒 CRITICAL FIX: Items count from joined purchase_items array
     // If items array is missing or empty, count is 0
@@ -329,7 +335,7 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
           product_name: item.productName,
           sku: (item as any).sku && (item as any).sku.trim() !== '' ? (item as any).sku : 'N/A', // Required in DB
           quantity: item.quantity,
-          unit: (item as any).unit && (item as any).unit.trim() !== '' ? (item as any).unit : 'piece',
+          unit: (item as any).unit && (item as any).unit.trim() !== '' ? (item as any).unit : 'pcs',
           unit_price: item.price || 0,
           discount_percentage: (item as any).discountPercentage || 0,
           discount_amount: item.discount || 0,
@@ -359,22 +365,28 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
       // Convert back to app format
       const newPurchase = convertFromSupabasePurchase(result);
       
-      // 🔒 CRITICAL FIX: Ensure items are populated from purchaseData (result may not have items)
-      // Stock movement creation needs items, so we must preserve them
+      // 🔒 CRITICAL FIX: Ensure items are populated (result from createPurchase has no items)
+      // Use supabaseItems so packing_details is exactly what we sent to DB for box_change/piece_change
       if (!newPurchase.items || newPurchase.items.length === 0) {
-        newPurchase.items = purchaseData.items.map((item: any) => ({
-          id: item.id?.toString() || Date.now().toString(),
-          productId: item.productId.toString(),
-          variationId: item.variationId || undefined,
-          productName: item.productName,
-          sku: item.sku || 'N/A',
-          quantity: item.quantity,
-          receivedQty: item.receivedQty || item.quantity,
-          price: item.price || 0,
-          discount: item.discount || 0,
-          tax: item.tax || 0,
-          total: item.total || (item.price || 0) * item.quantity,
-        }));
+        const formItems = purchaseData.items || [];
+        newPurchase.items = supabaseItems.map((si: any, idx: number) => {
+          const formItem = formItems[idx];
+          const packing = si.packing_details ?? formItem?.packingDetails;
+          return {
+            id: formItem?.id?.toString() || Date.now().toString(),
+            productId: si.product_id,
+            variationId: si.variation_id || undefined,
+            productName: si.product_name,
+            sku: si.sku || 'N/A',
+            quantity: si.quantity,
+            receivedQty: formItem?.receivedQty ?? si.quantity,
+            price: si.unit_price || 0,
+            discount: si.discount_amount || 0,
+            tax: si.tax_amount || 0,
+            total: si.total || 0,
+            packingDetails: packing || undefined,
+          };
+        });
       }
       
       // Update local state
@@ -550,20 +562,27 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
               });
               
               // Create stock movement via productService (proper audit trail)
-              // CRITICAL: Include variation_id if item has variation
+              // Packing: packingDetails or packing_details; support total_boxes/boxes and total_pieces/pieces
+              const packing = (item as any).packingDetails || (item as any).packing_details;
+              const boxChange = packing && (packing.total_boxes != null || packing.boxes != null)
+                ? Number(packing.total_boxes ?? packing.boxes ?? 0) : 0;
+              const pieceChange = packing && (packing.total_pieces != null || packing.pieces != null)
+                ? Number(packing.total_pieces ?? packing.pieces ?? 0) : 0;
               const movement = await productService.createStockMovement({
                 company_id: companyId,
                 branch_id: purchaseBranchId === 'all' ? undefined : purchaseBranchId,
                 product_id: item.productId,
-                variation_id: item.variationId || undefined, // Include variation for variation-specific stock
+                variation_id: item.variationId || undefined,
                 movement_type: 'purchase',
-                quantity: qtyToAdd, // Positive for stock IN
+                quantity: qtyToAdd,
                 unit_cost: item.price || 0,
                 total_cost: (item.price || 0) * qtyToAdd,
                 reference_type: 'purchase',
                 reference_id: newPurchase.id,
                 notes: `Purchase ${newPurchase.purchaseNo} - ${item.productName}${item.variationId ? ' (Variation)' : ''}`,
                 created_by: user?.id,
+                box_change: boxChange,
+                piece_change: pieceChange,
               });
               
               if (!movement || !movement.id) {
@@ -1040,7 +1059,7 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
             product_name: item.productName || 'Unknown Product',
             sku: item.sku || 'N/A',
             quantity: quantity,
-            unit: item.unit || 'piece',
+            unit: item.unit || 'pcs',
             unit_price: unitPrice,
             discount_percentage: item.discountPercentage || 0,
             discount_amount: item.discount || 0,
@@ -1437,22 +1456,27 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
           
           for (const item of purchase.items) {
             if (item.productId && item.quantity > 0) {
-              // Use receivedQty if available, otherwise use quantity
               const qtyToAdd = item.receivedQty > 0 ? item.receivedQty : item.quantity;
-              
-              // Create stock movement via productService
+              const packing = (item as any).packingDetails || (item as any).packing_details;
+              const boxChange = packing && (packing.total_boxes != null || packing.boxes != null)
+                ? Number(packing.total_boxes ?? packing.boxes ?? 0) : 0;
+              const pieceChange = packing && (packing.total_pieces != null || packing.pieces != null)
+                ? Number(packing.total_pieces ?? packing.pieces ?? 0) : 0;
               await productService.createStockMovement({
                 company_id: companyId,
                 branch_id: purchaseBranchId === 'all' ? undefined : purchaseBranchId,
                 product_id: item.productId,
+                variation_id: (item as any).variationId || undefined,
                 movement_type: 'purchase',
-                quantity: qtyToAdd, // Positive for stock IN
+                quantity: qtyToAdd,
                 unit_cost: item.price || 0,
                 total_cost: (item.price || 0) * qtyToAdd,
                 reference_type: 'purchase',
                 reference_id: purchaseId,
                 notes: `Purchase ${purchase.purchaseNo} - ${item.productName}`,
                 created_by: user?.id,
+                box_change: boxChange,
+                piece_change: pieceChange,
               });
             }
           }

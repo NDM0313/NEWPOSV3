@@ -486,15 +486,24 @@ export const saleReturnService = {
   },
 
   /**
-   * Delete a draft sale return
+   * Delete a draft sale return only. Final returns are locked and cannot be deleted.
    */
   async deleteSaleReturn(returnId: string, companyId: string): Promise<void> {
+    const { data: existing } = await supabase
+      .from('sale_returns')
+      .select('status')
+      .eq('id', returnId)
+      .eq('company_id', companyId)
+      .single();
+    if (existing?.status === 'final') {
+      throw new Error('Cannot delete a finalized sale return. It is locked.');
+    }
     const { error } = await supabase
       .from('sale_returns')
       .delete()
       .eq('id', returnId)
       .eq('company_id', companyId)
-      .eq('status', 'draft'); // Only allow deleting drafts
+      .eq('status', 'draft');
 
     if (error) throw error;
   },

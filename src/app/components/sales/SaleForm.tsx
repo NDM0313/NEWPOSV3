@@ -133,6 +133,7 @@ interface SaleItem {
     packingDetails?: PackingDetails;
     packing_quantity?: number; // Backend-ready: total_meters
     packing_unit?: string; // Backend-ready: 'meters' etc.
+    unit?: string; // Short code (pcs, m, yd) – from DB on edit, from product on new
     // Stock and Purchase Info
     stock?: number;
     lastPurchasePrice?: number;
@@ -1071,14 +1072,15 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                         size: item.size,
                         color: item.color,
                         variationId,
-                        selectedVariationId: variationId, // For UI dropdown preselect
-                        showVariations: hasVariation || Boolean(item.product?.has_variations), // Show variation column when we have saved variation or product has variations
+                        selectedVariationId: variationId,
+                        showVariations: hasVariation || Boolean(item.product?.has_variations),
                         stock: 0,
                         lastPurchasePrice: undefined,
                         lastSupplier: undefined,
-                        packingDetails: item.packingDetails,
-                        thaans: item.packingDetails?.total_boxes,
-                        meters: item.packingDetails?.total_meters,
+                        unit: item.unit ?? undefined,
+                        packingDetails: item.packing_details || item.packingDetails,
+                        thaans: (item.packing_details || item.packingDetails)?.total_boxes,
+                        meters: (item.packing_details || item.packingDetails)?.total_meters,
                     };
                 });
                 console.log('[SALE FORM] ✅ Converted items for edit mode:', convertedItems.length, 'items');

@@ -141,12 +141,19 @@ export const customerLedgerAPI = {
     const totalInvoices = invoices.length;
     const totalInvoiceAmount = invoices.reduce((sum, s) => sum + (s.total || 0), 0);
     const totalPaymentReceived = invoices.reduce((sum, s) => sum + (s.paid_amount || 0), 0);
-    const pendingAmount = invoices.reduce((sum, s) => sum + (s.due_amount || 0), 0);
+    // Sale returns (final) in date range – CREDIT, reduce customer balance
+    let returnsInRange = 0;
+    let returnsQuery = supabase.from('sale_returns').select('total').eq('company_id', companyId).eq('customer_id', customerId).eq('status', 'final');
+    if (fromDate) returnsQuery = returnsQuery.gte('return_date', fromDate);
+    if (toDate) returnsQuery = returnsQuery.lte('return_date', toDate);
+    const { data: rangeReturns } = await returnsQuery;
+    returnsInRange = (rangeReturns || []).reduce((sum: number, r: any) => sum + (Number(r.total) || 0), 0);
+    const pendingAmount = Math.max(0, invoices.reduce((sum, s) => sum + (s.due_amount || 0), 0) - returnsInRange);
     const fullyPaid = invoices.filter(s => s.payment_status === 'paid').length;
     const partiallyPaid = invoices.filter(s => s.payment_status === 'partial').length;
     const unpaid = invoices.filter(s => s.payment_status === 'unpaid').length;
 
-    // Calculate opening balance (sales before fromDate)
+    // Calculate opening balance (sales - paid - sale returns before fromDate)
     let openingBalance = 0;
     if (fromDate) {
       const { data: previousSales } = await supabase
@@ -155,17 +162,22 @@ export const customerLedgerAPI = {
         .eq('company_id', companyId)
         .eq('customer_id', customerId)
         .lt('invoice_date', fromDate);
-      
-      if (previousSales) {
-        const previousTotal = previousSales.reduce((sum, s) => sum + (s.total || 0), 0);
-        const previousPaid = previousSales.reduce((sum, s) => sum + (s.paid_amount || 0), 0);
-        openingBalance = previousTotal - previousPaid;
-      }
+      const previousTotal = (previousSales || []).reduce((sum, s) => sum + (s.total || 0), 0);
+      const previousPaid = (previousSales || []).reduce((sum, s) => sum + (s.paid_amount || 0), 0);
+      const { data: previousReturns } = await supabase
+        .from('sale_returns')
+        .select('total')
+        .eq('company_id', companyId)
+        .eq('customer_id', customerId)
+        .eq('status', 'final')
+        .lt('return_date', fromDate);
+      const previousReturnsTotal = (previousReturns || []).reduce((sum, r: any) => sum + (Number(r.total) || 0), 0);
+      openingBalance = previousTotal - previousPaid - previousReturnsTotal;
     }
 
-    // Calculate totals
+    // Calculate totals (credits = payments received + sale returns)
     const totalDebit = totalInvoiceAmount;
-    const totalCredit = totalPaymentReceived;
+    const totalCredit = totalPaymentReceived + returnsInRange;
     const closingBalance = openingBalance + totalDebit - totalCredit;
 
     return {
@@ -242,6 +254,22 @@ export const customerLedgerAPI = {
       console.error('[CUSTOMER LEDGER API] Error fetching payments:', paymentsError);
     }
 
+    // Get sale returns for this customer (CREDIT - reduces balance)
+    let returnsQuery = supabase
+      .from('sale_returns')
+      .select('id, return_no, return_date, total, status')
+      .eq('company_id', companyId)
+      .eq('customer_id', customerId)
+      .eq('status', 'final');
+
+    if (fromDate) returnsQuery = returnsQuery.gte('return_date', fromDate);
+    if (toDate) returnsQuery = returnsQuery.lte('return_date', toDate);
+
+    const { data: saleReturns, error: returnsError } = await returnsQuery.order('return_date', { ascending: false });
+    if (returnsError) {
+      console.error('[CUSTOMER LEDGER API] Error fetching sale returns:', returnsError);
+    }
+
     // Combine and format transactions
     const transactions: Transaction[] = [];
 
@@ -279,6 +307,23 @@ export const customerLedgerAPI = {
       });
     });
 
+    // Add sale returns as credit transactions (reduces customer balance)
+    (saleReturns || []).forEach((ret: any) => {
+      transactions.push({
+        id: ret.id,
+        date: ret.return_date,
+        referenceNo: ret.return_no || `RET-${ret.id?.slice(0, 8)}`,
+        documentType: 'Sale Return' as const,
+        description: `Sale Return ${ret.return_no || ret.id?.slice(0, 8)}`,
+        paymentAccount: '',
+        notes: '',
+        debit: 0,
+        credit: ret.total || 0,
+        runningBalance: 0,
+        linkedInvoices: [],
+      });
+    });
+
     // Sort by date
     transactions.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
@@ -293,7 +338,15 @@ export const customerLedgerAPI = {
         .lt('invoice_date', fromDate);
       const prevTotal = (prevSales || []).reduce((sum, s) => sum + (s.total || 0), 0);
       const prevPaid = (prevSales || []).reduce((sum, s) => sum + (s.paid_amount || 0), 0);
-      runningBalance = prevTotal - prevPaid;
+      const { data: prevReturns } = await supabase
+        .from('sale_returns')
+        .select('total')
+        .eq('company_id', companyId)
+        .eq('customer_id', customerId)
+        .eq('status', 'final')
+        .lt('return_date', fromDate);
+      const prevReturnsTotal = (prevReturns || []).reduce((sum, r: any) => sum + (Number(r.total) || 0), 0);
+      runningBalance = prevTotal - prevPaid - prevReturnsTotal;
     }
     transactions.forEach(t => {
       runningBalance += t.debit - t.credit;

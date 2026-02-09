@@ -138,7 +138,7 @@ export const inventoryService = {
     // 🔒 DIAGNOSTIC: Include movement_type, reference_type, reference_id, notes, created_at for negative stock diagnosis
     let stockQuery = supabase
       .from('stock_movements')
-      .select('product_id, variation_id, quantity, movement_type, reference_type, reference_id, notes, created_at')
+      .select('product_id, variation_id, quantity, box_change, piece_change, movement_type, reference_type, reference_id, notes, created_at')
       .eq('company_id', companyId)
       .in('product_id', productIds);
 
@@ -183,29 +183,35 @@ export const inventoryService = {
       }
     }
 
-    // Step 4: Calculate stock from stock_movements (SINGLE SOURCE OF TRUTH)
-    // CRITICAL: Group by product_id AND variation_id
-    const productStockMap: Record<string, number> = {}; // Product-level stock (no variation)
-    const variationStockMap: Record<string, number> = {}; // Variation-level stock
+    // Step 4: Calculate stock + boxes + pieces from stock_movements (SINGLE SOURCE OF TRUTH)
+    const productStockMap: Record<string, number> = {};
+    const variationStockMap: Record<string, number> = {};
+    const productBoxMap: Record<string, number> = {};
+    const variationBoxMap: Record<string, number> = {};
+    const productPieceMap: Record<string, number> = {};
+    const variationPieceMap: Record<string, number> = {};
     
     if (movements && !movementsError) {
       movements.forEach((m: any) => {
         const productId = m.product_id;
         const variationId = m.variation_id;
         const qty = Number(m.quantity) || 0;
+        const boxCh = Number(m.box_change) || 0;
+        const pieceCh = Number(m.piece_change) || 0;
         
-        // 🔒 SAFETY: Validate product_id is UUID (not null/undefined)
         if (!productId) {
           console.warn('[INVENTORY SERVICE] ⚠️ Movement with null product_id:', m);
-          return; // Skip invalid movements
+          return;
         }
         
         if (variationId) {
-          // Variation-specific stock
           variationStockMap[variationId] = (variationStockMap[variationId] || 0) + qty;
+          variationBoxMap[variationId] = (variationBoxMap[variationId] || 0) + boxCh;
+          variationPieceMap[variationId] = (variationPieceMap[variationId] || 0) + pieceCh;
         } else {
-          // Product-level stock (no variation)
           productStockMap[productId] = (productStockMap[productId] || 0) + qty;
+          productBoxMap[productId] = (productBoxMap[productId] || 0) + boxCh;
+          productPieceMap[productId] = (productPieceMap[productId] || 0) + pieceCh;
         }
       });
     } else if (movementsError) {
@@ -220,14 +226,16 @@ export const inventoryService = {
       const hasVariations = p.has_variations === true || (variationMap[p.id]?.length || 0) > 0;
 
       let totalStock = 0;
+      let totalBoxes = 0;
+      let totalPieces = 0;
       if (hasVariations) {
-        // RULE 1: Parent cannot hold stock; stock only at variation level. Parent row = SUM of variations.
-        totalStock = (variationMap[p.id] || []).reduce((sum, v) => {
-          const varStock = variationStockMap[v.id] || 0;
-          return sum + varStock;
-        }, 0);
+        totalStock = (variationMap[p.id] || []).reduce((sum, v) => sum + (variationStockMap[v.id] || 0), 0);
+        totalBoxes = (variationMap[p.id] || []).reduce((sum, v) => sum + (variationBoxMap[v.id] || 0), 0);
+        totalPieces = (variationMap[p.id] || []).reduce((sum, v) => sum + (variationPieceMap[v.id] || 0), 0);
       } else {
         totalStock = productStockMap[p.id] || 0;
+        totalBoxes = productBoxMap[p.id] || 0;
+        totalPieces = productPieceMap[p.id] || 0;
       }
       
       // 🔒 SAFETY: Check for negative stock and log warning with diagnostic info
@@ -285,9 +293,9 @@ export const inventoryService = {
         name: p.name || '',
         category: p.product_categories?.name || 'Uncategorized',
         categoryId: p.category_id,
-        stock: totalStock, // Movement-based; can be negative (no clamping)
-        boxes: 0, // When packing ON + product has packing: calculated; else 0
-        pieces: 0, // When packing ON + product has packing: remainder; else 0
+        stock: totalStock,
+        boxes: Math.round(totalBoxes * 100) / 100,
+        pieces: Math.round(totalPieces * 100) / 100,
         unit: p.unit_id && unitMap[p.unit_id] ? unitMap[p.unit_id].short_code : 'pcs',
         avgCost,
         sellingPrice,
@@ -302,7 +310,9 @@ export const inventoryService = {
           id: v.id,
           sku: v.sku,
           attributes: v.attributes,
-          stock: variationStockMap[v.id] ?? 0, // Allow negative; no clamping
+          stock: variationStockMap[v.id] ?? 0,
+          boxes: Math.round((variationBoxMap[v.id] ?? 0) * 100) / 100,
+          pieces: Math.round((variationPieceMap[v.id] ?? 0) * 100) / 100,
         })) : [],
         isComboProduct: !!p.is_combo_product,
         comboItemCount: comboItemCountMap[p.id] ?? 0,

@@ -361,12 +361,11 @@ export const InventoryDesignTestPage = () => {
                       {visibleCols.includes('stockQty') && (
                         <td className="px-4 py-3 text-center">
                           <span className={cn('font-semibold tabular-nums text-sm', product.stock < 0 ? 'text-red-400' : product.status === 'Out' || product.status === 'Low' ? 'text-red-400' : 'text-white')}>{product.stock}</span>
-                          {enablePacking && <span className="text-gray-500 text-xs ml-1">{product.unit || 'pcs'}</span>}
                         </td>
                       )}
                       {enablePacking && visibleCols.includes('boxes') && <td className="px-4 py-3 text-center text-gray-400 text-sm">{product.boxes ?? 0}</td>}
                       {enablePacking && visibleCols.includes('pieces') && <td className="px-4 py-3 text-center text-gray-400 text-sm">{product.pieces ?? 0}</td>}
-                      {enablePacking && visibleCols.includes('unit') && <td className="px-4 py-3 text-center text-gray-400 text-sm">{product.unit || 'pcs'}</td>}
+                      {enablePacking && visibleCols.includes('unit') && <td className="px-4 py-3 text-center text-gray-400 text-sm">{product.unit ?? '—'}</td>}
                       {visibleCols.includes('avgCost') && (
                         <td className={cn('px-4 py-3 text-right text-sm font-medium tabular-nums', product.avgCost < 0 ? 'text-red-400' : 'text-green-400')}>
                           {product.avgCost.toLocaleString()}
@@ -455,12 +454,11 @@ export const InventoryDesignTestPage = () => {
                           {visibleCols.includes('stockQty') && (
                             <td className="px-4 py-2 text-center">
                               <span className={cn('font-mono text-sm tabular-nums', (v.stock ?? 0) < 0 ? 'text-red-400' : 'text-gray-300')}>{v.stock ?? 0}</span>
-                              {enablePacking && <span className="text-gray-500 text-xs ml-1">{product.unit || 'pcs'}</span>}
                             </td>
                           )}
-                          {enablePacking && visibleCols.includes('boxes') && <td className="px-4 py-2 text-center text-gray-600">0</td>}
-                          {enablePacking && visibleCols.includes('pieces') && <td className="px-4 py-2 text-center text-gray-600">0</td>}
-                          {enablePacking && visibleCols.includes('unit') && <td className="px-4 py-2 text-center text-gray-600">{product.unit || 'pcs'}</td>}
+                          {enablePacking && visibleCols.includes('boxes') && <td className="px-4 py-2 text-center text-gray-600">{(v as any).boxes ?? 0}</td>}
+                          {enablePacking && visibleCols.includes('pieces') && <td className="px-4 py-2 text-center text-gray-600">{(v as any).pieces ?? 0}</td>}
+                          {enablePacking && visibleCols.includes('unit') && <td className="px-4 py-2 text-center text-gray-600">{product.unit ?? '—'}</td>}
                           {visibleCols.includes('avgCost') && <td className="px-4 py-2 text-right text-gray-600">—</td>}
                           {visibleCols.includes('sellingPrice') && <td className="px-4 py-2 text-right text-gray-600">—</td>}
                           {visibleCols.includes('stockValue') && (() => {

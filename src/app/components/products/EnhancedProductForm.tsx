@@ -161,6 +161,9 @@ export const EnhancedProductForm = ({
   const [newAttributeValue, setNewAttributeValue] = useState('');
   const [selectedAttributeIndex, setSelectedAttributeIndex] = useState<number | null>(null);
   const [blockVariationsModalOpen, setBlockVariationsModalOpen] = useState(false);
+  /** When in edit mode, full product fetched from API (with variations, category_id, etc.). Form hydrates from this. */
+  const [fullProductForEdit, setFullProductForEdit] = useState<any>(null);
+  const [loadingFullProduct, setLoadingFullProduct] = useState(false);
   const [generatedVariations, setGeneratedVariations] = useState<Array<{
     combination: Record<string, string>;
     sku: string;
@@ -369,35 +372,66 @@ export const EnhancedProductForm = ({
     return () => { cancelled = true; };
   }, [companyId, initialProduct, setValue, generateDocumentNumberSafe, generateSKU]);
 
-  // Sync enableVariations from existing product
+  // Edit mode: fetch full product by id so we have variations, category_id, unit_id, brand_id (list product often has only display fields)
   useEffect(() => {
-    if (initialProduct) {
-      setEnableVariations(!!(initialProduct.has_variations ?? (initialProduct.variations?.length > 0)));
-    } else {
+    const productId = initialProduct?.uuid || initialProduct?.id;
+    if (!productId || typeof productId !== 'string') {
+      setFullProductForEdit(null);
+      setLoadingFullProduct(false);
+      return;
+    }
+    let cancelled = false;
+    setLoadingFullProduct(true);
+    setFullProductForEdit(null);
+    productService.getProduct(productId)
+      .then((full) => {
+        if (!cancelled) {
+          setFullProductForEdit(full);
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          console.error('[PRODUCT FORM] Failed to load full product for edit:', err);
+          setFullProductForEdit(null);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingFullProduct(false);
+      });
+    return () => { cancelled = true; };
+  }, [initialProduct?.uuid, initialProduct?.id]);
+
+  // Sync enableVariations from product (use full product when available)
+  useEffect(() => {
+    const source = fullProductForEdit ?? initialProduct;
+    if (source) {
+      setEnableVariations(!!(source.has_variations ?? (source.variations?.length > 0)));
+    } else if (!initialProduct) {
       setEnableVariations(false);
     }
-  }, [initialProduct]);
+  }, [initialProduct, fullProductForEdit]);
 
-  // Pre-populate form when editing (support both list product and API product)
+  // Pre-populate form when editing – use full product from API when available so all fields + variations hydrate
   useEffect(() => {
-    if (initialProduct) {
-      setValue('name', initialProduct.name || '');
-      setValue('sku', initialProduct.sku || '');
-      setValue('barcodeType', (initialProduct as any).barcode_type || 'code128');
-      setValue('barcode', initialProduct.barcode || '');
-      setValue('purchasePrice', initialProduct.cost_price ?? initialProduct.purchasePrice ?? 0);
-      setValue('sellingPrice', initialProduct.retail_price ?? initialProduct.sellingPrice ?? 0);
-      setValue('wholesalePrice', initialProduct.wholesale_price ?? initialProduct.sellingPrice ?? 0);
-      setValue('rentalPrice', initialProduct.rental_price_daily ?? 0);
-      setValue('initialStock', initialProduct.current_stock ?? initialProduct.stock ?? 0);
-      setValue('alertQty', initialProduct.min_stock ?? initialProduct.lowStockThreshold ?? 0);
-      setValue('maxStock', initialProduct.max_stock ?? 1000);
-      setValue('description', initialProduct.description || '');
-      setValue('brand', initialProduct.brand_id || '');
-      setValue('unit', initialProduct.unit_id || '');
-      setValue('supplier', (initialProduct as any).supplier_id || (initialProduct as any).supplier || '');
-      setValue('supplierCode', (initialProduct as any).supplier_code || (initialProduct as any).supplierCode || '');
-      const catId = initialProduct.category_id || initialProduct.category?.id || '';
+    const source = fullProductForEdit ?? initialProduct;
+    if (source) {
+      setValue('name', source.name || '');
+      setValue('sku', source.sku || '');
+      setValue('barcodeType', (source as any).barcode_type || 'code128');
+      setValue('barcode', source.barcode || '');
+      setValue('purchasePrice', source.cost_price ?? (source as any).purchasePrice ?? 0);
+      setValue('sellingPrice', source.retail_price ?? (source as any).sellingPrice ?? 0);
+      setValue('wholesalePrice', source.wholesale_price ?? source.retail_price ?? 0);
+      setValue('rentalPrice', source.rental_price_daily ?? 0);
+      setValue('initialStock', source.current_stock ?? (source as any).stock ?? 0);
+      setValue('alertQty', source.min_stock ?? (source as any).lowStockThreshold ?? 0);
+      setValue('maxStock', source.max_stock ?? 1000);
+      setValue('description', source.description || '');
+      setValue('brand', source.brand_id || '');
+      setValue('unit', source.unit_id || '');
+      setValue('supplier', (source as any).supplier_id || (source as any).supplier || '');
+      setValue('supplierCode', (source as any).supplier_code || (source as any).supplierCode || '');
+      const catId = source.category_id || source.category?.id || '';
       if (catId) {
         productCategoryService.getById(catId).then((cat) => {
           if (cat.parent_id) {
@@ -415,27 +449,52 @@ export const EnhancedProductForm = ({
         setValue('category', '');
         setValue('subCategory', '');
       }
-      if (initialProduct.variations && initialProduct.variations.length > 0) {
-        // TODO: Load variations into state
+      if (source.variations && Array.isArray(source.variations) && source.variations.length > 0) {
+        const attrs = source.variations[0]?.attributes;
+        const attrObj = typeof attrs === 'object' && attrs !== null ? attrs : {};
+        const attrNames = Object.keys(attrObj);
+        if (attrNames.length > 0) {
+          const valuesByAttr: Record<string, Set<string>> = {};
+          attrNames.forEach((k) => { valuesByAttr[k] = new Set(); });
+          source.variations.forEach((v: any) => {
+            const a = typeof v.attributes === 'object' && v.attributes !== null ? v.attributes : {};
+            attrNames.forEach((k) => {
+              if (a[k] != null && a[k] !== '') valuesByAttr[k].add(String(a[k]));
+            });
+          });
+          setVariantAttributes(attrNames.map((name) => ({
+            name,
+            values: Array.from(valuesByAttr[name] || []),
+          })));
+        } else {
+          setVariantAttributes([]);
+        }
+        setGeneratedVariations(source.variations.map((v: any) => ({
+          combination: typeof v.attributes === 'object' && v.attributes !== null ? { ...v.attributes } : {},
+          sku: v.sku || '',
+          price: Number(v.price) || 0,
+          stock: Number(v.stock) ?? 0,
+          barcode: v.barcode || '',
+        })));
+      } else {
+        setGeneratedVariations([]);
+        setVariantAttributes([]);
       }
-      const urls = (initialProduct as any)?.image_urls;
+      const urls = (source as any)?.image_urls;
       setExistingImageUrls(Array.isArray(urls) ? [...urls] : []);
-      
-      // Load combo product flag
-      if (initialProduct.is_combo_product !== undefined) {
-        setIsComboProduct(initialProduct.is_combo_product);
+      if (source.is_combo_product !== undefined) {
+        setIsComboProduct(!!source.is_combo_product);
       }
-      
-      // Load existing combos for this product
-      if (initialProduct.id || initialProduct.uuid) {
-        const productId = initialProduct.uuid || initialProduct.id;
-        loadProductCombos(productId);
-      }
+      const productId = source.uuid || source.id;
+      if (productId) loadProductCombos(productId);
     } else {
       setExistingImageUrls([]);
       setIsComboProduct(false);
+      setFullProductForEdit(null);
+      setGeneratedVariations([]);
+      setVariantAttributes([]);
     }
-  }, [initialProduct, setValue]);
+  }, [fullProductForEdit, initialProduct, setValue]);
 
   // Load available products for combo search (exclude combo products and current product)
   useEffect(() => {
@@ -801,33 +860,34 @@ export const EnhancedProductForm = ({
     
     try {
       setSaving(true);
-      // Auto-generate SKU if empty
       const finalSKU = data.sku && data.sku.trim() !== '' ? data.sku : generateSKU();
-      
-      // Handle barcode - isolate errors, don't block
-      let barcodeValue: string | null = null;
-      try {
-        if (data.barcode && data.barcode.trim() !== '') {
-          barcodeValue = data.barcode.trim();
-        }
-      } catch (barcodeError) {
-        console.warn('[PRODUCT FORM] Barcode error (non-blocking):', barcodeError);
-        // Continue without barcode
-      }
 
-      // Category: use sub-category if selected, else parent category
-      let categoryId: string | null = null;
-      if (data.subCategory && data.subCategory.match(/^[0-9a-f-]{36}$/i)) {
-        categoryId = data.subCategory;
-      } else if (data.category && data.category.match(/^[0-9a-f-]{36}$/i)) {
-        categoryId = data.category;
-      } else if (data.category) {
-        const found = categories.find((c) => c.id === data.category) || subCategories.find((c) => c.id === data.category);
+      const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      const asId = (v: unknown): string | null => {
+        if (v == null || v === '') return null;
+        if (typeof v === 'string' && UUID_REGEX.test(v)) return v;
+        if (typeof v === 'object' && v !== null && 'id' in v && typeof (v as any).id === 'string') return (v as any).id;
+        return null;
+      };
+      const rawUnit = getValues('unit') ?? data.unit;
+      const rawCategory = getValues('category') ?? data.category;
+      const rawSubCategory = getValues('subCategory') ?? data.subCategory;
+      const rawBrand = getValues('brand') ?? data.brand;
+
+      let categoryId: string | null = asId(rawSubCategory) ?? asId(rawCategory) ?? null;
+      if (!categoryId && (rawCategory || rawSubCategory)) {
+        const found = categories.find((c) => c.id === rawCategory || c.id === rawSubCategory) || subCategories.find((c) => c.id === rawCategory || c.id === rawSubCategory);
         if (found) categoryId = found.id;
       }
+      const unitId = asId(rawUnit);
+      const brandId = asId(rawBrand);
 
-      const brandId = data.brand && data.brand.match(/^[0-9a-f-]{36}$/i) ? data.brand : null;
-      const unitId = data.unit && data.unit.match(/^[0-9a-f-]{36}$/i) ? data.unit : null;
+      let barcodeValue: string | null = null;
+      try {
+        if (data.barcode && data.barcode.trim() !== '') barcodeValue = data.barcode.trim();
+      } catch (barcodeError) {
+        console.warn('[PRODUCT FORM] Barcode error (non-blocking):', barcodeError);
+      }
 
       // Convert to Supabase format (field names match schema)
       const productData: Record<string, unknown> = {
@@ -1054,7 +1114,15 @@ export const EnhancedProductForm = ({
   };
 
   return (
-    <div className="flex flex-col h-full min-h-0 bg-gray-950 text-white">
+    <div className="flex flex-col h-full min-h-0 bg-gray-950 text-white relative">
+      {loadingFullProduct && initialProduct && (
+        <div className="absolute inset-0 bg-gray-950/80 z-20 flex items-center justify-center rounded-xl">
+          <div className="flex flex-col items-center gap-3">
+            <RefreshCcw size={32} className="text-blue-400 animate-spin" />
+            <p className="text-sm text-gray-400">Loading product...</p>
+          </div>
+        </div>
+      )}
       <div className="p-6 border-b border-gray-800 flex justify-between items-center bg-gray-900 sticky top-0 z-10">
         <div>
           <h2 className="text-xl font-bold">{initialProduct ? 'Edit Product' : 'Add New Product'}</h2>

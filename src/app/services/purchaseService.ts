@@ -255,7 +255,7 @@ export const purchaseService = {
       // CRITICAL: Include variation_id for proper stock reversal
       const { data: stockMovements } = await supabase
         .from('stock_movements')
-        .select('id, company_id, branch_id, product_id, variation_id, quantity, unit_cost, total_cost')
+        .select('id, company_id, branch_id, product_id, variation_id, quantity, unit_cost, total_cost, box_change, piece_change')
         .eq('reference_type', 'purchase')
         .eq('reference_id', id);
 
@@ -266,19 +266,21 @@ export const purchaseService = {
           try {
             // Create reverse movement (negative quantity to reverse stock)
             // CRITICAL: Include variation_id for variation-specific stock reversal
-            const reverseMovement = {
+            const reverseMovement: Record<string, unknown> = {
               company_id: movement.company_id,
               branch_id: movement.branch_id,
               product_id: movement.product_id,
-              variation_id: movement.variation_id || null, // CRITICAL: Include variation_id
+              variation_id: movement.variation_id || null,
               movement_type: 'adjustment',
-              quantity: -(Number(movement.quantity) || 0), // Negative to reverse
+              quantity: -(Number(movement.quantity) || 0),
               unit_cost: Number(movement.unit_cost) || 0,
-              total_cost: -(Number(movement.total_cost) || 0), // Negative to reverse
+              total_cost: -(Number(movement.total_cost) || 0),
               reference_type: 'purchase',
               reference_id: id,
               notes: `Reverse stock from deleted purchase ${id}`,
             };
+            if (movement.box_change != null) reverseMovement.box_change = -(Number(movement.box_change) || 0);
+            if (movement.piece_change != null) reverseMovement.piece_change = -(Number(movement.piece_change) || 0);
             
             console.log('[PURCHASE SERVICE] Creating reverse stock movement:', {
               product_id: reverseMovement.product_id,

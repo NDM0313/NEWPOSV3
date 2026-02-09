@@ -63,6 +63,8 @@ import {
 } from '@/app/components/ui/dialog';
 import { getAttachmentOpenUrl } from '@/app/utils/paymentAttachmentUrl';
 import { AttachmentViewer } from '@/app/components/shared/AttachmentViewer';
+import { PurchaseReturnForm } from './PurchaseReturnForm';
+import { RotateCcw } from 'lucide-react';
 
 function AttachmentImage({ att }: { att: { url: string; name: string } }) {
   const [src, setSrc] = useState<string | null>(null);
@@ -145,6 +147,7 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
   const [paymentToEdit, setPaymentToEdit] = useState<any | null>(null);
   const [viewPaymentsModalOpen, setViewPaymentsModalOpen] = useState(false);
   const [attachmentsDialogList, setAttachmentsDialogList] = useState<{ url: string; name: string }[] | null>(null);
+  const [purchaseReturnFormOpen, setPurchaseReturnFormOpen] = useState(false);
 
   // Load branches for location display
   useEffect(() => {
@@ -427,6 +430,15 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
                   <Edit size={14} className="mr-2" />
                   Edit Purchase
                 </DropdownMenuItem>
+                {(purchase.status === 'final' || purchase.status === 'received') && (
+                  <DropdownMenuItem 
+                    className="hover:bg-gray-800 cursor-pointer"
+                    onClick={() => setPurchaseReturnFormOpen(true)}
+                  >
+                    <RotateCcw size={14} className="mr-2 text-purple-400" />
+                    Create Purchase Return
+                  </DropdownMenuItem>
+                )}
                 <DropdownMenuItem className="hover:bg-gray-800 cursor-pointer">
                   <Download size={14} className="mr-2" />
                   Export PDF
@@ -610,15 +622,15 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
                               .join(', ')
                           : null;
                         
-                        // Packing: structured – Boxes + Pieces
-                        const pd = item.packingDetails || {};
+                        // Packing: from DB packing_details or packingDetails (jo purchase save hua tha wahi)
+                        const pd = item.packing_details || item.packingDetails || {};
                         const totalBoxes = pd.total_boxes ?? 0;
                         const totalPieces = pd.total_pieces ?? 0;
                         const packingParts: string[] = [];
                         if (Number(totalBoxes) > 0) packingParts.push(`${totalBoxes} Box${Number(totalBoxes) !== 1 ? 'es' : ''}`);
                         if (Number(totalPieces) > 0) packingParts.push(`${totalPieces} Piece${Number(totalPieces) !== 1 ? 's' : ''}`);
                         const packingText = packingParts.length ? packingParts.join(', ') : '—';
-                        const unitDisplay = item.unit ?? 'piece';
+                        const unitDisplay = item.unit ?? 'pcs';
                         
                         // Use variation SKU if available, otherwise use product SKU
                         const finalSku = variationSku || displaySku;
@@ -1310,6 +1322,19 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
           attachments={attachmentsDialogList}
           isOpen={!!attachmentsDialogList}
           onClose={() => setAttachmentsDialogList(null)}
+        />
+      )}
+
+      {/* Purchase Return form – FINAL when saved */}
+      {purchaseReturnFormOpen && purchaseId && (
+        <PurchaseReturnForm
+          purchaseId={purchaseId}
+          onClose={() => setPurchaseReturnFormOpen(false)}
+          onSuccess={() => {
+            setPurchaseReturnFormOpen(false);
+            reloadPurchaseData();
+            window.dispatchEvent(new CustomEvent('purchaseReturnCreated'));
+          }}
         />
       )}
     </>

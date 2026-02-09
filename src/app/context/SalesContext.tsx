@@ -419,7 +419,7 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
         product_name: item.productName,
         sku: (item as any).sku || 'N/A', // Required in DB
         quantity: item.quantity,
-        unit: (item as any).packingDetails ? ((item as any).packingDetails?.unit || 'meters') : ((item as any).unit || 'piece'),
+        unit: (item as any).unit && String((item as any).unit).trim() ? (item as any).unit : ((item as any).packingDetails?.unit || 'pcs'),
         unit_price: unitPrice, // POS sends unitPrice; SaleForm sends price – ensure never null for DB NOT NULL
         discount_percentage: (item as any).discountPercentage || 0,
         discount_amount: (item as any).discount || 0,
@@ -689,21 +689,24 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
                 sale_id: newSale.id
               });
               
-              // Create stock movement (negative for stock OUT)
-              // CRITICAL: Include variation_id for variation-specific stock tracking
+              const packing = (item as any).packingDetails;
+              const boxOut = packing?.total_boxes != null ? Number(packing.total_boxes) : 0;
+              const pieceOut = packing?.total_pieces != null ? Number(packing.total_pieces) : 0;
               const movement = await productService.createStockMovement({
                 company_id: companyId,
                 branch_id: effectiveBranchId === 'all' ? undefined : effectiveBranchId,
                 product_id: item.productId,
-                variation_id: item.variationId || undefined, // CRITICAL: Include variation_id
+                variation_id: item.variationId || undefined,
                 movement_type: 'sale',
-                quantity: -item.quantity, // Negative for stock OUT
+                quantity: -item.quantity,
                 unit_cost: item.price || 0,
                 total_cost: -((item.price || 0) * item.quantity),
                 reference_type: 'sale',
                 reference_id: newSale.id,
                 notes: `Sale ${newSale.invoiceNo} - ${item.productName}${item.variationId ? ' (Variation)' : ''}`,
                 created_by: user?.id,
+                box_change: -boxOut,
+                piece_change: -pieceOut,
               });
               
               if (!movement || !movement.id) {
@@ -1123,7 +1126,7 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
           product_name: item.productName,
           sku: item.sku || 'N/A',
           quantity: item.quantity,
-          unit: item.unit || 'piece',
+          unit: item.unit || 'pcs',
           unit_price: unitPrice,
           discount_percentage: item.discountPercentage || 0,
           discount_amount: item.discount || 0,

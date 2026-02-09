@@ -14,7 +14,7 @@ export interface Transaction {
   id: string;
   date: string;
   referenceNo: string;
-  documentType: 'Sale' | 'Payment' | 'Discount' | 'Opening Balance' | 'Purchase' | 'Expense' | 'Job';
+  documentType: 'Sale' | 'Sale Return' | 'Payment' | 'Discount' | 'Opening Balance' | 'Purchase' | 'Expense' | 'Job';
   description: string;
   paymentAccount: string;
   notes: string;

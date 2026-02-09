@@ -286,7 +286,7 @@ export const InventoryDashboardNew = () => {
       : ['Product', 'SKU', 'Category', 'Stock', 'Avg Cost', 'Selling Price', 'Stock Value', 'Status', 'Movement'];
     const rows = filteredProducts.map(p => {
       if (enablePacking) {
-        return [p.name, p.sku, p.category, p.stock, p.boxes ?? 0, p.pieces ?? 0, p.unit, p.avgCost, p.sellingPrice, p.stockValue, p.status, p.movement].join(',');
+        return [p.name, p.sku, p.category, p.stock, p.boxes ?? 0, p.pieces ?? 0, p.stock, p.avgCost, p.sellingPrice, p.stockValue, p.status, p.movement].join(',');
       } else {
         return [p.name, p.sku, p.category, p.stock, p.avgCost, p.sellingPrice, p.stockValue, p.status, p.movement].join(',');
       }
@@ -617,7 +617,7 @@ export const InventoryDashboardNew = () => {
                   const headers = enablePacking ? ['Product', 'SKU', 'Category', 'Stock', 'Unit', 'Avg Cost', 'Selling Price', 'Stock Value', 'Movement', 'Status'] : ['Product', 'SKU', 'Category', 'Stock', 'Avg Cost', 'Selling Price', 'Stock Value', 'Movement', 'Status'];
                   const rows = filteredProducts.map((p) =>
                     enablePacking
-                      ? [p.name, p.sku, p.category, p.stock, p.unit, p.avgCost, p.sellingPrice, p.stockValue, p.movement, p.status].join(',')
+                      ? [p.name, p.sku, p.category, p.stock, p.stock, p.avgCost, p.sellingPrice, p.stockValue, p.movement, p.status].join(',')
                       : [p.name, p.sku, p.category, p.stock, p.avgCost, p.sellingPrice, p.stockValue, p.movement, p.status].join(',')
                   );
                   const csv = [headers.join(','), ...rows].join('\n');
@@ -692,7 +692,6 @@ export const InventoryDashboardNew = () => {
                           return (
                             <td key={key} className="px-4 py-2 text-center">
                               <span className={cn("font-bold font-mono text-sm tabular-nums", product.stock < 0 ? "text-red-400" : product.status === 'Out' || product.status === 'Low' ? "text-red-400" : "text-white")}>{product.stock}</span>
-                              {enablePacking && <span className="text-gray-500 text-xs ml-1">{product.unit || 'pcs'}</span>}
                             </td>
                           );
                         case 'boxes':
@@ -700,7 +699,7 @@ export const InventoryDashboardNew = () => {
                         case 'pieces':
                           return <td key={key} className="px-4 py-2 text-center text-gray-400 text-sm">{product.pieces ?? 0}</td>;
                         case 'unit':
-                          return <td key={key} className="px-4 py-2 text-center text-gray-400 text-sm">{product.unit || 'pcs'}</td>;
+                          return <td key={key} className="px-4 py-2 text-center text-gray-400 text-sm font-mono tabular-nums">{product.stock}</td>;
                         case 'avgCost':
                           return (
                             <td key={key} className={cn('px-4 py-2 text-right text-sm font-medium tabular-nums', product.avgCost < 0 ? 'text-red-400' : 'text-green-400')}>
@@ -786,13 +785,12 @@ export const InventoryDashboardNew = () => {
                             return (
                               <td key={key} className="px-4 py-1.5 text-center">
                                 <span className={cn("font-mono text-xs tabular-nums", vStock < 0 ? "text-red-400" : "text-gray-300")}>{vStock}</span>
-                                {enablePacking && <span className="text-gray-500 text-[10px] ml-1">{product.unit || 'pcs'}</span>}
                               </td>
                             );
                           }
-                          if (key === 'boxes') return <td key={key} className="px-4 py-1.5 text-center text-gray-500 text-xs">0</td>;
-                          if (key === 'pieces') return <td key={key} className="px-4 py-1.5 text-center text-gray-500 text-xs">0</td>;
-                          if (key === 'unit') return <td key={key} className="px-4 py-1.5 text-center text-gray-500 text-xs">{product.unit || 'pcs'}</td>;
+                          if (key === 'boxes') return <td key={key} className="px-4 py-1.5 text-center text-gray-500 text-xs font-mono tabular-nums">{(v as any).boxes ?? 0}</td>;
+                          if (key === 'pieces') return <td key={key} className="px-4 py-1.5 text-center text-gray-500 text-xs font-mono tabular-nums">{(v as any).pieces ?? 0}</td>;
+                          if (key === 'unit') return <td key={key} className="px-4 py-1.5 text-center text-gray-500 text-xs font-mono tabular-nums">{v.stock ?? 0}</td>;
                           if (key === 'stockValue') {
                             const val = (v.stock ?? 0) * product.sellingPrice;
                             return (

@@ -27,6 +27,14 @@ export interface Product {
   updated_at: string;
 }
 
+function ensureProductIds(payload: Record<string, unknown>): Record<string, unknown> {
+  const out = { ...payload };
+  if (!('unit_id' in out)) out.unit_id = null;
+  if (!('category_id' in out)) out.category_id = null;
+  if (!('brand_id' in out)) out.brand_id = null;
+  return out;
+}
+
 export const productService = {
   // Get all products
   async getAllProducts(companyId: string) {
@@ -156,14 +164,14 @@ export const productService = {
 
   // Create product
   async createProduct(product: Partial<Product>) {
+    const payload = ensureProductIds(product as Record<string, unknown>);
     const { data, error } = await supabase
       .from('products')
-      .insert(product)
+      .insert(payload)
       .select()
       .single();
 
     if (error) {
-      // Postgres 23505 = unique_violation (e.g. company_id + sku already exists)
       if (error.code === '23505' || (error.message && /duplicate key value|unique constraint/i.test(error.message))) {
         const hint = product.sku ? `SKU "${product.sku}" is already in use for this company.` : 'A product with this SKU already exists.';
         throw new Error(`${hint} Please use a different SKU or generate a new one.`);
@@ -173,7 +181,7 @@ export const productService = {
     return data;
   },
 
-  // Update product
+  // Update product (form sends unit_id, category_id, brand_id in updates)
   async updateProduct(id: string, updates: Partial<Product>) {
     const { data, error } = await supabase
       .from('products')
@@ -455,6 +463,8 @@ export const productService = {
     reference_id?: string;
     notes?: string;
     created_by?: string;
+    box_change?: number; // Packing: net boxes (positive IN, negative OUT)
+    piece_change?: number; // Packing: net pieces (positive IN, negative OUT)
   }) {
     console.log('[CREATE STOCK MOVEMENT] Creating movement:', {
       product_id: data.product_id,
@@ -470,7 +480,7 @@ export const productService = {
       company_id: data.company_id,
       branch_id: data.branch_id || null,
       product_id: data.product_id,
-      variation_id: data.variation_id || null, // CRITICAL: Include variation_id for variation-specific stock
+      variation_id: data.variation_id || null,
       quantity: data.quantity,
       unit_cost: data.unit_cost || 0,
       total_cost: data.total_cost || (data.unit_cost || 0) * Math.abs(data.quantity),
@@ -480,8 +490,9 @@ export const productService = {
       created_by: data.created_by || null,
     };
 
-    // Try movement_type first (schema from 05_inventory_movement_engine.sql)
     insertData.movement_type = data.movement_type;
+    if (data.box_change != null) insertData.box_change = Number(data.box_change);
+    if (data.piece_change != null) insertData.piece_change = Number(data.piece_change);
 
     let { data: movement, error } = await supabase
       .from('stock_movements')

@@ -3,7 +3,7 @@ import {
   Plus, ShoppingBag, DollarSign, AlertCircle, 
   MoreVertical, Eye, Edit, Trash2, FileText, Phone, MapPin,
   Package, CheckCircle, Clock, XCircle, Receipt, ChevronDown, ChevronUp,
-  Paperclip
+  Paperclip, RotateCcw
 } from 'lucide-react';
 import { Button } from "@/app/components/ui/button";
 import { Badge } from "@/app/components/ui/badge";
@@ -39,6 +39,13 @@ import { UnifiedLedgerView } from '@/app/components/shared/UnifiedLedgerView';
 import { ViewPurchaseDetailsDrawer } from './ViewPurchaseDetailsDrawer';
 import { ViewPaymentsModal, type InvoiceDetails, type Payment } from '@/app/components/sales/ViewPaymentsModal';
 import { AttachmentViewer } from '@/app/components/shared/AttachmentViewer';
+import { purchaseReturnService } from '@/app/services/purchaseReturnService';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/app/components/ui/dialog';
 import { toast } from 'sonner';
 
 type PurchaseStatus = 'received' | 'ordered' | 'pending' | 'final' | 'draft';
@@ -130,6 +137,14 @@ export const PurchasesPage = () => {
   
   // State for viewing attachments
   const [attachmentsDialogList, setAttachmentsDialogList] = useState<{ url: string; name: string }[] | null>(null);
+  // Purchase Returns list
+  const [purchaseReturnsList, setPurchaseReturnsList] = useState<any[]>([]);
+  const [purchaseReturnsDialogOpen, setPurchaseReturnsDialogOpen] = useState(false);
+  const [loadingPurchaseReturns, setLoadingPurchaseReturns] = useState(false);
+  const [selectedPurchaseReturn, setSelectedPurchaseReturn] = useState<any | null>(null);
+  const [viewPurchaseReturnDetailsOpen, setViewPurchaseReturnDetailsOpen] = useState(false);
+  const [purchaseReturnToDelete, setPurchaseReturnToDelete] = useState<any | null>(null);
+  const [deletePurchaseReturnDialogOpen, setDeletePurchaseReturnDialogOpen] = useState(false);
 
   // Column visibility state
   const [visibleColumns, setVisibleColumns] = useState({
@@ -802,13 +817,32 @@ export const PurchasesPage = () => {
             <h1 className="text-2xl font-bold text-white">Purchases</h1>
             <p className="text-sm text-gray-400 mt-0.5">Manage purchase orders and supplier transactions</p>
           </div>
-          <Button 
-            onClick={() => openDrawer('addPurchase')}
-            className="bg-orange-600 hover:bg-orange-500 text-white h-10 gap-2"
-          >
-            <Plus size={16} />
-            Add Purchase
-          </Button>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setPurchaseReturnsDialogOpen(true);
+                if (companyId) {
+                  setLoadingPurchaseReturns(true);
+                  purchaseReturnService.getPurchaseReturns(companyId, branchId === 'all' ? undefined : branchId).then((list) => {
+                    setPurchaseReturnsList(list);
+                    setLoadingPurchaseReturns(false);
+                  }).catch(() => setLoadingPurchaseReturns(false));
+                }
+              }}
+              className="border-gray-600 text-gray-300 hover:bg-gray-800 h-10 gap-2"
+            >
+              <RotateCcw size={16} />
+              Purchase Returns
+            </Button>
+            <Button 
+              onClick={() => openDrawer('addPurchase')}
+              className="bg-orange-600 hover:bg-orange-500 text-white h-10 gap-2"
+            >
+              <Plus size={16} />
+              Add Purchase
+            </Button>
+          </div>
         </div>
       </div>
 
@@ -1413,6 +1447,134 @@ export const PurchasesPage = () => {
           onClose={() => setAttachmentsDialogList(null)}
         />
       )}
+
+      {/* Purchase Returns List Dialog */}
+      <Dialog open={purchaseReturnsDialogOpen} onOpenChange={setPurchaseReturnsDialogOpen}>
+        <DialogContent className="bg-[#0B0F19] border-gray-800 text-white max-w-4xl max-h-[85vh] overflow-hidden flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-white">
+              <RotateCcw size={20} className="text-purple-400" />
+              Purchase Returns
+            </DialogTitle>
+          </DialogHeader>
+          <div className="overflow-y-auto flex-1 min-h-0">
+            {loadingPurchaseReturns ? (
+              <div className="py-12 text-center text-gray-400">Loading...</div>
+            ) : purchaseReturnsList.length === 0 ? (
+              <div className="py-12 text-center text-gray-500">No purchase returns found.</div>
+            ) : (
+              <table className="w-full">
+                <thead className="bg-gray-900/50 border-b border-gray-800">
+                  <tr>
+                    <th className="px-4 py-2 text-left text-xs text-gray-400 uppercase">Date</th>
+                    <th className="px-4 py-2 text-left text-xs text-gray-400 uppercase">Return #</th>
+                    <th className="px-4 py-2 text-left text-xs text-gray-400 uppercase">Supplier</th>
+                    <th className="px-4 py-2 text-left text-xs text-gray-400 uppercase">Original PO</th>
+                    <th className="px-4 py-2 text-center text-xs text-gray-400 uppercase">Status</th>
+                    <th className="px-4 py-2 text-right text-xs text-gray-400 uppercase">Total</th>
+                    <th className="px-4 py-2 text-right text-xs text-gray-400 uppercase">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-800">
+                  {purchaseReturnsList.map((ret: any) => (
+                    <tr key={ret.id} className="hover:bg-gray-800/30">
+                      <td className="px-4 py-2 text-sm text-gray-300">{formatDateAndTime(ret.return_date).date}</td>
+                      <td className="px-4 py-2 text-sm font-mono text-purple-400">{ret.return_no || `PRET-${ret.id?.slice(0, 8)}`}</td>
+                      <td className="px-4 py-2 text-sm text-white">{ret.supplier_name}</td>
+                      <td className="px-4 py-2 text-sm text-gray-400">{ret.original_purchase_id?.slice(0, 8)}</td>
+                      <td className="px-4 py-2 text-center">
+                        <Badge className={ret.status === 'final' ? 'bg-green-500/20 text-green-400 border-green-500/30' : 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30'}>
+                          {ret.status === 'final' ? 'FINAL / LOCKED' : 'Draft'}
+                        </Badge>
+                      </td>
+                      <td className="px-4 py-2 text-right text-sm font-semibold text-red-400">{(ret.total || 0).toLocaleString()}</td>
+                      <td className="px-4 py-2 text-right">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="sm" className="h-8 w-8 p-0"><MoreVertical size={14} /></Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="bg-gray-900 border-gray-700">
+                            <DropdownMenuItem className="hover:bg-gray-800" onClick={() => { setSelectedPurchaseReturn(ret); setViewPurchaseReturnDetailsOpen(true); }}>
+                              <Eye size={14} className="mr-2" /> View
+                            </DropdownMenuItem>
+                            {ret.status === 'draft' && (
+                              <DropdownMenuItem className="hover:bg-gray-800 text-red-400" onClick={() => { setPurchaseReturnToDelete(ret); setDeletePurchaseReturnDialogOpen(true); }}>
+                                <Trash2 size={14} className="mr-2" /> Delete
+                              </DropdownMenuItem>
+                            )}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* View Purchase Return Details */}
+      {selectedPurchaseReturn && (
+        <Dialog open={viewPurchaseReturnDetailsOpen} onOpenChange={setViewPurchaseReturnDetailsOpen}>
+          <DialogContent className="bg-[#0B0F19] border-gray-800 text-white max-w-2xl">
+            <DialogHeader>
+              <DialogTitle className="text-white">Return {selectedPurchaseReturn.return_no || selectedPurchaseReturn.id?.slice(0, 8)}</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-2 text-sm">
+                <div><span className="text-gray-500">Date:</span> {formatDateAndTime(selectedPurchaseReturn.return_date).date}</div>
+                <div><span className="text-gray-500">Status:</span> <Badge className={selectedPurchaseReturn.status === 'final' ? 'bg-green-500/20 text-green-400' : 'bg-yellow-500/20 text-yellow-400'}>{selectedPurchaseReturn.status === 'final' ? 'FINAL / LOCKED' : 'Draft'}</Badge></div>
+                <div><span className="text-gray-500">Supplier:</span> {selectedPurchaseReturn.supplier_name}</div>
+                <div><span className="text-gray-500">Total:</span> <span className="text-red-400 font-semibold">{(selectedPurchaseReturn.total || 0).toLocaleString()}</span></div>
+              </div>
+              {selectedPurchaseReturn.items?.length > 0 && (
+                <div>
+                  <p className="text-xs text-gray-500 uppercase mb-2">Items</p>
+                  <ul className="space-y-1 text-sm">
+                    {selectedPurchaseReturn.items.map((it: any, i: number) => (
+                      <li key={i} className="flex justify-between"><span>{it.product_name}</span> <span>{it.quantity} × {(it.unit_price || 0).toLocaleString()} = {(it.total || 0).toLocaleString()}</span></li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {/* Delete Purchase Return (draft only) */}
+      <AlertDialog open={deletePurchaseReturnDialogOpen} onOpenChange={setDeletePurchaseReturnDialogOpen}>
+        <AlertDialogContent className="bg-gray-900 border-gray-700 text-white">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Purchase Return?</AlertDialogTitle>
+            <AlertDialogDescription className="text-gray-300">
+              Only draft returns can be deleted. Delete return {purchaseReturnToDelete?.return_no || purchaseReturnToDelete?.id?.slice(0, 8)}?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="border-gray-700">Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-red-600 hover:bg-red-700"
+              onClick={async () => {
+                if (!purchaseReturnToDelete || !companyId) return;
+                try {
+                  await purchaseReturnService.deletePurchaseReturn(purchaseReturnToDelete.id, companyId);
+                  toast.success('Return deleted');
+                  setDeletePurchaseReturnDialogOpen(false);
+                  setPurchaseReturnToDelete(null);
+                  const list = await purchaseReturnService.getPurchaseReturns(companyId, branchId === 'all' ? undefined : branchId);
+                  setPurchaseReturnsList(list);
+                } catch (e: any) {
+                  toast.error(e.message || 'Delete failed');
+                }
+              }}
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };

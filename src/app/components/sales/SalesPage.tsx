@@ -1440,7 +1440,7 @@ export const SalesPage = () => {
                             <div className="text-sm text-gray-400">{branchMap.get(ret.branch_id) || '—'}</div>
                             <div className="flex justify-center">
                               <Badge className={ret.status === 'final' ? 'bg-green-500/20 text-green-400 border-green-500/30' : 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30'}>
-                                {ret.status === 'final' ? 'Final' : 'Draft'}
+                                {ret.status === 'final' ? 'FINAL / LOCKED' : 'Draft'}
                               </Badge>
                             </div>
                             <div className="text-right">
@@ -1482,24 +1482,13 @@ export const SalesPage = () => {
                                     <>
                                       <DropdownMenuItem 
                                         onClick={() => {
-                                          // TODO: Implement edit return
-                                          toast.info('Edit return functionality coming soon');
-                                        }}
-                                        className="hover:bg-gray-800 cursor-pointer"
-                                      >
-                                        <Edit size={14} className="mr-2 text-yellow-400" />
-                                        Edit Return
-                                      </DropdownMenuItem>
-                                      <DropdownMenuSeparator />
-                                      <DropdownMenuItem 
-                                        onClick={() => {
                                           setReturnToDelete(ret);
                                           setDeleteReturnDialogOpen(true);
                                         }}
                                         className="hover:bg-gray-800 cursor-pointer text-red-400"
                                       >
                                         <Trash2 size={14} className="mr-2" />
-                                        Delete Return
+                                        Delete Return (draft only)
                                       </DropdownMenuItem>
                                     </>
                                   )}
@@ -2077,7 +2066,7 @@ export const SalesPage = () => {
                 <div>
                   <p className="text-xs text-gray-400 uppercase mb-1">Status</p>
                   <Badge className={selectedReturn.status === 'final' ? 'bg-green-500/20 text-green-400 border-green-500/30' : 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30'}>
-                    {selectedReturn.status === 'final' ? 'Final' : 'Draft'}
+                    {selectedReturn.status === 'final' ? 'FINAL / LOCKED' : 'Draft'}
                   </Badge>
                 </div>
                 <div>

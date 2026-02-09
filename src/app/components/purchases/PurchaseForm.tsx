@@ -1190,6 +1190,10 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                     // Handle nested product data from backend
                     const product = item.product || {};
                     const variation = item.variation || item.product_variations || {};
+                    const productId = item.product_id || item.productId || product.id || '';
+                    // Unit allow_decimal: prefer products list (from unitService); API product often has no unit details
+                    const productFromList = products.find((p: any) => String(p.id) === String(productId) || String((p as any).uuid) === String(productId));
+                    const unitAllowDecimal = productFromList?.unitAllowDecimal ?? product?.unit_allow_decimal ?? product?.unit?.allow_decimal ?? false;
                     
                     // CRITICAL: Get variation_id from DB (required for edit form to preselect dropdown)
                     const variationId = item.variation_id ??
@@ -1210,7 +1214,7 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                     
                     return {
                         id: Date.now() + index, // Generate unique ID
-                        productId: item.product_id || item.productId || product.id || '',
+                        productId,
                         name: product.name || item.product_name || item.productName || '',
                         sku: product.sku || item.sku || '',
                         price: item.unit_price || item.price || 0,
@@ -1227,7 +1231,8 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                         packingDetails: packingDetails,
                         thaans: packingDetails?.total_boxes || packingDetails?.boxes || 0,
                         meters: packingDetails?.total_meters || packingDetails?.meters || 0,
-                        unitAllowDecimal: product?.unit_allow_decimal ?? product?.unit?.allow_decimal ?? false,
+                        unit: item.unit ?? undefined,
+                        unitAllowDecimal,
                     };
                 });
                 setItems(convertedItems);
@@ -1301,7 +1306,22 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
             lastInitializedPurchaseIdRef.current = null;
             variationStockHydratedRef.current = false;
         }
-    }, [loadedPurchaseData, initialPurchase, isEditMode]); // Watch loadedPurchaseData, initialPurchase, and isEditMode
+    }, [loadedPurchaseData, initialPurchase, isEditMode]); // Keep products out to avoid re-running full init when products merge from overview
+
+    // Edit mode: when products load (with unitAllowDecimal from unitService), sync to items so decimal validation is correct
+    useEffect(() => {
+        if (!isEditMode || items.length === 0 || products.length === 0) return;
+        setItems(prev => {
+            const next = prev.map(item => {
+                const p = products.find((x: any) => String(x.id) === String(item.productId) || String((x as any).uuid) === String(item.productId));
+                if (p == null) return item;
+                const allowDec = (p as any).unitAllowDecimal ?? item.unitAllowDecimal;
+                return allowDec !== item.unitAllowDecimal ? { ...item, unitAllowDecimal: allowDec } : item;
+            });
+            if (next.every((n, i) => n.unitAllowDecimal === prev[i].unitAllowDecimal)) return prev;
+            return next;
+        });
+    }, [isEditMode, products]);
 
     const lastHydratedPurchaseIdRef = useRef<string | null>(null);
     // Edit mode: hydrate variation-level stock from inventory overview (movement-based) for items with selectedVariationId

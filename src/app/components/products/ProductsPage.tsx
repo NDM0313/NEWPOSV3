@@ -22,6 +22,7 @@ import { useSales } from '@/app/context/SalesContext';
 import { usePurchases } from '@/app/context/PurchaseContext';
 import { productService } from '@/app/services/productService';
 import { inventoryService } from '@/app/services/inventoryService';
+import { unitService } from '@/app/services/unitService';
 import { Pagination } from '@/app/components/ui/pagination';
 import { ImportProductsModal } from './ImportProductsModal';
 import { CustomSelect } from '@/app/components/ui/custom-select';
@@ -82,13 +83,18 @@ export const ProductsPage = () => {
     
     try {
       setLoading(true);
-      const [data, overviewRows] = await Promise.all([
+      const [data, overviewRows, unitsData] = await Promise.all([
         productService.getAllProducts(companyId),
         inventoryService.getInventoryOverview(companyId, null),
+        unitService.getAll(companyId).catch(() => []),
       ]);
       const stockByProductId: Record<string, number> = {};
       overviewRows.forEach((row) => { stockByProductId[row.productId] = row.stock; });
-      
+      const unitLabelById: Record<string, string> = {};
+      (unitsData || []).forEach((u: { id: string; name?: string; short_code?: string }) => {
+        unitLabelById[u.id] = u.name || u.short_code || 'Piece';
+      });
+
       // Convert Supabase format to app format; stock from inventory overview (stock_movements) when available
       const convertedProducts: Product[] = data.map((p: any, index: number) => ({
         id: index + 1, // Use index-based ID for compatibility with existing UI
@@ -98,7 +104,7 @@ export const ProductsPage = () => {
         image: (Array.isArray(p.image_urls) && p.image_urls[0]) ? p.image_urls[0] : (p.thumbnail || undefined),
         image_urls: Array.isArray(p.image_urls) ? p.image_urls : [],
         branch: p.branch_name || 'Main Branch (HQ)',
-        unit: p.unit || 'Piece',
+        unit: (p.unit_id && unitLabelById[p.unit_id]) ? unitLabelById[p.unit_id] : 'Piece',
         purchasePrice: p.cost_price || 0,
         sellingPrice: p.retail_price || 0,
         stock: stockByProductId[p.id] ?? p.current_stock ?? 0,
