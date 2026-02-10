@@ -617,15 +617,50 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
     };
 
     const handleSavePacking = (itemId: number, details: PackingDetails) => {
+        // DEBUG: Log what we're receiving and saving
+        console.log('[PURCHASE FORM] handleSavePacking called:', {
+            itemId,
+            details,
+            boxes: details.boxes,
+            boxesCount: details.boxes?.length,
+            loose_pieces: details.loose_pieces,
+            totals: {
+                total_boxes: details.total_boxes,
+                total_pieces: details.total_pieces,
+                total_meters: details.total_meters
+            }
+        });
+        
+        // Verify structure integrity
+        if (details.boxes && details.boxes.length > 0) {
+            details.boxes.forEach((box, idx) => {
+                console.log(`[PURCHASE FORM] Box ${idx + 1} in details:`, {
+                    box_no: box.box_no,
+                    pieces: box.pieces,
+                    piecesCount: box.pieces.length
+                });
+            });
+        }
+        
         setItems(prev => prev.map(item => {
             if (item.id !== itemId) return item;
-            return {
+            
+            const updatedItem = {
                 ...item,
-                packingDetails: details,
+                packingDetails: details, // CRITICAL: Save complete structure
                 qty: details.total_meters ?? item.qty,
                 thaans: details.total_boxes,
                 meters: details.total_meters
             };
+            
+            console.log('[PURCHASE FORM] Updated item packingDetails:', {
+                itemId: item.id,
+                packingDetails: updatedItem.packingDetails,
+                boxes: updatedItem.packingDetails?.boxes,
+                boxesCount: updatedItem.packingDetails?.boxes?.length
+            });
+            
+            return updatedItem;
         }));
         toast.success("Packing details saved");
         setActivePackingItemId(null);
@@ -1210,7 +1245,41 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                     const selectedVariationId = variationId ?? undefined;
                     
                     // Handle packing details from backend
-                    const packingDetails = item.packing_details || item.packingDetails || null;
+                    // CRITICAL: packing_details might be JSONB (object) or JSON string
+                    let packingDetails = item.packing_details || item.packingDetails || null;
+                    
+                    // If packing_details is a string, parse it
+                    if (typeof packingDetails === 'string') {
+                        try {
+                            packingDetails = JSON.parse(packingDetails);
+                        } catch (e) {
+                            console.warn('[PURCHASE FORM] Failed to parse packing_details as JSON:', e);
+                            packingDetails = null;
+                        }
+                    }
+                    
+                    // DEBUG: Log what we're loading
+                    if (packingDetails) {
+                        console.log('[PURCHASE FORM] Loading packing details for item:', {
+                            productName: product.name || item.product_name,
+                            packingDetails,
+                            boxes: packingDetails.boxes,
+                            boxesType: Array.isArray(packingDetails.boxes) ? 'array' : typeof packingDetails.boxes,
+                            boxesLength: Array.isArray(packingDetails.boxes) ? packingDetails.boxes.length : 'N/A',
+                            loose_pieces: packingDetails.loose_pieces
+                        });
+                        
+                        if (packingDetails.boxes && Array.isArray(packingDetails.boxes)) {
+                            packingDetails.boxes.forEach((box: any, idx: number) => {
+                                console.log(`[PURCHASE FORM] Box ${idx + 1} from DB:`, {
+                                    box_no: box.box_no,
+                                    pieces: box.pieces,
+                                    piecesType: Array.isArray(box.pieces) ? 'array' : typeof box.pieces,
+                                    piecesLength: Array.isArray(box.pieces) ? box.pieces.length : 'N/A'
+                                });
+                            });
+                        }
+                    }
                     
                     return {
                         id: Date.now() + index, // Generate unique ID
@@ -1228,7 +1297,7 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                         stock: (variation?.stock != null ? Number(variation.stock) : 0) as number,
                         lastPurchasePrice: undefined,
                         lastSupplier: undefined,
-                        packingDetails: packingDetails,
+                        packingDetails: packingDetails, // CRITICAL: Pass complete structure
                         thaans: packingDetails?.total_boxes || packingDetails?.boxes || 0,
                         meters: packingDetails?.total_meters || packingDetails?.meters || 0,
                         unit: item.unit ?? undefined,
@@ -1437,10 +1506,13 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                 size: item.size,
                 color: item.color,
                 ...(enablePacking ? {
-                    packingDetails: item.packingDetails,
+                    packing_details: item.packingDetails, // Map camelCase to snake_case for database
+                    packing_type: item.packingDetails?.packing_type || undefined,
+                    packing_quantity: item.packingDetails?.total_meters || item.meters || undefined,
+                    packing_unit: item.packingDetails?.packing_unit || 'meters',
                     thaans: item.thaans,
                     meters: item.meters
-                } : { packingDetails: undefined, thaans: undefined, meters: undefined })
+                } : { packing_details: undefined, packing_type: undefined, packing_quantity: undefined, packing_unit: undefined, thaans: undefined, meters: undefined })
             }));
             
             // CRITICAL FIX: Branch validation (MANDATORY)

@@ -17,6 +17,7 @@ import {
 import { toast } from 'sonner';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { useAccounting } from '@/app/context/AccountingContext';
+import { useSettings } from '@/app/context/SettingsContext';
 import { saleReturnService, CreateSaleReturnData } from '@/app/services/saleReturnService';
 import { saleService } from '@/app/services/saleService';
 import { cn } from '../ui/utils';
@@ -41,6 +42,11 @@ interface ReturnItem {
   total: number;
   size?: string;
   color?: string;
+  // Packing fields - preserved from original sale item
+  packing_type?: string;
+  packing_quantity?: number;
+  packing_unit?: string;
+  packing_details?: any; // JSONB
   variation?: {
     id?: string;
     size?: string;
@@ -53,6 +59,8 @@ interface ReturnItem {
 export const SaleReturnForm: React.FC<SaleReturnFormProps> = ({ saleId, onClose, onSuccess }) => {
   const { companyId, branchId: contextBranchId, user } = useSupabase();
   const accounting = useAccounting();
+  const { inventorySettings } = useSettings();
+  const enablePacking = inventorySettings.enablePacking;
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [originalSale, setOriginalSale] = useState<any>(null);
@@ -60,7 +68,6 @@ export const SaleReturnForm: React.FC<SaleReturnFormProps> = ({ saleId, onClose,
   const [returnDate, setReturnDate] = useState<Date>(new Date());
   const [reason, setReason] = useState('');
   const [notes, setNotes] = useState('');
-  const [finalize, setFinalize] = useState(false);
   
   // Return amount adjustment fields
   const [discountAmount, setDiscountAmount] = useState(0);
@@ -158,6 +165,11 @@ export const SaleReturnForm: React.FC<SaleReturnFormProps> = ({ saleId, onClose,
             total: 0,
             size: item.size,
             color: item.color,
+            // Preserve packing fields from original sale item
+            packing_type: item.packing_type,
+            packing_quantity: item.packing_quantity,
+            packing_unit: item.packing_unit,
+            packing_details: item.packing_details,
             variation: item.variation,
           };
         });
@@ -241,17 +253,49 @@ export const SaleReturnForm: React.FC<SaleReturnFormProps> = ({ saleId, onClose,
         return_date: format(returnDate, 'yyyy-MM-dd'),
         customer_id: originalSale.customer_id || undefined,
         customer_name: originalSale.customer_name,
-        items: itemsToReturn.map(item => ({
-          sale_item_id: item.sale_item_id,
-          product_id: item.product_id,
-          variation_id: item.variation_id,
-          product_name: item.product_name,
-          sku: item.sku,
-          quantity: item.return_quantity,
-          unit: item.unit,
-          unit_price: item.unit_price,
-          total: item.total,
-        })),
+        items: itemsToReturn.map(item => {
+          // Calculate proportional packing based on return quantity
+          let returnPackingDetails: any = undefined;
+          if (item.packing_details && item.original_quantity > 0) {
+            const returnRatio = item.return_quantity / item.original_quantity;
+            const originalPacking = item.packing_details;
+            
+            // Calculate proportional boxes and pieces
+            const originalBoxes = originalPacking.total_boxes || 0;
+            const originalPieces = originalPacking.total_pieces || 0;
+            const originalMeters = originalPacking.total_meters || 0;
+            
+            const returnBoxes = Math.round(originalBoxes * returnRatio * 100) / 100;
+            const returnPieces = Math.round(originalPieces * returnRatio * 100) / 100;
+            const returnMeters = Math.round(originalMeters * returnRatio * 100) / 100;
+            
+            returnPackingDetails = {
+              ...originalPacking,
+              total_boxes: returnBoxes,
+              total_pieces: returnPieces,
+              total_meters: returnMeters,
+            };
+          }
+          
+          return {
+            sale_item_id: item.sale_item_id,
+            product_id: item.product_id,
+            variation_id: item.variation_id,
+            product_name: item.product_name,
+            sku: item.sku,
+            quantity: item.return_quantity,
+            unit: item.unit,
+            unit_price: item.unit_price,
+            total: item.total,
+            // Preserve packing structure (proportional to return quantity)
+            packing_type: item.packing_type,
+            packing_quantity: item.packing_quantity && item.original_quantity > 0 
+              ? (item.packing_quantity * item.return_quantity / item.original_quantity)
+              : undefined,
+            packing_unit: item.packing_unit,
+            packing_details: returnPackingDetails,
+          };
+        }),
         reason: reason || undefined,
         notes: notes || undefined,
         created_by: user?.id,
@@ -260,20 +304,11 @@ export const SaleReturnForm: React.FC<SaleReturnFormProps> = ({ saleId, onClose,
         total: total,
       };
 
-      // If finalize is checked, show settlement dialog first
-      if (finalize) {
-        setPendingReturnData(returnData);
-        setShowSettlementDialog(true);
-        setSaving(false);
-        return;
-      }
-
-      // Create sale return (draft - no settlement needed)
-      const saleReturn = await saleReturnService.createSaleReturn(returnData);
-      toast.success(`Sale return ${saleReturn.return_no || saleReturn.id} created as draft`);
-
-      if (onSuccess) onSuccess();
-      onClose();
+      // Sale Return is ALWAYS finalized on creation - show settlement dialog
+      setPendingReturnData(returnData);
+      setShowSettlementDialog(true);
+      setSaving(false);
+      return;
     } catch (error: any) {
       console.error('[SALE RETURN FORM] Error saving return:', error);
       toast.error(error.message || 'Failed to create sale return');
@@ -472,6 +507,7 @@ export const SaleReturnForm: React.FC<SaleReturnFormProps> = ({ saleId, onClose,
                     <th className="px-4 py-3 text-center text-xs font-medium text-gray-400 uppercase">Original Qty</th>
                     <th className="px-4 py-3 text-center text-xs font-medium text-gray-400 uppercase">Already Returned</th>
                     <th className="px-4 py-3 text-center text-xs font-medium text-gray-400 uppercase">Return Qty</th>
+                    {enablePacking && <th className="px-4 py-3 text-center text-xs font-medium text-gray-400 uppercase">Packing</th>}
                     <th className="px-4 py-3 text-right text-xs font-medium text-gray-400 uppercase">Unit Price</th>
                     <th className="px-4 py-3 text-right text-xs font-medium text-gray-400 uppercase">Line Total</th>
                   </tr>
@@ -479,7 +515,7 @@ export const SaleReturnForm: React.FC<SaleReturnFormProps> = ({ saleId, onClose,
                 <tbody className="divide-y divide-gray-700">
                   {returnItems.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="px-4 py-8 text-center text-gray-500">
+                      <td colSpan={enablePacking ? 8 : 7} className="px-4 py-8 text-center text-gray-500">
                         <Package size={32} className="mx-auto mb-2 opacity-50" />
                         <p>No items found in original sale</p>
                       </td>
@@ -488,6 +524,20 @@ export const SaleReturnForm: React.FC<SaleReturnFormProps> = ({ saleId, onClose,
                     returnItems.map((item, index) => {
                     const maxReturnable = item.original_quantity - item.already_returned;
                     const canReturn = maxReturnable > 0;
+                    
+                    // Calculate proportional packing based on return quantity
+                    let proportionalPacking: any = null;
+                    if (item.packing_details && item.original_quantity > 0 && item.return_quantity > 0) {
+                      const returnRatio = item.return_quantity / item.original_quantity;
+                      const originalPacking = item.packing_details;
+                      
+                      proportionalPacking = {
+                        ...originalPacking,
+                        total_boxes: Math.round((originalPacking.total_boxes || 0) * returnRatio * 100) / 100,
+                        total_pieces: Math.round((originalPacking.total_pieces || 0) * returnRatio * 100) / 100,
+                        total_meters: Math.round((originalPacking.total_meters || 0) * returnRatio * 100) / 100,
+                      };
+                    }
 
                     return (
                       <tr key={index} className={cn(
@@ -565,6 +615,23 @@ export const SaleReturnForm: React.FC<SaleReturnFormProps> = ({ saleId, onClose,
                             <p className="text-xs text-red-400 mt-1">Fully returned</p>
                           )}
                         </td>
+                        {enablePacking && (
+                          <td className="px-4 py-3 text-center">
+                            {item.return_quantity > 0 && proportionalPacking ? (
+                              <span className="text-[11px] text-gray-400">
+                                {proportionalPacking.total_boxes > 0 && `${proportionalPacking.total_boxes}B`}
+                                {proportionalPacking.total_boxes > 0 && proportionalPacking.total_pieces > 0 && ' · '}
+                                {proportionalPacking.total_pieces > 0 && `${proportionalPacking.total_pieces}P`}
+                                {(proportionalPacking.total_boxes > 0 || proportionalPacking.total_pieces > 0) && proportionalPacking.total_meters > 0 && ' · '}
+                                {proportionalPacking.total_meters > 0 && `${proportionalPacking.total_meters.toFixed(1)}M`}
+                              </span>
+                            ) : item.return_quantity > 0 ? (
+                              <span className="text-gray-500 text-xs">—</span>
+                            ) : (
+                              <span className="text-gray-600 text-xs">—</span>
+                            )}
+                          </td>
+                        )}
                         <td className="px-4 py-3 text-right text-gray-300">Rs {Number(item.unit_price).toLocaleString()}</td>
                         <td className="px-4 py-3 text-right text-white font-semibold">
                           Rs {Number(item.total).toLocaleString()}
@@ -677,39 +744,26 @@ export const SaleReturnForm: React.FC<SaleReturnFormProps> = ({ saleId, onClose,
               <span className="text-white font-bold text-lg">Adjusted Return Amount:</span>
               <span className="text-red-400 font-bold text-lg">-Rs {total.toLocaleString()}</span>
             </div>
-            {finalize && (
-              <div className="mt-2 pt-2 border-t border-gray-700">
-                <p className="text-xs text-amber-400">
-                  ⚠️ Settlement method will be selected when finalizing
-                </p>
-              </div>
-            )}
-          </div>
-
-          {/* Finalize Option */}
-          <div className="flex items-center gap-2 p-3 bg-amber-900/20 border border-amber-800 rounded-lg">
-            <input
-              type="checkbox"
-              id="finalize"
-              checked={finalize}
-              onChange={(e) => setFinalize(e.target.checked)}
-              className="w-4 h-4 text-blue-600 bg-gray-700 border-gray-600 rounded"
-            />
-            <Label htmlFor="finalize" className="text-gray-200 cursor-pointer">
-              Finalize return (create stock movements and accounting entries)
-            </Label>
-          </div>
-
-          {/* Warning */}
-          {finalize && (
-            <div className="flex items-start gap-2 p-3 bg-blue-900/20 border border-blue-800 rounded-lg">
-              <AlertCircle size={16} className="text-blue-400 mt-0.5 flex-shrink-0" />
-              <p className="text-sm text-blue-300">
-                Finalizing will immediately create stock movements (stock IN) and accounting reversal entries. 
-                This action cannot be undone.
+            <div className="mt-2 pt-2 border-t border-gray-700">
+              <p className="text-xs text-amber-400">
+                ⚠️ Settlement method will be selected when saving
               </p>
             </div>
-          )}
+          </div>
+
+          {/* Finalization Notice - Sale Return is ALWAYS FINAL */}
+          <div className="flex items-start gap-2 p-3 bg-red-900/20 border border-red-800 rounded-lg">
+            <AlertCircle size={16} className="text-red-400 mt-0.5 flex-shrink-0" />
+            <div>
+              <p className="text-sm font-semibold text-red-300 mb-1">
+                ⚠️ FINAL DOCUMENT - NO EDITS OR DELETES ALLOWED
+              </p>
+              <p className="text-xs text-red-300/80">
+                Once saved, this return becomes FINAL and cannot be edited or deleted. 
+                Stock movements and customer ledger entries will be created immediately.
+              </p>
+            </div>
+          </div>
         </div>
 
         {/* Footer */}
@@ -729,12 +783,12 @@ export const SaleReturnForm: React.FC<SaleReturnFormProps> = ({ saleId, onClose,
             {saving ? (
               <>
                 <Loader2 size={16} className="mr-2 animate-spin" />
-                Saving...
+                Processing...
               </>
             ) : (
               <>
                 <Save size={16} className="mr-2" />
-                {finalize ? 'Save & Finalize' : 'Save as Draft'}
+                Create & Finalize Return
               </>
             )}
           </Button>

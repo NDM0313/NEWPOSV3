@@ -186,6 +186,28 @@ export const purchaseService = {
     }
     
     if (error) throw error;
+    
+    // 🔒 LOCK CHECK: Add hasReturn and returnCount to each purchase
+    if (data && data.length > 0) {
+      const purchaseIds = data.map((p: any) => p.id);
+      const { data: allReturns } = await supabase
+        .from('purchase_returns')
+        .select('original_purchase_id')
+        .in('original_purchase_id', purchaseIds)
+        .eq('status', 'final');
+      
+      const returnsMap = new Map<string, number>();
+      (allReturns || []).forEach((r: any) => {
+        const count = returnsMap.get(r.original_purchase_id) || 0;
+        returnsMap.set(r.original_purchase_id, count + 1);
+      });
+      
+      data.forEach((purchase: any) => {
+        purchase.hasReturn = returnsMap.has(purchase.id);
+        purchase.returnCount = returnsMap.get(purchase.id) || 0;
+      });
+    }
+    
     return data;
   },
 
@@ -208,11 +230,37 @@ export const purchaseService = {
       .single();
 
     if (error) throw error;
+    
+    // 🔒 LOCK CHECK: Check if purchase has returns (prevents editing)
+    const { data: returns } = await supabase
+      .from('purchase_returns')
+      .select('id')
+      .eq('original_purchase_id', id)
+      .eq('status', 'final')
+      .limit(1);
+    
+    if (data) {
+      data.hasReturn = (returns && returns.length > 0) || false;
+      data.returnCount = returns?.length || 0;
+    }
+    
     return data;
   },
 
   // Update purchase
   async updatePurchase(id: string, updates: Partial<Purchase>) {
+    // 🔒 LOCK CHECK: Prevent editing if purchase has returns
+    const { data: returns } = await supabase
+      .from('purchase_returns')
+      .select('id')
+      .eq('original_purchase_id', id)
+      .eq('status', 'final')
+      .limit(1);
+    
+    if (returns && returns.length > 0) {
+      throw new Error('Cannot edit purchase: This purchase has a return and is locked. Returns cannot be edited or deleted.');
+    }
+
     const { data, error } = await supabase
       .from('purchases')
       .update(updates)

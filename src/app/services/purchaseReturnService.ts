@@ -40,6 +40,13 @@ export interface PurchaseReturnItem {
   unit_price: number;
   total: number;
   notes?: string;
+  // Packing fields - preserved from original purchase item
+  packing_type?: string;
+  packing_quantity?: number;
+  packing_unit?: string;
+  packing_details?: any; // JSONB - packing details (boxes, pieces, meters)
+  // Return packing details - piece-level selection
+  return_packing_details?: any; // JSONB - { returned_pieces: [{ box_no, piece_no, meters }], returned_boxes, returned_pieces_count, returned_total_meters }
 }
 
 export interface CreatePurchaseReturnData {
@@ -60,6 +67,12 @@ export interface CreatePurchaseReturnData {
     unit_price: number;
     total: number;
     notes?: string;
+    // Packing fields - preserved from original purchase item
+    packing_type?: string;
+    packing_quantity?: number;
+    packing_unit?: string;
+    packing_details?: any; // JSONB - packing details (boxes, pieces, meters)
+    return_packing_details?: any; // JSONB - piece-level return selection
   }>;
   reason?: string;
   notes?: string;
@@ -117,6 +130,13 @@ export const purchaseReturnService = {
       unit_price: item.unit_price,
       total: item.total,
       notes: item.notes || null,
+      // Preserve all packing fields from original purchase item
+      packing_type: item.packing_type || null,
+      packing_quantity: item.packing_quantity || null,
+      packing_unit: item.packing_unit || null,
+      packing_details: item.packing_details || null,
+      // NEW: Return packing details (piece-level selection)
+      return_packing_details: item.return_packing_details || null,
     }));
 
     const { error: itemsError } = await supabase
@@ -163,7 +183,7 @@ export const purchaseReturnService = {
     // Validate return qty ≤ purchased qty per product/variation
     const { data: purchaseItems } = await supabase
       .from('purchase_items')
-      .select('id, product_id, variation_id, quantity')
+      .select('id, product_id, variation_id, quantity, packing_details')
       .eq('purchase_id', purchaseReturn.original_purchase_id);
 
     if (purchaseItems?.length) {
@@ -185,21 +205,52 @@ export const purchaseReturnService = {
       }
     }
 
-    // Stock movements: NEGATIVE (stock OUT)
+    // Stock movements: NEGATIVE (stock OUT) with proportional box/piece return
     for (const item of purchaseReturn.items) {
+      // Calculate proportional box/piece return based on original packing
+      let boxChange = 0;
+      let pieceChange = 0;
+      
+      // Get original item to calculate return ratio
+      const originalItem = purchaseItems?.find(
+        (p: any) => p.product_id === item.product_id && 
+        (p.variation_id === item.variation_id || (!p.variation_id && !item.variation_id))
+      );
+      
+      if (originalItem) {
+        // Get original packing details from original purchase item (CRITICAL: use original, not return item)
+        const originalPacking = originalItem.packing_details || {};
+        const originalQty = Number(originalItem.quantity);
+        const returnQty = Number(item.quantity);
+        
+        if (originalQty > 0 && originalPacking) {
+          // Calculate return ratio
+          const returnRatio = returnQty / originalQty;
+          
+          // Apply ratio to boxes and pieces proportionally (using ORIGINAL packing structure)
+          const originalBoxes = originalPacking.total_boxes || 0;
+          const originalPieces = originalPacking.total_pieces || 0;
+          
+          boxChange = Math.round(originalBoxes * returnRatio * 100) / 100; // Round to 2 decimals
+          pieceChange = Math.round(originalPieces * returnRatio * 100) / 100;
+        }
+      }
+      
       await productService.createStockMovement({
         company_id: companyId,
         branch_id: branchId === 'all' ? undefined : branchId,
         product_id: item.product_id,
         variation_id: item.variation_id || undefined,
         movement_type: 'purchase_return',
-        quantity: -Number(item.quantity),
+        quantity: -Number(item.quantity), // NEGATIVE for stock OUT
         unit_cost: Number(item.unit_price),
         total_cost: Number(item.total),
         reference_type: 'purchase_return',
         reference_id: returnId,
         notes: `Purchase Return ${purchaseReturn.return_no || returnId}: ${item.product_name}${item.variation_id ? ' (Variation)' : ''}`,
         created_by: userId,
+        box_change: boxChange > 0 ? -boxChange : undefined, // NEGATIVE for stock OUT
+        piece_change: pieceChange > 0 ? -pieceChange : undefined, // NEGATIVE for stock OUT
       });
     }
 
@@ -275,6 +326,13 @@ export const purchaseReturnService = {
     unit_price: number;
     total: number;
     already_returned?: number;
+    // Packing fields - preserved from original purchase item
+    packing_type?: string;
+    packing_quantity?: number;
+    packing_unit?: string;
+    packing_details?: any; // JSONB
+    // Variation object for display (same as Purchase View)
+    variation?: any;
   }>> {
     const { data: items, error } = await supabase
       .from('purchase_items')
@@ -287,7 +345,12 @@ export const purchaseReturnService = {
         quantity,
         unit,
         unit_price,
-        total
+        total,
+        packing_type,
+        packing_quantity,
+        packing_unit,
+        packing_details,
+        variation:product_variations(*)
       `)
       .eq('purchase_id', purchaseId);
 
@@ -296,32 +359,61 @@ export const purchaseReturnService = {
 
     const { data: returns } = await supabase
       .from('purchase_returns')
-      .select('id, items:purchase_return_items(product_id, variation_id, quantity)')
+      .select('id, items:purchase_return_items(product_id, variation_id, quantity, return_packing_details)')
       .eq('original_purchase_id', purchaseId)
       .eq('company_id', companyId)
       .eq('status', 'final');
 
     const returnedMap: Record<string, number> = {};
+    const returnedPiecesMap: Map<string, Set<string>> = new Map(); // Track returned pieces per item
+    
     (returns || []).forEach((ret: any) => {
       (ret.items || []).forEach((it: any) => {
         const key = `${it.product_id}_${it.variation_id || 'null'}`;
         returnedMap[key] = (returnedMap[key] || 0) + Number(it.quantity);
+        
+        // Track returned pieces from return_packing_details
+        if (it.return_packing_details && it.return_packing_details.returned_pieces) {
+          if (!returnedPiecesMap.has(key)) {
+            returnedPiecesMap.set(key, new Set());
+          }
+          const pieceSet = returnedPiecesMap.get(key)!;
+          it.return_packing_details.returned_pieces.forEach((piece: any) => {
+            const pieceKey = piece.box_no === 0 
+              ? `loose-${piece.piece_no - 1}` 
+              : `${piece.box_no}-${piece.piece_no - 1}`;
+            pieceSet.add(pieceKey);
+          });
+        }
       });
     });
 
     return items.map((item: any) => {
       const key = `${item.product_id}_${item.variation_id || 'null'}`;
+      // Extract variation data (same as Purchase View)
+      const variation = item.variation || item.product_variations || null;
+      const variationSku = variation?.sku || null;
+      const finalSku = variationSku || item.sku || 'N/A';
+      
       return {
         id: item.id,
         product_id: item.product_id,
         variation_id: item.variation_id || undefined,
         product_name: item.product_name,
-        sku: item.sku || 'N/A',
+        sku: finalSku,
         quantity: Number(item.quantity),
         unit: item.unit || 'pcs',
         unit_price: Number(item.unit_price || 0),
         total: Number(item.total || 0),
         already_returned: returnedMap[key] || 0,
+        already_returned_pieces: returnedPiecesMap.get(key) || new Set(), // Set of piece keys already returned
+        // Preserve all packing fields from original purchase item
+        packing_type: item.packing_type || undefined,
+        packing_quantity: item.packing_quantity ? Number(item.packing_quantity) : undefined,
+        packing_unit: item.packing_unit || undefined,
+        packing_details: item.packing_details || undefined,
+        // Include variation object for display (same as Purchase View)
+        variation: variation,
       };
     });
   },

@@ -1062,6 +1062,44 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                 const convertedItems: SaleItem[] = list.map((item: any, index: number) => {
                     const variationId = item.variation_id ?? item.variationId ?? undefined;
                     const hasVariation = Boolean(variationId);
+                    
+                    // CRITICAL: packing_details might be JSONB (object) or JSON string
+                    // Load complete structure, not just totals
+                    let packingDetails = item.packing_details || item.packingDetails || null;
+                    
+                    // If packing_details is a string, parse it
+                    if (typeof packingDetails === 'string') {
+                        try {
+                            packingDetails = JSON.parse(packingDetails);
+                        } catch (e) {
+                            console.warn('[SALE FORM] Failed to parse packing_details as JSON:', e);
+                            packingDetails = null;
+                        }
+                    }
+                    
+                    // DEBUG: Log what we're loading
+                    if (packingDetails) {
+                        console.log('[SALE FORM] Loading packing details for item:', {
+                            productName: item.productName || item.product_name,
+                            packingDetails,
+                            boxes: packingDetails.boxes,
+                            boxesType: Array.isArray(packingDetails.boxes) ? 'array' : typeof packingDetails.boxes,
+                            boxesLength: Array.isArray(packingDetails.boxes) ? packingDetails.boxes.length : 'N/A',
+                            loose_pieces: packingDetails.loose_pieces
+                        });
+                        
+                        if (packingDetails.boxes && Array.isArray(packingDetails.boxes)) {
+                            packingDetails.boxes.forEach((box: any, idx: number) => {
+                                console.log(`[SALE FORM] Box ${idx + 1} from DB:`, {
+                                    box_no: box.box_no,
+                                    pieces: box.pieces,
+                                    piecesType: Array.isArray(box.pieces) ? 'array' : typeof box.pieces,
+                                    piecesLength: Array.isArray(box.pieces) ? box.pieces.length : 'N/A'
+                                });
+                            });
+                        }
+                    }
+                    
                     return {
                         id: baseTimestamp + index,
                         productId: item.productId || item.product_id || '',
@@ -1078,27 +1116,42 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                         lastPurchasePrice: undefined,
                         lastSupplier: undefined,
                         unit: item.unit ?? undefined,
-                        packingDetails: item.packing_details || item.packingDetails,
-                        thaans: (item.packing_details || item.packingDetails)?.total_boxes,
-                        meters: (item.packing_details || item.packingDetails)?.total_meters,
+                        packingDetails: packingDetails, // CRITICAL: Pass complete structure
+                        thaans: packingDetails?.total_boxes || packingDetails?.boxes || 0,
+                        meters: packingDetails?.total_meters || packingDetails?.meters || 0,
                     };
                 });
                 console.log('[SALE FORM] ✅ Converted items for edit mode:', convertedItems.length, 'items');
                 console.log('[SALE FORM] Item IDs:', convertedItems.map((item, idx) => ({ index: idx, id: item.id, name: item.name, qty: item.qty, price: item.price })));
                 setItems(convertedItems);
             };
-            if (initialSale.items && initialSale.items.length > 0) {
-                mapItemsToForm(initialSale.items);
-            } else if (initialSale.id) {
-                // Fallback: sale passed without items (e.g. from list) – fetch full sale with items
+            // 🔒 LOCK CHECK: Prevent editing if sale has returns
+            if (initialSale.id) {
                 saleService.getSaleById(initialSale.id)
                     .then((full) => {
+                        // Check if sale has returns (LOCKED)
+                        if (full.hasReturn) {
+                            toast.error('Cannot edit sale: This sale has a return and is locked. Returns cannot be edited or deleted.');
+                            onClose();
+                            return;
+                        }
+                        
                         const saleWithItems = convertFromSupabaseSale(full);
                         if (saleWithItems.items && saleWithItems.items.length > 0) {
                             mapItemsToForm(saleWithItems.items);
+                        } else if (initialSale.items && initialSale.items.length > 0) {
+                            mapItemsToForm(initialSale.items);
                         }
                     })
-                    .catch((err) => console.warn('[SaleForm] Could not load sale items for edit:', err));
+                    .catch((err: any) => {
+                        console.warn('[SaleForm] Could not load sale items for edit:', err);
+                        if (err.message?.includes('return') || err.message?.includes('locked')) {
+                            toast.error(err.message);
+                            onClose();
+                        }
+                    });
+            } else if (initialSale.items && initialSale.items.length > 0) {
+                mapItemsToForm(initialSale.items);
             }
 
             // CRITICAL FIX: Pre-fill payments from existing payments (split by method)
@@ -1463,19 +1516,54 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
 
     // Packing Handlers – single source of truth = sale item. On first save, commit immediately to item.
     const handleSavePacking = (itemId: number, details: PackingDetails) => {
-        const normalized = normalizePacking(details);
+        // DEBUG: Log what we're receiving and saving
+        console.log('[SALE FORM] handleSavePacking called:', {
+            itemId,
+            details,
+            boxes: details.boxes,
+            boxesCount: details.boxes?.length,
+            loose_pieces: details.loose_pieces,
+            totals: {
+                total_boxes: details.total_boxes,
+                total_pieces: details.total_pieces,
+                total_meters: details.total_meters
+            }
+        });
+        
+        // Verify structure integrity
+        if (details.boxes && details.boxes.length > 0) {
+            details.boxes.forEach((box, idx) => {
+                console.log(`[SALE FORM] Box ${idx + 1} in details:`, {
+                    box_no: box.box_no,
+                    pieces: box.pieces,
+                    piecesCount: box.pieces.length
+                });
+            });
+        }
+        
+        // CRITICAL: Do NOT normalize - save complete structure as-is
+        // normalizePacking might be filtering/reshaping data
         setItems(prev => prev.map(item => {
             if (item.id === itemId) {
-                return {
+                const updatedItem = {
                     ...item,
-                    packingDetails: normalized,
-                    packing_quantity: normalized.total_meters,
+                    packingDetails: details, // CRITICAL: Save complete structure, not normalized
+                    packing_quantity: details.total_meters,
                     packing_unit: 'meters',
-                    qty: normalized.total_meters,
-                    thaans: normalized.total_boxes,
-                    meters: normalized.total_meters,
+                    qty: details.total_meters,
+                    thaans: details.total_boxes,
+                    meters: details.total_meters,
                     packingTouched: false,
                 };
+                
+                console.log('[SALE FORM] Updated item packingDetails:', {
+                    itemId: item.id,
+                    packingDetails: updatedItem.packingDetails,
+                    boxes: updatedItem.packingDetails?.boxes,
+                    boxesCount: updatedItem.packingDetails?.boxes?.length
+                });
+                
+                return updatedItem;
             }
             return item;
         }));
@@ -1656,10 +1744,13 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                   variationId: variationId, // CRITICAL FIX: Include variationId
                   // Packing: only include when global Enable Packing is ON
                   ...(enablePacking ? {
-                    packingDetails: item.packingDetails,
+                    packing_details: item.packingDetails, // Map camelCase to snake_case for database
+                    packing_type: item.packingDetails?.packing_type || undefined,
+                    packing_quantity: item.packingDetails?.total_meters || item.meters || undefined,
+                    packing_unit: item.packingDetails?.packing_unit || 'meters',
                     thaans: item.thaans,
                     meters: item.meters
-                  } : { packingDetails: undefined, thaans: undefined, meters: undefined })
+                  } : { packing_details: undefined, packing_type: undefined, packing_quantity: undefined, packing_unit: undefined, thaans: undefined, meters: undefined })
                 };
                 
                 console.log(`[SALE FORM] ✅ Converted item ${index}:`, {

@@ -40,6 +40,7 @@ import { ViewPurchaseDetailsDrawer } from './ViewPurchaseDetailsDrawer';
 import { ViewPaymentsModal, type InvoiceDetails, type Payment } from '@/app/components/sales/ViewPaymentsModal';
 import { AttachmentViewer } from '@/app/components/shared/AttachmentViewer';
 import { purchaseReturnService } from '@/app/services/purchaseReturnService';
+import { PurchaseReturnForm } from './PurchaseReturnForm';
 import {
   Dialog,
   DialogContent,
@@ -67,6 +68,8 @@ interface Purchase {
   paymentStatus: PaymentStatus;
   addedBy: string;
   attachments?: { url: string; name: string }[] | null; // Purchase attachments
+  hasReturn?: boolean;
+  returnCount?: number;
 }
 
 // Mock data removed - using purchaseService which loads from Supabase
@@ -145,6 +148,11 @@ export const PurchasesPage = () => {
   const [viewPurchaseReturnDetailsOpen, setViewPurchaseReturnDetailsOpen] = useState(false);
   const [purchaseReturnToDelete, setPurchaseReturnToDelete] = useState<any | null>(null);
   const [deletePurchaseReturnDialogOpen, setDeletePurchaseReturnDialogOpen] = useState(false);
+  
+  // Purchase Return Form
+  const [purchaseReturnFormOpen, setPurchaseReturnFormOpen] = useState(false);
+  const [selectedPurchaseForReturn, setSelectedPurchaseForReturn] = useState<Purchase | null>(null);
+  const [purchasesWithReturns, setPurchasesWithReturns] = useState<Set<string>>(new Set());
 
   // Column visibility state
   const [visibleColumns, setVisibleColumns] = useState({
@@ -299,6 +307,9 @@ export const PurchasesPage = () => {
           addedBy: p.created_by_user?.full_name || p.created_by_user?.email || (p as any).createdBy || 'System',
           // Attachments from purchase
           attachments: p.attachments || null,
+          // 🔒 LOCK CHECK: hasReturn and returnCount from API
+          hasReturn: p.hasReturn || false,
+          returnCount: p.returnCount || 0,
         };
       });
       
@@ -397,6 +408,21 @@ export const PurchasesPage = () => {
       window.removeEventListener('paymentAdded', handlePaymentAdded);
     };
   }, [loadPurchases, refreshPurchases]);
+  
+  // Load purchases with returns
+  useEffect(() => {
+    const loadPurchasesWithReturns = async () => {
+      if (!companyId) return;
+      try {
+        const returns = await purchaseReturnService.getPurchaseReturns(companyId, branchId === 'all' ? undefined : branchId);
+        const returnPurchaseIds = new Set(returns.map((r: any) => r.original_purchase_id));
+        setPurchasesWithReturns(returnPurchaseIds);
+      } catch (error) {
+        console.error('[PURCHASES PAGE] Error loading purchase returns:', error);
+      }
+    };
+    loadPurchasesWithReturns();
+  }, [companyId, branchId]);
   
   // 🔒 CLONE FROM SALE PAGE: Re-resolve locations when branchMap is updated
   useEffect(() => {
@@ -719,8 +745,9 @@ export const PurchasesPage = () => {
         );
       }
       case 'status': {
-        // Enhanced Status Column: Badge + Attachment Icon
+        // Enhanced Status Column: Badge + Return Icon + Attachment Icon
         const statusBadge = getPurchaseStatusBadge(purchase.status);
+        const hasReturn = (purchase.status === 'final' || purchase.status === 'received') && purchasesWithReturns.has(purchase.uuid);
         // Check for attachments - handle both array and object formats
         const hasAttachments = purchase.attachments && (
           (Array.isArray(purchase.attachments) && purchase.attachments.length > 0) ||
@@ -730,6 +757,27 @@ export const PurchasesPage = () => {
         return (
           <div className="flex items-center gap-2">
             {statusBadge}
+            {hasReturn && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setPurchaseReturnsDialogOpen(true);
+                  if (companyId) {
+                    setLoadingPurchaseReturns(true);
+                    purchaseReturnService.getPurchaseReturns(companyId, branchId === 'all' ? undefined : branchId)
+                      .then((list) => {
+                        setPurchaseReturnsList(list);
+                        setLoadingPurchaseReturns(false);
+                      })
+                      .catch(() => setLoadingPurchaseReturns(false));
+                  }
+                }}
+                className="text-purple-400 hover:text-purple-300 transition-colors"
+                title="View Purchase Returns"
+              >
+                <RotateCcw size={16} />
+              </button>
+            )}
             {hasAttachments && (
               <button
                 onClick={(e) => {
@@ -1219,6 +1267,21 @@ export const PurchasesPage = () => {
                               View Ledger
                             </DropdownMenuItem>
                             
+                            {/* 🎯 CREATE PURCHASE RETURN - Only for final/received purchases without existing returns */}
+                            {(purchase.status === 'final' || purchase.status === 'received') && 
+                             !(purchase.hasReturn || purchasesWithReturns.has(purchase.uuid)) && (
+                              <DropdownMenuItem 
+                                className="hover:bg-gray-800 cursor-pointer" 
+                                onClick={() => {
+                                  setSelectedPurchaseForReturn(purchase);
+                                  setPurchaseReturnFormOpen(true);
+                                }}
+                              >
+                                <RotateCcw size={14} className="mr-2 text-purple-400" />
+                                Create Purchase Return
+                              </DropdownMenuItem>
+                            )}
+                            
                             <DropdownMenuSeparator className="bg-gray-700" />
                             <DropdownMenuItem className="hover:bg-gray-800 cursor-pointer text-red-400" onClick={() => handleDelete(purchase)}>
                               <Trash2 size={14} className="mr-2" />
@@ -1541,6 +1604,41 @@ export const PurchasesPage = () => {
             </div>
           </DialogContent>
         </Dialog>
+      )}
+
+      {/* Purchase Return Form */}
+      {selectedPurchaseForReturn && purchaseReturnFormOpen && (
+        <PurchaseReturnForm
+          purchaseId={selectedPurchaseForReturn.uuid}
+          onClose={() => {
+            setPurchaseReturnFormOpen(false);
+            setSelectedPurchaseForReturn(null);
+            loadPurchases();
+            // Reload purchase returns list
+            if (companyId) {
+              purchaseReturnService.getPurchaseReturns(companyId, branchId === 'all' ? undefined : branchId)
+                .then((list) => {
+                  setPurchaseReturnsList(list);
+                  // Update purchasesWithReturns set
+                  const returnPurchaseIds = new Set(list.map((r: any) => r.original_purchase_id));
+                  setPurchasesWithReturns(returnPurchaseIds);
+                })
+                .catch(() => {});
+            }
+          }}
+          onSuccess={() => {
+            loadPurchases();
+            if (companyId) {
+              purchaseReturnService.getPurchaseReturns(companyId, branchId === 'all' ? undefined : branchId)
+                .then((list) => {
+                  setPurchaseReturnsList(list);
+                  const returnPurchaseIds = new Set(list.map((r: any) => r.original_purchase_id));
+                  setPurchasesWithReturns(returnPurchaseIds);
+                })
+                .catch(() => {});
+            }
+          }}
+        />
       )}
 
       {/* Delete Purchase Return (draft only) */}

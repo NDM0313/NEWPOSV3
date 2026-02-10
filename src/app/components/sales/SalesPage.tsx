@@ -230,15 +230,28 @@ export const SalesPage = () => {
         break;
         
       case 'edit':
+        // 🔒 LOCK CHECK: Prevent editing if sale has returns
+        if (sale.hasReturn || salesWithReturns.has(sale.id)) {
+          toast.error('Cannot edit sale: This sale has a return and is locked. Returns cannot be edited or deleted.');
+          return;
+        }
         // Fetch full sale with items so Edit form shows line items (not just payments)
         try {
           const full = await saleService.getSaleById(sale.id);
+          // Double check: backend should also return hasReturn
+          if (full.hasReturn) {
+            toast.error('Cannot edit sale: This sale has a return and is locked.');
+            return;
+          }
           const saleWithItems = convertFromSupabaseSale(full);
           openDrawer('edit-sale', undefined, { sale: saleWithItems });
-        } catch (e) {
+        } catch (e: any) {
           console.error('[SalesPage] Error loading sale for edit:', e);
-          toast.error('Could not load sale details');
-        openDrawer('edit-sale', undefined, { sale });
+          if (e.message?.includes('return') || e.message?.includes('locked')) {
+            toast.error(e.message);
+          } else {
+            toast.error('Could not load sale details');
+          }
         }
         break;
         
@@ -1478,20 +1491,7 @@ export const SalesPage = () => {
                                       View Original Sale
                                     </DropdownMenuItem>
                                   )}
-                                  {ret.status === 'draft' && (
-                                    <>
-                                      <DropdownMenuItem 
-                                        onClick={() => {
-                                          setReturnToDelete(ret);
-                                          setDeleteReturnDialogOpen(true);
-                                        }}
-                                        className="hover:bg-gray-800 cursor-pointer text-red-400"
-                                      >
-                                        <Trash2 size={14} className="mr-2" />
-                                        Delete Return (draft only)
-                                      </DropdownMenuItem>
-                                    </>
-                                  )}
+                                  {/* No Edit/Delete for FINAL returns - they are locked */}
                                   <DropdownMenuSeparator />
                                   <DropdownMenuItem 
                                     onClick={() => {
@@ -1586,13 +1586,16 @@ export const SalesPage = () => {
                               <Eye size={14} className="mr-2 text-blue-400" />
                               View Details
                             </DropdownMenuItem>
-                            <DropdownMenuItem 
-                              className="hover:bg-gray-800 cursor-pointer"
-                              onClick={() => handleSaleAction('edit', sale)}
-                            >
-                              <Edit size={14} className="mr-2 text-green-400" />
-                              Edit Sale
-                            </DropdownMenuItem>
+                            {/* 🔒 LOCK: Hide Edit if sale has returns */}
+                            {!(sale.hasReturn || salesWithReturns.has(sale.id)) && (
+                              <DropdownMenuItem 
+                                className="hover:bg-gray-800 cursor-pointer"
+                                onClick={() => handleSaleAction('edit', sale)}
+                              >
+                                <Edit size={14} className="mr-2 text-green-400" />
+                                Edit Sale
+                              </DropdownMenuItem>
+                            )}
                             <DropdownMenuItem 
                               className="hover:bg-gray-800 cursor-pointer"
                               onClick={() => handleSaleAction('print_invoice', sale)}

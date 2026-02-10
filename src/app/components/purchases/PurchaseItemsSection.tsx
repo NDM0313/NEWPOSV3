@@ -404,11 +404,15 @@ export const PurchaseItemsSection: React.FC<PurchaseItemsSectionProps> = ({
                                                 >
                                                     {item.packingDetails ? (
                                                         <span className="text-[11px]">
-                                                            {item.packingDetails.total_boxes > 0 && `${item.packingDetails.total_boxes}B`}
-                                                            {item.packingDetails.total_boxes > 0 && item.packingDetails.total_pieces > 0 && ' · '}
-                                                            {item.packingDetails.total_pieces > 0 && `${item.packingDetails.total_pieces}P`}
-                                                            {(item.packingDetails.total_boxes > 0 || item.packingDetails.total_pieces > 0) && item.packingDetails.total_meters > 0 && ' · '}
-                                                            {item.packingDetails.total_meters > 0 && `${item.packingDetails.total_meters.toFixed(1)}M`}
+                                                            {(() => {
+                                                                const pd = item.packingDetails;
+                                                                const totalBoxes = pd.total_boxes ?? 0;
+                                                                const totalPieces = pd.total_pieces ?? 0;
+                                                                const packingParts: string[] = [];
+                                                                if (Number(totalBoxes) > 0) packingParts.push(`${totalBoxes} Box${Number(totalBoxes) !== 1 ? 'es' : ''}`);
+                                                                if (Number(totalPieces) > 0) packingParts.push(`${totalPieces} Piece${Number(totalPieces) !== 1 ? 's' : ''}`);
+                                                                return packingParts.length ? packingParts.join(', ') : '—';
+                                                            })()}
                                                         </span>
                                                     ) : (
                                                         <span>{item.thaans || 0} Boxes · {item.meters || 0} Meters</span>

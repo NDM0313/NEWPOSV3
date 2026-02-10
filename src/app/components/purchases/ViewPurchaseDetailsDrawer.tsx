@@ -34,13 +34,24 @@ import {
   ShoppingBag,
   Paperclip,
   Image as ImageIcon,
-  File
+  File,
+  RotateCcw,
+  Minus,
+  Plus,
+  Save,
+  Loader2,
+  Check
 } from 'lucide-react';
 import { Button } from "../ui/button";
 import { Badge } from "../ui/badge";
 import { Separator } from "../ui/separator";
+import { Input } from "../ui/input";
+import { Label } from "../ui/label";
+import { Textarea } from "../ui/textarea";
+import { CalendarDatePicker } from "../ui/CalendarDatePicker";
 import { cn } from "../ui/utils";
 import { toast } from 'sonner';
+import { purchaseReturnService } from '@/app/services/purchaseReturnService';
 import {
   Table,
   TableBody,
@@ -63,8 +74,7 @@ import {
 } from '@/app/components/ui/dialog';
 import { getAttachmentOpenUrl } from '@/app/utils/paymentAttachmentUrl';
 import { AttachmentViewer } from '@/app/components/shared/AttachmentViewer';
-import { PurchaseReturnForm } from './PurchaseReturnForm';
-import { RotateCcw } from 'lucide-react';
+import { PackingEntryModal } from '@/app/components/transactions/PackingEntryModal';
 
 function AttachmentImage({ att }: { att: { url: string; name: string } }) {
   const [src, setSrc] = useState<string | null>(null);
@@ -128,7 +138,7 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
 }) => {
   const [activeTab, setActiveTab] = useState<'details' | 'payments' | 'history'>('details');
   const { getPurchaseById } = usePurchases();
-  const { companyId, user } = useSupabase();
+  const { companyId, branchId: contextBranchId, user } = useSupabase();
   const { inventorySettings } = useSettings();
   const enablePacking = inventorySettings.enablePacking;
   const [purchase, setPurchase] = useState<Purchase | null>(null);
@@ -147,7 +157,21 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
   const [paymentToEdit, setPaymentToEdit] = useState<any | null>(null);
   const [viewPaymentsModalOpen, setViewPaymentsModalOpen] = useState(false);
   const [attachmentsDialogList, setAttachmentsDialogList] = useState<{ url: string; name: string }[] | null>(null);
-  const [purchaseReturnFormOpen, setPurchaseReturnFormOpen] = useState(false);
+  
+  // Return Mode state
+  const [returnMode, setReturnMode] = useState(false);
+  const [returnQuantities, setReturnQuantities] = useState<Record<string, number>>({});
+  const [alreadyReturnedMap, setAlreadyReturnedMap] = useState<Record<string, number>>({});
+  const [savingReturn, setSavingReturn] = useState(false);
+  const [returnDate, setReturnDate] = useState<Date>(new Date());
+  const [returnReason, setReturnReason] = useState('');
+  const [returnNotes, setReturnNotes] = useState('');
+  
+  // Packing Modal state
+  const [packingModalOpen, setPackingModalOpen] = useState(false);
+  const [activePackingItem, setActivePackingItem] = useState<any>(null);
+  const [returnPackingDetails, setReturnPackingDetails] = useState<Record<string, any>>({}); // Store return packing per item
+  const [alreadyReturnedPiecesMap, setAlreadyReturnedPiecesMap] = useState<Record<string, Set<string>>>({}); // Track already returned pieces per item
 
   // Load branches for location display
   useEffect(() => {
@@ -284,6 +308,231 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
       setPayments([]);
     }
   }, [isOpen, purchaseId, getPurchaseById, companyId, loadPayments]);
+
+  // Load already returned quantities and pieces when purchase is loaded
+  useEffect(() => {
+    const loadAlreadyReturned = async () => {
+      if (!purchase?.id || !companyId) return;
+      try {
+        const items = await purchaseReturnService.getOriginalPurchaseItems(purchase.id, companyId);
+        const returnedMap: Record<string, number> = {};
+        const returnedPiecesMap: Record<string, Set<string>> = {};
+        
+        items.forEach((item) => {
+          const key = `${item.product_id}_${item.variation_id || 'null'}`;
+          returnedMap[key] = item.already_returned || 0;
+          
+          // Store returned pieces per item
+          const itemReturnedPieces = (item as any).already_returned_pieces;
+          if (itemReturnedPieces && itemReturnedPieces instanceof Set) {
+            returnedPiecesMap[key] = itemReturnedPieces;
+          } else {
+            returnedPiecesMap[key] = new Set();
+          }
+        });
+        
+        setAlreadyReturnedMap(returnedMap);
+        setAlreadyReturnedPiecesMap(returnedPiecesMap);
+      } catch (error) {
+        console.error('[VIEW PURCHASE] Error loading already returned quantities:', error);
+      }
+    };
+    if (purchase) {
+      loadAlreadyReturned();
+    }
+  }, [purchase, companyId]);
+
+  // Return Mode handlers
+  const handleEnterReturnMode = () => {
+    if (!purchase || (purchase.status !== 'final' && purchase.status !== 'received')) {
+      toast.error('Purchase return allowed only for final/received purchases.');
+      return;
+    }
+    setReturnMode(true);
+    // Initialize return quantities to 0 for all items
+    const initialQuantities: Record<string, number> = {};
+    purchase.items.forEach((item) => {
+      const key = `${item.productId}_${item.variationId || 'null'}`;
+      initialQuantities[key] = 0;
+    });
+    setReturnQuantities(initialQuantities);
+    // Clear any previous return packing details
+    setReturnPackingDetails({});
+  };
+
+  const handleExitReturnMode = () => {
+    setReturnMode(false);
+    setReturnQuantities({});
+    setReturnReason('');
+    setReturnNotes('');
+  };
+  
+  const handleOpenPackingModal = (item: any) => {
+    setActivePackingItem(item);
+    setPackingModalOpen(true);
+  };
+  
+  const handleSaveReturnPacking = (itemKey: string, returnPacking: any) => {
+    setReturnPackingDetails(prev => ({
+      ...prev,
+      [itemKey]: returnPacking
+    }));
+    setPackingModalOpen(false);
+    setActivePackingItem(null);
+  };
+
+  const handleReturnQuantityChange = (itemKey: string, value: number) => {
+    const item = purchase?.items.find((it) => {
+      const key = `${it.productId}_${it.variationId || 'null'}`;
+      return key === itemKey;
+    });
+    if (!item) {
+      console.warn('[VIEW PURCHASE] Item not found for key:', itemKey);
+      return;
+    }
+
+    const originalQty = item.quantity ?? 0;
+    const alreadyReturned = alreadyReturnedMap[itemKey] || 0;
+    const maxReturnable = originalQty - alreadyReturned;
+    const qty = Math.max(0, Math.min(maxReturnable, isNaN(value) ? 0 : value));
+
+    console.log('[VIEW PURCHASE] handleReturnQuantityChange:', {
+      itemKey,
+      inputValue: value,
+      calculatedQty: qty,
+      maxReturnable,
+      originalQty,
+      alreadyReturned,
+      currentState: returnQuantities[itemKey]
+    });
+
+    setReturnQuantities(prev => {
+      const updated = {
+        ...prev,
+        [itemKey]: qty
+      };
+      console.log('[VIEW PURCHASE] State before update:', prev);
+      console.log('[VIEW PURCHASE] State after update:', updated);
+      return updated;
+    });
+  };
+
+  const handleSaveReturn = async () => {
+    if (!purchase || !companyId || !contextBranchId || !user) {
+      toast.error('Missing required information');
+      return;
+    }
+
+    const branchId = contextBranchId === 'all' ? undefined : contextBranchId;
+    if (!branchId) {
+      toast.error('Please select a branch');
+      return;
+    }
+
+    // Filter items with return quantity > 0
+    const itemsToReturn = purchase.items
+      .map((item) => {
+        const key = `${item.productId}_${item.variationId || 'null'}`;
+        const returnQty = returnQuantities[key] || 0;
+        if (returnQty <= 0) return null;
+
+        const originalQty = item.quantity ?? 0;
+        const alreadyReturned = alreadyReturnedMap[key] || 0;
+        if (returnQty > originalQty - alreadyReturned) {
+          toast.error(`Return quantity exceeds available quantity for ${item.productName}`);
+          return null;
+        }
+
+        // Get packing details from original item
+        const originalPacking = item.packing_details || item.packingDetails || {};
+        
+        // Calculate proportional packing details for return quantity (jo purchase hua wahi return hoga)
+        let returnPackingDetails: any = null;
+        let returnPackingQuantity: number | undefined = undefined;
+        
+        if (originalPacking && originalQty > 0) {
+          // Calculate proportional packing based on return quantity
+          const returnRatio = returnQty / originalQty;
+          
+          // Calculate proportional boxes, pieces, and meters
+          const originalBoxes = originalPacking.total_boxes || 0;
+          const originalPieces = originalPacking.total_pieces || 0;
+          const originalMeters = originalPacking.total_meters || 0;
+          
+          const returnBoxes = Math.round(originalBoxes * returnRatio * 100) / 100;
+          const returnPieces = Math.round(originalPieces * returnRatio * 100) / 100;
+          const returnMeters = Math.round(originalMeters * returnRatio * 100) / 100;
+          
+          returnPackingDetails = {
+            ...originalPacking,
+            total_boxes: returnBoxes,
+            total_pieces: returnPieces,
+            total_meters: returnMeters,
+          };
+          
+          // Calculate proportional packing_quantity if it exists
+          if ((item as any).packing_quantity) {
+            returnPackingQuantity = Number((item as any).packing_quantity) * returnRatio;
+          }
+        }
+        
+        // Get return packing details if user selected pieces
+        const savedReturnPacking = returnPackingDetails[key];
+        
+        return {
+          product_id: item.productId,
+          variation_id: item.variationId || undefined,
+          product_name: item.productName,
+          sku: item.sku || 'N/A',
+          quantity: returnQty,
+          unit: item.unit || 'pcs',
+          unit_price: item.price,
+          total: returnQty * item.price,
+          packing_type: (item as any).packing_type || undefined,
+          packing_quantity: returnPackingQuantity || (item as any).packing_quantity || undefined,
+          packing_unit: (item as any).packing_unit || undefined,
+          packing_details: returnPackingDetails || originalPacking || null,
+          // NEW: Return packing details (piece-level selection)
+          return_packing_details: savedReturnPacking || null,
+        };
+      })
+      .filter(Boolean) as any[];
+
+    if (itemsToReturn.length === 0) {
+      toast.error('Select at least one item and quantity to return');
+      return;
+    }
+
+    try {
+      setSavingReturn(true);
+      const returnData = {
+        company_id: companyId,
+        branch_id: branchId,
+        original_purchase_id: purchase.id,
+        return_date: returnDate.toISOString().split('T')[0],
+        supplier_id: purchase.supplier,
+        supplier_name: purchase.supplierName || 'Unknown Supplier',
+        items: itemsToReturn,
+        reason: returnReason || null,
+        notes: returnNotes || null,
+        created_by: user.id,
+      };
+
+      await purchaseReturnService.createPurchaseReturn(returnData);
+      toast.success('Purchase return created and finalized successfully');
+      
+      // Reload purchase data
+      await reloadPurchaseData();
+      
+      // Exit return mode
+      handleExitReturnMode();
+    } catch (error: any) {
+      console.error('[VIEW PURCHASE] Error creating return:', error);
+      toast.error(error?.message || 'Failed to create purchase return');
+    } finally {
+      setSavingReturn(false);
+    }
+  };
 
   // CRITICAL FIX: Load activity logs
   const loadActivityLogs = useCallback(async (purchaseId: string) => {
@@ -433,10 +682,10 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
                 {(purchase.status === 'final' || purchase.status === 'received') && (
                   <DropdownMenuItem 
                     className="hover:bg-gray-800 cursor-pointer"
-                    onClick={() => setPurchaseReturnFormOpen(true)}
+                    onClick={handleEnterReturnMode}
                   >
                     <RotateCcw size={14} className="mr-2 text-purple-400" />
-                    Create Purchase Return
+                    Return Items
                   </DropdownMenuItem>
                 )}
                 <DropdownMenuItem className="hover:bg-gray-800 cursor-pointer">
@@ -585,11 +834,58 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
 
               {/* Items Table */}
               <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden">
-                <div className="px-5 py-3 bg-gray-950/50 border-b border-gray-800">
+                <div className="px-5 py-3 bg-gray-950/50 border-b border-gray-800 flex items-center justify-between">
                   <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wide flex items-center gap-2">
                     <Package size={16} />
                     Items ({purchase.items.length})
+                    {returnMode && (
+                      <Badge className="bg-purple-500/20 text-purple-400 border-purple-500/30 ml-2">
+                        Return Mode
+                      </Badge>
+                    )}
                   </h3>
+                  {!returnMode && (purchase.status === 'final' || purchase.status === 'received') && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="border-purple-500/30 text-purple-400 hover:bg-purple-500/20"
+                      onClick={handleEnterReturnMode}
+                    >
+                      <RotateCcw size={14} className="mr-2" />
+                      Return Items
+                    </Button>
+                  )}
+                  {returnMode && (
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="border-gray-700 text-gray-300 hover:bg-gray-800"
+                        onClick={handleExitReturnMode}
+                        disabled={savingReturn}
+                      >
+                        Cancel
+                      </Button>
+                      <Button
+                        size="sm"
+                        className="bg-purple-600 hover:bg-purple-700 text-white"
+                        onClick={handleSaveReturn}
+                        disabled={savingReturn || Object.values(returnQuantities).every(qty => qty <= 0)}
+                      >
+                        {savingReturn ? (
+                          <>
+                            <Loader2 size={14} className="mr-2 animate-spin" />
+                            Saving...
+                          </>
+                        ) : (
+                          <>
+                            <Save size={14} className="mr-2" />
+                            Save Return
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                  )}
                 </div>
                 <div className="overflow-x-auto">
                   <Table>
@@ -600,9 +896,13 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
                         <TableHead className="text-gray-400">Variation</TableHead>
                         {enablePacking && <TableHead className="text-gray-400">Packing</TableHead>}
                         <TableHead className="text-gray-400 text-right">Unit Price</TableHead>
-                        <TableHead className="text-gray-400 text-center">Qty</TableHead>
+                        <TableHead className="text-gray-400 text-center">Original Qty</TableHead>
+                        {returnMode && <TableHead className="text-gray-400 text-center">Already Returned</TableHead>}
+                        {returnMode && <TableHead className="text-gray-400 text-center">Return Qty</TableHead>}
+                        {!returnMode && <TableHead className="text-gray-400 text-center">Qty</TableHead>}
                         <TableHead className="text-gray-400">Unit</TableHead>
-                        <TableHead className="text-gray-400 text-right">Total</TableHead>
+                        {returnMode && <TableHead className="text-gray-400 text-right">Return Total</TableHead>}
+                        {!returnMode && <TableHead className="text-gray-400 text-right">Total</TableHead>}
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -626,17 +926,59 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
                         const pd = item.packing_details || item.packingDetails || {};
                         const totalBoxes = pd.total_boxes ?? 0;
                         const totalPieces = pd.total_pieces ?? 0;
-                        const packingParts: string[] = [];
-                        if (Number(totalBoxes) > 0) packingParts.push(`${totalBoxes} Box${Number(totalBoxes) !== 1 ? 'es' : ''}`);
-                        if (Number(totalPieces) > 0) packingParts.push(`${totalPieces} Piece${Number(totalPieces) !== 1 ? 's' : ''}`);
-                        const packingText = packingParts.length ? packingParts.join(', ') : '—';
                         const unitDisplay = item.unit ?? 'pcs';
                         
                         // Use variation SKU if available, otherwise use product SKU
                         const finalSku = variationSku || displaySku;
+
+                        // Return mode calculations
+                        const itemKey = `${item.productId}_${item.variationId || 'null'}`;
+                        const alreadyReturned = alreadyReturnedMap[itemKey] || 0;
+                        const maxReturnable = qty - alreadyReturned;
+                        const canReturn = maxReturnable > 0;
+                        const returnQty = returnQuantities[itemKey] !== undefined && returnQuantities[itemKey] !== null 
+                          ? Number(returnQuantities[itemKey]) 
+                          : 0;
+
+                        // Packing display: Show return packing if selected, otherwise calculate from returnQty, or show original
+                        let packingText = '—';
+                        const savedReturnPacking = returnPackingDetails[itemKey];
+                        
+                        if (returnMode && savedReturnPacking) {
+                          // Show saved return packing details (piece-level selection)
+                          const returnPackingParts: string[] = [];
+                          if (savedReturnPacking.returned_boxes > 0) {
+                            returnPackingParts.push(`${savedReturnPacking.returned_boxes} Box${savedReturnPacking.returned_boxes !== 1 ? 'es' : ''}`);
+                          }
+                          if (savedReturnPacking.returned_pieces_count > 0) {
+                            returnPackingParts.push(`${savedReturnPacking.returned_pieces_count} Piece${savedReturnPacking.returned_pieces_count !== 1 ? 's' : ''}`);
+                          }
+                          if (savedReturnPacking.returned_total_meters > 0) {
+                            returnPackingParts.push(`${savedReturnPacking.returned_total_meters.toFixed(2)} M`);
+                          }
+                          packingText = returnPackingParts.length ? returnPackingParts.join(', ') : '—';
+                        } else if (returnMode && returnQty > 0 && qty > 0) {
+                          // Calculate proportional packing from returnQty (sync with quantity)
+                          const returnRatio = returnQty / qty;
+                          const returnBoxes = Math.round(totalBoxes * returnRatio * 100) / 100;
+                          const returnPieces = Math.round(totalPieces * returnRatio * 100) / 100;
+                          const returnMeters = pd.total_meters ? Math.round((pd.total_meters * returnRatio) * 100) / 100 : 0;
+                          
+                          const returnPackingParts: string[] = [];
+                          if (Number(returnBoxes) > 0) returnPackingParts.push(`${returnBoxes} Box${Number(returnBoxes) !== 1 ? 'es' : ''}`);
+                          if (Number(returnPieces) > 0) returnPackingParts.push(`${returnPieces} Piece${Number(returnPieces) !== 1 ? 's' : ''}`);
+                          if (returnMeters > 0) returnPackingParts.push(`${returnMeters.toFixed(2)} M`);
+                          packingText = returnPackingParts.length ? returnPackingParts.join(', ') : '—';
+                        } else {
+                          // Show original packing
+                          const packingParts: string[] = [];
+                          if (Number(totalBoxes) > 0) packingParts.push(`${totalBoxes} Box${Number(totalBoxes) !== 1 ? 'es' : ''}`);
+                          if (Number(totalPieces) > 0) packingParts.push(`${totalPieces} Piece${Number(totalPieces) !== 1 ? 's' : ''}`);
+                          packingText = packingParts.length ? packingParts.join(', ') : '—';
+                        }
                         
                         return (
-                        <TableRow key={item.id} className="border-gray-800">
+                        <TableRow key={item.id} className={cn("border-gray-800", returnMode && !canReturn && "opacity-50")}>
                           <TableCell>
                             <div>
                               <p className="font-medium text-white">{productName}</p>
@@ -653,17 +995,71 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
                               <span className="text-gray-600">—</span>
                             )}
                           </TableCell>
-                          {enablePacking && <TableCell className="text-gray-400">{packingText}</TableCell>}
+                          {enablePacking && (
+                            <TableCell className="text-gray-400">
+                              <button
+                                onClick={() => handleOpenPackingModal(item)}
+                                className="text-left hover:text-purple-400 transition-colors cursor-pointer"
+                              >
+                                {returnMode && returnQty > 0 ? (
+                                  <span className="text-purple-400 font-medium">{packingText}</span>
+                                ) : (
+                                  <span>{packingText}</span>
+                                )}
+                              </button>
+                            </TableCell>
+                          )}
                           <TableCell className="text-right text-white">
                             Rs. {item.price.toLocaleString()}
                           </TableCell>
                           <TableCell className="text-center text-white font-medium">
                             {qty}
                           </TableCell>
+                          {returnMode && (
+                            <TableCell className="text-center">
+                              {alreadyReturned > 0 ? (
+                                <Badge className="bg-orange-500/20 text-orange-400 border-orange-500/30">
+                                  {alreadyReturned}
+                                </Badge>
+                              ) : (
+                                <span className="text-gray-500">0</span>
+                              )}
+                            </TableCell>
+                          )}
+                          {returnMode ? (
+                            <TableCell className="text-center">
+                              <input
+                                type="number"
+                                min={0}
+                                max={maxReturnable}
+                                value={returnQty}
+                                onChange={(e) => {
+                                  const val = e.target.value === '' ? 0 : parseFloat(e.target.value) || 0;
+                                  handleReturnQuantityChange(itemKey, val);
+                                }}
+                                disabled={!canReturn}
+                                className="w-20 text-center bg-gray-900 border border-gray-700 text-white h-8 mx-auto font-medium rounded-md px-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                                placeholder="0"
+                              />
+                              {!canReturn && (
+                                <p className="text-xs text-red-400 mt-1">Fully returned</p>
+                              )}
+                            </TableCell>
+                          ) : (
+                            <TableCell className="text-center text-white font-medium">
+                              {qty}
+                            </TableCell>
+                          )}
                           <TableCell className="text-gray-400">{unitDisplay}</TableCell>
-                          <TableCell className="text-right text-white font-medium">
-                            Rs. {(item.price * qty).toLocaleString()}
-                          </TableCell>
+                          {returnMode ? (
+                            <TableCell className="text-right text-red-400 font-medium">
+                              {returnQty > 0 ? `-Rs. ${(returnQty * item.price).toLocaleString()}` : '—'}
+                            </TableCell>
+                          ) : (
+                            <TableCell className="text-right text-white font-medium">
+                              Rs. {(item.price * qty).toLocaleString()}
+                            </TableCell>
+                          )}
                         </TableRow>
                         );
                       })}
@@ -671,6 +1067,58 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
                   </Table>
                   </div>
                 </div>
+
+              {/* Return Mode: Reason & Notes */}
+              {returnMode && (
+                <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-5 space-y-4">
+                  <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wide flex items-center gap-2">
+                    <RotateCcw size={16} />
+                    Return Details
+                  </h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <Label className="text-gray-200 mb-2 block">Return Date *</Label>
+                      <CalendarDatePicker 
+                        value={returnDate} 
+                        onChange={(d) => d && setReturnDate(d)} 
+                        className="bg-gray-800 border-gray-700 text-white" 
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-gray-200 mb-2 block">Reason (optional)</Label>
+                      <Input 
+                        value={returnReason} 
+                        onChange={(e) => setReturnReason(e.target.value)} 
+                        placeholder="Reason for return" 
+                        className="bg-gray-800 border-gray-700 text-white" 
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <Label className="text-gray-200 mb-2 block">Notes (optional)</Label>
+                    <Textarea 
+                      value={returnNotes} 
+                      onChange={(e) => setReturnNotes(e.target.value)} 
+                      placeholder="Additional notes" 
+                      className="bg-gray-800 border-gray-700 text-white min-h-[60px]" 
+                    />
+                  </div>
+                  <div className="pt-2 border-t border-gray-800">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-gray-400">Total Return Amount:</span>
+                      <span className="text-lg font-semibold text-red-400">
+                        -Rs. {Object.entries(returnQuantities).reduce((sum, [key, qty]) => {
+                          const item = purchase.items.find((it) => {
+                            const itemKey = `${it.productId}_${it.variationId || 'null'}`;
+                            return itemKey === key;
+                          });
+                          return sum + (qty * (item?.price || 0));
+                        }, 0).toLocaleString()}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* Payment Summary */}
               <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden">
@@ -1316,6 +1764,42 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
         />
       )}
 
+      {/* Packing Entry Modal */}
+      {activePackingItem && (
+        <PackingEntryModal
+          open={packingModalOpen}
+          onOpenChange={(open) => {
+            setPackingModalOpen(open);
+            if (!open) {
+              setActivePackingItem(null);
+            }
+          }}
+          productName={activePackingItem.productName || 'Product'}
+          initialData={activePackingItem.packing_details || activePackingItem.packingDetails || undefined}
+          returnMode={returnMode}
+          returnPackingDetails={(() => {
+            if (!returnMode || !activePackingItem) return undefined;
+            const itemKey = `${activePackingItem.productId}_${activePackingItem.variationId || 'null'}`;
+            return returnPackingDetails[itemKey];
+          })()}
+          onSaveReturnPacking={(() => {
+            if (!returnMode || !activePackingItem) return undefined;
+            const itemKey = `${activePackingItem.productId}_${activePackingItem.variationId || 'null'}`;
+            return (details: any) => handleSaveReturnPacking(itemKey, details);
+          })()}
+          alreadyReturnedPieces={(() => {
+            if (!returnMode || !activePackingItem) return new Set();
+            const itemKey = `${activePackingItem.productId}_${activePackingItem.variationId || 'null'}`;
+            return alreadyReturnedPiecesMap[itemKey] || new Set();
+          })()}
+          onSave={(details) => {
+            // Normal mode: this could update the item if needed
+            setPackingModalOpen(false);
+            setActivePackingItem(null);
+          }}
+        />
+      )}
+
       {/* Attachments viewer - Shared Component */}
       {attachmentsDialogList && (
         <AttachmentViewer
@@ -1325,18 +1809,6 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
         />
       )}
 
-      {/* Purchase Return form – FINAL when saved */}
-      {purchaseReturnFormOpen && purchaseId && (
-        <PurchaseReturnForm
-          purchaseId={purchaseId}
-          onClose={() => setPurchaseReturnFormOpen(false)}
-          onSuccess={() => {
-            setPurchaseReturnFormOpen(false);
-            reloadPurchaseData();
-            window.dispatchEvent(new CustomEvent('purchaseReturnCreated'));
-          }}
-        />
-      )}
     </>
   );
 };

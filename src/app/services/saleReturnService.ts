@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabase';
 import { productService } from './productService';
+import { getOrCreateLedger, addLedgerEntry } from './ledgerService';
 
 export interface SaleReturn {
   id?: string;
@@ -35,6 +36,13 @@ export interface SaleReturnItem {
   unit_price: number;
   total: number;
   notes?: string;
+  // Packing fields - preserved from original sale item
+  packing_type?: string;
+  packing_quantity?: number;
+  packing_unit?: string;
+  packing_details?: any; // JSONB
+  // Return packing details - piece-level selection
+  return_packing_details?: any; // JSONB - { returned_pieces: [{ box_no, piece_no, meters }], returned_boxes, returned_pieces_count, returned_total_meters }
 }
 
 export interface CreateSaleReturnData {
@@ -55,6 +63,11 @@ export interface CreateSaleReturnData {
     unit_price: number;
     total: number;
     notes?: string;
+    // Packing fields - preserved from original sale item
+    packing_type?: string;
+    packing_quantity?: number;
+    packing_unit?: string;
+    packing_details?: any; // JSONB
   }>;
   reason?: string;
   notes?: string;
@@ -91,7 +104,7 @@ export const saleReturnService = {
         return_date,
         customer_id: customer_id || null,
         customer_name,
-        status: 'draft', // Always start as draft
+        status: 'final', // FINAL on creation - no edits/deletes allowed (ERP standard)
         subtotal,
         discount_amount,
         tax_amount,
@@ -106,7 +119,7 @@ export const saleReturnService = {
     if (returnError) throw returnError;
     if (!saleReturn) throw new Error('Failed to create sale return');
 
-    // Create return items
+    // Create return items (preserve packing structure from original sale)
     const returnItems = items.map(item => ({
       sale_return_id: saleReturn.id,
       sale_item_id: item.sale_item_id || null,
@@ -119,6 +132,13 @@ export const saleReturnService = {
       unit_price: item.unit_price,
       total: item.total,
       notes: item.notes || null,
+      // Preserve packing structure from original sale item
+      packing_type: item.packing_type || null,
+      packing_quantity: item.packing_quantity || null,
+      packing_unit: item.packing_unit || null,
+      packing_details: item.packing_details || null,
+      // NEW: Return packing details (piece-level selection)
+      return_packing_details: item.return_packing_details || null,
     }));
 
     const { error: itemsError } = await supabase
@@ -183,7 +203,7 @@ export const saleReturnService = {
       if (salesItemsError.code === '42P01' || salesItemsError.message?.includes('does not exist')) {
         const { data: saleItemsData, error: saleItemsError } = await supabase
           .from('sale_items')
-          .select('id, product_id, variation_id, quantity')
+          .select('id, product_id, variation_id, quantity, packing_details')
           .eq('sale_id', saleReturn.original_sale_id);
         
         if (!saleItemsError && saleItemsData) {
@@ -245,8 +265,42 @@ export const saleReturnService = {
       console.warn('[SALE RETURN] No original items found for validation. Skipping quantity check.');
     }
 
-    // Create stock movements (POSITIVE - stock IN)
+    // Create stock movements (POSITIVE - stock IN) with proportional box/piece return
     for (const item of saleReturn.items) {
+      // Calculate proportional box/piece return based on original packing
+      let boxChange = 0;
+      let pieceChange = 0;
+      
+      // Get original item to calculate return ratio
+      const originalItem = originalItems?.find(
+        oi => oi.product_id === item.product_id &&
+        (oi.variation_id === item.variation_id || (!oi.variation_id && !item.variation_id))
+      );
+      
+      if (originalItem && item.packing_details) {
+        // Get original packing details
+        const originalPacking = item.packing_details;
+        const originalQty = Number(originalItem.quantity);
+        const returnQty = Number(item.quantity);
+        
+        if (originalQty > 0) {
+          // Calculate return ratio
+          const returnRatio = returnQty / originalQty;
+          
+          // Apply ratio to boxes and pieces proportionally
+          const originalBoxes = originalPacking.total_boxes || 0;
+          const originalPieces = originalPacking.total_pieces || 0;
+          
+          boxChange = Math.round(originalBoxes * returnRatio * 100) / 100; // Round to 2 decimals
+          pieceChange = Math.round(originalPieces * returnRatio * 100) / 100;
+        }
+      } else if (item.packing_details) {
+        // If no original item found but packing_details exists, use it directly
+        const packing = item.packing_details;
+        boxChange = Number(packing.total_boxes || 0);
+        pieceChange = Number(packing.total_pieces || 0);
+      }
+      
       await productService.createStockMovement({
         company_id: companyId,
         branch_id: branchId === 'all' ? undefined : branchId,
@@ -260,8 +314,15 @@ export const saleReturnService = {
         reference_id: returnId,
         notes: `Sale Return ${saleReturn.return_no || returnId}: Original ${originalSale.invoice_no} - ${item.product_name}${item.variation_id ? ' (Variation)' : ''}`,
         created_by: userId,
+        box_change: boxChange > 0 ? boxChange : undefined, // Only include if > 0
+        piece_change: pieceChange > 0 ? pieceChange : undefined, // Only include if > 0
       });
     }
+
+    // Customer Ledger: Sale Return already appears in customerLedgerAPI.getTransactions()
+    // The customerLedgerAPI automatically includes sale_returns in the transaction list
+    // No separate ledger entry needed - customer balance is calculated from sales, payments, and returns
+    console.log('[SALE RETURN] ✅ Customer ledger will show this return via customerLedgerAPI');
 
     // Update sale return status to final
     const { error: updateError } = await supabase
@@ -270,10 +331,6 @@ export const saleReturnService = {
       .eq('id', returnId);
 
     if (updateError) throw updateError;
-
-    // Create accounting reversal entries
-    // Note: This requires AccountingContext - will be called from component if needed
-    // For now, stock movements are created above
   },
 
   /**
@@ -332,6 +389,11 @@ export const saleReturnService = {
     already_returned?: number;
     size?: string;
     color?: string;
+    // Packing fields - preserved from original sale item
+    packing_type?: string;
+    packing_quantity?: number;
+    packing_unit?: string;
+    packing_details?: any; // JSONB
     variation?: {
       id?: string;
       size?: string;
@@ -340,7 +402,7 @@ export const saleReturnService = {
       sku?: string;
     };
   }>> {
-    // Get original sale items with variation data
+    // Get original sale items with variation data and packing
     // Try sales_items first (new table), fallback to sale_items (old table)
     let saleItems: any[] = [];
     let itemsError: any = null;
@@ -435,6 +497,11 @@ export const saleReturnService = {
         already_returned: returnedMap[item.id] || 0,
         size: item.size || item.variation?.size || undefined,
         color: item.color || item.variation?.color || undefined,
+        // Packing fields - preserved from original sale item
+        packing_type: item.packing_type || undefined,
+        packing_quantity: item.packing_quantity ? Number(item.packing_quantity) : undefined,
+        packing_unit: item.packing_unit || undefined,
+        packing_details: item.packing_details || undefined,
         variation: item.variation ? {
           id: item.variation.id,
           size: item.variation.size,

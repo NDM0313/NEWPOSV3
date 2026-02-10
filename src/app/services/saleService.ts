@@ -187,6 +187,18 @@ export const saleService = {
         if (rows2 && rows2.length > 0) data.items = rows2;
       }
     }
+
+    // 🔒 LOCK CHECK: Check if sale has returns (prevents editing)
+    const { data: returns } = await supabase
+      .from('sale_returns')
+      .select('id')
+      .eq('original_sale_id', saleId)
+      .eq('status', 'final')
+      .limit(1);
+    
+    data.hasReturn = (returns && returns.length > 0) || false;
+    data.returnCount = returns?.length || 0;
+
     return data;
   },
 
@@ -236,10 +248,54 @@ export const saleService = {
 
       const { data: retryData, error: retryError } = await retryQuery;
       if (retryError) throw retryError;
+      
+      // 🔒 LOCK CHECK: Add hasReturn and returnCount to each sale
+      if (retryData && retryData.length > 0) {
+        const saleIds = retryData.map((s: any) => s.id);
+        const { data: allReturns } = await supabase
+          .from('sale_returns')
+          .select('original_sale_id')
+          .in('original_sale_id', saleIds)
+          .eq('status', 'final');
+        
+        const returnsMap = new Map<string, number>();
+        (allReturns || []).forEach((r: any) => {
+          const count = returnsMap.get(r.original_sale_id) || 0;
+          returnsMap.set(r.original_sale_id, count + 1);
+        });
+        
+        retryData.forEach((sale: any) => {
+          sale.hasReturn = returnsMap.has(sale.id);
+          sale.returnCount = returnsMap.get(sale.id) || 0;
+        });
+      }
+      
       return retryData;
     }
 
     if (error) throw error;
+    
+    // 🔒 LOCK CHECK: Add hasReturn and returnCount to each sale
+    if (data && data.length > 0) {
+      const saleIds = data.map((s: any) => s.id);
+      const { data: allReturns } = await supabase
+        .from('sale_returns')
+        .select('original_sale_id')
+        .in('original_sale_id', saleIds)
+        .eq('status', 'final');
+      
+      const returnsMap = new Map<string, number>();
+      (allReturns || []).forEach((r: any) => {
+        const count = returnsMap.get(r.original_sale_id) || 0;
+        returnsMap.set(r.original_sale_id, count + 1);
+      });
+      
+      data.forEach((sale: any) => {
+        sale.hasReturn = returnsMap.has(sale.id);
+        sale.returnCount = returnsMap.get(sale.id) || 0;
+      });
+    }
+    
     return data;
   },
 
@@ -405,15 +461,33 @@ export const saleService = {
       .eq('id', id)
       .single();
 
-    if (!error) return data;
+    let saleData = null;
+    if (!error) {
+      saleData = data;
+    } else {
+      const { data: fallbackData, error: fallbackError } = await supabase
+        .from('sales')
+        .select(withoutJournal)
+        .eq('id', id)
+        .single();
+      if (fallbackError) throw fallbackError;
+      saleData = fallbackData;
+    }
 
-    const { data: fallbackData, error: fallbackError } = await supabase
-      .from('sales')
-      .select(withoutJournal)
-      .eq('id', id)
-      .single();
-    if (fallbackError) throw fallbackError;
-    return fallbackData;
+    // 🔒 LOCK CHECK: Check if sale has returns (prevents editing)
+    const { data: returns } = await supabase
+      .from('sale_returns')
+      .select('id')
+      .eq('original_sale_id', id)
+      .eq('status', 'final')
+      .limit(1);
+    
+    if (saleData) {
+      saleData.hasReturn = (returns && returns.length > 0) || false;
+      saleData.returnCount = returns?.length || 0;
+    }
+
+    return saleData;
   },
 
   // Update sale status
@@ -431,6 +505,18 @@ export const saleService = {
 
   // Update sale (full update)
   async updateSale(id: string, updates: Partial<Sale>) {
+    // 🔒 LOCK CHECK: Prevent editing if sale has returns
+    const { data: returns } = await supabase
+      .from('sale_returns')
+      .select('id')
+      .eq('original_sale_id', id)
+      .eq('status', 'final')
+      .limit(1);
+    
+    if (returns && returns.length > 0) {
+      throw new Error('Cannot edit sale: This sale has a return and is locked. Returns cannot be edited or deleted.');
+    }
+
     const { data, error } = await supabase
       .from('sales')
       .update(updates)
