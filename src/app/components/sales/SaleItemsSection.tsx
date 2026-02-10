@@ -3,7 +3,7 @@ import { Search, Plus, Trash2, Package, ChevronsUpDown, Edit, Sparkles } from 'l
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Badge } from "../ui/badge";
-import { cn } from "../ui/utils";
+import { cn, formatBoxesPieces } from "../ui/utils";
 import type { Variation } from "../ui/inline-variation-selector";
 import {
     Command,
@@ -452,8 +452,8 @@ export const SaleItemsSection: React.FC<SaleItemsSectionProps> = ({
                                                                 const totalBoxes = pd.total_boxes ?? 0;
                                                                 const totalPieces = pd.total_pieces ?? 0;
                                                                 const packingParts: string[] = [];
-                                                                if (Number(totalBoxes) > 0) packingParts.push(`${totalBoxes} Box${Number(totalBoxes) !== 1 ? 'es' : ''}`);
-                                                                if (Number(totalPieces) > 0) packingParts.push(`${totalPieces} Piece${Number(totalPieces) !== 1 ? 's' : ''}`);
+                                                                if (Number(totalBoxes) > 0) packingParts.push(`${formatBoxesPieces(totalBoxes)} Box${Math.round(Number(totalBoxes)) !== 1 ? 'es' : ''}`);
+                                                                if (Number(totalPieces) > 0) packingParts.push(`${formatBoxesPieces(totalPieces)} Piece${Math.round(Number(totalPieces)) !== 1 ? 's' : ''}`);
                                                                 return packingParts.length ? packingParts.join(', ') : '—';
                                                             })()}
                                                         </span>

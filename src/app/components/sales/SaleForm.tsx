@@ -1127,7 +1127,7 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
             };
             // 🔒 LOCK CHECK: Prevent editing if sale has returns
             if (initialSale.id) {
-                saleService.getSaleById(initialSale.id)
+                    saleService.getSaleById(initialSale.id)
                     .then((full) => {
                         // Check if sale has returns (LOCKED)
                         if (full.hasReturn) {
@@ -1135,12 +1135,16 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                             onClose();
                             return;
                         }
-                        
-                        const saleWithItems = convertFromSupabaseSale(full);
-                        if (saleWithItems.items && saleWithItems.items.length > 0) {
-                            mapItemsToForm(saleWithItems.items);
-                        } else if (initialSale.items && initialSale.items.length > 0) {
-                            mapItemsToForm(initialSale.items);
+                        // Same as Purchase: use raw API items so packing_details from DB is available for edit form
+                        if (full.items && full.items.length > 0) {
+                            mapItemsToForm(full.items);
+                        } else {
+                            const saleWithItems = convertFromSupabaseSale(full);
+                            if (saleWithItems.items && saleWithItems.items.length > 0) {
+                                mapItemsToForm(saleWithItems.items);
+                            } else if (initialSale.items && initialSale.items.length > 0) {
+                                mapItemsToForm(initialSale.items);
+                            }
                         }
                     })
                     .catch((err: any) => {
@@ -1731,6 +1735,7 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                   }
                 }
                 
+                // Same as Purchase: context expects packingDetails (camelCase); it maps to packing_details for DB
                 const saleItem = {
                   id: item.id.toString(),
                   productId: item.productId.toString(),
@@ -1738,19 +1743,18 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                   sku: item.sku,
                   quantity: item.qty,
                   price: item.price,
-                  discount: 0, // Can be enhanced later
-                  tax: 0, // Can be enhanced later
+                  discount: 0,
+                  tax: 0,
                   total: item.price * item.qty,
-                  variationId: variationId, // CRITICAL FIX: Include variationId
-                  // Packing: only include when global Enable Packing is ON
+                  variationId: variationId,
                   ...(enablePacking ? {
-                    packing_details: item.packingDetails, // Map camelCase to snake_case for database
+                    packingDetails: item.packingDetails, // CRITICAL: context reads item.packingDetails for DB packing_details
                     packing_type: item.packingDetails?.packing_type || undefined,
                     packing_quantity: item.packingDetails?.total_meters || item.meters || undefined,
                     packing_unit: item.packingDetails?.packing_unit || 'meters',
                     thaans: item.thaans,
                     meters: item.meters
-                  } : { packing_details: undefined, packing_type: undefined, packing_quantity: undefined, packing_unit: undefined, thaans: undefined, meters: undefined })
+                  } : { packingDetails: undefined, packing_type: undefined, packing_quantity: undefined, packing_unit: undefined, thaans: undefined, meters: undefined })
                 };
                 
                 console.log(`[SALE FORM] ✅ Converted item ${index}:`, {

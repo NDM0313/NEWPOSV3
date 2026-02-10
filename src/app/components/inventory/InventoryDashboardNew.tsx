@@ -7,7 +7,7 @@ import {
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Badge } from "../ui/badge";
-import { cn } from "../ui/utils";
+import { cn, formatBoxesPieces } from "../ui/utils";
 import { useSupabase } from '../../context/SupabaseContext';
 import { useSettings } from '../../context/SettingsContext';
 import { productService } from '../../services/productService';
@@ -695,9 +695,9 @@ export const InventoryDashboardNew = () => {
                             </td>
                           );
                         case 'boxes':
-                          return <td key={key} className="px-4 py-2 text-center text-gray-400 text-sm">{product.boxes ?? 0}</td>;
+                          return <td key={key} className="px-4 py-2 text-center text-gray-400 text-sm tabular-nums">{formatBoxesPieces(product.boxes)}</td>;
                         case 'pieces':
-                          return <td key={key} className="px-4 py-2 text-center text-gray-400 text-sm">{product.pieces ?? 0}</td>;
+                          return <td key={key} className="px-4 py-2 text-center text-gray-400 text-sm tabular-nums">{formatBoxesPieces(product.pieces)}</td>;
                         case 'unit':
                           return <td key={key} className="px-4 py-2 text-center text-gray-400 text-sm font-mono tabular-nums">{product.stock}</td>;
                         case 'avgCost':
@@ -788,8 +788,8 @@ export const InventoryDashboardNew = () => {
                               </td>
                             );
                           }
-                          if (key === 'boxes') return <td key={key} className="px-4 py-1.5 text-center text-gray-500 text-xs font-mono tabular-nums">{(v as any).boxes ?? 0}</td>;
-                          if (key === 'pieces') return <td key={key} className="px-4 py-1.5 text-center text-gray-500 text-xs font-mono tabular-nums">{(v as any).pieces ?? 0}</td>;
+                          if (key === 'boxes') return <td key={key} className="px-4 py-1.5 text-center text-gray-500 text-xs font-mono tabular-nums">{formatBoxesPieces((v as any).boxes)}</td>;
+                          if (key === 'pieces') return <td key={key} className="px-4 py-1.5 text-center text-gray-500 text-xs font-mono tabular-nums">{formatBoxesPieces((v as any).pieces)}</td>;
                           if (key === 'unit') return <td key={key} className="px-4 py-1.5 text-center text-gray-500 text-xs font-mono tabular-nums">{v.stock ?? 0}</td>;
                           if (key === 'stockValue') {
                             const val = (v.stock ?? 0) * product.sellingPrice;

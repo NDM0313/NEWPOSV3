@@ -49,7 +49,7 @@ import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { Textarea } from "../ui/textarea";
 import { CalendarDatePicker } from "../ui/CalendarDatePicker";
-import { cn } from "../ui/utils";
+import { cn, formatBoxesPieces } from "../ui/utils";
 import { toast } from 'sonner';
 import { purchaseReturnService } from '@/app/services/purchaseReturnService';
 import {
@@ -121,11 +121,13 @@ interface Payment {
 interface ViewPurchaseDetailsDrawerProps {
   isOpen: boolean;
   onClose: () => void;
-  purchaseId: string | null; // Changed to string (UUID)
+  purchaseId: string | null;
   onEdit?: (id: string) => void;
   onDelete?: (id: string) => void;
   onAddPayment?: (id: string) => void;
   onPrint?: (id: string) => void;
+  /** When provided, "Return Items" opens the Purchase Return dialog (same layout as Sales Return) instead of inline return mode */
+  onOpenReturn?: () => void;
 }
 
 export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps> = ({
@@ -136,6 +138,7 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
   onDelete,
   onAddPayment,
   onPrint,
+  onOpenReturn,
 }) => {
   const [activeTab, setActiveTab] = useState<'details' | 'payments' | 'history'>('details');
   const { getPurchaseById } = usePurchases();
@@ -202,13 +205,7 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
     }
     setLoadingPayments(true);
     try {
-      console.log('[VIEW PURCHASE] Loading payments for purchaseId:', purchaseId);
       const fetchedPayments = await purchaseService.getPurchasePayments(purchaseId);
-      console.log('[VIEW PURCHASE] Loaded payments:', fetchedPayments);
-      console.log('[VIEW PURCHASE] Payment count:', fetchedPayments?.length || 0);
-      if (fetchedPayments && fetchedPayments.length > 0) {
-        console.log('[VIEW PURCHASE] First payment sample:', fetchedPayments[0]);
-      }
       setPayments(fetchedPayments || []);
     } catch (error) {
       console.error('[VIEW PURCHASE] Error loading payments:', error);
@@ -224,11 +221,9 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
       const loadPurchaseData = async () => {
         setLoading(true);
         try {
-          console.log('[VIEW PURCHASE] Loading purchase data for purchaseId:', purchaseId);
           // CRITICAL FIX: Fetch fresh purchase data from database (not just context)
           const purchaseData = await purchaseService.getPurchase(purchaseId);
           if (purchaseData) {
-            console.log('[VIEW PURCHASE] Purchase data loaded from database:', purchaseData.id);
             const convertedPurchase = convertFromSupabasePurchase(purchaseData);
             // Preserve variation data from raw purchase data for display
             if (purchaseData.items && convertedPurchase.items) {
@@ -248,7 +243,6 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
             if (purchaseData.attachments) {
               convertedPurchase.attachments = purchaseData.attachments;
             }
-            console.log('[VIEW PURCHASE] Purchase attachments:', convertedPurchase.attachments);
             setPurchase(convertedPurchase);
             
             // CRITICAL FIX: Load supplier code if supplier ID exists
@@ -270,7 +264,6 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
             }
             
             // CRITICAL FIX: Load payments breakdown - use database ID
-            console.log('[VIEW PURCHASE] Loading payments for purchase database ID:', purchaseData.id);
             await loadPayments(purchaseData.id);
           } else {
             // Fallback to context
@@ -620,20 +613,29 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
 
       {/* Drawer */}
       <div className="fixed right-0 top-0 h-full w-full md:w-[1100px] bg-gray-950 shadow-2xl z-50 overflow-hidden flex flex-col border-l border-gray-800">
-        {/* Header */}
+        {/* Header: In return mode show "Purchase Return · Ref: ..."; otherwise normal purchase title */}
         <div className="bg-gray-900/80 border-b border-gray-800 px-6 py-4 flex items-center justify-between shrink-0">
           <div className="flex items-center gap-4">
             <div>
               <h2 className="text-xl font-bold text-white flex items-center gap-3">
-                {purchase.purchaseNo}
-                <Badge className={cn("text-xs font-semibold border", getStatusColor(purchase.status))}>
-                  {purchase.status === 'final' || purchase.status === 'completed' ? 'Final' : 
-                   purchase.status === 'received' ? 'Received' : 
-                   purchase.status === 'ordered' ? 'Ordered' : 'Draft'}
-                </Badge>
+                {returnMode ? (
+                  <>
+                    Purchase Return <span className="text-gray-400 font-normal">· Ref: {purchase.purchaseNo}</span>
+                    <Badge className="bg-purple-500/20 text-purple-400 border-purple-500/30 text-xs font-semibold">Return Mode</Badge>
+                  </>
+                ) : (
+                  <>
+                    {purchase.purchaseNo}
+                    <Badge className={cn("text-xs font-semibold border", getStatusColor(purchase.status))}>
+                      {purchase.status === 'final' || purchase.status === 'completed' ? 'Final' : 
+                       purchase.status === 'received' ? 'Received' : 
+                       purchase.status === 'ordered' ? 'Ordered' : 'Draft'}
+                    </Badge>
+                  </>
+                )}
               </h2>
               <p className="text-sm text-gray-400 mt-0.5">
-                Purchase Transaction Details
+                {returnMode ? 'Return items from this purchase. Only return quantities are editable.' : 'Purchase Transaction Details'}
               </p>
             </div>
           </div>
@@ -674,7 +676,7 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
                 {(purchase.status === 'final' || purchase.status === 'received') && (
                   <DropdownMenuItem 
                     className="hover:bg-gray-800 cursor-pointer"
-                    onClick={handleEnterReturnMode}
+                    onClick={() => onOpenReturn ? onOpenReturn() : handleEnterReturnMode()}
                   >
                     <RotateCcw size={14} className="mr-2 text-purple-400" />
                     Return Items
@@ -740,7 +742,8 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
         <div className="flex-1 overflow-y-auto p-6 space-y-6">
           {activeTab === 'details' && (
             <>
-              {/* Supplier & Transaction Info */}
+              {/* Supplier & Transaction Info — HIDDEN in return mode (Option C: no duplicate customer/supplier info) */}
+              {!returnMode && (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 {/* Supplier Info */}
                 <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-5">
@@ -805,8 +808,10 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
                   </div>
                 </div>
               </div>
+              )}
 
-              {/* Status Cards */}
+              {/* Status Cards — hidden in return mode */}
+              {!returnMode && (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
                   <p className="text-xs text-gray-500 mb-2">Payment Status</p>
@@ -823,6 +828,7 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
                   </Badge>
                 </div>
               </div>
+              )}
 
               {/* Items Table */}
               <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden">
@@ -841,7 +847,7 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
                       variant="outline"
                       size="sm"
                       className="border-purple-500/30 text-purple-400 hover:bg-purple-500/20"
-                      onClick={handleEnterReturnMode}
+                      onClick={() => onOpenReturn ? onOpenReturn() : handleEnterReturnMode()}
                     >
                       <RotateCcw size={14} className="mr-2" />
                       Return Items
@@ -951,10 +957,10 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
                           // Show saved return packing details (piece-level selection)
                           const returnPackingParts: string[] = [];
                           if (savedReturnPacking.returned_boxes > 0) {
-                            returnPackingParts.push(`${savedReturnPacking.returned_boxes} Box${savedReturnPacking.returned_boxes !== 1 ? 'es' : ''}`);
+                            returnPackingParts.push(`${formatBoxesPieces(savedReturnPacking.returned_boxes)} Box${Math.round(Number(savedReturnPacking.returned_boxes)) !== 1 ? 'es' : ''}`);
                           }
                           if (savedReturnPacking.returned_pieces_count > 0) {
-                            returnPackingParts.push(`${savedReturnPacking.returned_pieces_count} Piece${savedReturnPacking.returned_pieces_count !== 1 ? 's' : ''}`);
+                            returnPackingParts.push(`${formatBoxesPieces(savedReturnPacking.returned_pieces_count)} Piece${Math.round(Number(savedReturnPacking.returned_pieces_count)) !== 1 ? 's' : ''}`);
                           }
                           if (savedReturnPacking.returned_total_meters > 0) {
                             returnPackingParts.push(`${savedReturnPacking.returned_total_meters.toFixed(2)} M`);
@@ -968,15 +974,15 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
                           const returnMeters = pd.total_meters ? Math.round((pd.total_meters * returnRatio) * 100) / 100 : 0;
                           
                           const returnPackingParts: string[] = [];
-                          if (Number(returnBoxes) > 0) returnPackingParts.push(`${returnBoxes} Box${Number(returnBoxes) !== 1 ? 'es' : ''}`);
-                          if (Number(returnPieces) > 0) returnPackingParts.push(`${returnPieces} Piece${Number(returnPieces) !== 1 ? 's' : ''}`);
+                          if (Number(returnBoxes) > 0) returnPackingParts.push(`${formatBoxesPieces(returnBoxes)} Box${Math.round(Number(returnBoxes)) !== 1 ? 'es' : ''}`);
+                          if (Number(returnPieces) > 0) returnPackingParts.push(`${formatBoxesPieces(returnPieces)} Piece${Math.round(Number(returnPieces)) !== 1 ? 's' : ''}`);
                           if (returnMeters > 0) returnPackingParts.push(`${returnMeters.toFixed(2)} M`);
                           packingText = returnPackingParts.length ? returnPackingParts.join(', ') : '—';
                         } else {
                           // Show original packing
                           const packingParts: string[] = [];
-                          if (Number(totalBoxes) > 0) packingParts.push(`${totalBoxes} Box${Number(totalBoxes) !== 1 ? 'es' : ''}`);
-                          if (Number(totalPieces) > 0) packingParts.push(`${totalPieces} Piece${Number(totalPieces) !== 1 ? 's' : ''}`);
+                          if (Number(totalBoxes) > 0) packingParts.push(`${formatBoxesPieces(totalBoxes)} Box${Math.round(Number(totalBoxes)) !== 1 ? 'es' : ''}`);
+                          if (Number(totalPieces) > 0) packingParts.push(`${formatBoxesPieces(totalPieces)} Piece${Math.round(Number(totalPieces)) !== 1 ? 's' : ''}`);
                           packingText = packingParts.length ? packingParts.join(', ') : '—';
                         }
                         
@@ -1122,23 +1128,45 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
                     />
                   </div>
                   <div className="pt-2 border-t border-gray-800">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-gray-400">Total Return Amount:</span>
-                      <span className="text-lg font-semibold text-red-400">
-                        -Rs. {Object.entries(returnQuantities).reduce((sum, [key, qty]) => {
-                          const item = purchase.items.find((it) => {
-                            const itemKey = `${it.productId}_${it.variationId || 'null'}`;
-                            return itemKey === key;
-                          });
-                          return sum + (qty * (item?.price || 0));
-                        }, 0).toLocaleString()}
-                      </span>
+                    <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">Amounts</h3>
+                    <div className="space-y-3">
+                      <div>
+                        <p className="text-xs text-gray-500 mb-0.5">Original Purchase Amount</p>
+                        <p className="text-lg font-bold text-green-400">Rs. {purchase.total.toLocaleString()}</p>
+                        <p className="text-[10px] text-gray-500 mt-0.5">Reference only</p>
+                      </div>
+                      <div className="border-t border-gray-800 pt-3">
+                        <p className="text-xs text-gray-500 mb-0.5">Returned Amount</p>
+                        <p className="text-lg font-bold text-red-400">
+                          - Rs. {Object.entries(returnQuantities).reduce((sum, [key, qty]) => {
+                            const item = purchase.items.find((it) => {
+                              const itemKey = `${it.productId}_${it.variationId || 'null'}`;
+                              return itemKey === key;
+                            });
+                            return sum + (qty * (item?.price || 0));
+                          }, 0).toLocaleString()}
+                        </p>
+                        <p className="text-[10px] text-gray-500 mt-0.5">Supplier credit impact</p>
+                      </div>
+                      <div className="border-t border-gray-800 pt-3">
+                        <p className="text-xs text-gray-500 mb-0.5">Net After Return</p>
+                        <p className="text-lg font-bold text-white">
+                          Rs. {Math.max(0, purchase.total - Object.entries(returnQuantities).reduce((sum, [key, qty]) => {
+                            const item = purchase.items.find((it) => {
+                              const itemKey = `${it.productId}_${it.variationId || 'null'}`;
+                              return itemKey === key;
+                            });
+                            return sum + (qty * (item?.price || 0));
+                          }, 0)).toLocaleString()}
+                        </p>
+                      </div>
                     </div>
                   </div>
                 </div>
               )}
 
-              {/* Payment Summary */}
+              {/* Payment Summary — hidden in return mode (amounts in Return Details) */}
+              {!returnMode && (
               <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden">
                 <div className="px-5 py-3 bg-gray-950/50 border-b border-gray-800">
                   <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wide flex items-center gap-2">
@@ -1193,6 +1221,7 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
                   )}
                 </div>
               </div>
+              )}
 
               {/* Notes */}
               {purchase.notes && (
@@ -1211,15 +1240,8 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
                 );
                 
                 if (!hasAttachments) {
-                  console.log('[VIEW PURCHASE] No attachments found:', {
-                    attachments: purchase.attachments,
-                    type: typeof purchase.attachments,
-                    isArray: Array.isArray(purchase.attachments),
-                  });
                   return null;
                 }
-                
-                console.log('[VIEW PURCHASE] Rendering attachments:', purchase.attachments);
                 
                 return (
                   <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-5">

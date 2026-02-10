@@ -65,3 +65,13 @@ export function formatDateAndTime(dateString: string | Date): { date: string; ti
     })
   };
 }
+
+/**
+ * Format boxes or pieces count for display — ALWAYS integer, no decimals.
+ * Use everywhere boxes/pieces are shown (inventory, sales, purchases, returns, adjustments, print, ledger).
+ */
+export function formatBoxesPieces(value: number | null | undefined): string {
+  const n = Number(value);
+  if (Number.isNaN(n)) return '0';
+  return Math.round(n).toLocaleString();
+}

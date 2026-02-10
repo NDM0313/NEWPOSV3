@@ -133,7 +133,7 @@ export const SalesPage = () => {
         const returns = await saleReturnService.getSaleReturns(companyId, branchId === 'all' ? undefined : branchId || undefined);
         const saleIdsWithReturns = new Set<string>();
         returns.forEach((ret: any) => {
-          if (ret.original_sale_id) {
+          if (ret.original_sale_id && String(ret.status).toLowerCase() === 'final') {
             saleIdsWithReturns.add(ret.original_sale_id);
           }
         });
@@ -177,6 +177,8 @@ export const SalesPage = () => {
   const [shippingDialogOpen, setShippingDialogOpen] = useState(false);
   const [saleReturnFormOpen, setSaleReturnFormOpen] = useState(false);
   const [saleReturnSaleId, setSaleReturnSaleId] = useState<string | null>(null);
+  /** When set, SaleReturnForm opens in edit mode for this return (draft only). */
+  const [saleReturnEditId, setSaleReturnEditId] = useState<string | null>(null);
   const [returnPaymentDialogOpen, setReturnPaymentDialogOpen] = useState(false);
   const [returnPaymentSaleId, setReturnPaymentSaleId] = useState<string | null>(null);
   
@@ -197,6 +199,9 @@ export const SalesPage = () => {
   const [viewReturnDetailsOpen, setViewReturnDetailsOpen] = useState(false);
   const [deleteReturnDialogOpen, setDeleteReturnDialogOpen] = useState(false);
   const [returnToDelete, setReturnToDelete] = useState<any | null>(null);
+  const [voidReturnDialogOpen, setVoidReturnDialogOpen] = useState(false);
+  const [returnToVoid, setReturnToVoid] = useState<any | null>(null);
+  const [voidingReturn, setVoidingReturn] = useState(false);
   const [selectedReturnForPrint, setSelectedReturnForPrint] = useState<any | null>(null);
   const [printReturnOpen, setPrintReturnOpen] = useState(false);
 
@@ -278,6 +283,7 @@ export const SalesPage = () => {
         
       case 'create_return':
         setSaleReturnSaleId(sale.id);
+        setSaleReturnEditId(null);
         setSaleReturnFormOpen(true);
         break;
         
@@ -1455,8 +1461,14 @@ export const SalesPage = () => {
                             </div>
                             <div className="text-sm text-gray-400">{branchMap.get(ret.branch_id) || '—'}</div>
                             <div className="flex justify-center">
-                              <Badge className={ret.status === 'final' ? 'bg-green-500/20 text-green-400 border-green-500/30' : 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30'}>
-                                {ret.status === 'final' ? 'FINAL / LOCKED' : 'Draft'}
+                              <Badge className={
+                                String(ret?.status).toLowerCase() === 'void'
+                                  ? 'bg-gray-500/20 text-gray-400 border-gray-500/30'
+                                  : ret.status === 'final'
+                                    ? 'bg-green-500/20 text-green-400 border-green-500/30'
+                                    : 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30'
+                              }>
+                                {String(ret?.status).toLowerCase() === 'void' ? 'Voided' : ret.status === 'final' ? 'FINAL / LOCKED' : 'Draft'}
                               </Badge>
                             </div>
                             <div className="text-right">
@@ -1494,7 +1506,52 @@ export const SalesPage = () => {
                                       View Original Sale
                                     </DropdownMenuItem>
                                   )}
-                                  {/* No Edit/Delete for FINAL returns - they are locked */}
+                                  {/* Edit & Delete only for draft; Void only for final (standard: mistake correction) */}
+                                  {String(ret?.status).toLowerCase() !== 'final' && (
+                                    <>
+                                      <DropdownMenuSeparator />
+                                      <DropdownMenuItem 
+                                        onClick={() => {
+                                          if (!ret.original_sale_id) {
+                                            toast.error('Original sale not found for this return.');
+                                            return;
+                                          }
+                                          setSaleReturnSaleId(ret.original_sale_id);
+                                          setSaleReturnEditId(ret.id);
+                                          setSaleReturnFormOpen(true);
+                                        }}
+                                        className="hover:bg-gray-800 cursor-pointer"
+                                      >
+                                        <Edit size={14} className="mr-2 text-green-400" />
+                                        Edit Sale Return
+                                      </DropdownMenuItem>
+                                      <DropdownMenuItem 
+                                        onClick={() => {
+                                          setReturnToDelete(ret);
+                                          setDeleteReturnDialogOpen(true);
+                                        }}
+                                        className="hover:bg-gray-800 cursor-pointer text-red-400"
+                                      >
+                                        <Trash2 size={14} className="mr-2" />
+                                        Delete Return
+                                      </DropdownMenuItem>
+                                    </>
+                                  )}
+                                  {String(ret?.status).toLowerCase() === 'final' && (
+                                    <>
+                                      <DropdownMenuSeparator />
+                                      <DropdownMenuItem 
+                                        onClick={() => {
+                                          setReturnToVoid(ret);
+                                          setVoidReturnDialogOpen(true);
+                                        }}
+                                        className="hover:bg-gray-800 cursor-pointer text-amber-400"
+                                      >
+                                        <RotateCcw size={14} className="mr-2" />
+                                        Void / Cancel Return
+                                      </DropdownMenuItem>
+                                    </>
+                                  )}
                                   <DropdownMenuSeparator />
                                   <DropdownMenuItem 
                                     onClick={async () => {
@@ -1645,18 +1702,40 @@ export const SalesPage = () => {
                             </DropdownMenuItem>
                             
                             <DropdownMenuSeparator className="bg-gray-700" />
-                            {/* 🎯 CREATE SALE RETURN - Only for final sales */}
+                            {/* 🎯 SALE RETURN: If sale has returns → View Sale Returns; else → Create Sale Return (standard, avoids confusion) */}
                             {sale.status === 'final' && (
                               <>
-                                <DropdownMenuItem 
-                                  className="hover:bg-gray-800 cursor-pointer"
-                                  onClick={() => handleSaleAction('create_return', sale)}
-                                >
-                                  <RotateCcw size={14} className="mr-2 text-purple-400" />
-                                  Create Sale Return
-                                </DropdownMenuItem>
+                                {salesWithReturns.has(sale.id) || sale.hasReturn ? (
+                                  <DropdownMenuItem 
+                                    className="hover:bg-gray-800 cursor-pointer"
+                                    onClick={(e) => {
+                                      e.preventDefault();
+                                      setSelectedSaleForReturns(sale);
+                                      setViewReturnsDialogOpen(true);
+                                      setLoadingReturns(true);
+                                      saleReturnService.getSaleReturns(companyId, branchId === 'all' ? undefined : branchId || undefined)
+                                        .then((allReturns) => {
+                                          const forSale = allReturns.filter((r: any) => r.original_sale_id === sale.id);
+                                          setSaleReturns(forSale);
+                                        })
+                                        .catch((err: any) => toast.error(err.message || 'Failed to load returns'))
+                                        .finally(() => setLoadingReturns(false));
+                                    }}
+                                  >
+                                    <RotateCcw size={14} className="mr-2 text-purple-400" />
+                                    View Sale Returns
+                                  </DropdownMenuItem>
+                                ) : (
+                                  <DropdownMenuItem 
+                                    className="hover:bg-gray-800 cursor-pointer"
+                                    onClick={() => handleSaleAction('create_return', sale)}
+                                  >
+                                    <RotateCcw size={14} className="mr-2 text-purple-400" />
+                                    Create Sale Return
+                                  </DropdownMenuItem>
+                                )}
                                 {/* 🎯 RETURN PAYMENT / ADJUSTMENT - Only if sale has returns */}
-                                {salesWithReturns.has(sale.id) && (
+                                {(salesWithReturns.has(sale.id) || sale.hasReturn) && (
                                   <DropdownMenuItem 
                                     className="hover:bg-gray-800 cursor-pointer"
                                     onClick={() => handleSaleAction('return_payment', sale)}
@@ -1876,27 +1955,28 @@ export const SalesPage = () => {
         />
       )}
 
-      {/* 🎯 SALE RETURN FORM */}
+      {/* 🎯 SALE RETURN FORM (create: saleId only; edit: saleId + returnId for draft) */}
       {saleReturnFormOpen && saleReturnSaleId && (
         <SaleReturnForm
           saleId={saleReturnSaleId}
+          returnId={saleReturnEditId}
           onClose={() => {
             setSaleReturnFormOpen(false);
             setSaleReturnSaleId(null);
+            setSaleReturnEditId(null);
           }}
           onSuccess={async () => {
             await refreshSales();
-            // Reload sales with returns after creating a return
+            setSaleReturnEditId(null);
             if (companyId) {
               try {
                 const returns = await saleReturnService.getSaleReturns(companyId, branchId === 'all' ? undefined : branchId || undefined);
                 const saleIdsWithReturns = new Set<string>();
                 returns.forEach((ret: any) => {
-                  if (ret.original_sale_id) {
-                    saleIdsWithReturns.add(ret.original_sale_id);
-                  }
+                  if (ret.original_sale_id && String(ret.status).toLowerCase() === 'final') saleIdsWithReturns.add(ret.original_sale_id);
                 });
                 setSalesWithReturns(saleIdsWithReturns);
+                setSaleReturnsList(returns);
               } catch (error) {
                 console.error('[SALES PAGE] Error reloading sales with returns:', error);
               }
@@ -2222,9 +2302,13 @@ export const SalesPage = () => {
                   toast.success('Return deleted successfully');
                   setDeleteReturnDialogOpen(false);
                   setReturnToDelete(null);
-                  // Reload returns list
                   const returns = await saleReturnService.getSaleReturns(companyId, branchId === 'all' ? undefined : branchId || undefined);
                   setSaleReturnsList(returns);
+                  const saleIdsWithReturns = new Set<string>();
+                  returns.forEach((r: any) => {
+                    if (r.original_sale_id && String(r.status).toLowerCase() === 'final') saleIdsWithReturns.add(r.original_sale_id);
+                  });
+                  setSalesWithReturns(saleIdsWithReturns);
                 } catch (error: any) {
                   toast.error(error.message || 'Failed to delete return');
                 }
@@ -2232,6 +2316,50 @@ export const SalesPage = () => {
               className="bg-red-600 hover:bg-red-700 text-white"
             >
               Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Void Return Confirmation Dialog — standard method when return was saved by mistake */}
+      <AlertDialog open={voidReturnDialogOpen} onOpenChange={(open) => { setVoidReturnDialogOpen(open); if (!open) setReturnToVoid(null); }}>
+        <AlertDialogContent className="bg-gray-900 border-gray-700 text-white">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Void / Cancel Return?</AlertDialogTitle>
+            <AlertDialogDescription className="text-gray-300">
+              This will <span className="font-semibold text-amber-400">void</span> return <span className="font-semibold text-white">{returnToVoid?.return_no || `RET-${returnToVoid?.id?.slice(0, 8).toUpperCase()}`}</span>.
+              Stock will be reversed (returned items will be taken back from inventory). The return will be marked as void and excluded from customer balance. Record is kept for audit. Continue?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="border-gray-700 text-gray-300 hover:text-white hover:bg-gray-800" disabled={voidingReturn}>
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={async () => {
+                if (!returnToVoid || !companyId) return;
+                setVoidingReturn(true);
+                try {
+                  await saleReturnService.voidSaleReturn(returnToVoid.id, companyId, branchId === 'all' ? undefined : branchId, undefined);
+                  toast.success('Return voided successfully. Stock reversed.');
+                  setVoidReturnDialogOpen(false);
+                  setReturnToVoid(null);
+                  const returns = await saleReturnService.getSaleReturns(companyId, branchId === 'all' ? undefined : branchId || undefined);
+                  setSaleReturnsList(returns);
+                  const saleIdsWithReturns = new Set<string>();
+                  returns.forEach((r: any) => {
+                    if (r.original_sale_id && String(r.status).toLowerCase() === 'final') saleIdsWithReturns.add(r.original_sale_id);
+                  });
+                  setSalesWithReturns(saleIdsWithReturns);
+                } catch (error: any) {
+                  toast.error(error.message || 'Failed to void return');
+                } finally {
+                  setVoidingReturn(false);
+                }
+              }}
+              className="bg-amber-600 hover:bg-amber-700 text-white"
+            >
+              {voidingReturn ? 'Voiding…' : 'Void Return'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

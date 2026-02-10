@@ -1,11 +1,10 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { X, Save, AlertCircle, Package, Minus, Plus, Trash2, Loader2, DollarSign, Building2, Lock, Ruler } from 'lucide-react';
+import { X, Save, AlertCircle, Package, Loader2, DollarSign, Building2, Lock, Ruler, TrendingUp, Undo2, RefreshCw, Box, Check } from 'lucide-react';
 import { format } from 'date-fns';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { Textarea } from '../ui/textarea';
-import { Badge } from '../ui/badge';
 import { CalendarDatePicker } from '../ui/CalendarDatePicker';
 import {
   Dialog,
@@ -18,13 +17,23 @@ import { toast } from 'sonner';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { useAccounting } from '@/app/context/AccountingContext';
 import { useSettings } from '@/app/context/SettingsContext';
-import { saleReturnService, CreateSaleReturnData } from '@/app/services/saleReturnService';
+import { saleReturnService, CreateSaleReturnData, UpdateSaleReturnData } from '@/app/services/saleReturnService';
 import { saleService } from '@/app/services/saleService';
 import { PackingEntryModal, type ReturnPackingDetails } from '../transactions/PackingEntryModal';
-import { cn } from '../ui/utils';
+import { cn, formatBoxesPieces } from '../ui/utils';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '../ui/table';
 
 interface SaleReturnFormProps {
   saleId: string;
+  /** When set, form opens in edit mode for this draft return. */
+  returnId?: string | null;
   onClose: () => void;
   onSuccess?: () => void;
 }
@@ -59,7 +68,7 @@ interface ReturnItem {
   };
 }
 
-export const SaleReturnForm: React.FC<SaleReturnFormProps> = ({ saleId, onClose, onSuccess }) => {
+export const SaleReturnForm: React.FC<SaleReturnFormProps> = ({ saleId, returnId, onClose, onSuccess }) => {
   const { companyId, branchId: contextBranchId, user } = useSupabase();
   const accounting = useAccounting();
   const { inventorySettings } = useSettings();
@@ -86,13 +95,23 @@ export const SaleReturnForm: React.FC<SaleReturnFormProps> = ({ saleId, onClose,
   const [packingModalOpen, setPackingModalOpen] = useState(false);
   const [activePackingItemIndex, setActivePackingItemIndex] = useState<number | null>(null);
 
-  // Load original sale and items
+  // Load original sale and items (and existing return when returnId is set - edit mode)
   useEffect(() => {
     const loadData = async () => {
       if (!companyId || !saleId) return;
 
       try {
         setLoading(true);
+
+        let existingReturn: (Awaited<ReturnType<typeof saleReturnService.getSaleReturnById>>) | null = null;
+        if (returnId) {
+          existingReturn = await saleReturnService.getSaleReturnById(returnId, companyId);
+          if (existingReturn.status === 'final') {
+            toast.error('Cannot edit a finalized sale return. It is locked.');
+            onClose();
+            return;
+          }
+        }
 
         // Load original sale
         const sale = await saleService.getSaleById(saleId);
@@ -106,14 +125,19 @@ export const SaleReturnForm: React.FC<SaleReturnFormProps> = ({ saleId, onClose,
         }
 
         // Set default refund method based on original sale payment method
-        // Cash sale → Cash Refund (default)
-        // Credit sale → Adjust in Customer Account (default)
         if (sale.payment_method === 'cash' || sale.paymentMethod === 'cash') {
           setRefundMethod('cash');
         } else if (sale.payment_method === 'credit' || sale.paymentMethod === 'credit' || sale.payment_status === 'unpaid' || sale.paymentStatus === 'unpaid') {
-          setRefundMethod('adjust'); // Adjust in Customer Account
+          setRefundMethod('adjust');
         } else {
-          setRefundMethod('cash'); // Default to cash refund
+          setRefundMethod('cash');
+        }
+
+        if (existingReturn) {
+          setReturnDate(existingReturn.return_date ? new Date(existingReturn.return_date) : new Date());
+          setReason(existingReturn.reason || '');
+          setNotes(existingReturn.notes || '');
+          setDiscountAmount(Number(existingReturn.discount_amount) || 0);
         }
 
         // Load original sale items with already returned quantities
@@ -121,9 +145,7 @@ export const SaleReturnForm: React.FC<SaleReturnFormProps> = ({ saleId, onClose,
         
         // Fallback: If service returns empty, try to get items from sale object
         if (!items || items.length === 0) {
-          console.warn('[SALE RETURN] Service returned no items, trying sale object...');
           if (sale.items && sale.items.length > 0) {
-            // Convert sale items to return items format
             items = sale.items.map((item: any) => ({
               id: item.id,
               product_id: item.product_id,
@@ -134,30 +156,39 @@ export const SaleReturnForm: React.FC<SaleReturnFormProps> = ({ saleId, onClose,
               unit: item.unit || 'piece',
               unit_price: Number(item.unit_price || item.price || 0),
               total: Number(item.total || 0),
-              already_returned: 0, // Will be calculated if needed
+              already_returned: 0,
               size: item.size || item.variation?.size,
               color: item.color || item.variation?.color,
               variation: item.variation,
             }));
-            console.log('[SALE RETURN] Loaded items from sale object:', items);
           }
         }
         
-        console.log('[SALE RETURN] Final items count:', items?.length);
-        
         if (!items || items.length === 0) {
           toast.error('No items found in the original sale. Cannot create return.');
-          console.error('[SALE RETURN] Sale has no items. Sale ID:', saleId, 'Sale object:', sale);
           onClose();
           return;
         }
+
+        const returnItemsMap = new Map<string, { quantity: number; total: number; packing_details?: any; return_packing_details?: any }>();
+        if (existingReturn?.items?.length) {
+          existingReturn.items.forEach((ri: any) => {
+            const key = `${ri.product_id}-${ri.variation_id ?? ''}`;
+            returnItemsMap.set(key, {
+              quantity: Number(ri.quantity),
+              total: Number(ri.total),
+              packing_details: ri.packing_details,
+              return_packing_details: ri.return_packing_details,
+            });
+          });
+        }
         
         const formattedItems: ReturnItem[] = items.map(item => {
-          // CRITICAL FIX: sale_item_id FK only works for sale_items table
-          // If item came from sales_items table, we must set sale_item_id to undefined/null
-          // to avoid foreign key constraint violation
           const saleItemId = (item as any)._fromSalesItems ? undefined : item.id;
-          
+          const key = `${item.product_id}-${item.variation_id ?? ''}`;
+          const fromReturn = returnItemsMap.get(key);
+          const returnQty = fromReturn ? fromReturn.quantity : (existingReturn ? 0 : 0);
+          const returnTotal = fromReturn ? fromReturn.total : 0;
           return {
             sale_item_id: saleItemId,
             product_id: item.product_id,
@@ -166,22 +197,21 @@ export const SaleReturnForm: React.FC<SaleReturnFormProps> = ({ saleId, onClose,
             sku: item.sku || 'N/A',
             original_quantity: item.quantity,
             already_returned: item.already_returned || 0,
-            return_quantity: 0, // User will set this
+            return_quantity: returnQty,
             unit: item.unit || 'piece',
             unit_price: item.unit_price || 0,
-            total: 0,
+            total: returnTotal,
             size: item.size,
             color: item.color,
-            // Preserve packing fields from original sale item
             packing_type: item.packing_type,
             packing_quantity: item.packing_quantity,
             packing_unit: item.packing_unit,
             packing_details: item.packing_details,
+            return_packing_details: fromReturn?.return_packing_details,
             variation: item.variation,
           };
         });
 
-        console.log('[SALE RETURN] Formatted items:', formattedItems);
         setReturnItems(formattedItems);
       } catch (error: any) {
         console.error('[SALE RETURN FORM] Error loading data:', error);
@@ -193,7 +223,7 @@ export const SaleReturnForm: React.FC<SaleReturnFormProps> = ({ saleId, onClose,
     };
 
     loadData();
-  }, [companyId, saleId, onClose]);
+  }, [companyId, saleId, returnId, onClose]);
 
   // Calculate totals when return quantities change
   useEffect(() => {
@@ -283,16 +313,8 @@ export const SaleReturnForm: React.FC<SaleReturnFormProps> = ({ saleId, onClose,
         return;
       }
 
-      // Prepare return data
-      const returnData: CreateSaleReturnData = {
-        company_id: companyId,
-        branch_id: branchId,
-        original_sale_id: saleId,
-        return_date: format(returnDate, 'yyyy-MM-dd'),
-        customer_id: originalSale.customer_id || undefined,
-        customer_name: originalSale.customer_name,
-        items: itemsToReturn.map(item => {
-          // Use Return Packing dialog result when present (single source of truth); else proportional for non-packed items
+      const buildItemsPayload = () =>
+        itemsToReturn.map(item => {
           let returnPackingDetailsPayload: any = undefined;
           if (item.return_packing_details) {
             returnPackingDetailsPayload = item.return_packing_details;
@@ -327,20 +349,47 @@ export const SaleReturnForm: React.FC<SaleReturnFormProps> = ({ saleId, onClose,
             packing_details: item.packing_details ?? undefined,
             return_packing_details: returnPackingDetailsPayload ?? undefined,
           };
-        }),
+        });
+
+      // Edit mode: update draft return and close
+      if (returnId && companyId) {
+        const updateData: UpdateSaleReturnData = {
+          return_date: format(returnDate, 'yyyy-MM-dd'),
+          customer_id: originalSale.customer_id || undefined,
+          customer_name: originalSale.customer_name || 'Walk-in',
+          items: buildItemsPayload(),
+          reason: reason || undefined,
+          notes: notes || undefined,
+          subtotal,
+          discount_amount: discountAmount,
+          total,
+        };
+        await saleReturnService.updateSaleReturn(returnId, companyId, updateData);
+        toast.success('Sale return updated');
+        if (onSuccess) onSuccess();
+        onClose();
+        setSaving(false);
+        return;
+      }
+
+      // Create mode: prepare data and show settlement dialog
+      const returnData: CreateSaleReturnData = {
+        company_id: companyId,
+        branch_id: branchId,
+        original_sale_id: saleId,
+        return_date: format(returnDate, 'yyyy-MM-dd'),
+        customer_id: originalSale.customer_id || undefined,
+        customer_name: originalSale.customer_name || 'Walk-in',
+        items: buildItemsPayload(),
         reason: reason || undefined,
         notes: notes || undefined,
         created_by: user?.id,
-        subtotal: subtotal,
+        subtotal,
         discount_amount: discountAmount,
-        total: total,
+        total,
       };
-
-      // Sale Return is ALWAYS finalized on creation - show settlement dialog
       setPendingReturnData(returnData);
       setShowSettlementDialog(true);
-      setSaving(false);
-      return;
     } catch (error: any) {
       console.error('[SALE RETURN FORM] Error saving return:', error);
       toast.error(error.message || 'Failed to create sale return');
@@ -439,6 +488,22 @@ export const SaleReturnForm: React.FC<SaleReturnFormProps> = ({ saleId, onClose,
     return Math.max(0, adjustedTotal); // Ensure non-negative
   }, [subtotal, discountAmount, restockingFee, manualAdjustment]);
 
+  const [itemSearch, setItemSearch] = useState('');
+  const filteredReturnItems = useMemo(() => {
+    if (!itemSearch.trim()) return returnItems;
+    const q = itemSearch.toLowerCase();
+    return returnItems.filter(
+      (i) =>
+        (i.product_name || '').toLowerCase().includes(q) ||
+        (i.sku || '').toLowerCase().includes(q) ||
+        (i.variation?.sku || '').toLowerCase().includes(q)
+    );
+  }, [returnItems, itemSearch]);
+
+  const originalAmount = Number(originalSale?.total ?? 0);
+  const returnAmount = subtotal; // From returned items only (no manual input in amount panel)
+  const netAfterReturn = Math.max(0, originalAmount - returnAmount);
+
   if (loading) {
     return (
       <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
@@ -451,423 +516,295 @@ export const SaleReturnForm: React.FC<SaleReturnFormProps> = ({ saleId, onClose,
   }
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 overflow-y-auto">
-      <div className="bg-gray-900 border border-gray-700 rounded-xl w-full max-w-5xl my-8 max-h-[90vh] overflow-y-auto">
-        {/* Header */}
-        <div className="sticky top-0 bg-gray-900 border-b border-gray-700 p-6 flex items-center justify-between z-10">
+    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 overflow-y-auto p-4">
+      <div className="bg-[#0B0F19] border border-gray-800 rounded-2xl w-[80%] min-w-[1000px] max-w-6xl min-h-[85vh] max-h-[95vh] overflow-hidden flex flex-col shadow-2xl">
+        {/* Header — Figma: Title + Ref, Return No, Controlled Reversal, Locked badge */}
+        <div className="shrink-0 bg-gray-900/80 border-b border-gray-800 px-6 py-4 flex items-center justify-between">
           <div>
-            <h2 className="text-2xl font-bold text-white">Sale Return</h2>
-            <p className="text-sm text-gray-400 mt-1">
-              Returning items from: <span className="text-blue-400 font-semibold">{originalSale?.invoice_no}</span>
-            </p>
-            <p className="text-xs text-amber-400 mt-1">
-              {enablePacking
-                ? '⚠️ Items with packing: use "Return Packing" to set return quantity (meters). Return qty is read-only from packing.'
-                : '⚠️ Items are auto-loaded from original sale. Only return quantities can be edited.'}
-            </p>
+            <h2 className="text-lg font-bold text-white tracking-tight">
+              {returnId ? 'Edit ' : ''}Sales Return <span className="text-gray-400 font-normal">· Ref: {originalSale?.invoice_no || 'N/A'}</span>
+              {originalSale?.customer_name ? (
+                <span className="text-gray-400 font-normal"> · {originalSale.customer_name}</span>
+              ) : null}
+            </h2>
+            <div className="flex items-center gap-3 mt-1">
+              <span className="text-xs text-gray-500"># Return No: {returnId ? 'Draft' : 'New'}</span>
+              <span className="flex items-center gap-1.5 text-amber-400/90 text-xs font-medium">
+                <AlertCircle size={14} className="shrink-0" />
+                Controlled Reversal
+              </span>
+            </div>
           </div>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={onClose}
-            className="text-gray-400 hover:text-white"
-          >
-            <X size={20} />
-          </Button>
+          <div className="flex items-center gap-3">
+            <div>
+              <span className="text-[11px] text-gray-500 block mb-0.5">Return Date</span>
+              <CalendarDatePicker value={returnDate} onChange={(date) => date && setReturnDate(date)} className="bg-gray-800 border-gray-700 text-white h-8 w-[140px] text-sm" />
+            </div>
+            <Button variant="ghost" size="icon" onClick={onClose} className="text-gray-400 hover:text-white rounded-full">
+              <X size={22} />
+            </Button>
+          </div>
         </div>
 
-        {/* Content */}
-        <div className="p-6 space-y-6">
-          {/* Original Sale Info - READ ONLY */}
-          <div className="bg-blue-900/20 border border-blue-800 rounded-xl p-4">
-            <div className="flex items-center gap-2 mb-3">
-              <Package size={16} className="text-blue-400" />
-              <h3 className="text-sm font-semibold text-blue-400 uppercase tracking-wide">Original Sale Information (Read-Only)</h3>
+        {/* Content: screenshot order — amount cards (horizontal) → Finalize → banner → Items Entry */}
+        <div className="flex-1 overflow-y-auto overflow-x-hidden p-6 pb-10 space-y-4 min-h-0">
+          {/* 1) Amount Summary — compact 60px boxes */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 w-full h-[60px]">
+            <div className="rounded-xl px-2.5 py-1.5 min-w-0 h-[60px] flex flex-col justify-center bg-green-500/10 border border-green-500/30 shadow-sm relative overflow-hidden">
+              <div className="absolute top-0 right-0 w-8 h-8 bg-green-500/10 rounded-full -translate-y-1/2 translate-x-1/2" />
+              <div className="flex items-center gap-1 text-green-400 relative">
+                <TrendingUp size={12} className="shrink-0" />
+                <span className="text-[9px] font-bold uppercase tracking-wider">Original Sale</span>
+              </div>
+              <p className="text-sm font-bold text-green-400 tracking-tight relative leading-tight">Rs {originalAmount.toLocaleString()}</p>
+              <p className="text-[8px] text-gray-500 relative">Reference</p>
             </div>
-            <div className="grid grid-cols-2 gap-4 text-sm">
-              <div>
-                <span className="text-gray-400 text-xs uppercase">Sale Invoice #:</span>
-                <div className="text-white font-semibold mt-0.5">{originalSale?.invoice_no || 'N/A'}</div>
+            <div className="rounded-xl px-2.5 py-1.5 min-w-0 h-[60px] flex flex-col justify-center bg-red-500/10 border border-red-500/30 shadow-sm relative overflow-hidden">
+              <div className="absolute top-0 right-0 w-8 h-8 bg-red-500/10 rounded-full -translate-y-1/2 translate-x-1/2" />
+              <div className="flex items-center gap-1 text-red-400 relative">
+                <Undo2 size={12} className="shrink-0" />
+                <span className="text-[9px] font-bold uppercase tracking-wider">Return Amount</span>
               </div>
-              <div>
-                <span className="text-gray-400 text-xs uppercase">Customer:</span>
-                <div className="text-white font-semibold mt-0.5">{originalSale?.customer_name || 'Walk-in Customer'}</div>
+              <p className="text-sm font-bold text-red-400 tracking-tight relative leading-tight">Rs {returnAmount.toLocaleString()}</p>
+              <p className="text-[8px] text-gray-500 relative">From items</p>
+            </div>
+            <div className="rounded-xl px-2.5 py-1.5 min-w-0 h-[60px] flex flex-col justify-center bg-blue-500/10 border border-blue-500/30 shadow-sm relative overflow-hidden">
+              <div className="absolute top-0 right-0 w-8 h-8 bg-blue-500/10 rounded-full -translate-y-1/2 translate-x-1/2" />
+              <div className="absolute top-1 right-1">
+                <RefreshCw size={10} className="text-blue-400/80" />
               </div>
-              <div>
-                <span className="text-gray-400 text-xs uppercase">Original Sale Date:</span>
-                <div className="text-white font-semibold mt-0.5">
-                  {originalSale?.invoice_date ? format(new Date(originalSale.invoice_date), 'dd MMM yyyy') : '-'}
-                </div>
+              <div className="flex items-center gap-1 text-blue-400 relative">
+                <span className="text-[9px] font-bold uppercase tracking-wider">Net After Return</span>
               </div>
-              <div>
-                <span className="text-gray-400 text-xs uppercase">Original Total:</span>
-                <div className="text-white font-semibold mt-0.5">Rs {Number(originalSale?.total || 0).toLocaleString()}</div>
-              </div>
-              <div>
-                <span className="text-gray-400 text-xs uppercase">Sale Status:</span>
-                <div className="mt-0.5">
-                  <Badge className="bg-green-500/20 text-green-400 border-green-500/30">
-                    {originalSale?.status || 'N/A'}
-                  </Badge>
-                </div>
-              </div>
+              <p className="text-sm font-bold text-white tracking-tight relative leading-tight">Rs {netAfterReturn.toLocaleString()}</p>
             </div>
           </div>
-
-          {/* Return Date */}
-          <div>
-            <Label className="text-gray-200 mb-2 block">Return Date *</Label>
-            <CalendarDatePicker
-              value={returnDate}
-              onChange={(date) => date && setReturnDate(date)}
-              className="bg-gray-800 border-gray-700 text-white"
-            />
-          </div>
-
-          {/* Return Items */}
-          <div>
-            <div className="flex items-center justify-between mb-3">
-              <Label className="text-gray-200 block">Return Items *</Label>
-              <div className="text-xs text-gray-500 text-xs">
-                {enablePacking
-                  ? 'Items with packing: use "Return Packing" to set return qty (read-only in table).'
-                  : 'Items from original sale — only return quantity is editable'}
+          <div className="flex items-center justify-between gap-4 flex-wrap">
+            <div className="flex flex-wrap items-end gap-3 flex-1 min-w-0 max-w-md">
+              <div className="min-w-[140px] w-[140px] shrink-0">
+                <Label className="text-gray-500 text-xs mb-1 block">Reason (optional)</Label>
+                <Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="e.g. Defective, Wrong item" className="bg-gray-800 border-gray-700 text-white text-sm h-9" />
+              </div>
+              <div className="flex-1 min-w-[200px]">
+                <Label className="text-gray-500 text-xs mb-1 block">Notes (optional)</Label>
+                <Input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Additional notes" className="bg-gray-800 border-gray-700 text-white text-sm h-9 w-[652px]" />
               </div>
             </div>
-            <div className="bg-gray-800 border border-gray-700 rounded-xl overflow-hidden">
-              <table className="w-full">
-                <thead className="bg-gray-900/50 border-b border-gray-700">
-                  <tr>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase">Product / Variation</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase">SKU</th>
-                    <th className="px-4 py-3 text-center text-xs font-medium text-gray-400 uppercase">Original Qty</th>
-                    <th className="px-4 py-3 text-center text-xs font-medium text-gray-400 uppercase">Already Returned</th>
-                    <th className="px-4 py-3 text-center text-xs font-medium text-gray-400 uppercase">Return Qty</th>
-                    {enablePacking && <th className="px-4 py-3 text-center text-xs font-medium text-gray-400 uppercase">Packing</th>}
-                    <th className="px-4 py-3 text-right text-xs font-medium text-gray-400 uppercase">Unit Price</th>
-                    <th className="px-4 py-3 text-right text-xs font-medium text-gray-400 uppercase">Line Total</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-700">
-                  {returnItems.length === 0 ? (
-                    <tr>
-                      <td colSpan={enablePacking ? 8 : 7} className="px-4 py-8 text-center text-gray-500">
-                        <Package size={32} className="mx-auto mb-2 opacity-50" />
-                        <p>No items found in original sale</p>
-                      </td>
-                    </tr>
-                  ) : (
-                    returnItems.map((item, index) => {
-                    const maxReturnable = item.original_quantity - item.already_returned;
-                    const canReturn = maxReturnable > 0;
-                    
-                    // When packing dialog was used, use return_packing_details; else proportional for display only
-                    const hasPackingStructure = item.packing_details && (item.packing_details.boxes?.length > 0 || item.packing_details.loose_pieces?.length > 0);
-                    const returnQtyFromPacking = hasPackingStructure && item.return_packing_details;
-                    let proportionalPacking: any = null;
-                    if (returnQtyFromPacking && item.return_packing_details) {
-                      proportionalPacking = {
-                        total_boxes: item.return_packing_details.returned_boxes ?? 0,
-                        total_pieces: item.return_packing_details.returned_pieces_count ?? 0,
-                        total_meters: item.return_packing_details.returned_total_meters ?? 0,
-                      };
-                    } else if (item.packing_details && item.original_quantity > 0 && item.return_quantity > 0) {
-                      const returnRatio = item.return_quantity / item.original_quantity;
-                      const originalPacking = item.packing_details;
-                      proportionalPacking = {
-                        ...originalPacking,
-                        total_boxes: Math.round((originalPacking.total_boxes || 0) * returnRatio * 100) / 100,
-                        total_pieces: Math.round((originalPacking.total_pieces || 0) * returnRatio * 100) / 100,
-                        total_meters: Math.round((originalPacking.total_meters || 0) * returnRatio * 100) / 100,
-                      };
-                    }
-
-                    return (
-                      <tr key={index} className={cn(
-                        "hover:bg-gray-800/30 transition-colors",
-                        !canReturn && "opacity-50"
-                      )}>
-                        <td className="px-4 py-3">
-                          <div className="font-medium text-white">{item.product_name}</div>
-                          {(() => {
-                            // Build variation text from variation object or size/color
-                            let variationText = null;
-                            if (item.variation) {
-                              const attrs = item.variation.attributes || {};
-                              if (Object.keys(attrs).length > 0) {
-                                variationText = Object.entries(attrs)
-                                  .filter(([_, v]) => v != null && v !== '')
-                                  .map(([k, v]) => `${k.charAt(0).toUpperCase() + k.slice(1)}: ${v}`)
-                                  .join(', ');
-                              } else if (item.variation.size || item.variation.color) {
-                                variationText = [item.variation.size, item.variation.color].filter(Boolean).join(' / ');
-                              }
-                            } else if (item.size || item.color) {
-                              variationText = [item.size, item.color].filter(Boolean).join(' / ');
-                            }
-                            
-                            return variationText ? (
-                              <div className="text-xs text-blue-400 mt-0.5">{variationText}</div>
-                            ) : null;
-                          })()}
-                        </td>
-                        <td className="px-4 py-3 text-gray-400 text-sm font-mono">
-                          {item.variation?.sku || item.sku}
-                        </td>
-                        <td className="px-4 py-3 text-center text-gray-300">{item.original_quantity}</td>
-                        <td className="px-4 py-3 text-center">
-                          {item.already_returned > 0 ? (
-                            <Badge className="bg-orange-500/20 text-orange-400 border-orange-500/30">
-                              {item.already_returned}
-                            </Badge>
-                          ) : (
-                            <span className="text-gray-500">0</span>
-                          )}
-                        </td>
-                        <td className="px-4 py-3">
-                          {enablePacking && hasPackingStructure ? (
-                            /* Read-only: value comes ONLY from Return Packing dialog */
-                            <div className="flex flex-col items-center gap-1">
-                              <div className="flex items-center gap-1.5 rounded-md bg-gray-800/80 border border-gray-600 px-2 py-1.5">
-                                <Lock size={12} className="text-amber-400 shrink-0" />
-                                <span className="text-sm font-medium text-white tabular-nums">{item.return_quantity}</span>
-                              </div>
-                              <p className="text-[10px] text-amber-400/90">From Return Packing</p>
-                              {!canReturn && (
-                                <p className="text-xs text-red-400">Fully returned</p>
-                              )}
-                            </div>
-                          ) : (
-                            <div className="flex items-center justify-center gap-2">
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-7 w-7"
-                                onClick={() => handleQuantityChange(index, Math.max(0, item.return_quantity - 1))}
-                                disabled={!canReturn || item.return_quantity <= 0}
-                              >
-                                <Minus size={14} />
-                              </Button>
-                              <Input
-                                type="number"
-                                min={0}
-                                max={maxReturnable}
-                                value={item.return_quantity}
-                                onChange={(e) => handleQuantityChange(index, parseFloat(e.target.value) || 0)}
-                                disabled={!canReturn}
-                                className="w-20 text-center bg-gray-900 border-gray-700 text-white"
-                              />
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-7 w-7"
-                                onClick={() => handleQuantityChange(index, Math.min(maxReturnable, item.return_quantity + 1))}
-                                disabled={!canReturn || item.return_quantity >= maxReturnable}
-                              >
-                                <Plus size={14} />
-                              </Button>
-                            </div>
-                          )}
-                          {!canReturn && !(enablePacking && hasPackingStructure) && (
-                            <p className="text-xs text-red-400 mt-1">Fully returned</p>
-                          )}
-                        </td>
-                        {enablePacking && (
-                          <td className="px-4 py-3 text-center">
-                            {hasPackingStructure ? (
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="border-purple-500/50 text-purple-400 hover:bg-purple-500/10 h-8 text-xs"
-                                onClick={() => {
-                                  setActivePackingItemIndex(index);
-                                  setPackingModalOpen(true);
-                                }}
-                                disabled={!canReturn}
-                              >
-                                <Ruler size={12} className="mr-1" />
-                                {item.return_packing_details
-                                  ? `${item.return_packing_details.returned_total_meters.toFixed(2)} M (edit)`
-                                  : 'Return Packing'}
-                              </Button>
-                            ) : item.return_quantity > 0 && proportionalPacking ? (
-                              <span className="text-[11px] text-gray-400">
-                                {proportionalPacking.total_boxes > 0 && `${proportionalPacking.total_boxes}B`}
-                                {proportionalPacking.total_boxes > 0 && proportionalPacking.total_pieces > 0 && ' · '}
-                                {proportionalPacking.total_pieces > 0 && `${proportionalPacking.total_pieces}P`}
-                                {(proportionalPacking.total_boxes > 0 || proportionalPacking.total_pieces > 0) && proportionalPacking.total_meters > 0 && ' · '}
-                                {proportionalPacking.total_meters > 0 && `${proportionalPacking.total_meters.toFixed(1)}M`}
-                              </span>
-                            ) : item.return_quantity > 0 ? (
-                              <span className="text-gray-500 text-xs">—</span>
-                            ) : (
-                              <span className="text-gray-600 text-xs">—</span>
-                            )}
-                          </td>
-                        )}
-                        <td className="px-4 py-3 text-right text-gray-300">Rs {Number(item.unit_price).toLocaleString()}</td>
-                        <td className="px-4 py-3 text-right text-white font-semibold">
-                          Rs {Number(item.total).toLocaleString()}
-                        </td>
-                      </tr>
-                    );
-                  })
-                  )}
-                </tbody>
-              </table>
-            </div>
+            <Button
+              onClick={handleSave}
+              disabled={saving || returnItems.filter(i => i.return_quantity > 0).length === 0 || (enablePacking && returnItems.some(i => {
+                const hasPacking = i.packing_details && (i.packing_details.boxes?.length > 0 || i.packing_details.loose_pieces?.length > 0);
+                return i.return_quantity > 0 && hasPacking && !i.return_packing_details;
+              }))}
+              size="sm"
+              className="h-9 px-4 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg shadow-sm flex items-center gap-1.5 shrink-0"
+            >
+              {saving ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />}
+              {returnId ? 'Update Return' : 'Finalize Return'}
+            </Button>
           </div>
 
-          {/* Reason & Notes */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* 2) Return Reversal Mode banner — below amount section (screenshot) */}
+          <div className="flex items-center gap-3 px-4 py-3 bg-blue-500/10 border border-blue-500/20 rounded-xl">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-amber-500/20">
+              <AlertCircle size={18} className="text-amber-400" />
+            </div>
+            <p className="text-sm text-blue-100">
+              <span className="font-semibold text-white">Return Reversal Mode:</span> Items are loaded from original sale invoice {originalSale?.invoice_no || 'N/A'}. Adjust return quantities as needed. Stock will be updated automatically upon finalization.
+            </p>
+          </div>
+
+          {/* 3) Items Entry — Figma: section title + search + table */}
             <div>
-              <Label className="text-gray-200 mb-2 block">Return Reason</Label>
+              <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-3 flex items-center gap-2">
+                <Box size={18} className="text-gray-500" />
+                Items Entry
+              </h3>
               <Input
-                value={reason}
-                onChange={(e) => setReason(e.target.value)}
-                placeholder="e.g., Defective, Wrong item, Customer request"
-                className="bg-gray-800 border-gray-700 text-white"
+                placeholder="Search products by name, SKU... ⌘K"
+                value={itemSearch}
+                onChange={(e) => setItemSearch(e.target.value)}
+                className="mb-4 bg-gray-800/80 border-gray-700 text-white placeholder:text-gray-500 rounded-lg h-10"
               />
-            </div>
-            <div>
-              <Label className="text-gray-200 mb-2 block">Notes</Label>
-              <Textarea
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                placeholder="Additional notes..."
-                className="bg-gray-800 border-gray-700 text-white min-h-[80px]"
-              />
-            </div>
+              <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden">
+                <div className="px-5 py-3 bg-gray-950/50 border-b border-gray-800 flex items-center justify-between">
+                  <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wide flex items-center gap-2">
+                    <Package size={16} />
+                    Items ({filteredReturnItems.length})
+                    <span className="text-xs font-normal normal-case text-purple-400 ml-1">Return Items</span>
+                  </h3>
+                </div>
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="border-gray-800 hover:bg-transparent">
+                        <TableHead className="text-gray-400">Product</TableHead>
+                        <TableHead className="text-gray-400">SKU</TableHead>
+                        <TableHead className="text-gray-400">Variation</TableHead>
+                        {enablePacking && <TableHead className="text-gray-400">Packing</TableHead>}
+                        <TableHead className="text-gray-400 text-right">Unit Price</TableHead>
+                        <TableHead className="text-gray-400 text-center">Original Qty</TableHead>
+                        <TableHead className="text-gray-400 text-center">Return Qty</TableHead>
+                        <TableHead className="text-gray-400">Unit</TableHead>
+                        <TableHead className="text-gray-400 text-right">Return Total</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredReturnItems.length === 0 ? (
+                        <TableRow className="border-gray-800 hover:bg-transparent" key="empty">
+                          <TableCell colSpan={enablePacking ? 9 : 8} className="px-4 py-8 text-center text-gray-500">
+                            <Package size={32} className="mx-auto mb-2 opacity-50" />
+                            <p>{itemSearch ? 'No items match search' : 'No items found in original sale'}</p>
+                          </TableCell>
+                        </TableRow>
+                      ) : (
+                        filteredReturnItems.map((item, idx) => {
+                          const index = returnItems.indexOf(item);
+                          const maxReturnable = item.original_quantity - item.already_returned;
+                          const canReturn = maxReturnable > 0;
+                          const hasPackingStructure = item.packing_details && (item.packing_details.boxes?.length > 0 || item.packing_details.loose_pieces?.length > 0);
+                          const returnQtyFromPacking = hasPackingStructure && item.return_packing_details;
+                          const pd = item.packing_details || {};
+                          const totalBoxes = pd.total_boxes ?? 0;
+                          const totalPieces = pd.total_pieces ?? 0;
+                          // Packing display: same format as ViewPurchaseDetailsDrawer — Box(es), Piece(s), M
+                          let packingText = '—';
+                          if (item.return_packing_details) {
+                            const rp = item.return_packing_details;
+                            const returnPackingParts: string[] = [];
+                            if ((rp.returned_boxes ?? 0) > 0) {
+                              returnPackingParts.push(`${formatBoxesPieces(rp.returned_boxes)} Box${Math.round(Number(rp.returned_boxes)) !== 1 ? 'es' : ''}`);
+                            }
+                            if ((rp.returned_pieces_count ?? 0) > 0) {
+                              returnPackingParts.push(`${formatBoxesPieces(rp.returned_pieces_count)} Piece${Math.round(Number(rp.returned_pieces_count)) !== 1 ? 's' : ''}`);
+                            }
+                            if ((rp.returned_total_meters ?? 0) > 0) {
+                              returnPackingParts.push(`${Number(rp.returned_total_meters).toFixed(2)} M`);
+                            }
+                            packingText = returnPackingParts.length ? returnPackingParts.join(', ') : '—';
+                          } else if (item.return_quantity > 0 && item.original_quantity > 0 && (totalBoxes > 0 || totalPieces > 0 || (pd.total_meters ?? 0) > 0)) {
+                            const returnRatio = item.return_quantity / item.original_quantity;
+                            const returnBoxes = Math.round(totalBoxes * returnRatio * 100) / 100;
+                            const returnPieces = Math.round(totalPieces * returnRatio * 100) / 100;
+                            const returnMeters = pd.total_meters != null ? Math.round((pd.total_meters * returnRatio) * 100) / 100 : 0;
+                            const returnPackingParts: string[] = [];
+                            if (Number(returnBoxes) > 0) returnPackingParts.push(`${formatBoxesPieces(returnBoxes)} Box${Math.round(Number(returnBoxes)) !== 1 ? 'es' : ''}`);
+                            if (Number(returnPieces) > 0) returnPackingParts.push(`${formatBoxesPieces(returnPieces)} Piece${Math.round(Number(returnPieces)) !== 1 ? 's' : ''}`);
+                            if (returnMeters > 0) returnPackingParts.push(`${returnMeters.toFixed(2)} M`);
+                            packingText = returnPackingParts.length ? returnPackingParts.join(', ') : '—';
+                          } else {
+                            // Original packing from sale item (same as purchase view)
+                            const packingParts: string[] = [];
+                            if (Number(totalBoxes) > 0) packingParts.push(`${formatBoxesPieces(totalBoxes)} Box${Math.round(Number(totalBoxes)) !== 1 ? 'es' : ''}`);
+                            if (Number(totalPieces) > 0) packingParts.push(`${formatBoxesPieces(totalPieces)} Piece${Math.round(Number(totalPieces)) !== 1 ? 's' : ''}`);
+                            if ((pd.total_meters ?? 0) > 0) packingParts.push(`${Number(pd.total_meters).toFixed(2)} M`);
+                            packingText = packingParts.length ? packingParts.join(', ') : '—';
+                          }
+                          const variationText = item.variation
+                            ? (Object.keys(item.variation.attributes || {}).length > 0
+                                ? Object.entries(item.variation.attributes || {})
+                                    .filter(([_, v]) => v != null && v !== '')
+                                    .map(([k, v]) => `${k.charAt(0).toUpperCase() + k.slice(1)}: ${v}`).join(', ')
+                                : [item.variation.size, item.variation.color].filter(Boolean).join(' / '))
+                            : [item.size, item.color].filter(Boolean).join(' / ') || null;
+                          const unitDisplay = item.unit ?? 'pcs';
+
+                          return (
+                            <TableRow key={index} className={cn("border-gray-800", !canReturn && "opacity-50")}>
+                              <TableCell>
+                                <div>
+                                  <p className="font-medium text-white">{item.product_name}</p>
+                                  {(item.variation?.sku || item.sku) && (
+                                    <p className="text-xs text-gray-500">SKU: {item.variation?.sku || item.sku}</p>
+                                  )}
+                                </div>
+                              </TableCell>
+                              <TableCell className="text-gray-400">{item.variation?.sku || item.sku}</TableCell>
+                              <TableCell>
+                                {variationText ? (
+                                  <span className="text-gray-300 text-sm">{variationText}</span>
+                                ) : (
+                                  <span className="text-gray-600">—</span>
+                                )}
+                              </TableCell>
+                              {enablePacking && (
+                                <TableCell className="text-gray-400">
+                                  {hasPackingStructure ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => { setActivePackingItemIndex(index); setPackingModalOpen(true); }}
+                                      className="text-left hover:text-purple-400 transition-colors cursor-pointer"
+                                    >
+                                      {item.return_quantity > 0 ? (
+                                        <span className="text-purple-400 font-medium">{packingText}</span>
+                                      ) : (
+                                        <span>{packingText}</span>
+                                      )}
+                                    </button>
+                                  ) : (
+                                    <span>{packingText}</span>
+                                  )}
+                                </TableCell>
+                              )}
+                              <TableCell className="text-right text-white">
+                                Rs. {Number(item.unit_price).toLocaleString()}
+                              </TableCell>
+                              <TableCell className="text-center text-white font-medium">
+                                {item.original_quantity}
+                              </TableCell>
+                              <TableCell className="text-center">
+                                {enablePacking && hasPackingStructure ? (
+                                  <div className="flex flex-col items-center gap-0.5">
+                                    <div className="flex items-center justify-center gap-1 rounded bg-gray-800/80 border border-amber-500/40 px-2 py-1.5 min-w-[4rem]">
+                                      <span className="text-sm font-medium text-white tabular-nums">{item.return_quantity}</span>
+                                    </div>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      className="h-6 text-xs text-purple-400 hover:bg-purple-500/10"
+                                      onClick={() => { setActivePackingItemIndex(index); setPackingModalOpen(true); }}
+                                      disabled={!canReturn}
+                                    >
+                                      <Ruler size={10} className="mr-1" /> Packing
+                                    </Button>
+                                  </div>
+                                ) : (
+                                  <>
+                                    <Input
+                                      type="number"
+                                      min={0}
+                                      max={maxReturnable}
+                                      value={item.return_quantity}
+                                      onChange={(e) => handleQuantityChange(index, parseFloat(e.target.value) || 0)}
+                                      disabled={!canReturn}
+                                      className="w-20 text-center bg-gray-900 border border-gray-700 text-white h-8 mx-auto font-medium rounded-md px-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                                      placeholder="0"
+                                    />
+                                    {!canReturn && (
+                                      <p className="text-xs text-red-400 mt-1">Fully returned</p>
+                                    )}
+                                  </>
+                                )}
+                              </TableCell>
+                              <TableCell className="text-gray-400">{unitDisplay}</TableCell>
+                              <TableCell className="text-right text-red-400 font-medium">
+                                {item.total > 0 ? `-Rs. ${Number(item.total).toLocaleString()}` : '—'}
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
+                <div className="px-5 py-3 bg-gray-950/50 border-t border-gray-800 flex items-center justify-between text-sm">
+                  <span className="text-gray-400">
+                    {filteredReturnItems.length} Item{filteredReturnItems.length !== 1 ? 's' : ''} · Qty: {filteredReturnItems.reduce((s, i) => s + i.return_quantity, 0)}
+                  </span>
+                  <span className="text-red-400 font-semibold">Total: -Rs. {subtotal.toLocaleString()}</span>
+                </div>
+              </div>
           </div>
-
-          {/* Return Amount Adjustment Section */}
-          <div className="bg-gray-800 border border-gray-700 rounded-xl p-4 space-y-4">
-            <h3 className="text-lg font-semibold text-white mb-3">Return Amount Adjustment</h3>
-            
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div>
-                <Label className="text-gray-300 mb-2 block text-sm">Discount Amount</Label>
-                <Input
-                  type="number"
-                  min={0}
-                  max={subtotal}
-                  value={discountAmount}
-                  onChange={(e) => setDiscountAmount(Math.max(0, Math.min(subtotal, parseFloat(e.target.value) || 0)))}
-                  placeholder="0.00"
-                  className="bg-gray-900 border-gray-700 text-white"
-                />
-                <p className="text-xs text-gray-500 mt-1">Reduces return amount</p>
-              </div>
-              
-              <div>
-                <Label className="text-gray-300 mb-2 block text-sm">Restocking Fee</Label>
-                <Input
-                  type="number"
-                  min={0}
-                  value={restockingFee}
-                  onChange={(e) => setRestockingFee(Math.max(0, parseFloat(e.target.value) || 0))}
-                  placeholder="0.00"
-                  className="bg-gray-900 border-gray-700 text-white"
-                />
-                <p className="text-xs text-gray-500 mt-1">Increases return amount</p>
-              </div>
-              
-              <div>
-                <Label className="text-gray-300 mb-2 block text-sm">Manual Adjustment</Label>
-                <Input
-                  type="number"
-                  value={manualAdjustment}
-                  onChange={(e) => setManualAdjustment(parseFloat(e.target.value) || 0)}
-                  placeholder="0.00"
-                  className="bg-gray-900 border-gray-700 text-white"
-                />
-                <p className="text-xs text-gray-500 mt-1">Positive or negative adjustment</p>
-              </div>
-            </div>
-
-          </div>
-
-          {/* Summary */}
-          <div className="bg-gray-800 border border-gray-700 rounded-xl p-4 space-y-2">
-            <div className="flex justify-between items-center">
-              <span className="text-gray-400">Subtotal:</span>
-              <span className="text-white font-semibold">Rs {subtotal.toLocaleString()}</span>
-            </div>
-            {discountAmount > 0 && (
-              <div className="flex justify-between items-center text-green-400">
-                <span className="text-sm">Discount:</span>
-                <span className="text-sm font-semibold">-Rs {discountAmount.toLocaleString()}</span>
-              </div>
-            )}
-            {restockingFee > 0 && (
-              <div className="flex justify-between items-center text-orange-400">
-                <span className="text-sm">Restocking Fee:</span>
-                <span className="text-sm font-semibold">+Rs {restockingFee.toLocaleString()}</span>
-              </div>
-            )}
-            {manualAdjustment !== 0 && (
-              <div className="flex justify-between items-center text-blue-400">
-                <span className="text-sm">Manual Adjustment:</span>
-                <span className="text-sm font-semibold">
-                  {manualAdjustment >= 0 ? '+' : ''}Rs {manualAdjustment.toLocaleString()}
-                </span>
-              </div>
-            )}
-            <div className="flex justify-between items-center mt-3 pt-3 border-t border-gray-700">
-              <span className="text-white font-bold text-lg">Adjusted Return Amount:</span>
-              <span className="text-red-400 font-bold text-lg">-Rs {total.toLocaleString()}</span>
-            </div>
-            <div className="mt-2 pt-2 border-t border-gray-700">
-              <p className="text-xs text-amber-400">
-                ⚠️ Settlement method will be selected when saving
-              </p>
-            </div>
-          </div>
-
-          {/* Finalization Notice - Sale Return is ALWAYS FINAL */}
-          <div className="flex items-start gap-2 p-3 bg-red-900/20 border border-red-800 rounded-lg">
-            <AlertCircle size={16} className="text-red-400 mt-0.5 flex-shrink-0" />
-            <div>
-              <p className="text-sm font-semibold text-red-300 mb-1">
-                ⚠️ FINAL DOCUMENT - NO EDITS OR DELETES ALLOWED
-              </p>
-              <p className="text-xs text-red-300/80">
-                Once saved, this return becomes FINAL and cannot be edited or deleted. 
-                Stock movements and customer ledger entries will be created immediately.
-              </p>
-            </div>
-          </div>
-        </div>
-
-        {/* Footer */}
-        <div className="sticky bottom-0 bg-gray-900 border-t border-gray-700 p-6 flex items-center justify-end gap-3">
-          <Button
-            variant="outline"
-            onClick={onClose}
-            className="border-gray-700 text-gray-300"
-          >
-            Cancel
-          </Button>
-          <Button
-            onClick={handleSave}
-            disabled={saving || returnItems.filter(item => item.return_quantity > 0).length === 0 || (enablePacking && returnItems.some(item => {
-              const hasPacking = item.packing_details && (item.packing_details.boxes?.length > 0 || item.packing_details.loose_pieces?.length > 0);
-              return item.return_quantity > 0 && hasPacking && !item.return_packing_details;
-            }))}
-            className="bg-blue-600 hover:bg-blue-700 text-white"
-          >
-            {saving ? (
-              <>
-                <Loader2 size={16} className="mr-2 animate-spin" />
-                Processing...
-              </>
-            ) : (
-              <>
-                <Save size={16} className="mr-2" />
-                Create & Finalize Return
-              </>
-            )}
-          </Button>
         </div>
       </div>
 

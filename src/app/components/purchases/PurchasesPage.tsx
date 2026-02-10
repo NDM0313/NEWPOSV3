@@ -1445,6 +1445,11 @@ export const PurchasesPage = () => {
             setViewDetailsOpen(false);
             handlePurchaseAction('make_payment', selectedPurchase);
           }}
+          onOpenReturn={() => {
+            setSelectedPurchaseForReturn(selectedPurchase);
+            setPurchaseReturnFormOpen(true);
+            setViewDetailsOpen(false);
+          }}
         />
       )}
 

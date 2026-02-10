@@ -14,7 +14,7 @@ import { Label } from "../ui/label";
 import { ScrollArea } from "../ui/scroll-area";
 import { Separator } from "../ui/separator";
 import { Checkbox } from "../ui/checkbox";
-import { cn } from "../ui/utils";
+import { cn, formatBoxesPieces } from "../ui/utils";
 
 /**
  * Packing Entry Modal - Variable Sub-Unit Logic for Textile Wholesale
@@ -753,19 +753,19 @@ export const PackingEntryModal = ({
               )}
             </div>
           </DialogTitle>
-          <DialogDescription className="text-gray-400">
-            {returnMode ? (
-              <>
-                Select which pieces to return for <span className="text-purple-400 font-medium">{productName}</span>
-                <div className="mt-2 text-xs text-purple-300/70">
-                  ✓ Select individual pieces • Original meters preserved • No manual entry
-                </div>
-              </>
-            ) : (
-              <>
-            Enter box, piece, and meter details for <span className="text-blue-400 font-medium">{productName}</span>
-              </>
-            )}
+          <DialogDescription asChild>
+            <span className="text-gray-400 block">
+              {returnMode ? (
+                <>
+                  Select which pieces to return for <span className="text-purple-400 font-medium">{productName}</span>
+                  <span className="mt-2 block text-xs text-purple-300/70">
+                    ✓ Select individual pieces • Original meters preserved • No manual entry
+                  </span>
+                </>
+              ) : (
+                <>Enter box, piece, and meter details for <span className="text-blue-400 font-medium">{productName}</span></>
+              )}
+            </span>
           </DialogDescription>
         </DialogHeader>
 
@@ -811,7 +811,7 @@ export const PackingEntryModal = ({
                 <span className="text-gray-400">Selected:</span>
                 <span className="text-purple-400 font-semibold">
                   {calculateReturnPackingDetails().returned_pieces_count} Piece{calculateReturnPackingDetails().returned_pieces_count !== 1 ? 's' : ''} 
-                  {calculateReturnPackingDetails().returned_boxes > 0 && ` • ${calculateReturnPackingDetails().returned_boxes} Complete Box${calculateReturnPackingDetails().returned_boxes !== 1 ? 'es' : ''}`}
+                  {calculateReturnPackingDetails().returned_boxes > 0 && ` • ${formatBoxesPieces(calculateReturnPackingDetails().returned_boxes)} Complete Box${Math.round(calculateReturnPackingDetails().returned_boxes) !== 1 ? 'es' : ''}`}
                   {' • '}
                   {calculateReturnPackingDetails().returned_total_meters.toFixed(2)} M
                 </span>
@@ -883,19 +883,6 @@ export const PackingEntryModal = ({
                             const displayValue = (meters !== null && meters !== undefined && meters !== '') 
                               ? String(meters) 
                               : '';
-                            
-                            // DEBUG: Log what's being rendered (only for first few pieces to avoid spam)
-                            if (box.box_no === 1 && pieceIndex < 3) {
-                              console.log(`[PACKING ENTRY MODAL] Rendering input box ${box.box_no}, piece ${pieceIndex}:`, {
-                                meters,
-                                displayValue,
-                                metersType: typeof meters,
-                                isZero: meters === 0,
-                                isEmpty: meters === '' || meters === null || meters === undefined,
-                                boxPieces: box.pieces,
-                                allPiecesInBox: box.pieces.map((p, i) => ({ index: i, value: p, type: typeof p }))
-                              });
-                            }
                             
                             const pieceKey = `${box.box_no}-${pieceIndex}`;
                             const isSelected = selectedPieces.has(pieceKey);
@@ -1221,13 +1208,13 @@ export const PackingEntryModal = ({
             {totals.total_boxes > 0 && (
               <div className="text-center">
                 <div className="text-xs text-gray-400 mb-1">Total Boxes</div>
-                <div className="text-2xl font-bold text-blue-400">{totals.total_boxes}</div>
+                <div className="text-2xl font-bold text-blue-400">{formatBoxesPieces(totals.total_boxes)}</div>
               </div>
             )}
             {totals.total_pieces > 0 && (
               <div className="text-center">
                 <div className="text-xs text-gray-400 mb-1">Total Pieces</div>
-                <div className="text-2xl font-bold text-purple-400">{totals.total_pieces}</div>
+                <div className="text-2xl font-bold text-purple-400">{formatBoxesPieces(totals.total_pieces)}</div>
               </div>
             )}
             {totals.total_meters > 0 && (

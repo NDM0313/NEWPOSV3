@@ -4,6 +4,7 @@ import { useSettings } from '@/app/context/SettingsContext';
 import { ClassicPrintBase } from './ClassicPrintBase';
 import { Checkbox } from '../ui/checkbox';
 import { Label } from '../ui/label';
+import { formatBoxesPieces } from '../ui/utils';
 
 interface PurchaseOrderPrintLayoutProps {
   purchase: Purchase;
@@ -30,8 +31,8 @@ export const PurchaseOrderPrintLayout: React.FC<PurchaseOrderPrintLayoutProps> =
       const totalBoxes = pd.total_boxes ?? 0;
       const totalPieces = pd.total_pieces ?? 0;
       const packingParts: string[] = [];
-      if (Number(totalBoxes) > 0) packingParts.push(`${totalBoxes} Box${Number(totalBoxes) !== 1 ? 'es' : ''}`);
-      if (Number(totalPieces) > 0) packingParts.push(`${totalPieces} Piece${Number(totalPieces) !== 1 ? 's' : ''}`);
+      if (Number(totalBoxes) > 0) packingParts.push(`${formatBoxesPieces(totalBoxes)} Box${Math.round(Number(totalBoxes)) !== 1 ? 'es' : ''}`);
+      if (Number(totalPieces) > 0) packingParts.push(`${formatBoxesPieces(totalPieces)} Piece${Math.round(Number(totalPieces)) !== 1 ? 's' : ''}`);
       return packingParts.length ? packingParts.join(', ') : '—';
     }
     

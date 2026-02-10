@@ -11,7 +11,7 @@ export interface SaleReturn {
   return_date: string;
   customer_id?: string;
   customer_name: string;
-  status: 'draft' | 'final';
+  status: 'draft' | 'final' | 'void';
   subtotal: number;
   discount_amount: number;
   tax_amount: number;
@@ -79,6 +79,19 @@ export interface CreateSaleReturnData {
   total?: number; // Optional: final adjusted total; if provided, use it; otherwise calculate
 }
 
+/** Data for updating a draft sale return (same shape as create items; header fields optional) */
+export type UpdateSaleReturnData = {
+  return_date?: string;
+  customer_id?: string;
+  customer_name?: string;
+  items: CreateSaleReturnData['items'];
+  reason?: string;
+  notes?: string;
+  subtotal?: number;
+  discount_amount?: number;
+  total?: number;
+};
+
 export const saleReturnService = {
   /**
    * Create a new sale return (draft or final)
@@ -95,7 +108,7 @@ export const saleReturnService = {
     // Generate return number
     const return_no = await this.generateReturnNumber(company_id, branch_id);
 
-    // Create sale return record
+    // Create sale return record as DRAFT so finalizeSaleReturn() can run (stock + accounting, then status = final)
     const { data: saleReturn, error: returnError } = await supabase
       .from('sale_returns')
       .insert({
@@ -105,8 +118,8 @@ export const saleReturnService = {
         return_no,
         return_date,
         customer_id: customer_id || null,
-        customer_name,
-        status: 'final', // FINAL on creation - no edits/deletes allowed (ERP standard)
+        customer_name: customer_name || 'Walk-in',
+        status: 'draft',
         subtotal,
         discount_amount,
         tax_amount,
@@ -150,6 +163,85 @@ export const saleReturnService = {
     if (itemsError) throw itemsError;
 
     return saleReturn as SaleReturn;
+  },
+
+  /**
+   * Update a draft sale return only. Final returns are locked.
+   */
+  async updateSaleReturn(returnId: string, companyId: string, data: UpdateSaleReturnData): Promise<SaleReturn> {
+    const { data: existing, error: fetchErr } = await supabase
+      .from('sale_returns')
+      .select('id, status, branch_id, original_sale_id, return_date, customer_id, customer_name, reason, notes')
+      .eq('id', returnId)
+      .eq('company_id', companyId)
+      .single();
+    if (fetchErr || !existing) throw new Error('Sale return not found');
+    if (existing.status === 'final') throw new Error('Cannot update a finalized sale return. It is locked.');
+
+    const { return_date, customer_id, customer_name, items, reason, notes, subtotal: providedSubtotal, discount_amount: providedDiscount, total: providedTotal } = data;
+    const subtotal = providedSubtotal !== undefined ? providedSubtotal : items.reduce((sum, item) => sum + item.total, 0);
+    const discount_amount = providedDiscount !== undefined ? providedDiscount : 0;
+    const tax_amount = 0;
+    const total = providedTotal !== undefined ? providedTotal : (subtotal - discount_amount + tax_amount);
+
+    const updatePayload: Record<string, unknown> = {
+      return_date: return_date ?? existing.return_date,
+      subtotal,
+      discount_amount,
+      tax_amount,
+      total,
+      updated_at: new Date().toISOString(),
+    };
+    if (customer_id !== undefined) updatePayload.customer_id = customer_id;
+    if (customer_name !== undefined) updatePayload.customer_name = customer_name;
+    if (reason !== undefined) updatePayload.reason = reason;
+    if (notes !== undefined) updatePayload.notes = notes;
+
+    const { error: updateError } = await supabase
+      .from('sale_returns')
+      .update(updatePayload)
+      .eq('id', returnId)
+      .eq('company_id', companyId)
+      .eq('status', 'draft');
+    if (updateError) throw updateError;
+
+    const { error: deleteItemsErr } = await supabase
+      .from('sale_return_items')
+      .delete()
+      .eq('sale_return_id', returnId);
+    if (deleteItemsErr) throw deleteItemsErr;
+
+    const returnItems = items.map(item => ({
+      sale_return_id: returnId,
+      sale_item_id: item.sale_item_id || null,
+      product_id: item.product_id,
+      variation_id: item.variation_id || null,
+      product_name: item.product_name,
+      sku: item.sku,
+      quantity: item.quantity,
+      unit: item.unit || 'piece',
+      unit_price: item.unit_price,
+      total: item.total,
+      notes: item.notes || null,
+      packing_type: item.packing_type || null,
+      packing_quantity: item.packing_quantity || null,
+      packing_unit: item.packing_unit || null,
+      packing_details: item.packing_details || null,
+      return_packing_details: item.return_packing_details || null,
+    }));
+    const { error: itemsError } = await supabase
+      .from('sale_return_items')
+      .insert(returnItems);
+    if (itemsError) throw itemsError;
+
+    const { data: updated, error: selectErr } = await supabase
+      .from('sale_returns')
+      .select()
+      .eq('id', returnId)
+      .eq('company_id', companyId)
+      .single();
+    if (selectErr || !updated) throw new Error('Failed to fetch updated sale return');
+    return updated as SaleReturn;
   },
 
   /**
@@ -331,6 +423,104 @@ export const saleReturnService = {
       .from('sale_returns')
       .update({ status: 'final', updated_at: new Date().toISOString() })
       .eq('id', returnId);
+
+    if (updateError) throw updateError;
+  },
+
+  /**
+   * Void a finalized sale return (standard method when saved by mistake).
+   * Reverses stock (takes back the returned qty from inventory) and marks return as void.
+   * Void returns are excluded from customer ledger (only status = 'final' counts).
+   * Record is kept for audit trail.
+   */
+  async voidSaleReturn(returnId: string, companyId: string, branchId?: string, userId?: string): Promise<void> {
+    const { data: saleReturn, error: returnError } = await supabase
+      .from('sale_returns')
+      .select(`
+        *,
+        items:sale_return_items(*)
+      `)
+      .eq('id', returnId)
+      .eq('company_id', companyId)
+      .single();
+
+    if (returnError) throw returnError;
+    if (!saleReturn) throw new Error('Sale return not found');
+    if (saleReturn.status !== 'final') {
+      throw new Error('Only finalized sale returns can be voided. Draft returns can be deleted.');
+    }
+
+    const { data: originalSale } = await supabase
+      .from('sales')
+      .select('invoice_no')
+      .eq('id', saleReturn.original_sale_id)
+      .single();
+
+    let originalItems: any[] = [];
+    const { data: salesItemsData } = await supabase
+      .from('sales_items')
+      .select('id, product_id, variation_id, quantity')
+      .eq('sale_id', saleReturn.original_sale_id);
+    if (salesItemsData?.length) {
+      originalItems = salesItemsData;
+    } else {
+      const { data: saleItemsData } = await supabase
+        .from('sale_items')
+        .select('id, product_id, variation_id, quantity')
+        .eq('sale_id', saleReturn.original_sale_id);
+      if (saleItemsData) originalItems = saleItemsData;
+    }
+
+    const branchIdToUse = branchId === 'all' ? undefined : branchId;
+
+    for (const item of saleReturn.items) {
+      let boxChange = 0;
+      let pieceChange = 0;
+      const originalItem = originalItems?.find(
+        (oi: any) => oi.product_id === item.product_id &&
+        (oi.variation_id === item.variation_id || (!oi.variation_id && !item.variation_id))
+      );
+      if (originalItem && item.packing_details) {
+        const originalPacking = item.packing_details;
+        const originalQty = Number(originalItem.quantity);
+        const returnQty = Number(item.quantity);
+        if (originalQty > 0) {
+          const returnRatio = returnQty / originalQty;
+          const originalBoxes = originalPacking.total_boxes || 0;
+          const originalPieces = originalPacking.total_pieces || 0;
+          boxChange = -Math.round(originalBoxes * returnRatio * 100) / 100;
+          pieceChange = -Math.round(originalPieces * returnRatio * 100) / 100;
+        }
+      } else if (item.packing_details) {
+        const packing = item.packing_details;
+        boxChange = -Number(packing.total_boxes || 0);
+        pieceChange = -Number(packing.total_pieces || 0);
+      }
+
+      await productService.createStockMovement({
+        company_id: companyId,
+        branch_id: branchIdToUse,
+        product_id: item.product_id,
+        variation_id: item.variation_id || undefined,
+        movement_type: 'sale_return_void',
+        quantity: -Number(item.quantity),
+        unit_cost: Number(item.unit_price),
+        total_cost: Number(item.total),
+        reference_type: 'sale_return',
+        reference_id: returnId,
+        notes: `Void Sale Return ${saleReturn.return_no || returnId}: ${item.product_name}`,
+        created_by: userId,
+        box_change: boxChange !== 0 ? boxChange : undefined,
+        piece_change: pieceChange !== 0 ? pieceChange : undefined,
+      });
+    }
+
+    const { error: updateError } = await supabase
+      .from('sale_returns')
+      .update({ status: 'void', updated_at: new Date().toISOString() })
+      .eq('id', returnId)
+      .eq('company_id', companyId)
+      .eq('status', 'final');
 
     if (updateError) throw updateError;
   },

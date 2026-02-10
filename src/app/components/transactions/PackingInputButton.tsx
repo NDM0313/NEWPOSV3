@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Package, Edit2 } from 'lucide-react';
 import { Button } from "../ui/button";
-import { cn } from "../ui/utils";
+import { cn, formatBoxesPieces } from "../ui/utils";
 import { PackingEntryModal, PackingDetails } from './PackingEntryModal';
 
 interface PackingInputButtonProps {
@@ -40,10 +40,10 @@ export const PackingInputButton = ({
           <>
             <Package size={14} />
             <div className="flex items-center gap-1.5 text-xs">
-              <span className="font-bold">{packingDetails.total_boxes}</span>
+              <span className="font-bold">{formatBoxesPieces(packingDetails.total_boxes)}</span>
               <span className="opacity-70">Box</span>
               <span className="opacity-40">/</span>
-              <span className="font-bold">{packingDetails.total_pieces}</span>
+              <span className="font-bold">{formatBoxesPieces(packingDetails.total_pieces)}</span>
               <span className="opacity-70">Pc</span>
               <span className="opacity-40">/</span>
               <span className="font-bold text-green-300">{packingDetails.total_meters.toFixed(1)}</span>

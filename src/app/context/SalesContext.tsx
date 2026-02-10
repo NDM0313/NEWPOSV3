@@ -254,9 +254,12 @@ export const convertFromSupabaseSale = (supabaseSale: any): Sale => {
       date: supabaseSale.invoice_date || new Date().toISOString().split('T')[0],
     location: locationDisplay,
     items: (supabaseSale.items || []).map((item: any) => {
-      // Packing: single source of truth from backend – pre-fill modal on edit (no zero/blank)
-      const pd = item.packing_details;
-      const packingDetails = pd
+      // Packing: single source of truth from backend (same as Purchase – parse if JSON string from API)
+      const rawPd = item.packing_details;
+      const pd = rawPd != null && typeof rawPd === 'string'
+        ? (() => { try { return JSON.parse(rawPd); } catch { return null; } })()
+        : rawPd;
+      const packingDetails = pd && typeof pd === 'object'
         ? { ...pd, total_boxes: pd.total_boxes ?? 0, total_pieces: pd.total_pieces ?? 0, total_meters: pd.total_meters ?? item.packing_quantity ?? 0, boxes: pd.boxes || [] }
         : (item.packing_quantity != null && item.packing_quantity !== '')
           ? { total_boxes: 0, total_pieces: 0, total_meters: Number(item.packing_quantity) || 0, boxes: [] as any[] }

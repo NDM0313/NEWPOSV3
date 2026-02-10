@@ -32,7 +32,7 @@ import { Badge } from '@/app/components/ui/badge';
 import { useSettings } from '@/app/context/SettingsContext';
 import { PackingEntryModal } from '@/app/components/transactions/PackingEntryModal';
 import { RotateCcw, Save, X } from 'lucide-react';
-import { cn } from '@/app/components/ui/utils';
+import { cn, formatBoxesPieces } from '@/app/components/ui/utils';
 import { toast } from 'sonner';
 
 // ---------------------------------------------------------------------------
@@ -274,11 +274,11 @@ export function PurchaseReturnItemSelectionDialog({
                       const parts: string[] = [];
                       if (savedReturnPacking.returned_boxes > 0)
                         parts.push(
-                          `${savedReturnPacking.returned_boxes} Box${savedReturnPacking.returned_boxes !== 1 ? 'es' : ''}`
+                          `${formatBoxesPieces(savedReturnPacking.returned_boxes)} Box${Math.round(Number(savedReturnPacking.returned_boxes)) !== 1 ? 'es' : ''}`
                         );
                       if (savedReturnPacking.returned_pieces_count > 0)
                         parts.push(
-                          `${savedReturnPacking.returned_pieces_count} Piece${savedReturnPacking.returned_pieces_count !== 1 ? 's' : ''}`
+                          `${formatBoxesPieces(savedReturnPacking.returned_pieces_count)} Piece${Math.round(Number(savedReturnPacking.returned_pieces_count)) !== 1 ? 's' : ''}`
                         );
                       if (savedReturnPacking.returned_total_meters > 0)
                         parts.push(`${savedReturnPacking.returned_total_meters.toFixed(2)} M`);
@@ -291,8 +291,8 @@ export function PurchaseReturnItemSelectionDialog({
                         ? Math.round(pd.total_meters * returnRatio * 100) / 100
                         : 0;
                       const parts: string[] = [];
-                      if (returnBoxes > 0) parts.push(`${returnBoxes} Box${returnBoxes !== 1 ? 'es' : ''}`);
-                      if (returnPieces > 0) parts.push(`${returnPieces} Piece${returnPieces !== 1 ? 's' : ''}`);
+                      if (returnBoxes > 0) parts.push(`${formatBoxesPieces(returnBoxes)} Box${Math.round(returnBoxes) !== 1 ? 'es' : ''}`);
+                      if (returnPieces > 0) parts.push(`${formatBoxesPieces(returnPieces)} Piece${Math.round(returnPieces) !== 1 ? 's' : ''}`);
                       if (returnMeters > 0) parts.push(`${returnMeters.toFixed(2)} M`);
                       packingText = parts.length ? parts.join(', ') : '—';
                     } else {

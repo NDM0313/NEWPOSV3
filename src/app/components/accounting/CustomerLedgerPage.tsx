@@ -16,7 +16,7 @@ import { saleService } from '@/app/services/saleService';
 import { supabase } from '@/lib/supabase';
 import { CalendarDateRangePicker } from '@/app/components/ui/CalendarDateRangePicker';
 import { format } from 'date-fns';
-import { cn } from '@/app/components/ui/utils';
+import { cn, formatBoxesPieces } from '@/app/components/ui/utils';
 import { toast } from 'sonner';
 import { TransactionDetailModal } from './TransactionDetailModal';
 import './customer-ledger-print.css';
@@ -1608,8 +1608,8 @@ export const CustomerLedgerPage: React.FC<CustomerLedgerPageProps> = ({
                           const totalBoxes = pd.total_boxes ?? 0;
                           const totalPieces = pd.total_pieces ?? 0;
                           const packingParts: string[] = [];
-                          if (Number(totalBoxes) > 0) packingParts.push(`${totalBoxes} Box${Number(totalBoxes) !== 1 ? 'es' : ''}`);
-                          if (Number(totalPieces) > 0) packingParts.push(`${totalPieces} Piece${Number(totalPieces) !== 1 ? 's' : ''}`);
+                          if (Number(totalBoxes) > 0) packingParts.push(`${formatBoxesPieces(totalBoxes)} Box${Math.round(Number(totalBoxes)) !== 1 ? 'es' : ''}`);
+                          if (Number(totalPieces) > 0) packingParts.push(`${formatBoxesPieces(totalPieces)} Piece${Math.round(Number(totalPieces)) !== 1 ? 's' : ''}`);
                           const packingText = packingParts.length
                             ? packingParts.join(', ')
                             : (item.packing_type || item.packing_quantity != null || item.packing_unit)

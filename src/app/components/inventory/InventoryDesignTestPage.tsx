@@ -11,7 +11,7 @@ import {
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Badge } from '../ui/badge';
-import { cn } from '../ui/utils';
+import { cn, formatBoxesPieces } from '../ui/utils';
 import { useSupabase } from '../../context/SupabaseContext';
 import { useSettings } from '../../context/SettingsContext';
 import { useNavigation } from '../../context/NavigationContext';
@@ -360,25 +360,27 @@ export const InventoryDesignTestPage = () => {
                       )}
                       {visibleCols.includes('stockQty') && (
                         <td className="px-4 py-3 text-center">
-                          <span className={cn('font-semibold tabular-nums text-sm', product.stock < 0 ? 'text-red-400' : product.status === 'Out' || product.status === 'Low' ? 'text-red-400' : 'text-white')}>{product.stock}</span>
+                          <span className={cn('font-semibold tabular-nums text-sm', product.stock < 0 ? 'text-red-400' : product.status === 'Out' || product.status === 'Low' ? 'text-red-400' : 'text-white')}>
+                            {Number(product.stock).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
+                          </span>
                         </td>
                       )}
-                      {enablePacking && visibleCols.includes('boxes') && <td className="px-4 py-3 text-center text-gray-400 text-sm">{product.boxes ?? 0}</td>}
-                      {enablePacking && visibleCols.includes('pieces') && <td className="px-4 py-3 text-center text-gray-400 text-sm">{product.pieces ?? 0}</td>}
+                      {enablePacking && visibleCols.includes('boxes') && <td className="px-4 py-3 text-center text-gray-400 text-sm tabular-nums">{formatBoxesPieces(product.boxes)}</td>}
+                      {enablePacking && visibleCols.includes('pieces') && <td className="px-4 py-3 text-center text-gray-400 text-sm tabular-nums">{formatBoxesPieces(product.pieces)}</td>}
                       {enablePacking && visibleCols.includes('unit') && <td className="px-4 py-3 text-center text-gray-400 text-sm">{product.unit ?? '—'}</td>}
                       {visibleCols.includes('avgCost') && (
                         <td className={cn('px-4 py-3 text-right text-sm font-medium tabular-nums', product.avgCost < 0 ? 'text-red-400' : 'text-green-400')}>
-                          {product.avgCost.toLocaleString()}
+                          {Number(product.avgCost).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
                         </td>
                       )}
                       {visibleCols.includes('sellingPrice') && (
                         <td className={cn('px-4 py-3 text-right text-sm font-medium tabular-nums', product.sellingPrice < 0 ? 'text-red-400' : 'text-green-400')}>
-                          {product.sellingPrice.toLocaleString()}
+                          {Number(product.sellingPrice).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
                         </td>
                       )}
                       {visibleCols.includes('stockValue') && (
                         <td className={cn('px-4 py-3 text-right font-medium text-sm tabular-nums', product.stockValue < 0 ? 'text-red-400' : 'text-green-400')}>
-                          {product.stockValue.toLocaleString()}
+                          {Number(product.stockValue).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
                         </td>
                       )}
                       {visibleCols.includes('movement') && (
@@ -453,11 +455,13 @@ export const InventoryDesignTestPage = () => {
                           {visibleCols.includes('category') && <td className="px-4 py-2 text-gray-600">—</td>}
                           {visibleCols.includes('stockQty') && (
                             <td className="px-4 py-2 text-center">
-                              <span className={cn('font-mono text-sm tabular-nums', (v.stock ?? 0) < 0 ? 'text-red-400' : 'text-gray-300')}>{v.stock ?? 0}</span>
+                              <span className={cn('font-mono text-sm tabular-nums', (v.stock ?? 0) < 0 ? 'text-red-400' : 'text-gray-300')}>
+                                {Number(v.stock ?? 0).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
+                              </span>
                             </td>
                           )}
-                          {enablePacking && visibleCols.includes('boxes') && <td className="px-4 py-2 text-center text-gray-600">{(v as any).boxes ?? 0}</td>}
-                          {enablePacking && visibleCols.includes('pieces') && <td className="px-4 py-2 text-center text-gray-600">{(v as any).pieces ?? 0}</td>}
+                          {enablePacking && visibleCols.includes('boxes') && <td className="px-4 py-2 text-center text-gray-600 tabular-nums">{formatBoxesPieces((v as any).boxes)}</td>}
+                          {enablePacking && visibleCols.includes('pieces') && <td className="px-4 py-2 text-center text-gray-600 tabular-nums">{formatBoxesPieces((v as any).pieces)}</td>}
                           {enablePacking && visibleCols.includes('unit') && <td className="px-4 py-2 text-center text-gray-600">{product.unit ?? '—'}</td>}
                           {visibleCols.includes('avgCost') && <td className="px-4 py-2 text-right text-gray-600">—</td>}
                           {visibleCols.includes('sellingPrice') && <td className="px-4 py-2 text-right text-gray-600">—</td>}
@@ -465,7 +469,7 @@ export const InventoryDesignTestPage = () => {
                             const val = (v.stock ?? 0) * product.sellingPrice;
                             return (
                               <td className={cn('px-4 py-2 text-right text-sm tabular-nums', val < 0 ? 'text-red-400' : 'text-green-400/80')}>
-                                {val.toLocaleString()}
+                                {Number(val).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
                               </td>
                             );
                           })()}

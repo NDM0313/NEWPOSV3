@@ -1,13 +1,12 @@
 /**
- * Purchase Return form – create and finalize in one step. FINAL when saved (no edit/delete).
+ * Purchase Return form – SAME layout and behaviour as Sales Return (approved design).
+ * Centered dialog, no supplier info, header auto (Purchase Return · Ref: xxx), three amount cards, Items Entry.
  */
 import React, { useState, useEffect, useMemo } from 'react';
-import { X, Save, Package, Minus, Plus, Loader2 } from 'lucide-react';
+import { X, Save, Package, Minus, Plus, Loader2, AlertCircle, Box, TrendingUp, Undo2, RefreshCw, Check } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
-import { Textarea } from '../ui/textarea';
-import { Badge } from '../ui/badge';
 import { CalendarDatePicker } from '../ui/CalendarDatePicker';
 import { toast } from 'sonner';
 import { useSupabase } from '@/app/context/SupabaseContext';
@@ -15,7 +14,7 @@ import { useSettings } from '@/app/context/SettingsContext';
 import { purchaseReturnService, CreatePurchaseReturnData } from '@/app/services/purchaseReturnService';
 import { purchaseService } from '@/app/services/purchaseService';
 import { PackingDetails } from '../transactions/PackingEntryModal';
-import { cn } from '../ui/utils';
+import { cn, formatBoxesPieces } from '../ui/utils';
 
 interface PurchaseReturnFormProps {
   purchaseId: string;
@@ -35,12 +34,10 @@ interface ReturnItemRow {
   total: number;
   already_returned: number;
   return_quantity: number;
-  // Packing fields - preserved from original purchase item
   packing_type?: string;
   packing_quantity?: number;
   packing_unit?: string;
-  packing_details?: PackingDetails; // Original packing details from purchase (read-only)
-  // Variation object for display (same as Purchase View)
+  packing_details?: PackingDetails;
   variation?: any;
 }
 
@@ -55,6 +52,7 @@ export const PurchaseReturnForm: React.FC<PurchaseReturnFormProps> = ({ purchase
   const [returnDate, setReturnDate] = useState<Date>(new Date());
   const [reason, setReason] = useState('');
   const [notes, setNotes] = useState('');
+  const [itemSearch, setItemSearch] = useState('');
 
   useEffect(() => {
     const load = async () => {
@@ -69,12 +67,11 @@ export const PurchaseReturnForm: React.FC<PurchaseReturnFormProps> = ({ purchase
         setReturnItems((items || []).map((it: any) => ({
           ...it,
           return_quantity: 0,
-          // Preserve all packing fields from original purchase item (read-only)
+          total: 0,
           packing_type: it.packing_type,
           packing_quantity: it.packing_quantity,
           packing_unit: it.packing_unit,
           packing_details: it.packing_details || undefined,
-          // Preserve variation object for display (same as Purchase View)
           variation: it.variation || undefined,
         })));
       } catch (e: any) {
@@ -93,9 +90,20 @@ export const PurchaseReturnForm: React.FC<PurchaseReturnFormProps> = ({ purchase
     setReturnItems(prev => prev.map((item, i) => i === index ? { ...item, return_quantity: qty, total: item.unit_price * qty } : item));
   };
 
-  // Packing is automatically calculated proportionally - no manual entry needed
+  const filteredItems = useMemo(() => {
+    if (!itemSearch.trim()) return returnItems;
+    const q = itemSearch.toLowerCase();
+    return returnItems.filter(
+      (i) =>
+        (i.product_name || '').toLowerCase().includes(q) ||
+        (i.sku || '').toLowerCase().includes(q) ||
+        (i.variation?.sku || '').toLowerCase().includes(q)
+    );
+  }, [returnItems, itemSearch]);
 
-  const subtotal = useMemo(() => returnItems.reduce((sum, item) => sum + item.return_quantity * item.unit_price, 0), [returnItems]);
+  const returnAmount = useMemo(() => returnItems.reduce((sum, item) => sum + item.return_quantity * item.unit_price, 0), [returnItems]);
+  const originalAmount = Number(originalPurchase?.total ?? 0);
+  const netAfterReturn = Math.max(0, originalAmount - returnAmount);
   const hasAnyReturn = returnItems.some(item => item.return_quantity > 0);
 
   const handleSubmit = async () => {
@@ -113,29 +121,17 @@ export const PurchaseReturnForm: React.FC<PurchaseReturnFormProps> = ({ purchase
       const items = returnItems
         .filter(i => i.return_quantity > 0)
         .map(i => {
-          // Calculate proportional packing based on return quantity
           let returnPackingDetails: any = undefined;
           if (i.packing_details && i.quantity > 0) {
             const returnRatio = i.return_quantity / i.quantity;
-            const originalPacking = i.packing_details;
-            
-            // Calculate proportional boxes and pieces
-            const originalBoxes = originalPacking.total_boxes || 0;
-            const originalPieces = originalPacking.total_pieces || 0;
-            const originalMeters = originalPacking.total_meters || 0;
-            
-            const returnBoxes = Math.round(originalBoxes * returnRatio * 100) / 100;
-            const returnPieces = Math.round(originalPieces * returnRatio * 100) / 100;
-            const returnMeters = Math.round(originalMeters * returnRatio * 100) / 100;
-            
+            const op = i.packing_details;
             returnPackingDetails = {
-              ...originalPacking,
-              total_boxes: returnBoxes,
-              total_pieces: returnPieces,
-              total_meters: returnMeters,
+              ...op,
+              total_boxes: Math.round((op.total_boxes || 0) * returnRatio * 100) / 100,
+              total_pieces: Math.round((op.total_pieces || 0) * returnRatio * 100) / 100,
+              total_meters: op.total_meters != null ? Math.round(Number(op.total_meters) * returnRatio * 100) / 100 : undefined,
             };
           }
-          
           return {
             product_id: i.product_id,
             variation_id: i.variation_id,
@@ -145,11 +141,8 @@ export const PurchaseReturnForm: React.FC<PurchaseReturnFormProps> = ({ purchase
             unit: i.unit,
             unit_price: i.unit_price,
             total: i.return_quantity * i.unit_price,
-            // Preserve packing structure (proportional to return quantity)
             packing_type: i.packing_type,
-            packing_quantity: i.packing_quantity && i.quantity > 0 
-              ? (i.packing_quantity * i.return_quantity / i.quantity)
-              : undefined,
+            packing_quantity: i.packing_quantity && i.quantity > 0 ? (i.packing_quantity * i.return_quantity / i.quantity) : undefined,
             packing_unit: i.packing_unit,
             packing_details: returnPackingDetails,
           };
@@ -165,7 +158,7 @@ export const PurchaseReturnForm: React.FC<PurchaseReturnFormProps> = ({ purchase
         reason: reason || undefined,
         notes: notes || undefined,
         created_by: user?.id,
-        total: subtotal,
+        total: returnAmount,
       };
       const purchaseReturn = await purchaseReturnService.createPurchaseReturn(returnData);
       await purchaseReturnService.finalizePurchaseReturn(purchaseReturn.id!, companyId, branchId, user?.id);
@@ -179,9 +172,11 @@ export const PurchaseReturnForm: React.FC<PurchaseReturnFormProps> = ({ purchase
     }
   };
 
+  const purchaseRef = originalPurchase?.po_no || originalPurchase?.purchase_no || originalPurchase?.purchaseNo || purchaseId?.slice(0, 8) || 'N/A';
+
   if (loading) {
     return (
-      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+      <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
         <div className="bg-gray-900 border border-gray-700 rounded-xl p-8">
           <Loader2 className="animate-spin text-blue-500 mx-auto mb-4" size={32} />
           <p className="text-gray-400 text-center">Loading purchase...</p>
@@ -191,181 +186,190 @@ export const PurchaseReturnForm: React.FC<PurchaseReturnFormProps> = ({ purchase
   }
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 overflow-y-auto">
-      <div className="bg-gray-900 border border-gray-700 rounded-xl w-full max-w-4xl my-8 max-h-[90vh] overflow-y-auto">
-        <div className="sticky top-0 bg-gray-900 border-b border-gray-700 p-6 flex items-center justify-between z-10">
+    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 overflow-y-auto p-4">
+      <div className="bg-[#0B0F19] border border-gray-800 rounded-2xl w-[80%] min-w-[1000px] max-w-6xl min-h-[85vh] max-h-[95vh] overflow-hidden flex flex-col shadow-2xl">
+        {/* Header — Figma: same as Sales Return */}
+        <div className="shrink-0 bg-gray-900/80 border-b border-gray-800 px-6 py-5 flex items-center justify-between">
           <div>
-            <h2 className="text-2xl font-bold text-white">Purchase Return</h2>
-            <p className="text-sm text-gray-400 mt-1">
-              Returning items from: <span className="text-blue-400 font-semibold">{originalPurchase?.po_no || purchaseId?.slice(0, 8)}</span>
-            </p>
-            <p className="text-xs text-amber-400 mt-1">Once saved, this return is FINAL and cannot be edited or deleted.</p>
+            <h2 className="text-2xl font-bold text-white tracking-tight">
+              Purchase Return <span className="text-gray-400 font-normal">· Ref: {purchaseRef}</span>
+            </h2>
+            <div className="flex items-center gap-4 mt-2">
+              <span className="text-sm text-gray-500"># Return No: New</span>
+              <span className="flex items-center gap-2 text-amber-400/90 text-sm font-medium">
+                <AlertCircle size={16} className="shrink-0" />
+                Controlled Reversal
+              </span>
+            </div>
           </div>
-          <Button variant="ghost" size="icon" onClick={onClose} className="text-gray-400 hover:text-white">
-            <X size={20} />
-          </Button>
+          <div className="flex items-center gap-3">
+            <div>
+              <span className="text-xs text-gray-500 block mb-0.5">Return Date</span>
+              <CalendarDatePicker value={returnDate} onChange={(d) => d && setReturnDate(d)} className="bg-gray-800 border-gray-700 text-white h-9 w-[160px]" />
+            </div>
+            <Button variant="ghost" size="icon" onClick={onClose} className="text-gray-400 hover:text-white rounded-full">
+              <X size={22} />
+            </Button>
+          </div>
         </div>
 
-        <div className="p-6 space-y-4">
-          <div className="grid grid-cols-2 gap-4 text-sm bg-gray-800/50 rounded-lg p-4">
-            <div>
-              <span className="text-gray-400 text-xs uppercase">PO #</span>
-              <div className="text-white font-semibold">{originalPurchase?.po_no || '—'}</div>
+        <div className="flex-1 overflow-y-auto p-6 space-y-4 min-h-0">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 w-full">
+            <div className="rounded-2xl p-3 min-w-0 bg-green-500/10 border border-green-500/30 shadow-sm relative overflow-hidden">
+              <div className="absolute top-0 right-0 w-16 h-16 bg-green-500/10 rounded-full -translate-y-1/2 translate-x-1/2" />
+              <div className="flex items-center gap-1.5 text-green-400 mb-1.5 relative">
+                <TrendingUp size={16} className="shrink-0" />
+                <span className="text-[10px] font-bold uppercase tracking-wider">Original Purchase</span>
+              </div>
+              <p className="text-lg font-bold text-green-400 tracking-tight relative">Rs {originalAmount.toLocaleString()}</p>
+              <p className="text-[9px] text-gray-500 mt-0.5 relative">Reference</p>
             </div>
-            <div>
-              <span className="text-gray-400 text-xs uppercase">Supplier</span>
-              <div className="text-white font-semibold">{originalPurchase?.supplier_name || originalPurchase?.supplierName || '—'}</div>
+            <div className="rounded-2xl p-3 min-w-0 bg-red-500/10 border border-red-500/30 shadow-sm relative overflow-hidden">
+              <div className="absolute top-0 right-0 w-16 h-16 bg-red-500/10 rounded-full -translate-y-1/2 translate-x-1/2" />
+              <div className="flex items-center gap-1.5 text-red-400 mb-1.5 relative">
+                <Undo2 size={16} className="shrink-0" />
+                <span className="text-[10px] font-bold uppercase tracking-wider">Return Amount</span>
+              </div>
+              <p className="text-lg font-bold text-red-400 tracking-tight relative">Rs {returnAmount.toLocaleString()}</p>
+              <p className="text-[9px] text-gray-500 mt-0.5 relative">From items</p>
             </div>
+            <div className="rounded-2xl p-3 min-w-0 bg-blue-500/10 border border-blue-500/30 shadow-sm relative overflow-hidden">
+              <div className="absolute top-0 right-0 w-16 h-16 bg-blue-500/10 rounded-full -translate-y-1/2 translate-x-1/2" />
+              <div className="absolute top-1.5 right-1.5">
+                <RefreshCw size={12} className="text-blue-400/80" />
+              </div>
+              <div className="flex items-center gap-1.5 text-blue-400 mb-1.5 relative">
+                <span className="text-[10px] font-bold uppercase tracking-wider">Net After Return</span>
+              </div>
+              <p className="text-lg font-bold text-white tracking-tight relative">Rs {netAfterReturn.toLocaleString()}</p>
+            </div>
+          </div>
+          <div className="flex items-center justify-between gap-4 flex-wrap">
+            <div className="flex flex-wrap items-end gap-3 flex-1 min-w-0 max-w-md">
+              <div className="min-w-[140px] w-[140px] shrink-0">
+                <Label className="text-gray-500 text-xs mb-1 block">Reason (optional)</Label>
+                <Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="e.g. Defective, Wrong item" className="bg-gray-800 border-gray-700 text-white text-sm h-9" />
+              </div>
+              <div className="flex-1 min-w-[200px]">
+                <Label className="text-gray-500 text-xs mb-1 block">Notes (optional)</Label>
+                <Input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Additional notes" className="bg-gray-800 border-gray-700 text-white text-sm h-9 w-[652px]" />
+              </div>
+            </div>
+            <Button
+              onClick={handleSubmit}
+              disabled={saving || !hasAnyReturn}
+              size="sm"
+              className="h-9 px-4 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg shadow-sm flex items-center gap-1.5 shrink-0"
+            >
+              {saving ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />}
+              Finalize Return
+            </Button>
+          </div>
+
+          <div className="flex items-center gap-3 px-4 py-3 bg-blue-500/10 border border-blue-500/20 rounded-xl">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-amber-500/20">
+              <AlertCircle size={18} className="text-amber-400" />
+            </div>
+            <p className="text-sm text-blue-100">
+              <span className="font-semibold text-white">Return Reversal Mode:</span> Items are loaded from original purchase {purchaseRef}. Adjust return quantities as needed. Stock will be updated automatically upon finalization.
+            </p>
           </div>
 
           <div>
-            <Label className="text-gray-200 mb-2 block">Return Date *</Label>
-            <CalendarDatePicker value={returnDate} onChange={(d) => d && setReturnDate(d)} className="bg-gray-800 border-gray-700 text-white" />
-          </div>
-
-          <div>
-            <Label className="text-gray-200 block mb-2">Return Items</Label>
-            <div className="bg-gray-800 border border-gray-700 rounded-xl overflow-hidden">
-              <table className="w-full">
-                <thead className="bg-gray-900/50 border-b border-gray-700">
-                  <tr>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase">Product</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase">SKU</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase">Variation</th>
-                    {enablePacking && <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase">Packing</th>}
-                    <th className="px-4 py-3 text-right text-xs font-medium text-gray-400 uppercase">Unit Price</th>
-                    <th className="px-4 py-3 text-center text-xs font-medium text-gray-400 uppercase">Original Qty</th>
-                    <th className="px-4 py-3 text-center text-xs font-medium text-gray-400 uppercase">Already Returned</th>
-                    <th className="px-4 py-3 text-center text-xs font-medium text-gray-400 uppercase">Return Qty</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase">Unit</th>
-                    <th className="px-4 py-3 text-right text-xs font-medium text-gray-400 uppercase">Total</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-700">
-                  {returnItems.length === 0 ? (
+              <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-3 flex items-center gap-2">
+                <Box size={18} className="text-gray-500" />
+                Items Entry
+              </h3>
+              <Input
+                placeholder="Search products by name, SKU... ⌘K"
+                value={itemSearch}
+                onChange={(e) => setItemSearch(e.target.value)}
+                className="mb-4 bg-gray-800/80 border-gray-700 text-white placeholder:text-gray-500 rounded-lg h-10"
+              />
+              <div className="bg-gray-800/50 border border-gray-700 rounded-xl overflow-hidden">
+                <table className="w-full">
+                  <thead className="bg-gray-900/50 border-b border-gray-700">
                     <tr>
-                      <td colSpan={enablePacking ? 10 : 9} className="px-4 py-6 text-center text-gray-500">No items in this purchase</td>
+                      <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-400 uppercase w-8">#</th>
+                      <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-400 uppercase">Name</th>
+                      <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-400 uppercase">SKU</th>
+                      <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-400 uppercase">Variation</th>
+                      {enablePacking && <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-400 uppercase">Packing</th>}
+                      <th className="px-3 py-2.5 text-center text-xs font-medium text-gray-400 uppercase">Qty</th>
+                      <th className="px-3 py-2.5 text-right text-xs font-medium text-gray-400 uppercase">Unit Price</th>
+                      <th className="px-3 py-2.5 text-right text-xs font-medium text-gray-400 uppercase">Return Amount</th>
+                      <th className="px-3 py-2.5 text-center text-xs font-medium text-gray-400 uppercase w-16">Action</th>
                     </tr>
-                  ) : (
-                    returnItems.map((item, index) => {
-                      const maxReturn = item.quantity - item.already_returned;
-                      const canReturn = maxReturn > 0;
-                      
-                      // Extract variation data (same as Purchase View)
-                      const variation = item.variation || null;
-                      const variationAttrs = variation?.attributes || {};
-                      const variationSku = variation?.sku || null;
-                      const variationText = variationAttrs 
-                        ? Object.entries(variationAttrs)
-                            .filter(([_, v]) => v != null && v !== '')
-                            .map(([k, v]) => `${k.charAt(0).toUpperCase() + k.slice(1)}: ${v}`)
-                            .join(', ')
-                        : null;
-                      
-                      // Use variation SKU if available, otherwise use product SKU (same as Purchase View)
-                      const finalSku = variationSku || item.sku || 'N/A';
-                      
-                      // Packing display (same format as Purchase View): "X Boxes, Y Pieces"
-                      const pd = item.packing_details || {};
-                      const totalBoxes = pd.total_boxes ?? 0;
-                      const totalPieces = pd.total_pieces ?? 0;
-                      const packingParts: string[] = [];
-                      if (Number(totalBoxes) > 0) packingParts.push(`${totalBoxes} Box${Number(totalBoxes) !== 1 ? 'es' : ''}`);
-                      if (Number(totalPieces) > 0) packingParts.push(`${totalPieces} Piece${Number(totalPieces) !== 1 ? 's' : ''}`);
-                      const packingText = packingParts.length ? packingParts.join(', ') : '—';
-                      const unitDisplay = item.unit ?? 'pcs';
-                      
-                      return (
-                        <tr key={item.id} className={cn("border-gray-800", !canReturn && 'opacity-50')}>
-                          {/* Product (with SKU in subtext - same as Purchase View) */}
-                          <td className="px-4 py-3">
-                            <div>
-                              <p className="font-medium text-white">{item.product_name}</p>
-                              {finalSku && finalSku !== 'N/A' && (
-                                <p className="text-xs text-gray-500">SKU: {finalSku}</p>
-                              )}
-                            </div>
-                          </td>
-                          {/* SKU (variation SKU or product SKU - same as Purchase View) */}
-                          <td className="px-4 py-3 text-gray-400 font-mono text-sm">{finalSku}</td>
-                          {/* Variation (same as Purchase View) */}
-                          <td className="px-4 py-3">
-                            {variationText ? (
-                              <span className="text-gray-300 text-sm">{variationText}</span>
-                            ) : (
-                              <span className="text-gray-600">—</span>
-                            )}
-                          </td>
-                          {/* Packing (same format as Purchase View: "X Boxes, Y Pieces") */}
-                          {enablePacking && (
-                            <td className="px-4 py-3 text-gray-400">{packingText}</td>
-                          )}
-                          {/* Unit Price (read-only, right aligned - same as Purchase View) */}
-                          <td className="px-4 py-3 text-right text-white">
-                            Rs. {Number(item.unit_price).toLocaleString()}
-                          </td>
-                          {/* Original Qty (read-only, center aligned) */}
-                          <td className="px-4 py-3 text-center text-white font-medium">
-                            {item.quantity}
-                          </td>
-                          {/* Already Returned (read-only, center aligned) */}
-                          <td className="px-4 py-3 text-center">
-                            {item.already_returned > 0 ? (
-                              <Badge className="bg-orange-500/20 text-orange-400 border-orange-500/30">
-                                {item.already_returned}
-                              </Badge>
-                            ) : (
-                              <span className="text-gray-500">0</span>
-                            )}
-                          </td>
-                          {/* Return Qty (editable, center aligned) */}
-                          <td className="px-4 py-3">
-                            <div className="flex items-center justify-center gap-1">
-                              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleQuantityChange(index, item.return_quantity - 1)} disabled={!canReturn || item.return_quantity <= 0}><Minus size={14} /></Button>
-                              <Input type="number" min={0} max={maxReturn} value={item.return_quantity} onChange={(e) => handleQuantityChange(index, parseFloat(e.target.value) || 0)} disabled={!canReturn} className="w-18 text-center bg-gray-900 border-gray-700 text-white h-8" />
-                              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleQuantityChange(index, item.return_quantity + 1)} disabled={!canReturn || item.return_quantity >= maxReturn}><Plus size={14} /></Button>
-                            </div>
-                            {!canReturn && (
-                              <p className="text-xs text-red-400 mt-1 text-center">Fully returned</p>
-                            )}
-                          </td>
-                          {/* Unit (read-only - same as Purchase View) */}
-                          <td className="px-4 py-3 text-gray-400">{unitDisplay}</td>
-                          {/* Total (right aligned - same as Purchase View) */}
-                          <td className="px-4 py-3 text-right text-white font-medium">
-                            Rs. {(item.return_quantity * item.unit_price).toLocaleString()}
-                          </td>
-                        </tr>
-                      );
-                    })
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
+                  </thead>
+                  <tbody className="divide-y divide-gray-700">
+                    {filteredItems.length === 0 ? (
+                      <tr>
+                        <td colSpan={enablePacking ? 9 : 8} className="px-4 py-8 text-center text-gray-500">
+                          <Package size={32} className="mx-auto mb-2 opacity-50" />
+                          <p>{itemSearch ? 'No items match search' : 'No items in this purchase'}</p>
+                        </td>
+                      </tr>
+                    ) : (
+                      filteredItems.map((item, idx) => {
+                        const index = returnItems.indexOf(item);
+                        const maxReturn = item.quantity - item.already_returned;
+                        const canReturn = maxReturn > 0;
+                        const variationText = item.variation
+                          ? (Object.keys(item.variation.attributes || {}).length > 0
+                              ? Object.entries(item.variation.attributes || {})
+                                  .filter(([_, v]) => v != null && v !== '')
+                                  .map(([k, v]) => `${k.charAt(0).toUpperCase() + k.slice(1)}: ${v}`).join(', ')
+                              : [item.variation.size, item.variation.color].filter(Boolean).join(' / '))
+                          : null;
+                        const pd = item.packing_details || {};
+                        const packingDisplay = (pd.total_boxes != null || pd.total_pieces != null || pd.total_meters != null)
+                          ? [pd.total_boxes != null && pd.total_boxes > 0 && `${formatBoxesPieces(pd.total_boxes)} B`, pd.total_pieces != null && pd.total_pieces > 0 && `${formatBoxesPieces(pd.total_pieces)} P`, pd.total_meters != null && pd.total_meters > 0 && `${Number(pd.total_meters).toFixed(2)} M`].filter(Boolean).join(' · ') || '—'
+                          : '—';
 
-          <div>
-            <Label className="text-gray-200 mb-1 block">Reason (optional)</Label>
-            <Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Reason for return" className="bg-gray-800 border-gray-700 text-white" />
-          </div>
-          <div>
-            <Label className="text-gray-200 mb-1 block">Notes (optional)</Label>
-            <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Notes" className="bg-gray-800 border-gray-700 text-white min-h-[60px]" />
-          </div>
-
-          <div className="flex items-center justify-between pt-4 border-t border-gray-700">
-            <div className="text-lg font-semibold text-white">Total Return: <span className="text-red-400">{subtotal.toLocaleString()}</span></div>
-            <div className="flex gap-2">
-              <Button variant="outline" onClick={onClose} className="border-gray-700 text-gray-300">Cancel</Button>
-              <Button onClick={handleSubmit} disabled={saving || !hasAnyReturn} className="bg-blue-600 hover:bg-blue-700">
-                {saving ? <Loader2 size={18} className="animate-spin mr-2" /> : <Save size={18} className="mr-2" />}
-                Create & Finalize Return
-              </Button>
+                        return (
+                          <tr key={item.id} className={cn("hover:bg-gray-800/30", !canReturn && "opacity-50")}>
+                            <td className="px-3 py-2.5 text-gray-500 text-sm">{idx + 1}</td>
+                            <td className="px-3 py-2.5 font-medium text-white">{item.product_name}</td>
+                            <td className="px-3 py-2.5 text-gray-400 text-sm font-mono">{item.variation?.sku || item.sku}</td>
+                            <td className="px-3 py-2.5 text-gray-400 text-sm">{variationText || '—'}</td>
+                            {enablePacking && <td className="px-3 py-2.5 text-gray-400 text-sm">{packingDisplay}</td>}
+                            <td className="px-3 py-2.5">
+                              <div className="flex items-center justify-center gap-1">
+                                <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => handleQuantityChange(index, item.return_quantity - 1)} disabled={!canReturn || item.return_quantity <= 0}><Minus size={12} /></Button>
+                                <Input type="number" min={0} max={maxReturn} value={item.return_quantity} onChange={(e) => handleQuantityChange(index, parseFloat(e.target.value) || 0)} disabled={!canReturn} className="w-16 text-center bg-gray-900 border-gray-700 text-white h-8 text-sm" />
+                                <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => handleQuantityChange(index, item.return_quantity + 1)} disabled={!canReturn || item.return_quantity >= maxReturn}><Plus size={12} /></Button>
+                              </div>
+                            </td>
+                            <td className="px-3 py-2.5 text-right text-gray-300 text-sm">{Number(item.unit_price).toLocaleString()}</td>
+                            <td className="px-3 py-2.5 text-right text-red-400 font-medium text-sm">
+                              {(item.return_quantity * item.unit_price) > 0 ? `-${(item.return_quantity * item.unit_price).toLocaleString()}` : '0'}
+                            </td>
+                            <td className="px-3 py-2.5 text-center">—</td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                  <tfoot className="bg-gray-900/60 border-t border-gray-700">
+                    <tr>
+                      <td colSpan={enablePacking ? 5 : 4} className="px-4 py-3 text-sm text-gray-400">
+                        {filteredItems.length} Item{filteredItems.length !== 1 ? 's' : ''}
+                      </td>
+                      <td className="px-4 py-3 text-sm text-gray-400 text-center font-medium">
+                        Qty: {filteredItems.reduce((s, i) => s + i.return_quantity, 0)}
+                      </td>
+                      <td className="px-4 py-3" />
+                      <td className="px-4 py-3 text-right text-green-400 font-bold text-sm">
+                        Total: -{returnAmount.toLocaleString()}
+                      </td>
+                      <td className="px-4 py-3" />
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
             </div>
           </div>
         </div>
       </div>
-
-    </div>
   );
 };

@@ -1,0 +1,45 @@
+---
+description: Boxes and pieces must always display as integers (no decimals) everywhere in the app
+globs: "**/*.{tsx,ts}"
+alwaysApply: false
+---
+
+# Packing: Boxes & Pieces Display Rule
+
+## Rule
+
+**Boxes and pieces counts must NEVER show decimal places** anywhere in the app — inventory, sales, purchases, returns, adjustments, print layouts, ledger, or any UI that shows packing (boxes/pieces).
+
+- **Boxes** and **pieces** are whole-number counts. Display them as integers only.
+- **Meters** (and other continuous quantities) may use decimals (e.g. 2 decimal places) where appropriate.
+
+## Implementation
+
+1. **Use the shared formatter** from `@/app/components/ui/utils`:
+   - `formatBoxesPieces(value: number | null | undefined): string`
+   - It rounds to integer and returns a locale string (e.g. "2", "10"). Use it for every display of boxes or pieces.
+
+2. **Where to use**
+   - Any table column or cell showing "Boxes" or "Pieces" (inventory, dashboard, etc.).
+   - Any text like "X Box(es), Y Piece(s)" or "X B · Y P" in sale/purchase/return views, forms, print layouts, ledger item tables.
+   - Packing modal totals (Total Boxes, Total Pieces).
+   - Packing button/summary (e.g. "2 Box / 10 Pc / 12.5 M").
+
+3. **Do not**
+   - Use `toLocaleString(undefined, { maximumFractionDigits: 2 })` or `toFixed(2)` for boxes or pieces.
+   - Display raw numeric values that can be float (e.g. 2.03, 10.08) for boxes/pieces.
+
+## Example
+
+```tsx
+import { formatBoxesPieces } from '@/app/components/ui/utils';
+
+// Table cell
+<td>{formatBoxesPieces(product.boxes)}</td>
+
+// "X Box(es), Y Piece(s)" text
+if (Number(totalBoxes) > 0) packingParts.push(`${formatBoxesPieces(totalBoxes)} Box${Math.round(Number(totalBoxes)) !== 1 ? 'es' : ''}`);
+if (Number(totalPieces) > 0) packingParts.push(`${formatBoxesPieces(totalPieces)} Piece${Math.round(Number(totalPieces)) !== 1 ? 's' : ''}`);
+```
+
+This rule applies globally: any new or edited UI that shows boxes or pieces must use `formatBoxesPieces` for display.

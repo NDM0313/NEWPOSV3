@@ -37,7 +37,7 @@ import {
 import { Button } from "../ui/button";
 import { Badge } from "../ui/badge";
 import { Separator } from "../ui/separator";
-import { cn } from "../ui/utils";
+import { cn, formatBoxesPieces } from "../ui/utils";
 import { toast } from 'sonner';
 import { getAttachmentOpenUrl } from '@/app/utils/paymentAttachmentUrl';
 import {
@@ -185,15 +185,27 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
           const saleData = await saleService.getSaleById(saleId);
           if (saleData) {
             const convertedSale = convertFromSupabaseSale(saleData);
-            // Preserve variation data from raw sale data for display
+            // Preserve variation and packing from raw sale data (same as Purchase View: data from API)
             if (saleData.items && convertedSale.items) {
+              const parsePacking = (v: any): any => {
+                if (v == null) return v;
+                if (typeof v === 'string') {
+                  try { return JSON.parse(v); } catch { return null; }
+                }
+                return v;
+              };
               convertedSale.items = convertedSale.items.map((item, idx) => {
                 const rawItem = saleData.items[idx];
                 if (rawItem) {
+                  const rawPacking = parsePacking(rawItem.packing_details);
+                  const packingDetails = rawPacking
+                    ? { ...rawPacking, total_boxes: rawPacking.total_boxes ?? 0, total_pieces: rawPacking.total_pieces ?? 0, total_meters: rawPacking.total_meters ?? rawItem.packing_quantity ?? 0 }
+                    : item.packingDetails;
                   return {
                     ...item,
-                    // Preserve variation object for display
                     variation: rawItem.variation || rawItem.product_variations || null,
+                    packing_details: rawPacking ?? item.packing_details ?? undefined,
+                    packingDetails: packingDetails ?? item.packingDetails ?? undefined,
                   } as any;
                 }
                 return item;
@@ -203,7 +215,6 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
             if (saleData.attachments) {
               convertedSale.attachments = saleData.attachments;
             }
-            console.log('[VIEW SALE] Sale attachments:', convertedSale.attachments);
             setSale(convertedSale);
             
             // CRITICAL FIX: Load customer code if customer ID exists (not UUID display)
@@ -565,9 +576,9 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
                 </div>
               </div>
 
-              {/* Items Table */}
+              {/* Items Table — same structure as ViewPurchaseDetailsDrawer (UI + data from API) */}
               <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden">
-                <div className="px-5 py-3 bg-gray-950/50 border-b border-gray-800">
+                <div className="px-5 py-3 bg-gray-950/50 border-b border-gray-800 flex items-center justify-between">
                   <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wide flex items-center gap-2">
                     <Package size={16} />
                     Items ({sale.items.length})
@@ -589,69 +600,75 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
                     </TableHeader>
                     <TableBody>
                       {sale.items.map((item) => {
-                        // CRITICAL FIX: Use productName from joined product data, fallback to item.name
                         const productName = item.productName || item.name || 'Unknown Product';
                         const displaySku = item.sku || 'N/A';
                         const qty = item.quantity ?? (item as any).qty ?? 0;
-                        
-                        // Extract variation data
                         const variation = (item as any).variation || (item as any).product_variations || null;
                         const variationAttrs = variation?.attributes || {};
                         const variationSku = variation?.sku || null;
-                        const variationText = variationAttrs 
+                        const variationText = variationAttrs
                           ? Object.entries(variationAttrs)
                               .filter(([_, v]) => v != null && v !== '')
                               .map(([k, v]) => `${k.charAt(0).toUpperCase() + k.slice(1)}: ${v}`)
                               .join(', ')
                           : null;
-                        
-                        // Packing: structured – Boxes + Pieces (same contract as ledger)
-                        const pd = item.packingDetails || {};
+                        // Packing: same as Purchase View — from item.packing_details || item.packingDetails (parse if JSON string)
+                        const rawPd = (item as any).packing_details ?? item.packingDetails;
+                        const pd = (() => {
+                          if (rawPd == null) return {};
+                          if (typeof rawPd === 'string') {
+                            try { return JSON.parse(rawPd) || {}; } catch { return {}; }
+                          }
+                          return rawPd;
+                        })();
                         const totalBoxes = pd.total_boxes ?? 0;
                         const totalPieces = pd.total_pieces ?? 0;
+                        const totalMeters = pd.total_meters ?? 0;
                         const packingParts: string[] = [];
-                        if (Number(totalBoxes) > 0) packingParts.push(`${totalBoxes} Box${Number(totalBoxes) !== 1 ? 'es' : ''}`);
-                        if (Number(totalPieces) > 0) packingParts.push(`${totalPieces} Piece${Number(totalPieces) !== 1 ? 's' : ''}`);
+                        if (Number(totalBoxes) > 0) packingParts.push(`${formatBoxesPieces(totalBoxes)} Box${Math.round(Number(totalBoxes)) !== 1 ? 'es' : ''}`);
+                        if (Number(totalPieces) > 0) packingParts.push(`${formatBoxesPieces(totalPieces)} Piece${Math.round(Number(totalPieces)) !== 1 ? 's' : ''}`);
+                        if (Number(totalMeters) > 0) packingParts.push(`${Number(totalMeters).toFixed(2)} M`);
                         const packingText = packingParts.length
                           ? packingParts.join(', ')
                           : (item.thaans != null || item.meters != null)
                             ? [item.thaans != null && item.thaans > 0 ? `${item.thaans} Thaan${item.thaans !== 1 ? 's' : ''}` : null, item.meters != null && item.meters > 0 ? `${item.meters}m` : null].filter(Boolean).join(' · ') || '—'
                             : '—';
                         const unitDisplay = item.unit ?? 'piece';
-                        
-                        // Use variation SKU if available, otherwise use product SKU
                         const finalSku = variationSku || displaySku;
-                        
                         return (
-                        <TableRow key={item.id} className="border-gray-800">
-                          <TableCell>
-                            <div>
-                              <p className="font-medium text-white">{productName}</p>
-                              {finalSku && finalSku !== 'N/A' && (
-                                <p className="text-xs text-gray-500">SKU: {finalSku}</p>
+                          <TableRow key={item.id} className="border-gray-800">
+                            <TableCell>
+                              <div>
+                                <p className="font-medium text-white">{productName}</p>
+                                {finalSku && finalSku !== 'N/A' && (
+                                  <p className="text-xs text-gray-500">SKU: {finalSku}</p>
+                                )}
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-gray-400">{finalSku}</TableCell>
+                            <TableCell>
+                              {variationText ? (
+                                <span className="text-gray-300 text-sm">{variationText}</span>
+                              ) : (
+                                <span className="text-gray-600">—</span>
                               )}
-                            </div>
-                          </TableCell>
-                          <TableCell className="text-gray-400">{finalSku}</TableCell>
-                          <TableCell>
-                            {variationText ? (
-                              <span className="text-gray-300 text-sm">{variationText}</span>
-                            ) : (
-                              <span className="text-gray-600">—</span>
+                            </TableCell>
+                            {enablePacking && (
+                              <TableCell className="text-gray-400">
+                                <span>{packingText}</span>
+                              </TableCell>
                             )}
-                          </TableCell>
-                          {enablePacking && <TableCell className="text-gray-400">{packingText}</TableCell>}
-                          <TableCell className="text-right text-white">
-                            Rs. {item.price.toLocaleString()}
-                          </TableCell>
-                          <TableCell className="text-center text-white font-medium">
-                            {qty}
-                          </TableCell>
-                          <TableCell className="text-gray-400">{unitDisplay}</TableCell>
-                          <TableCell className="text-right text-white font-medium">
-                            Rs. {(item.price * qty).toLocaleString()}
-                          </TableCell>
-                        </TableRow>
+                            <TableCell className="text-right text-white">
+                              Rs. {Number(item.price || 0).toLocaleString()}
+                            </TableCell>
+                            <TableCell className="text-center text-white font-medium">
+                              {qty}
+                            </TableCell>
+                            <TableCell className="text-gray-400">{unitDisplay}</TableCell>
+                            <TableCell className="text-right text-white font-medium">
+                              Rs. {(Number(item.price || 0) * qty).toLocaleString()}
+                            </TableCell>
+                          </TableRow>
                         );
                       })}
                     </TableBody>
@@ -758,15 +775,9 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
                 );
                 
                 if (!hasAttachments) {
-                  console.log('[VIEW SALE] No attachments found:', {
-                    attachments: sale.attachments,
-                    type: typeof sale.attachments,
-                    isArray: Array.isArray(sale.attachments),
-                  });
                   return null;
                 }
                 
-                console.log('[VIEW SALE] Rendering attachments:', sale.attachments);
                 
                 return (
                   <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-5">

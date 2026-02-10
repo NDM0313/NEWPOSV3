@@ -3,6 +3,7 @@ import { useSettings } from '@/app/context/SettingsContext';
 import { ClassicPrintBase } from './ClassicPrintBase';
 import { Checkbox } from '../ui/checkbox';
 import { Label } from '../ui/label';
+import { formatBoxesPieces } from '../ui/utils';
 
 interface PurchaseReturnPrintLayoutProps {
   purchaseReturn: any;
@@ -35,8 +36,8 @@ export const PurchaseReturnPrintLayout: React.FC<PurchaseReturnPrintLayoutProps>
         const returnedPieces = returnPacking.returned_pieces_count ?? returnPacking.returned_pieces?.length ?? 0;
         const returnedMeters = returnPacking.returned_total_meters ?? 0;
         const packingParts: string[] = [];
-        if (Number(returnedBoxes) > 0) packingParts.push(`${returnedBoxes} Box${Number(returnedBoxes) !== 1 ? 'es' : ''}`);
-        if (Number(returnedPieces) > 0) packingParts.push(`${returnedPieces} Piece${Number(returnedPieces) !== 1 ? 's' : ''}`);
+        if (Number(returnedBoxes) > 0) packingParts.push(`${formatBoxesPieces(returnedBoxes)} Box${Math.round(Number(returnedBoxes)) !== 1 ? 'es' : ''}`);
+        if (Number(returnedPieces) > 0) packingParts.push(`${formatBoxesPieces(returnedPieces)} Piece${Math.round(Number(returnedPieces)) !== 1 ? 's' : ''}`);
         if (Number(returnedMeters) > 0) packingParts.push(`${returnedMeters.toFixed(2)}M`);
         return packingParts.length ? packingParts.join(', ') : '—';
       }
@@ -71,8 +72,8 @@ export const PurchaseReturnPrintLayout: React.FC<PurchaseReturnPrintLayoutProps>
       const totalBoxes = pd.total_boxes ?? 0;
       const totalPieces = pd.total_pieces ?? 0;
       const packingParts: string[] = [];
-      if (Number(totalBoxes) > 0) packingParts.push(`${totalBoxes} Box${Number(totalBoxes) !== 1 ? 'es' : ''}`);
-      if (Number(totalPieces) > 0) packingParts.push(`${totalPieces} Piece${Number(totalPieces) !== 1 ? 's' : ''}`);
+      if (Number(totalBoxes) > 0) packingParts.push(`${formatBoxesPieces(totalBoxes)} Box${Math.round(Number(totalBoxes)) !== 1 ? 'es' : ''}`);
+      if (Number(totalPieces) > 0) packingParts.push(`${formatBoxesPieces(totalPieces)} Piece${Math.round(Number(totalPieces)) !== 1 ? 's' : ''}`);
       return packingParts.length ? packingParts.join(', ') : '—';
     }
     

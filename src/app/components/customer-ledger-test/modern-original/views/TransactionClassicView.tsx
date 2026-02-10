@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { ChevronRight, ChevronDown } from 'lucide-react';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import type { Transaction } from '@/app/services/customerLedgerTypes';
+import { formatBoxesPieces } from '@/app/components/ui/utils';
 
 interface TransactionClassicViewProps {
   transactions: Transaction[];
@@ -145,8 +146,8 @@ function TransactionRowGroup({
                     const totalBoxes = pd.total_boxes ?? 0;
                     const totalPieces = pd.total_pieces ?? 0;
                     const packingParts: string[] = [];
-                    if (Number(totalBoxes) > 0) packingParts.push(`${totalBoxes} Box${Number(totalBoxes) !== 1 ? 'es' : ''}`);
-                    if (Number(totalPieces) > 0) packingParts.push(`${totalPieces} Piece${Number(totalPieces) !== 1 ? 's' : ''}`);
+                    if (Number(totalBoxes) > 0) packingParts.push(`${formatBoxesPieces(totalBoxes)} Box${Math.round(Number(totalBoxes)) !== 1 ? 'es' : ''}`);
+                    if (Number(totalPieces) > 0) packingParts.push(`${formatBoxesPieces(totalPieces)} Piece${Math.round(Number(totalPieces)) !== 1 ? 's' : ''}`);
                     const packingText = packingParts.length
                       ? packingParts.join(', ')
                       : (item.packing_type || item.packing_quantity != null || item.packing_unit)

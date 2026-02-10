@@ -4,6 +4,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { AccountLedgerEntry } from '@/app/services/accountingService';
 import { format } from 'date-fns';
 import { supabase } from '@/lib/supabase';
+import { formatBoxesPieces } from '@/app/components/ui/utils';
 
 interface ItemPurchaseTableProps {
   entries: AccountLedgerEntry[];
@@ -203,8 +204,8 @@ export const ItemPurchaseTable: React.FC<ItemPurchaseTableProps> = ({
                     const totalBoxes = pd.total_boxes ?? 0;
                     const totalPieces = pd.total_pieces ?? 0;
                     const packingParts: string[] = [];
-                    if (Number(totalBoxes) > 0) packingParts.push(`${totalBoxes} Box${Number(totalBoxes) !== 1 ? 'es' : ''}`);
-                    if (Number(totalPieces) > 0) packingParts.push(`${totalPieces} Piece${Number(totalPieces) !== 1 ? 's' : ''}`);
+                    if (Number(totalBoxes) > 0) packingParts.push(`${formatBoxesPieces(totalBoxes)} Box${Math.round(Number(totalBoxes)) !== 1 ? 'es' : ''}`);
+                    if (Number(totalPieces) > 0) packingParts.push(`${formatBoxesPieces(totalPieces)} Piece${Math.round(Number(totalPieces)) !== 1 ? 's' : ''}`);
                     const packingText = packingParts.length
                       ? packingParts.join(', ')
                       : (item.packing_type || item.packing_quantity != null || item.packing_unit)
