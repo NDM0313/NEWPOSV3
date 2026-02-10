@@ -1693,6 +1693,17 @@ export const PurchasesPage = () => {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Purchase Return Print Dialog */}
+      {selectedReturnForPrint && printReturnOpen && (
+        <PurchaseReturnPrintLayout
+          purchaseReturn={selectedReturnForPrint}
+          onClose={() => {
+            setPrintReturnOpen(false);
+            setSelectedReturnForPrint(null);
+          }}
+        />
+      )}
     </div>
   );
 };
