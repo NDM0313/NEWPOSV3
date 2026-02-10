@@ -149,7 +149,9 @@ export const PurchasesPage = () => {
   const [viewPurchaseReturnDetailsOpen, setViewPurchaseReturnDetailsOpen] = useState(false);
   const [purchaseReturnToDelete, setPurchaseReturnToDelete] = useState<any | null>(null);
   const [deletePurchaseReturnDialogOpen, setDeletePurchaseReturnDialogOpen] = useState(false);
-  
+  const [selectedReturnForPrint, setSelectedReturnForPrint] = useState<any | null>(null);
+  const [printReturnOpen, setPrintReturnOpen] = useState(false);
+
   // Purchase Return Form
   const [purchaseReturnFormOpen, setPurchaseReturnFormOpen] = useState(false);
   const [selectedPurchaseForReturn, setSelectedPurchaseForReturn] = useState<Purchase | null>(null);

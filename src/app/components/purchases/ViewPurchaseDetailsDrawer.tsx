@@ -75,6 +75,7 @@ import {
 import { getAttachmentOpenUrl } from '@/app/utils/paymentAttachmentUrl';
 import { AttachmentViewer } from '@/app/components/shared/AttachmentViewer';
 import { PackingEntryModal } from '@/app/components/transactions/PackingEntryModal';
+import { PurchaseReturnItemSelectionDialog } from '@/app/components/purchases/PurchaseReturnItemSelectionDialog';
 
 function AttachmentImage({ att }: { att: { url: string; name: string } }) {
   const [src, setSrc] = useState<string | null>(null);
@@ -172,6 +173,7 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
   const [activePackingItem, setActivePackingItem] = useState<any>(null);
   const [returnPackingDetails, setReturnPackingDetails] = useState<Record<string, any>>({}); // Store return packing per item
   const [alreadyReturnedPiecesMap, setAlreadyReturnedPiecesMap] = useState<Record<string, Set<string>>>({}); // Track already returned pieces per item
+  const [itemSelectionDialogOpen, setItemSelectionDialogOpen] = useState(false);
 
   // Load branches for location display
   useEffect(() => {
@@ -377,6 +379,9 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
       ...prev,
       [itemKey]: returnPacking
     }));
+    // Auto-bind: Return Qty = returned_total_meters from dialog (single source of truth)
+    const meters = Number(returnPacking?.returned_total_meters ?? 0);
+    setReturnQuantities(prev => ({ ...prev, [itemKey]: meters }));
     setPackingModalOpen(false);
     setActivePackingItem(null);
   };
@@ -446,38 +451,26 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
         // Get packing details from original item
         const originalPacking = item.packing_details || item.packingDetails || {};
         
-        // Calculate proportional packing details for return quantity (jo purchase hua wahi return hoga)
-        let returnPackingDetails: any = null;
+        // Proportional packing (fallback when dialog not used); piece-level from dialog is in state returnPackingDetails[key]
+        let proportionalPacking: any = null;
         let returnPackingQuantity: number | undefined = undefined;
+        const savedReturnPackingFromDialog = returnPackingDetails[key];
         
         if (originalPacking && originalQty > 0) {
-          // Calculate proportional packing based on return quantity
           const returnRatio = returnQty / originalQty;
-          
-          // Calculate proportional boxes, pieces, and meters
           const originalBoxes = originalPacking.total_boxes || 0;
           const originalPieces = originalPacking.total_pieces || 0;
           const originalMeters = originalPacking.total_meters || 0;
-          
-          const returnBoxes = Math.round(originalBoxes * returnRatio * 100) / 100;
-          const returnPieces = Math.round(originalPieces * returnRatio * 100) / 100;
-          const returnMeters = Math.round(originalMeters * returnRatio * 100) / 100;
-          
-          returnPackingDetails = {
+          proportionalPacking = {
             ...originalPacking,
-            total_boxes: returnBoxes,
-            total_pieces: returnPieces,
-            total_meters: returnMeters,
+            total_boxes: Math.round(originalBoxes * returnRatio * 100) / 100,
+            total_pieces: Math.round(originalPieces * returnRatio * 100) / 100,
+            total_meters: Math.round(originalMeters * returnRatio * 100) / 100,
           };
-          
-          // Calculate proportional packing_quantity if it exists
           if ((item as any).packing_quantity) {
             returnPackingQuantity = Number((item as any).packing_quantity) * returnRatio;
           }
         }
-        
-        // Get return packing details if user selected pieces
-        const savedReturnPacking = returnPackingDetails[key];
         
         return {
           product_id: item.productId,
@@ -491,9 +484,8 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
           packing_type: (item as any).packing_type || undefined,
           packing_quantity: returnPackingQuantity || (item as any).packing_quantity || undefined,
           packing_unit: (item as any).packing_unit || undefined,
-          packing_details: returnPackingDetails || originalPacking || null,
-          // NEW: Return packing details (piece-level selection)
-          return_packing_details: savedReturnPacking || null,
+          packing_details: proportionalPacking || originalPacking || null,
+          return_packing_details: savedReturnPackingFromDialog || null,
         };
       })
       .filter(Boolean) as any[];
@@ -860,6 +852,15 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
                       <Button
                         variant="outline"
                         size="sm"
+                        className="border-purple-500/50 text-purple-400 hover:bg-purple-500/10"
+                        onClick={() => setItemSelectionDialogOpen(true)}
+                        disabled={savingReturn}
+                      >
+                        Select items (dialog)
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
                         className="border-gray-700 text-gray-300 hover:bg-gray-800"
                         onClick={handleExitReturnMode}
                         disabled={savingReturn}
@@ -943,6 +944,8 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
                         // Packing display: Show return packing if selected, otherwise calculate from returnQty, or show original
                         let packingText = '—';
                         const savedReturnPacking = returnPackingDetails[itemKey];
+                        const hasPackingStructure = (pd.boxes && pd.boxes.length > 0) || (pd.loose_pieces && pd.loose_pieces.length > 0);
+                        const returnQtyFromPacking = hasPackingStructure && savedReturnPacking ? Number(savedReturnPacking.returned_total_meters ?? 0) : returnQty;
                         
                         if (returnMode && savedReturnPacking) {
                           // Show saved return packing details (piece-level selection)
@@ -1028,21 +1031,36 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
                           )}
                           {returnMode ? (
                             <TableCell className="text-center">
-                              <input
-                                type="number"
-                                min={0}
-                                max={maxReturnable}
-                                value={returnQty}
-                                onChange={(e) => {
-                                  const val = e.target.value === '' ? 0 : parseFloat(e.target.value) || 0;
-                                  handleReturnQuantityChange(itemKey, val);
-                                }}
-                                disabled={!canReturn}
-                                className="w-20 text-center bg-gray-900 border border-gray-700 text-white h-8 mx-auto font-medium rounded-md px-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
-                                placeholder="0"
-                              />
-                              {!canReturn && (
-                                <p className="text-xs text-red-400 mt-1">Fully returned</p>
+                              {hasPackingStructure ? (
+                                /* Read-only: value only from Return Packing dialog */
+                                <div className="flex flex-col items-center gap-0.5">
+                                  <div className="flex items-center justify-center gap-1 rounded bg-gray-800/80 border border-amber-500/40 px-2 py-1.5 min-w-[4rem]">
+                                    <span className="text-sm font-medium text-white tabular-nums">{returnQtyFromPacking}</span>
+                                  </div>
+                                  <p className="text-[10px] text-amber-400/90">From Return Packing</p>
+                                  {!canReturn && (
+                                    <p className="text-xs text-red-400 mt-0.5">Fully returned</p>
+                                  )}
+                                </div>
+                              ) : (
+                                <>
+                                  <input
+                                    type="number"
+                                    min={0}
+                                    max={maxReturnable}
+                                    value={returnQty}
+                                    onChange={(e) => {
+                                      const val = e.target.value === '' ? 0 : parseFloat(e.target.value) || 0;
+                                      handleReturnQuantityChange(itemKey, val);
+                                    }}
+                                    disabled={!canReturn}
+                                    className="w-20 text-center bg-gray-900 border border-gray-700 text-white h-8 mx-auto font-medium rounded-md px-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                                    placeholder="0"
+                                  />
+                                  {!canReturn && (
+                                    <p className="text-xs text-red-400 mt-1">Fully returned</p>
+                                  )}
+                                </>
                               )}
                             </TableCell>
                           ) : (
@@ -1053,7 +1071,7 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
                           <TableCell className="text-gray-400">{unitDisplay}</TableCell>
                           {returnMode ? (
                             <TableCell className="text-right text-red-400 font-medium">
-                              {returnQty > 0 ? `-Rs. ${(returnQty * item.price).toLocaleString()}` : '—'}
+                              {returnQtyFromPacking > 0 ? `-Rs. ${(returnQtyFromPacking * item.price).toLocaleString()}` : '—'}
                             </TableCell>
                           ) : (
                             <TableCell className="text-right text-white font-medium">
@@ -1765,6 +1783,30 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
       )}
 
       {/* Packing Entry Modal */}
+      {/* Purchase Return Item Selection Dialog — same layout as Purchase View */}
+      <PurchaseReturnItemSelectionDialog
+        open={itemSelectionDialogOpen}
+        onOpenChange={setItemSelectionDialogOpen}
+        purchase={purchase ? { id: purchase.id, items: purchase.items } : null}
+        alreadyReturnedMap={alreadyReturnedMap}
+        onSave={(selected) => {
+          const newQuantities: Record<string, number> = {};
+          const newPacking: Record<string, any> = {};
+          purchase?.items.forEach((item) => {
+            const key = `${item.productId}_${item.variationId || 'null'}`;
+            newQuantities[key] = 0;
+          });
+          selected.forEach((item) => {
+            const key = `${item.product_id}_${item.variation_id || 'null'}`;
+            newQuantities[key] = item.return_qty;
+            if (item.return_packing_details) newPacking[key] = item.return_packing_details;
+          });
+          setReturnQuantities(newQuantities);
+          setReturnPackingDetails(newPacking);
+          setItemSelectionDialogOpen(false);
+        }}
+      />
+
       {activePackingItem && (
         <PackingEntryModal
           open={packingModalOpen}

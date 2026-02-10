@@ -197,7 +197,9 @@ export const SalesPage = () => {
   const [viewReturnDetailsOpen, setViewReturnDetailsOpen] = useState(false);
   const [deleteReturnDialogOpen, setDeleteReturnDialogOpen] = useState(false);
   const [returnToDelete, setReturnToDelete] = useState<any | null>(null);
-  
+  const [selectedReturnForPrint, setSelectedReturnForPrint] = useState<any | null>(null);
+  const [printReturnOpen, setPrintReturnOpen] = useState(false);
+
   // Filter states
   const [dateFilter, setDateFilter] = useState('all');
   const [customerFilter, setCustomerFilter] = useState('all');

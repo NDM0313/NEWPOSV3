@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { X, Save, AlertCircle, Package, Minus, Plus, Trash2, Loader2, DollarSign, Building2 } from 'lucide-react';
+import { X, Save, AlertCircle, Package, Minus, Plus, Trash2, Loader2, DollarSign, Building2, Lock, Ruler } from 'lucide-react';
 import { format } from 'date-fns';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -20,6 +20,7 @@ import { useAccounting } from '@/app/context/AccountingContext';
 import { useSettings } from '@/app/context/SettingsContext';
 import { saleReturnService, CreateSaleReturnData } from '@/app/services/saleReturnService';
 import { saleService } from '@/app/services/saleService';
+import { PackingEntryModal, type ReturnPackingDetails } from '../transactions/PackingEntryModal';
 import { cn } from '../ui/utils';
 
 interface SaleReturnFormProps {
@@ -47,6 +48,8 @@ interface ReturnItem {
   packing_quantity?: number;
   packing_unit?: string;
   packing_details?: any; // JSONB
+  /** Set by Return Packing dialog only; when present, return_quantity is read-only and equals returned_total_meters */
+  return_packing_details?: ReturnPackingDetails;
   variation?: {
     id?: string;
     size?: string;
@@ -78,6 +81,10 @@ export const SaleReturnForm: React.FC<SaleReturnFormProps> = ({ saleId, onClose,
   // Settlement dialog state
   const [showSettlementDialog, setShowSettlementDialog] = useState(false);
   const [pendingReturnData, setPendingReturnData] = useState<CreateSaleReturnData | null>(null);
+
+  // Return Packing dialog: single source of truth for return qty when packing enabled
+  const [packingModalOpen, setPackingModalOpen] = useState(false);
+  const [activePackingItemIndex, setActivePackingItemIndex] = useState<number | null>(null);
 
   // Load original sale and items
   useEffect(() => {
@@ -198,6 +205,10 @@ export const SaleReturnForm: React.FC<SaleReturnFormProps> = ({ saleId, onClose,
 
   const handleQuantityChange = (index: number, quantity: number) => {
     const item = returnItems[index];
+    // When packing is enabled and item has packing_details, qty is controlled ONLY by Return Packing dialog
+    if (enablePacking && item.packing_details && (item.packing_details.boxes?.length > 0 || item.packing_details.loose_pieces?.length > 0)) {
+      return; // no-op; user must use Return Packing dialog
+    }
     const maxReturnable = item.original_quantity - item.already_returned;
 
     if (quantity < 0) {
@@ -217,6 +228,22 @@ export const SaleReturnForm: React.FC<SaleReturnFormProps> = ({ saleId, onClose,
     ));
   };
 
+  /** Called when user saves in Return Packing dialog. Sets return_quantity = returned_total_meters (single source of truth). */
+  const handleSaveReturnPacking = (index: number, details: ReturnPackingDetails) => {
+    const meters = details.returned_total_meters;
+    setReturnItems(items => items.map((it, idx) => {
+      if (idx !== index) return it;
+      return {
+        ...it,
+        return_quantity: meters,
+        total: meters * it.unit_price,
+        return_packing_details: details,
+      };
+    }));
+    setPackingModalOpen(false);
+    setActivePackingItemIndex(null);
+  };
+
   const handleSave = async () => {
     if (!companyId || !contextBranchId || !originalSale) return;
 
@@ -225,6 +252,17 @@ export const SaleReturnForm: React.FC<SaleReturnFormProps> = ({ saleId, onClose,
     if (itemsToReturn.length === 0) {
       toast.error('Please select at least one item to return');
       return;
+    }
+
+    // When packing enabled: items with packing (boxes/loose) must have completed Return Packing (no manual qty)
+    if (enablePacking) {
+      for (const item of itemsToReturn) {
+        const hasPackingStructure = item.packing_details && (item.packing_details.boxes?.length > 0 || item.packing_details.loose_pieces?.length > 0);
+        if (hasPackingStructure && !item.return_packing_details) {
+          toast.error(`Complete Return Packing for "${item.product_name}" before saving. Use the "Return Packing" button to select pieces.`);
+          return;
+        }
+      }
     }
 
     // Validate all quantities
@@ -254,29 +292,23 @@ export const SaleReturnForm: React.FC<SaleReturnFormProps> = ({ saleId, onClose,
         customer_id: originalSale.customer_id || undefined,
         customer_name: originalSale.customer_name,
         items: itemsToReturn.map(item => {
-          // Calculate proportional packing based on return quantity
-          let returnPackingDetails: any = undefined;
-          if (item.packing_details && item.original_quantity > 0) {
+          // Use Return Packing dialog result when present (single source of truth); else proportional for non-packed items
+          let returnPackingDetailsPayload: any = undefined;
+          if (item.return_packing_details) {
+            returnPackingDetailsPayload = item.return_packing_details;
+          } else if (item.packing_details && item.original_quantity > 0) {
             const returnRatio = item.return_quantity / item.original_quantity;
             const originalPacking = item.packing_details;
-            
-            // Calculate proportional boxes and pieces
             const originalBoxes = originalPacking.total_boxes || 0;
             const originalPieces = originalPacking.total_pieces || 0;
             const originalMeters = originalPacking.total_meters || 0;
-            
-            const returnBoxes = Math.round(originalBoxes * returnRatio * 100) / 100;
-            const returnPieces = Math.round(originalPieces * returnRatio * 100) / 100;
-            const returnMeters = Math.round(originalMeters * returnRatio * 100) / 100;
-            
-            returnPackingDetails = {
+            returnPackingDetailsPayload = {
               ...originalPacking,
-              total_boxes: returnBoxes,
-              total_pieces: returnPieces,
-              total_meters: returnMeters,
+              total_boxes: Math.round(originalBoxes * returnRatio * 100) / 100,
+              total_pieces: Math.round(originalPieces * returnRatio * 100) / 100,
+              total_meters: Math.round(originalMeters * returnRatio * 100) / 100,
             };
           }
-          
           return {
             sale_item_id: item.sale_item_id,
             product_id: item.product_id,
@@ -287,13 +319,13 @@ export const SaleReturnForm: React.FC<SaleReturnFormProps> = ({ saleId, onClose,
             unit: item.unit,
             unit_price: item.unit_price,
             total: item.total,
-            // Preserve packing structure (proportional to return quantity)
             packing_type: item.packing_type,
-            packing_quantity: item.packing_quantity && item.original_quantity > 0 
+            packing_quantity: item.packing_quantity && item.original_quantity > 0
               ? (item.packing_quantity * item.return_quantity / item.original_quantity)
               : undefined,
             packing_unit: item.packing_unit,
-            packing_details: returnPackingDetails,
+            packing_details: item.packing_details ?? undefined,
+            return_packing_details: returnPackingDetailsPayload ?? undefined,
           };
         }),
         reason: reason || undefined,
@@ -429,7 +461,9 @@ export const SaleReturnForm: React.FC<SaleReturnFormProps> = ({ saleId, onClose,
               Returning items from: <span className="text-blue-400 font-semibold">{originalSale?.invoice_no}</span>
             </p>
             <p className="text-xs text-amber-400 mt-1">
-              ⚠️ Items are auto-loaded from original sale. Only return quantities can be edited.
+              {enablePacking
+                ? '⚠️ Items with packing: use "Return Packing" to set return quantity (meters). Return qty is read-only from packing.'
+                : '⚠️ Items are auto-loaded from original sale. Only return quantities can be edited.'}
             </p>
           </div>
           <Button
@@ -495,7 +529,9 @@ export const SaleReturnForm: React.FC<SaleReturnFormProps> = ({ saleId, onClose,
             <div className="flex items-center justify-between mb-3">
               <Label className="text-gray-200 block">Return Items *</Label>
               <div className="text-xs text-gray-500 text-xs">
-                Items from original sale - Only return quantity is editable
+                {enablePacking
+                  ? 'Items with packing: use "Return Packing" to set return qty (read-only in table).'
+                  : 'Items from original sale — only return quantity is editable'}
               </div>
             </div>
             <div className="bg-gray-800 border border-gray-700 rounded-xl overflow-hidden">
@@ -525,12 +561,19 @@ export const SaleReturnForm: React.FC<SaleReturnFormProps> = ({ saleId, onClose,
                     const maxReturnable = item.original_quantity - item.already_returned;
                     const canReturn = maxReturnable > 0;
                     
-                    // Calculate proportional packing based on return quantity
+                    // When packing dialog was used, use return_packing_details; else proportional for display only
+                    const hasPackingStructure = item.packing_details && (item.packing_details.boxes?.length > 0 || item.packing_details.loose_pieces?.length > 0);
+                    const returnQtyFromPacking = hasPackingStructure && item.return_packing_details;
                     let proportionalPacking: any = null;
-                    if (item.packing_details && item.original_quantity > 0 && item.return_quantity > 0) {
+                    if (returnQtyFromPacking && item.return_packing_details) {
+                      proportionalPacking = {
+                        total_boxes: item.return_packing_details.returned_boxes ?? 0,
+                        total_pieces: item.return_packing_details.returned_pieces_count ?? 0,
+                        total_meters: item.return_packing_details.returned_total_meters ?? 0,
+                      };
+                    } else if (item.packing_details && item.original_quantity > 0 && item.return_quantity > 0) {
                       const returnRatio = item.return_quantity / item.original_quantity;
                       const originalPacking = item.packing_details;
-                      
                       proportionalPacking = {
                         ...originalPacking,
                         total_boxes: Math.round((originalPacking.total_boxes || 0) * returnRatio * 100) / 100,
@@ -582,42 +625,72 @@ export const SaleReturnForm: React.FC<SaleReturnFormProps> = ({ saleId, onClose,
                           )}
                         </td>
                         <td className="px-4 py-3">
-                          <div className="flex items-center justify-center gap-2">
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-7 w-7"
-                              onClick={() => handleQuantityChange(index, Math.max(0, item.return_quantity - 1))}
-                              disabled={!canReturn || item.return_quantity <= 0}
-                            >
-                              <Minus size={14} />
-                            </Button>
-                            <Input
-                              type="number"
-                              min={0}
-                              max={maxReturnable}
-                              value={item.return_quantity}
-                              onChange={(e) => handleQuantityChange(index, parseFloat(e.target.value) || 0)}
-                              disabled={!canReturn}
-                              className="w-20 text-center bg-gray-900 border-gray-700 text-white"
-                            />
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-7 w-7"
-                              onClick={() => handleQuantityChange(index, Math.min(maxReturnable, item.return_quantity + 1))}
-                              disabled={!canReturn || item.return_quantity >= maxReturnable}
-                            >
-                              <Plus size={14} />
-                            </Button>
-                          </div>
-                          {!canReturn && (
+                          {enablePacking && hasPackingStructure ? (
+                            /* Read-only: value comes ONLY from Return Packing dialog */
+                            <div className="flex flex-col items-center gap-1">
+                              <div className="flex items-center gap-1.5 rounded-md bg-gray-800/80 border border-gray-600 px-2 py-1.5">
+                                <Lock size={12} className="text-amber-400 shrink-0" />
+                                <span className="text-sm font-medium text-white tabular-nums">{item.return_quantity}</span>
+                              </div>
+                              <p className="text-[10px] text-amber-400/90">From Return Packing</p>
+                              {!canReturn && (
+                                <p className="text-xs text-red-400">Fully returned</p>
+                              )}
+                            </div>
+                          ) : (
+                            <div className="flex items-center justify-center gap-2">
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7"
+                                onClick={() => handleQuantityChange(index, Math.max(0, item.return_quantity - 1))}
+                                disabled={!canReturn || item.return_quantity <= 0}
+                              >
+                                <Minus size={14} />
+                              </Button>
+                              <Input
+                                type="number"
+                                min={0}
+                                max={maxReturnable}
+                                value={item.return_quantity}
+                                onChange={(e) => handleQuantityChange(index, parseFloat(e.target.value) || 0)}
+                                disabled={!canReturn}
+                                className="w-20 text-center bg-gray-900 border-gray-700 text-white"
+                              />
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7"
+                                onClick={() => handleQuantityChange(index, Math.min(maxReturnable, item.return_quantity + 1))}
+                                disabled={!canReturn || item.return_quantity >= maxReturnable}
+                              >
+                                <Plus size={14} />
+                              </Button>
+                            </div>
+                          )}
+                          {!canReturn && !(enablePacking && hasPackingStructure) && (
                             <p className="text-xs text-red-400 mt-1">Fully returned</p>
                           )}
                         </td>
                         {enablePacking && (
                           <td className="px-4 py-3 text-center">
-                            {item.return_quantity > 0 && proportionalPacking ? (
+                            {hasPackingStructure ? (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="border-purple-500/50 text-purple-400 hover:bg-purple-500/10 h-8 text-xs"
+                                onClick={() => {
+                                  setActivePackingItemIndex(index);
+                                  setPackingModalOpen(true);
+                                }}
+                                disabled={!canReturn}
+                              >
+                                <Ruler size={12} className="mr-1" />
+                                {item.return_packing_details
+                                  ? `${item.return_packing_details.returned_total_meters.toFixed(2)} M (edit)`
+                                  : 'Return Packing'}
+                              </Button>
+                            ) : item.return_quantity > 0 && proportionalPacking ? (
                               <span className="text-[11px] text-gray-400">
                                 {proportionalPacking.total_boxes > 0 && `${proportionalPacking.total_boxes}B`}
                                 {proportionalPacking.total_boxes > 0 && proportionalPacking.total_pieces > 0 && ' · '}
@@ -777,7 +850,10 @@ export const SaleReturnForm: React.FC<SaleReturnFormProps> = ({ saleId, onClose,
           </Button>
           <Button
             onClick={handleSave}
-            disabled={saving || returnItems.filter(item => item.return_quantity > 0).length === 0}
+            disabled={saving || returnItems.filter(item => item.return_quantity > 0).length === 0 || (enablePacking && returnItems.some(item => {
+              const hasPacking = item.packing_details && (item.packing_details.boxes?.length > 0 || item.packing_details.loose_pieces?.length > 0);
+              return item.return_quantity > 0 && hasPacking && !item.return_packing_details;
+            }))}
             className="bg-blue-600 hover:bg-blue-700 text-white"
           >
             {saving ? (
@@ -903,6 +979,24 @@ export const SaleReturnForm: React.FC<SaleReturnFormProps> = ({ saleId, onClose,
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Return Packing dialog: single source of truth for return qty (meters) when item has packing */}
+      {enablePacking && activePackingItemIndex !== null && returnItems[activePackingItemIndex] && (
+        <PackingEntryModal
+          open={packingModalOpen}
+          onOpenChange={(open) => {
+            setPackingModalOpen(open);
+            if (!open) setActivePackingItemIndex(null);
+          }}
+          onSave={() => {}}
+          initialData={returnItems[activePackingItemIndex].packing_details}
+          productName={returnItems[activePackingItemIndex].product_name}
+          returnMode={true}
+          returnPackingDetails={returnItems[activePackingItemIndex].return_packing_details}
+          onSaveReturnPacking={(details) => handleSaveReturnPacking(activePackingItemIndex, details)}
+          alreadyReturnedPieces={new Set()}
+        />
+      )}
     </div>
   );
 };

@@ -68,6 +68,8 @@ export interface CreateSaleReturnData {
     packing_quantity?: number;
     packing_unit?: string;
     packing_details?: any; // JSONB
+    // Return packing - piece-level selection (from Return Packing dialog only)
+    return_packing_details?: any; // JSONB
   }>;
   reason?: string;
   notes?: string;
