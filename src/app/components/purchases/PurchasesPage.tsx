@@ -39,6 +39,7 @@ import { UnifiedLedgerView } from '@/app/components/shared/UnifiedLedgerView';
 import { ViewPurchaseDetailsDrawer } from './ViewPurchaseDetailsDrawer';
 import { ViewPaymentsModal, type InvoiceDetails, type Payment } from '@/app/components/sales/ViewPaymentsModal';
 import { AttachmentViewer } from '@/app/components/shared/AttachmentViewer';
+import { PurchaseReturnPrintLayout } from '@/app/components/shared/PurchaseReturnPrintLayout';
 import { purchaseReturnService } from '@/app/services/purchaseReturnService';
 import { PurchaseReturnForm } from './PurchaseReturnForm';
 import {
@@ -1601,6 +1602,25 @@ export const PurchasesPage = () => {
                   </ul>
                 </div>
               )}
+              <div className="flex gap-2 pt-2">
+                <Button
+                  onClick={async () => {
+                    if (!companyId) return;
+                    try {
+                      const fullReturn = await purchaseReturnService.getPurchaseReturnById(selectedPurchaseReturn.id, companyId);
+                      setSelectedReturnForPrint(fullReturn);
+                      setPrintReturnOpen(true);
+                    } catch (error: any) {
+                      console.error('[PurchasesPage] Error loading return for print:', error);
+                      toast.error('Could not load return details for printing');
+                    }
+                  }}
+                  className="bg-blue-600 hover:bg-blue-700 text-white"
+                >
+                  <FileText size={16} className="mr-2" />
+                  Print Return
+                </Button>
+              </div>
             </div>
           </DialogContent>
         </Dialog>

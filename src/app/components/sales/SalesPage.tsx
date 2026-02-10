@@ -55,6 +55,7 @@ import { SaleReturnForm } from './SaleReturnForm';
 import { ReturnPaymentAdjustment } from './ReturnPaymentAdjustment';
 import { ViewPaymentsModal, type InvoiceDetails, type Payment } from './ViewPaymentsModal';
 import { AttachmentViewer } from '@/app/components/shared/AttachmentViewer';
+import { SaleReturnPrintLayout } from '@/app/components/shared/SaleReturnPrintLayout';
 import { toast } from 'sonner';
 
 // Mock data removed - using SalesContext which loads from Supabase
@@ -1494,9 +1495,16 @@ export const SalesPage = () => {
                                   {/* No Edit/Delete for FINAL returns - they are locked */}
                                   <DropdownMenuSeparator />
                                   <DropdownMenuItem 
-                                    onClick={() => {
-                                      // TODO: Implement print return
-                                      toast.info('Print return functionality coming soon');
+                                    onClick={async () => {
+                                      if (!companyId) return;
+                                      try {
+                                        const fullReturn = await saleReturnService.getSaleReturnById(ret.id, companyId);
+                                        setSelectedReturnForPrint(fullReturn);
+                                        setPrintReturnOpen(true);
+                                      } catch (error: any) {
+                                        console.error('[SalesPage] Error loading return for print:', error);
+                                        toast.error('Could not load return details for printing');
+                                      }
                                     }}
                                     className="hover:bg-gray-800 cursor-pointer"
                                   >
@@ -2163,8 +2171,22 @@ export const SalesPage = () => {
                 Close
               </Button>
               <Button
-                onClick={() => {
-                  toast.info('Print return functionality coming soon');
+                onClick={async () => {
+                  if (!selectedSale) return;
+                  try {
+                    const returns = await saleReturnService.getSaleReturns(companyId, branchId === 'all' ? undefined : branchId || undefined);
+                    const saleReturns = returns.filter(r => r.original_sale_id === selectedSale.id);
+                    if (saleReturns.length > 0) {
+                      const fullReturn = await saleReturnService.getSaleReturnById(saleReturns[0].id, companyId);
+                      setSelectedReturnForPrint(fullReturn);
+                      setPrintReturnOpen(true);
+                    } else {
+                      toast.error('No returns found for this sale');
+                    }
+                  } catch (error: any) {
+                    console.error('[SalesPage] Error loading return for print:', error);
+                    toast.error('Could not load return details for printing');
+                  }
                 }}
                 className="bg-blue-600 hover:bg-blue-700 text-white"
               >
@@ -2212,6 +2234,17 @@ export const SalesPage = () => {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Sale Return Print Dialog */}
+      {selectedReturnForPrint && printReturnOpen && (
+        <SaleReturnPrintLayout
+          saleReturn={selectedReturnForPrint}
+          onClose={() => {
+            setPrintReturnOpen(false);
+            setSelectedReturnForPrint(null);
+          }}
+        />
+      )}
     </div>
   );
 };
