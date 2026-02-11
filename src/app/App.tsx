@@ -62,6 +62,7 @@ import { WorkerDetailPage } from './components/studio/WorkerDetailPage';
 import { StudioProductionListPage } from './components/studio/StudioProductionListPage';
 import { StudioProductionDetailPage } from './components/studio/StudioProductionDetailPage';
 import { StudioProductionAddPage } from './components/studio/StudioProductionAddPage';
+import { StudioPipelinePage } from './components/studio/StudioPipelinePage';
 import { AccountingIntegrationDemo } from './components/accounting/AccountingIntegrationDemo';
 import { PurchaseListExample } from './components/purchases/PurchaseListExample';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
@@ -119,7 +120,7 @@ const AppContent = () => {
     );
   }
 
-  if ((currentView === 'studio' || currentView === 'studio-dashboard-new' || currentView === 'studio-workflow' || currentView === 'worker-detail') && !modules.studioModuleEnabled) {
+  if ((currentView === 'studio' || currentView === 'studio-dashboard-new' || currentView === 'studio-sales-list-new' || currentView === 'studio-pipeline' || currentView === 'studio-sale-detail' || currentView === 'studio-sale-detail-new' || currentView === 'studio-workflow' || currentView === 'worker-detail') && !modules.studioModuleEnabled) {
     return (
       <Layout>
         <div className="flex items-center justify-center h-full">
@@ -154,6 +155,7 @@ const AppContent = () => {
       {currentView === 'studio' && <StudioSalesListNew />}
       {currentView === 'studio-dashboard-new' && <StudioDashboardNew />}
       {currentView === 'studio-sales-list-new' && <StudioSalesListNew />}
+      {currentView === 'studio-pipeline' && <StudioPipelinePage />}
       {currentView === 'studio-sale-detail' && <StudioSaleDetailNew />}
       {currentView === 'studio-sale-detail-new' && <StudioSaleDetailNew />}
       {currentView === 'studio-job' && <StudioJobCard />}

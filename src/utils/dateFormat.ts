@@ -1,18 +1,10 @@
 /**
  * Global Date Formatting Utilities
- * 
- * Standard formats:
- * - Single date: "15 Jan 2024"
- * - Date range: "01 Jan 2024 – 31 Jan 2024"
- * 
- * Presets:
- * - Today
- * - Yesterday
- * - This Month
- * - Last Month
+ * App timezone = Pakistan (Asia/Karachi, UTC+5)
  */
 
 import { format, startOfMonth, endOfMonth, subMonths, startOfDay, endOfDay, subDays } from 'date-fns';
+import { getTodayInAppTimezone } from '@/app/components/ui/utils';
 
 /**
  * Format a single date as "15 Jan 2024"
@@ -31,38 +23,40 @@ export const formatDateRange = (from: Date | null | undefined, to: Date | null |
 };
 
 /**
- * Date Presets
+ * Date Presets – sab app timezone (Pakistan) ke hisaab se
  */
 export const datePresets = {
   today: () => {
-    const today = new Date();
+    const today = getTodayInAppTimezone();
     return {
       from: startOfDay(today),
       to: endOfDay(today),
       label: 'Today',
     };
   },
-  
+
   yesterday: () => {
-    const yesterday = subDays(new Date(), 1);
+    const today = getTodayInAppTimezone();
+    const yesterday = subDays(today, 1);
     return {
       from: startOfDay(yesterday),
       to: endOfDay(yesterday),
       label: 'Yesterday',
     };
   },
-  
+
   thisMonth: () => {
-    const today = new Date();
+    const today = getTodayInAppTimezone();
     return {
       from: startOfMonth(today),
       to: endOfMonth(today),
       label: 'This Month',
     };
   },
-  
+
   lastMonth: () => {
-    const lastMonth = subMonths(new Date(), 1);
+    const today = getTodayInAppTimezone();
+    const lastMonth = subMonths(today, 1);
     return {
       from: startOfMonth(lastMonth),
       to: endOfMonth(lastMonth),
@@ -82,17 +76,18 @@ export const getDatePresets = () => [
 ];
 
 /**
- * Check if a date is today
+ * Check if a date is today (app timezone = Pakistan)
  */
 export const isToday = (date: Date): boolean => {
-  const today = new Date();
+  const today = getTodayInAppTimezone();
   return format(date, 'yyyy-MM-dd') === format(today, 'yyyy-MM-dd');
 };
 
 /**
- * Check if a date is yesterday
+ * Check if a date is yesterday (app timezone = Pakistan)
  */
 export const isYesterday = (date: Date): boolean => {
-  const yesterday = subDays(new Date(), 1);
+  const today = getTodayInAppTimezone();
+  const yesterday = subDays(today, 1);
   return format(date, 'yyyy-MM-dd') === format(yesterday, 'yyyy-MM-dd');
 };

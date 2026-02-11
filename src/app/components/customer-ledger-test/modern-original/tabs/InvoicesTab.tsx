@@ -14,12 +14,12 @@ export function InvoicesTab({ invoices }: InvoicesTabProps) {
 
   const safeInvoices = invoices || [];
 
-  const toggleInvoice = (invoiceNo: string) => {
+  const toggleInvoice = (invoiceKey: string) => {
     const newExpanded = new Set(expandedInvoices);
-    if (newExpanded.has(invoiceNo)) {
-      newExpanded.delete(invoiceNo);
+    if (newExpanded.has(invoiceKey)) {
+      newExpanded.delete(invoiceKey);
     } else {
-      newExpanded.add(invoiceNo);
+      newExpanded.add(invoiceKey);
     }
     setExpandedInvoices(newExpanded);
   };
@@ -103,15 +103,16 @@ export function InvoicesTab({ invoices }: InvoicesTabProps) {
         {filteredInvoices.map((invoice) => {
           const statusConfig = getStatusConfig(invoice.status);
           const StatusIcon = statusConfig.icon;
-          const isExpanded = expandedInvoices.has(invoice.invoiceNo);
+          const invoiceKey = invoice.id ?? invoice.invoiceNo;
+          const isExpanded = expandedInvoices.has(invoiceKey);
 
           return (
             <div
-              key={invoice.invoiceNo}
+              key={invoiceKey}
               className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden"
             >
               <div
-                onClick={() => toggleInvoice(invoice.invoiceNo)}
+                onClick={() => toggleInvoice(invoiceKey)}
                 className="px-6 py-4 flex justify-between items-center cursor-pointer hover:bg-gray-800/30 transition-colors border-b border-gray-800/50"
               >
                 <div className="flex items-center gap-4">

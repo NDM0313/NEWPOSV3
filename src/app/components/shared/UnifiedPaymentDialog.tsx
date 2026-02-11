@@ -37,7 +37,9 @@ export interface PaymentDialogProps {
   previousPayments?: PreviousPayment[]; // Payment history for this invoice
   referenceNo?: string; // Invoice number (string) for display
   referenceId?: string; // UUID of sale/purchase/rental (for journal entry reference_id)
-  onSuccess?: () => void;
+  /** When context=worker and paying for specific stage (Pay Now), pass stageId so ledger uses markStageLedgerPaid */
+  workerStageId?: string;
+  onSuccess?: (paymentRef?: string) => void;
   /** Pre-filled attachment files (e.g. from purchase form Attachments card) – included when recording payment */
   initialAttachmentFiles?: File[];
   // Edit mode props
@@ -90,6 +92,7 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
   previousPayments = [],
   referenceNo,
   referenceId, // CRITICAL FIX: UUID for journal entry reference_id
+  workerStageId,
   onSuccess,
   initialAttachmentFiles,
   editMode = false,
@@ -618,7 +621,8 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
             workerId: entityId,
             amount,
             paymentMethod,
-            referenceNo: paymentRef
+            referenceNo: paymentRef,
+            stageId: workerStageId
           });
           incrementNextNumber('payment');
           if (success) workerPaymentRef = paymentRef;

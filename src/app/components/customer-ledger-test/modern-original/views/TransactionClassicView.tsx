@@ -7,6 +7,7 @@ import { formatBoxesPieces } from '@/app/components/ui/utils';
 interface TransactionClassicViewProps {
   transactions: Transaction[];
   saleItemsMap?: Map<string, any[]>;
+  studioDetailsMap?: Map<string, { notes?: string; productionStatus?: string }>;
   onTransactionClick: (transaction: Transaction) => void;
 }
 
@@ -23,6 +24,7 @@ function TransactionRowGroup({
   isExpanded, 
   onToggle,
   saleItemsMap,
+  studioDetailsMap,
   enablePacking 
 }: { 
   transaction: Transaction; 
@@ -30,11 +32,14 @@ function TransactionRowGroup({
   isExpanded: boolean; 
   onToggle: () => void;
   saleItemsMap: Map<string, any[]>;
+  studioDetailsMap: Map<string, { notes?: string; productionStatus?: string }>;
   enablePacking: boolean;
 }) {
   const isSale = transaction.documentType === 'Sale' || transaction.documentType === 'Studio Sale';
+  const isStudioSale = transaction.documentType === 'Studio Sale';
   const products = isSale ? getSaleProductsFromBackend(transaction, saleItemsMap) : [];
   const hasProducts = products.length > 0;
+  const studioDetails = isStudioSale && transaction.id ? studioDetailsMap.get(transaction.id) : undefined;
 
   const getDescription = (transaction: Transaction) => {
     if (transaction.documentType === 'Opening Balance') {
@@ -103,25 +108,25 @@ function TransactionRowGroup({
 
       {/* Expandable Product Breakdown – 1:1 with sale_items: Product Name, Variation, Packing, Qty, Unit, Unit Price, Discount, Tax, Line Total */}
       {isExpanded && hasProducts && (() => {
-        // Step 2 – Ledger items before render: verify data reached UI (packing_type, packing_quantity, packing_unit, quantity, unit, variation_id)
-        console.log('[CUSTOMER LEDGER] Step 2 – Ledger items before render:', {
-          referenceNo: transaction.referenceNo,
-          saleId: transaction.id,
-          itemCount: products.length,
-          items: products.map((p: any) => ({
-            product_name: p.product_name,
-            packing_type: p.packing_type,
-            packing_quantity: p.packing_quantity,
-            packing_unit: p.packing_unit,
-            quantity: p.quantity,
-            unit: p.unit,
-            variation_id: p.variation_id,
-          })),
-        });
         return (
         <tr className="bg-gray-950/80 border-b border-gray-800">
           <td colSpan={8} className="px-0 py-0">
             <div className="pt-3 pb-3 pl-14 pr-4 border-t border-gray-800">
+              {studioDetails && (studioDetails.notes || studioDetails.productionStatus) && (
+                <div className="mb-3 flex flex-wrap gap-4 rounded-lg bg-blue-500/10 border border-blue-500/20 px-4 py-2.5">
+                  <span className="text-xs font-semibold uppercase tracking-wide text-blue-400">Studio Details</span>
+                  {studioDetails.notes && (
+                    <span className="text-sm text-gray-300">
+                      <span className="text-gray-500">Delivery / Notes:</span> {studioDetails.notes}
+                    </span>
+                  )}
+                  {studioDetails.productionStatus && (
+                    <span className="text-sm text-gray-300">
+                      <span className="text-gray-500">Production:</span> <span className="capitalize">{studioDetails.productionStatus.replace(/_/g, ' ')}</span>
+                    </span>
+                  )}
+                </div>
+              )}
               <table className="w-full border-collapse">
                 <thead>
                   <tr className="bg-gray-900/80">
@@ -194,7 +199,7 @@ function TransactionRowGroup({
   );
 }
 
-export function TransactionClassicView({ transactions, saleItemsMap = new Map(), onTransactionClick }: TransactionClassicViewProps) {
+export function TransactionClassicView({ transactions, saleItemsMap = new Map(), studioDetailsMap = new Map(), onTransactionClick }: TransactionClassicViewProps) {
   const { enablePacking } = useSupabase();
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
 
@@ -242,6 +247,7 @@ export function TransactionClassicView({ transactions, saleItemsMap = new Map(),
               isExpanded={expandedRows.has(transaction.id)}
               onToggle={() => toggleRow(transaction.id)}
               saleItemsMap={saleItemsMap}
+              studioDetailsMap={studioDetailsMap}
             />
           ))}
         </tbody>

@@ -1,16 +1,19 @@
 import { useState, useRef, useEffect } from 'react';
 import { Calendar, ChevronDown, X } from 'lucide-react';
+import { getTodayInAppTimezone, formatDateToYYYYMMDD, getTodayYYYYMMDD, formatLongDate } from '@/app/components/ui/utils';
 
 interface ModernDateFilterProps {
   dateRange: { from: string; to: string };
   onApply: (dateRange: { from: string; to: string }) => void;
+  /** Initial preset to show (e.g. 'last30days'). Default: 'last30days' */
+  defaultPreset?: string;
 }
 
-export function ModernDateFilter({ dateRange, onApply }: ModernDateFilterProps) {
+export function ModernDateFilter({ dateRange, onApply, defaultPreset = 'last30days' }: ModernDateFilterProps) {
   const [from, setFrom] = useState(dateRange.from);
   const [to, setTo] = useState(dateRange.to);
   const [showPresets, setShowPresets] = useState(false);
-  const [selectedPreset, setSelectedPreset] = useState<string>('custom');
+  const [selectedPreset, setSelectedPreset] = useState<string>(defaultPreset);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -30,66 +33,84 @@ export function ModernDateFilter({ dateRange, onApply }: ModernDateFilterProps) 
   }, []);
 
   const getDateRange = (preset: string) => {
-    const today = new Date();
-    let fromDate = new Date(today);
-    let toDate = new Date(today);
+    const today = getTodayInAppTimezone();
+    const todayTime = today.getTime();
+    const msPerDay = 24 * 60 * 60 * 1000;
+
+    let fromDate: Date;
+    let toDate: Date;
 
     switch (preset) {
       case 'today':
+        fromDate = today;
+        toDate = today;
         break;
       case 'yesterday':
-        fromDate.setDate(today.getDate() - 1);
-        toDate.setDate(today.getDate() - 1);
+        fromDate = new Date(todayTime - msPerDay);
+        toDate = new Date(todayTime - msPerDay);
         break;
       case 'last7days':
-        fromDate.setDate(today.getDate() - 7);
+        fromDate = new Date(todayTime - 7 * msPerDay);
+        toDate = today;
         break;
       case 'last30days':
-        fromDate.setDate(today.getDate() - 30);
+        fromDate = new Date(todayTime - 30 * msPerDay);
+        toDate = today;
         break;
       case 'thisWeek': {
         const dayOfWeek = today.getDay();
-        fromDate.setDate(today.getDate() - (dayOfWeek === 0 ? 6 : dayOfWeek - 1));
+        const mondayOffset = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+        fromDate = new Date(todayTime - mondayOffset * msPerDay);
+        toDate = today;
         break;
       }
       case 'lastWeek': {
-        const lastWeekStart = new Date(today);
-        const currentDay = today.getDay();
-        lastWeekStart.setDate(today.getDate() - (currentDay === 0 ? 13 : currentDay + 6));
-        toDate.setDate(today.getDate() - (currentDay === 0 ? 7 : currentDay));
-        fromDate = lastWeekStart;
+        const dayOfWeek = today.getDay();
+        const mondayOffset = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+        const lastMonday = new Date(todayTime - (mondayOffset + 7) * msPerDay);
+        const lastSunday = new Date(todayTime - (mondayOffset + 1) * msPerDay);
+        fromDate = lastMonday;
+        toDate = lastSunday;
         break;
       }
-      case 'thisMonth':
-        fromDate = new Date(today.getFullYear(), today.getMonth(), 1);
-        break;
-      case 'lastMonth':
-        fromDate = new Date(today.getFullYear(), today.getMonth() - 1, 1);
-        toDate = new Date(today.getFullYear(), today.getMonth(), 0);
-        break;
+      case 'thisMonth': {
+        const ymd = getTodayYYYYMMDD();
+        const [y, m] = ymd.split('-').map(Number);
+        return { from: `${y}-${String(m).padStart(2, '0')}-01`, to: ymd };
+      }
+      case 'lastMonth': {
+        const ymd = getTodayYYYYMMDD();
+        const [y, m] = ymd.split('-').map(Number);
+        const lastM = m === 1 ? 12 : m - 1;
+        const lastY = m === 1 ? y - 1 : y;
+        const lastMonthLastDay = new Date(lastY, lastM, 0);
+        const lastDay = formatDateToYYYYMMDD(lastMonthLastDay);
+        return { from: `${lastY}-${String(lastM).padStart(2, '0')}-01`, to: lastDay };
+      }
       case 'thisQuarter': {
-        const currentQuarter = Math.floor(today.getMonth() / 3);
-        fromDate = new Date(today.getFullYear(), currentQuarter * 3, 1);
-        break;
+        const ymd = getTodayYYYYMMDD();
+        const [y, m] = ymd.split('-').map(Number);
+        const q = Math.floor((m - 1) / 3);
+        return { from: `${y}-${String(q * 3 + 1).padStart(2, '0')}-01`, to: ymd };
       }
       case 'thisYear':
-        fromDate = new Date(today.getFullYear(), 0, 1);
-        break;
-      case 'lastYear':
-        fromDate = new Date(today.getFullYear() - 1, 0, 1);
-        toDate = new Date(today.getFullYear() - 1, 11, 31);
-        break;
-      case 'all':
-        fromDate = new Date(today.getFullYear(), 0, 1);
-        toDate = new Date(today);
-        break;
+        return { from: `${getTodayYYYYMMDD().slice(0, 4)}-01-01`, to: getTodayYYYYMMDD() };
+      case 'lastYear': {
+        const y = parseInt(getTodayYYYYMMDD().slice(0, 4), 10) - 1;
+        return { from: `${y}-01-01`, to: `${y}-12-31` };
+      }
+      case 'all': {
+        const y = getTodayYYYYMMDD().slice(0, 4);
+        return { from: `${y}-01-01`, to: getTodayYYYYMMDD() };
+      }
       default:
-        break;
+        fromDate = today;
+        toDate = today;
     }
 
     return {
-      from: fromDate.toISOString().split('T')[0],
-      to: toDate.toISOString().split('T')[0],
+      from: formatDateToYYYYMMDD(fromDate),
+      to: formatDateToYYYYMMDD(toDate),
     };
   };
 
@@ -144,7 +165,7 @@ export function ModernDateFilter({ dateRange, onApply }: ModernDateFilterProps) 
     if (preset && preset.id !== 'custom') {
       return preset.label;
     }
-    return `${new Date(from).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })} - ${new Date(to).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}`;
+    return `${formatLongDate(from)} - ${formatLongDate(to)}`;
   };
 
   return (

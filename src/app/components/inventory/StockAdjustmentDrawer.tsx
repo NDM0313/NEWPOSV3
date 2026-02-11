@@ -14,6 +14,7 @@ import {
   SelectValue,
 } from "../ui/select";
 import { Badge } from "../ui/badge";
+import { formatDecimal } from "../ui/utils";
 
 type AdjustmentType = 'add' | 'subtract';
 type AdjustmentReason = 'damaged' | 'audit' | 'return' | 'theft' | 'correction' | 'other';
@@ -229,7 +230,7 @@ export const StockAdjustmentDrawer: React.FC<StockAdjustmentDrawerProps> = ({
                         ? Object.entries(v.attributes).map(([k, val]) => `${k}: ${val}`).join(', ')
                         : (v.sku || v.id)}
                       {' — '}
-                      <span className="text-green-400">{v.stock} {product.unit}</span>
+                      <span className="text-green-400">{formatDecimal(v.stock)} {product.unit}</span>
                     </SelectItem>
                   ))}
                 </SelectContent>

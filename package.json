@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "build": "vite build",
-    "dev": "vite",
+    "dev": "node scripts/run-migrations.js && vite",
+    "dev:no-migrate": "vite",
     "migrate": "node scripts/run-migrations.js",
     "dev:with-migrate": "node scripts/run-migrations.js && vite",
     "seed": "node scripts/run-seed.js",

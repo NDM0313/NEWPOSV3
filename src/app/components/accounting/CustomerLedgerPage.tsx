@@ -16,7 +16,7 @@ import { saleService } from '@/app/services/saleService';
 import { supabase } from '@/lib/supabase';
 import { CalendarDateRangePicker } from '@/app/components/ui/CalendarDateRangePicker';
 import { format } from 'date-fns';
-import { cn, formatBoxesPieces } from '@/app/components/ui/utils';
+import { cn, formatBoxesPieces, getTodayInAppTimezone } from '@/app/components/ui/utils';
 import { toast } from 'sonner';
 import { TransactionDetailModal } from './TransactionDetailModal';
 import './customer-ledger-print.css';
@@ -39,9 +39,12 @@ export const CustomerLedgerPage: React.FC<CustomerLedgerPageProps> = ({
   const [loading, setLoading] = useState(false);
   const [branches, setBranches] = useState<Branch[]>([]);
   const [selectedBranchId, setSelectedBranchId] = useState<string | undefined>(contextBranchId);
-  const [dateRange, setDateRange] = useState<{ from: Date | undefined; to: Date | undefined }>({
-    from: undefined,
-    to: undefined,
+  // Default: last 30 days (app timezone Pakistan) taake aaj ki sale bhi range mein ho
+  const [dateRange, setDateRange] = useState<{ from: Date | undefined; to: Date | undefined }>(() => {
+    const to = getTodayInAppTimezone();
+    const from = new Date(to);
+    from.setDate(from.getDate() - 30);
+    return { from, to };
   });
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedReference, setSelectedReference] = useState<string | null>(null);

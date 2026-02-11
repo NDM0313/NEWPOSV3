@@ -10,7 +10,7 @@ import { useSupabase } from '../../context/SupabaseContext';
 import { useNavigation } from '../../context/NavigationContext';
 import { useSettings } from '../../context/SettingsContext';
 import { inventoryService, InventoryOverviewRow, InventoryMovementRow } from '../../services/inventoryService';
-import { cn } from '../ui/utils';
+import { cn, formatDecimal } from '../ui/utils';
 import {
   AreaChart,
   Area,
@@ -472,7 +472,7 @@ export const InventoryAnalyticsTestPage = () => {
                   <div className="text-right">
                     <p className="text-[10px] text-gray-500 uppercase tracking-wide">Current Stock</p>
                     <p className={cn('text-sm font-mono tabular-nums font-medium', p.stock < 0 ? 'text-red-400' : p.status === 'Out' ? 'text-red-400' : 'text-amber-400')}>
-                      {p.stock} {enablePacking ? p.unit || 'pcs' : 'pcs'}
+                      {formatDecimal(p.stock)} {enablePacking ? p.unit || 'pcs' : 'pcs'}
                     </p>
                   </div>
                 </div>
@@ -504,7 +504,7 @@ export const InventoryAnalyticsTestPage = () => {
               {profitPotentialRows.map((row) => (
                 <tr key={row.name} className="hover:bg-gray-800/30 transition-colors">
                   <td className="py-3 text-sm text-white font-medium">{row.name}</td>
-                  <td className="py-3 text-sm text-right font-mono tabular-nums text-gray-300">{row.stock}</td>
+                  <td className="py-3 text-sm text-right font-mono tabular-nums text-gray-300">{formatDecimal(row.stock)}</td>
                   <td className={cn('py-3 text-sm text-right font-mono tabular-nums', row.stockValue < 0 ? 'text-red-400' : 'text-gray-300')}>
                     {row.stockValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </td>

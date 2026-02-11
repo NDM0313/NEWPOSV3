@@ -15,7 +15,7 @@ import {
   DropdownMenuTrigger,
   DropdownMenuSeparator,
 } from "@/app/components/ui/dropdown-menu";
-import { cn } from "@/app/components/ui/utils";
+import { cn, formatDecimal } from "@/app/components/ui/utils";
 import { useNavigation } from '@/app/context/NavigationContext';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { useSales } from '@/app/context/SalesContext';
@@ -551,7 +551,7 @@ export const ProductsPage = () => {
               product.stock > 0 && product.stock <= product.lowStockThreshold && 'text-yellow-400',
               product.stock > product.lowStockThreshold && 'text-white'
             )}>
-              {product.stock}
+              {formatDecimal(product.stock)}
             </div>
             {getStockStatusBadge(product)}
           </div>

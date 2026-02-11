@@ -183,6 +183,8 @@ export interface WorkerPaymentParams {
   amount: number;
   paymentMethod: PaymentMethod;
   referenceNo: string;
+  /** When paying for a specific stage (Pay Now), caller handles ledger via markStageLedgerPaid - skip worker_ledger insert */
+  stageId?: string;
 }
 
 export interface ExpenseParams {
@@ -490,6 +492,12 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
         'Bank': 'Bank',
         'accounts receivable': 'Accounts Receivable',
         'Accounts Receivable': 'Accounts Receivable',
+        'accounts payable': 'Accounts Payable',
+        'Accounts Payable': 'Accounts Payable',
+        'worker payable': 'Worker Payable',
+        'Worker Payable': 'Worker Payable',
+        'cost of production': 'Cost of Production',
+        'Cost of Production': 'Cost of Production',
         'sales income': 'Sales Revenue',
         'Sales Income': 'Sales Revenue',
         'Sales Revenue': 'Sales Revenue',
@@ -512,10 +520,11 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
           accName.toLowerCase() === normalizedDebitAccount.toLowerCase() ||
           accName.toLowerCase().includes(normalizedDebitAccount.toLowerCase()) ||
           // Match by code for default accounts
-          (normalizedDebitAccount === 'Cash' && accCode === '1000') ||
-          (normalizedDebitAccount === 'Bank' && accCode === '1010') ||
-          (normalizedDebitAccount === 'Accounts Receivable' && accCode === '1100') ||
-          (normalizedDebitAccount === 'Accounts Payable' && accCode === '2000')
+          (normalizedDebitAccount === 'Cash' && (accCode === '1000' || accName.toLowerCase().includes('cash'))) ||
+          (normalizedDebitAccount === 'Bank' && (accCode === '1010' || accName.toLowerCase().includes('bank'))) ||
+          (normalizedDebitAccount === 'Accounts Receivable' && (accCode === '1100' || accName.toLowerCase().includes('receivable'))) ||
+          (normalizedDebitAccount === 'Accounts Payable' && (accCode === '2000' || accName.toLowerCase().includes('payable'))) ||
+          (normalizedDebitAccount === 'Worker Payable' && (accCode === '2010' || accName.toLowerCase().includes('worker')))
         );
       });
       creditAccountObj = accounts.find(acc => {
@@ -527,10 +536,11 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
           accName.toLowerCase() === normalizedCreditAccount.toLowerCase() ||
           accName.toLowerCase().includes(normalizedCreditAccount.toLowerCase()) ||
           // Match by code for default accounts
-          (normalizedCreditAccount === 'Cash' && accCode === '1000') ||
-          (normalizedCreditAccount === 'Bank' && accCode === '1010') ||
-          (normalizedCreditAccount === 'Accounts Receivable' && accCode === '1100') ||
-          (normalizedCreditAccount === 'Accounts Payable' && accCode === '2000')
+          (normalizedCreditAccount === 'Cash' && (accCode === '1000' || accName.toLowerCase().includes('cash'))) ||
+          (normalizedCreditAccount === 'Bank' && (accCode === '1010' || accName.toLowerCase().includes('bank'))) ||
+          (normalizedCreditAccount === 'Accounts Receivable' && (accCode === '1100' || accName.toLowerCase().includes('receivable'))) ||
+          (normalizedCreditAccount === 'Accounts Payable' && (accCode === '2000' || accName.toLowerCase().includes('payable'))) ||
+          (normalizedCreditAccount === 'Worker Payable' && (accCode === '2010' || accName.toLowerCase().includes('worker')))
         );
       });
 
@@ -578,6 +588,7 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
                 accName.toLowerCase() === normalizedDebitAccount.toLowerCase() ||
                 (normalizedDebitAccount === 'Cash' && (accCode === '1000' || accName.toLowerCase().includes('cash'))) ||
                 (normalizedDebitAccount === 'Accounts Payable' && (accCode === '2000' || accName.toLowerCase().includes('payable'))) ||
+                (normalizedDebitAccount === 'Worker Payable' && (accCode === '2010' || accName.toLowerCase().includes('worker'))) ||
                 (normalizedDebitAccount === 'Bank' && (accCode === '1010' || accName.toLowerCase().includes('bank'))) ||
                 (normalizedDebitAccount === 'Accounts Receivable' && (accCode === '1100' || accName.toLowerCase().includes('receivable')))
               );
@@ -592,7 +603,8 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
                 (normalizedCreditAccount === 'Cash' && (accCode === '1000' || accName.toLowerCase().includes('cash'))) ||
                 (normalizedCreditAccount === 'Bank' && (accCode === '1010' || accName.toLowerCase().includes('bank'))) ||
                 (normalizedCreditAccount === 'Accounts Receivable' && (accCode === '1100' || accName.toLowerCase().includes('receivable'))) ||
-                (normalizedCreditAccount === 'Accounts Payable' && (accCode === '2000' || accName.toLowerCase().includes('payable')))
+                (normalizedCreditAccount === 'Accounts Payable' && (accCode === '2000' || accName.toLowerCase().includes('payable'))) ||
+                (normalizedCreditAccount === 'Worker Payable' && (accCode === '2010' || accName.toLowerCase().includes('worker')))
               );
             });
             
@@ -619,6 +631,24 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
               ];
               const paymentId = entry.metadata?.paymentId;
               const savedEntry = await accountingService.createEntry(journalEntry, lines, paymentId);
+              if (entry.debitAccount === 'Worker Payable' && entry.source === 'Payment' && entry.metadata?.workerId && companyId && !entry.metadata?.stageId) {
+                try {
+                  const { studioProductionService } = await import('@/app/services/studioProductionService');
+                  await studioProductionService.recordAccountingPaymentToLedger({
+                    companyId,
+                    workerId: entry.metadata.workerId,
+                    amount: entry.amount,
+                    paymentReference: entry.referenceNo,
+                    journalEntryId: (savedEntry as any)?.id,
+                    notes: entry.description || `Payment to worker`,
+                  });
+                  if (typeof window !== 'undefined') {
+                    window.dispatchEvent(new CustomEvent('ledgerUpdated', { detail: { ledgerType: 'worker', entityId: entry.metadata.workerId } }));
+                  }
+                } catch (e) {
+                  console.warn('[AccountingContext] Worker ledger entry failed (journal saved):', e);
+                }
+              }
               const convertedEntry = convertFromJournalEntry(savedEntry as JournalEntryWithLines);
               setEntries(prev => [convertedEntry, ...prev]);
               updateBalances(entry.debitAccount, entry.creditAccount, entry.amount);
@@ -670,6 +700,26 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
       // Save to database
       const savedEntry = await accountingService.createEntry(journalEntry, lines);
       
+      // Worker Payable debit = worker payment → sync to worker_ledger_entries (use journal id as reference)
+      if (entry.debitAccount === 'Worker Payable' && entry.source === 'Payment' && entry.metadata?.workerId && companyId && !entry.metadata?.stageId) {
+        try {
+          const { studioProductionService } = await import('@/app/services/studioProductionService');
+          await studioProductionService.recordAccountingPaymentToLedger({
+            companyId,
+            workerId: entry.metadata.workerId,
+            amount: entry.amount,
+            paymentReference: entry.referenceNo,
+            journalEntryId: (savedEntry as any)?.id,
+            notes: entry.description || `Payment to worker`,
+          });
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('ledgerUpdated', { detail: { ledgerType: 'worker', entityId: entry.metadata.workerId } }));
+          }
+        } catch (e) {
+          console.warn('[AccountingContext] Worker ledger entry failed (journal saved):', e);
+        }
+      }
+
       // Convert and add to local state
       const convertedEntry = convertFromJournalEntry(savedEntry as JournalEntryWithLines);
       setEntries(prev => [convertedEntry, ...prev]);
@@ -1112,9 +1162,10 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
   };
 
   const recordWorkerPayment = async (params: WorkerPaymentParams): Promise<boolean> => {
-    const { workerName, workerId, amount, paymentMethod, referenceNo } = params;
+    const { workerName, workerId, amount, paymentMethod, referenceNo, stageId } = params;
 
-    return await createEntry({
+    // createEntry now syncs to worker_ledger_entries when debitAccount=Worker Payable (uses journal id)
+    const success = await createEntry({
       source: 'Payment',
       referenceNo: referenceNo,
       debitAccount: 'Worker Payable',
@@ -1122,8 +1173,9 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
       amount: amount,
       description: `Payment to worker ${workerName}`,
       module: 'Accounting',
-      metadata: { workerId, workerName }
+      metadata: { workerId, workerName, stageId }
     });
+    return success;
   };
 
   // ============================================

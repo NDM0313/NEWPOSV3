@@ -718,24 +718,14 @@ export const accountingService = {
         return [];
       }
 
-      // Prioritize code 2000 (used by journal entries), then 1100, then any AR account
-      let arAccount = allArAccounts.find(a => a.code === '2000') ||
-                      allArAccounts.find(a => a.code === '1100') ||
-                      allArAccounts[0];
-
-      const arAccountId = arAccount.id;
-      console.log('[ACCOUNTING SERVICE] getCustomerLedger - AR Account found:', {
-        id: arAccountId,
-        code: arAccount.code,
-        name: arAccount.name,
-        totalArAccounts: allArAccounts.length
-      });
+      // Use ALL AR account IDs so we don't miss lines (sales may write to 2000 or 1100)
+      const arAccountIds = allArAccounts.map((a: any) => a.id);
+      console.log('[ACCOUNTING SERVICE] getCustomerLedger - AR Account IDs:', arAccountIds.length, allArAccounts.map((a: any) => a.code));
 
       console.log('[ACCOUNTING SERVICE] getCustomerLedger - PHASE 1: Starting with customerId:', customerId);
 
-      // Get journal entry lines for Accounts Receivable account
-      // Filter by customer through linked sales or payments
-      let query = supabase
+      // Get journal entry lines for ALL Accounts Receivable accounts (2000, 1100, etc.)
+      const { data: lines, error } = await supabase
         .from('journal_entry_lines')
         .select(`
           *,
@@ -754,60 +744,48 @@ export const accountingService = {
             branch:branches(id, name, code)
           )
         `)
-        .eq('account_id', arAccountId)
+        .in('account_id', arAccountIds)
         .order('created_at', { ascending: true });
-
-      const { data: lines, error } = await query;
       
       console.log('[ACCOUNTING SERVICE] getCustomerLedger - PHASE 1: Total AR journal entry lines:', lines?.length || 0);
 
+      // RPC-first: journal error par bhi return [] mat karo – RPC + synthetic se ledger bharo
       if (error) {
-        console.error('[ACCOUNTING SERVICE] Error fetching customer ledger:', error);
-        return [];
+        console.error('[ACCOUNTING SERVICE] Error fetching journal lines (continuing with RPC/synthetic):', error);
       }
+      const linesToUse = lines || [];
 
-      if (!lines || lines.length === 0) {
-        return [];
-      }
-
-      // PHASE 2: Get ALL payments for this customer via sales
-      // Payments are linked to sales, not directly to contacts
-      // So we need to find payments where the linked sale has customer_id = customerId
-      console.log('[ACCOUNTING SERVICE] getCustomerLedger - PHASE 2: Fetching payments via sales', { customerId, companyId });
+      // PHASE 2: Get ALL sales and payments for this customer (RPC – always run so we can show ledger when no journal entries)
+      // Use RPC get_customer_ledger_sales so we get sales regardless of branch (SECURITY DEFINER bypasses RLS)
+      console.log('[ACCOUNTING SERVICE] getCustomerLedger - PHASE 2: Fetching sales via RPC', { customerId, companyId });
       
-      // First, get all sales for this customer
-      const { data: customerSales } = await supabase
-        .from('sales')
-        .select('id')
-        .eq('company_id', companyId)
-        .eq('customer_id', customerId);
+      const rpcSales = await supabase.rpc('get_customer_ledger_sales', {
+        p_company_id: companyId,
+        p_customer_id: customerId,
+        p_from_date: startDate || null,
+        p_to_date: endDate || null,
+      });
+      const customerSales = !rpcSales.error ? (rpcSales.data ?? []) : [];
+      const saleIds = customerSales.map((s: any) => s.id);
+      console.log('[ACCOUNTING SERVICE] getCustomerLedger - Customer sales found (RPC):', saleIds.length);
       
-      const saleIds = customerSales?.map(s => s.id) || [];
-      console.log('[ACCOUNTING SERVICE] getCustomerLedger - Customer sales found:', saleIds.length);
-      
-      // Then get payments linked to those sales (include notes and payment_account_id)
-      const { data: customerPayments } = await supabase
-        .from('payments')
-        .select('id, reference_number, payment_method, amount, payment_date, reference_id, reference_type, notes, payment_account_id')
-        .eq('company_id', companyId)
-        .eq('reference_type', 'sale')
-        .in('reference_id', saleIds.length > 0 ? saleIds : ['00000000-0000-0000-0000-000000000000']);
-      
-      // Fetch account names for payment accounts
-      const paymentAccountIds = customerPayments?.map(p => p.payment_account_id).filter(Boolean) || [];
-      const accountMap = new Map<string, string>();
-      if (paymentAccountIds.length > 0) {
-        const { data: accounts } = await supabase
-          .from('accounts')
-          .select('id, name')
-          .in('id', paymentAccountIds);
-        
-        accounts?.forEach(acc => {
-          accountMap.set(acc.id, acc.name);
+      // Get payments via RPC so we get them regardless of branch (SECURITY DEFINER bypasses RLS)
+      let customerPayments: any[] = [];
+      if (saleIds.length > 0) {
+        const rpcPay = await supabase.rpc('get_customer_ledger_payments', {
+          p_company_id: companyId,
+          p_sale_ids: saleIds,
+          p_from_date: startDate || null,
+          p_to_date: endDate || null,
         });
+        if (!rpcPay.error) customerPayments = rpcPay.data ?? [];
       }
+      // Normalize to include reference_type for downstream (RPC does not return it)
+      customerPayments = customerPayments.map((p: any) => ({ ...p, reference_type: 'sale' }));
+      
+      const accountMap = new Map<string, string>();
 
-      console.log('[ACCOUNTING SERVICE] getCustomerLedger - Payments found:', customerPayments?.length || 0);
+      console.log('[ACCOUNTING SERVICE] getCustomerLedger - Payments found (RPC):', customerPayments.length);
       if (customerPayments && customerPayments.length > 0) {
         console.log('[ACCOUNTING SERVICE] getCustomerLedger - Sample payment:', {
           id: customerPayments[0].id,
@@ -832,27 +810,18 @@ export const accountingService = {
       
       console.log('[ACCOUNTING SERVICE] getCustomerLedger - Payments found:', paymentIds.length);
 
-      // Get ALL sales for this customer (needed for matching journal entries)
-      console.log('[ACCOUNTING SERVICE] getCustomerLedger - Fetching customer sales', { customerId, companyId });
-      const { data: allCustomerSales } = await supabase
-        .from('sales')
-        .select('id, invoice_no, customer_id, customer_name')
-        .eq('company_id', companyId)
-        .eq('customer_id', customerId);
-      
+      // Sales already from RPC above (customerSales). Build salesMap for journal entry matching.
       const salesMap = new Map();
-      if (allCustomerSales) {
-        allCustomerSales.forEach((sale: any) => {
-          salesMap.set(sale.id, sale);
-        });
-        console.log('[ACCOUNTING SERVICE] getCustomerLedger - Customer sales found:', allCustomerSales.length);
-      }
+      customerSales.forEach((sale: any) => {
+        salesMap.set(sale.id, { id: sale.id, invoice_no: sale.invoice_no, customer_id: customerId });
+      });
+      console.log('[ACCOUNTING SERVICE] getCustomerLedger - Sales map size:', salesMap.size);
       
 
       // PHASE 3: Filter by customer ID (from sales.customer_id OR payments via sales)
       // MUST include BOTH sales (debit) AND payments (credit) entries
       console.log('[ACCOUNTING SERVICE] getCustomerLedger - PHASE 3: Filtering lines', {
-        totalLines: lines.length,
+        totalLines: linesToUse.length,
         paymentIds: paymentIds.length,
         customerSalesCount: salesMap.size,
         customerId,
@@ -863,7 +832,7 @@ export const accountingService = {
       let paymentMatchCount = 0;
       let noMatchCount = 0;
 
-      const customerLines = lines.filter((line: any) => {
+      const customerLines = linesToUse.filter((line: any) => {
         const entry = line.journal_entry;
         if (!entry) return false;
 
@@ -934,7 +903,7 @@ export const accountingService = {
         paymentMatches: paymentMatchCount,
         noMatches: noMatchCount,
         totalCustomerLines: customerLines.length,
-        sampleNoMatches: lines.filter((l: any) => {
+        sampleNoMatches: linesToUse.filter((l: any) => {
           const e = l.journal_entry;
           if (!e) return false;
           if (e.reference_type === 'sale' && e.reference_id && !salesMap.get(e.reference_id)) return true;
@@ -1128,6 +1097,138 @@ export const accountingService = {
           branch_name: branchName,
         };
       });
+
+      // Fallback: no journal entries but we have sales/payments (e.g. studio sales) – build ledger from RPC data
+      if (ledgerEntriesFromRange.length === 0 && (customerSales.length > 0 || customerPayments.length > 0)) {
+        const items: { date: string; reference_number: string; description: string; debit: number; credit: number; sale_id?: string; payment_id?: string; source_module: string; document_type: string }[] = [];
+        customerSales.forEach((s: any) => {
+          const d = (s.invoice_date || '').toString();
+          if (startDate && d < startDate) return;
+          if (endDate && d > endDate) return;
+          items.push({
+            date: d,
+            reference_number: (s.invoice_no || `SALE-${s.id?.slice(0, 8)}`).toString(),
+            description: 'Sale',
+            debit: Number(s.total) || 0,
+            credit: 0,
+            sale_id: s.id,
+            source_module: 'Sales',
+            document_type: (s.invoice_no || '').toString().toUpperCase().startsWith('STD-') || (s.invoice_no || '').toString().toUpperCase().startsWith('ST-') ? 'Studio Sale' : 'Sale Invoice',
+          });
+        });
+        customerPayments.forEach((p: any) => {
+          const d = (p.payment_date || '').toString();
+          if (startDate && d < startDate) return;
+          if (endDate && d > endDate) return;
+          items.push({
+            date: d,
+            reference_number: (p.reference_number || `PAY-${p.id?.slice(0, 8)}`).toString(),
+            description: 'Payment',
+            debit: 0,
+            credit: Number(p.amount) || 0,
+            payment_id: p.id,
+            source_module: 'Payment',
+            document_type: 'Payment',
+          });
+        });
+        items.sort((a, b) => a.date.localeCompare(b.date) || 0);
+        let runBal = 0;
+        const syntheticEntries: AccountLedgerEntry[] = items.map((item) => {
+          runBal += item.debit - item.credit;
+          return {
+            date: item.date,
+            reference_number: item.reference_number,
+            entry_no: null,
+            description: item.description,
+            debit: item.debit,
+            credit: item.credit,
+            running_balance: runBal,
+            source_module: item.source_module,
+            document_type: item.document_type,
+            journal_entry_id: '',
+            account_name: '',
+            notes: '',
+            sale_id: item.sale_id,
+            payment_id: item.payment_id,
+          };
+        });
+        const withOpening: AccountLedgerEntry[] = startDate
+          ? [
+              { date: startDate, reference_number: '-', entry_no: null, description: 'Opening Balance', debit: 0, credit: 0, running_balance: 0, source_module: 'Accounting', journal_entry_id: '', document_type: 'Opening Balance', account_name: '', notes: '' },
+              ...syntheticEntries,
+            ]
+          : syntheticEntries;
+        console.log('[ACCOUNTING SERVICE] getCustomerLedger - Using synthetic ledger from sales/payments (no journal entries):', syntheticEntries.length);
+        return withOpening;
+      }
+
+      // MERGE: Add any sales/payments that have no journal line (e.g. new sales, or journal failed)
+      const saleIdsInJournal = new Set((ledgerEntriesFromRange.map((e: AccountLedgerEntry) => e.sale_id).filter(Boolean)) as string[]);
+      const paymentIdsInJournal = new Set((ledgerEntriesFromRange.map((e: AccountLedgerEntry) => e.payment_id).filter(Boolean)) as string[]);
+      const missingSales = customerSales.filter((s: any) => !saleIdsInJournal.has(s.id));
+      const missingPayments = customerPayments.filter((p: any) => !paymentIdsInJournal.has(p.id));
+      if (missingSales.length > 0 || missingPayments.length > 0) {
+        const mergeItems: { date: string; reference_number: string; description: string; debit: number; credit: number; sale_id?: string; payment_id?: string; source_module: string; document_type: string }[] = [];
+        missingSales.forEach((s: any) => {
+          const d = (s.invoice_date || '').toString();
+          if (startDate && d < startDate) return;
+          if (endDate && d > endDate) return;
+          mergeItems.push({
+            date: d,
+            reference_number: (s.invoice_no || `SALE-${s.id?.slice(0, 8)}`).toString(),
+            description: 'Sale',
+            debit: Number(s.total) || 0,
+            credit: 0,
+            sale_id: s.id,
+            source_module: 'Sales',
+            document_type: (s.invoice_no || '').toString().toUpperCase().startsWith('STD-') || (s.invoice_no || '').toString().toUpperCase().startsWith('ST-') ? 'Studio Sale' : 'Sale Invoice',
+          });
+        });
+        missingPayments.forEach((p: any) => {
+          const d = (p.payment_date || '').toString();
+          if (startDate && d < startDate) return;
+          if (endDate && d > endDate) return;
+          mergeItems.push({
+            date: d,
+            reference_number: (p.reference_number || `PAY-${p.id?.slice(0, 8)}`).toString(),
+            description: 'Payment',
+            debit: 0,
+            credit: Number(p.amount) || 0,
+            payment_id: p.id,
+            source_module: 'Payment',
+            document_type: 'Payment',
+          });
+        });
+        if (mergeItems.length > 0) {
+          const syntheticMissing: AccountLedgerEntry[] = mergeItems.map((item) => ({
+            date: item.date,
+            reference_number: item.reference_number,
+            entry_no: null,
+            description: item.description,
+            debit: item.debit,
+            credit: item.credit,
+            running_balance: 0,
+            source_module: item.source_module,
+            document_type: item.document_type,
+            journal_entry_id: '',
+            account_name: '',
+            notes: '',
+            sale_id: item.sale_id,
+            payment_id: item.payment_id,
+          }));
+          const combined = [...ledgerEntriesFromRange, ...syntheticMissing].sort((a, b) => a.date.localeCompare(b.date) || 0);
+          let runBal = openingBalance;
+          combined.forEach((e) => {
+            runBal += (e.debit || 0) - (e.credit || 0);
+            e.running_balance = runBal;
+          });
+          console.log('[ACCOUNTING SERVICE] getCustomerLedger - Merged', syntheticMissing.length, 'missing sales/payments into ledger');
+          const ledgerEntries: AccountLedgerEntry[] = startDate
+            ? [{ date: startDate, reference_number: '-', entry_no: null, description: 'Opening Balance', debit: 0, credit: 0, running_balance: openingBalance, source_module: 'Accounting', journal_entry_id: '', document_type: 'Opening Balance', account_name: '', notes: '' }, ...combined]
+            : combined;
+          return ledgerEntries;
+        }
+      }
 
       // When date range is applied, prepend opening balance row so UI/PDF/Print show it and totals are correct
       const ledgerEntries: AccountLedgerEntry[] = startDate

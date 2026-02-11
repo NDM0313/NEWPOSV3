@@ -7,7 +7,7 @@ import {
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Badge } from "../ui/badge";
-import { cn, formatBoxesPieces } from "../ui/utils";
+import { cn, formatBoxesPieces, formatDecimal } from "../ui/utils";
 import { useSupabase } from '../../context/SupabaseContext';
 import { useSettings } from '../../context/SettingsContext';
 import { productService } from '../../services/productService';
@@ -692,7 +692,7 @@ export const InventoryDashboardNew = () => {
                         case 'stockQty':
                           return (
                             <td key={key} className="px-4 py-2 text-center">
-                              <span className={cn("font-bold font-mono text-sm tabular-nums", product.stock < 0 ? "text-red-400" : product.status === 'Out' || product.status === 'Low' ? "text-red-400" : "text-white")}>{product.stock}</span>
+                              <span className={cn("font-bold font-mono text-sm tabular-nums", product.stock < 0 ? "text-red-400" : product.status === 'Out' || product.status === 'Low' ? "text-red-400" : "text-white")}>{formatDecimal(product.stock)}</span>
                             </td>
                           );
                         case 'boxes':
@@ -700,7 +700,7 @@ export const InventoryDashboardNew = () => {
                         case 'pieces':
                           return <td key={key} className="px-4 py-2 text-center text-gray-400 text-sm tabular-nums">{formatBoxesPieces(product.pieces)}</td>;
                         case 'unit':
-                          return <td key={key} className="px-4 py-2 text-center text-gray-400 text-sm font-mono tabular-nums">{product.stock}</td>;
+                          return <td key={key} className="px-4 py-2 text-center text-gray-400 text-sm font-mono tabular-nums">{formatDecimal(product.stock)}</td>;
                         case 'avgCost':
                           return (
                             <td key={key} className={cn('px-4 py-2 text-right text-sm font-medium tabular-nums', product.avgCost < 0 ? 'text-red-400' : 'text-green-400')}>
@@ -716,7 +716,7 @@ export const InventoryDashboardNew = () => {
                         case 'stockValue':
                           return (
                             <td key={key} className={cn('px-4 py-2 text-right text-sm tabular-nums', product.stockValue < 0 ? 'text-red-400' : 'text-gray-300')}>
-                              {product.stockValue.toLocaleString()}
+                              {formatDecimal(product.stockValue)}
                             </td>
                           );
                         case 'movement':
@@ -785,13 +785,13 @@ export const InventoryDashboardNew = () => {
                             const vStock = v.stock ?? 0;
                             return (
                               <td key={key} className="px-4 py-1.5 text-center">
-                                <span className={cn("font-mono text-xs tabular-nums", vStock < 0 ? "text-red-400" : "text-gray-300")}>{vStock}</span>
+                                <span className={cn("font-mono text-xs tabular-nums", vStock < 0 ? "text-red-400" : "text-gray-300")}>{formatDecimal(vStock)}</span>
                               </td>
                             );
                           }
                           if (key === 'boxes') return <td key={key} className="px-4 py-1.5 text-center text-gray-500 text-xs font-mono tabular-nums">{formatBoxesPieces((v as any).boxes)}</td>;
                           if (key === 'pieces') return <td key={key} className="px-4 py-1.5 text-center text-gray-500 text-xs font-mono tabular-nums">{formatBoxesPieces((v as any).pieces)}</td>;
-                          if (key === 'unit') return <td key={key} className="px-4 py-1.5 text-center text-gray-500 text-xs font-mono tabular-nums">{v.stock ?? 0}</td>;
+                          if (key === 'unit') return <td key={key} className="px-4 py-1.5 text-center text-gray-500 text-xs font-mono tabular-nums">{formatDecimal(v.stock ?? 0)}</td>;
                           if (key === 'stockValue') {
                             const val = (v.stock ?? 0) * product.sellingPrice;
                             return (

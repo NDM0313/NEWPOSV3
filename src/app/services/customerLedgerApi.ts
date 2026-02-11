@@ -143,7 +143,7 @@ export const customerLedgerAPI = {
     } else {
       let salesQuery = supabase
         .from('sales')
-        .select('id, total, paid_amount, due_amount, payment_status, invoice_date')
+        .select('id, invoice_no, total, paid_amount, due_amount, payment_status, invoice_date')
         .eq('company_id', companyId)
         .eq('customer_id', cId);
       if (fromDate) salesQuery = salesQuery.gte('invoice_date', fromDate);
@@ -155,7 +155,61 @@ export const customerLedgerAPI = {
 
     const invoices = sales || [];
     const totalInvoices = invoices.length;
-    const totalInvoiceAmount = invoices.reduce((sum, s) => sum + (s.total || 0), 0);
+
+    // Ensure invoice_no for studio detection (RPC may not return it)
+    const missingInvoiceNo = invoices.some((s: any) => !s.invoice_no);
+    if (missingInvoiceNo && invoices.length > 0) {
+      const { data: invData } = await supabase
+        .from('sales')
+        .select('id, invoice_no')
+        .in('id', invoices.map((s: any) => s.id));
+      const invMap = new Map(((invData || []) as any[]).map((r: any) => [r.id, r.invoice_no]));
+      invoices.forEach((s: any) => { if (!s.invoice_no && invMap.has(s.id)) s.invoice_no = invMap.get(s.id); });
+    }
+
+    // Studio sales: add production stage costs (same as getTransactions/getInvoices)
+    const studioSaleIds = invoices
+      .filter((s: any) => {
+        const inv = (s.invoice_no || '').toString().trim().toUpperCase();
+        return inv.startsWith('STD-') || inv.startsWith('ST-');
+      })
+      .map((s: any) => s.id);
+    const studioChargesBySaleId = new Map<string, number>();
+    if (studioSaleIds.length > 0) {
+      try {
+        const { data: productions } = await supabase
+          .from('studio_productions')
+          .select('id, sale_id')
+          .in('sale_id', studioSaleIds);
+        const prodIds = (productions || []).map((p: any) => p.id).filter(Boolean);
+        if (prodIds.length > 0) {
+          const { data: stages } = await supabase
+            .from('studio_production_stages')
+            .select('production_id, cost')
+            .in('production_id', prodIds);
+          const prodBySale = new Map<string, string>();
+          (productions || []).forEach((p: any) => { if (p.sale_id) prodBySale.set(p.sale_id, p.id); });
+          const chargesByProd = new Map<string, number>();
+          (stages || []).forEach((s: any) => {
+            const prev = chargesByProd.get(s.production_id) || 0;
+            chargesByProd.set(s.production_id, prev + (Number(s.cost) || 0));
+          });
+          prodBySale.forEach((prodId, saleId) => {
+            const ch = chargesByProd.get(prodId) || 0;
+            if (ch > 0) studioChargesBySaleId.set(saleId, ch);
+          });
+        }
+      } catch (e) {
+        if (process.env.NODE_ENV !== 'production') console.warn('[LEDGER] getLedgerSummary studio charges failed:', e);
+      }
+    }
+
+    const totalInvoiceAmount = invoices.reduce((sum, s) => {
+      const base = Number(s.total) || 0;
+      const inv = (s.invoice_no || '').toString().trim().toUpperCase();
+      const studioCharges = (inv.startsWith('STD-') || inv.startsWith('ST-')) ? (studioChargesBySaleId.get(s.id) || 0) : 0;
+      return sum + base + studioCharges;
+    }, 0);
     const totalPaymentReceived = invoices.reduce((sum, s) => sum + (s.paid_amount || 0), 0);
     // Sale returns (final) in date range – CREDIT, reduce customer balance
     let returnsInRange = 0;
@@ -165,10 +219,30 @@ export const customerLedgerAPI = {
     const { data: rangeReturns } = await returnsQuery;
     const saleReturnIdsInRange = (rangeReturns || []).map((r: any) => r.id);
     returnsInRange = (rangeReturns || []).reduce((sum: number, r: any) => sum + (Number(r.total) || 0), 0);
-    const pendingAmount = Math.max(0, invoices.reduce((sum, s) => sum + (s.due_amount || 0), 0) - returnsInRange);
-    const fullyPaid = invoices.filter(s => s.payment_status === 'paid').length;
-    const partiallyPaid = invoices.filter(s => s.payment_status === 'partial').length;
-    const unpaid = invoices.filter(s => s.payment_status === 'unpaid').length;
+    const pendingAmount = Math.max(0, invoices.reduce((sum, s) => {
+      const base = Number(s.total) || 0;
+      const paid = Number(s.paid_amount) || 0;
+      const inv = (s.invoice_no || '').toString().trim().toUpperCase();
+      const studioCharges = (inv.startsWith('STD-') || inv.startsWith('ST-')) ? (studioChargesBySaleId.get(s.id) || 0) : 0;
+      const effectiveTotal = base + studioCharges;
+      return sum + Math.max(0, effectiveTotal - paid);
+    }, 0) - returnsInRange);
+    const fullyPaid = invoices.filter(s => {
+      const base = Number(s.total) || 0;
+      const paid = Number(s.paid_amount) || 0;
+      const inv = (s.invoice_no || '').toString().trim().toUpperCase();
+      const studioCharges = (inv.startsWith('STD-') || inv.startsWith('ST-')) ? (studioChargesBySaleId.get(s.id) || 0) : 0;
+      return paid >= base + studioCharges;
+    }).length;
+    const partiallyPaid = invoices.filter(s => {
+      const base = Number(s.total) || 0;
+      const paid = Number(s.paid_amount) || 0;
+      const inv = (s.invoice_no || '').toString().trim().toUpperCase();
+      const studioCharges = (inv.startsWith('STD-') || inv.startsWith('ST-')) ? (studioChargesBySaleId.get(s.id) || 0) : 0;
+      const effectiveTotal = base + studioCharges;
+      return paid > 0 && paid < effectiveTotal;
+    }).length;
+    const unpaid = totalInvoices - fullyPaid - partiallyPaid;
 
     // Calculate opening balance (sales - paid - sale returns before fromDate)
     let openingBalance = 0;
@@ -421,10 +495,52 @@ export const customerLedgerAPI = {
     // Combine and format transactions
     const transactions: Transaction[] = [];
 
+    // Studio sales: fetch production stage costs to add to sale total (sale.total + worker costs)
+    const studioSaleIds = (sales || [])
+      .filter((s: any) => {
+        const inv = (s.invoice_no || '').toString().trim().toUpperCase();
+        return inv.startsWith('STD-') || inv.startsWith('ST-');
+      })
+      .map((s: any) => s.id);
+    const studioChargesBySaleId = new Map<string, number>();
+    if (studioSaleIds.length > 0) {
+      try {
+        const { data: productions } = await supabase
+          .from('studio_productions')
+          .select('id, sale_id')
+          .in('sale_id', studioSaleIds);
+        const prodIds = (productions || []).map((p: any) => p.id).filter(Boolean);
+        if (prodIds.length > 0) {
+          const { data: stages } = await supabase
+            .from('studio_production_stages')
+            .select('production_id, cost')
+            .in('production_id', prodIds);
+          const prodBySale = new Map<string, string>();
+          (productions || []).forEach((p: any) => {
+            if (p.sale_id) prodBySale.set(p.sale_id, p.id);
+          });
+          const chargesByProd = new Map<string, number>();
+          (stages || []).forEach((s: any) => {
+            const prev = chargesByProd.get(s.production_id) || 0;
+            chargesByProd.set(s.production_id, prev + (Number(s.cost) || 0));
+          });
+          prodBySale.forEach((prodId, saleId) => {
+            const ch = chargesByProd.get(prodId) || 0;
+            if (ch > 0) studioChargesBySaleId.set(saleId, ch);
+          });
+        }
+      } catch (e) {
+        if (process.env.NODE_ENV !== 'production') console.warn('[LEDGER] Studio charges fetch failed:', e);
+      }
+    }
+
     // Add sales as debit transactions (regular + studio sales from sales table)
     (sales || []).forEach((sale: any) => {
       const inv = (sale.invoice_no || '').toString().trim().toUpperCase();
       const isStudioSale = inv.startsWith('STD-') || inv.startsWith('ST-');
+      const baseTotal = Number(sale.total) || 0;
+      const studioCharges = studioChargesBySaleId.get(sale.id) || 0;
+      const debitAmount = isStudioSale ? baseTotal + studioCharges : baseTotal;
       transactions.push({
         id: sale.id,
         date: sale.invoice_date,
@@ -433,7 +549,7 @@ export const customerLedgerAPI = {
         description: isStudioSale ? `Studio Sale ${sale.invoice_no || ''}` : `Sale Invoice ${sale.invoice_no}`,
         paymentAccount: '',
         notes: '',
-        debit: sale.total || 0,
+        debit: debitAmount,
         credit: 0,
         runningBalance: 0, // Will be calculated
         linkedInvoices: [sale.invoice_no],
@@ -637,26 +753,74 @@ export const customerLedgerAPI = {
       query = query.lte('invoice_date', toDate);
     }
 
-    const { data, error } = await query.order('invoice_date', { ascending: false });
+    const { data: salesData, error } = await query.order('invoice_date', { ascending: false });
 
     if (error) throw error;
+    const sales = salesData || [];
 
-    return (data || []).map((sale: any) => ({
-      invoiceNo: sale.invoice_no || '',
-      date: sale.invoice_date,
-      invoiceTotal: sale.total || 0,
-      items: (sale.items || []).map((item: any) => ({
-        itemName: item.product_name || '',
-        qty: item.quantity || 0,
-        rate: item.unit_price || 0,
-        lineTotal: item.total || 0,
-      })),
-      status: sale.payment_status === 'paid' ? 'Fully Paid' as const :
-              sale.payment_status === 'partial' ? 'Partially Paid' as const :
-              'Unpaid' as const,
-      paidAmount: sale.paid_amount || 0,
-      pendingAmount: sale.due_amount || 0,
-    }));
+    // Studio sales: add production stage costs to invoice total (same as getTransactions)
+    const studioSaleIds = sales
+      .filter((s: any) => {
+        const inv = (s.invoice_no || '').toString().trim().toUpperCase();
+        return inv.startsWith('STD-') || inv.startsWith('ST-');
+      })
+      .map((s: any) => s.id);
+    const studioChargesBySaleId = new Map<string, number>();
+    if (studioSaleIds.length > 0) {
+      try {
+        const { data: productions } = await supabase
+          .from('studio_productions')
+          .select('id, sale_id')
+          .in('sale_id', studioSaleIds);
+        const prodIds = (productions || []).map((p: any) => p.id).filter(Boolean);
+        if (prodIds.length > 0) {
+          const { data: stages } = await supabase
+            .from('studio_production_stages')
+            .select('production_id, cost')
+            .in('production_id', prodIds);
+          const prodBySale = new Map<string, string>();
+          (productions || []).forEach((p: any) => {
+            if (p.sale_id) prodBySale.set(p.sale_id, p.id);
+          });
+          const chargesByProd = new Map<string, number>();
+          (stages || []).forEach((s: any) => {
+            const prev = chargesByProd.get(s.production_id) || 0;
+            chargesByProd.set(s.production_id, prev + (Number(s.cost) || 0));
+          });
+          prodBySale.forEach((prodId, saleId) => {
+            const ch = chargesByProd.get(prodId) || 0;
+            if (ch > 0) studioChargesBySaleId.set(saleId, ch);
+          });
+        }
+      } catch (e) {
+        if (process.env.NODE_ENV !== 'production') console.warn('[LEDGER] getInvoices studio charges failed:', e);
+      }
+    }
+
+    return sales.map((sale: any) => {
+      const inv = (sale.invoice_no || '').toString().trim().toUpperCase();
+      const isStudioSale = inv.startsWith('STD-') || inv.startsWith('ST-');
+      const baseTotal = Number(sale.total) || 0;
+      const studioCharges = studioChargesBySaleId.get(sale.id) || 0;
+      const invoiceTotal = isStudioSale ? baseTotal + studioCharges : baseTotal;
+      const paidAmount = Number(sale.paid_amount) || 0;
+      const pendingAmount = Math.max(0, invoiceTotal - paidAmount);
+      const status = pendingAmount <= 0 ? 'Fully Paid' as const : paidAmount > 0 ? 'Partially Paid' as const : 'Unpaid' as const;
+      return {
+        invoiceNo: sale.invoice_no || '',
+        date: sale.invoice_date,
+        invoiceTotal,
+        items: (sale.items || []).map((item: any) => ({
+          itemName: item.product_name || '',
+          qty: item.quantity || 0,
+          rate: item.unit_price || 0,
+          lineTotal: item.total || 0,
+        })),
+        status,
+        paidAmount,
+        pendingAmount,
+      };
+    });
   },
 
   /**

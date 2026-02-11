@@ -858,6 +858,9 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
       
       // 🔒 CRITICAL FIX: Dispatch event to refresh inventory (like Sale module)
       window.dispatchEvent(new CustomEvent('purchaseSaved', { detail: { purchaseId: newPurchase.id } }));
+      if (newPurchase.supplier) {
+        window.dispatchEvent(new CustomEvent('ledgerUpdated', { detail: { ledgerType: 'supplier', entityId: newPurchase.supplier } }));
+      }
       
       return newPurchase;
     } catch (error: any) {
@@ -1349,6 +1352,7 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
               referenceId: purchaseId,
               remarks: `Payment for ${purchase.purchaseNo}`,
             });
+            window.dispatchEvent(new CustomEvent('ledgerUpdated', { detail: { ledgerType: 'supplier', entityId: purchase.supplier } }));
           }
         } catch (e) {
           console.warn('[PurchaseContext] Supplier ledger (payment) failed:', e);

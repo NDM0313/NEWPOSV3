@@ -1,69 +1,117 @@
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
+import { APP_TIMEZONE } from "@/lib/appConfig";
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
 /**
- * Format date with timezone offset to preserve local time
- * This ensures the time selected by user is saved correctly regardless of server timezone
+ * Format date in app timezone (Pakistan Asia/Karachi = UTC+5)
+ * Sale/Purchase save karte waqt yahi use karein – browser timezone par depend nahi
  * @param date - Date object
- * @returns ISO string with timezone offset (e.g., "2026-02-01T05:00:00+05:00")
+ * @returns ISO string with +05:00 (e.g., "2026-02-01T10:00:00+05:00")
  */
 export function formatDateWithTimezone(date: Date): string {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  const hours = String(date.getHours()).padStart(2, '0');
-  const minutes = String(date.getMinutes()).padStart(2, '0');
-  const seconds = String(date.getSeconds()).padStart(2, '0');
-  
-  // Get timezone offset in format +HH:mm or -HH:mm
-  const offset = -date.getTimezoneOffset();
-  const offsetHours = String(Math.floor(Math.abs(offset) / 60)).padStart(2, '0');
-  const offsetMinutes = String(Math.abs(offset) % 60).padStart(2, '0');
-  const offsetSign = offset >= 0 ? '+' : '-';
-  
-  return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}${offsetSign}${offsetHours}:${offsetMinutes}`;
+  const formatter = new Intl.DateTimeFormat('en-CA', {
+    timeZone: APP_TIMEZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  });
+  const parts = formatter.formatToParts(date);
+  const get = (type: string) => parts.find((p) => p.type === type)?.value ?? '00';
+  const year = get('year');
+  const month = get('month');
+  const day = get('day');
+  const hour = get('hour');
+  const minute = get('minute');
+  const second = get('second');
+  return `${year}-${month}-${day}T${hour}:${minute}:${second}+05:00`;
 }
 
 /**
- * Format date to long format: "15 Jan 2024"
- * @param dateString - Date string in ISO format or parseable format
- * @returns Formatted date string (e.g., "15 Jan 2024")
+ * Format date to long format: "15 Jan 2024" (app timezone = Pakistan)
  */
 export function formatLongDate(dateString: string | Date): string {
   const date = typeof dateString === 'string' ? new Date(dateString) : dateString;
-  
   return date.toLocaleDateString('en-GB', {
     day: '2-digit',
     month: 'short',
-    year: 'numeric'
+    year: 'numeric',
+    timeZone: APP_TIMEZONE,
   });
 }
 
 /**
- * Format date and time: "15 Jan 2024" with "01:38 AM" below
- * @param dateString - Date string in ISO format or parseable format
- * @returns Object with date and time strings
+ * Format date and time in app timezone (Pakistan): "15 Jan 2024" + "01:38 AM"
  */
 export function formatDateAndTime(dateString: string | Date): { date: string; time: string } {
   const date = typeof dateString === 'string' ? new Date(dateString) : dateString;
-  
   return {
     date: date.toLocaleDateString('en-GB', {
       day: '2-digit',
       month: 'short',
-      year: 'numeric'
+      year: 'numeric',
+      timeZone: APP_TIMEZONE,
     }),
     time: date.toLocaleTimeString('en-US', {
       hour: '2-digit',
       minute: '2-digit',
       hour12: true,
-      timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone // Use local timezone
-    })
+      timeZone: APP_TIMEZONE,
+    }),
   };
+}
+
+/**
+ * Get "today" (midnight) in app timezone (Pakistan)
+ */
+export function getTodayInAppTimezone(): Date {
+  const formatter = new Intl.DateTimeFormat('en-CA', {
+    timeZone: APP_TIMEZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  });
+  const parts = formatter.formatToParts(new Date());
+  const get = (type: string) => parts.find((p) => p.type === type)?.value ?? '01';
+  return new Date(`${get('year')}-${get('month')}-${get('day')}T00:00:00+05:00`);
+}
+
+/**
+ * Today as YYYY-MM-DD in app timezone (Pakistan)
+ */
+export function getTodayYYYYMMDD(): string {
+  const formatter = new Intl.DateTimeFormat('en-CA', {
+    timeZone: APP_TIMEZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  });
+  const parts = formatter.formatToParts(new Date());
+  const get = (type: string) => parts.find((p) => p.type === type)?.value ?? '01';
+  return `${get('year')}-${get('month')}-${get('day')}`;
+}
+
+/**
+ * Format a Date to YYYY-MM-DD in app timezone (Pakistan).
+ * Use when building date ranges for presets (Today, Yesterday, Last 30 Days, etc.)
+ */
+export function formatDateToYYYYMMDD(date: Date): string {
+  const formatter = new Intl.DateTimeFormat('en-CA', {
+    timeZone: APP_TIMEZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  });
+  const parts = formatter.formatToParts(date);
+  const get = (type: string) => parts.find((p) => p.type === type)?.value ?? '01';
+  return `${get('year')}-${get('month')}-${get('day')}`;
 }
 
 /**
@@ -74,4 +122,14 @@ export function formatBoxesPieces(value: number | null | undefined): string {
   const n = Number(value);
   if (Number.isNaN(n)) return '0';
   return Math.round(n).toLocaleString();
+}
+
+/**
+ * Format numeric values for display — max 2 decimal places system-wide.
+ * Use for stock, quantities, amounts, meters, etc. to avoid floating-point noise (e.g. 265.2999999999997).
+ */
+export function formatDecimal(value: number | null | undefined, maxFractionDigits: number = 2): string {
+  const n = Number(value);
+  if (Number.isNaN(n)) return '0.00';
+  return n.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: maxFractionDigits });
 }

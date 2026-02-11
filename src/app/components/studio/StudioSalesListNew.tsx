@@ -7,7 +7,11 @@ import {
   Filter,
   Loader2,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  Eye,
+  Edit2,
+  Package,
+  Printer
 } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
@@ -25,6 +29,8 @@ import { useSupabase } from '@/app/context/SupabaseContext';
 import { studioService } from '@/app/services/studioService';
 import { saleService } from '@/app/services/saleService';
 import { studioProductionService } from '@/app/services/studioProductionService';
+import { convertFromSupabaseSale } from '@/app/context/SalesContext';
+import { ViewSaleDetailsDrawer } from '@/app/components/sales/ViewSaleDetailsDrawer';
 import { exportToCSV, exportToExcel, exportToPDF, type ExportData } from '@/app/utils/exportUtils';
 import { toast } from 'sonner';
 
@@ -58,7 +64,7 @@ interface StudioSale {
 }
 
 export const StudioSalesListNew = () => {
-  const { setCurrentView, setSelectedStudioSaleId } = useNavigation();
+  const { setCurrentView, setSelectedStudioSaleId, openDrawer } = useNavigation();
   const { companyId, branchId } = useSupabase();
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState<'all' | ProductionStatus>('all');
@@ -67,6 +73,8 @@ export const StudioSalesListNew = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [sales, setSales] = useState<StudioSale[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
+  const [printDrawerSaleId, setPrintDrawerSaleId] = useState<string | null>(null);
+  const [editLoading, setEditLoading] = useState<string | null>(null);
 
   // Convert Supabase StudioOrder to StudioSale interface
   const convertFromSupabaseOrder = useCallback((order: any): StudioSale => {
@@ -267,6 +275,28 @@ export const StudioSalesListNew = () => {
     setCurrentView('studio-sale-detail-new');
   };
 
+  const handleEdit = async (sale: StudioSale) => {
+    if (sale.source !== 'sale') {
+      toast.error('Studio orders cannot be edited from here. Open Production to manage.');
+      return;
+    }
+    setEditLoading(sale.id);
+    try {
+      const full = await saleService.getSaleById(sale.id);
+      if (full?.hasReturn) {
+        toast.error('Cannot edit: This sale has a return.');
+        return;
+      }
+      const saleWithItems = convertFromSupabaseSale(full);
+      openDrawer?.('edit-sale', undefined, { sale: saleWithItems });
+    } catch (e: any) {
+      console.error('[StudioSalesList] Error loading sale for edit:', e);
+      toast.error(e?.message || 'Could not load sale for edit');
+    } finally {
+      setEditLoading(null);
+    }
+  };
+
   // Status badge color
   const getStatusBadge = (status: ProductionStatus) => {
     switch (status) {
@@ -342,6 +372,15 @@ export const StudioSalesListNew = () => {
           <h1 className="text-2xl font-bold text-white">Studio Sales</h1>
           <p className="text-sm text-gray-400 mt-1">Manage fabric processing & production workflow</p>
         </div>
+        <Button
+          variant="outline"
+          size="sm"
+          className="border-gray-700 text-gray-300 hover:bg-gray-800 hover:text-white shrink-0"
+          onClick={() => setCurrentView('studio-pipeline')}
+        >
+          <Package size={16} className="mr-2" />
+          Production Pipeline
+        </Button>
       </div>
 
       {/* GLOBAL SEARCH & ACTION BAR */}
@@ -558,7 +597,7 @@ export const StudioSalesListNew = () => {
                             <MoreVertical size={16} />
                           </Button>
                         </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" className="bg-gray-900 border-gray-700">
+                        <DropdownMenuContent align="end" className="bg-gray-900 border-gray-700 min-w-[200px]">
                           <DropdownMenuItem 
                             onClick={(e) => {
                               e.stopPropagation();
@@ -566,8 +605,38 @@ export const StudioSalesListNew = () => {
                             }}
                             className="text-gray-300 hover:text-white hover:bg-gray-800 cursor-pointer"
                           >
-                            View Detail
+                            <Eye size={14} className="mr-2" />
+                            View Detail / Production
                           </DropdownMenuItem>
+                          {sale.source === 'sale' && (
+                            <>
+                              <DropdownMenuItem 
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleEdit(sale);
+                                }}
+                                disabled={!!editLoading}
+                                className="text-gray-300 hover:text-white hover:bg-gray-800 cursor-pointer"
+                              >
+                                {editLoading === sale.id ? (
+                                  <Loader2 size={14} className="mr-2 animate-spin" />
+                                ) : (
+                                  <Edit2 size={14} className="mr-2" />
+                                )}
+                                Edit Sale
+                              </DropdownMenuItem>
+                              <DropdownMenuItem 
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setPrintDrawerSaleId(sale.id);
+                                }}
+                                className="text-gray-300 hover:text-white hover:bg-gray-800 cursor-pointer"
+                              >
+                                <Printer size={14} className="mr-2" />
+                                Print Invoice
+                              </DropdownMenuItem>
+                            </>
+                          )}
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </td>
@@ -577,6 +646,21 @@ export const StudioSalesListNew = () => {
             </tbody>
           </table>
         </div>
+
+        {/* Print / View Invoice Drawer (for studio sales from sales table) */}
+        {printDrawerSaleId && (
+          <ViewSaleDetailsDrawer
+            isOpen={!!printDrawerSaleId}
+            onClose={() => setPrintDrawerSaleId(null)}
+            saleId={printDrawerSaleId}
+            onEdit={() => {
+              setPrintDrawerSaleId(null);
+              const sale = sales.find(s => s.id === printDrawerSaleId);
+              if (sale) handleEdit(sale);
+            }}
+            onPrint={() => {}}
+          />
+        )}
 
         {/* Pagination */}
         {rowsPerPage > 0 && totalFiltered > 0 && totalPages > 1 && (

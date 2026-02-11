@@ -1893,7 +1893,7 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                 // CRITICAL: Include extra expenses, commission for accounting
                 extraExpenses: extraExpenses,
                 commissionAmount: commissionAmount,
-                salesmanId: salesmanId !== "1" ? salesmanId : null,
+                salesmanId: (salesmanId && salesmanId !== "1" && salesmanId !== "none") ? salesmanId : null,
                 // CRITICAL FIX: Pass partialPayments array for splitting into separate payment records
                 partialPayments: (saleStatus === 'final' && partialPayments.length > 0) ? partialPayments : [],
                 // Studio sale: show on Studio page and use studio invoice numbering
@@ -3000,6 +3000,9 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                     setSavedSaleInvoiceNo(null);
                     setSaleAttachmentFiles([]);
                     window.dispatchEvent(new CustomEvent('paymentAdded'));
+                    if (customerId && customerId !== 'walk-in') {
+                        window.dispatchEvent(new CustomEvent('ledgerUpdated', { detail: { ledgerType: 'customer', entityId: customerId } }));
+                    }
                     onClose();
                 }}
             />

@@ -247,6 +247,7 @@ export const ExpenseProvider = ({ children }: { children: ReactNode }) => {
               referenceId: newExpense.id,
               remarks: newExpense.description || `Salary - ${newExpense.payeeName || 'User'}`,
             });
+            window.dispatchEvent(new CustomEvent('ledgerUpdated', { detail: { ledgerType: 'user', entityId: options.paidToUserId } }));
           }
         } catch (e) {
           console.warn('[ExpenseContext] User ledger entry failed:', e);

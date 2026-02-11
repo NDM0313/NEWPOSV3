@@ -11,6 +11,7 @@ import { saleService, Sale as SupabaseSale, SaleItem as SupabaseSaleItem } from 
 import { productService } from '@/app/services/productService';
 import { branchService } from '@/app/services/branchService';
 import { comboService } from '@/app/services/comboService';
+import { getOrCreateLedger, addLedgerEntry } from '@/app/services/ledgerService';
 import { useSettings } from '@/app/context/SettingsContext';
 import { toast } from 'sonner';
 
@@ -799,6 +800,35 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
             });
             if (commissionError) {
               console.error('[SALES CONTEXT] Error creating commission journal entry:', commissionError);
+            } else if (salesmanId && salesmanId !== 'none' && salesmanId !== '1' && UUID_REGEX.test(salesmanId)) {
+              // Sync to user ledger so commission shows in agent's ledger (only for valid user IDs)
+              try {
+                const { data: userRow } = await supabase
+                  .from('users')
+                  .select('full_name, email')
+                  .eq('id', salesmanId)
+                  .maybeSingle();
+                const salesmanName = (userRow as any)?.full_name || (userRow as any)?.email || 'Agent';
+                const ledger = await getOrCreateLedger(companyId, 'user', salesmanId, salesmanName);
+                if (ledger) {
+                  await addLedgerEntry({
+                    companyId,
+                    ledgerId: ledger.id,
+                    entryDate: newSale.date || new Date().toISOString().split('T')[0],
+                    debit: commissionAmount,
+                    credit: 0,
+                    source: 'commission',
+                    referenceNo: newSale.invoiceNo,
+                    referenceId: newSale.id,
+                    remarks: `Commission - ${newSale.invoiceNo}`,
+                  });
+                  if (typeof window !== 'undefined') {
+                    window.dispatchEvent(new CustomEvent('ledgerUpdated', { detail: { ledgerType: 'user', entityId: salesmanId } }));
+                  }
+                }
+              } catch (ledgerErr: any) {
+                console.warn('[SALES CONTEXT] User ledger commission entry failed:', ledgerErr?.message);
+              }
             }
           }
           
@@ -831,15 +861,16 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
         try {
           const { supabase } = await import('@/lib/supabase');
           
-          // Get Accounts Receivable account
+          // Get Accounts Receivable account – MUST match ledger (prefer code 2000, then 1100)
           const { data: arAccounts } = await supabase
             .from('accounts')
-            .select('id')
+            .select('id, code')
             .eq('company_id', companyId)
-            .or('name.ilike.Accounts Receivable,code.eq.1100')
-            .limit(1);
-          
-          const arAccountId = arAccounts?.[0]?.id;
+            .or('code.eq.2000,code.eq.1100,name.ilike.%Accounts Receivable%');
+          const arAccount = arAccounts?.find((a: any) => a.code === '2000')
+            || arAccounts?.find((a: any) => a.code === '1100')
+            || arAccounts?.[0];
+          const arAccountId = arAccount?.id;
           
           // Get Sales Revenue account (can be "Sales" or "Sales Revenue")
           const { data: salesAccounts } = await supabase
@@ -947,6 +978,9 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
       
       // Dispatch event to refresh inventory
       window.dispatchEvent(new CustomEvent('saleSaved', { detail: { saleId: newSale.id } }));
+      if (newSale.customerId) {
+        window.dispatchEvent(new CustomEvent('ledgerUpdated', { detail: { ledgerType: 'customer', entityId: newSale.customerId } }));
+      }
       
       return newSale;
     } catch (error: any) {
@@ -1247,6 +1281,10 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
           window.dispatchEvent(new CustomEvent('saleSaved', { 
             detail: { saleId: id } 
           }));
+          const custId = sale?.customerId || (sale as any)?.customer_id;
+          if (custId) {
+            window.dispatchEvent(new CustomEvent('ledgerUpdated', { detail: { ledgerType: 'customer', entityId: custId } }));
+          }
         } catch (stockError: any) {
           console.error('[SALES CONTEXT] ❌ Stock movement delta creation error:', stockError);
           toast.warning('Sale updated but stock movements failed. Check console for details.');
@@ -1259,6 +1297,67 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
       // Update in Supabase
       if (Object.keys(supabaseUpdates).length > 0) {
         await saleService.updateSale(id, supabaseUpdates);
+      }
+
+      // Handle commission when updating to final (draft→final or edit with commission)
+      if (isFinalStatus && companyId) {
+        const commissionAmount = (updates as any).commissionAmount || 0;
+        const salesmanId = (updates as any).salesmanId || null;
+        if (commissionAmount > 0 && salesmanId && salesmanId !== 'none' && salesmanId !== '1' && UUID_REGEX.test(salesmanId)) {
+          try {
+            const { supabase } = await import('@/lib/supabase');
+            let effectiveBranchId = isValidBranchId(branchId) ? branchId : null;
+            if (!effectiveBranchId) {
+              const branches = await branchService.getAllBranches(companyId);
+              effectiveBranchId = branches?.length ? branches[0].id : null;
+            }
+            const saleForComm = sale || (await saleService.getSaleById(id));
+            const invoiceNo = saleForComm?.invoiceNo || id;
+            const { data: existingCommission } = await supabase
+              .from('journal_entries')
+              .select('id')
+              .eq('reference_type', 'sale')
+              .eq('reference_id', id)
+              .ilike('description', '%commission%')
+              .limit(1)
+              .maybeSingle();
+            if (!existingCommission) {
+              const { error: commissionError } = await supabase.rpc('create_commission_journal_entry', {
+                p_sale_id: id,
+                p_company_id: companyId,
+                p_branch_id: effectiveBranchId,
+                p_commission_amount: commissionAmount,
+                p_salesperson_id: salesmanId,
+                p_invoice_no: invoiceNo,
+              });
+              if (commissionError) {
+                console.error('[SALES CONTEXT] Error creating commission journal entry (update):', commissionError);
+              } else {
+                const { data: userRow } = await supabase.from('users').select('full_name, email').eq('id', salesmanId).maybeSingle();
+                const salesmanName = (userRow as any)?.full_name || (userRow as any)?.email || 'Agent';
+                const ledger = await getOrCreateLedger(companyId, 'user', salesmanId, salesmanName);
+                if (ledger) {
+                  await addLedgerEntry({
+                    companyId,
+                    ledgerId: ledger.id,
+                    entryDate: saleForComm?.date || new Date().toISOString().split('T')[0],
+                    debit: commissionAmount,
+                    credit: 0,
+                    source: 'commission',
+                    referenceNo: invoiceNo,
+                    referenceId: id,
+                    remarks: `Commission - ${invoiceNo}`,
+                  });
+                  if (typeof window !== 'undefined') {
+                    window.dispatchEvent(new CustomEvent('ledgerUpdated', { detail: { ledgerType: 'user', entityId: salesmanId } }));
+                  }
+                }
+              }
+            }
+          } catch (commErr: any) {
+            console.warn('[SALES CONTEXT] Commission handling in update failed:', commErr?.message);
+          }
+        }
       }
 
       // 🔒 GOLDEN RULE: Payment MUST go to payments table, NEVER directly update sale.paid_amount
@@ -1443,6 +1542,10 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
       
       // CRITICAL: Dispatch event to refresh ledger views and accounting
       window.dispatchEvent(new CustomEvent('saleDeleted', { detail: { saleId: id } }));
+      const custId = sale.customerId || (sale as any)?.customer;
+      if (custId) {
+        window.dispatchEvent(new CustomEvent('ledgerUpdated', { detail: { ledgerType: 'customer', entityId: custId } }));
+      }
       
       toast.success(`${sale.invoiceNo} deleted successfully!`);
     } catch (error: any) {

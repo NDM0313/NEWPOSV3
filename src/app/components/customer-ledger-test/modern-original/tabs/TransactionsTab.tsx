@@ -14,6 +14,7 @@ import type { Transaction } from '@/app/services/customerLedgerTypes';
 interface TransactionsTabProps {
   transactions: Transaction[];
   saleItemsMap?: Map<string, any[]>;
+  studioDetailsMap?: Map<string, { notes?: string; productionStatus?: string }>;
   onTransactionClick: (transaction: Transaction) => void;
   openingBalance?: number;
   accountName?: string;
@@ -24,7 +25,7 @@ type SortField = 'date' | 'reference' | 'type' | 'debit' | 'credit' | 'balance';
 type SortOrder = 'asc' | 'desc';
 type ViewMode = 'table' | 'grouped' | 'classic' | 'compact' | 'timeline' | 'analytics';
 
-export function TransactionsTab({ transactions, saleItemsMap = new Map(), onTransactionClick, openingBalance: openingBalanceProp = 0, accountName = 'Account', dateRange: dateRangeProp }: TransactionsTabProps) {
+export function TransactionsTab({ transactions, saleItemsMap = new Map(), studioDetailsMap = new Map(), onTransactionClick, openingBalance: openingBalanceProp = 0, accountName = 'Account', dateRange: dateRangeProp }: TransactionsTabProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState<'all' | 'Sale' | 'Payment' | 'Discount'>('all');
   const [showPrintModal, setShowPrintModal] = useState(false);
@@ -748,6 +749,7 @@ export function TransactionsTab({ transactions, saleItemsMap = new Map(), onTran
               <TransactionClassicView
                 transactions={filteredTransactions}
                 saleItemsMap={saleItemsMap}
+                studioDetailsMap={studioDetailsMap}
                 onTransactionClick={handleTransactionClick}
               />
             </>

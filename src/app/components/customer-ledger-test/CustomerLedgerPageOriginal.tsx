@@ -5,7 +5,7 @@
  * with API integration replacing mock data.
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Search, Calendar, Download, Printer, Filter, ChevronDown, FileText, X } from 'lucide-react';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { customerLedgerAPI, type CustomerLedgerSummary, type AgingReport } from '@/app/services/customerLedgerApi';
@@ -20,6 +20,7 @@ import { LedgerPrintView } from './modern-original/print/LedgerPrintView';
 import { ViewSaleDetailsDrawer } from '@/app/components/sales/ViewSaleDetailsDrawer';
 import type { LedgerData } from '@/app/services/customerLedgerTypes';
 import { LoadingSpinner } from '@/app/components/shared/LoadingSpinner';
+import { getTodayYYYYMMDD } from '@/app/components/ui/utils';
 import { supabase } from '@/lib/supabase';
 import { ErrorMessage } from '@/app/components/shared/ErrorMessage';
 import { toast } from 'sonner';
@@ -41,7 +42,14 @@ export default function CustomerLedgerPageOriginal({
   const { companyId } = useSupabase();
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [customers, setCustomers] = useState<Customer[]>([]);
-  const [dateRange, setDateRange] = useState({ from: '2025-01-01', to: new Date().toISOString().split('T')[0] });
+  // Default: Last 30 Days (Pakistan timezone)
+  const [dateRange, setDateRange] = useState(() => {
+    const to = getTodayYYYYMMDD();
+    const fromD = new Date(to + 'T12:00:00');
+    fromD.setDate(fromD.getDate() - 30);
+    const from = fromD.toISOString().split('T')[0];
+    return { from, to };
+  });
   const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null);
   const [saleDrawerSaleId, setSaleDrawerSaleId] = useState<string | null>(null);
 
@@ -51,6 +59,7 @@ export default function CustomerLedgerPageOriginal({
   const [error, setError] = useState<string | null>(null);
   const [printOpen, setPrintOpen] = useState(false);
   const [saleItemsMap, setSaleItemsMap] = useState<Map<string, any[]>>(new Map());
+  const [studioDetailsMap, setStudioDetailsMap] = useState<Map<string, { notes?: string; productionStatus?: string }>>(new Map());
 
   // Load customers on mount
   useEffect(() => {
@@ -73,39 +82,6 @@ export default function CustomerLedgerPageOriginal({
   }, [initialCustomerId, customers, embedded]);
 
   // Load ledger data when customer or date range changes
-  useEffect(() => {
-    if (selectedCustomer && companyId) {
-      loadLedgerData();
-    }
-  }, [selectedCustomer, dateRange, companyId]);
-
-  const loadCustomers = async () => {
-    if (!companyId) return;
-    
-    try {
-      setLoading(true);
-      setError(null);
-      const data = await customerLedgerAPI.getCustomers(companyId);
-      setCustomers(data);
-      if (data.length > 0 && !selectedCustomer) {
-        // If initialCustomerId provided, find and select it (match by id, trim for consistency), otherwise select first
-        if (initialCustomerId) {
-          const id = String(initialCustomerId).trim();
-          const customer = data.find(c => (c.id && String(c.id).trim()) === id);
-          setSelectedCustomer(customer || data[0]);
-        } else {
-          setSelectedCustomer(data[0]);
-        }
-      }
-    } catch (err: any) {
-      console.error('[CUSTOMER LEDGER] Error loading customers:', err);
-      setError(err.message || 'Failed to load customers');
-      toast.error('Failed to load customers');
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const loadLedgerData = async () => {
     if (!selectedCustomer || !companyId) return;
 
@@ -149,7 +125,7 @@ export default function CustomerLedgerPageOriginal({
         totalCredit: summary.totalCredit,
         closingBalance: summary.closingBalance,
         transactions: transactions,
-        detailTransactions: transactions.map(t => ({ ...t })), // Convert to DetailTransaction format
+        detailTransactions: transactions.map(t => ({ ...t })),
         invoices: invoices,
         invoicesSummary: {
           totalInvoices: summary.totalInvoices,
@@ -167,6 +143,63 @@ export default function CustomerLedgerPageOriginal({
       console.error('[CUSTOMER LEDGER] Error loading ledger data:', err);
       setError(err.message || 'Failed to load ledger data');
       toast.error('Failed to load ledger data');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (selectedCustomer && companyId) {
+      loadLedgerData();
+    }
+  }, [selectedCustomer, dateRange, companyId]);
+
+  // Same refresh pattern as supplier/worker/user: listen for sale/payment/ledger events
+  const loadLedgerRef = useRef<() => void>(() => {});
+  loadLedgerRef.current = loadLedgerData;
+  const currentCustomerId = selectedCustomer?.id;
+  useEffect(() => {
+    const handleRefresh = () => loadLedgerRef.current();
+    const handleLedgerUpdated = (e: Event) => {
+      const d = (e as CustomEvent)?.detail;
+      if (d?.ledgerType !== 'customer') return;
+      if (d.entityId && d.entityId !== currentCustomerId) return;
+      handleRefresh();
+    };
+    window.addEventListener('saleSaved', handleRefresh);
+    window.addEventListener('paymentAdded', handleRefresh);
+    window.addEventListener('saleDeleted', handleRefresh);
+    window.addEventListener('ledgerUpdated', handleLedgerUpdated);
+    return () => {
+      window.removeEventListener('saleSaved', handleRefresh);
+      window.removeEventListener('paymentAdded', handleRefresh);
+      window.removeEventListener('saleDeleted', handleRefresh);
+      window.removeEventListener('ledgerUpdated', handleLedgerUpdated);
+    };
+  }, [currentCustomerId, companyId]);
+
+  const loadCustomers = async () => {
+    if (!companyId) return;
+    
+    try {
+      setLoading(true);
+      setError(null);
+      const data = await customerLedgerAPI.getCustomers(companyId);
+      setCustomers(data);
+      if (data.length > 0 && !selectedCustomer) {
+        // If initialCustomerId provided, find and select it (match by id, trim for consistency), otherwise select first
+        if (initialCustomerId) {
+          const id = String(initialCustomerId).trim();
+          const customer = data.find(c => (c.id && String(c.id).trim()) === id);
+          setSelectedCustomer(customer || data[0]);
+        } else {
+          setSelectedCustomer(data[0]);
+        }
+      }
+    } catch (err: any) {
+      console.error('[CUSTOMER LEDGER] Error loading customers:', err);
+      setError(err.message || 'Failed to load customers');
+      toast.error('Failed to load customers');
     } finally {
       setLoading(false);
     }
@@ -250,6 +283,47 @@ export default function CustomerLedgerPageOriginal({
       }
     };
     fetchItems();
+  }, [ledgerData?.transactions, companyId]);
+
+  // Fetch studio details (notes, production status) for Studio Sale transactions
+  useEffect(() => {
+    if (!ledgerData?.transactions || !companyId) {
+      setStudioDetailsMap(new Map());
+      return;
+    }
+    const studioSaleIds = ledgerData.transactions
+      .filter((t) => t.documentType === 'Studio Sale' && t.id)
+      .map((t) => t.id);
+    if (studioSaleIds.length === 0) {
+      setStudioDetailsMap(new Map());
+      return;
+    }
+    const fetchStudioDetails = async () => {
+      try {
+        const map = new Map<string, { notes?: string; productionStatus?: string }>();
+        const { data: sales } = await supabase
+          .from('sales')
+          .select('id, notes')
+          .in('id', studioSaleIds);
+        (sales || []).forEach((s: any) => {
+          map.set(s.id, { notes: s.notes || undefined });
+        });
+        const { data: productions } = await supabase
+          .from('studio_productions')
+          .select('sale_id, status')
+          .in('sale_id', studioSaleIds)
+          .order('created_at', { ascending: false });
+        (productions || []).forEach((p: any) => {
+          const existing = map.get(p.sale_id) || {};
+          if (!existing.productionStatus) map.set(p.sale_id, { ...existing, productionStatus: p.status || undefined });
+        });
+        setStudioDetailsMap(map);
+      } catch (e) {
+        console.error('[CUSTOMER LEDGER] Error fetching studio details:', e);
+        setStudioDetailsMap(new Map());
+      }
+    };
+    fetchStudioDetails();
   }, [ledgerData?.transactions, companyId]);
 
   // Display transactions = Opening Balance (first row) + period transactions — shown in all views
@@ -368,6 +442,7 @@ export default function CustomerLedgerPageOriginal({
           <ModernLedgerTabs
             ledgerData={ledgerDataForViews!}
             saleItemsMap={saleItemsMap}
+            studioDetailsMap={studioDetailsMap}
             accountName={selectedCustomer?.name ?? ''}
             dateRange={dateRange}
             onTransactionClick={(transaction) => {

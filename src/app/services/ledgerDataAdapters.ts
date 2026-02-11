@@ -321,15 +321,32 @@ export async function getWorkerLedgerData(
   }>;
 
   // Enrich job rows with stage_type (job name) and production_no / sale ref
-  const stageIds = [...new Set(allRows.map((r) => r.reference_id).filter(Boolean))] as string[];
+  // Only include reference_ids from studio_production_stage entries (salary uses expense_id)
+  const stageIds = [...new Set(
+    allRows
+      .filter((r) => (r.reference_type || '').toLowerCase() === 'studio_production_stage' && r.reference_id)
+      .map((r) => r.reference_id!)
+  )] as string[];
   const stageMap = new Map<string, { stage_type?: string; production_no?: string; sale_id?: string }>();
   if (stageIds.length > 0) {
     try {
       const { data: stages } = await supabase
         .from('studio_production_stages')
-        .select('id, stage_type, production_no, sale_id')
+        .select('id, stage_type, production_id')
         .in('id', stageIds);
-      (stages || []).forEach((s: any) => stageMap.set(s.id, { stage_type: s.stage_type, production_no: s.production_no, sale_id: s.sale_id }));
+      if (stages?.length) {
+        const prodIds = [...new Set((stages as any[]).map((s) => s.production_id).filter(Boolean))];
+        const { data: prods } = await supabase
+          .from('studio_productions')
+          .select('id, production_no, sale_id')
+          .in('id', prodIds);
+        const prodMap = new Map<string, { production_no?: string; sale_id?: string }>();
+        (prods || []).forEach((p: any) => prodMap.set(p.id, { production_no: p.production_no, sale_id: p.sale_id }));
+        (stages as any[]).forEach((s: any) => {
+          const prod = s.production_id ? prodMap.get(s.production_id) : undefined;
+          stageMap.set(s.id, { stage_type: s.stage_type, production_no: prod?.production_no, sale_id: prod?.sale_id });
+        });
+      }
     } catch (_) {}
   }
 
@@ -403,8 +420,10 @@ export async function getWorkerLedgerData(
         linkedInvoices: [],
         linkedPayments: [],
       });
+      const invoiceJobRef = e.document_no || `Job-${e.id.slice(0, 8)}`;
       invoices.push({
-        invoiceNo: e.document_no || `Job-${e.id.slice(0, 8)}`,
+        id: e.id,
+        invoiceNo: invoiceJobRef,
         date,
         invoiceTotal: amt,
         items: [],

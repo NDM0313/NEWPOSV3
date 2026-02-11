@@ -21,6 +21,7 @@ type View =
   | 'studio'
   | 'studio-dashboard-new'
   | 'studio-sales-list-new'
+  | 'studio-pipeline'
   | 'studio-sale-detail'
   | 'studio-sale-detail-new'
   | 'rental-booking'

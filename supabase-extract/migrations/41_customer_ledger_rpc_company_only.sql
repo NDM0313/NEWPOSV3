@@ -62,3 +62,9 @@ $$;
 
 COMMENT ON FUNCTION get_customer_ledger_sales(UUID,UUID,DATE,DATE) IS 'Ledger: sales by company_id + customer_id only (no auth check)';
 COMMENT ON FUNCTION get_customer_ledger_payments(UUID,UUID[],DATE,DATE) IS 'Ledger: payments by company_id + sale_ids only (no auth check)';
+
+-- App (browser) uses anon/authenticated key to call these RPCs
+GRANT EXECUTE ON FUNCTION get_customer_ledger_sales(UUID,UUID,DATE,DATE) TO authenticated;
+GRANT EXECUTE ON FUNCTION get_customer_ledger_sales(UUID,UUID,DATE,DATE) TO anon;
+GRANT EXECUTE ON FUNCTION get_customer_ledger_payments(UUID,UUID[],DATE,DATE) TO authenticated;
+GRANT EXECUTE ON FUNCTION get_customer_ledger_payments(UUID,UUID[],DATE,DATE) TO anon;

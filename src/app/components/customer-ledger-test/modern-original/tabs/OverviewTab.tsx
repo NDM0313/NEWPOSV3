@@ -117,7 +117,7 @@ export function OverviewTab({ ledgerData, onTransactionClick }: OverviewTabProps
           <div className="border-t border-gray-800">
             {[...overdueInvoices, ...partiallyPaid].slice(0, 5).map((invoice, index) => (
               <div
-                key={invoice.invoiceNo}
+                key={invoice.id ?? invoice.invoiceNo}
                 className="px-5 py-4 border-b border-gray-800/50 last:border-b-0"
               >
                 <div className="flex justify-between items-start mb-2">

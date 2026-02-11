@@ -17,13 +17,14 @@ export interface LedgerTabLabels {
 interface ModernLedgerTabsProps {
   ledgerData: LedgerData;
   saleItemsMap?: Map<string, any[]>;
+  studioDetailsMap?: Map<string, { notes?: string; productionStatus?: string }>;
   onTransactionClick: (transaction: Transaction) => void;
   accountName?: string;
   dateRange?: { from: string; to: string };
   tabLabels?: LedgerTabLabels;
 }
 
-export function ModernLedgerTabs({ ledgerData, saleItemsMap = new Map(), onTransactionClick, accountName = '', dateRange, tabLabels }: ModernLedgerTabsProps) {
+export function ModernLedgerTabs({ ledgerData, saleItemsMap = new Map(), studioDetailsMap = new Map(), onTransactionClick, accountName = '', dateRange, tabLabels }: ModernLedgerTabsProps) {
   const [activeTab, setActiveTab] = useState<'overview' | 'transactions' | 'invoices' | 'payments' | 'aging'>('overview');
 
   const dataLabel = tabLabels?.dataTabLabel ?? 'Invoices';
@@ -77,6 +78,7 @@ export function ModernLedgerTabs({ ledgerData, saleItemsMap = new Map(), onTrans
           <TransactionsTab
             transactions={ledgerData.transactions}
             saleItemsMap={saleItemsMap}
+            studioDetailsMap={studioDetailsMap}
             onTransactionClick={onTransactionClick}
             openingBalance={ledgerData.openingBalance}
             accountName={accountName}

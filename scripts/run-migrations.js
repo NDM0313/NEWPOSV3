@@ -57,8 +57,8 @@ loadEnvLocal();
 
 const connectionString = process.env.DATABASE_POOLER_URL || process.env.DATABASE_URL;
 if (!connectionString) {
-  console.error('Missing DATABASE_POOLER_URL or DATABASE_URL. Set in .env.local or environment.');
-  process.exit(1);
+  console.log('[MIGRATE] No DATABASE_POOLER_URL/DATABASE_URL in .env.local — skipping migrations. App will start without applying migrations.');
+  process.exit(0);
 }
 
 if (!fs.existsSync(migrationsDir)) {

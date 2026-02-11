@@ -3,7 +3,7 @@ import { Search, Plus, Trash2, Package, ChevronsUpDown, Edit, Sparkles } from 'l
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Badge } from "../ui/badge";
-import { cn, formatBoxesPieces } from "../ui/utils";
+import { cn, formatBoxesPieces, formatDecimal } from "../ui/utils";
 import type { Variation } from "../ui/inline-variation-selector";
 import {
     Command,
@@ -249,7 +249,7 @@ export const SaleItemsSection: React.FC<SaleItemsSectionProps> = ({
                                                                             <>
                                                                                 <span>•</span>
                                                                                 <span className={p.stock > 0 ? 'text-green-500' : 'text-red-500'}>
-                                                                                    Stock: {p.stock}
+                                                                                    Stock: {formatDecimal(p.stock)}
                                                                                 </span>
                                                                             </>
                                                                         )}
@@ -410,7 +410,7 @@ export const SaleItemsSection: React.FC<SaleItemsSectionProps> = ({
                                                         )}
                                                         <span>·</span>
                                                         <span className={displayStock > 0 ? 'text-green-500' : 'text-red-500'}>
-                                                            {displayStock}
+                                                            {formatDecimal(displayStock)}
                                                         </span>
                                                         {item.lastPurchasePrice && (
                                                             <>

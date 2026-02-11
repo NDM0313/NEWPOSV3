@@ -1308,6 +1308,9 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
             ]);
             setEditPaymentDialogOpen(false);
             setPaymentToEdit(null);
+            if (sale.customer) {
+              window.dispatchEvent(new CustomEvent('ledgerUpdated', { detail: { ledgerType: 'customer', entityId: sale.customer } }));
+            }
           }}
         />
       )}

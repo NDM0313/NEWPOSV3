@@ -25,6 +25,7 @@ const getPaymentDetails = (transaction: Transaction) => {
 };
 
 export function TransactionGroupedView({ transactions, saleItemsMap = new Map(), onTransactionClick }: TransactionGroupedViewProps) {
+  const { enablePacking } = useSupabase();
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
 
   const toggleRow = (id: string) => {
@@ -142,23 +143,6 @@ export function TransactionGroupedView({ transactions, saleItemsMap = new Map(),
             </div>
 
             {isExpanded && hasDetails && (() => {
-              // Step 2 – Ledger items before render: verify data reached UI (packing_type, packing_quantity, packing_unit, quantity, unit, variation_id)
-              if (isSale && productDetails.length > 0) {
-                console.log('[CUSTOMER LEDGER] Step 2 – Ledger items before render (Grouped):', {
-                  referenceNo: transaction.referenceNo,
-                  saleId: transaction.id,
-                  itemCount: productDetails.length,
-                  items: productDetails.map((p: any) => ({
-                    product_name: p.product_name,
-                    packing_type: p.packing_type,
-                    packing_quantity: p.packing_quantity,
-                    packing_unit: p.packing_unit,
-                    quantity: p.quantity,
-                    unit: p.unit,
-                    variation_id: p.variation_id,
-                  })),
-                });
-              }
               return (
               <div className="px-6 py-4 bg-gray-950/80">
                 <div className="mb-3 flex items-center gap-2">

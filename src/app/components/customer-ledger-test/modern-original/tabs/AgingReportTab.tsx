@@ -129,7 +129,7 @@ export function AgingReportTab({ invoices }: AgingReportTabProps) {
                       .sort((a, b) => b.daysPast - a.daysPast)
                       .map((invoice, index) => (
                         <tr
-                          key={invoice.invoiceNo}
+                          key={invoice.id ?? invoice.invoiceNo}
                           className={`border-b border-gray-800/50 hover:bg-gray-800/30 transition-colors cursor-pointer ${
                             index % 2 === 0 ? '' : 'bg-gray-900/30'
                           }`}

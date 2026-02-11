@@ -56,6 +56,7 @@ export interface InvoiceItem {
 }
 
 export interface Invoice {
+  id?: string;
   invoiceNo: string;
   date: string;
   invoiceTotal: number;

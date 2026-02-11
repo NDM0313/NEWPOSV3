@@ -1897,6 +1897,10 @@ export const SalesPage = () => {
             setPaymentDialogOpen(false);
             setPaymentToEdit(null);
             window.dispatchEvent(new CustomEvent('paymentAdded'));
+            const customerId = selectedSale?.customer;
+            if (customerId) {
+              window.dispatchEvent(new CustomEvent('ledgerUpdated', { detail: { ledgerType: 'customer', entityId: customerId } }));
+            }
             if (!viewDetailsOpen) setViewPaymentsOpen(true);
           }}
         />

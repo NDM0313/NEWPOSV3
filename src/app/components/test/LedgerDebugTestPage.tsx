@@ -9,6 +9,8 @@ import { Input } from '@/app/components/ui/input';
 import { Label } from '@/app/components/ui/label';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { customerLedgerAPI } from '@/app/services/customerLedgerApi';
+import { accountingService } from '@/app/services/accountingService';
+import { getTodayYYYYMMDD } from '@/app/components/ui/utils';
 import { supabase } from '@/lib/supabase';
 import { FileText, RefreshCw, AlertCircle, CheckCircle } from 'lucide-react';
 import { toast } from 'sonner';
@@ -26,7 +28,7 @@ export function LedgerDebugTestPage() {
   const [customers, setCustomers] = useState<{ id: string; name: string }[]>([]);
   const [selectedCustomerId, setSelectedCustomerId] = useState('');
   const [fromDate, setFromDate] = useState('2025-01-01');
-  const [toDate, setToDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [toDate, setToDate] = useState(() => getTodayYYYYMMDD());
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState<TestResult[]>([]);
   const [studioSalesInDb, setStudioSalesInDb] = useState<any[]>([]);
@@ -122,6 +124,36 @@ export function LedgerDebugTestPage() {
         out.push({ method: '3. API getTransactions', ok: false, count: 0, error: apiErr?.message || 'Unknown' });
       }
 
+      // 4. Main ledger (accountingService.getCustomerLedger) – RPC + journal + synthetic/merge
+      try {
+        const entries = await accountingService.getCustomerLedger(
+          cId,
+          companyId,
+          undefined,
+          fromDate || undefined,
+          toDate || undefined
+        );
+        const rpcSalesCount = (out.find((r) => r.method === '1. RPC get_customer_ledger_sales') as any)?.count ?? 0;
+        const hasRpcRows = rpcSalesCount > 0;
+        const hasLedgerRows = entries.length > 0;
+        let errMsg: string | undefined;
+        if (hasRpcRows && !hasLedgerRows) errMsg = 'RPC mein rows hain lekin ledger 0 – mapping/merge check karein';
+        out.push({
+          method: '4. getCustomerLedger (main)',
+          ok: true,
+          count: entries.length,
+          error: errMsg,
+          data: entries.slice(0, 10),
+        });
+      } catch (ledgerErr: any) {
+        out.push({
+          method: '4. getCustomerLedger (main)',
+          ok: false,
+          count: 0,
+          error: ledgerErr?.message || 'Unknown',
+        });
+      }
+
       setResults(out);
       const allOk = out.every((r) => r.ok);
       const anyHasRows = out.some((r) => r.ok && r.count > 0);
@@ -178,7 +210,7 @@ export function LedgerDebugTestPage() {
         <div className="flex flex-wrap gap-2">
           <Button onClick={runTests} disabled={loading || !companyId || !selectedCustomerId}>
             <RefreshCw className={loading ? 'animate-spin w-4 h-4 mr-2' : 'w-4 h-4 mr-2'} />
-            Run All 3 Tests
+            Run All 4 Tests
           </Button>
           <Button variant="outline" onClick={loadStudioSales} disabled={loading}>
             Studio sales in DB (STD-*)
@@ -224,7 +256,7 @@ export function LedgerDebugTestPage() {
       <div className="space-y-4">
         <h3 className="font-semibold text-white">Test results</h3>
         {results.length === 0 && (
-          <p className="text-gray-500 text-sm">Pehle &quot;Run All 3 Tests&quot; click karein.</p>
+          <p className="text-gray-500 text-sm">Pehle &quot;Run All 4 Tests&quot; click karein.</p>
         )}
         {results.map((r) => (
           <div

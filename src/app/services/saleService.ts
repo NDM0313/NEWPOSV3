@@ -434,19 +434,9 @@ export const saleService = {
     return data;
   },
 
-  // Get single sale (fallback without journal_entries if relation causes 400/406)
+  // Get single sale (journal_entries join can cause 400 if relation not defined - use base select)
   async getSale(id: string) {
-    const withJournal = `
-      *,
-      customer:contacts(*),
-      items:sales_items(
-        *,
-        product:products(*),
-        variation:product_variations(*)
-      ),
-      journal:journal_entries(entry_no, entry_date)
-    `;
-    const withoutJournal = `
+    const baseSelect = `
       *,
       customer:contacts(*),
       items:sales_items(
@@ -457,22 +447,12 @@ export const saleService = {
     `;
     const { data, error } = await supabase
       .from('sales')
-      .select(withJournal)
+      .select(baseSelect)
       .eq('id', id)
       .single();
 
-    let saleData = null;
-    if (!error) {
-      saleData = data;
-    } else {
-      const { data: fallbackData, error: fallbackError } = await supabase
-        .from('sales')
-        .select(withoutJournal)
-        .eq('id', id)
-        .single();
-      if (fallbackError) throw fallbackError;
-      saleData = fallbackData;
-    }
+    const saleData = data;
+    if (error) throw error;
 
     // 🔒 LOCK CHECK: Check if sale has returns (prevents editing)
     const { data: returns } = await supabase

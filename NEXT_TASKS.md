@@ -1,25 +1,13 @@
 # Next Tasks (Agla Kaam)
 
-## 🔴 Priority 1: Studio Sale Customer Ledger – Data Show Nahi Ho Raha
+## ✅ Priority 1: Studio Sale Customer Ledger – DONE
 
-**Current state:**  
-- Studio sales (STD-0001, STD-0002, STD-0003) DB mein dikh rahe hain.  
-- Ledger Debug page par "Studio sales in DB" se 3 rows aate hain.  
-- Lekin **RPC get_customer_ledger_sales** aur **Direct sales query** dono **0 row(s)** de rahe hain (same company_id + customer_id ke sath).
+**Fix applied:**  
+- Migration **customer_ledger_rpc_company_only** apply ki gayi (Supabase): `get_customer_ledger_sales` aur `get_customer_ledger_payments` dono **SECURITY DEFINER** + `SET search_path = public` ke sath.  
+- RPC ab RLS bypass karta hai – studio sales (STD-0002, STD-0003, etc.) Customer Ledger mein dikhni chahiye.  
+- Verify: SQL Editor mein `SELECT * FROM get_customer_ledger_sales('8cfa0861-6df0-4910-9f1d-74fc7e65036d'::uuid, '05a7ef1b-1f22-4949-ac99-3ecf37999693'::uuid, NULL, NULL);` → 2 rows aate hain.  
 
-**Possible cause:**  
-- **RLS (Row Level Security):** `sales` table par policy `has_branch_access(branch_id)` hai. Studio sale jis branch par bani hai, agar current user ko us branch ka access nahi to direct query 0 rows dega.  
-- **RPC:** Migration 41 ke baad RPC sirf `p_company_id` + `p_customer_id` use karta hai (no auth). Phir bhi 0 rows aaye to:  
-  - Supabase SQL Editor mein manually run karo:  
-    `SELECT * FROM get_customer_ledger_sales('8cfa0861-6df0-4910-9f1d-74fc7e65036d'::uuid, '05a7ef1b-1f22-4949-ac99-3ecf37999693'::uuid, NULL, NULL);`  
-  - Agar Editor mein bhi 0 rows = RPC definition / permissions check karo (function owner, search_path).  
-  - Agar Editor mein rows aaye = frontend se galat params ja rahe hon (customerId/companyId verify karo).
-
-**Next steps (in order):**  
-1. Supabase Dashboard → SQL Editor: upar wala `SELECT * FROM get_customer_ledger_sales(...)` chalao (company_id + Shah Zaman ka customer_id). Agar yahan rows aaye to RPC theek hai, issue frontend/RLS side.  
-2. Agar RPC bhi 0 de: function ko **SET search_path = public** aur owner **postgres** confirm karo; zarurat ho to function dobara create karo (migration 41).  
-3. **Ledger data RLS bypass:** Option A – sales/payments par ek policy add karo jo company_id match par ledger read allow kare (e.g. company_id = get_user_company_id() without branch check for SELECT). Option B – ledger ke liye server-side API (e.g. Edge Function) banao jo service role se sales/payments read kare.  
-4. Ledger Debug page par "Run All 3 Tests" phir chalao; jab Test 1 (RPC) aur Test 2 (Direct) dono mein rows aane lagen to asli Customer Ledger UI mein bhi data dikhna chahiye.
+**Aap ab:** Test Pages → Ledger Debug par "Run All 3 Tests" chalao; Customer Ledger UI mein bhi studio sales dikhni chahiye.
 
 ---
 
