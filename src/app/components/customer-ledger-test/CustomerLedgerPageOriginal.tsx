@@ -62,7 +62,8 @@ export default function CustomerLedgerPageOriginal({
   // Select initial customer if provided (and when embedded, keep in sync with parent dropdown)
   useEffect(() => {
     if (initialCustomerId && customers.length > 0) {
-      const customer = customers.find(c => c.id === initialCustomerId);
+      const id = String(initialCustomerId).trim();
+      const customer = customers.find(c => (c.id && String(c.id).trim()) === id);
       if (customer) {
         setSelectedCustomer(customer);
       }
@@ -87,9 +88,10 @@ export default function CustomerLedgerPageOriginal({
       const data = await customerLedgerAPI.getCustomers(companyId);
       setCustomers(data);
       if (data.length > 0 && !selectedCustomer) {
-        // If initialCustomerId provided, find and select it, otherwise select first
+        // If initialCustomerId provided, find and select it (match by id, trim for consistency), otherwise select first
         if (initialCustomerId) {
-          const customer = data.find(c => c.id === initialCustomerId);
+          const id = String(initialCustomerId).trim();
+          const customer = data.find(c => (c.id && String(c.id).trim()) === id);
           setSelectedCustomer(customer || data[0]);
         } else {
           setSelectedCustomer(data[0]);
@@ -177,7 +179,7 @@ export default function CustomerLedgerPageOriginal({
       return;
     }
     const saleIds = ledgerData.transactions
-      .filter((t) => t.documentType === 'Sale' && t.id)
+      .filter((t) => (t.documentType === 'Sale' || t.documentType === 'Studio Sale') && t.id)
       .map((t) => t.id);
     if (saleIds.length === 0) {
       setSaleItemsMap(new Map());
@@ -221,8 +223,8 @@ export default function CustomerLedgerPageOriginal({
         // Step 1 – Raw DB verification: log raw sale_items/sales_items for a problematic sale (e.g. SL-0016) or first Sale
         const transactions = ledgerData?.transactions ?? [];
         const saleIdForDebug =
-          transactions.find((t: any) => t.documentType === 'Sale' && t.referenceNo === 'SL-0016')?.id ??
-          transactions.find((t: any) => t.documentType === 'Sale')?.id;
+          transactions.find((t: any) => (t.documentType === 'Sale' || t.documentType === 'Studio Sale') && t.referenceNo === 'SL-0016')?.id ??
+          transactions.find((t: any) => t.documentType === 'Sale' || t.documentType === 'Studio Sale')?.id;
         const rawItemsForDebug = saleIdForDebug ? (map.get(saleIdForDebug) || []) : [];
         const refNoForDebug = transactions.find((t: any) => t.id === saleIdForDebug)?.referenceNo ?? '';
         console.log('[CUSTOMER LEDGER ORIGINAL] Step 1 – Raw DB verification (sale_items/sales_items):', {
@@ -370,7 +372,7 @@ export default function CustomerLedgerPageOriginal({
             dateRange={dateRange}
             onTransactionClick={(transaction) => {
               if (transaction.documentType === 'Opening Balance') return;
-              if (transaction.documentType === 'Sale') {
+              if (transaction.documentType === 'Sale' || transaction.documentType === 'Studio Sale') {
                 setSaleDrawerSaleId(transaction.id);
                 setSelectedTransaction(null);
               } else {

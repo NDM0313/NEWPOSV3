@@ -46,6 +46,7 @@ type View =
   | 'customer-ledger-test'
   | 'test-ledger'
   | 'customer-ledger-interactive-test'
+  | 'ledger-debug-test'
   | 'sales-list-design-test'
   | 'worker-detail'
   | 'inventory-design-test'

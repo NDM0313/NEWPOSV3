@@ -33,7 +33,7 @@ export const customerLedgerAPI = {
       .from('contacts')
       .select('id, name, phone, city, email, address, credit_limit, opening_balance')
       .eq('company_id', companyId)
-      .eq('type', 'customer')
+      .in('type', ['customer', 'both'])
       .order('name');
 
     if (error) throw error;
@@ -114,27 +114,43 @@ export const customerLedgerAPI = {
     fromDate?: string,
     toDate?: string
   ): Promise<CustomerLedgerSummary> {
-    // Simplified approach: Calculate from sales and payments data directly
-    // This avoids complex nested queries that may fail
-    
-    // Get sales data for this customer
-    let salesQuery = supabase
-      .from('sales')
-      .select('id, total, paid_amount, due_amount, payment_status, invoice_date')
-      .eq('company_id', companyId)
-      .eq('customer_id', customerId);
-
-    if (fromDate) {
-      salesQuery = salesQuery.gte('invoice_date', fromDate);
+    const cId = String(customerId ?? '').trim();
+    if (!cId) {
+      return {
+        openingBalance: 0,
+        totalDebit: 0,
+        totalCredit: 0,
+        closingBalance: 0,
+        totalInvoices: 0,
+        totalInvoiceAmount: 0,
+        totalPaymentReceived: 0,
+        pendingAmount: 0,
+        fullyPaid: 0,
+        partiallyPaid: 0,
+        unpaid: 0,
+      };
     }
-    if (toDate) {
-      salesQuery = salesQuery.lte('invoice_date', toDate);
-    }
-
-    const { data: sales, error: salesError } = await salesQuery;
-    
-    if (salesError) {
-      console.error('[CUSTOMER LEDGER API] Error fetching sales for summary:', salesError);
+    // Prefer RPC so ledger sees all sales for customer (bypasses branch RLS)
+    let sales: any[] | null = null;
+    const rpcSales = await supabase.rpc('get_customer_ledger_sales', {
+      p_company_id: companyId,
+      p_customer_id: cId,
+      p_from_date: fromDate || null,
+      p_to_date: toDate || null,
+    });
+    if (!rpcSales.error) {
+      sales = rpcSales.data ?? [];
+    } else {
+      let salesQuery = supabase
+        .from('sales')
+        .select('id, total, paid_amount, due_amount, payment_status, invoice_date')
+        .eq('company_id', companyId)
+        .eq('customer_id', cId);
+      if (fromDate) salesQuery = salesQuery.gte('invoice_date', fromDate);
+      if (toDate) salesQuery = salesQuery.lte('invoice_date', toDate);
+      const res = await salesQuery;
+      sales = res.data ?? [];
+      if (res.error) console.error('[CUSTOMER LEDGER API] Error fetching sales for summary:', res.error);
     }
 
     const invoices = sales || [];
@@ -143,10 +159,11 @@ export const customerLedgerAPI = {
     const totalPaymentReceived = invoices.reduce((sum, s) => sum + (s.paid_amount || 0), 0);
     // Sale returns (final) in date range – CREDIT, reduce customer balance
     let returnsInRange = 0;
-    let returnsQuery = supabase.from('sale_returns').select('total').eq('company_id', companyId).eq('customer_id', customerId).eq('status', 'final');
+    let returnsQuery = supabase.from('sale_returns').select('id, total').eq('company_id', companyId).eq('customer_id', cId).eq('status', 'final');
     if (fromDate) returnsQuery = returnsQuery.gte('return_date', fromDate);
     if (toDate) returnsQuery = returnsQuery.lte('return_date', toDate);
     const { data: rangeReturns } = await returnsQuery;
+    const saleReturnIdsInRange = (rangeReturns || []).map((r: any) => r.id);
     returnsInRange = (rangeReturns || []).reduce((sum: number, r: any) => sum + (Number(r.total) || 0), 0);
     const pendingAmount = Math.max(0, invoices.reduce((sum, s) => sum + (s.due_amount || 0), 0) - returnsInRange);
     const fullyPaid = invoices.filter(s => s.payment_status === 'paid').length;
@@ -156,28 +173,104 @@ export const customerLedgerAPI = {
     // Calculate opening balance (sales - paid - sale returns before fromDate)
     let openingBalance = 0;
     if (fromDate) {
-      const { data: previousSales } = await supabase
-        .from('sales')
-        .select('total, paid_amount')
-        .eq('company_id', companyId)
-        .eq('customer_id', customerId)
-        .lt('invoice_date', fromDate);
-      const previousTotal = (previousSales || []).reduce((sum, s) => sum + (s.total || 0), 0);
-      const previousPaid = (previousSales || []).reduce((sum, s) => sum + (s.paid_amount || 0), 0);
+      const dayBeforeFrom = (() => {
+        const d = new Date(fromDate + 'T12:00:00Z');
+        d.setUTCDate(d.getUTCDate() - 1);
+        return d.toISOString().split('T')[0];
+      })();
+      let previousSales: any[] = [];
+      const rpcPrev = await supabase.rpc('get_customer_ledger_sales', {
+        p_company_id: companyId,
+        p_customer_id: cId,
+        p_from_date: null,
+        p_to_date: dayBeforeFrom,
+      });
+      if (!rpcPrev.error) {
+        previousSales = rpcPrev.data ?? [];
+      } else {
+        const res = await supabase
+          .from('sales')
+          .select('total, paid_amount')
+          .eq('company_id', companyId)
+          .eq('customer_id', cId)
+          .lt('invoice_date', fromDate);
+        previousSales = res.data ?? [];
+      }
+      const previousTotal = previousSales.reduce((sum, s) => sum + (s.total || 0), 0);
+      const previousPaid = previousSales.reduce((sum, s) => sum + (s.paid_amount || 0), 0);
       const { data: previousReturns } = await supabase
         .from('sale_returns')
         .select('total')
         .eq('company_id', companyId)
-        .eq('customer_id', customerId)
+        .eq('customer_id', cId)
         .eq('status', 'final')
         .lt('return_date', fromDate);
       const previousReturnsTotal = (previousReturns || []).reduce((sum, r: any) => sum + (Number(r.total) || 0), 0);
-      openingBalance = previousTotal - previousPaid - previousReturnsTotal;
+      const { data: prevRetIds } = await supabase
+        .from('sale_returns')
+        .select('id')
+        .eq('company_id', companyId)
+        .eq('customer_id', cId)
+        .eq('status', 'final')
+        .lt('return_date', fromDate);
+      const prevRetIdList = (prevRetIds || []).map((r: any) => r.id);
+      let prevReturnPaymentsTotal = 0;
+      if (prevRetIdList.length > 0) {
+        const { data: prevRetPays } = await supabase
+          .from('payments')
+          .select('amount')
+          .eq('company_id', companyId)
+          .eq('reference_type', 'sale_return')
+          .in('reference_id', prevRetIdList)
+          .lt('payment_date', fromDate);
+        prevReturnPaymentsTotal = (prevRetPays || []).reduce((sum: number, p: any) => sum + (Number(p.amount) || 0), 0);
+      }
+      // Studio orders before fromDate (table may not exist in all deployments)
+      let prevStudioOrderNet = 0;
+      const { data: prevStudioOrders, error: prevSOErr } = await supabase
+        .from('studio_orders')
+        .select('total_cost, advance_paid')
+        .eq('company_id', companyId)
+        .eq('customer_id', cId)
+        .lt('order_date', fromDate);
+      if (!prevSOErr && prevStudioOrders) {
+        prevStudioOrders.forEach((o: any) => {
+          prevStudioOrderNet += (Number(o.total_cost ?? 0) || 0) - (Number(o.advance_paid ?? 0) || 0);
+        });
+      }
+      openingBalance = previousTotal - previousPaid - previousReturnsTotal - prevReturnPaymentsTotal + prevStudioOrderNet;
     }
 
-    // Calculate totals (credits = payments received + sale returns)
-    const totalDebit = totalInvoiceAmount;
-    const totalCredit = totalPaymentReceived + returnsInRange;
+    // Studio orders in date range – debit total_cost, credit advance_paid
+    let studioOrderDebit = 0;
+    let studioOrderCredit = 0;
+    let soQuery = supabase.from('studio_orders').select('total_cost, advance_paid').eq('company_id', companyId).eq('customer_id', cId);
+    if (fromDate) soQuery = soQuery.gte('order_date', fromDate);
+    if (toDate) soQuery = soQuery.lte('order_date', toDate);
+    const { data: rangeStudioOrders, error: rangeSOErr } = await soQuery;
+    if (!rangeSOErr && rangeStudioOrders) {
+      rangeStudioOrders.forEach((o: any) => {
+        studioOrderDebit += Number(o.total_cost ?? 0) || 0;
+        studioOrderCredit += Number(o.advance_paid ?? 0) || 0;
+      });
+    }
+
+    // Return payments in range (credit)
+    let returnPaymentsInRange = 0;
+    if (saleReturnIdsInRange.length > 0) {
+      let rpQuery = supabase
+        .from('payments')
+        .select('amount, payment_date')
+        .eq('company_id', companyId)
+        .eq('reference_type', 'sale_return')
+        .in('reference_id', saleReturnIdsInRange);
+      if (fromDate) rpQuery = rpQuery.gte('payment_date', fromDate);
+      if (toDate) rpQuery = rpQuery.lte('payment_date', toDate);
+      const { data: rpInRange } = await rpQuery;
+      returnPaymentsInRange = (rpInRange || []).reduce((s: number, p: any) => s + (Number(p.amount) || 0), 0);
+    }
+    const totalDebit = totalInvoiceAmount + studioOrderDebit;
+    const totalCredit = totalPaymentReceived + returnsInRange + returnPaymentsInRange + studioOrderCredit;
     const closingBalance = openingBalance + totalDebit - totalCredit;
 
     return {
@@ -204,54 +297,90 @@ export const customerLedgerAPI = {
     fromDate?: string,
     toDate?: string
   ): Promise<Transaction[]> {
-    // Get sales for this customer (simplified query without nested joins)
-    let salesQuery = supabase
-      .from('sales')
-      .select('id, invoice_no, invoice_date, total, paid_amount, due_amount, payment_status')
-      .eq('company_id', companyId)
-      .eq('customer_id', customerId);
+    const cId = String(customerId ?? '').trim();
+    if (!cId) return [];
 
-    if (fromDate) {
-      salesQuery = salesQuery.gte('invoice_date', fromDate);
+    // Prefer RPC so ledger sees all sales/payments for customer (bypasses branch RLS)
+    let sales: any[] | null = null;
+    let salesError: any = null;
+    const rpcSales = await supabase.rpc('get_customer_ledger_sales', {
+      p_company_id: companyId,
+      p_customer_id: cId,
+      p_from_date: fromDate || null,
+      p_to_date: toDate || null,
+    });
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('[LEDGER] get_customer_ledger_sales', {
+        companyId,
+        customerId: cId,
+        fromDate: fromDate || null,
+        toDate: toDate || null,
+        rpcError: rpcSales.error?.message ?? null,
+        salesCount: (rpcSales.data ?? []).length,
+      });
     }
-    if (toDate) {
-      salesQuery = salesQuery.lte('invoice_date', toDate);
-    }
-
-    const { data: sales, error: salesError } = await salesQuery.order('invoice_date', { ascending: false });
-    
-    if (salesError) {
-      console.error('[CUSTOMER LEDGER API] Error fetching sales:', salesError);
-      // Return empty array on error
-    }
-
-    // Get payments for this customer (simplified query)
-    const saleIds = (sales || []).map(s => s.id);
-    
-    let paymentsQuery = supabase
-      .from('payments')
-      .select('id, reference_number, payment_date, amount, payment_method, notes, reference_id')
-      .eq('company_id', companyId)
-      .eq('reference_type', 'sale');
-
-    if (saleIds.length > 0) {
-      paymentsQuery = paymentsQuery.in('reference_id', saleIds);
+    if (!rpcSales.error) {
+      sales = rpcSales.data ?? [];
     } else {
-      // If no sales, return empty payments
-      paymentsQuery = paymentsQuery.eq('reference_id', '00000000-0000-0000-0000-000000000000'); // Non-existent ID
+      // Fallback: direct query (subject to RLS – may miss rows if user lacks branch access)
+      let salesQuery = supabase
+        .from('sales')
+        .select('id, invoice_no, invoice_date, total, paid_amount, due_amount, payment_status')
+        .eq('company_id', companyId)
+        .eq('customer_id', cId);
+      if (fromDate) salesQuery = salesQuery.gte('invoice_date', fromDate);
+      if (toDate) salesQuery = salesQuery.lte('invoice_date', toDate);
+      const result = await salesQuery.order('invoice_date', { ascending: false });
+      sales = result.data;
+      salesError = result.error;
+      if (salesError) {
+        console.error('[CUSTOMER LEDGER API] Error fetching sales:', salesError);
+        let retryQuery = supabase
+          .from('sales')
+          .select('id, invoice_no, invoice_date, total, paid_amount, due_amount')
+          .eq('company_id', companyId)
+          .eq('customer_id', cId);
+        if (fromDate) retryQuery = retryQuery.gte('invoice_date', fromDate);
+        if (toDate) retryQuery = retryQuery.lte('invoice_date', toDate);
+        const retry = await retryQuery.order('invoice_date', { ascending: false });
+        if (!retry.error) {
+          sales = retry.data;
+          salesError = null;
+        }
+      }
     }
 
-    if (fromDate) {
-      paymentsQuery = paymentsQuery.gte('payment_date', fromDate);
+    const saleIds = (sales || []).map((s: any) => s.id);
+    let payments: any[] | null = null;
+    if (saleIds.length > 0) {
+      const rpcPayments = await supabase.rpc('get_customer_ledger_payments', {
+        p_company_id: companyId,
+        p_sale_ids: saleIds,
+        p_from_date: fromDate || null,
+        p_to_date: toDate || null,
+      });
+      if (!rpcPayments.error) {
+        payments = rpcPayments.data ?? [];
+      }
     }
-    if (toDate) {
-      paymentsQuery = paymentsQuery.lte('payment_date', toDate);
-    }
-
-    const { data: payments, error: paymentsError } = await paymentsQuery.order('payment_date', { ascending: false });
-    
-    if (paymentsError) {
-      console.error('[CUSTOMER LEDGER API] Error fetching payments:', paymentsError);
+    if (payments === null) {
+      let paymentsQuery = supabase
+        .from('payments')
+        .select('id, reference_number, payment_date, amount, payment_method, notes, reference_id')
+        .eq('company_id', companyId)
+        .eq('reference_type', 'sale');
+      if (saleIds.length > 0) {
+        paymentsQuery = paymentsQuery.in('reference_id', saleIds);
+      } else {
+        paymentsQuery = paymentsQuery.eq('reference_id', '00000000-0000-0000-0000-000000000000');
+      }
+      if (fromDate) paymentsQuery = paymentsQuery.gte('payment_date', fromDate);
+      if (toDate) paymentsQuery = paymentsQuery.lte('payment_date', toDate);
+      const payResult = await paymentsQuery.order('payment_date', { ascending: false });
+      payments = payResult.data ?? [];
+      if (payResult.error) {
+        console.error('[CUSTOMER LEDGER API] Error fetching payments:', payResult.error);
+      }
     }
 
     // Get sale returns for this customer (CREDIT - reduces balance)
@@ -259,7 +388,7 @@ export const customerLedgerAPI = {
       .from('sale_returns')
       .select('id, return_no, return_date, total, status')
       .eq('company_id', companyId)
-      .eq('customer_id', customerId)
+      .eq('customer_id', cId)
       .eq('status', 'final');
 
     if (fromDate) returnsQuery = returnsQuery.gte('return_date', fromDate);
@@ -270,23 +399,75 @@ export const customerLedgerAPI = {
       console.error('[CUSTOMER LEDGER API] Error fetching sale returns:', returnsError);
     }
 
+    // Get return payments (payments against sale returns – credit to customer)
+    const saleReturnIds = (saleReturns || []).map((r: any) => r.id);
+    let returnPaymentsQuery = supabase
+      .from('payments')
+      .select('id, reference_number, payment_date, amount, payment_method, notes, reference_id')
+      .eq('company_id', companyId)
+      .eq('reference_type', 'sale_return');
+    if (saleReturnIds.length > 0) {
+      returnPaymentsQuery = returnPaymentsQuery.in('reference_id', saleReturnIds);
+    } else {
+      returnPaymentsQuery = returnPaymentsQuery.eq('reference_id', '00000000-0000-0000-0000-000000000000');
+    }
+    if (fromDate) returnPaymentsQuery = returnPaymentsQuery.gte('payment_date', fromDate);
+    if (toDate) returnPaymentsQuery = returnPaymentsQuery.lte('payment_date', toDate);
+    const { data: returnPayments, error: returnPaymentsError } = await returnPaymentsQuery.order('payment_date', { ascending: false });
+    if (returnPaymentsError) {
+      console.error('[CUSTOMER LEDGER API] Error fetching return payments:', returnPaymentsError);
+    }
+
     // Combine and format transactions
     const transactions: Transaction[] = [];
 
-    // Add sales as debit transactions
+    // Add sales as debit transactions (regular + studio sales from sales table)
     (sales || []).forEach((sale: any) => {
+      const inv = (sale.invoice_no || '').toString().trim().toUpperCase();
+      const isStudioSale = inv.startsWith('STD-') || inv.startsWith('ST-');
       transactions.push({
         id: sale.id,
         date: sale.invoice_date,
         referenceNo: sale.invoice_no || '',
-        documentType: 'Sale' as const,
-        description: `Sale Invoice ${sale.invoice_no}`,
+        documentType: isStudioSale ? ('Studio Sale' as const) : ('Sale' as const),
+        description: isStudioSale ? `Studio Sale ${sale.invoice_no || ''}` : `Sale Invoice ${sale.invoice_no}`,
         paymentAccount: '',
         notes: '',
         debit: sale.total || 0,
         credit: 0,
         runningBalance: 0, // Will be calculated
         linkedInvoices: [sale.invoice_no],
+      });
+    });
+
+    // Studio orders (studio_orders table) – debit total_cost, credit advance_paid so net = balance_due
+    let studioOrdersQuery = supabase
+      .from('studio_orders')
+      .select('id, order_no, order_date, total_cost, advance_paid, balance_due')
+      .eq('company_id', companyId)
+      .eq('customer_id', cId);
+    if (fromDate) studioOrdersQuery = studioOrdersQuery.gte('order_date', fromDate);
+    if (toDate) studioOrdersQuery = studioOrdersQuery.lte('order_date', toDate);
+    const { data: studioOrders, error: studioOrdersError } = await studioOrdersQuery.order('order_date', { ascending: false });
+    if (studioOrdersError) {
+      // studio_orders table may not exist in all deployments
+      if (studioOrdersError.code !== '42P01') console.error('[CUSTOMER LEDGER API] Error fetching studio orders:', studioOrdersError);
+    }
+    (studioOrders || []).forEach((order: any) => {
+      const totalCost = Number(order.total_cost ?? 0) || 0;
+      const advancePaid = Number(order.advance_paid ?? 0) || 0;
+      transactions.push({
+        id: order.id,
+        date: order.order_date,
+        referenceNo: order.order_no || `ORD-${(order.id || '').slice(0, 8)}`,
+        documentType: 'Studio Order' as const,
+        description: `Studio Order ${order.order_no || order.id?.slice(0, 8)}`,
+        paymentAccount: '',
+        notes: advancePaid > 0 ? `Advance Rs ${advancePaid}` : '',
+        debit: totalCost,
+        credit: advancePaid,
+        runningBalance: 0,
+        linkedInvoices: [],
       });
     });
 
@@ -324,29 +505,85 @@ export const customerLedgerAPI = {
       });
     });
 
+    // Add return payments as credit (refund to customer against return)
+    (returnPayments || []).forEach((payment: any) => {
+      transactions.push({
+        id: payment.id,
+        date: payment.payment_date,
+        referenceNo: payment.reference_number || '',
+        documentType: 'Return Payment' as const,
+        description: `Return Payment via ${payment.payment_method}`,
+        paymentAccount: payment.payment_method || '',
+        notes: payment.notes || '',
+        debit: 0,
+        credit: payment.amount || 0,
+        runningBalance: 0,
+        linkedPayments: [payment.reference_number],
+      });
+    });
+
     // Sort by date
     transactions.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
     // When date range is applied, running balance must start from opening balance (before fromDate)
     let runningBalance = 0;
     if (fromDate) {
-      const { data: prevSales } = await supabase
-        .from('sales')
-        .select('total, paid_amount')
-        .eq('company_id', companyId)
-        .eq('customer_id', customerId)
-        .lt('invoice_date', fromDate);
-      const prevTotal = (prevSales || []).reduce((sum, s) => sum + (s.total || 0), 0);
-      const prevPaid = (prevSales || []).reduce((sum, s) => sum + (s.paid_amount || 0), 0);
+      const dayBeforeFrom = (() => {
+        const d = new Date(fromDate + 'T12:00:00Z');
+        d.setUTCDate(d.getUTCDate() - 1);
+        return d.toISOString().split('T')[0];
+      })();
+      let prevSales: any[] = [];
+      const rpcPrev = await supabase.rpc('get_customer_ledger_sales', {
+        p_company_id: companyId,
+        p_customer_id: cId,
+        p_from_date: null,
+        p_to_date: dayBeforeFrom,
+      });
+      if (!rpcPrev.error) prevSales = rpcPrev.data ?? [];
+      else {
+        const res = await supabase
+          .from('sales')
+          .select('total, paid_amount')
+          .eq('company_id', companyId)
+          .eq('customer_id', cId)
+          .lt('invoice_date', fromDate);
+        prevSales = res.data ?? [];
+      }
+      const prevTotal = prevSales.reduce((sum, s) => sum + (s.total || 0), 0);
+      const prevPaid = prevSales.reduce((sum, s) => sum + (s.paid_amount || 0), 0);
       const { data: prevReturns } = await supabase
         .from('sale_returns')
-        .select('total')
+        .select('id, total')
         .eq('company_id', companyId)
-        .eq('customer_id', customerId)
+        .eq('customer_id', cId)
         .eq('status', 'final')
         .lt('return_date', fromDate);
       const prevReturnsTotal = (prevReturns || []).reduce((sum, r: any) => sum + (Number(r.total) || 0), 0);
-      runningBalance = prevTotal - prevPaid - prevReturnsTotal;
+      const prevRetIdsForBal = (prevReturns || []).map((r: any) => r.id);
+      let prevReturnPmts = 0;
+      if (prevRetIdsForBal.length > 0) {
+        const { data: prevRp } = await supabase
+          .from('payments')
+          .select('amount')
+          .eq('company_id', companyId)
+          .eq('reference_type', 'sale_return')
+          .in('reference_id', prevRetIdsForBal)
+          .lt('payment_date', fromDate);
+        prevReturnPmts = (prevRp || []).reduce((s: number, p: any) => s + (Number(p.amount) || 0), 0);
+      }
+      // Studio orders before fromDate: net receivable = total_cost - advance_paid
+      let prevStudioOrderNet = 0;
+      const { data: prevStudioOrders } = await supabase
+        .from('studio_orders')
+        .select('total_cost, advance_paid')
+        .eq('company_id', companyId)
+        .eq('customer_id', cId)
+        .lt('order_date', fromDate);
+      (prevStudioOrders || []).forEach((o: any) => {
+        prevStudioOrderNet += (Number(o.total_cost ?? 0) || 0) - (Number(o.advance_paid ?? 0) || 0);
+      });
+      runningBalance = prevTotal - prevPaid - prevReturnsTotal - prevReturnPmts + prevStudioOrderNet;
     }
     transactions.forEach(t => {
       runningBalance += t.debit - t.credit;

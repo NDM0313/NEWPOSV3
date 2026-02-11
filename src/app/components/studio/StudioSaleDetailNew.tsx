@@ -180,6 +180,7 @@ interface Payment {
 interface StudioSaleDetail {
   id: string;
   invoiceNo: string;
+  customerId?: string;
   customerName: string;
   customerPhone: string;
   saleDate: string;
@@ -202,6 +203,8 @@ interface StudioSaleDetail {
   balanceDue: number;
   
   fabricPurchaseCost: number;
+  /** 'sale' = from sales table (payment can be recorded); 'studio_order' = from studio_orders only */
+  source?: 'sale' | 'studio_order';
 }
 
 // Mock data removed - data is loaded from Supabase via loadStudioOrder()
@@ -233,6 +236,7 @@ export const StudioSaleDetailNew = () => {
     amount: number;
   } | null>(null);
   const [showWorkerPaymentDialog, setShowWorkerPaymentDialog] = useState(false);
+  const [showCustomerPaymentDialog, setShowCustomerPaymentDialog] = useState(false);
   const [showTrackingModal, setShowTrackingModal] = useState<string | null>(null);
   const [showTaskCustomizationModal, setShowTaskCustomizationModal] = useState(false);
   const [savingStage, setSavingStage] = useState(false);
@@ -351,7 +355,8 @@ export const StudioSaleDetailNew = () => {
       totalAmount: order.total_cost || 0,
       paidAmount: order.advance_paid || 0,
       balanceDue: order.balance_due || 0,
-      fabricPurchaseCost: fabricCost
+      fabricPurchaseCost: fabricCost,
+      source: 'studio_order'
     };
   }, []);
 
@@ -409,6 +414,7 @@ export const StudioSaleDetailNew = () => {
     return {
       id: sale.id || '',
       invoiceNo: sale.invoice_no || sale.invoiceNo || `STD-${sale.id?.slice(0, 8)}`,
+      customerId: sale.customer_id || undefined,
       customerName: sale.customer_name || customer.name || 'Unknown',
       customerPhone: customer.phone || '',
       saleDate: sale.invoice_date || sale.invoiceDate || new Date().toISOString().split('T')[0],
@@ -426,7 +432,8 @@ export const StudioSaleDetailNew = () => {
       totalAmount: Number(sale.total) || 0,
       paidAmount: Number(sale.paid_amount) || 0,
       balanceDue: Number(sale.due_amount) || 0,
-      fabricPurchaseCost: fabricCost
+      fabricPurchaseCost: fabricCost,
+      source: 'sale'
     };
   }, []);
 
@@ -443,6 +450,18 @@ export const StudioSaleDetailNew = () => {
         const sale = await saleService.getSale(selectedStudioSaleId);
         if (sale && (sale as any).id) {
           const convertedDetail = convertFromSale(sale);
+          try {
+            const salePayments = await saleService.getSalePayments(sale.id);
+            const payments: Payment[] = (salePayments || []).map((p: any) => ({
+              id: p.id,
+              date: p.date || '',
+              amount: p.amount || 0,
+              method: (p.method === 'bank' || p.method === 'bank_transfer' ? 'Bank Transfer' : p.method === 'card' ? 'Card' : p.method === 'cheque' ? 'Cheque' : 'Cash') as Payment['method'],
+              reference: p.referenceNumber,
+              notes: p.notes
+            }));
+            convertedDetail.payments = payments;
+          } catch (_) { /* ignore */ }
           let productionSteps: ProductionStep[] = [];
           try {
             const productions = await studioProductionService.getProductionsBySaleId(sale.id);
@@ -2139,15 +2158,13 @@ export const StudioSaleDetailNew = () => {
                         Worker payments are separate: <strong className="text-blue-400">Accounting → Worker Payments</strong>. 
                         Balance Due is driven by customer receipts only.
                       </p>
-                      {saleDetail.balanceDue > 0 && (
+                      {saleDetail.balanceDue > 0 && saleDetail.source === 'sale' && (
                         <Button
-                          onClick={() => {
-                            alert('🔄 Redirecting to Accounting Module...\n\nPayment will be recorded in:\nAccounting → Customer Receipts → New Entry\n\nAuto-filled:\n• Invoice: ' + saleDetail.invoiceNo + '\n• Customer: ' + saleDetail.customerName + '\n• Balance: Rs ' + saleDetail.balanceDue.toLocaleString());
-                          }}
+                          onClick={() => setShowCustomerPaymentDialog(true)}
                           className="bg-blue-600 hover:bg-blue-700 h-9 text-sm"
                         >
                           <CreditCard size={14} className="mr-2" />
-                          Receive Payment in Accounting
+                          Receive Payment
                         </Button>
                       )}
                     </div>
@@ -2708,6 +2725,34 @@ export const StudioSaleDetailNew = () => {
             setShowWorkerPaymentDialog(false);
             setPayChoiceAfterReceive(null);
             await reloadProductionSteps();
+          }}
+        />
+      )}
+
+      {/* Customer Receive Payment – records against this sale so it shows in customer ledger (only when source = sale) */}
+      {saleDetail && saleDetail.source === 'sale' && (
+        <UnifiedPaymentDialog
+          isOpen={showCustomerPaymentDialog}
+          onClose={() => setShowCustomerPaymentDialog(false)}
+          context="customer"
+          entityName={saleDetail.customerName}
+          entityId={saleDetail.customerId}
+          outstandingAmount={saleDetail.balanceDue}
+          totalAmount={saleDetail.totalAmount}
+          paidAmount={saleDetail.paidAmount}
+          referenceNo={saleDetail.invoiceNo}
+          referenceId={saleDetail.id}
+          previousPayments={saleDetail.payments.map(p => ({
+            id: p.id,
+            date: p.date,
+            amount: p.amount,
+            method: p.method,
+            accountName: undefined
+          }))}
+          onSuccess={() => {
+            setShowCustomerPaymentDialog(false);
+            toast.success('Payment recorded. Customer ledger and balance will update.');
+            loadStudioOrder();
           }}
         />
       )}

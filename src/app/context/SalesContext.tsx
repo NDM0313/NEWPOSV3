@@ -693,8 +693,8 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
               });
               
               const packing = (item as any).packingDetails;
-              const boxOut = packing?.total_boxes != null ? Number(packing.total_boxes) : 0;
-              const pieceOut = packing?.total_pieces != null ? Number(packing.total_pieces) : 0;
+              const boxOut = packing?.total_boxes != null ? Math.round(Number(packing.total_boxes)) : 0;
+              const pieceOut = packing?.total_pieces != null ? Math.round(Number(packing.total_pieces)) : 0;
               const movement = await productService.createStockMovement({
                 company_id: companyId,
                 branch_id: effectiveBranchId === 'all' ? undefined : effectiveBranchId,

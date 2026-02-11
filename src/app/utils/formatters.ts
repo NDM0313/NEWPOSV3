@@ -227,6 +227,18 @@ export const formatStockReference = (options: {
   const { referenceType, referenceId, movementId, saleInvoiceNo, purchaseInvoiceNo, notes } = options;
   const type = (referenceType || '').toLowerCase();
 
+  // Sale return & purchase return: short ref only (SR-xxxx, PR-xxxx)
+  if (type === 'sale_return' || type.includes('sale_return')) {
+    if (referenceId && isUUID(referenceId)) return `SR-${referenceId.substring(0, 4)}`;
+    if (referenceId) return referenceId.length > 8 ? `SR-${referenceId.substring(0, 4)}` : referenceId;
+    return 'SR-????';
+  }
+  if (type === 'purchase_return' || type.includes('purchase_return')) {
+    if (referenceId && isUUID(referenceId)) return `PR-${referenceId.substring(0, 4)}`;
+    if (referenceId) return referenceId.length > 8 ? `PR-${referenceId.substring(0, 4)}` : referenceId;
+    return 'PR-????';
+  }
+
   if (type.includes('sale') || type.includes('invoice')) {
     if (saleInvoiceNo && !isUUID(saleInvoiceNo)) return saleInvoiceNo;
     if (referenceId && isUUID(referenceId)) return `SL-${referenceId.substring(0, 4)}`;

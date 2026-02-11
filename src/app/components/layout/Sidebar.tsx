@@ -81,6 +81,7 @@ export const Sidebar = () => {
       icon: FlaskConical,
       children: [
         { id: 'customer-ledger-test', label: 'Customer Ledger Test' },
+        { id: 'ledger-debug-test', label: 'Ledger Debug (RPC vs API)' },
         { id: 'test-ledger', label: 'Test Ledger (API Tests)' },
         { id: 'customer-ledger-interactive-test', label: 'Interactive Test (Manual)' },
         { id: 'contact-search-test', label: 'Contact Test' },

@@ -52,6 +52,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
+  DropdownMenuSeparator,
 } from '@/app/components/ui/dropdown-menu';
 import {
   Dialog,
@@ -763,42 +764,38 @@ export const AccountingDashboard = () => {
                                 </Button>
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="end" className="bg-gray-900 border-gray-800">
-                                {/* Advanced Mode Only Actions */}
+                                {/* View Ledger - standard for all accounts (operational + professional) */}
+                                <DropdownMenuItem
+                                  onClick={() => {
+                                    setLedgerAccount({
+                                      id: account.id,
+                                      name: account.name,
+                                      code: (account as any).code,
+                                      type: account.type || account.accountType || 'Asset',
+                                    });
+                                  }}
+                                  className="text-gray-300 hover:text-white hover:bg-gray-800 cursor-pointer"
+                                >
+                                  <FileText size={14} className="mr-2" /> View Ledger
+                                </DropdownMenuItem>
+                                {/* Professional mode: extra account actions */}
                                 {accountsViewMode === 'professional' && (
                                   <>
                                     <DropdownMenuItem
-                                      onClick={() => {
-                                        setLedgerAccount({
-                                          id: account.id,
-                                          name: account.name,
-                                          code: (account as any).code,
-                                          type: account.type || account.accountType || 'Asset',
-                                        });
-                                      }}
-                                      className="text-gray-300 hover:text-white hover:bg-gray-800"
-                                    >
-                                      <FileText size={14} className="mr-2" /> View Ledger
-                                    </DropdownMenuItem>
-                                    <DropdownMenuItem
-                                      onClick={() => {
-                                        // TODO: Implement View Transactions
-                                        toast.info('View Transactions - Coming soon');
-                                      }}
-                                      className="text-gray-300 hover:text-white hover:bg-gray-800"
+                                      onClick={() => toast.info('View Transactions - Coming soon')}
+                                      className="text-gray-300 hover:text-white hover:bg-gray-800 cursor-pointer"
                                     >
                                       <List size={14} className="mr-2" /> View Transactions
                                     </DropdownMenuItem>
                                     <DropdownMenuItem
-                                      onClick={() => {
-                                        // TODO: Implement Account Summary
-                                        toast.info('Account Summary - Coming soon');
-                                      }}
-                                      className="text-gray-300 hover:text-white hover:bg-gray-800"
+                                      onClick={() => toast.info('Account Summary - Coming soon')}
+                                      className="text-gray-300 hover:text-white hover:bg-gray-800 cursor-pointer"
                                     >
                                       <BarChart3 size={14} className="mr-2" /> Account Summary
                                     </DropdownMenuItem>
                                   </>
                                 )}
+                                <DropdownMenuSeparator className="bg-gray-700" />
                                 <DropdownMenuItem
                                   onClick={() => {
                                     setEditingAccount(account);

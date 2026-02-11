@@ -35,8 +35,11 @@ export interface InventoryOverviewRow {
   hasVariations?: boolean;
   variations?: Array<{
     id: string;
+    sku?: string;
     attributes: any;
     stock: number;
+    boxes?: number;
+    pieces?: number;
   }>;
   /** Combo/bundle: product is a virtual bundle; stock from components */
   isComboProduct?: boolean;

@@ -9,6 +9,7 @@ import { branchService, Branch } from '@/app/services/branchService';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { useSales } from '@/app/context/SalesContext';
 import { usePurchases } from '@/app/context/PurchaseContext';
+import { useSettings } from '@/app/context/SettingsContext';
 import { toast } from 'sonner';
 import { cn } from '../ui/utils';
 import { formatStockReference } from '@/app/utils/formatters';
@@ -72,9 +73,13 @@ export const FullStockLedgerView: React.FC<FullStockLedgerViewProps> = ({
   const { companyId, branchId: contextBranchId } = useSupabase();
   const { getSaleById } = useSales();
   const { getPurchaseById } = usePurchases();
+  const { inventorySettings } = useSettings();
+  const enablePacking = inventorySettings.enablePacking ?? false;
   const [movements, setMovements] = useState<StockMovement[]>([]);
   const [loading, setLoading] = useState(false);
   const [runningBalance, setRunningBalance] = useState<Map<string, number>>(new Map());
+  const [runningBoxBalance, setRunningBoxBalance] = useState<Map<string, number>>(new Map());
+  const [runningPieceBalance, setRunningPieceBalance] = useState<Map<string, number>>(new Map());
   
   // State for filters
   const [selectedVariationId, setSelectedVariationId] = useState<string | undefined>(variationId);
@@ -291,28 +296,36 @@ export const FullStockLedgerView: React.FC<FullStockLedgerViewProps> = ({
       );
 
       // Start from 0 (opening balance) - standard ledger format
-      let runningBalance = 0;
+      let runningQty = 0;
+      let runningBox = 0;
+      let runningPiece = 0;
+      const balanceBoxMap = new Map<string, number>();
+      const balancePieceMap = new Map<string, number>();
       const movementBreakdown: Array<{type: string, quantity: number, runningBalance: number, date: string}> = [];
-      
+
       sortedMovements.forEach((movement) => {
         const qty = Number(movement.quantity || 0);
+        const boxCh = Number((movement as any).box_change ?? 0);
+        const pieceCh = Number((movement as any).piece_change ?? 0);
         const movementType = (movement.movement_type || movement.type || 'unknown').toLowerCase();
-        
-        // Apply movement to running balance
-        runningBalance += qty;
-        balanceMap.set(movement.id, runningBalance);
-        
-        // Track breakdown for debugging
+
+        runningQty += qty;
+        runningBox += boxCh;
+        runningPiece += pieceCh;
+        balanceMap.set(movement.id, runningQty);
+        balanceBoxMap.set(movement.id, runningBox);
+        balancePieceMap.set(movement.id, runningPiece);
+
         movementBreakdown.push({
           type: movementType,
           quantity: qty,
-          runningBalance: runningBalance,
+          runningBalance: runningQty,
           date: movement.created_at
         });
       });
 
       // Final calculated balance (should match currentStock if all movements are included)
-      const calculatedBalance = runningBalance;
+      const calculatedBalance = runningQty;
 
       // Log balance verification with detailed breakdown
       if (currentStock !== undefined) {
@@ -372,6 +385,8 @@ export const FullStockLedgerView: React.FC<FullStockLedgerViewProps> = ({
       }
 
       setRunningBalance(balanceMap);
+      setRunningBoxBalance(balanceBoxMap);
+      setRunningPieceBalance(balancePieceMap);
     } catch (error: any) {
       console.error('[Full Ledger] Error loading stock movements:', error);
       toast.error('Failed to load stock ledger: ' + (error.message || 'Unknown error'));
@@ -381,45 +396,59 @@ export const FullStockLedgerView: React.FC<FullStockLedgerViewProps> = ({
   };
 
   // Calculate totals - Include ALL movement types (purchase, sale, adjustment, etc.)
-  // PART 1 FIX: Proper categorization of movements
+  // PART 1 FIX: Proper categorization of movements; packing box/piece when enablePacking
   const totals = React.useMemo(() => {
-    let totalPurchased = 0; // PURCHASE movements (IN)
-    let totalSold = 0; // SALE movements (OUT)
-    let totalReturned = 0; // RETURN movements (IN)
-    let totalAdjustmentPositive = 0; // ADJUSTMENT positive (IN)
-    let totalAdjustmentNegative = 0; // ADJUSTMENT negative (OUT)
-    let currentBalance = 0; // Start from 0 (opening balance)
+    let totalPurchased = 0;
+    let totalSold = 0;
+    let totalReturned = 0;
+    let totalAdjustmentPositive = 0;
+    let totalAdjustmentNegative = 0;
+    let currentBalance = 0;
+    let totalPurchasedBox = 0;
+    let totalPurchasedPiece = 0;
+    let totalSoldBox = 0;
+    let totalSoldPiece = 0;
+    let totalAdjustmentBox = 0;
+    let totalAdjustmentPiece = 0;
+    let currentBox = 0;
+    let currentPiece = 0;
 
     movements.forEach((movement) => {
       const qty = Number(movement.quantity || 0);
+      const boxCh = Number((movement as any).box_change ?? 0);
+      const pieceCh = Number((movement as any).piece_change ?? 0);
       const movementType = ((movement.movement_type || movement.type || '') as string).toLowerCase();
-      
-      // PART 1: Proper categorization
+
       if (movementType === 'purchase') {
-        totalPurchased += qty; // Purchase is usually positive (IN)
+        totalPurchased += qty;
+        totalPurchasedBox += boxCh;
+        totalPurchasedPiece += pieceCh;
       } else if (movementType === 'sale') {
-        totalSold += Math.abs(qty); // Sale is usually negative, convert to positive (OUT)
+        totalSold += Math.abs(qty);
+        totalSoldBox += Math.abs(boxCh);
+        totalSoldPiece += Math.abs(pieceCh);
       } else if (movementType === 'return' || movementType === 'sell_return' || movementType === 'rental_return') {
-        totalReturned += qty; // Returns are usually positive (IN)
+        totalReturned += qty;
       } else if (movementType === 'adjustment') {
         if (qty > 0) {
-          totalAdjustmentPositive += qty; // Positive adjustment (IN)
+          totalAdjustmentPositive += qty;
         } else if (qty < 0) {
-          totalAdjustmentNegative += Math.abs(qty); // Negative adjustment (OUT)
+          totalAdjustmentNegative += Math.abs(qty);
         }
+        totalAdjustmentBox += boxCh;
+        totalAdjustmentPiece += pieceCh;
       }
-      
-      // Calculate running balance (0 + all movements)
+
       currentBalance += qty;
+      currentBox += boxCh;
+      currentPiece += pieceCh;
     });
 
-    // Calculate totals
     const totalIn = totalPurchased + totalReturned + totalAdjustmentPositive;
     const totalOut = totalSold + totalAdjustmentNegative;
-    const totalAdjustments = totalAdjustmentPositive - totalAdjustmentNegative; // Net adjustment
+    const totalAdjustments = totalAdjustmentPositive - totalAdjustmentNegative;
 
-    // Log totals calculation for debugging
-    console.log('[FULL LEDGER] Totals calculation:', {
+    return {
       totalPurchased,
       totalSold,
       totalReturned,
@@ -429,24 +458,14 @@ export const FullStockLedgerView: React.FC<FullStockLedgerViewProps> = ({
       totalIn,
       totalOut,
       currentBalance,
-      totalMovements: movements.length,
-      movementsByType: movements.reduce((acc: Record<string, number>, m) => {
-        const type = ((m.movement_type || m.type || 'unknown') as string).toLowerCase();
-        acc[type] = (acc[type] || 0) + 1;
-        return acc;
-      }, {})
-    });
-
-    return { 
-      totalPurchased, 
-      totalSold, 
-      totalReturned, 
-      totalAdjustmentPositive, 
-      totalAdjustmentNegative,
-      totalAdjustments,
-      totalIn, 
-      totalOut, 
-      currentBalance 
+      totalPurchasedBox,
+      totalPurchasedPiece,
+      totalSoldBox,
+      totalSoldPiece,
+      totalAdjustmentBox,
+      totalAdjustmentPiece,
+      currentBox,
+      currentPiece,
     };
   }, [movements]);
 
@@ -456,8 +475,6 @@ export const FullStockLedgerView: React.FC<FullStockLedgerViewProps> = ({
       year: 'numeric',
       month: 'short',
       day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
     });
   };
 
@@ -698,6 +715,11 @@ export const FullStockLedgerView: React.FC<FullStockLedgerViewProps> = ({
               <span className="text-xs text-gray-500 uppercase font-bold tracking-wider">Total Purchased</span>
             </div>
             <span className="text-2xl font-bold text-green-400">{totals.totalPurchased.toFixed(2)}</span>
+            {enablePacking && (totals.totalPurchasedBox !== 0 || totals.totalPurchasedPiece !== 0) && (
+              <div className="text-xs text-gray-500 mt-1">
+                Box: {Math.round(totals.totalPurchasedBox)} · Pcs: {Math.round(totals.totalPurchasedPiece)}
+              </div>
+            )}
           </div>
           <div className="bg-gray-900 border border-red-800 p-4 rounded-lg">
             <div className="flex items-center gap-2 mb-2">
@@ -705,6 +727,11 @@ export const FullStockLedgerView: React.FC<FullStockLedgerViewProps> = ({
               <span className="text-xs text-gray-500 uppercase font-bold tracking-wider">Total Sold</span>
             </div>
             <span className="text-2xl font-bold text-red-400">{totals.totalSold.toFixed(2)}</span>
+            {enablePacking && (totals.totalSoldBox !== 0 || totals.totalSoldPiece !== 0) && (
+              <div className="text-xs text-gray-500 mt-1">
+                Box: {Math.round(totals.totalSoldBox)} · Pcs: {Math.round(totals.totalSoldPiece)}
+              </div>
+            )}
           </div>
           <div className="bg-gray-900 border border-yellow-800 p-4 rounded-lg">
             <div className="flex items-center gap-2 mb-2">
@@ -720,6 +747,11 @@ export const FullStockLedgerView: React.FC<FullStockLedgerViewProps> = ({
             <div className="text-xs text-gray-500 mt-1">
               +{totals.totalAdjustmentPositive.toFixed(2)} / -{totals.totalAdjustmentNegative.toFixed(2)}
             </div>
+            {enablePacking && (totals.totalAdjustmentBox !== 0 || totals.totalAdjustmentPiece !== 0) && (
+              <div className="text-xs text-gray-500 mt-1">
+                Box: {(totals.totalAdjustmentBox >= 0 ? '+' : '') + Math.round(totals.totalAdjustmentBox)} · Pcs: {(totals.totalAdjustmentPiece >= 0 ? '+' : '') + Math.round(totals.totalAdjustmentPiece)}
+              </div>
+            )}
           </div>
           <div className="bg-gray-900 border border-blue-800 p-4 rounded-lg relative overflow-hidden">
             <div className="absolute inset-0 bg-blue-900/10 z-0"></div>
@@ -735,6 +767,11 @@ export const FullStockLedgerView: React.FC<FullStockLedgerViewProps> = ({
                 </span>
               )}
             </span>
+            {enablePacking && (totals.currentBox !== 0 || totals.currentPiece !== 0) && (
+              <div className="text-xs text-gray-500 mt-1 relative z-10">
+                Box: {Math.round(totals.currentBox)} · Pcs: {Math.round(totals.currentPiece)}
+              </div>
+            )}
           </div>
         </div>
 
@@ -761,9 +798,11 @@ export const FullStockLedgerView: React.FC<FullStockLedgerViewProps> = ({
                       <th className="text-left py-3 px-4 text-gray-400 font-semibold">Date & Time</th>
                       <th className="text-left py-3 px-4 text-gray-400 font-semibold">Type</th>
                       <th className="text-right py-3 px-4 text-gray-400 font-semibold">Quantity Change</th>
+                      {enablePacking && <th className="text-right py-3 px-4 text-gray-400 font-semibold">Box</th>}
+                      {enablePacking && <th className="text-right py-3 px-4 text-gray-400 font-semibold">Pcs</th>}
+                      {enablePacking && <th className="text-right py-3 px-4 text-gray-400 font-semibold">Available Box</th>}
+                      {enablePacking && <th className="text-right py-3 px-4 text-gray-400 font-semibold">Available Pcs</th>}
                       <th className="text-right py-3 px-4 text-gray-400 font-semibold">New Quantity</th>
-                      <th className="text-right py-3 px-4 text-gray-400 font-semibold">Unit Cost</th>
-                      <th className="text-right py-3 px-4 text-gray-400 font-semibold">Total Cost</th>
                       <th className="text-left py-3 px-4 text-gray-400 font-semibold">Reference No</th>
                       <th className="text-left py-3 px-4 text-gray-400 font-semibold">Customer/Supplier</th>
                       <th className="text-left py-3 px-4 text-gray-400 font-semibold">Notes</th>
@@ -812,14 +851,36 @@ export const FullStockLedgerView: React.FC<FullStockLedgerViewProps> = ({
                           <td className={cn('py-3 px-4 text-right font-mono font-semibold whitespace-nowrap', isIn ? 'text-green-400' : 'text-red-400')}>
                             {isIn ? '+' : ''}{qty.toFixed(2)}
                           </td>
+                          {enablePacking && (
+                            <td className="py-3 px-4 text-right font-mono text-gray-300 whitespace-nowrap">
+                              {(movement as any).box_change != null ? (
+                                <span className={(movement as any).box_change >= 0 ? 'text-green-400' : 'text-red-400'}>
+                                  {(movement as any).box_change >= 0 ? '+' : ''}{Math.round(Number((movement as any).box_change))}
+                                </span>
+                              ) : '-'}
+                            </td>
+                          )}
+                          {enablePacking && (
+                            <td className="py-3 px-4 text-right font-mono text-gray-300 whitespace-nowrap">
+                              {(movement as any).piece_change != null ? (
+                                <span className={(movement as any).piece_change >= 0 ? 'text-green-400' : 'text-red-400'}>
+                                  {(movement as any).piece_change >= 0 ? '+' : ''}{Math.round(Number((movement as any).piece_change))}
+                                </span>
+                              ) : '-'}
+                            </td>
+                          )}
+                          {enablePacking && (
+                            <td className="py-3 px-4 text-right font-mono font-semibold text-blue-400 whitespace-nowrap">
+                              {Math.round(runningBoxBalance.get(movement.id) ?? 0)}
+                            </td>
+                          )}
+                          {enablePacking && (
+                            <td className="py-3 px-4 text-right font-mono font-semibold text-blue-400 whitespace-nowrap">
+                              {Math.round(runningPieceBalance.get(movement.id) ?? 0)}
+                            </td>
+                          )}
                           <td className="py-3 px-4 text-right font-mono font-semibold text-blue-400 whitespace-nowrap">
                             {balance.toFixed(2)}
-                          </td>
-                          <td className="py-3 px-4 text-right text-gray-300 whitespace-nowrap">
-                            {movement.unit_cost ? `$${Number(movement.unit_cost).toFixed(2)}` : '-'}
-                          </td>
-                          <td className="py-3 px-4 text-right text-gray-300 whitespace-nowrap">
-                            {movement.total_cost ? `$${Number(movement.total_cost).toFixed(2)}` : '-'}
                           </td>
                           <td className="py-3 px-4">
                             {movement.reference_type && movement.reference_id ? (

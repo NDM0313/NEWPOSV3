@@ -18,6 +18,16 @@ import { Badge } from "../ui/badge";
 type AdjustmentType = 'add' | 'subtract';
 type AdjustmentReason = 'damaged' | 'audit' | 'return' | 'theft' | 'correction' | 'other';
 
+/** Single variation option for products with variations */
+export type AdjustmentVariationOption = {
+  id: string;
+  attributes?: Record<string, unknown>;
+  sku?: string;
+  stock: number;
+  boxes?: number;
+  pieces?: number;
+};
+
 interface StockAdjustmentDrawerProps {
   open: boolean;
   onClose: () => void;
@@ -28,6 +38,12 @@ interface StockAdjustmentDrawerProps {
     currentStock: number;
     unit: string;
     image?: string;
+    /** When product has variations, which variation is pre-selected (e.g. from row context) */
+    variationId?: string | null;
+    /** If true, user must select a variation before adjusting */
+    hasVariations?: boolean;
+    /** List of variations with stock; required when hasVariations is true */
+    variations?: AdjustmentVariationOption[];
   } | null;
   onAdjust: (data: {
     productId: string;
@@ -37,6 +53,8 @@ interface StockAdjustmentDrawerProps {
     notes: string;
     date: string;
     newStock: number;
+    /** Required when product has variations – adjustment applies only to this variation */
+    variationId?: string | null;
   }) => void;
 }
 
@@ -51,33 +69,58 @@ export const StockAdjustmentDrawer: React.FC<StockAdjustmentDrawerProps> = ({
   const [reason, setReason] = useState<AdjustmentReason>('correction');
   const [notes, setNotes] = useState('');
   const [date, setDate] = useState<Date>(new Date());
+  /** When product has variations, which variation is selected for adjustment */
+  const [selectedVariationId, setSelectedVariationId] = useState<string | null>(null);
 
-  // Reset form when product changes
+  const hasVariations = Boolean(product?.hasVariations && product?.variations?.length);
+  const variations = product?.variations ?? [];
+  const selectedVariation = hasVariations && selectedVariationId
+    ? variations.find((v) => v.id === selectedVariationId)
+    : null;
+  /** Effective current stock: selected variation's stock when product has variations, else product total */
+  const effectiveCurrentStock = hasVariations && selectedVariation
+    ? selectedVariation.stock
+    : (product?.currentStock ?? 0);
+
+  // Reset form when product changes; set initial variation selection
   useEffect(() => {
     if (product) {
       setType('add');
       setQuantity(0);
       setReason('correction');
       setNotes('');
-      setDate(new Date()); // Set to Date object, not string
+      setDate(new Date());
+      if (product.hasVariations && product.variations?.length) {
+        const initial = product.variationId && product.variations.some((v) => v.id === product.variationId)
+          ? product.variationId
+          : product.variations[0]?.id ?? null;
+        setSelectedVariationId(initial);
+      } else {
+        setSelectedVariationId(null);
+      }
     }
-  }, [product]);
+  }, [product?.id, product?.variationId, product?.hasVariations, product?.variations]);
 
   if (!open || !product) return null;
 
-  const calculatedNewStock = type === 'add' 
-    ? product.currentStock + quantity 
-    : product.currentStock - quantity;
+  const calculatedNewStock = type === 'add'
+    ? effectiveCurrentStock + quantity
+    : effectiveCurrentStock - quantity;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (quantity <= 0) {
       toast.error('Please enter a valid quantity');
       return;
     }
 
-    if (type === 'subtract' && quantity > product.currentStock) {
+    if (hasVariations && !selectedVariationId) {
+      toast.error('Please select a variation to adjust');
+      return;
+    }
+
+    if (type === 'subtract' && quantity > effectiveCurrentStock) {
       toast.error('Cannot subtract more than current stock');
       return;
     }
@@ -88,8 +131,9 @@ export const StockAdjustmentDrawer: React.FC<StockAdjustmentDrawerProps> = ({
       quantity,
       reason,
       notes,
-      date: date instanceof Date ? date.toISOString().split('T')[0] : date, // Convert Date to string for API
-      newStock: calculatedNewStock
+      date: date instanceof Date ? date.toISOString().split('T')[0] : date,
+      newStock: calculatedNewStock,
+      variationId: hasVariations ? selectedVariationId : undefined,
     });
 
     // Log for audit trail
@@ -97,10 +141,11 @@ export const StockAdjustmentDrawer: React.FC<StockAdjustmentDrawerProps> = ({
       timestamp: new Date().toISOString(),
       product: product.name,
       sku: product.sku,
+      variationId: hasVariations ? selectedVariationId : undefined,
       type,
       quantity,
       reason,
-      previousStock: product.currentStock,
+      previousStock: effectiveCurrentStock,
       newStock: calculatedNewStock,
       notes
     });
@@ -161,12 +206,37 @@ export const StockAdjustmentDrawer: React.FC<StockAdjustmentDrawerProps> = ({
                     {product.sku}
                   </code>
                   <Badge className="bg-green-500/10 text-green-400 border-green-500/20">
-                    Current: {product.currentStock} {product.unit}
+                    Current: {effectiveCurrentStock} {product.unit}
+                    {hasVariations && selectedVariation && ` (${selectedVariation.sku || selectedVariation.id})`}
                   </Badge>
                 </div>
               </div>
             </div>
           </div>
+
+          {/* Variation selector: required when product has variations */}
+          {hasVariations && (
+            <div className="space-y-2">
+              <Label className="text-gray-300">Variation to adjust</Label>
+              <Select value={selectedVariationId ?? ''} onValueChange={(v) => setSelectedVariationId(v || null)}>
+                <SelectTrigger className="bg-gray-900 border-gray-800 text-white">
+                  <SelectValue placeholder="Select variation" />
+                </SelectTrigger>
+                <SelectContent className="bg-gray-900 border-gray-700 text-white">
+                  {variations.map((v) => (
+                    <SelectItem key={v.id} value={v.id}>
+                      {(v.attributes && typeof v.attributes === 'object' && Object.keys(v.attributes).length > 0)
+                        ? Object.entries(v.attributes).map(([k, val]) => `${k}: ${val}`).join(', ')
+                        : (v.sku || v.id)}
+                      {' — '}
+                      <span className="text-green-400">{v.stock} {product.unit}</span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-gray-500">Adjustment will apply only to the selected variation.</p>
+            </div>
+          )}
 
           {/* Adjustment Type */}
           <div className="space-y-2">

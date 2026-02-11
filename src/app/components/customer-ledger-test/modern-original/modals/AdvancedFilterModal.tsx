@@ -12,7 +12,7 @@ export function AdvancedFilterModal({ onClose }: AdvancedFilterModalProps) {
   const [selectedTypes, setSelectedTypes] = useState<string[]>([]);
 
   const paymentAccounts = ['Cash Account', 'HBL Bank Account', 'UBL Bank Account', 'JazzCash Wallet', '-'];
-  const documentTypes = ['Sale', 'Payment', 'Discount'];
+  const documentTypes = ['Sale', 'Studio Sale', 'Payment', 'Discount'];
 
   const handleApply = () => {
     // Apply filters logic here

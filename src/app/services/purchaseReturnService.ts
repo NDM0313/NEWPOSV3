@@ -10,12 +10,13 @@ export interface PurchaseReturn {
   id?: string;
   company_id: string;
   branch_id: string;
-  original_purchase_id: string;
+  /** When null = standalone return (no invoice); when set = return against this purchase */
+  original_purchase_id?: string | null;
   return_no?: string;
   return_date: string;
   supplier_id?: string;
   supplier_name: string;
-  status: 'draft' | 'final';
+  status: 'draft' | 'final' | 'void';
   subtotal: number;
   discount_amount: number;
   tax_amount: number;
@@ -52,7 +53,8 @@ export interface PurchaseReturnItem {
 export interface CreatePurchaseReturnData {
   company_id: string;
   branch_id: string;
-  original_purchase_id: string;
+  /** Omit or null = standalone return (no invoice) */
+  original_purchase_id?: string | null;
   return_date: string;
   supplier_id?: string;
   supplier_name: string;
@@ -98,7 +100,7 @@ export const purchaseReturnService = {
       .insert({
         company_id,
         branch_id,
-        original_purchase_id,
+        original_purchase_id: original_purchase_id ?? null,
         return_no,
         return_date,
         supplier_id: supplier_id || null,
@@ -168,74 +170,79 @@ export const purchaseReturnService = {
     if (!purchaseReturn) throw new Error('Purchase return not found');
     if (purchaseReturn.status === 'final') throw new Error('Purchase return already finalized');
 
-    const { data: originalPurchase, error: purchaseError } = await supabase
-      .from('purchases')
-      .select('po_no, status, supplier_id')
-      .eq('id', purchaseReturn.original_purchase_id)
-      .single();
+    const isStandalone = !purchaseReturn.original_purchase_id;
+    let purchaseItems: any[] | null = null;
+    let originalPurchase: any = null;
 
-    if (purchaseError) throw purchaseError;
-    if (!originalPurchase) throw new Error('Original purchase not found');
-    if (originalPurchase.status !== 'final' && originalPurchase.status !== 'received') {
-      throw new Error('Purchase return allowed only for final/received purchases.');
-    }
+    if (!isStandalone) {
+      const { data: origPurchase, error: purchaseError } = await supabase
+        .from('purchases')
+        .select('po_no, status, supplier_id')
+        .eq('id', purchaseReturn.original_purchase_id)
+        .single();
 
-    // Validate return qty ≤ purchased qty per product/variation
-    const { data: purchaseItems } = await supabase
-      .from('purchase_items')
-      .select('id, product_id, variation_id, quantity, packing_details')
-      .eq('purchase_id', purchaseReturn.original_purchase_id);
+      if (purchaseError) throw purchaseError;
+      if (!origPurchase) throw new Error('Original purchase not found');
+      if (origPurchase.status !== 'final' && origPurchase.status !== 'received') {
+        throw new Error('Purchase return allowed only for final/received purchases.');
+      }
+      originalPurchase = origPurchase;
 
-    if (purchaseItems?.length) {
-      for (const retItem of purchaseReturn.items) {
-        const orig = purchaseItems.find(
-          (p: any) => p.product_id === retItem.product_id && (p.variation_id === retItem.variation_id || (!p.variation_id && !retItem.variation_id))
-        );
-        if (!orig) throw new Error(`Product ${retItem.product_name} not found in original purchase`);
-        const { data: existingReturns } = await supabase
-          .from('purchase_return_items')
-          .select('quantity')
-          .eq('product_id', retItem.product_id)
-          .is('variation_id', retItem.variation_id || null)
-          .neq('purchase_return_id', returnId);
-        const alreadyReturned = (existingReturns || []).reduce((s, r: any) => s + Number(r.quantity), 0);
-        if (alreadyReturned + Number(retItem.quantity) > Number(orig.quantity)) {
-          throw new Error(`Return qty exceeds purchased qty for ${retItem.product_name}`);
+      const { data: pItems } = await supabase
+        .from('purchase_items')
+        .select('id, product_id, variation_id, quantity, packing_details')
+        .eq('purchase_id', purchaseReturn.original_purchase_id);
+      purchaseItems = pItems || null;
+
+      if (purchaseItems?.length) {
+        for (const retItem of purchaseReturn.items) {
+          const orig = purchaseItems.find(
+            (p: any) => p.product_id === retItem.product_id && (p.variation_id === retItem.variation_id || (!p.variation_id && !retItem.variation_id))
+          );
+          if (!orig) throw new Error(`Product ${retItem.product_name} not found in original purchase`);
+          const { data: existingReturns } = await supabase
+            .from('purchase_return_items')
+            .select('quantity')
+            .eq('product_id', retItem.product_id)
+            .is('variation_id', retItem.variation_id || null)
+            .neq('purchase_return_id', returnId);
+          const alreadyReturned = (existingReturns || []).reduce((s, r: any) => s + Number(r.quantity), 0);
+          if (alreadyReturned + Number(retItem.quantity) > Number(orig.quantity)) {
+            throw new Error(`Return qty exceeds purchased qty for ${retItem.product_name}`);
+          }
         }
       }
     }
 
-    // Stock movements: NEGATIVE (stock OUT) with proportional box/piece return
+    // Stock movements: NEGATIVE (stock OUT)
     for (const item of purchaseReturn.items) {
-      // Calculate proportional box/piece return based on original packing
       let boxChange = 0;
       let pieceChange = 0;
-      
-      // Get original item to calculate return ratio
-      const originalItem = purchaseItems?.find(
-        (p: any) => p.product_id === item.product_id && 
-        (p.variation_id === item.variation_id || (!p.variation_id && !item.variation_id))
-      );
-      
-      if (originalItem) {
-        // Get original packing details from original purchase item (CRITICAL: use original, not return item)
-        const originalPacking = originalItem.packing_details || {};
-        const originalQty = Number(originalItem.quantity);
-        const returnQty = Number(item.quantity);
-        
-        if (originalQty > 0 && originalPacking) {
-          // Calculate return ratio
-          const returnRatio = returnQty / originalQty;
-          
-          // Apply ratio to boxes and pieces proportionally (using ORIGINAL packing structure)
-          const originalBoxes = originalPacking.total_boxes || 0;
-          const originalPieces = originalPacking.total_pieces || 0;
-          
-          boxChange = Math.round(originalBoxes * returnRatio * 100) / 100; // Round to 2 decimals
-          pieceChange = Math.round(originalPieces * returnRatio * 100) / 100;
+
+      if (!isStandalone && purchaseItems?.length) {
+        const originalItem = purchaseItems.find(
+          (p: any) => p.product_id === item.product_id &&
+            (p.variation_id === item.variation_id || (!p.variation_id && !item.variation_id))
+        );
+        if (originalItem) {
+          const originalPacking = originalItem.packing_details || {};
+          const originalQty = Number(originalItem.quantity);
+          const returnQty = Number(item.quantity);
+          if (originalQty > 0 && originalPacking) {
+            const returnRatio = returnQty / originalQty;
+            const originalBoxes = originalPacking.total_boxes || 0;
+            const originalPieces = originalPacking.total_pieces || 0;
+            boxChange = Math.round(originalBoxes * returnRatio);
+            pieceChange = Math.round(originalPieces * returnRatio);
+          }
         }
+      } else {
+        // Standalone: use return item's packing_details for box/piece change
+        const packing = item.packing_details || {};
+        boxChange = Math.round((packing.total_boxes || 0));
+        pieceChange = Math.round((packing.total_pieces || 0));
       }
-      
+
       await productService.createStockMovement({
         company_id: companyId,
         branch_id: branchId === 'all' ? undefined : branchId,
@@ -255,7 +262,7 @@ export const purchaseReturnService = {
     }
 
     // Supplier ledger: CREDIT (reduces payable)
-    const supplierId = purchaseReturn.supplier_id || originalPurchase.supplier_id;
+    const supplierId = purchaseReturn.supplier_id || originalPurchase?.supplier_id;
     if (companyId && supplierId && purchaseReturn.total > 0) {
       const ledger = await getOrCreateLedger(companyId, 'supplier', supplierId, purchaseReturn.supplier_name);
       if (ledger) {
@@ -277,6 +284,111 @@ export const purchaseReturnService = {
       .from('purchase_returns')
       .update({ status: 'final', updated_at: new Date().toISOString() })
       .eq('id', returnId);
+
+    if (updateError) throw updateError;
+  },
+
+  /**
+   * Void a finalized purchase return (same as Sale Return: saved by mistake).
+   * Reverses stock (positive movement = stock back IN) and supplier ledger (debit = increase payable).
+   * Marks return as void; record kept for audit.
+   */
+  async voidPurchaseReturn(returnId: string, companyId: string, branchId?: string, userId?: string): Promise<void> {
+    const { data: purchaseReturn, error: returnError } = await supabase
+      .from('purchase_returns')
+      .select(`
+        *,
+        items:purchase_return_items(*)
+      `)
+      .eq('id', returnId)
+      .eq('company_id', companyId)
+      .single();
+
+    if (returnError) throw returnError;
+    if (!purchaseReturn) throw new Error('Purchase return not found');
+    if (purchaseReturn.status !== 'final') {
+      throw new Error('Only finalized purchase returns can be voided. Draft returns can be deleted.');
+    }
+
+    const isStandalone = !purchaseReturn.original_purchase_id;
+    let purchaseItems: any[] | null = null;
+    if (!isStandalone && purchaseReturn.original_purchase_id) {
+      const { data: pItems } = await supabase
+        .from('purchase_items')
+        .select('id, product_id, variation_id, quantity, packing_details')
+        .eq('purchase_id', purchaseReturn.original_purchase_id);
+      purchaseItems = pItems || null;
+    }
+
+    const branchIdToUse = branchId === 'all' ? undefined : branchId;
+
+    for (const item of purchaseReturn.items) {
+      let boxChange = 0;
+      let pieceChange = 0;
+      if (!isStandalone && purchaseItems?.length) {
+        const originalItem = purchaseItems.find(
+          (p: any) => p.product_id === item.product_id &&
+            (p.variation_id === item.variation_id || (!p.variation_id && !item.variation_id))
+        );
+        if (originalItem) {
+          const originalPacking = originalItem.packing_details || {};
+          const originalQty = Number(originalItem.quantity);
+          const returnQty = Number(item.quantity);
+          if (originalQty > 0 && originalPacking) {
+            const returnRatio = returnQty / originalQty;
+            boxChange = Math.round((originalPacking.total_boxes || 0) * returnRatio);
+            pieceChange = Math.round((originalPacking.total_pieces || 0) * returnRatio);
+          }
+        }
+      } else {
+        const packing = item.packing_details || {};
+        boxChange = Math.round(Number(packing.total_boxes || 0));
+        pieceChange = Math.round(Number(packing.total_pieces || 0));
+      }
+
+      await productService.createStockMovement({
+        company_id: companyId,
+        branch_id: branchIdToUse,
+        product_id: item.product_id,
+        variation_id: item.variation_id || undefined,
+        movement_type: 'purchase_return_void',
+        quantity: Number(item.quantity), // POSITIVE = stock back IN
+        unit_cost: Number(item.unit_price),
+        total_cost: Number(item.total),
+        reference_type: 'purchase_return',
+        reference_id: returnId,
+        notes: `Void Purchase Return ${purchaseReturn.return_no || returnId}: ${item.product_name}`,
+        created_by: userId,
+        box_change: boxChange > 0 ? boxChange : undefined,
+        piece_change: pieceChange > 0 ? pieceChange : undefined,
+      });
+    }
+
+    // Supplier ledger: reverse CREDIT with DEBIT (increase payable again)
+    const supplierId = purchaseReturn.supplier_id;
+    if (companyId && supplierId && purchaseReturn.total > 0) {
+      const ledger = await getOrCreateLedger(companyId, 'supplier', supplierId, purchaseReturn.supplier_name);
+      if (ledger) {
+        await addLedgerEntry({
+          companyId,
+          ledgerId: ledger.id,
+          entryDate: purchaseReturn.return_date,
+          debit: purchaseReturn.total,
+          credit: 0,
+          source: 'purchase_return',
+          referenceNo: purchaseReturn.return_no || `PRET-${returnId.slice(0, 8)}`,
+          referenceId: returnId,
+          remarks: `Void Purchase Return ${purchaseReturn.return_no || returnId}`,
+        });
+      }
+    }
+
+    const { error: updateError } = await supabase
+      .from('purchase_returns')
+      .update({ status: 'void', updated_at: new Date().toISOString() })
+      .eq('id', returnId)
+      .eq('company_id', companyId)
+      .eq('status', 'final');
 
     if (updateError) throw updateError;
   },

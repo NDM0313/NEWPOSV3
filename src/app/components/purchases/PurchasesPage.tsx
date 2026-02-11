@@ -3,7 +3,7 @@ import {
   Plus, ShoppingBag, DollarSign, AlertCircle, 
   MoreVertical, Eye, Edit, Trash2, FileText, Phone, MapPin,
   Package, CheckCircle, Clock, XCircle, Receipt, ChevronDown, ChevronUp,
-  Paperclip, RotateCcw
+  Paperclip, RotateCcw, Printer, Download
 } from 'lucide-react';
 import { Button } from "@/app/components/ui/button";
 import { Badge } from "@/app/components/ui/badge";
@@ -42,11 +42,13 @@ import { AttachmentViewer } from '@/app/components/shared/AttachmentViewer';
 import { PurchaseReturnPrintLayout } from '@/app/components/shared/PurchaseReturnPrintLayout';
 import { purchaseReturnService } from '@/app/services/purchaseReturnService';
 import { PurchaseReturnForm } from './PurchaseReturnForm';
+import { StandalonePurchaseReturnForm } from './StandalonePurchaseReturnForm';
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogFooter,
 } from '@/app/components/ui/dialog';
 import { toast } from 'sonner';
 
@@ -149,13 +151,23 @@ export const PurchasesPage = () => {
   const [viewPurchaseReturnDetailsOpen, setViewPurchaseReturnDetailsOpen] = useState(false);
   const [purchaseReturnToDelete, setPurchaseReturnToDelete] = useState<any | null>(null);
   const [deletePurchaseReturnDialogOpen, setDeletePurchaseReturnDialogOpen] = useState(false);
+  const [voidPurchaseReturnDialogOpen, setVoidPurchaseReturnDialogOpen] = useState(false);
+  const [returnToVoidPurchase, setReturnToVoidPurchase] = useState<any | null>(null);
+  const [voidingPurchaseReturn, setVoidingPurchaseReturn] = useState(false);
   const [selectedReturnForPrint, setSelectedReturnForPrint] = useState<any | null>(null);
   const [printReturnOpen, setPrintReturnOpen] = useState(false);
 
-  // Purchase Return Form
+  // Purchase Return Form (from invoice)
   const [purchaseReturnFormOpen, setPurchaseReturnFormOpen] = useState(false);
   const [selectedPurchaseForReturn, setSelectedPurchaseForReturn] = useState<Purchase | null>(null);
   const [purchasesWithReturns, setPurchasesWithReturns] = useState<Set<string>>(new Set());
+  /** Standalone purchase return (no invoice) form */
+  const [standalonePurchaseReturnFormOpen, setStandalonePurchaseReturnFormOpen] = useState(false);
+
+  /** Main tab: Purchases (with status sub-tabs) | Returns */
+  const [activeMainTab, setActiveMainTab] = useState<'purchases' | 'returns'>('purchases');
+  /** When set, open View Purchase drawer for this ID (e.g. from "View Original Purchase" on a return) */
+  const [originalPurchaseIdToView, setOriginalPurchaseIdToView] = useState<string | null>(null);
 
   // Column visibility state
   const [visibleColumns, setVisibleColumns] = useState({
@@ -299,12 +311,12 @@ export const PurchasesPage = () => {
           items: p.items?.length || 0,
           grandTotal: p.total || 0,
           paymentDue: p.due_amount || 0,
-          // STEP 1 FIX: Proper status mapping - Final/Received show correctly, Draft/Ordered show as Pending
+          // Preserve API status for tabs: draft | ordered | received | final
           status: (p.status === 'final' ? 'final' : 
                    p.status === 'received' ? 'received' : 
-                   p.status === 'ordered' ? 'pending' : 
-                   p.status === 'draft' ? 'pending' : 
-                   'pending') as PurchaseStatus,
+                   p.status === 'ordered' ? 'ordered' : 
+                   p.status === 'draft' ? 'draft' : 
+                   'draft') as PurchaseStatus,
           paymentStatus: p.payment_status || 'unpaid',
           // STEP 3 FIX: Added By - show user name from created_by_user join or Purchase.createdBy
           addedBy: p.created_by_user?.full_name || p.created_by_user?.email || (p as any).createdBy || 'System',
@@ -363,12 +375,12 @@ export const PurchasesPage = () => {
           items: p.itemsCount || 0,
           grandTotal: p.total || 0,
           paymentDue: p.due || 0,
-          // STEP 1 FIX: Proper status mapping - Final/Received show correctly, Draft/Ordered show as Pending
+          // Preserve API status for tabs: draft | ordered | received | final
           status: (p.status === 'final' ? 'final' : 
                    p.status === 'received' ? 'received' : 
-                   p.status === 'ordered' ? 'pending' : 
-                   p.status === 'draft' ? 'pending' : 
-                   'pending') as PurchaseStatus,
+                   p.status === 'ordered' ? 'ordered' : 
+                   p.status === 'draft' ? 'draft' : 
+                   'draft') as PurchaseStatus,
           paymentStatus: p.paymentStatus || 'unpaid',
           // STEP 3 FIX: Added By - show user name from created_by_user join (context purchases)
           addedBy: (p as any).createdBy || p.created_by_user?.full_name || p.created_by_user?.email || 'System',
@@ -412,13 +424,26 @@ export const PurchasesPage = () => {
     };
   }, [loadPurchases, refreshPurchases]);
   
+  // Load purchase returns list when Returns tab is active
+  useEffect(() => {
+    if (activeMainTab === 'returns' && companyId) {
+      setLoadingPurchaseReturns(true);
+      purchaseReturnService.getPurchaseReturns(companyId, branchId === 'all' ? undefined : branchId)
+        .then((list) => {
+          setPurchaseReturnsList(list);
+          setLoadingPurchaseReturns(false);
+        })
+        .catch(() => setLoadingPurchaseReturns(false));
+    }
+  }, [activeMainTab, companyId, branchId]);
+
   // Load purchases with returns
   useEffect(() => {
     const loadPurchasesWithReturns = async () => {
       if (!companyId) return;
       try {
         const returns = await purchaseReturnService.getPurchaseReturns(companyId, branchId === 'all' ? undefined : branchId);
-        const returnPurchaseIds = new Set(returns.map((r: any) => r.original_purchase_id));
+        const returnPurchaseIds = new Set(returns.map((r: any) => r.original_purchase_id).filter(Boolean));
         setPurchasesWithReturns(returnPurchaseIds);
       } catch (error) {
         console.error('[PURCHASES PAGE] Error loading purchase returns:', error);
@@ -667,8 +692,8 @@ export const PurchasesPage = () => {
       final: { bg: 'bg-green-500/20', text: 'text-green-400', border: 'border-green-500/30', icon: CheckCircle, label: 'Final' },
       received: { bg: 'bg-green-500/20', text: 'text-green-400', border: 'border-green-500/30', icon: CheckCircle, label: 'Received' },
       pending: { bg: 'bg-yellow-500/20', text: 'text-yellow-400', border: 'border-yellow-500/30', icon: AlertCircle, label: 'Pending' },
-      ordered: { bg: 'bg-yellow-500/20', text: 'text-yellow-400', border: 'border-yellow-500/30', icon: AlertCircle, label: 'Pending' },
-      draft: { bg: 'bg-yellow-500/20', text: 'text-yellow-400', border: 'border-yellow-500/30', icon: AlertCircle, label: 'Pending' },
+      ordered: { bg: 'bg-blue-500/20', text: 'text-blue-400', border: 'border-blue-500/30', icon: Clock, label: 'Ordered' },
+      draft: { bg: 'bg-gray-500/20', text: 'text-gray-400', border: 'border-gray-500/30', icon: AlertCircle, label: 'Draft' },
     };
     const { bg, text, border, icon: Icon, label } = config[status] || config.pending;
     return (
@@ -869,34 +894,174 @@ export const PurchasesPage = () => {
             <p className="text-sm text-gray-400 mt-0.5">Manage purchase orders and supplier transactions</p>
           </div>
           <div className="flex gap-2">
-            <Button
-              variant="outline"
-              onClick={() => {
-                setPurchaseReturnsDialogOpen(true);
-                if (companyId) {
-                  setLoadingPurchaseReturns(true);
-                  purchaseReturnService.getPurchaseReturns(companyId, branchId === 'all' ? undefined : branchId).then((list) => {
-                    setPurchaseReturnsList(list);
-                    setLoadingPurchaseReturns(false);
-                  }).catch(() => setLoadingPurchaseReturns(false));
-                }
-              }}
-              className="border-gray-600 text-gray-300 hover:bg-gray-800 h-10 gap-2"
-            >
-              <RotateCcw size={16} />
-              Purchase Returns
-            </Button>
-            <Button 
-              onClick={() => openDrawer('addPurchase')}
-              className="bg-orange-600 hover:bg-orange-500 text-white h-10 gap-2"
-            >
-              <Plus size={16} />
-              Add Purchase
-            </Button>
+            {activeMainTab === 'purchases' && (
+              <Button 
+                onClick={() => openDrawer('addPurchase')}
+                className="bg-orange-600 hover:bg-orange-500 text-white h-10 gap-2"
+              >
+                <Plus size={16} />
+                Add Purchase
+              </Button>
+            )}
           </div>
+        </div>
+        {/* Main tabs: Purchases | Returns */}
+        <div className="flex items-center gap-1 mt-4 p-1 bg-gray-950 border border-gray-800 rounded-lg inline-flex">
+          <button
+            type="button"
+            onClick={() => setActiveMainTab('purchases')}
+            className={cn(
+              'px-4 py-2 rounded-md text-sm font-medium transition-all',
+              activeMainTab === 'purchases' ? 'bg-orange-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-800'
+            )}
+          >
+            Purchases
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveMainTab('returns')}
+            className={cn(
+              'px-4 py-2 rounded-md text-sm font-medium transition-all flex items-center gap-2',
+              activeMainTab === 'returns' ? 'bg-orange-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-800'
+            )}
+          >
+            <RotateCcw size={14} />
+            Returns
+          </button>
         </div>
       </div>
 
+      {/* Returns tab content */}
+      {activeMainTab === 'returns' && (
+        <div className="flex-1 flex flex-col overflow-hidden px-6 py-4">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold text-white">Purchase Returns</h2>
+            <Button
+              onClick={() => setStandalonePurchaseReturnFormOpen(true)}
+              className="bg-orange-600 hover:bg-orange-500 text-white h-10 gap-2"
+            >
+              <Plus size={16} />
+              Create new return
+            </Button>
+          </div>
+          <div className="flex-1 overflow-auto rounded-xl border border-gray-800 bg-gray-900/50">
+            {loadingPurchaseReturns ? (
+              <div className="py-12 text-center text-gray-400">Loading...</div>
+            ) : purchaseReturnsList.length === 0 ? (
+              <div className="py-12 text-center text-gray-500">No purchase returns. Click &quot;Create new return&quot; to add one.</div>
+            ) : (
+              <table className="w-full">
+                <thead className="bg-gray-900/50 border-b border-gray-800 sticky top-0">
+                  <tr>
+                    <th className="px-4 py-3 text-left text-xs text-gray-400 uppercase font-medium">Date</th>
+                    <th className="px-4 py-3 text-left text-xs text-gray-400 uppercase font-medium">Return #</th>
+                    <th className="px-4 py-3 text-left text-xs text-gray-400 uppercase font-medium">Supplier</th>
+                    <th className="px-4 py-3 text-left text-xs text-gray-400 uppercase font-medium">Invoice</th>
+                    <th className="px-4 py-3 text-center text-xs text-gray-400 uppercase font-medium">Status</th>
+                    <th className="px-4 py-3 text-right text-xs text-gray-400 uppercase font-medium">Total</th>
+                    <th className="px-4 py-3 text-right text-xs text-gray-400 uppercase font-medium">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-800">
+                  {purchaseReturnsList.map((ret: any) => (
+                    <tr key={ret.id} className="hover:bg-gray-800/30">
+                      <td className="px-4 py-3 text-sm text-gray-300">{formatDateAndTime(ret.return_date).date}</td>
+                      <td className="px-4 py-3 text-sm font-mono text-purple-400">{ret.return_no || `PR-${ret.id?.slice(0, 8)}`}</td>
+                      <td className="px-4 py-3 text-sm text-white">{ret.supplier_name}</td>
+                      <td className="px-4 py-3 text-sm text-gray-400">{ret.original_purchase_id ? ret.original_purchase_id.slice(0, 8) : '—'}</td>
+                      <td className="px-4 py-3 text-center">
+                        <Badge className={
+                          String(ret?.status).toLowerCase() === 'void'
+                            ? 'bg-gray-500/20 text-gray-400 border-gray-500/30'
+                            : ret.status === 'final'
+                              ? 'bg-green-500/20 text-green-400 border-green-500/30'
+                              : 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30'
+                        }>
+                          {String(ret?.status).toLowerCase() === 'void' ? 'Voided' : ret.status === 'final' ? 'Final' : 'Draft'}
+                        </Badge>
+                      </td>
+                      <td className="px-4 py-3 text-right text-sm font-semibold text-red-400">{(ret.total || 0).toLocaleString()}</td>
+                      <td className="px-4 py-3 text-right">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="sm" className="h-8 w-8 p-0"><MoreVertical size={14} /></Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="bg-gray-900 border-gray-700 text-white w-56">
+                            <DropdownMenuItem className="hover:bg-gray-800 cursor-pointer" onClick={() => { setSelectedPurchaseReturn(ret); setViewPurchaseReturnDetailsOpen(true); }}>
+                              <Eye size={14} className="mr-2 text-blue-400" />
+                              View Return Details
+                            </DropdownMenuItem>
+                            {ret.original_purchase_id && (
+                              <DropdownMenuItem
+                                className="hover:bg-gray-800 cursor-pointer"
+                                onClick={() => {
+                                  setOriginalPurchaseIdToView(ret.original_purchase_id);
+                                  setViewDetailsOpen(true);
+                                }}
+                              >
+                                <FileText size={14} className="mr-2 text-green-400" />
+                                View Original Purchase
+                              </DropdownMenuItem>
+                            )}
+                            {String(ret?.status).toLowerCase() !== 'final' && String(ret?.status).toLowerCase() !== 'void' && (
+                              <>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem className="hover:bg-gray-800 text-red-400 cursor-pointer" onClick={() => { setPurchaseReturnToDelete(ret); setDeletePurchaseReturnDialogOpen(true); }}>
+                                  <Trash2 size={14} className="mr-2" /> Delete Return
+                                </DropdownMenuItem>
+                              </>
+                            )}
+                            {String(ret?.status).toLowerCase() === 'final' && (
+                              <>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem
+                                  className="hover:bg-gray-800 text-amber-400 cursor-pointer"
+                                  onClick={() => { setReturnToVoidPurchase(ret); setVoidPurchaseReturnDialogOpen(true); }}
+                                >
+                                  <RotateCcw size={14} className="mr-2" />
+                                  Void / Cancel Return
+                                </DropdownMenuItem>
+                              </>
+                            )}
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                              className="hover:bg-gray-800 cursor-pointer"
+                              onClick={async () => {
+                                if (!companyId) return;
+                                try {
+                                  const fullReturn = await purchaseReturnService.getPurchaseReturnById(ret.id, companyId);
+                                  setSelectedReturnForPrint(fullReturn);
+                                  setPrintReturnOpen(true);
+                                } catch (e: any) {
+                                  toast.error(e?.message || 'Could not load return');
+                                }
+                              }}
+                            >
+                              <Printer size={14} className="mr-2 text-purple-400" />
+                              Print Return
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              className="hover:bg-gray-800 cursor-pointer"
+                              onClick={() => toast.info('Export return functionality coming soon')}
+                            >
+                              <Download size={14} className="mr-2 text-blue-400" />
+                              Export Return
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Purchases tab: Summary Cards + Status tabs + Table */}
+      {activeMainTab === 'purchases' && (
+        <>
       {/* Summary Cards - Fixed */}
       <div className="shrink-0 px-6 py-4 bg-[#0F1419] border-b border-gray-800">
         <div className="grid grid-cols-4 gap-4">
@@ -948,7 +1113,7 @@ export const PurchasesPage = () => {
               <div>
                 <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Purchase Orders</p>
                 <p className="text-2xl font-bold text-blue-400 mt-1">{summary.orderCount}</p>
-                <p className="text-xs text-gray-500 mt-1">Active orders</p>
+                <p className="text-xs text-gray-500 mt-1">In list</p>
               </div>
               <div className="w-12 h-12 rounded-full bg-blue-500/10 flex items-center justify-center">
                 <FileText size={24} className="text-blue-500" />
@@ -956,6 +1121,29 @@ export const PurchasesPage = () => {
             </div>
           </div>
         </div>
+      </div>
+
+      {/* Status tabs: All | Draft | Ordered | Received | Final */}
+      <div className="shrink-0 px-6 pt-2 pb-1 flex items-center gap-1 border-b border-gray-800/50">
+        {[
+          { value: 'all' as const, label: 'All' },
+          { value: 'draft' as const, label: 'Draft' },
+          { value: 'ordered' as const, label: 'Ordered' },
+          { value: 'received' as const, label: 'Received' },
+          { value: 'final' as const, label: 'Final' },
+        ].map((tab) => (
+          <button
+            key={tab.value}
+            type="button"
+            onClick={() => setStatusFilter(tab.value)}
+            className={cn(
+              'px-3 py-2 rounded-t-md text-sm font-medium transition-all',
+              statusFilter === tab.value ? 'bg-gray-800 text-white border-t border-x border-gray-700 -mb-px' : 'text-gray-400 hover:text-white hover:bg-gray-800/50'
+            )}
+          >
+            {tab.label}
+          </button>
+        ))}
       </div>
 
       {/* Global List Toolbar */}
@@ -1058,9 +1246,10 @@ export const PurchasesPage = () => {
                   <div className="space-y-2">
                     {[
                       { value: 'all', label: 'All Status' },
-                      { value: 'received', label: 'Received' },
+                      { value: 'draft', label: 'Draft' },
                       { value: 'ordered', label: 'Ordered' },
-                      { value: 'pending', label: 'Pending' },
+                      { value: 'received', label: 'Received' },
+                      { value: 'final', label: 'Final' },
                     ].map(opt => (
                       <label key={opt.value} className="flex items-center gap-2 cursor-pointer">
                         <input
@@ -1311,6 +1500,8 @@ export const PurchasesPage = () => {
         onPageChange={handlePageChange}
         onPageSizeChange={handlePageSizeChange}
       />
+        </>
+      )}
 
       {/* STEP 2 FIX: View Payments Modal (like Sale module) */}
       {selectedPurchase && (
@@ -1401,9 +1592,9 @@ export const PurchasesPage = () => {
                     paymentDue: purchaseData.due_amount || 0, // CRITICAL: Get updated due_amount from database (trigger updated it)
                     status: (purchaseData.status === 'final' ? 'final' : 
                              purchaseData.status === 'received' ? 'received' : 
-                             purchaseData.status === 'ordered' ? 'pending' : 
-                             purchaseData.status === 'draft' ? 'pending' : 
-                             'pending') as PurchaseStatus,
+                             purchaseData.status === 'ordered' ? 'ordered' : 
+                             purchaseData.status === 'draft' ? 'draft' : 
+                             'draft') as PurchaseStatus,
                     paymentStatus: purchaseData.payment_status || 'unpaid',
                     addedBy: purchaseData.created_by_user?.full_name || purchaseData.created_by_user?.email || selectedPurchase.addedBy || 'System',
                   };
@@ -1424,31 +1615,36 @@ export const PurchasesPage = () => {
         />
       )}
 
-      {/* View Purchase Details Drawer */}
-      {selectedPurchase && (
+      {/* View Purchase Details Drawer (from list or from "View Original Purchase" on return) */}
+      {(selectedPurchase || originalPurchaseIdToView) && (
         <ViewPurchaseDetailsDrawer
-          isOpen={viewDetailsOpen}
+          isOpen={viewDetailsOpen || !!originalPurchaseIdToView}
           onClose={() => {
             setViewDetailsOpen(false);
             setSelectedPurchase(null);
+            setOriginalPurchaseIdToView(null);
           }}
-          purchaseId={selectedPurchase.uuid}
+          purchaseId={selectedPurchase?.uuid ?? originalPurchaseIdToView ?? ''}
           onEdit={() => {
             setViewDetailsOpen(false);
-            handlePurchaseAction('edit', selectedPurchase);
+            if (selectedPurchase) handlePurchaseAction('edit', selectedPurchase);
+            setOriginalPurchaseIdToView(null);
           }}
           onDelete={() => {
             setViewDetailsOpen(false);
-            handlePurchaseAction('delete', selectedPurchase);
+            if (selectedPurchase) handlePurchaseAction('delete', selectedPurchase);
+            setOriginalPurchaseIdToView(null);
           }}
           onAddPayment={() => {
             setViewDetailsOpen(false);
-            handlePurchaseAction('make_payment', selectedPurchase);
+            if (selectedPurchase) handlePurchaseAction('make_payment', selectedPurchase);
+            setOriginalPurchaseIdToView(null);
           }}
           onOpenReturn={() => {
-            setSelectedPurchaseForReturn(selectedPurchase);
+            if (selectedPurchase) setSelectedPurchaseForReturn(selectedPurchase);
             setPurchaseReturnFormOpen(true);
             setViewDetailsOpen(false);
+            setOriginalPurchaseIdToView(null);
           }}
         />
       )}
@@ -1554,8 +1750,14 @@ export const PurchasesPage = () => {
                       <td className="px-4 py-2 text-sm text-white">{ret.supplier_name}</td>
                       <td className="px-4 py-2 text-sm text-gray-400">{ret.original_purchase_id?.slice(0, 8)}</td>
                       <td className="px-4 py-2 text-center">
-                        <Badge className={ret.status === 'final' ? 'bg-green-500/20 text-green-400 border-green-500/30' : 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30'}>
-                          {ret.status === 'final' ? 'FINAL / LOCKED' : 'Draft'}
+                        <Badge className={
+                          String(ret?.status).toLowerCase() === 'void'
+                            ? 'bg-gray-500/20 text-gray-400 border-gray-500/30'
+                            : ret.status === 'final'
+                              ? 'bg-green-500/20 text-green-400 border-green-500/30'
+                              : 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30'
+                        }>
+                          {String(ret?.status).toLowerCase() === 'void' ? 'Voided' : ret.status === 'final' ? 'FINAL / LOCKED' : 'Draft'}
                         </Badge>
                       </td>
                       <td className="px-4 py-2 text-right text-sm font-semibold text-red-400">{(ret.total || 0).toLocaleString()}</td>
@@ -1564,15 +1766,55 @@ export const PurchasesPage = () => {
                           <DropdownMenuTrigger asChild>
                             <Button variant="ghost" size="sm" className="h-8 w-8 p-0"><MoreVertical size={14} /></Button>
                           </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end" className="bg-gray-900 border-gray-700">
-                            <DropdownMenuItem className="hover:bg-gray-800" onClick={() => { setSelectedPurchaseReturn(ret); setViewPurchaseReturnDetailsOpen(true); }}>
-                              <Eye size={14} className="mr-2" /> View
+                          <DropdownMenuContent align="end" className="bg-gray-900 border-gray-700 text-white w-56">
+                            <DropdownMenuItem className="hover:bg-gray-800 cursor-pointer" onClick={() => { setPurchaseReturnsDialogOpen(false); setSelectedPurchaseReturn(ret); setViewPurchaseReturnDetailsOpen(true); }}>
+                              <Eye size={14} className="mr-2 text-blue-400" />
+                              View Return Details
                             </DropdownMenuItem>
-                            {ret.status === 'draft' && (
-                              <DropdownMenuItem className="hover:bg-gray-800 text-red-400" onClick={() => { setPurchaseReturnToDelete(ret); setDeletePurchaseReturnDialogOpen(true); }}>
-                                <Trash2 size={14} className="mr-2" /> Delete
+                            {ret.original_purchase_id && (
+                              <DropdownMenuItem
+                                className="hover:bg-gray-800 cursor-pointer"
+                                onClick={() => {
+                                  setPurchaseReturnsDialogOpen(false);
+                                  setOriginalPurchaseIdToView(ret.original_purchase_id);
+                                  setViewDetailsOpen(true);
+                                }}
+                              >
+                                <FileText size={14} className="mr-2 text-green-400" />
+                                View Original Purchase
                               </DropdownMenuItem>
                             )}
+                            {String(ret?.status).toLowerCase() !== 'final' && String(ret?.status).toLowerCase() !== 'void' && (
+                              <DropdownMenuItem className="hover:bg-gray-800 text-red-400 cursor-pointer" onClick={() => { setPurchaseReturnToDelete(ret); setDeletePurchaseReturnDialogOpen(true); }}>
+                                <Trash2 size={14} className="mr-2" /> Delete Return
+                              </DropdownMenuItem>
+                            )}
+                            {String(ret?.status).toLowerCase() === 'final' && (
+                              <DropdownMenuItem className="hover:bg-gray-800 text-amber-400 cursor-pointer" onClick={() => { setReturnToVoidPurchase(ret); setVoidPurchaseReturnDialogOpen(true); }}>
+                                <RotateCcw size={14} className="mr-2" /> Void / Cancel Return
+                              </DropdownMenuItem>
+                            )}
+                            <DropdownMenuSeparator className="bg-gray-700" />
+                            <DropdownMenuItem
+                              className="hover:bg-gray-800 cursor-pointer"
+                              onClick={async () => {
+                                if (!companyId) return;
+                                try {
+                                  const fullReturn = await purchaseReturnService.getPurchaseReturnById(ret.id, companyId);
+                                  setSelectedReturnForPrint(fullReturn);
+                                  setPrintReturnOpen(true);
+                                } catch (e: any) {
+                                  toast.error(e?.message || 'Could not load return');
+                                }
+                              }}
+                            >
+                              <Printer size={14} className="mr-2 text-purple-400" />
+                              Print Return
+                            </DropdownMenuItem>
+                            <DropdownMenuItem className="hover:bg-gray-800 cursor-pointer" onClick={() => toast.info('Export return functionality coming soon')}>
+                              <Download size={14} className="mr-2 text-blue-400" />
+                              Export Return
+                            </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </td>
@@ -1585,55 +1827,168 @@ export const PurchasesPage = () => {
         </DialogContent>
       </Dialog>
 
-      {/* View Purchase Return Details */}
+      {/* View Purchase Return Details — same layout as Sale Return View */}
       {selectedPurchaseReturn && (
         <Dialog open={viewPurchaseReturnDetailsOpen} onOpenChange={setViewPurchaseReturnDetailsOpen}>
-          <DialogContent className="bg-[#0B0F19] border-gray-800 text-white max-w-2xl">
-            <DialogHeader>
-              <DialogTitle className="text-white">Return {selectedPurchaseReturn.return_no || selectedPurchaseReturn.id?.slice(0, 8)}</DialogTitle>
-            </DialogHeader>
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-2 text-sm">
-                <div><span className="text-gray-500">Date:</span> {formatDateAndTime(selectedPurchaseReturn.return_date).date}</div>
-                <div><span className="text-gray-500">Status:</span> <Badge className={selectedPurchaseReturn.status === 'final' ? 'bg-green-500/20 text-green-400' : 'bg-yellow-500/20 text-yellow-400'}>{selectedPurchaseReturn.status === 'final' ? 'FINAL / LOCKED' : 'Draft'}</Badge></div>
-                <div><span className="text-gray-500">Supplier:</span> {selectedPurchaseReturn.supplier_name}</div>
-                <div><span className="text-gray-500">Total:</span> <span className="text-red-400 font-semibold">{(selectedPurchaseReturn.total || 0).toLocaleString()}</span></div>
-              </div>
-              {selectedPurchaseReturn.items?.length > 0 && (
-                <div>
-                  <p className="text-xs text-gray-500 uppercase mb-2">Items</p>
-                  <ul className="space-y-1 text-sm">
-                    {selectedPurchaseReturn.items.map((it: any, i: number) => (
-                      <li key={i} className="flex justify-between"><span>{it.product_name}</span> <span>{it.quantity} × {(it.unit_price || 0).toLocaleString()} = {(it.total || 0).toLocaleString()}</span></li>
-                    ))}
-                  </ul>
+          <DialogContent className="bg-[#0B0F19] border-gray-800 text-white !w-[800px] !max-w-[800px] sm:!max-w-[800px] max-h-[90vh] overflow-y-auto">
+            <DialogHeader className="border-b border-gray-800 pb-4">
+              <DialogTitle className="text-2xl font-bold text-white flex items-center gap-2">
+                <div className="w-10 h-10 rounded-lg bg-purple-500/20 flex items-center justify-center">
+                  <RotateCcw size={20} className="text-purple-400" />
                 </div>
-              )}
-              <div className="flex gap-2 pt-2">
-                <Button
-                  onClick={async () => {
-                    if (!companyId) return;
-                    try {
-                      const fullReturn = await purchaseReturnService.getPurchaseReturnById(selectedPurchaseReturn.id, companyId);
-                      setSelectedReturnForPrint(fullReturn);
-                      setPrintReturnOpen(true);
-                    } catch (error: any) {
-                      console.error('[PurchasesPage] Error loading return for print:', error);
-                      toast.error('Could not load return details for printing');
-                    }
-                  }}
-                  className="bg-blue-600 hover:bg-blue-700 text-white"
-                >
-                  <FileText size={16} className="mr-2" />
-                  Print Return
-                </Button>
+                <div>
+                  <div>Return Details</div>
+                  <div className="text-sm font-mono text-purple-400 font-normal">{selectedPurchaseReturn.return_no || `PR-${selectedPurchaseReturn.id?.slice(0, 8).toUpperCase()}`}</div>
+                </div>
+              </DialogTitle>
+            </DialogHeader>
+            <div className="space-y-6 mt-4">
+              {/* Return Header Info */}
+              <div className="grid grid-cols-2 gap-4 p-4 bg-[#0F1419] rounded-lg border border-gray-800">
+                <div>
+                  <p className="text-xs text-gray-400 uppercase mb-1">Return Date</p>
+                  <p className="text-sm text-white font-medium">{formatDateAndTime(selectedPurchaseReturn.return_date || selectedPurchaseReturn.created_at).date} {formatDateAndTime(selectedPurchaseReturn.return_date || selectedPurchaseReturn.created_at).time}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-400 uppercase mb-1">Status</p>
+                  <Badge className={
+                    String(selectedPurchaseReturn.status).toLowerCase() === 'void' ? 'bg-gray-500/20 text-gray-400 border-gray-500/30' :
+                    selectedPurchaseReturn.status === 'final' ? 'bg-green-500/20 text-green-400 border-green-500/30' : 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30'
+                  }>
+                    {String(selectedPurchaseReturn.status).toLowerCase() === 'void' ? 'Voided' : selectedPurchaseReturn.status === 'final' ? 'FINAL / LOCKED' : 'Draft'}
+                  </Badge>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-400 uppercase mb-1">Supplier</p>
+                  <p className="text-sm text-white font-medium">{selectedPurchaseReturn.supplier_name}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-400 uppercase mb-1">Location</p>
+                  <p className="text-sm text-white">{branchMap.get(selectedPurchaseReturn.branch_id) || '—'}</p>
+                </div>
+                {selectedPurchaseReturn.original_purchase_id && (
+                  <div>
+                    <p className="text-xs text-gray-400 uppercase mb-1">Original Purchase</p>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setViewPurchaseReturnDetailsOpen(false);
+                        setOriginalPurchaseIdToView(selectedPurchaseReturn.original_purchase_id);
+                        setViewDetailsOpen(true);
+                      }}
+                      className="text-sm text-blue-400 hover:text-blue-300 hover:underline font-mono"
+                    >
+                      {purchases.find(p => p.uuid === selectedPurchaseReturn.original_purchase_id)?.poNo || `PO: ${selectedPurchaseReturn.original_purchase_id?.slice(0, 8)}`}
+                    </button>
+                  </div>
+                )}
+                {selectedPurchaseReturn.reason && (
+                  <div className="col-span-2">
+                    <p className="text-xs text-gray-400 uppercase mb-1">Reason</p>
+                    <p className="text-sm text-white">{selectedPurchaseReturn.reason}</p>
+                  </div>
+                )}
+                {selectedPurchaseReturn.notes && (
+                  <div className="col-span-2">
+                    <p className="text-xs text-gray-400 uppercase mb-1">Notes</p>
+                    <p className="text-sm text-gray-300">{selectedPurchaseReturn.notes}</p>
+                  </div>
+                )}
+              </div>
+
+              {/* Return Items */}
+              <div>
+                <h3 className="text-lg font-semibold text-white mb-3">Return Items</h3>
+                {selectedPurchaseReturn.items && selectedPurchaseReturn.items.length > 0 ? (
+                  <div className="bg-[#0F1419] border border-gray-800 rounded-lg overflow-hidden">
+                    <table className="w-full">
+                      <thead className="bg-[#0B0F19] border-b border-gray-800">
+                        <tr>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase">Product</th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase">SKU</th>
+                          <th className="px-4 py-3 text-center text-xs font-medium text-gray-400 uppercase">Qty</th>
+                          <th className="px-4 py-3 text-right text-xs font-medium text-gray-400 uppercase">Unit Price</th>
+                          <th className="px-4 py-3 text-right text-xs font-medium text-gray-400 uppercase">Total</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-800">
+                        {selectedPurchaseReturn.items.map((item: any, idx: number) => (
+                          <tr key={idx} className="hover:bg-[#0B0F19] transition-colors">
+                            <td className="px-4 py-3 text-sm text-white">{item.product_name}</td>
+                            <td className="px-4 py-3 text-sm text-gray-400 font-mono">{item.sku}</td>
+                            <td className="px-4 py-3 text-sm text-gray-300 text-center">{item.quantity}</td>
+                            <td className="px-4 py-3 text-sm text-gray-300 text-right tabular-nums">PKR {item.unit_price?.toLocaleString() || '0'}</td>
+                            <td className="px-4 py-3 text-sm font-semibold text-red-400 text-right tabular-nums">-PKR {item.total?.toLocaleString() || '0'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                      <tfoot className="bg-[#0B0F19] border-t border-gray-800">
+                        <tr>
+                          <td colSpan={4} className="px-4 py-3 text-sm font-semibold text-gray-300 text-right">Total Return Amount:</td>
+                          <td className="px-4 py-3 text-lg font-bold text-red-400 text-right tabular-nums">-PKR {selectedPurchaseReturn.total?.toLocaleString() || '0'}</td>
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </div>
+                ) : (
+                  <div className="text-center py-8 text-gray-400">
+                    <Package size={48} className="mx-auto mb-3 text-gray-600" />
+                    <p>No items found in this return</p>
+                  </div>
+                )}
               </div>
             </div>
+            <DialogFooter className="mt-6 border-t border-gray-800 pt-4">
+              <Button
+                variant="outline"
+                onClick={() => setViewPurchaseReturnDetailsOpen(false)}
+                className="border-gray-800 text-gray-300 hover:text-white hover:bg-gray-800"
+              >
+                Close
+              </Button>
+              <Button
+                onClick={async () => {
+                  if (!selectedPurchaseReturn?.id || !companyId) return;
+                  try {
+                    const fullReturn = await purchaseReturnService.getPurchaseReturnById(selectedPurchaseReturn.id, companyId);
+                    setSelectedReturnForPrint(fullReturn);
+                    setPrintReturnOpen(true);
+                  } catch (error: any) {
+                    console.error('[PurchasesPage] Error loading return for print:', error);
+                    toast.error('Could not load return details for printing');
+                  }
+                }}
+                className="bg-blue-600 hover:bg-blue-700 text-white"
+              >
+                <Printer size={16} className="mr-2" />
+                Print Return
+              </Button>
+            </DialogFooter>
           </DialogContent>
         </Dialog>
       )}
 
-      {/* Purchase Return Form */}
+      {/* Standalone Purchase Return (no invoice) */}
+      {standalonePurchaseReturnFormOpen && (
+        <StandalonePurchaseReturnForm
+          open={standalonePurchaseReturnFormOpen}
+          onClose={() => setStandalonePurchaseReturnFormOpen(false)}
+          onSuccess={async () => {
+            if (companyId) {
+              try {
+                const list = await purchaseReturnService.getPurchaseReturns(companyId, branchId === 'all' ? undefined : branchId);
+                setPurchaseReturnsList(list);
+                const returnPurchaseIds = new Set(list.map((r: any) => r.original_purchase_id).filter(Boolean));
+                setPurchasesWithReturns(returnPurchaseIds);
+              } catch (error) {
+                console.error('[PURCHASES PAGE] Error reloading purchase returns:', error);
+              }
+            }
+          }}
+        />
+      )}
+
+      {/* Purchase Return Form (from invoice) */}
       {selectedPurchaseForReturn && purchaseReturnFormOpen && (
         <PurchaseReturnForm
           purchaseId={selectedPurchaseForReturn.uuid}
@@ -1696,6 +2051,46 @@ export const PurchasesPage = () => {
               }}
             >
               Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Void Purchase Return (final only) — same as Sale Return */}
+      <AlertDialog open={voidPurchaseReturnDialogOpen} onOpenChange={(open) => { setVoidPurchaseReturnDialogOpen(open); if (!open) setReturnToVoidPurchase(null); }}>
+        <AlertDialogContent className="bg-gray-900 border-gray-700 text-white">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Void / Cancel Return?</AlertDialogTitle>
+            <AlertDialogDescription className="text-gray-300">
+              This will <span className="font-semibold text-amber-400">void</span> return <span className="font-semibold text-white">{returnToVoidPurchase?.return_no || `PR-${returnToVoidPurchase?.id?.slice(0, 8)}`}</span>.
+              Stock will be reversed (returned items will be added back to inventory). Supplier payable will be increased again. The return will be marked as void and kept for audit. Continue?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="border-gray-700 text-gray-300 hover:bg-gray-800" disabled={voidingPurchaseReturn}>
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-amber-600 hover:bg-amber-700"
+              disabled={voidingPurchaseReturn}
+              onClick={async () => {
+                if (!returnToVoidPurchase || !companyId) return;
+                setVoidingPurchaseReturn(true);
+                try {
+                  await purchaseReturnService.voidPurchaseReturn(returnToVoidPurchase.id, companyId, branchId === 'all' ? undefined : branchId, undefined);
+                  toast.success('Return voided successfully. Stock reversed.');
+                  setVoidPurchaseReturnDialogOpen(false);
+                  setReturnToVoidPurchase(null);
+                  const list = await purchaseReturnService.getPurchaseReturns(companyId, branchId === 'all' ? undefined : branchId);
+                  setPurchaseReturnsList(list);
+                } catch (e: any) {
+                  toast.error(e?.message || 'Failed to void return');
+                } finally {
+                  setVoidingPurchaseReturn(false);
+                }
+              }}
+            >
+              {voidingPurchaseReturn ? 'Voiding…' : 'Void Return'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

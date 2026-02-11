@@ -6,7 +6,8 @@ export interface SaleReturn {
   id?: string;
   company_id: string;
   branch_id: string;
-  original_sale_id: string;
+  /** When null = standalone return (no invoice); when set = return against this sale */
+  original_sale_id?: string | null;
   return_no?: string;
   return_date: string;
   customer_id?: string;
@@ -48,7 +49,8 @@ export interface SaleReturnItem {
 export interface CreateSaleReturnData {
   company_id: string;
   branch_id: string;
-  original_sale_id: string;
+  /** Omit or null = standalone return (no invoice) */
+  original_sale_id?: string | null;
   return_date: string;
   customer_id?: string;
   customer_name: string;
@@ -114,7 +116,7 @@ export const saleReturnService = {
       .insert({
         company_id,
         branch_id,
-        original_sale_id,
+        original_sale_id: original_sale_id ?? null,
         return_no,
         return_date,
         customer_id: customer_id || null,
@@ -268,148 +270,132 @@ export const saleReturnService = {
     if (!saleReturn) throw new Error('Sale return not found');
     if (saleReturn.status === 'final') throw new Error('Sale return already finalized');
 
-    // Get original sale
-    const { data: originalSale, error: saleError } = await supabase
-      .from('sales')
-      .select('invoice_no, status')
-      .eq('id', saleReturn.original_sale_id)
-      .single();
-
-    if (saleError) throw saleError;
-    if (!originalSale) throw new Error('Original sale not found');
-
-    // Validate: Cannot return Draft/Quotation sales
-    if (originalSale.status === 'draft' || originalSale.status === 'quotation') {
-      throw new Error('Cannot return Draft or Quotation sales. Only Final sales can be returned.');
-    }
-
-    // Validate: Check if return quantity exceeds original quantity
-    // Try sales_items first (new table), fallback to sale_items (old table)
+    const isStandalone = !saleReturn.original_sale_id;
+    let originalSale: { invoice_no?: string } | null = null;
     let originalItems: any[] = [];
-    
-    const { data: salesItemsData, error: salesItemsError } = await supabase
-      .from('sales_items')
-      .select('id, product_id, variation_id, quantity')
-      .eq('sale_id', saleReturn.original_sale_id);
 
-    if (salesItemsError) {
-      // If sales_items fails, try sale_items (backward compatibility)
-      if (salesItemsError.code === '42P01' || salesItemsError.message?.includes('does not exist')) {
-        const { data: saleItemsData, error: saleItemsError } = await supabase
-          .from('sale_items')
-          .select('id, product_id, variation_id, quantity, packing_details')
-          .eq('sale_id', saleReturn.original_sale_id);
-        
-        if (!saleItemsError && saleItemsData) {
-          originalItems = saleItemsData;
-        }
-      } else {
-        console.warn('[SALE RETURN] Error loading original items for validation:', salesItemsError);
+    if (!isStandalone) {
+      // Linked return: validate against original sale
+      const { data: sale, error: saleError } = await supabase
+        .from('sales')
+        .select('invoice_no, status')
+        .eq('id', saleReturn.original_sale_id)
+        .single();
+
+      if (saleError) throw saleError;
+      if (!sale) throw new Error('Original sale not found');
+      originalSale = sale;
+
+      if (sale.status === 'draft' || sale.status === 'quotation') {
+        throw new Error('Cannot return Draft or Quotation sales. Only Final sales can be returned.');
       }
-    } else if (salesItemsData) {
-      originalItems = salesItemsData;
-    }
 
-    if (originalItems && originalItems.length > 0) {
-      for (const returnItem of saleReturn.items) {
-        const originalItem = originalItems.find(
-          oi => oi.product_id === returnItem.product_id &&
-          (oi.variation_id === returnItem.variation_id || (!oi.variation_id && !returnItem.variation_id))
-        );
+      const { data: salesItemsData, error: salesItemsError } = await supabase
+        .from('sales_items')
+        .select('id, product_id, variation_id, quantity')
+        .eq('sale_id', saleReturn.original_sale_id);
 
-        if (!originalItem) {
-          throw new Error(`Product ${returnItem.product_name} not found in original sale`);
-        }
-
-        // Check already returned quantity
-        // If sale_item_id is null (items from sales_items), we need to check by product_id + variation_id
-        let alreadyReturned = 0;
-        
-        if (returnItem.sale_item_id) {
-          // Items from sale_items table - use sale_item_id
-          const { data: existingReturns } = await supabase
-            .from('sale_return_items')
-            .select('quantity')
-            .eq('sale_item_id', returnItem.sale_item_id)
-            .neq('sale_return_id', returnId); // Exclude current return
-          
-          alreadyReturned = existingReturns?.reduce((sum, r) => sum + Number(r.quantity), 0) || 0;
+      if (salesItemsError) {
+        if (salesItemsError.code === '42P01' || salesItemsError.message?.includes('does not exist')) {
+          const { data: saleItemsData, error: saleItemsError } = await supabase
+            .from('sale_items')
+            .select('id, product_id, variation_id, quantity, packing_details')
+            .eq('sale_id', saleReturn.original_sale_id);
+          if (!saleItemsError && saleItemsData) originalItems = saleItemsData;
         } else {
-          // Items from sales_items table - check by product_id + variation_id
-          const { data: existingReturns } = await supabase
-            .from('sale_return_items')
-            .select('quantity')
-            .eq('product_id', returnItem.product_id)
-            .eq('variation_id', returnItem.variation_id || null)
-            .is('sale_item_id', null) // Only items without sale_item_id (from sales_items)
-            .neq('sale_return_id', returnId); // Exclude current return
-          
-          alreadyReturned = existingReturns?.reduce((sum, r) => sum + Number(r.quantity), 0) || 0;
+          console.warn('[SALE RETURN] Error loading original items for validation:', salesItemsError);
         }
-        
-        const totalReturned = alreadyReturned + Number(returnItem.quantity);
+      } else if (salesItemsData) {
+        originalItems = salesItemsData;
+      }
 
-        if (totalReturned > Number(originalItem.quantity)) {
-          throw new Error(
-            `Return quantity (${totalReturned}) exceeds original quantity (${originalItem.quantity}) for ${returnItem.product_name}`
+      if (originalItems.length > 0) {
+        for (const returnItem of saleReturn.items) {
+          const originalItem = originalItems.find(
+            (oi: any) => oi.product_id === returnItem.product_id &&
+            (oi.variation_id === returnItem.variation_id || (!oi.variation_id && !returnItem.variation_id))
           );
+          if (!originalItem) {
+            throw new Error(`Product ${returnItem.product_name} not found in original sale`);
+          }
+          let alreadyReturned = 0;
+          if (returnItem.sale_item_id) {
+            const { data: existingReturns } = await supabase
+              .from('sale_return_items')
+              .select('quantity')
+              .eq('sale_item_id', returnItem.sale_item_id)
+              .neq('sale_return_id', returnId);
+            alreadyReturned = existingReturns?.reduce((sum: number, r: any) => sum + Number(r.quantity), 0) || 0;
+          } else {
+            const { data: existingReturns } = await supabase
+              .from('sale_return_items')
+              .select('quantity')
+              .eq('product_id', returnItem.product_id)
+              .eq('variation_id', returnItem.variation_id || null)
+              .is('sale_item_id', null)
+              .neq('sale_return_id', returnId);
+            alreadyReturned = existingReturns?.reduce((sum: number, r: any) => sum + Number(r.quantity), 0) || 0;
+          }
+          const totalReturned = alreadyReturned + Number(returnItem.quantity);
+          if (totalReturned > Number(originalItem.quantity)) {
+            throw new Error(
+              `Return quantity (${totalReturned}) exceeds original quantity (${originalItem.quantity}) for ${returnItem.product_name}`
+            );
+          }
         }
       }
-    } else {
-      console.warn('[SALE RETURN] No original items found for validation. Skipping quantity check.');
     }
 
-    // Create stock movements (POSITIVE - stock IN) with proportional box/piece return
+    // Create stock movements (POSITIVE - stock IN)
     for (const item of saleReturn.items) {
-      // Calculate proportional box/piece return based on original packing
       let boxChange = 0;
       let pieceChange = 0;
-      
-      // Get original item to calculate return ratio
-      const originalItem = originalItems?.find(
-        oi => oi.product_id === item.product_id &&
-        (oi.variation_id === item.variation_id || (!oi.variation_id && !item.variation_id))
-      );
-      
-      if (originalItem && item.packing_details) {
-        // Get original packing details
-        const originalPacking = item.packing_details;
-        const originalQty = Number(originalItem.quantity);
-        const returnQty = Number(item.quantity);
-        
-        if (originalQty > 0) {
-          // Calculate return ratio
-          const returnRatio = returnQty / originalQty;
-          
-          // Apply ratio to boxes and pieces proportionally
-          const originalBoxes = originalPacking.total_boxes || 0;
-          const originalPieces = originalPacking.total_pieces || 0;
-          
-          boxChange = Math.round(originalBoxes * returnRatio * 100) / 100; // Round to 2 decimals
-          pieceChange = Math.round(originalPieces * returnRatio * 100) / 100;
+
+      if (!isStandalone && originalItems?.length) {
+        const originalItem = originalItems.find(
+          (oi: any) => oi.product_id === item.product_id &&
+          (oi.variation_id === item.variation_id || (!oi.variation_id && !item.variation_id))
+        );
+        if (originalItem && item.packing_details) {
+          const originalPacking = item.packing_details;
+          const originalQty = Number(originalItem.quantity);
+          const returnQty = Number(item.quantity);
+          if (originalQty > 0) {
+            const returnRatio = returnQty / originalQty;
+            const originalBoxes = originalPacking.total_boxes || 0;
+            const originalPieces = originalPacking.total_pieces || 0;
+            boxChange = Math.round(originalBoxes * returnRatio);
+            pieceChange = Math.round(originalPieces * returnRatio);
+          }
         }
-      } else if (item.packing_details) {
-        // If no original item found but packing_details exists, use it directly
-        const packing = item.packing_details;
-        boxChange = Number(packing.total_boxes || 0);
-        pieceChange = Number(packing.total_pieces || 0);
       }
-      
+      if (boxChange === 0 && pieceChange === 0) {
+        // Standalone or no original packing: use return item's packing/return_packing
+        const packing = item.return_packing_details || item.packing_details;
+        if (packing) {
+          boxChange = Math.round(Number(packing.total_boxes || 0));
+          pieceChange = Math.round(Number(packing.total_pieces || 0));
+        }
+      }
+
+      const notesStandalone = `Sale Return ${saleReturn.return_no || returnId} (no invoice): ${item.product_name}${item.variation_id ? ' (Variation)' : ''}`;
+      const notesLinked = `Sale Return ${saleReturn.return_no || returnId}: Original ${originalSale?.invoice_no || 'N/A'} - ${item.product_name}${item.variation_id ? ' (Variation)' : ''}`;
+
       await productService.createStockMovement({
         company_id: companyId,
         branch_id: branchId === 'all' ? undefined : branchId,
         product_id: item.product_id,
         variation_id: item.variation_id || undefined,
         movement_type: 'sale_return',
-        quantity: Number(item.quantity), // POSITIVE for stock IN
+        quantity: Number(item.quantity),
         unit_cost: Number(item.unit_price),
         total_cost: Number(item.total),
         reference_type: 'sale_return',
         reference_id: returnId,
-        notes: `Sale Return ${saleReturn.return_no || returnId}: Original ${originalSale.invoice_no} - ${item.product_name}${item.variation_id ? ' (Variation)' : ''}`,
+        notes: isStandalone ? notesStandalone : notesLinked,
         created_by: userId,
-        box_change: boxChange > 0 ? boxChange : undefined, // Only include if > 0
-        piece_change: pieceChange > 0 ? pieceChange : undefined, // Only include if > 0
+        box_change: boxChange !== 0 ? boxChange : undefined,
+        piece_change: pieceChange !== 0 ? pieceChange : undefined,
       });
     }
 
@@ -450,25 +436,29 @@ export const saleReturnService = {
       throw new Error('Only finalized sale returns can be voided. Draft returns can be deleted.');
     }
 
-    const { data: originalSale } = await supabase
-      .from('sales')
-      .select('invoice_no')
-      .eq('id', saleReturn.original_sale_id)
-      .single();
-
+    let originalSale: { invoice_no?: string } | null = null;
     let originalItems: any[] = [];
-    const { data: salesItemsData } = await supabase
-      .from('sales_items')
-      .select('id, product_id, variation_id, quantity')
-      .eq('sale_id', saleReturn.original_sale_id);
-    if (salesItemsData?.length) {
-      originalItems = salesItemsData;
-    } else {
-      const { data: saleItemsData } = await supabase
-        .from('sale_items')
+    if (saleReturn.original_sale_id) {
+      const { data: sale } = await supabase
+        .from('sales')
+        .select('invoice_no')
+        .eq('id', saleReturn.original_sale_id)
+        .single();
+      originalSale = sale || null;
+
+      const { data: salesItemsData } = await supabase
+        .from('sales_items')
         .select('id, product_id, variation_id, quantity')
         .eq('sale_id', saleReturn.original_sale_id);
-      if (saleItemsData) originalItems = saleItemsData;
+      if (salesItemsData?.length) {
+        originalItems = salesItemsData;
+      } else {
+        const { data: saleItemsData } = await supabase
+          .from('sale_items')
+          .select('id, product_id, variation_id, quantity')
+          .eq('sale_id', saleReturn.original_sale_id);
+        if (saleItemsData) originalItems = saleItemsData;
+      }
     }
 
     const branchIdToUse = branchId === 'all' ? undefined : branchId;
@@ -488,13 +478,13 @@ export const saleReturnService = {
           const returnRatio = returnQty / originalQty;
           const originalBoxes = originalPacking.total_boxes || 0;
           const originalPieces = originalPacking.total_pieces || 0;
-          boxChange = -Math.round(originalBoxes * returnRatio * 100) / 100;
-          pieceChange = -Math.round(originalPieces * returnRatio * 100) / 100;
+          boxChange = -Math.round(originalBoxes * returnRatio);
+          pieceChange = -Math.round(originalPieces * returnRatio);
         }
       } else if (item.packing_details) {
         const packing = item.packing_details;
-        boxChange = -Number(packing.total_boxes || 0);
-        pieceChange = -Number(packing.total_pieces || 0);
+        boxChange = -Math.round(Number(packing.total_boxes || 0));
+        pieceChange = -Math.round(Number(packing.total_pieces || 0));
       }
 
       await productService.createStockMovement({

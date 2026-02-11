@@ -10,9 +10,9 @@ interface TransactionGroupedViewProps {
   onTransactionClick: (transaction: Transaction) => void;
 }
 
-// Sale product breakdown from backend only (sale_items / sales_items) – no mock
+// Sale / Studio Sale product breakdown from backend (sale_items / sales_items)
 function getSaleProductDetails(transaction: Transaction, saleItemsMap: Map<string, any[]>): any[] {
-  if (transaction.documentType !== 'Sale' || !transaction.id) return [];
+  if ((transaction.documentType !== 'Sale' && transaction.documentType !== 'Studio Sale') || !transaction.id) return [];
   return saleItemsMap.get(transaction.id) || [];
 }
 
@@ -50,12 +50,12 @@ export function TransactionGroupedView({ transactions, saleItemsMap = new Map(),
     <div className="space-y-3">
       {transactions.map((transaction) => {
         const isExpanded = expandedRows.has(transaction.id);
-        const productDetails = transaction.documentType === 'Sale'
+        const productDetails = (transaction.documentType === 'Sale' || transaction.documentType === 'Studio Sale')
           ? getSaleProductDetails(transaction, saleItemsMap)
           : getPaymentDetails(transaction);
         const status = getPaymentStatus(transaction);
         const hasDetails = productDetails.length > 0;
-        const isSale = transaction.documentType === 'Sale';
+        const isSale = transaction.documentType === 'Sale' || transaction.documentType === 'Studio Sale';
 
         return (
           <div
@@ -99,7 +99,7 @@ export function TransactionGroupedView({ transactions, saleItemsMap = new Map(),
                   <div
                     className={`inline-flex px-3 py-1 rounded-lg text-xs font-medium ${
                       transaction.documentType === 'Opening Balance' ? 'bg-gray-600/30 text-gray-300 border border-gray-600' :
-                      transaction.documentType === 'Sale' || transaction.documentType === 'Purchase' ? 'bg-blue-500/10 text-blue-400' :
+                      transaction.documentType === 'Sale' || transaction.documentType === 'Studio Sale' || transaction.documentType === 'Purchase' ? 'bg-blue-500/10 text-blue-400' :
                       transaction.documentType === 'Payment' ? 'bg-green-500/10 text-green-400' :
                       transaction.documentType === 'Expense' ? 'bg-amber-500/10 text-amber-400' :
                       transaction.documentType === 'Job' ? 'bg-purple-500/10 text-purple-400' : 'bg-gray-500/10 text-gray-400'

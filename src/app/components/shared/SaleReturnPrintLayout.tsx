@@ -18,7 +18,7 @@ export const SaleReturnPrintLayout: React.FC<SaleReturnPrintLayoutProps> = ({ sa
   const headerMeta = [
     { label: 'Return No', value: saleReturn.return_no || saleReturn.id?.slice(0, 8) || 'N/A' },
     { label: 'Date', value: new Date(saleReturn.return_date || saleReturn.created_at).toLocaleDateString() },
-    { label: 'Original Invoice', value: saleReturn.original_invoice_no || 'N/A' },
+    { label: 'Original Invoice', value: saleReturn.original_sale_id ? (saleReturn.original_invoice_no || 'N/A') : 'No invoice' },
     { label: 'Status', value: saleReturn.status === 'final' ? 'FINAL' : 'DRAFT' },
   ];
 

@@ -565,9 +565,9 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
               // Packing: packingDetails or packing_details; support total_boxes/boxes and total_pieces/pieces
               const packing = (item as any).packingDetails || (item as any).packing_details;
               const boxChange = packing && (packing.total_boxes != null || packing.boxes != null)
-                ? Number(packing.total_boxes ?? packing.boxes ?? 0) : 0;
+                ? Math.round(Number(packing.total_boxes ?? packing.boxes ?? 0)) : 0;
               const pieceChange = packing && (packing.total_pieces != null || packing.pieces != null)
-                ? Number(packing.total_pieces ?? packing.pieces ?? 0) : 0;
+                ? Math.round(Number(packing.total_pieces ?? packing.pieces ?? 0)) : 0;
               const movement = await productService.createStockMovement({
                 company_id: companyId,
                 branch_id: purchaseBranchId === 'all' ? undefined : purchaseBranchId,
@@ -1459,9 +1459,9 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
               const qtyToAdd = item.receivedQty > 0 ? item.receivedQty : item.quantity;
               const packing = (item as any).packingDetails || (item as any).packing_details;
               const boxChange = packing && (packing.total_boxes != null || packing.boxes != null)
-                ? Number(packing.total_boxes ?? packing.boxes ?? 0) : 0;
+                ? Math.round(Number(packing.total_boxes ?? packing.boxes ?? 0)) : 0;
               const pieceChange = packing && (packing.total_pieces != null || packing.pieces != null)
-                ? Number(packing.total_pieces ?? packing.pieces ?? 0) : 0;
+                ? Math.round(Number(packing.total_pieces ?? packing.pieces ?? 0)) : 0;
               await productService.createStockMovement({
                 company_id: companyId,
                 branch_id: purchaseBranchId === 'all' ? undefined : purchaseBranchId,

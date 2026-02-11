@@ -17,7 +17,7 @@ export function TransactionDetailPanel({ transaction, onClose }: TransactionDeta
     if (!transaction?.id) return;
     setSaleDetails(null);
     setPaymentDetails(null);
-    if (transaction.documentType === 'Sale') {
+    if (transaction.documentType === 'Sale' || transaction.documentType === 'Studio Sale') {
       setLoadingDetails(true);
       saleService
         .getSaleById(transaction.id)
@@ -38,7 +38,7 @@ export function TransactionDetailPanel({ transaction, onClose }: TransactionDeta
     }
   }, [transaction?.id, transaction?.documentType]);
 
-  const isSale = transaction.documentType === 'Sale';
+  const isSale = transaction.documentType === 'Sale' || transaction.documentType === 'Studio Sale';
   const isPayment = transaction.documentType === 'Payment';
   const title = isSale ? 'Sale Details' : isPayment ? 'Payment Details' : 'Transaction Details';
   const subtitle = isSale ? 'Invoice and items' : isPayment ? 'Payment information' : 'Complete information';

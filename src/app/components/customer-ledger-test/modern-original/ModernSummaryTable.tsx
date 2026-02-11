@@ -14,6 +14,7 @@ export function ModernSummaryTable({ transactions, onTransactionClick }: ModernS
   const getDocumentIcon = (type: string) => {
     switch (type) {
       case 'Sale':
+      case 'Studio Sale':
         return <FileText className="w-4 h-4" />;
       case 'Payment':
         return <CreditCard className="w-4 h-4" />;
@@ -27,6 +28,7 @@ export function ModernSummaryTable({ transactions, onTransactionClick }: ModernS
   const getDocumentStyle = (type: string) => {
     switch (type) {
       case 'Sale':
+      case 'Studio Sale':
         return 'text-blue-400';
       case 'Payment':
         return 'text-emerald-400';

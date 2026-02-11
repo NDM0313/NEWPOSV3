@@ -124,7 +124,12 @@ export async function getSupplierLedgerData(
     totalCredit += credit;
     runningBalance = runningBalance + debit - credit;
 
-    const docType = e.source === 'purchase' ? 'Purchase' : 'Payment';
+    const docType =
+      e.source === 'purchase'
+        ? 'Purchase'
+        : e.source === 'purchase_return'
+          ? 'Purchase Return'
+          : 'Payment';
     transactions.push({
       id: e.reference_id || e.id,
       date: e.entry_date,

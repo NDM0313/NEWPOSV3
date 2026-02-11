@@ -62,6 +62,7 @@ export function TransactionsTab({ transactions, saleItemsMap = new Map(), onTran
       case 'Opening Balance':
         return <DollarSign className="w-4 h-4" />;
       case 'Sale':
+      case 'Studio Sale':
         return <FileText className="w-4 h-4" />;
       case 'Payment':
         return <CreditCard className="w-4 h-4" />;
@@ -83,6 +84,7 @@ export function TransactionsTab({ transactions, saleItemsMap = new Map(), onTran
       case 'Opening Balance':
         return 'bg-gray-600/30 text-gray-300 border border-gray-600';
       case 'Sale':
+      case 'Studio Sale':
         return 'text-blue-400';
       case 'Payment':
         return 'text-emerald-400';
@@ -107,7 +109,10 @@ export function TransactionsTab({ transactions, saleItemsMap = new Map(), onTran
     t.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
     t.paymentAccount.toLowerCase().includes(searchTerm.toLowerCase()) ||
     (t.notes && t.notes.toLowerCase().includes(searchTerm.toLowerCase()));
-  const matchesFilter = (t: Transaction) => filterType === 'all' || t.documentType === filterType;
+  const matchesFilter = (t: Transaction) =>
+    filterType === 'all' ||
+    t.documentType === filterType ||
+    (filterType === 'Sale' && t.documentType === 'Studio Sale');
 
   let filteredRest = restTransactions.filter(t => matchesSearch(t) && matchesFilter(t));
 
@@ -169,9 +174,10 @@ export function TransactionsTab({ transactions, saleItemsMap = new Map(), onTran
 
   const handleTransactionClick = (transaction: Transaction) => {
     setSelectedTransaction(transaction);
-    // Sale: full Sale Transaction Details page opens via parent (ViewSaleDetailsDrawer) – hide sidebar panel
+    // Sale / Studio Sale: full transaction details open via parent – hide sidebar panel
     // Payment/other: show detail panel in sidebar
-    setShowDetailPanel(transaction.documentType !== 'Sale');
+    const isSaleOrStudio = transaction.documentType === 'Sale' || transaction.documentType === 'Studio Sale';
+    setShowDetailPanel(!isSaleOrStudio);
     onTransactionClick(transaction);
   };
 
@@ -185,7 +191,7 @@ export function TransactionsTab({ transactions, saleItemsMap = new Map(), onTran
     totalDebit: periodTransactions.reduce((sum, t) => sum + t.debit, 0),
     totalCredit: periodTransactions.reduce((sum, t) => sum + t.credit, 0),
     netBalance: periodTransactions.reduce((sum, t) => sum + t.debit - t.credit, 0),
-    salesCount: periodTransactions.filter(t => t.documentType === 'Sale').length,
+    salesCount: periodTransactions.filter(t => t.documentType === 'Sale' || t.documentType === 'Studio Sale').length,
     paymentsCount: periodTransactions.filter(t => t.documentType === 'Payment').length,
     discountsCount: periodTransactions.filter(t => t.documentType === 'Discount').length,
     avgTransaction: periodTransactions.length > 0

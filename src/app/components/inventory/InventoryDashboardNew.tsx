@@ -257,15 +257,16 @@ export const InventoryDashboardNew = () => {
     notes: string;
     date: string;
     newStock: number;
+    variationId?: string | null;
   }) => {
     if (!companyId) return;
     try {
-      // Inventory = movement-based only; do not update product.current_stock
       const qty = data.type === 'add' ? data.quantity : -data.quantity;
       await productService.createStockMovement({
         company_id: companyId,
         branch_id: branchId === 'all' ? undefined : branchId || undefined,
         product_id: data.productId,
+        variation_id: data.variationId ?? undefined,
         movement_type: 'adjustment',
         quantity: qty,
         notes: `${data.reason}: ${data.notes}`,
@@ -322,8 +323,8 @@ export const InventoryDashboardNew = () => {
           m.product?.sku ?? '',
           m.movement_type ?? '',
           m.quantity ?? '',
-          m.box_change ?? '',
-          m.piece_change ?? '',
+          (m as any).box_change != null ? Math.round(Number((m as any).box_change)) : '',
+          (m as any).piece_change != null ? Math.round(Number((m as any).piece_change)) : '',
           m.before_qty ?? '',
           m.after_qty ?? '',
           m.unit_cost ?? '',
@@ -842,6 +843,13 @@ export const InventoryDashboardNew = () => {
           sku: adjustmentProduct.sku,
           currentStock: adjustmentProduct.stock,
           unit: adjustmentProduct.unit,
+          hasVariations: adjustmentProduct.hasVariations,
+          variations: adjustmentProduct.variations?.map((v) => ({
+            id: v.id,
+            attributes: v.attributes,
+            sku: v.sku,
+            stock: v.stock ?? 0,
+          })),
         } : null}
         onAdjust={handleAdjustSave}
       />
@@ -1150,8 +1158,8 @@ export const InventoryDashboardNew = () => {
                       </td>
                       {enablePacking && (
                         <>
-                          <td className="px-6 py-4 text-center text-gray-400">{m.box_change ?? '-'}</td>
-                          <td className="px-6 py-4 text-center text-gray-400">{m.piece_change ?? '-'}</td>
+                          <td className="px-6 py-4 text-center text-gray-400">{(m as any).box_change != null ? Math.round(Number((m as any).box_change)) : '-'}</td>
+                          <td className="px-6 py-4 text-center text-gray-400">{(m as any).piece_change != null ? Math.round(Number((m as any).piece_change)) : '-'}</td>
                         </>
                       )}
                       <td className="px-6 py-4 text-center text-gray-400">{m.before_qty ?? '-'}</td>

@@ -18,15 +18,20 @@ import { cn, formatBoxesPieces } from "../ui/utils";
 
 /**
  * Packing Entry Modal - Variable Sub-Unit Logic for Textile Wholesale
- * 
+ *
+ * Used everywhere Add Packing dialog appears: Sale, Sale Return (standalone + from sale),
+ * Purchase, Purchase Return (View drawer + Item selection dialog), and GlobalDrawer (Sale/Purchase forms).
+ * All behavior (entry_mode, boxes vs loose_pieces, edit restore) is defined here only.
+ *
  * Business Logic:
  * - Boxes can contain any number of Pieces
  * - Pieces can contain any number of Meters (decimal support)
  * - Billing Unit: Price calculated on Total Meters
  * - Inventory Unit: Track Stock in Boxes, Pieces, AND Meters
- * 
+ *
  * Features:
- * - Two modes: Detailed Entry & Quick/Lump Sum
+ * - Two modes: Detailed Entry & Quick/Lump Sum (entry_mode saved so edit opens same tab)
+ * - Detailed = Boxes section and/or Loose Pieces (No Box); each section saves/restores separately
  * - Add multiple boxes with variable pieces
  * - Support for loose pieces (without boxes)
  * - Real-time calculation of totals
@@ -45,6 +50,8 @@ export interface PackingDetails {
   total_boxes: number;
   total_pieces: number;
   total_meters: number;
+  /** Which tab was used when saving: 'detailed' (boxes/pieces) or 'quick' (lump sum). Restored on edit so same section shows. */
+  entry_mode?: 'detailed' | 'quick';
 }
 
 // Packing totals - calculated values only (for display and math)
@@ -244,42 +251,46 @@ export const PackingEntryModal = ({
       });
       
       if (initialData) {
+        // Normalize: if stored as JSON string, parse once and use for all fields
+        const data = typeof initialData === 'string'
+          ? (() => { try { return JSON.parse(initialData); } catch { return null; } })()
+          : initialData;
+        if (!data) return;
+
         // Edit mode - Pre-fill with existing data
-        // STEP 1: Check if detailed structure exists (boxes array with pieces)
-        // This is the SOURCE OF TRUTH - if it exists, we MUST use it
-        
-        // CRITICAL FIX: Check for boxes array more carefully
-        // Handle case where packing_details might be a JSON string
-        let boxesArray = initialData.boxes;
-        if (!boxesArray && typeof initialData === 'object') {
-          // Try to find boxes in nested structure
-          boxesArray = (initialData as any).boxes || (initialData as any).box || null;
+        // STEP 0: If saved as Quick/Lump Sum, restore quick tab and totals so same section shows on edit
+        const savedEntryMode = data.entry_mode;
+        if (savedEntryMode === 'quick') {
+          setBoxes([]);
+          setLoosePieces([]);
+          setQuickBoxes(data.total_boxes ?? 0);
+          setQuickPieces(data.total_pieces ?? 0);
+          setQuickMeters(data.total_meters ?? 0);
+          setActiveTab('quick');
+          return;
         }
-        
-        // Also check if initialData itself is a string (JSON)
-        if (typeof initialData === 'string') {
-          try {
-            const parsed = JSON.parse(initialData);
-            boxesArray = parsed.boxes || parsed.box || null;
-          } catch (e) {
-            console.warn('[PACKING ENTRY MODAL] Failed to parse initialData as JSON:', e);
-          }
-        }
-        
-        const hasDetailedStructure = boxesArray && Array.isArray(boxesArray) && boxesArray.length > 0;
+
+        // STEP 1: Detailed = boxes (with pieces) OR loose_pieces. Each section saves/restores separately.
+        let boxesArray = data.boxes ?? (data as any).box ?? null;
+        if (!Array.isArray(boxesArray)) boxesArray = [];
+        const loosePiecesFromData = (data as any).loose_pieces ?? (data as any).loosePieces ?? null;
+        const loosePiecesArray = Array.isArray(loosePiecesFromData) ? loosePiecesFromData : [];
+        const hasBoxes = boxesArray.length > 0;
+        const hasLoosePieces = loosePiecesArray.length > 0;
+        const hasDetailedStructure = hasBoxes || hasLoosePieces;
         
         console.log('[PACKING ENTRY MODAL] Structure check:', {
           hasDetailedStructure,
-          boxesArray,
-          boxesArrayType: Array.isArray(boxesArray) ? 'array' : typeof boxesArray,
-          boxesArrayLength: Array.isArray(boxesArray) ? boxesArray.length : 'N/A'
+          hasBoxes,
+          hasLoosePieces,
+          boxesArrayLength: boxesArray.length,
+          loosePiecesLength: loosePiecesArray.length
         });
         
         if (hasDetailedStructure) {
-          // DETAILED ENTRY MODE: Structure exists, restore it exactly
-          // CRITICAL: Load from structure, NOT from totals
-          // All pieces (including 0 values) must be restored exactly as saved
-          const restoredBoxes = boxesArray.map((box: any, idx: number) => {
+          // DETAILED ENTRY MODE: Restore boxes (if any) and/or loose pieces (if any)
+          // CRITICAL: Load from structure, NOT from totals. All pieces (including 0) restored exactly.
+          const restoredBoxes = hasBoxes ? boxesArray.map((box: any, idx: number) => {
             // Ensure each box has a valid structure
             if (box && typeof box === 'object') {
               const boxNo = typeof box.box_no === 'number' ? box.box_no : (box.boxNo || idx + 1);
@@ -323,52 +334,18 @@ export const PackingEntryModal = ({
             }
             console.warn(`[PACKING ENTRY MODAL] Invalid box structure at index ${idx}:`, box);
             return { box_no: idx + 1, pieces: [0] };
-          });
+          }) : [];
           
           console.log('[PACKING ENTRY MODAL] Restored boxes:', restoredBoxes);
           
-          // DEBUG: Log detailed piece values
-          restoredBoxes.forEach((box, idx) => {
-            console.log(`[PACKING ENTRY MODAL] Restored box ${idx + 1} detailed:`, {
-              box_no: box.box_no,
-              pieces: box.pieces,
-              piecesValues: box.pieces.map((p, i) => ({ index: i, value: p, type: typeof p }))
-            });
+          setBoxes(restoredBoxes);
+          
+          // Restore loose pieces (separate section: "Loose Pieces (No Box)")
+          const restoredLoosePieces = loosePiecesArray.map((p: any) => {
+            const val = typeof p === 'number' ? p : parseFloat(p);
+            return isNaN(val) ? 0 : val;
           });
-          
-          // CRITICAL FIX: Use functional update to prevent race conditions
-          // This ensures the state update uses the latest restored data
-          setBoxes(() => {
-            console.log('[PACKING ENTRY MODAL] setBoxes functional update called with:', restoredBoxes);
-            const finalBoxes = restoredBoxes.length > 0 ? restoredBoxes : [{ box_no: 1, pieces: [0] }];
-            console.log('[PACKING ENTRY MODAL] Final boxes being set:', finalBoxes);
-            return finalBoxes;
-          });
-          
-          // DEBUG: Verify state was set correctly
-          setTimeout(() => {
-            console.log('[PACKING ENTRY MODAL] State after setBoxes (async check):', {
-              boxesState: restoredBoxes,
-              firstBox: restoredBoxes[0],
-              firstBoxPieces: restoredBoxes[0]?.pieces,
-              firstBoxPiecesValues: restoredBoxes[0]?.pieces?.map((p, i) => ({ index: i, value: p }))
-            });
-          }, 100);
-          
-          // Restore loose pieces if they exist in the data structure
-          const loosePiecesData = (initialData as any).loose_pieces || (initialData as any).loosePieces || [];
-          // Ensure loosePiecesData is an array of numbers (meter values)
-          if (Array.isArray(loosePiecesData) && loosePiecesData.length > 0) {
-            const restoredLoosePieces = loosePiecesData.map((p: any) => {
-              const val = typeof p === 'number' ? p : parseFloat(p);
-              return isNaN(val) ? 0 : val;
-            });
-            console.log('[PACKING ENTRY MODAL] Restored loose pieces:', restoredLoosePieces);
-            setLoosePieces(restoredLoosePieces);
-          } else {
-            setLoosePieces([]);
-          }
-          // CRITICAL: Always use detailed mode if structure exists
+          setLoosePieces(restoredLoosePieces);
           setActiveTab('detailed');
         } else {
           // QUICK ENTRY MODE (FALLBACK): No structure exists, only totals available
@@ -376,9 +353,9 @@ export const PackingEntryModal = ({
           // NEVER try to reconstruct structure from totals
           setBoxes([]);
         setLoosePieces([]);
-        setQuickBoxes(initialData.total_boxes || 0);
-        setQuickPieces(initialData.total_pieces || 0);
-        setQuickMeters(initialData.total_meters || 0);
+        setQuickBoxes(data.total_boxes || 0);
+        setQuickPieces(data.total_pieces || 0);
+        setQuickMeters(data.total_meters || 0);
           setActiveTab('quick');
         }
       } else {
@@ -584,7 +561,8 @@ export const PackingEntryModal = ({
       // Structure is SOURCE OF TRUTH, totals are DERIVED
       const packingData: PackingDetails = {
         ...currentPackingStructure, // Full structure (boxes, loose_pieces)
-        ...totals // Calculated totals (total_boxes, total_pieces, total_meters)
+        ...totals, // Calculated totals (total_boxes, total_pieces, total_meters)
+        entry_mode: activeTab, // So on edit the same tab (detailed vs quick) and data show
       };
       
       // DEBUG: Log the complete structure being saved

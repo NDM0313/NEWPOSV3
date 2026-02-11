@@ -18,7 +18,7 @@ interface LedgerPrintViewProps {
 
 // Sale product breakdown from backend only – no mock
 function getSaleProductsFromBackend(transaction: Transaction, saleItemsMap: Map<string, any[]>): any[] {
-  if (transaction.documentType !== 'Sale' || !transaction.id) return [];
+  if ((transaction.documentType !== 'Sale' && transaction.documentType !== 'Studio Sale') || !transaction.id) return [];
   return saleItemsMap.get(transaction.id) || [];
 }
 
@@ -96,8 +96,8 @@ export function LedgerPrintView({
     if (transaction.documentType === 'Opening Balance') {
       return 'Opening Balance';
     }
-    if (transaction.documentType === 'Sale') {
-      return `Sale - ${transaction.referenceNo}`;
+    if (transaction.documentType === 'Sale' || transaction.documentType === 'Studio Sale') {
+      return `${transaction.documentType} - ${transaction.referenceNo}`;
     }
     if (transaction.documentType === 'Payment') {
       return 'Payment Received';
@@ -361,7 +361,7 @@ export function LedgerPrintView({
               </thead>
               <tbody>
                 {transactions.map((transaction, index) => {
-                  const isSale = transaction.documentType === 'Sale';
+                  const isSale = transaction.documentType === 'Sale' || transaction.documentType === 'Studio Sale';
                   const products = isSale ? getSaleProductsFromBackend(transaction, saleItemsMap) : [];
                   
                   return (

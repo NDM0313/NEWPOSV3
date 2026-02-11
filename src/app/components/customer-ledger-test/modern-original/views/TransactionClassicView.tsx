@@ -12,7 +12,7 @@ interface TransactionClassicViewProps {
 
 // Sale product breakdown from backend only (sale_items / sales_items) – no mock
 function getSaleProductsFromBackend(transaction: Transaction, saleItemsMap: Map<string, any[]>): any[] {
-  if (transaction.documentType !== 'Sale' || !transaction.id) return [];
+  if ((transaction.documentType !== 'Sale' && transaction.documentType !== 'Studio Sale') || !transaction.id) return [];
   return saleItemsMap.get(transaction.id) || [];
 }
 
@@ -32,7 +32,7 @@ function TransactionRowGroup({
   saleItemsMap: Map<string, any[]>;
   enablePacking: boolean;
 }) {
-  const isSale = transaction.documentType === 'Sale';
+  const isSale = transaction.documentType === 'Sale' || transaction.documentType === 'Studio Sale';
   const products = isSale ? getSaleProductsFromBackend(transaction, saleItemsMap) : [];
   const hasProducts = products.length > 0;
 
@@ -40,8 +40,8 @@ function TransactionRowGroup({
     if (transaction.documentType === 'Opening Balance') {
       return 'Opening Balance';
     }
-    if (transaction.documentType === 'Sale') {
-      return `Sale - ${transaction.referenceNo}`;
+    if (transaction.documentType === 'Sale' || transaction.documentType === 'Studio Sale') {
+      return `${transaction.documentType} - ${transaction.referenceNo}`;
     }
     if (transaction.documentType === 'Payment') {
       return `Payment Received - ${transaction.referenceNo}`;

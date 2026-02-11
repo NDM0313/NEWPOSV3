@@ -252,8 +252,8 @@ export const StockLedgerClassicPrintView: React.FC<StockLedgerClassicPrintViewPr
                   <td>{new Date(movement.created_at).toLocaleString()}</td>
                   <td>{getMovementTypeLabel(movement.movement_type || movement.type || '')}</td>
                   <td className="text-right">{qty >= 0 ? '+' : ''}{qty.toFixed(2)}</td>
-                  {enablePacking && <td className="text-right">{boxChange >= 0 ? '+' : ''}{boxChange}</td>}
-                  {enablePacking && <td className="text-right">{pieceChange >= 0 ? '+' : ''}{pieceChange}</td>}
+                  {enablePacking && <td className="text-right">{boxChange >= 0 ? '+' : ''}{Math.round(Number(boxChange))}</td>}
+                  {enablePacking && <td className="text-right">{pieceChange >= 0 ? '+' : ''}{Math.round(Number(pieceChange))}</td>}
                   {enablePacking && <td className="text-left">{unit}</td>}
                   <td className="text-right">{balance.toFixed(2)}</td>
                   <td>{refNo}</td>

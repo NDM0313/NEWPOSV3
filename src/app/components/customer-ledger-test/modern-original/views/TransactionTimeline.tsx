@@ -19,7 +19,8 @@ export function TransactionTimeline({ transactions, onTransactionClick }: Transa
   const getDocumentIcon = (type: string) => {
     switch (type) {
       case 'Opening Balance': return <DollarSign className="w-4 h-4 text-gray-400" />;
-      case 'Sale': return <FileText className="w-4 h-4 text-blue-500" />;
+      case 'Sale':
+      case 'Studio Sale': return <FileText className="w-4 h-4 text-blue-500" />;
       case 'Payment': return <CreditCard className="w-4 h-4 text-green-500" />;
       case 'Discount': return <Tag className="w-4 h-4 text-purple-500" />;
       default: return <FileText className="w-4 h-4 text-gray-500" />;
@@ -29,7 +30,8 @@ export function TransactionTimeline({ transactions, onTransactionClick }: Transa
   const getDocumentDotClass = (type: string) => {
     switch (type) {
       case 'Opening Balance': return 'bg-gray-600/30 border-gray-500/50';
-      case 'Sale': return 'bg-blue-500/20 border-blue-500/50';
+      case 'Sale':
+      case 'Studio Sale': return 'bg-blue-500/20 border-blue-500/50';
       case 'Payment': return 'bg-green-500/20 border-green-500/50';
       case 'Discount': return 'bg-purple-500/20 border-purple-500/50';
       default: return 'bg-gray-500/20 border-gray-500/50';
@@ -91,7 +93,7 @@ export function TransactionTimeline({ transactions, onTransactionClick }: Transa
                             <div className="text-base font-bold text-blue-400">{transaction.referenceNo}</div>
                             <span className={`px-2.5 py-0.5 rounded-full text-xs border ${
                               transaction.documentType === 'Opening Balance' ? 'bg-gray-600/30 text-gray-300 border-gray-600' :
-                              transaction.documentType === 'Sale' ? 'bg-blue-500/10 text-blue-400 border-blue-500/20' :
+                              (transaction.documentType === 'Sale' || transaction.documentType === 'Studio Sale') ? 'bg-blue-500/10 text-blue-400 border-blue-500/20' :
                               transaction.documentType === 'Payment' ? 'bg-green-500/10 text-green-400 border-green-500/20' :
                               'bg-purple-500/10 text-purple-400 border-purple-500/20'
                             }`}>

@@ -52,6 +52,7 @@ import { UnifiedPaymentDialog } from '@/app/components/shared/UnifiedPaymentDial
 import { UnifiedLedgerView } from '@/app/components/shared/UnifiedLedgerView';
 import { ViewSaleDetailsDrawer } from './ViewSaleDetailsDrawer';
 import { SaleReturnForm } from './SaleReturnForm';
+import { StandaloneSaleReturnForm } from './StandaloneSaleReturnForm';
 import { ReturnPaymentAdjustment } from './ReturnPaymentAdjustment';
 import { ViewPaymentsModal, type InvoiceDetails, type Payment } from './ViewPaymentsModal';
 import { AttachmentViewer } from '@/app/components/shared/AttachmentViewer';
@@ -179,6 +180,8 @@ export const SalesPage = () => {
   const [saleReturnSaleId, setSaleReturnSaleId] = useState<string | null>(null);
   /** When set, SaleReturnForm opens in edit mode for this return (draft only). */
   const [saleReturnEditId, setSaleReturnEditId] = useState<string | null>(null);
+  /** Standalone sale return (no invoice) form */
+  const [standaloneReturnFormOpen, setStandaloneReturnFormOpen] = useState(false);
   const [returnPaymentDialogOpen, setReturnPaymentDialogOpen] = useState(false);
   const [returnPaymentSaleId, setReturnPaymentSaleId] = useState<string | null>(null);
   
@@ -1303,7 +1306,7 @@ export const SalesPage = () => {
       {/* Source Tabs: All | POS | Regular | Returns */}
       <div className="shrink-0 px-6 py-3 border-b border-gray-800 bg-[#0F1419]">
         <p className="text-xs text-gray-500 uppercase tracking-wider mb-2 font-medium">Source</p>
-        <div className="flex gap-2 flex-wrap">
+        <div className="flex gap-2 flex-wrap items-center">
           {[
             { id: 'all' as const, label: 'All', icon: ShoppingCart },
             { id: 'pos' as const, label: 'POS', icon: Zap },
@@ -1324,6 +1327,17 @@ export const SalesPage = () => {
               {label}
             </button>
           ))}
+          {activeTab === 'returns' && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="ml-2 border-amber-500/50 text-amber-400 hover:bg-amber-500/10 hover:text-amber-300"
+              onClick={() => setStandaloneReturnFormOpen(true)}
+            >
+              <PackageCheck size={16} className="mr-1.5" />
+              Return without invoice
+            </Button>
+          )}
         </div>
       </div>
 
@@ -1421,7 +1435,7 @@ export const SalesPage = () => {
                     <div className="py-12 text-center">
                       <RotateCcw size={48} className="mx-auto text-gray-600 mb-3" />
                       <p className="text-gray-400 text-sm">No returns found</p>
-                      <p className="text-gray-600 text-xs mt-1">Create a return from a sale invoice</p>
+                      <p className="text-gray-600 text-xs mt-1">Create a return from a sale invoice or use &quot;Return without invoice&quot;</p>
                     </div>
                   ) : (
                     <div className="divide-y divide-gray-800/50">
@@ -1456,7 +1470,7 @@ export const SalesPage = () => {
                               ) : ret.original_sale_id ? (
                                 <span className="text-gray-500">Sale ID: {ret.original_sale_id.slice(0, 8)}</span>
                               ) : (
-                                <span className="text-gray-500">—</span>
+                                <span className="text-amber-400/90 text-xs">No invoice</span>
                               )}
                             </div>
                             <div className="text-sm text-gray-400">{branchMap.get(ret.branch_id) || '—'}</div>
@@ -1513,7 +1527,7 @@ export const SalesPage = () => {
                                       <DropdownMenuItem 
                                         onClick={() => {
                                           if (!ret.original_sale_id) {
-                                            toast.error('Original sale not found for this return.');
+                                            toast.info('Standalone return (no invoice) cannot be edited. Delete and create a new return if needed.');
                                             return;
                                           }
                                           setSaleReturnSaleId(ret.original_sale_id);
@@ -1979,6 +1993,30 @@ export const SalesPage = () => {
                 setSaleReturnsList(returns);
               } catch (error) {
                 console.error('[SALES PAGE] Error reloading sales with returns:', error);
+              }
+            }
+          }}
+        />
+      )}
+
+      {/* 🎯 STANDALONE SALE RETURN (no invoice) */}
+      {standaloneReturnFormOpen && (
+        <StandaloneSaleReturnForm
+          open={standaloneReturnFormOpen}
+          onClose={() => setStandaloneReturnFormOpen(false)}
+          onSuccess={async () => {
+            await refreshSales();
+            if (companyId) {
+              try {
+                const returns = await saleReturnService.getSaleReturns(companyId, branchId === 'all' ? undefined : branchId || undefined);
+                const saleIdsWithReturns = new Set<string>();
+                returns.forEach((ret: any) => {
+                  if (ret.original_sale_id && String(ret.status).toLowerCase() === 'final') saleIdsWithReturns.add(ret.original_sale_id);
+                });
+                setSalesWithReturns(saleIdsWithReturns);
+                setSaleReturnsList(returns);
+              } catch (error) {
+                console.error('[SALES PAGE] Error reloading returns:', error);
               }
             }
           }}

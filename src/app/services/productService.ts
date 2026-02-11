@@ -491,8 +491,9 @@ export const productService = {
     };
 
     insertData.movement_type = data.movement_type;
-    if (data.box_change != null) insertData.box_change = Number(data.box_change);
-    if (data.piece_change != null) insertData.piece_change = Number(data.piece_change);
+    // Box and pieces are always integers in inventory (no decimals)
+    if (data.box_change != null) insertData.box_change = Math.round(Number(data.box_change));
+    if (data.piece_change != null) insertData.piece_change = Math.round(Number(data.piece_change));
 
     let { data: movement, error } = await supabase
       .from('stock_movements')

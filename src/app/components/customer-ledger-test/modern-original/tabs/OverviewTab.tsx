@@ -15,7 +15,7 @@ export function OverviewTab({ ledgerData, onTransactionClick }: OverviewTabProps
 
   // Calculate payment trends
   const totalPayments = ledgerData.transactions.filter(t => t.documentType === 'Payment').length;
-  const totalSales = ledgerData.transactions.filter(t => t.documentType === 'Sale').length;
+  const totalSales = ledgerData.transactions.filter(t => t.documentType === 'Sale' || t.documentType === 'Studio Sale').length;
 
   return (
     <div className="space-y-6">
@@ -94,7 +94,7 @@ export function OverviewTab({ ledgerData, onTransactionClick }: OverviewTabProps
                 <div className="text-xs text-gray-500 mb-2">{transaction.description}</div>
                 <div className="flex justify-between items-center">
                   <span className={`text-xs px-2 py-1 rounded border ${
-                    transaction.documentType === 'Sale' ? 'bg-blue-500/10 text-blue-400 border-blue-500/20' :
+                    transaction.documentType === 'Sale' || transaction.documentType === 'Studio Sale' ? 'bg-blue-500/10 text-blue-400 border-blue-500/20' :
                     transaction.documentType === 'Payment' ? 'bg-green-500/10 text-green-400 border-green-500/20' :
                     'bg-purple-500/10 text-purple-400 border-purple-500/20'
                   }`}>

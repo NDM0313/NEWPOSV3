@@ -174,15 +174,16 @@ export const InventoryDesignTestPage = () => {
     notes: string;
     date: string;
     newStock: number;
+    variationId?: string | null;
   }) => {
     if (!companyId) return;
     try {
-      // Inventory = movement-based only; do not update product.current_stock
       const qty = data.type === 'add' ? data.quantity : -data.quantity;
       await productService.createStockMovement({
         company_id: companyId,
         branch_id: branchId === 'all' ? undefined : branchId || undefined,
         product_id: data.productId,
+        variation_id: data.variationId ?? undefined,
         movement_type: 'adjustment',
         quantity: qty,
         notes: `${data.reason}: ${data.notes}`,
@@ -513,6 +514,13 @@ export const InventoryDesignTestPage = () => {
           sku: adjustmentProduct.sku,
           currentStock: adjustmentProduct.stock,
           unit: adjustmentProduct.unit,
+          hasVariations: adjustmentProduct.hasVariations,
+          variations: adjustmentProduct.variations?.map((v) => ({
+            id: v.id,
+            attributes: v.attributes,
+            sku: v.sku,
+            stock: v.stock ?? 0,
+          })),
         } : null}
         onAdjust={handleAdjustSave}
       />

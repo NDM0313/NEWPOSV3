@@ -73,6 +73,7 @@ import { TransactionHeaderTestPage } from './components/test/TransactionHeaderTe
 import { UserManagementTestPage } from './components/test/UserManagementTestPage';
 import { BranchManagementTestPage } from './components/test/BranchManagementTestPage';
 import { AccountingChartTestPage } from './components/test/AccountingChartTestPage';
+import { LedgerDebugTestPage } from './components/test/LedgerDebugTestPage';
 import { SalesListDesignTestPage } from './components/test/SalesListDesignTestPage';
 import { CustomerLedgerTestPage } from './components/customer-ledger-test/CustomerLedgerTestPage';
 import TestLedger from './TestLedger';
@@ -188,6 +189,7 @@ const AppContent = () => {
       {currentView === 'branch-management-test' && <BranchManagementTestPage />}
       {currentView === 'accounting-chart-test' && <AccountingChartTestPage />}
       {currentView === 'customer-ledger-test' && <CustomerLedgerTestPage />}
+      {currentView === 'ledger-debug-test' && <LedgerDebugTestPage />}
       {currentView === 'test-ledger' && <TestLedger />}
       {currentView === 'customer-ledger-interactive-test' && <CustomerLedgerInteractiveTest />}
       {currentView === 'sales-list-design-test' && <SalesListDesignTestPage />}
