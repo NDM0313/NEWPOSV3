@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useSupabase } from '@/app/context/SupabaseContext';
+import { useAccounting } from '@/app/context/AccountingContext';
 import { productService } from '@/app/services/productService';
 import { contactService } from '@/app/services/contactService';
 import { rentalService } from '@/app/services/rentalService';
@@ -9,7 +10,6 @@ import {
   Search,
   AlertTriangle,
   CheckCircle2,
-  Shield,
   FileText,
   CreditCard,
   Printer,
@@ -37,6 +37,7 @@ import {
   SelectValue,
 } from '../ui/select';
 import { cn } from '../ui/utils';
+import { ProductImage } from '../products/ProductImage';
 
 interface RentalProduct {
   id: string;
@@ -73,6 +74,7 @@ interface SelectedItem {
 
 export const NewRentalBooking = () => {
   const { companyId, branchId, user } = useSupabase();
+  const accounting = useAccounting();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   
@@ -113,7 +115,7 @@ export const NewRentalBooking = () => {
           sku: p.sku || '',
           name: p.name,
           category: (p.category?.name?.toLowerCase() || 'bridal') as 'bridal' | 'groom' | 'accessories',
-          image: p.image_url || '/placeholder-product.jpg',
+          image: (Array.isArray(p.image_urls) && p.image_urls[0]) ? p.image_urls[0] : (p.image_url || p.thumbnail || ''),
           retailValue: p.retail_price || 0,
           rentPrice: p.rental_price_daily ? p.rental_price_daily * 3 : 0,
           perDayPrice: p.rental_price_daily || 0,
@@ -122,20 +124,17 @@ export const NewRentalBooking = () => {
         }));
       setProducts(rentableProducts);
       
-      // Load customers
+      // Load customers only (no Walk-in; rentals require a real customer)
       const allContacts = await contactService.getAllContacts(companyId);
-      const customerList: Customer[] = [
-        { id: 'WALK', name: 'Walk-in Customer', phone: '', type: 'walk-in' },
-        ...allContacts
-          .filter(c => c.type === 'customer' && c.is_active)
-          .map(c => ({
-            id: c.id,
-            name: c.name,
-            phone: c.phone || '',
-            type: 'registered' as const,
-            cnic: c.cnic
-          }))
-      ];
+      const customerList: Customer[] = (allContacts || [])
+        .filter((c: any) => (c.type === 'customer' || c.type === 'both') && c.is_active !== false && !(c.is_system_generated && c.system_type === 'walking_customer'))
+        .map((c: any) => ({
+          id: c.id,
+          name: c.name,
+          phone: c.phone || '',
+          type: 'registered' as const,
+          cnic: c.cnic
+        }));
       setCustomers(customerList);
       
       // Set default customer
@@ -155,10 +154,6 @@ export const NewRentalBooking = () => {
     loadData();
   }, [loadData]);
   
-  // Security & Documents
-  const [securityType, setSecurityType] = useState<'id-card' | 'passport' | 'cash'>('id-card');
-  const [documentReceived, setDocumentReceived] = useState(false);
-  const [securityAmount, setSecurityAmount] = useState<number>(0);
   
   // Payment
   const [advanceAmount, setAdvanceAmount] = useState<number>(0);
@@ -223,63 +218,56 @@ export const NewRentalBooking = () => {
     try {
       setSaving(true);
 
-      // Determine customer ID
-      let customerId = selectedCustomer.id;
-      let customerNameValue = selectedCustomer.name;
+      // Determine customer ID (all customers are from contacts)
+      const customerId = selectedCustomer.id;
+      const customerNameValue = selectedCustomer.name;
 
-      // If walk-in customer, create contact first
-      if (selectedCustomer && selectedCustomer.type === 'walk-in') {
-        if (!customerName || !customerPhone) {
-          toast.error('Please enter customer name and phone');
-          setSaving(false);
-          return;
-        }
+      // Convert items for createBooking (with availability check)
+      const items = selectedItems.map(item => {
+        const perUnit = (item.customPrice || item.product.rentPrice) + Math.max(0, rentalDays - 3) * item.product.perDayPrice;
+        const itemTotal = perUnit * item.quantity;
+        return {
+          productId: item.product.id,
+          productName: item.product.name,
+          quantity: item.quantity,
+          ratePerDay: item.product.perDayPrice,
+          durationDays: rentalDays,
+          total: itemTotal,
+        };
+      });
 
-        const newContact = await contactService.createContact({
-          company_id: companyId,
-          name: customerName,
-          phone: customerPhone,
-          type: 'customer',
-          is_active: true,
-        });
-        customerId = newContact.id;
-        customerNameValue = customerName;
+      const rentalCharges = totalRent;
+
+      // Create booking (includes availability check, rejects overlapping dates)
+      const result = await rentalService.createBooking({
+        companyId,
+        branchId,
+        createdBy: user.id,
+        customerId,
+        customerName: customerNameValue,
+        bookingDate: bookingDate.toISOString().split('T')[0],
+        pickupDate: pickupDate.toISOString().split('T')[0],
+        returnDate: returnDate.toISOString().split('T')[0],
+        rentalCharges,
+        securityDeposit: 0,
+        paidAmount: advanceAmount,
+        notes: bookingNotes || null,
+        items,
+      });
+
+      if (advanceAmount > 0) {
+        accounting.recordRentalBooking({
+          bookingId: result.id,
+          customerName: customerNameValue,
+          customerId,
+          advanceAmount,
+          securityDepositAmount: 0,
+          securityDepositType: 'Document',
+          paymentMethod: 'Cash',
+        }).catch((err) => console.warn('[NewRentalBooking] Ledger advance posting:', err));
       }
 
-      // Convert items to rental items format
-      const rentalItems = selectedItems.map(item => ({
-        product_id: item.product.id,
-        product_name: item.product.name,
-        quantity: item.quantity,
-        rate_per_day: item.product.perDayPrice,
-        duration_days: rentalDays,
-        total: (item.customPrice || item.product.rentPrice) + (Math.max(0, rentalDays - 3) * item.product.perDayPrice),
-      }));
-
-      // Calculate totals
-      const rentalCharges = totalRent;
-      const totalAmount = rentalCharges + securityAmount;
-
-      // Create rental
-      const rental = await rentalService.createRental({
-        company_id: companyId,
-        branch_id: branchId,
-        booking_date: bookingDate.toISOString().split('T')[0],
-        customer_id: customerId,
-        customer_name: customerNameValue,
-        status: 'booked',
-        pickup_date: pickupDate.toISOString().split('T')[0],
-        return_date: returnDate.toISOString().split('T')[0],
-        duration_days: rentalDays,
-        rental_charges: rentalCharges,
-        security_deposit: securityAmount,
-        total_amount: totalAmount,
-        paid_amount: advanceAmount,
-        notes: bookingNotes,
-        created_by: user.id,
-      }, rentalItems);
-
-      toast.success(`Rental booking ${rental.booking_no || rental.id} created successfully!`);
+      toast.success(`Rental booking ${result.booking_no} created successfully!`);
       
       // Reset form
       setSelectedItems([]);
@@ -287,9 +275,7 @@ export const NewRentalBooking = () => {
       setReturnDate(undefined);
       setDatesLocked(false);
       setAdvanceAmount(0);
-      setSecurityAmount(0);
       setBookingNotes('');
-      setDocumentReceived(false);
       
       // Reload data
       await loadData();
@@ -580,7 +566,7 @@ export const NewRentalBooking = () => {
                       {/* Image */}
                       <div className="w-24 h-24 rounded-lg bg-gray-800 flex items-center justify-center overflow-hidden flex-shrink-0">
                         {product.image ? (
-                          <img src={product.image} alt={product.name} className="w-full h-full object-cover" />
+                          <ProductImage src={product.image} alt={product.name} className="w-full h-full object-cover" />
                         ) : (
                           <ImageIcon size={32} className="text-gray-600" />
                         )}
@@ -699,72 +685,6 @@ export const NewRentalBooking = () => {
             </div>
           )}
 
-          {/* Security Deposit Section */}
-          <div className="bg-[#1a1a1a] border border-gray-800 rounded-xl p-6">
-            <h3 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
-              <Shield size={20} className="text-[#800020]" />
-              Security & Documents
-            </h3>
-
-            <div className="space-y-4">
-              <div>
-                <Label className="text-gray-400 mb-2 block">Security Type *</Label>
-                <Select value={securityType} onValueChange={(value: any) => setSecurityType(value)}>
-                  <SelectTrigger className="bg-[#121212] border-gray-700 text-white">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent className="bg-[#1a1a1a] border-gray-700">
-                    <SelectItem value="id-card" className="text-white hover:bg-gray-800">
-                      ID Card (Original)
-                    </SelectItem>
-                    <SelectItem value="passport" className="text-white hover:bg-gray-800">
-                      Passport (Original)
-                    </SelectItem>
-                    <SelectItem value="cash" className="text-white hover:bg-gray-800">
-                      Cash Guarantee
-                    </SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {securityType === 'cash' && (
-                <div>
-                  <Label className="text-gray-400 mb-2 block">Cash Amount (₨) *</Label>
-                  <Input
-                    type="number"
-                    value={securityAmount}
-                    onChange={(e) => setSecurityAmount(Number(e.target.value))}
-                    placeholder="0"
-                    className="bg-[#121212] border-gray-700 text-white"
-                  />
-                </div>
-              )}
-
-              <div className="bg-[#121212] border border-gray-700 rounded-lg p-4">
-                <div className="flex items-center justify-between">
-                  <Label className="text-gray-300 cursor-pointer flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      checked={documentReceived}
-                      onChange={(e) => setDocumentReceived(e.target.checked)}
-                      className="w-4 h-4 rounded border-gray-600 bg-gray-800 text-[#800020] focus:ring-[#800020]"
-                    />
-                    Original Document Received?
-                  </Label>
-                  {documentReceived && (
-                    <Badge className="bg-emerald-500/20 text-emerald-400 border-emerald-500/30">
-                      <CheckCircle2 size={12} className="mr-1" />
-                      Verified
-                    </Badge>
-                  )}
-                </div>
-                <div className="text-xs text-gray-500 mt-2 ml-6">
-                  Document will be held by shop until return
-                </div>
-              </div>
-            </div>
-          </div>
-
           {/* Booking Notes */}
           <div className="bg-[#1a1a1a] border border-gray-800 rounded-xl p-6">
             <h3 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
@@ -829,15 +749,7 @@ export const NewRentalBooking = () => {
                 </div>
               </div>
 
-              {/* Security Deposit Info */}
-              {securityType === 'cash' && securityAmount > 0 && (
-                <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-3">
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-blue-300">Security Deposit (Refundable)</span>
-                    <span className="font-semibold text-blue-400">₨{securityAmount.toLocaleString()}</span>
-                  </div>
-                </div>
-              )}
+              <p className="text-xs text-gray-500 mt-2">Security & documents handled at pickup</p>
             </div>
           </div>
 
@@ -845,7 +757,7 @@ export const NewRentalBooking = () => {
           <div className="space-y-3">
             <Button
               onClick={handleSaveBooking}
-              disabled={selectedItems.length === 0 || !documentReceived || !datesLocked || saving || loading}
+              disabled={selectedItems.length === 0 || !datesLocked || saving || loading}
               className="w-full bg-[#800020] hover:bg-[#600018] text-white font-bold py-6 text-lg shadow-lg shadow-[#800020]/20 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <CheckCircle2 size={20} className="mr-2" />

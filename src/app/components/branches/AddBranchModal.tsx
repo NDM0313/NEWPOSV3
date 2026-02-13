@@ -49,6 +49,8 @@ export const AddBranchModal: React.FC<AddBranchModalProps> = ({
     city: '',
     state: '',
     is_active: true,
+    fiscalYearStart: '',
+    fiscalYearEnd: '',
     cashAccountId: '',
     bankAccountId: '',
     posCashDrawerId: '',
@@ -129,6 +131,8 @@ export const AddBranchModal: React.FC<AddBranchModalProps> = ({
           city: editingBranch.city || '',
           state: editingBranch.state || '',
           is_active: editingBranch.is_active ?? true,
+          fiscalYearStart: (editingBranch as any).fiscal_year_start || '',
+          fiscalYearEnd: (editingBranch as any).fiscal_year_end || '',
           cashAccountId: editingBranch.default_cash_account_id || '',
           bankAccountId: editingBranch.default_bank_account_id || '',
           posCashDrawerId: editingBranch.default_pos_drawer_account_id || '',
@@ -143,6 +147,8 @@ export const AddBranchModal: React.FC<AddBranchModalProps> = ({
           city: '',
           state: '',
           is_active: true,
+          fiscalYearStart: '',
+          fiscalYearEnd: '',
           cashAccountId: '',
           bankAccountId: '',
           posCashDrawerId: '',
@@ -192,6 +198,8 @@ export const AddBranchModal: React.FC<AddBranchModalProps> = ({
         city: formData.city.trim() || undefined,
         state: formData.state.trim() || undefined,
         is_active: formData.is_active,
+        fiscal_year_start: formData.fiscalYearStart?.trim() || null,
+        fiscal_year_end: formData.fiscalYearEnd?.trim() || null,
         default_cash_account_id: formData.cashAccountId?.trim() || null,
         default_bank_account_id: formData.bankAccountId?.trim() || null,
         default_pos_drawer_account_id: formData.posCashDrawerId?.trim() || null,
@@ -294,6 +302,30 @@ export const AddBranchModal: React.FC<AddBranchModalProps> = ({
               className="bg-gray-900 border-gray-700 text-white"
               rows={2}
             />
+          </div>
+
+          {/* Fiscal Year */}
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="fiscalYearStart" className="text-gray-200">Fiscal Year Start (Optional)</Label>
+              <Input
+                id="fiscalYearStart"
+                type="date"
+                value={formData.fiscalYearStart}
+                onChange={(e) => setFormData({ ...formData, fiscalYearStart: e.target.value })}
+                className="bg-gray-900 border-gray-700 text-white"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="fiscalYearEnd" className="text-gray-200">Fiscal Year End (Optional)</Label>
+              <Input
+                id="fiscalYearEnd"
+                type="date"
+                value={formData.fiscalYearEnd}
+                onChange={(e) => setFormData({ ...formData, fiscalYearEnd: e.target.value })}
+                className="bg-gray-900 border-gray-700 text-white"
+              />
+            </div>
           </div>
 
           {/* City & State */}

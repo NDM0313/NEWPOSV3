@@ -4,6 +4,8 @@
 
 import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
 import { useSupabase } from '@/app/context/SupabaseContext';
+import { useAccounting } from '@/app/context/AccountingContext';
+import { supabase } from '@/lib/supabase';
 import { rentalService, RentalStatus } from '@/app/services/rentalService';
 import { toast } from 'sonner';
 
@@ -40,18 +42,21 @@ export interface RentalUI {
   createdBy?: string;
   createdByName?: string;
   notes?: string | null;
+  documentType?: string;
+  documentNumber?: string;
 }
 
-// Map old DB status (booked, picked_up, returned, closed, cancelled, overdue) to new (draft, rented, returned, overdue, cancelled)
+// Map DB status (booked, picked_up, returned, closed, cancelled, overdue) to UI status
 function mapStatus(status: string): RentalStatus {
   const map: Record<string, RentalStatus> = {
     draft: 'draft',
+    booked: 'booked',
     rented: 'rented',
     returned: 'returned',
     overdue: 'overdue',
     cancelled: 'cancelled',
-    booked: 'draft',
     picked_up: 'rented',
+    active: 'rented',
     closed: 'returned',
   };
   return (map[status] || 'draft') as RentalStatus;
@@ -103,6 +108,8 @@ function convertFromSupabaseRental(row: any): RentalUI {
     createdBy: row.created_by,
     createdByName: row.created_by_user?.full_name || row.created_by_user?.email,
     notes: row.notes,
+    documentType: row.document_type,
+    documentNumber: row.document_number,
   };
 }
 
@@ -114,11 +121,12 @@ interface RentalContextType {
   createRental: (rental: Omit<RentalUI, 'id' | 'rentalNo' | 'itemsCount'> & { items: RentalItemUI[] }) => Promise<RentalUI>;
   updateRental: (id: string, updates: Partial<RentalUI>, items: RentalItemUI[] | null) => Promise<void>;
   finalizeRental: (id: string) => Promise<void>;
-  receiveReturn: (id: string, actualReturnDate: string) => Promise<void>;
+  receiveReturn: (id: string, payload: { actualReturnDate: string; notes?: string; conditionType: string; damageNotes?: string; penaltyAmount: number; penaltyPaid: boolean; documentReturned: boolean }) => Promise<void>;
   cancelRental: (id: string) => Promise<void>;
   addPayment: (rentalId: string, amount: number, method: string, reference?: string) => Promise<void>;
   deletePayment: (rentalId: string, paymentId: string) => Promise<void>;
   deleteRental: (id: string) => Promise<void>;
+  markAsPickedUp: (rentalId: string, payload: { actualPickupDate: string; notes?: string; documentType: string; documentNumber: string; documentExpiry?: string; documentReceived: boolean; remainingPaymentConfirmed: boolean; deliverOnCredit?: boolean; documentFrontImage?: string; documentBackImage?: string; customerPhoto?: string }) => Promise<void>;
 }
 
 const RentalContext = createContext<RentalContextType | undefined>(undefined);
@@ -140,6 +148,7 @@ export const useRentals = () => {
         addPayment: async () => {},
         deletePayment: async () => {},
         deleteRental: async () => {},
+        markAsPickedUp: async () => { /* no-op */ },
       } as RentalContextType;
     }
     throw new Error('useRentals must be used within RentalProvider');
@@ -151,11 +160,13 @@ export const RentalProvider = ({ children }: { children: ReactNode }) => {
   const [rentals, setRentals] = useState<RentalUI[]>([]);
   const [loading, setLoading] = useState(true);
   const { companyId, branchId, user } = useSupabase();
+  const accounting = useAccounting();
 
   const loadRentals = useCallback(async () => {
     if (!companyId) return;
     try {
       setLoading(true);
+      await rentalService.markOverdueRentals(companyId);
       const data = await rentalService.getAllRentals(
         companyId,
         branchId === 'all' ? undefined : branchId || undefined
@@ -173,6 +184,27 @@ export const RentalProvider = ({ children }: { children: ReactNode }) => {
   useEffect(() => {
     if (companyId) loadRentals();
     else setLoading(false);
+  }, [companyId, loadRentals]);
+
+  // Real-time: reload rentals when rentals/rental_payments change
+  useEffect(() => {
+    if (!companyId) return;
+    const channel = supabase
+      .channel('rentals-realtime')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'rentals' },
+        () => loadRentals()
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'rental_payments' },
+        () => loadRentals()
+      )
+      .subscribe();
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [companyId, loadRentals]);
 
   const getRentalById = (id: string) => rentals.find((r) => r.id === id);
@@ -257,9 +289,20 @@ export const RentalProvider = ({ children }: { children: ReactNode }) => {
     toast.success('Rental finalized – stock out');
   };
 
-  const receiveReturn = async (id: string, actualReturnDate: string) => {
+  const receiveReturn = async (id: string, payload: { actualReturnDate: string; notes?: string; conditionType: string; damageNotes?: string; penaltyAmount: number; penaltyPaid: boolean; documentReturned: boolean }) => {
     if (!companyId) return;
-    await rentalService.receiveReturn(id, companyId, actualReturnDate, user?.id);
+    const rental = getRentalById(id) || rentals.find((r) => r.id === id);
+    await rentalService.receiveReturn(id, companyId, payload, user?.id);
+    if (payload.penaltyAmount > 0 && payload.penaltyPaid && rental) {
+      accounting.recordRentalReturn({
+        bookingId: id,
+        customerName: rental.customerName,
+        customerId: rental.customerId || '',
+        securityDepositAmount: 0,
+        damageCharge: payload.penaltyAmount,
+        paymentMethod: 'Cash',
+      }).catch((err) => console.warn('[RentalContext] Ledger penalty posting:', err));
+    }
     await loadRentals();
     toast.success('Return received – stock in');
   };
@@ -292,6 +335,28 @@ export const RentalProvider = ({ children }: { children: ReactNode }) => {
     toast.success('Rental deleted');
   };
 
+  const markAsPickedUp = async (rentalId: string, payload: { actualPickupDate: string; notes?: string; documentType: string; documentNumber: string; documentExpiry?: string; documentReceived: boolean; remainingPaymentConfirmed: boolean; deliverOnCredit?: boolean; documentFrontImage?: string; documentBackImage?: string; customerPhoto?: string }) => {
+    if (!companyId) return;
+    const rental = getRentalById(rentalId);
+    if (payload.deliverOnCredit && rental) {
+      const remaining = (rental.totalAmount ?? 0) - (rental.paidAmount ?? 0);
+      if (remaining > 0) {
+        await accounting.recordRentalCreditDelivery({
+          bookingId: rentalId,
+          customerName: rental.customerName,
+          customerId: rental.customerId || '',
+          remainingAmount: remaining,
+          paymentMethod: 'Cash',
+        }).catch((err) => {
+          console.warn('[RentalContext] AR posting failed (pickup will proceed):', err);
+        });
+      }
+    }
+    await rentalService.markAsPickedUp(rentalId, companyId, payload, user?.id);
+    await loadRentals();
+    toast.success(payload.deliverOnCredit ? 'Rental delivered on credit' : 'Rental marked as picked up');
+  };
+
   const value: RentalContextType = {
     rentals,
     loading,
@@ -305,6 +370,7 @@ export const RentalProvider = ({ children }: { children: ReactNode }) => {
     addPayment,
     deletePayment,
     deleteRental,
+    markAsPickedUp,
   };
 
   return <RentalContext.Provider value={value}>{children}</RentalContext.Provider>;

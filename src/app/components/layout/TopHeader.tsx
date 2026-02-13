@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { 
   Bell, 
   Menu, 
@@ -40,10 +41,12 @@ import { cn } from "../ui/utils";
 import { toast } from 'sonner';
 import { UserProfilePage } from '../users/UserProfilePage';
 import { ChangePasswordDialog } from '../auth/ChangePasswordDialog';
+import { useFormatCurrency } from '../../hooks/useFormatCurrency';
 
 export const TopHeader = () => {
   const { toggleSidebar, openDrawer, setCurrentView } = useNavigation();
   const { signOut, user, companyId, branchId, defaultBranchId, setBranchId } = useSupabase();
+  const { formatCurrency } = useFormatCurrency();
   
   // Note: These hooks may throw during hot reload if providers aren't ready
   // In production, providers are always available, so this is safe
@@ -161,9 +164,7 @@ export const TopHeader = () => {
   const [showChangePassword, setShowChangePassword] = useState(false);
 
   const handleViewProfile = () => {
-    // View Profile temporarily disabled (safety isolation)
-    toast.info('Profile management is temporarily disabled');
-    // setShowProfile(true); // Disabled
+    setShowProfile(true);
   };
 
   const handleSettings = () => {
@@ -191,7 +192,7 @@ export const TopHeader = () => {
         notifs.push({
           id: `sale-${sale.id}`,
           type: 'receivable',
-          message: `Unpaid invoice: ${sale.invoiceNo} - Rs ${sale.due.toLocaleString()}`,
+          message: `Unpaid invoice: ${sale.invoiceNo} - ${formatCurrency(sale.due)}`,
           time: sale.date || new Date().toISOString().split('T')[0],
         });
       });
@@ -204,7 +205,7 @@ export const TopHeader = () => {
         notifs.push({
           id: `purchase-${purchase.id}`,
           type: 'payable',
-          message: `Unpaid purchase: ${purchase.purchaseNo} - Rs ${purchase.due.toLocaleString()}`,
+          message: `Unpaid purchase: ${purchase.purchaseNo} - ${formatCurrency(purchase.due)}`,
           time: purchase.date || new Date().toISOString().split('T')[0],
         });
       });
@@ -217,13 +218,13 @@ export const TopHeader = () => {
         notifs.push({
           id: `expense-${expense.id}`,
           type: 'expense',
-          message: `Pending expense: ${expense.expenseNo} - Rs ${expense.amount.toLocaleString()}`,
+          message: `Pending expense: ${expense.expenseNo} - ${formatCurrency(expense.amount)}`,
           time: expense.date || new Date().toISOString().split('T')[0],
         });
       });
     
     return notifs.slice(0, 10); // Limit to 10 notifications
-  }, [sales.sales, purchases.purchases, expenses.expenses]);
+  }, [sales.sales, purchases.purchases, expenses.expenses, formatCurrency]);
 
   // Get user display info
   const userDisplayName = user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Admin';
@@ -601,14 +602,15 @@ export const TopHeader = () => {
         </DropdownMenu>
       </div>
 
-      {/* User Profile Modal - TEMPORARILY DISABLED (safety isolation) */}
-      {/* {showProfile && (
+      {/* User Profile Modal - rendered at root via Portal for correct stacking/positioning */}
+      {showProfile && createPortal(
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-          <div className="bg-gray-900 border border-gray-800 rounded-xl p-6 max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+          <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-4xl max-h-[90vh] overflow-y-auto bg-gray-900 border border-gray-800 rounded-xl p-6">
             <UserProfilePage onClose={() => setShowProfile(false)} />
           </div>
-        </div>
-      )} */}
+        </div>,
+        document.body
+      )}
 
       {/* Change Password Dialog */}
       <ChangePasswordDialog

@@ -3,6 +3,8 @@ import { X, Receipt, TrendingUp, TrendingDown, Calendar, FileText, Printer, Down
 import { Button } from '@/app/components/ui/button';
 import { Badge } from '@/app/components/ui/badge';
 import { useAccounting, type AccountingEntry } from '@/app/context/AccountingContext';
+import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
+import { useFormatDate } from '@/app/hooks/useFormatDate';
 import { cn } from '@/app/components/ui/utils';
 import { toast } from 'sonner';
 
@@ -176,6 +178,8 @@ export const UnifiedLedgerView: React.FC<LedgerViewProps> = ({
   entityId
 }) => {
   const accounting = useAccounting();
+  const { formatCurrency } = useFormatCurrency();
+  const { formatDate } = useFormatDate();
   const [activeTab, setActiveTab] = useState<'summary' | 'detailed' | 'statement'>('summary');
   const [dateFilter, setDateFilter] = useState<'all' | '7days' | '30days' | '90days'>('all');
 
@@ -368,16 +372,16 @@ export const UnifiedLedgerView: React.FC<LedgerViewProps> = ({
                     </div>
                     <div>
                       <p className="text-xs text-gray-500 uppercase mb-1">Total Charges</p>
-                      <p className="text-2xl font-bold text-red-400">Rs {totals.totalCredit.toLocaleString()}</p>
+                      <p className="text-2xl font-bold text-red-400">{formatCurrency(totals.totalCredit)}</p>
                     </div>
                     <div>
                       <p className="text-xs text-gray-500 uppercase mb-1">Total Payments</p>
-                      <p className="text-2xl font-bold text-green-400">Rs {totals.totalDebit.toLocaleString()}</p>
+                      <p className="text-2xl font-bold text-green-400">{formatCurrency(totals.totalDebit)}</p>
                     </div>
                     <div>
                       <p className="text-xs text-gray-500 uppercase mb-1">{labels.balanceLabel}</p>
                       <p className={`text-3xl font-bold ${labels.balanceColor}`}>
-                        Rs {Math.abs(totals.balance).toLocaleString()}
+                        {formatCurrency(Math.abs(totals.balance))}
                       </p>
                     </div>
                   </div>
@@ -553,7 +557,7 @@ export const UnifiedLedgerView: React.FC<LedgerViewProps> = ({
 
                             <div className="text-right ml-6">
                               <p className={`text-3xl font-bold ${isDebit ? 'text-green-400' : 'text-red-400'}`}>
-                                {isDebit ? '-' : '+'} Rs {entry.amount.toLocaleString()}
+                                {isDebit ? '-' : '+'} {formatCurrency(entry.amount)}
                               </p>
                               <p className="text-sm text-gray-500 mt-1">
                                 {isDebit ? 'Payment' : 'Charge'}
@@ -613,14 +617,14 @@ export const UnifiedLedgerView: React.FC<LedgerViewProps> = ({
                               </td>
                               <td className="p-4 text-right">
                                 {isDebit ? (
-                                  <span className="text-green-400 font-bold">Rs {entry.amount.toLocaleString()}</span>
+                                  <span className="text-green-400 font-bold">{formatCurrency(entry.amount)}</span>
                                 ) : (
                                   <span className="text-gray-600">-</span>
                                 )}
                               </td>
                               <td className="p-4 text-right">
                                 {!isDebit ? (
-                                  <span className="text-red-400 font-bold">Rs {entry.amount.toLocaleString()}</span>
+                                  <span className="text-red-400 font-bold">{formatCurrency(entry.amount)}</span>
                                 ) : (
                                   <span className="text-gray-600">-</span>
                                 )}
@@ -634,10 +638,10 @@ export const UnifiedLedgerView: React.FC<LedgerViewProps> = ({
                             Total:
                           </td>
                           <td className="p-4 text-right text-green-400 text-lg">
-                            Rs {totals.totalDebit.toLocaleString()}
+                            {formatCurrency(totals.totalDebit)}
                           </td>
                           <td className="p-4 text-right text-red-400 text-lg">
-                            Rs {totals.totalCredit.toLocaleString()}
+                            {formatCurrency(totals.totalCredit)}
                           </td>
                         </tr>
                         <tr className="bg-blue-500/10 font-bold">
@@ -645,7 +649,7 @@ export const UnifiedLedgerView: React.FC<LedgerViewProps> = ({
                             {labels.balanceLabel}:
                           </td>
                           <td colSpan={2} className={`p-4 text-right text-2xl ${labels.balanceColor}`}>
-                            Rs {Math.abs(totals.balance).toLocaleString()}
+                            {formatCurrency(Math.abs(totals.balance))}
                           </td>
                         </tr>
                       </tbody>
@@ -681,7 +685,7 @@ export const UnifiedLedgerView: React.FC<LedgerViewProps> = ({
                           <td className="p-4 text-center text-gray-500">-</td>
                           <td className="p-4 text-right text-gray-500">-</td>
                           <td className="p-4 text-right text-gray-500">-</td>
-                          <td className="p-4 text-right text-white">Rs 0</td>
+                          <td className="p-4 text-right text-white">{formatCurrency(0)}</td>
                         </tr>
 
                         {/* Transactions with running balance */}
@@ -698,14 +702,14 @@ export const UnifiedLedgerView: React.FC<LedgerViewProps> = ({
                             </td>
                             <td className="p-4 text-right">
                               {entry.isDebit ? (
-                                <span className="text-green-400 font-semibold">Rs {entry.amount.toLocaleString()}</span>
+                                <span className="text-green-400 font-semibold">{formatCurrency(entry.amount)}</span>
                               ) : (
                                 <span className="text-gray-600">-</span>
                               )}
                             </td>
                             <td className="p-4 text-right">
                               {!entry.isDebit ? (
-                                <span className="text-red-400 font-semibold">Rs {entry.amount.toLocaleString()}</span>
+                                <span className="text-red-400 font-semibold">{formatCurrency(entry.amount)}</span>
                               ) : (
                                 <span className="text-gray-600">-</span>
                               )}
@@ -715,7 +719,7 @@ export const UnifiedLedgerView: React.FC<LedgerViewProps> = ({
                                 "font-bold",
                                 entry.runningBalance > 0 ? "text-yellow-400" : "text-green-400"
                               )}>
-                                Rs {entry.runningBalance.toLocaleString()}
+                                {formatCurrency(entry.runningBalance)}
                               </span>
                             </td>
                           </tr>
@@ -727,13 +731,13 @@ export const UnifiedLedgerView: React.FC<LedgerViewProps> = ({
                             Closing Balance:
                           </td>
                           <td className="p-4 text-right text-green-400 text-lg">
-                            Rs {totals.totalDebit.toLocaleString()}
+                            {formatCurrency(totals.totalDebit)}
                           </td>
                           <td className="p-4 text-right text-red-400 text-lg">
-                            Rs {totals.totalCredit.toLocaleString()}
+                            {formatCurrency(totals.totalCredit)}
                           </td>
                           <td className={`p-4 text-right text-2xl ${labels.balanceColor}`}>
-                            Rs {Math.abs(totals.balance).toLocaleString()}
+                            {formatCurrency(Math.abs(totals.balance))}
                           </td>
                         </tr>
                       </tbody>

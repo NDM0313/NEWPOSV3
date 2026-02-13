@@ -57,6 +57,7 @@ import { saleService } from '@/app/services/saleService';
 import { studioProductionService } from '@/app/services/studioProductionService';
 import { branchService } from '@/app/services/branchService';
 import { cn } from '../ui/utils';
+import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
 import { Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
@@ -212,6 +213,7 @@ interface StudioSaleDetail {
 export const StudioSaleDetailNew = () => {
   const { setCurrentView, selectedStudioSaleId, setSelectedStudioSaleId, openDrawer } = useNavigation();
   const { companyId, branchId, user } = useSupabase();
+  const { formatCurrency } = useFormatCurrency();
   const [saleDetail, setSaleDetail] = useState<StudioSaleDetail | null>(null);
   const [productionId, setProductionId] = useState<string | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
@@ -916,7 +918,7 @@ export const StudioSaleDetailNew = () => {
     if (!shipment) return;
 
     // Confirm before deleting
-    if (!confirm(`Delete shipment? This will reduce the total bill by Rs ${shipment.chargedToCustomer.toLocaleString()}`)) {
+    if (!confirm(`Delete shipment? This will reduce the total bill by ${formatCurrency(shipment.chargedToCustomer)}`)) {
       return;
     }
 
@@ -1341,12 +1343,12 @@ export const StudioSaleDetailNew = () => {
             </div>
             <div>
               <p className="text-xs text-gray-500 mb-1">Total Bill</p>
-              <p className="text-white font-bold text-lg">Rs {effectiveTotalAmount.toLocaleString()}</p>
+              <p className="text-white font-bold text-lg">{formatCurrency(effectiveTotalAmount)}</p>
               {saleDetail.shipmentCharges > 0 && (
-                <p className="text-xs text-blue-400">Inc. shipping Rs {saleDetail.shipmentCharges.toLocaleString()}</p>
+                <p className="text-xs text-blue-400">Inc. shipping {formatCurrency(saleDetail.shipmentCharges)}</p>
               )}
               {studioCharges > 0 && (
-                <p className="text-xs text-orange-400">Inc. studio Rs {studioCharges.toLocaleString()}</p>
+                <p className="text-xs text-orange-400">Inc. studio {formatCurrency(studioCharges)}</p>
               )}
             </div>
             <div>
@@ -1355,7 +1357,7 @@ export const StudioSaleDetailNew = () => {
                 "font-bold text-lg",
                 effectiveBalanceDue === 0 ? "text-green-400" : "text-orange-400"
               )}>
-                Rs {effectiveBalanceDue.toLocaleString()}
+                {formatCurrency(effectiveBalanceDue)}
               </p>
             </div>
           </div>
@@ -1576,7 +1578,7 @@ export const StudioSaleDetailNew = () => {
                                         </div>
                                         <div className="flex items-center gap-2 text-sm">
                                           <DollarSign size={14} className="text-orange-500" />
-                                          <span className="text-orange-400 font-medium">Rs {step.workerCost.toLocaleString()}</span>
+                                          <span className="text-orange-400 font-medium">{formatCurrency(step.workerCost)}</span>
                                           {step.assignedWorkers && step.assignedWorkers.length > 1 && (
                                             <span className="text-xs text-gray-500">(total)</span>
                                           )}
@@ -1733,7 +1735,7 @@ export const StudioSaleDetailNew = () => {
                     <div className="flex items-center justify-between">
                       <span className="text-sm text-gray-400">Total Worker Cost</span>
                       <span className="text-lg font-bold text-orange-400">
-                        Rs {saleDetail.productionSteps.reduce((sum, step) => sum + step.workerCost, 0).toLocaleString()}
+                        {formatCurrency(saleDetail.productionSteps.reduce((sum, step) => sum + step.workerCost, 0))}
                       </span>
                     </div>
                     
@@ -1744,28 +1746,25 @@ export const StudioSaleDetailNew = () => {
                         <div className="bg-green-950/30 border border-green-800/30 rounded-lg p-2 text-center">
                           <p className="text-[10px] text-green-400 mb-1">Paid</p>
                           <p className="text-sm font-bold text-green-400">
-                            Rs {saleDetail.productionSteps
+                            {formatCurrency(saleDetail.productionSteps
                               .filter(s => s.workerPaymentStatus === 'Paid')
-                              .reduce((sum, s) => sum + s.workerCost, 0)
-                              .toLocaleString()}
+                              .reduce((sum, s) => sum + s.workerCost, 0))}
                           </p>
                         </div>
                         <div className="bg-yellow-950/30 border border-yellow-800/30 rounded-lg p-2 text-center">
                           <p className="text-[10px] text-yellow-400 mb-1">Pending</p>
                           <p className="text-sm font-bold text-yellow-400">
-                            Rs {saleDetail.productionSteps
+                            {formatCurrency(saleDetail.productionSteps
                               .filter(s => s.workerPaymentStatus === 'Pending')
-                              .reduce((sum, s) => sum + s.workerCost, 0)
-                              .toLocaleString()}
+                              .reduce((sum, s) => sum + s.workerCost, 0))}
                           </p>
                         </div>
                         <div className="bg-orange-950/30 border border-orange-800/30 rounded-lg p-2 text-center">
                           <p className="text-[10px] text-orange-400 mb-1">Payable</p>
                           <p className="text-sm font-bold text-orange-400">
-                            Rs {saleDetail.productionSteps
+                            {formatCurrency(saleDetail.productionSteps
                               .filter(s => s.workerPaymentStatus === 'Payable')
-                              .reduce((sum, s) => sum + s.workerCost, 0)
-                              .toLocaleString()}
+                              .reduce((sum, s) => sum + s.workerCost, 0))}
                           </p>
                         </div>
                       </div>
@@ -1817,9 +1816,9 @@ export const StudioSaleDetailNew = () => {
                           <div className="flex items-center gap-4 text-xs text-gray-400">
                             <span>Qty: {acc.quantity}</span>
                             <span>•</span>
-                            <span>Unit: Rs {acc.unitCost.toLocaleString()}</span>
+                            <span>Unit: {formatCurrency(acc.unitCost)}</span>
                             <span>•</span>
-                            <span className="text-orange-400 font-medium">Total: Rs {acc.totalCost.toLocaleString()}</span>
+                            <span className="text-orange-400 font-medium">Total: {formatCurrency(acc.totalCost)}</span>
                           </div>
                         </div>
                         {canDeleteAccessory() && (
@@ -2157,7 +2156,7 @@ export const StudioSaleDetailNew = () => {
                               {shipment.currency === 'USD' && shipment.usdToPkrRate && (
                                 <div className="mt-3 pt-3 border-t border-gray-800">
                                   <p className="text-xs text-gray-500">
-                                    Rate: 1 USD = Rs {shipment.usdToPkrRate} • PKR: Rs {(shipment.chargedToCustomer * shipment.usdToPkrRate).toLocaleString()}
+                                    Rate: 1 USD = {shipment.usdToPkrRate} • {formatCurrency(shipment.chargedToCustomer * shipment.usdToPkrRate)}
                                   </p>
                                 </div>
                               )}
@@ -2214,24 +2213,24 @@ export const StudioSaleDetailNew = () => {
                   <div className="space-y-3">
                     <div className="flex items-center justify-between">
                       <span className="text-sm text-gray-400">Sale Amount</span>
-                      <span className="text-xl font-bold text-white">Rs {(saleDetail.baseAmount + saleDetail.shipmentCharges).toLocaleString()}</span>
+                      <span className="text-xl font-bold text-white">{formatCurrency(saleDetail.baseAmount + saleDetail.shipmentCharges)}</span>
                     </div>
                     {saleDetail.shipmentCharges > 0 && (
                       <div className="flex items-center justify-between text-xs">
                         <span className="text-gray-500">Base Amount</span>
-                        <span className="text-gray-400">Rs {saleDetail.baseAmount.toLocaleString()}</span>
+                        <span className="text-gray-400">{formatCurrency(saleDetail.baseAmount)}</span>
                       </div>
                     )}
                     {saleDetail.shipmentCharges > 0 && (
                       <div className="flex items-center justify-between text-xs">
                         <span className="text-gray-500">Shipping Charges</span>
-                        <span className="text-blue-400">Rs {saleDetail.shipmentCharges.toLocaleString()}</span>
+                        <span className="text-blue-400">{formatCurrency(saleDetail.shipmentCharges)}</span>
                       </div>
                     )}
                     {studioCharges > 0 && (
                       <div className="flex items-center justify-between">
                         <span className="text-sm text-gray-400">Studio Charges (worker cost)</span>
-                        <span className="text-xl font-bold text-orange-400">Rs {studioCharges.toLocaleString()}</span>
+                        <span className="text-xl font-bold text-orange-400">{formatCurrency(studioCharges)}</span>
                       </div>
                     )}
                     {saleDetail.paidAmount > 0 && (
@@ -2240,7 +2239,7 @@ export const StudioSaleDetailNew = () => {
                         <div className="flex items-center justify-between">
                           <span className="text-sm text-gray-400">Paid</span>
                           <div className="flex items-center gap-2">
-                            <span className="text-lg font-semibold text-green-400">Rs {saleDetail.paidAmount.toLocaleString()}</span>
+                            <span className="text-lg font-semibold text-green-400">{formatCurrency(saleDetail.paidAmount)}</span>
                             <span className="text-xs text-gray-500">
                               ({effectiveTotalAmount > 0 ? ((saleDetail.paidAmount / effectiveTotalAmount) * 100).toFixed(0) : 0}%)
                             </span>
@@ -2256,7 +2255,7 @@ export const StudioSaleDetailNew = () => {
                           "text-2xl font-bold",
                           effectiveBalanceDue === 0 ? "text-green-400" : "text-orange-400"
                         )}>
-                          Rs {effectiveBalanceDue.toLocaleString()}
+                          {formatCurrency(effectiveBalanceDue)}
                         </span>
                         {effectiveBalanceDue === 0 && (
                           <CheckCircle2 size={24} className="text-green-400" />
@@ -2308,7 +2307,7 @@ export const StudioSaleDetailNew = () => {
                       >
                         <div className="flex items-center justify-between mb-2">
                           <span className="text-base font-semibold text-green-400">
-                            Rs {payment.amount.toLocaleString()}
+                            {formatCurrency(payment.amount)}
                           </span>
                           <Badge variant="outline" className="bg-gray-800 text-gray-300 border-gray-700 text-xs">
                             {payment.method}
@@ -2667,7 +2666,7 @@ export const StudioSaleDetailNew = () => {
                       <div className="flex items-center justify-between">
                         <span className="text-sm font-medium text-orange-400">Total Worker Cost:</span>
                         <span className="text-lg font-bold text-orange-400">
-                          Rs {editingWorkerData.workers.reduce((sum, w) => sum + (w.cost || 0), 0).toLocaleString()}
+                          {formatCurrency(editingWorkerData.workers.reduce((sum, w) => sum + (w.cost || 0), 0))}
                         </span>
                       </div>
                     </div>

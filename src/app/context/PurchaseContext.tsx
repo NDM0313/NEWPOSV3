@@ -12,6 +12,7 @@ import { productService } from '@/app/services/productService';
 import { getOrCreateLedger, addLedgerEntry } from '@/app/services/ledgerService';
 import { branchService } from '@/app/services/branchService';
 import { toast } from 'sonner';
+import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 function isValidBranchId(id: string | null): id is string {
@@ -213,6 +214,7 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
   const [loading, setLoading] = useState(true);
   const { generateDocumentNumber, generateDocumentNumberSafe, incrementNextNumber } = useDocumentNumbering();
   const accounting = useAccounting();
+  const { formatCurrency } = useFormatCurrency();
   const { companyId, branchId, user } = useSupabase();
 
   // Use exported convertFromSupabasePurchase function (no need for local callback)
@@ -1388,7 +1390,7 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
         notes: `Payment for ${purchase.purchaseNo}`,
       });
 
-      toast.success(`Payment of Rs. ${amount.toLocaleString()} recorded!`);
+      toast.success(`Payment of ${formatCurrency(amount)} recorded!`);
     } catch (error: any) {
       console.error('[PURCHASE CONTEXT] Error recording payment:', error);
       toast.error(`Failed to record payment: ${error.message || 'Unknown error'}`);

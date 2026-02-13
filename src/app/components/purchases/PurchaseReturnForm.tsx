@@ -11,6 +11,7 @@ import { CalendarDatePicker } from '../ui/CalendarDatePicker';
 import { toast } from 'sonner';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { useSettings } from '@/app/context/SettingsContext';
+import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
 import { purchaseReturnService, CreatePurchaseReturnData } from '@/app/services/purchaseReturnService';
 import { purchaseService } from '@/app/services/purchaseService';
 import { PackingDetails } from '../transactions/PackingEntryModal';
@@ -44,6 +45,7 @@ interface ReturnItemRow {
 export const PurchaseReturnForm: React.FC<PurchaseReturnFormProps> = ({ purchaseId, onClose, onSuccess }) => {
   const { companyId, branchId: contextBranchId, user } = useSupabase();
   const { inventorySettings } = useSettings();
+  const { formatCurrency } = useFormatCurrency();
   const enablePacking = inventorySettings.enablePacking;
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -221,7 +223,7 @@ export const PurchaseReturnForm: React.FC<PurchaseReturnFormProps> = ({ purchase
                 <TrendingUp size={16} className="shrink-0" />
                 <span className="text-[10px] font-bold uppercase tracking-wider">Original Purchase</span>
               </div>
-              <p className="text-lg font-bold text-green-400 tracking-tight relative">Rs {originalAmount.toLocaleString()}</p>
+              <p className="text-lg font-bold text-green-400 tracking-tight relative">{formatCurrency(originalAmount)}</p>
               <p className="text-[9px] text-gray-500 mt-0.5 relative">Reference</p>
             </div>
             <div className="rounded-2xl p-3 min-w-0 bg-red-500/10 border border-red-500/30 shadow-sm relative overflow-hidden">
@@ -230,7 +232,7 @@ export const PurchaseReturnForm: React.FC<PurchaseReturnFormProps> = ({ purchase
                 <Undo2 size={16} className="shrink-0" />
                 <span className="text-[10px] font-bold uppercase tracking-wider">Return Amount</span>
               </div>
-              <p className="text-lg font-bold text-red-400 tracking-tight relative">Rs {returnAmount.toLocaleString()}</p>
+              <p className="text-lg font-bold text-red-400 tracking-tight relative">{formatCurrency(returnAmount)}</p>
               <p className="text-[9px] text-gray-500 mt-0.5 relative">From items</p>
             </div>
             <div className="rounded-2xl p-3 min-w-0 bg-blue-500/10 border border-blue-500/30 shadow-sm relative overflow-hidden">
@@ -241,7 +243,7 @@ export const PurchaseReturnForm: React.FC<PurchaseReturnFormProps> = ({ purchase
               <div className="flex items-center gap-1.5 text-blue-400 mb-1.5 relative">
                 <span className="text-[10px] font-bold uppercase tracking-wider">Net After Return</span>
               </div>
-              <p className="text-lg font-bold text-white tracking-tight relative">Rs {netAfterReturn.toLocaleString()}</p>
+              <p className="text-lg font-bold text-white tracking-tight relative">{formatCurrency(netAfterReturn)}</p>
             </div>
           </div>
           <div className="flex items-center justify-between gap-4 flex-wrap">

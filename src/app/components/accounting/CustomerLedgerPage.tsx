@@ -18,6 +18,7 @@ import { CalendarDateRangePicker } from '@/app/components/ui/CalendarDateRangePi
 import { format } from 'date-fns';
 import { cn, formatBoxesPieces, getTodayInAppTimezone } from '@/app/components/ui/utils';
 import { toast } from 'sonner';
+import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
 import { TransactionDetailModal } from './TransactionDetailModal';
 import './customer-ledger-print.css';
 
@@ -35,15 +36,16 @@ export const CustomerLedgerPage: React.FC<CustomerLedgerPageProps> = ({
   onClose,
 }) => {
   const { companyId, branchId: contextBranchId } = useSupabase();
+  const { formatCurrency } = useFormatCurrency();
   const [ledgerEntries, setLedgerEntries] = useState<AccountLedgerEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [branches, setBranches] = useState<Branch[]>([]);
   const [selectedBranchId, setSelectedBranchId] = useState<string | undefined>(contextBranchId);
-  // Default: last 30 days (app timezone Pakistan) taake aaj ki sale bhi range mein ho
+  // Default: last 90 days (rentals + sales; app timezone Pakistan)
   const [dateRange, setDateRange] = useState<{ from: Date | undefined; to: Date | undefined }>(() => {
     const to = getTodayInAppTimezone();
     const from = new Date(to);
-    from.setDate(from.getDate() - 30);
+    from.setDate(from.getDate() - 90);
     return { from, to };
   });
   const [searchTerm, setSearchTerm] = useState('');
@@ -738,12 +740,12 @@ export const CustomerLedgerPage: React.FC<CustomerLedgerPageProps> = ({
         <div className="bg-gray-100 border-2 border-black p-4 mb-4">
           <h2 className="font-bold text-lg mb-3">Account Summary</h2>
           <div className="grid grid-cols-3 gap-4 text-sm">
-            <div><strong>Opening Balance:</strong> Rs {openingBalance.toFixed(2)}</div>
-            <div><strong>Total Invoice:</strong> Rs {totals.totalCharges.toFixed(2)}</div>
-            <div><strong>Total Paid:</strong> Rs {totals.totalPayments.toFixed(2)}</div>
-            <div><strong>Advance Balance:</strong> Rs 0.00</div>
-            <div><strong>Ledger Discount:</strong> Rs {totals.totalDiscounts.toFixed(2)}</div>
-            <div><strong>Balance Due:</strong> Rs {totals.outstandingBalance.toFixed(2)}</div>
+            <div><strong>Opening Balance:</strong> {formatCurrency(openingBalance)}</div>
+            <div><strong>Total Invoice:</strong> {formatCurrency(totals.totalCharges)}</div>
+            <div><strong>Total Paid:</strong> {formatCurrency(totals.totalPayments)}</div>
+            <div><strong>Advance Balance:</strong> {formatCurrency(0)}</div>
+            <div><strong>Ledger Discount:</strong> {formatCurrency(totals.totalDiscounts)}</div>
+            <div><strong>Balance Due:</strong> {formatCurrency(totals.outstandingBalance)}</div>
           </div>
         </div>
 
@@ -776,9 +778,9 @@ export const CustomerLedgerPage: React.FC<CustomerLedgerPageProps> = ({
               <td className="border border-black p-2">Opening Balance</td>
               <td className="border border-black p-2">-</td>
               <td className="border border-black p-2">-</td>
-              <td className="border border-black p-2 text-right">{openingBalance >= 0 ? openingBalance.toFixed(2) : ''}</td>
-              <td className="border border-black p-2 text-right">{openingBalance < 0 ? Math.abs(openingBalance).toFixed(2) : ''}</td>
-              <td className="border border-black p-2 text-right">{Math.abs(openingBalance).toFixed(2)} {openingBalance >= 0 ? 'DR' : 'CR'}</td>
+              <td className="border border-black p-2 text-right">{openingBalance >= 0 ? formatCurrency(openingBalance) : ''}</td>
+              <td className="border border-black p-2 text-right">{openingBalance < 0 ? formatCurrency(Math.abs(openingBalance)) : ''}</td>
+              <td className="border border-black p-2 text-right">{formatCurrency(Math.abs(openingBalance))} {openingBalance >= 0 ? 'DR' : 'CR'}</td>
               <td className="border border-black p-2">-</td>
             </tr>
             {/* Entries - Group by sale for better readability */}
@@ -819,10 +821,10 @@ export const CustomerLedgerPage: React.FC<CustomerLedgerPageProps> = ({
                     <td className="border border-black p-2">Sell</td>
                     <td className="border border-black p-2">{invoiceNo}</td>
                     <td className="border border-black p-2">-</td>
-                    <td className="border border-black p-2 text-right">{saleTotal > 0 ? saleTotal.toFixed(2) : ''}</td>
+                    <td className="border border-black p-2 text-right">{saleTotal > 0 ? formatCurrency(saleTotal) : ''}</td>
                     <td className="border border-black p-2 text-right"></td>
                     <td className="border border-black p-2 text-right">
-                      {Math.abs(printRunningBalance).toFixed(2)} {printRunningBalance >= 0 ? 'DR' : 'CR'}
+                      {formatCurrency(Math.abs(printRunningBalance))} {printRunningBalance >= 0 ? 'DR' : 'CR'}
                     </td>
                     <td className="border border-black p-2">-</td>
                   </tr>
@@ -847,10 +849,10 @@ export const CustomerLedgerPage: React.FC<CustomerLedgerPageProps> = ({
                       <td className="border border-black p-2">{entryType}</td>
                       <td className="border border-black p-2">{entry.reference_number || entry.entry_no || '-'}</td>
                       <td className="border border-black p-2">{paymentMethod}</td>
-                      <td className="border border-black p-2 text-right">{(entry.debit || 0).toFixed(2)}</td>
-                      <td className="border border-black p-2 text-right">{(entry.credit || 0).toFixed(2)}</td>
+                      <td className="border border-black p-2 text-right">{formatCurrency(entry.debit || 0)}</td>
+                      <td className="border border-black p-2 text-right">{formatCurrency(entry.credit || 0)}</td>
                       <td className="border border-black p-2 text-right">
-                        {Math.abs(printRunningBalance).toFixed(2)} {printRunningBalance >= 0 ? 'DR' : 'CR'}
+                        {formatCurrency(Math.abs(printRunningBalance))} {printRunningBalance >= 0 ? 'DR' : 'CR'}
                       </td>
                       <td className="border border-black p-2">{entry.description || '-'}</td>
                     </tr>
@@ -873,10 +875,10 @@ export const CustomerLedgerPage: React.FC<CustomerLedgerPageProps> = ({
                     <td className="border border-black p-2">{entryType}</td>
                     <td className="border border-black p-2">{entry.reference_number || entry.entry_no || '-'}</td>
                     <td className="border border-black p-2">{paymentMethod}</td>
-                    <td className="border border-black p-2 text-right">{(entry.debit || 0).toFixed(2)}</td>
-                    <td className="border border-black p-2 text-right">{(entry.credit || 0).toFixed(2)}</td>
+                    <td className="border border-black p-2 text-right">{formatCurrency(entry.debit || 0)}</td>
+                    <td className="border border-black p-2 text-right">{formatCurrency(entry.credit || 0)}</td>
                     <td className="border border-black p-2 text-right">
-                      {Math.abs(printRunningBalance).toFixed(2)} {printRunningBalance >= 0 ? 'DR' : 'CR'}
+                      {formatCurrency(Math.abs(printRunningBalance))} {printRunningBalance >= 0 ? 'DR' : 'CR'}
                     </td>
                     <td className="border border-black p-2">{entry.description || '-'}</td>
                   </tr>
@@ -888,10 +890,10 @@ export const CustomerLedgerPage: React.FC<CustomerLedgerPageProps> = ({
             {/* Closing Balance */}
             <tr className="font-bold">
               <td className="border border-black p-2" colSpan={4}>Closing Balance</td>
-              <td className="border border-black p-2 text-right">{closingBalance >= 0 ? closingBalance.toFixed(2) : ''}</td>
-              <td className="border border-black p-2 text-right">{closingBalance < 0 ? Math.abs(closingBalance).toFixed(2) : ''}</td>
+              <td className="border border-black p-2 text-right">{closingBalance >= 0 ? formatCurrency(closingBalance) : ''}</td>
+              <td className="border border-black p-2 text-right">{closingBalance < 0 ? formatCurrency(Math.abs(closingBalance)) : ''}</td>
               <td className="border border-black p-2 text-right">
-                {Math.abs(closingBalance).toFixed(2)} {closingBalance >= 0 ? 'DR' : 'CR'}
+                {formatCurrency(Math.abs(closingBalance))} {closingBalance >= 0 ? 'DR' : 'CR'}
               </td>
               <td className="border border-black p-2">-</td>
             </tr>
@@ -911,27 +913,27 @@ export const CustomerLedgerPage: React.FC<CustomerLedgerPageProps> = ({
             <tbody>
               <tr>
                 <td className="border border-black p-2">Current</td>
-                <td className="border border-black p-2 text-right">Rs {agingReport.current.toFixed(2)}</td>
+                <td className="border border-black p-2 text-right">{formatCurrency(agingReport.current)}</td>
               </tr>
               <tr>
                 <td className="border border-black p-2">1-30 DAYS PAST DUE</td>
-                <td className="border border-black p-2 text-right">Rs {agingReport.days30.toFixed(2)}</td>
+                <td className="border border-black p-2 text-right">{formatCurrency(agingReport.days30)}</td>
               </tr>
               <tr>
                 <td className="border border-black p-2">30-60 DAYS PAST DUE</td>
-                <td className="border border-black p-2 text-right">Rs {agingReport.days60.toFixed(2)}</td>
+                <td className="border border-black p-2 text-right">{formatCurrency(agingReport.days60)}</td>
               </tr>
               <tr>
                 <td className="border border-black p-2">60-90 DAYS PAST DUE</td>
-                <td className="border border-black p-2 text-right">Rs {agingReport.days90.toFixed(2)}</td>
+                <td className="border border-black p-2 text-right">{formatCurrency(agingReport.days90)}</td>
               </tr>
               <tr>
                 <td className="border border-black p-2">OVER 90 DAYS PAST DUE</td>
-                <td className="border border-black p-2 text-right">Rs {agingReport.over90.toFixed(2)}</td>
+                <td className="border border-black p-2 text-right">{formatCurrency(agingReport.over90)}</td>
               </tr>
               <tr className="font-bold">
                 <td className="border border-black p-2">AMOUNT DUE</td>
-                <td className="border border-black p-2 text-right">Rs {agingReport.total.toFixed(2)}</td>
+                <td className="border border-black p-2 text-right">{formatCurrency(agingReport.total)}</td>
               </tr>
             </tbody>
           </table>
@@ -984,28 +986,19 @@ export const CustomerLedgerPage: React.FC<CustomerLedgerPageProps> = ({
           <div className="bg-gray-900 border border-gray-800 rounded-lg p-4">
             <p className="text-xs text-gray-400 uppercase mb-1">Total Charges</p>
             <p className="text-2xl font-bold text-red-400">
-              Rs {totals.totalCharges.toLocaleString('en-US', {
-                minimumFractionDigits: 2,
-                maximumFractionDigits: 2,
-              })}
+              {formatCurrency(totals.totalCharges)}
             </p>
           </div>
           <div className="bg-gray-900 border border-gray-800 rounded-lg p-4">
             <p className="text-xs text-gray-400 uppercase mb-1">Total Payments</p>
             <p className="text-2xl font-bold text-green-400">
-              Rs {totals.totalPayments.toLocaleString('en-US', {
-                minimumFractionDigits: 2,
-                maximumFractionDigits: 2,
-              })}
+              {formatCurrency(totals.totalPayments)}
             </p>
           </div>
           <div className="bg-gray-900 border border-gray-800 rounded-lg p-4">
             <p className="text-xs text-gray-400 uppercase mb-1">Total Discounts</p>
             <p className="text-2xl font-bold text-yellow-400">
-              Rs {totals.totalDiscounts.toLocaleString('en-US', {
-                minimumFractionDigits: 2,
-                maximumFractionDigits: 2,
-              })}
+              {formatCurrency(totals.totalDiscounts)}
             </p>
           </div>
           <div className="bg-gray-900 border border-gray-800 rounded-lg p-4">
@@ -1014,10 +1007,7 @@ export const CustomerLedgerPage: React.FC<CustomerLedgerPageProps> = ({
               "text-2xl font-bold",
               totals.outstandingBalance >= 0 ? "text-yellow-400" : "text-green-400"
             )}>
-              Rs {Math.abs(totals.outstandingBalance).toLocaleString('en-US', {
-                minimumFractionDigits: 2,
-                maximumFractionDigits: 2,
-              })}
+              {formatCurrency(Math.abs(totals.outstandingBalance))}
             </p>
           </div>
         </div>
@@ -1031,10 +1021,7 @@ export const CustomerLedgerPage: React.FC<CustomerLedgerPageProps> = ({
                 "text-lg font-semibold mt-1",
                 openingBalance >= 0 ? "text-yellow-400" : "text-green-400"
               )}>
-                Rs {openingBalance.toLocaleString('en-US', {
-                  minimumFractionDigits: 2,
-                  maximumFractionDigits: 2,
-                })}
+                {formatCurrency(openingBalance)}
               </p>
             </div>
             <div>
@@ -1044,10 +1031,7 @@ export const CustomerLedgerPage: React.FC<CustomerLedgerPageProps> = ({
                 "text-lg font-semibold mt-1",
                 closingBalance >= 0 ? "text-yellow-400" : "text-red-400"
               )}>
-                Rs {closingBalance.toLocaleString('en-US', {
-                  minimumFractionDigits: 2,
-                  maximumFractionDigits: 2,
-                })}
+                {formatCurrency(closingBalance)}
               </p>
             </div>
           </div>
@@ -1243,10 +1227,7 @@ export const CustomerLedgerPage: React.FC<CustomerLedgerPageProps> = ({
                     "px-4 py-3 text-right font-bold",
                     openingBalance >= 0 ? "text-yellow-400" : "text-green-400"
                   )}>
-                    Rs {openingBalance.toLocaleString('en-US', {
-                      minimumFractionDigits: 2,
-                      maximumFractionDigits: 2,
-                    })}
+                    {formatCurrency(openingBalance)}
                   </td>
                 </tr>
 
@@ -1318,26 +1299,17 @@ export const CustomerLedgerPage: React.FC<CustomerLedgerPageProps> = ({
                         </td>
                         {/* CRITICAL FIX: For ASSET account (AR), Sale = DEBIT (green), Payment = CREDIT (red) */}
                         <td className="px-4 py-3 text-sm text-right tabular-nums text-green-400 font-semibold">
-                          Rs {saleTotal.toLocaleString('en-US', {
-                            minimumFractionDigits: 2,
-                            maximumFractionDigits: 2,
-                          })}
+                          {formatCurrency(saleTotal)}
                         </td>
                         <td className="px-4 py-3 text-sm text-right tabular-nums text-red-400 font-semibold">
-                          Rs {totalPaid.toLocaleString('en-US', {
-                            minimumFractionDigits: 2,
-                            maximumFractionDigits: 2,
-                          })}
+                          {formatCurrency(totalPaid)}
                         </td>
                         {/* CRITICAL FIX: For ASSET account, positive = receivable (yellow), negative = credit balance (red) */}
                         <td className={cn(
                           "px-4 py-3 text-sm font-semibold text-right tabular-nums",
                           outstanding >= 0 ? "text-yellow-400" : "text-red-400"
                         )}>
-                          Rs {outstanding.toLocaleString('en-US', {
-                            minimumFractionDigits: 2,
-                            maximumFractionDigits: 2,
-                          })}
+                          {formatCurrency(outstanding)}
                         </td>
                       </tr>
 
@@ -1376,10 +1348,7 @@ export const CustomerLedgerPage: React.FC<CustomerLedgerPageProps> = ({
                               entry.debit > 0 ? "text-green-400" : "text-gray-500"
                             )}>
                               {entry.debit > 0 ? (
-                                <span>Rs {entry.debit.toLocaleString('en-US', {
-                                  minimumFractionDigits: 2,
-                                  maximumFractionDigits: 2,
-                                })}</span>
+                                <span>{formatCurrency(entry.debit)}</span>
                               ) : (
                                 <span>-</span>
                               )}
@@ -1389,10 +1358,7 @@ export const CustomerLedgerPage: React.FC<CustomerLedgerPageProps> = ({
                               entry.credit > 0 ? "text-red-400" : "text-gray-500"
                             )}>
                               {entry.credit > 0 ? (
-                                <span>Rs {entry.credit.toLocaleString('en-US', {
-                                  minimumFractionDigits: 2,
-                                  maximumFractionDigits: 2,
-                                })}</span>
+                                <span>{formatCurrency(entry.credit)}</span>
                               ) : (
                                 <span>-</span>
                               )}
@@ -1402,10 +1368,7 @@ export const CustomerLedgerPage: React.FC<CustomerLedgerPageProps> = ({
                               "px-4 py-3 text-xs font-semibold text-right tabular-nums",
                               entry.running_balance >= 0 ? "text-yellow-400" : "text-red-400"
                             )}>
-                              Rs {entry.running_balance.toLocaleString('en-US', {
-                                minimumFractionDigits: 2,
-                                maximumFractionDigits: 2,
-                              })}
+                              {formatCurrency(entry.running_balance)}
                             </td>
                           </tr>
                         );
@@ -1440,20 +1403,14 @@ export const CustomerLedgerPage: React.FC<CustomerLedgerPageProps> = ({
                       -
                     </td>
                     <td className="px-4 py-3 text-sm text-right tabular-nums text-red-400 font-semibold">
-                      Rs {(entry.credit || 0).toLocaleString('en-US', {
-                        minimumFractionDigits: 2,
-                        maximumFractionDigits: 2,
-                      })}
+                      {formatCurrency(entry.credit || 0)}
                     </td>
                     {/* CRITICAL FIX: For ASSET account, positive = receivable (yellow), negative = credit balance (red) */}
                     <td className={cn(
                       "px-4 py-3 text-sm font-semibold text-right tabular-nums",
                       entry.running_balance >= 0 ? "text-yellow-400" : "text-red-400"
                     )}>
-                      Rs {entry.running_balance.toLocaleString('en-US', {
-                        minimumFractionDigits: 2,
-                        maximumFractionDigits: 2,
-                      })}
+                      {formatCurrency(entry.running_balance)}
                     </td>
                   </tr>
                 ))}
@@ -1465,26 +1422,17 @@ export const CustomerLedgerPage: React.FC<CustomerLedgerPageProps> = ({
                   </td>
                   {/* CRITICAL FIX: For ASSET account, Charges = DEBIT (green), Payments = CREDIT (red) */}
                   <td className="px-4 py-3 text-right text-green-400 text-lg">
-                    Rs {totals.totalCharges.toLocaleString('en-US', {
-                      minimumFractionDigits: 2,
-                      maximumFractionDigits: 2,
-                    })}
+                    {formatCurrency(totals.totalCharges)}
                   </td>
                   <td className="px-4 py-3 text-right text-red-400 text-lg">
-                    Rs {totals.totalPayments.toLocaleString('en-US', {
-                      minimumFractionDigits: 2,
-                      maximumFractionDigits: 2,
-                    })}
+                    {formatCurrency(totals.totalPayments)}
                   </td>
                   {/* CRITICAL FIX: For ASSET account, positive = receivable (yellow), negative = credit balance (red) */}
                   <td className={cn(
                     "px-4 py-3 text-right text-2xl font-bold",
                     closingBalance >= 0 ? "text-yellow-400" : "text-red-400"
                   )}>
-                    Rs {closingBalance.toLocaleString('en-US', {
-                      minimumFractionDigits: 2,
-                      maximumFractionDigits: 2,
-                    })}
+                    {formatCurrency(closingBalance)}
                   </td>
                 </tr>
               </tbody>
@@ -1508,7 +1456,7 @@ export const CustomerLedgerPage: React.FC<CustomerLedgerPageProps> = ({
                     const invoiceNo = saleDetail?.invoice_no || summary.invoiceNo;
                     return (
                       <option key={summary.saleId} value={summary.saleId}>
-                        {invoiceNo} - {format(new Date(summary.date), 'dd MMM yyyy')} - Rs {saleDetail?.total?.toFixed(2) || summary.totalCharges.toFixed(2)}
+                        {invoiceNo} - {format(new Date(summary.date), 'dd MMM yyyy')} - {formatCurrency(saleDetail?.total ?? summary.totalCharges ?? 0)}
                       </option>
                     );
                   })}
@@ -1533,23 +1481,23 @@ export const CustomerLedgerPage: React.FC<CustomerLedgerPageProps> = ({
                           </div>
                           <div>
                             <p className="text-gray-400 mb-1">Total Amount:</p>
-                            <p className="text-green-400 font-semibold">Rs {saleDetail?.total?.toFixed(2) || '0.00'}</p>
+                            <p className="text-green-400 font-semibold">{formatCurrency(saleDetail?.total ?? 0)}</p>
                           </div>
                           <div>
                             <p className="text-gray-400 mb-1">Subtotal:</p>
-                            <p className="text-white">Rs {saleDetail?.subtotal?.toFixed(2) || '0.00'}</p>
+                            <p className="text-white">{formatCurrency(saleDetail?.subtotal ?? 0)}</p>
                           </div>
                           <div>
                             <p className="text-gray-400 mb-1">Discount:</p>
-                            <p className="text-red-400">Rs {saleDetail?.discount_amount?.toFixed(2) || '0.00'}</p>
+                            <p className="text-red-400">{formatCurrency(saleDetail?.discount_amount ?? 0)}</p>
                           </div>
                           <div>
                             <p className="text-gray-400 mb-1">Extra Charges:</p>
-                            <p className="text-yellow-400">Rs {saleDetail?.expenses?.toFixed(2) || '0.00'}</p>
+                            <p className="text-yellow-400">{formatCurrency(saleDetail?.expenses ?? 0)}</p>
                           </div>
                           <div>
                             <p className="text-gray-400 mb-1">Paid Amount:</p>
-                            <p className="text-green-400">Rs {saleDetail?.paid_amount?.toFixed(2) || '0.00'}</p>
+                            <p className="text-green-400">{formatCurrency(saleDetail?.paid_amount ?? 0)}</p>
                           </div>
                         </div>
                       </div>
@@ -1627,11 +1575,11 @@ export const CustomerLedgerPage: React.FC<CustomerLedgerPageProps> = ({
                               <td className="px-4 py-3 text-sm text-gray-300">{packingText}</td>
                               <td className="px-4 py-3 text-sm text-right text-gray-300">{quantity.toFixed(2)}</td>
                               <td className="px-4 py-3 text-sm text-gray-300">{unit}</td>
-                              <td className="px-4 py-3 text-sm text-right text-gray-300">Rs {unitPrice.toFixed(2)}</td>
-                              <td className="px-4 py-3 text-sm text-right text-red-400">Rs {discount.toFixed(2)}</td>
-                              <td className="px-4 py-3 text-sm text-right text-gray-300">Rs {tax.toFixed(2)}</td>
-                              <td className="px-4 py-3 text-sm text-right text-gray-300">Rs {priceIncTax.toFixed(2)}</td>
-                              <td className="px-4 py-3 text-sm text-right text-green-400 font-semibold">Rs {subtotal.toFixed(2)}</td>
+                              <td className="px-4 py-3 text-sm text-right text-gray-300">{formatCurrency(unitPrice)}</td>
+                              <td className="px-4 py-3 text-sm text-right text-red-400">{formatCurrency(discount)}</td>
+                              <td className="px-4 py-3 text-sm text-right text-gray-300">{formatCurrency(tax)}</td>
+                              <td className="px-4 py-3 text-sm text-right text-gray-300">{formatCurrency(priceIncTax)}</td>
+                              <td className="px-4 py-3 text-sm text-right text-green-400 font-semibold">{formatCurrency(subtotal)}</td>
                             </tr>
                           );
                         })}
@@ -1644,7 +1592,7 @@ export const CustomerLedgerPage: React.FC<CustomerLedgerPageProps> = ({
                           <td className="px-4 py-3 text-right text-lg font-bold text-green-400">
                             {(() => {
                               const saleDetail = saleDetailsMap.get(selectedSaleForView);
-                              return `Rs ${saleDetail?.total?.toFixed(2) || '0.00'}`;
+                              return formatCurrency(saleDetail?.total ?? 0);
                             })()}
                           </td>
                         </tr>
@@ -1692,10 +1640,7 @@ export const CustomerLedgerPage: React.FC<CustomerLedgerPageProps> = ({
                     "px-4 py-3 text-right font-bold",
                     openingBalance >= 0 ? "text-yellow-400" : "text-green-400"
                   )}>
-                    Rs {openingBalance.toLocaleString('en-US', {
-                      minimumFractionDigits: 2,
-                      maximumFractionDigits: 2,
-                    })}
+                    {formatCurrency(openingBalance)}
                   </td>
                   <td className="px-4 py-3 text-gray-500">-</td>
                 </tr>
@@ -1765,10 +1710,7 @@ export const CustomerLedgerPage: React.FC<CustomerLedgerPageProps> = ({
                         {/* CRITICAL: Sale amount from sales.total (DEBIT for AR) */}
                         <td className="px-4 py-3 text-sm text-right tabular-nums text-green-400 font-semibold">
                           {saleTotal > 0 ? (
-                            <span>Rs {saleTotal.toLocaleString('en-US', {
-                              minimumFractionDigits: 2,
-                              maximumFractionDigits: 2,
-                            })}</span>
+                            <span>{formatCurrency(saleTotal)}</span>
                           ) : (
                             <span className="text-gray-600">0</span>
                           )}
@@ -1781,10 +1723,7 @@ export const CustomerLedgerPage: React.FC<CustomerLedgerPageProps> = ({
                           "px-4 py-3 text-sm font-semibold text-right tabular-nums",
                           (openingBalance + saleTotal) >= 0 ? "text-yellow-400" : "text-red-400"
                         )}>
-                          Rs {(openingBalance + saleTotal).toLocaleString('en-US', {
-                            minimumFractionDigits: 2,
-                            maximumFractionDigits: 2,
-                          })}
+                          {formatCurrency(openingBalance + saleTotal)}
                         </td>
                         <td className="px-4 py-3 text-sm text-gray-400">
                           {entries[0]?.branch_name || '-'}
@@ -1802,7 +1741,7 @@ export const CustomerLedgerPage: React.FC<CustomerLedgerPageProps> = ({
                             <td className="px-4 py-2 text-sm text-gray-400"></td>
                             <td className="px-4 py-2 text-sm text-gray-400"></td>
                             <td className="px-4 py-2 text-xs text-gray-400 pl-8">Items Total</td>
-                            <td className="px-4 py-2 text-xs text-right text-gray-400">Rs {subtotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                            <td className="px-4 py-2 text-xs text-right text-gray-400">{formatCurrency(subtotal)}</td>
                             <td className="px-4 py-2 text-xs text-right text-gray-500">0</td>
                             <td className="px-4 py-2 text-xs text-right text-gray-500">-</td>
                             <td className="px-4 py-2 text-xs text-gray-400">-</td>
@@ -1818,7 +1757,7 @@ export const CustomerLedgerPage: React.FC<CustomerLedgerPageProps> = ({
                             <td className="px-4 py-2 text-sm text-gray-400"></td>
                             <td className="px-4 py-2 text-sm text-gray-400"></td>
                             <td className="px-4 py-2 text-xs text-gray-400 pl-8">Extra Charges</td>
-                            <td className="px-4 py-2 text-xs text-right text-gray-400">Rs {expenses.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                            <td className="px-4 py-2 text-xs text-right text-gray-400">{formatCurrency(expenses)}</td>
                             <td className="px-4 py-2 text-xs text-right text-gray-500">0</td>
                             <td className="px-4 py-2 text-xs text-right text-gray-500">-</td>
                             <td className="px-4 py-2 text-xs text-gray-400">-</td>
@@ -1835,7 +1774,7 @@ export const CustomerLedgerPage: React.FC<CustomerLedgerPageProps> = ({
                             <td className="px-4 py-2 text-sm text-gray-400"></td>
                             <td className="px-4 py-2 text-xs text-gray-400 pl-8">Discount</td>
                             <td className="px-4 py-2 text-xs text-right text-gray-500">0</td>
-                            <td className="px-4 py-2 text-xs text-right text-red-400">Rs {discount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                            <td className="px-4 py-2 text-xs text-right text-red-400">{formatCurrency(discount)}</td>
                             <td className="px-4 py-2 text-xs text-right text-gray-500">-</td>
                             <td className="px-4 py-2 text-xs text-gray-400">-</td>
                           </tr>
@@ -1885,10 +1824,7 @@ export const CustomerLedgerPage: React.FC<CustomerLedgerPageProps> = ({
                         (entry.debit || 0) > 0 ? "text-green-400 font-semibold" : "text-gray-500"
                       )}>
                         {(entry.debit || 0) > 0 ? (
-                          <span>Rs {(entry.debit || 0).toLocaleString('en-US', {
-                            minimumFractionDigits: 2,
-                            maximumFractionDigits: 2,
-                          })}</span>
+                          <span>{formatCurrency(entry.debit || 0)}</span>
                         ) : (
                           <span className="text-gray-600">0</span>
                         )}
@@ -1899,10 +1835,7 @@ export const CustomerLedgerPage: React.FC<CustomerLedgerPageProps> = ({
                         (entry.credit || 0) > 0 ? "text-red-400 font-semibold" : "text-gray-500"
                       )}>
                         {(entry.credit || 0) > 0 ? (
-                          <span>Rs {(entry.credit || 0).toLocaleString('en-US', {
-                            minimumFractionDigits: 2,
-                            maximumFractionDigits: 2,
-                          })}</span>
+                          <span>{formatCurrency(entry.credit || 0)}</span>
                         ) : (
                           <span className="text-gray-600">0</span>
                         )}
@@ -1912,10 +1845,7 @@ export const CustomerLedgerPage: React.FC<CustomerLedgerPageProps> = ({
                             "px-4 py-3 text-sm font-semibold text-right tabular-nums",
                             runningBalanceForSale >= 0 ? "text-yellow-400" : "text-red-400"
                           )}>
-                            Rs {runningBalanceForSale.toLocaleString('en-US', {
-                              minimumFractionDigits: 2,
-                              maximumFractionDigits: 2,
-                            })}
+                            {formatCurrency(runningBalanceForSale)}
                           </td>
                           <td className="px-4 py-3 text-sm text-gray-400">
                             {entry.branch_name || '-'}
@@ -1971,10 +1901,7 @@ export const CustomerLedgerPage: React.FC<CustomerLedgerPageProps> = ({
                           (entry.debit || 0) > 0 ? "text-green-400 font-semibold" : "text-gray-500"
                         )}>
                           {(entry.debit || 0) > 0 ? (
-                            <span>Rs {(entry.debit || 0).toLocaleString('en-US', {
-                              minimumFractionDigits: 2,
-                              maximumFractionDigits: 2,
-                            })}</span>
+                            <span>{formatCurrency(entry.debit || 0)}</span>
                           ) : (
                             <span className="text-gray-600">0</span>
                           )}
@@ -1984,10 +1911,7 @@ export const CustomerLedgerPage: React.FC<CustomerLedgerPageProps> = ({
                           (entry.credit || 0) > 0 ? "text-red-400 font-semibold" : "text-gray-500"
                         )}>
                           {(entry.credit || 0) > 0 ? (
-                            <span>Rs {(entry.credit || 0).toLocaleString('en-US', {
-                              minimumFractionDigits: 2,
-                              maximumFractionDigits: 2,
-                            })}</span>
+                            <span>{formatCurrency(entry.credit || 0)}</span>
                           ) : (
                             <span className="text-gray-600">0</span>
                           )}
@@ -1996,10 +1920,7 @@ export const CustomerLedgerPage: React.FC<CustomerLedgerPageProps> = ({
                           "px-4 py-3 text-sm font-semibold text-right tabular-nums",
                           runningBalanceStandalone >= 0 ? "text-yellow-400" : "text-red-400"
                         )}>
-                          Rs {runningBalanceStandalone.toLocaleString('en-US', {
-                            minimumFractionDigits: 2,
-                            maximumFractionDigits: 2,
-                          })}
+                          {formatCurrency(runningBalanceStandalone)}
                         </td>
                         <td className="px-4 py-3 text-sm text-gray-400">
                           {entry.branch_name || '-'}
@@ -2018,26 +1939,17 @@ export const CustomerLedgerPage: React.FC<CustomerLedgerPageProps> = ({
                   </td>
                   {/* CRITICAL FIX: For ASSET account, Charges = DEBIT (green), Payments = CREDIT (red) */}
                   <td className="px-4 py-3 text-right text-green-400 text-lg">
-                    Rs {totals.totalCharges.toLocaleString('en-US', {
-                      minimumFractionDigits: 2,
-                      maximumFractionDigits: 2,
-                    })}
+                    {formatCurrency(totals.totalCharges)}
                   </td>
                   <td className="px-4 py-3 text-right text-red-400 text-lg">
-                    Rs {totals.totalPayments.toLocaleString('en-US', {
-                      minimumFractionDigits: 2,
-                      maximumFractionDigits: 2,
-                    })}
+                    {formatCurrency(totals.totalPayments)}
                   </td>
                   {/* CRITICAL FIX: For ASSET account, positive = receivable (yellow), negative = credit balance (red) */}
                   <td className={cn(
                     "px-4 py-3 text-right text-2xl font-bold",
                     closingBalance >= 0 ? "text-yellow-400" : "text-red-400"
                   )}>
-                    Rs {closingBalance.toLocaleString('en-US', {
-                      minimumFractionDigits: 2,
-                      maximumFractionDigits: 2,
-                    })}
+                    {formatCurrency(closingBalance)}
                   </td>
                   <td className="px-4 py-3"></td>
                 </tr>
@@ -2053,27 +1965,27 @@ export const CustomerLedgerPage: React.FC<CustomerLedgerPageProps> = ({
         <div className="grid grid-cols-6 gap-4 text-sm">
           <div>
             <p className="text-gray-400 mb-1">Current</p>
-            <p className="text-white font-semibold">Rs {agingReport.current.toFixed(2)}</p>
+            <p className="text-white font-semibold">{formatCurrency(agingReport.current)}</p>
           </div>
           <div>
             <p className="text-gray-400 mb-1">1-30 Days</p>
-            <p className="text-yellow-400 font-semibold">Rs {agingReport.days30.toFixed(2)}</p>
+            <p className="text-yellow-400 font-semibold">{formatCurrency(agingReport.days30)}</p>
           </div>
           <div>
             <p className="text-gray-400 mb-1">30-60 Days</p>
-            <p className="text-orange-400 font-semibold">Rs {agingReport.days60.toFixed(2)}</p>
+            <p className="text-orange-400 font-semibold">{formatCurrency(agingReport.days60)}</p>
           </div>
           <div>
             <p className="text-gray-400 mb-1">60-90 Days</p>
-            <p className="text-red-400 font-semibold">Rs {agingReport.days90.toFixed(2)}</p>
+            <p className="text-red-400 font-semibold">{formatCurrency(agingReport.days90)}</p>
           </div>
           <div>
             <p className="text-gray-400 mb-1">Over 90 Days</p>
-            <p className="text-red-600 font-semibold">Rs {agingReport.over90.toFixed(2)}</p>
+            <p className="text-red-600 font-semibold">{formatCurrency(agingReport.over90)}</p>
           </div>
           <div>
             <p className="text-gray-400 mb-1">Total Due</p>
-            <p className="text-white font-bold text-lg">Rs {agingReport.total.toFixed(2)}</p>
+            <p className="text-white font-bold text-lg">{formatCurrency(agingReport.total)}</p>
           </div>
         </div>
       </div>

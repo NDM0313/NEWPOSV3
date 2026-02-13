@@ -72,6 +72,9 @@ export interface UserPermissions {
   canManageProducts: boolean;
   canManagePurchases: boolean;
   canManageRentals: boolean;
+  /** Purchase delete restricted - default false for non-Admin */
+  canEditPurchase?: boolean;
+  canDeletePurchase?: boolean;
 }
 
 export interface CompanySettings {
@@ -81,7 +84,14 @@ export interface CompanySettings {
   businessEmail: string;
   taxId: string;
   currency: string;
+  decimalPrecision?: number;
   logoUrl?: string;
+  /** Date display format: DD/MM/YYYY, MM/DD/YYYY, YYYY-MM-DD */
+  dateFormat?: string;
+  /** Time format: 12h or 24h */
+  timeFormat?: '12h' | '24h';
+  /** IANA timezone e.g. Asia/Karachi */
+  timezone?: string;
 }
 
 export interface BranchSettings {
@@ -241,7 +251,7 @@ const noopSync = () => {};
 function getDefaultSettingsStub(): SettingsContextType {
   return {
     loading: false,
-    company: { businessName: '', businessAddress: '', businessPhone: '', businessEmail: '', taxId: '', currency: 'PKR', logoUrl: undefined },
+    company: { businessName: '', businessAddress: '', businessPhone: '', businessEmail: '', taxId: '', currency: 'PKR', decimalPrecision: 2, logoUrl: undefined, dateFormat: 'DD/MM/YYYY', timeFormat: '12h', timezone: 'Asia/Karachi' },
     updateCompanySettings: noop,
     branches: [],
     updateBranches: noopSync,
@@ -281,7 +291,7 @@ interface SettingsProviderProps {
 }
 
 export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) => {
-  const { companyId, branchId } = useSupabase();
+  const { companyId, branchId, user } = useSupabase();
   const [loading, setLoading] = useState<boolean>(true);
 
   // Company Settings
@@ -292,7 +302,11 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
     businessEmail: '',
     taxId: '',
     currency: 'PKR',
+    decimalPrecision: 2,
     logoUrl: undefined,
+    dateFormat: 'DD/MM/YYYY',
+    timeFormat: '12h',
+    timezone: 'Asia/Karachi',
   });
 
   // Branch Management
@@ -453,6 +467,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
         .single();
 
       if (companyData) {
+        const c = companyData as any;
         setCompany({
           businessName: companyData.name || '',
           businessAddress: companyData.address || '',
@@ -460,7 +475,11 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
           businessEmail: companyData.email || '',
           taxId: companyData.tax_number || '',
           currency: companyData.currency || 'PKR',
+          decimalPrecision: c.decimal_precision ?? 2,
           logoUrl: companyData.logo_url || undefined,
+          dateFormat: c.date_format || 'DD/MM/YYYY',
+          timeFormat: (c.time_format === '24h' ? '24h' : '12h') as '12h' | '24h',
+          timezone: c.timezone || 'Asia/Karachi',
         });
       }
 
@@ -636,6 +655,41 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
         combosEnabled: getModuleEnabled('combos'),
       });
 
+      // Load current user permissions from users table (role-based + granular)
+      if (user?.id && companyId) {
+        const { data: userData } = await supabase
+          .from('users')
+          .select('role, permissions')
+          .eq('id', user.id)
+          .eq('company_id', companyId)
+          .maybeSingle();
+
+        if (userData) {
+          const r = (userData.role || 'staff').toLowerCase();
+          const role: 'Admin' | 'Manager' | 'Staff' =
+            r === 'admin' ? 'Admin' : r === 'manager' ? 'Manager' : 'Staff';
+          const p = (userData.permissions as Record<string, boolean | undefined>) || {};
+          setCurrentUser({
+            role,
+            canCreateSale: p.canCreateSale ?? (role === 'Admin' || role === 'Manager'),
+            canEditSale: p.canEditSale ?? (role === 'Admin' || role === 'Manager'),
+            canDeleteSale: p.canDeleteSale ?? (role === 'Admin'),
+            canViewReports: p.canViewReports ?? (role === 'Admin' || role === 'Manager'),
+            canManageSettings: p.canManageSettings ?? (role === 'Admin'),
+            canManageUsers: p.canManageUsers ?? (role === 'Admin'),
+            canAccessAccounting: p.canAccessAccounting ?? (role === 'Admin' || role === 'Manager'),
+            canMakePayments: p.canMakePayments ?? (role === 'Admin' || role === 'Manager'),
+            canReceivePayments: p.canReceivePayments ?? (role === 'Admin' || role === 'Manager'),
+            canManageExpenses: p.canManageExpenses ?? (role === 'Admin' || role === 'Manager'),
+            canManageProducts: p.canManageProducts ?? (role === 'Admin' || role === 'Manager'),
+            canManagePurchases: p.canManagePurchases ?? (role === 'Admin' || role === 'Manager'),
+            canManageRentals: p.canManageRentals ?? (role === 'Admin' || role === 'Manager'),
+            canEditPurchase: p.canEditPurchase ?? (role === 'Admin' || role === 'Manager'),
+            canDeletePurchase: p.canDeletePurchase ?? (role === 'Admin'),
+          });
+        }
+      }
+
       if (import.meta.env?.DEV) console.log('✅ Settings loaded');
     } catch (error) {
       console.error('[SETTINGS CONTEXT] Error loading settings:', error);
@@ -643,7 +697,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
     } finally {
       setLoading(false);
     }
-  }, [companyId, branchId]);
+  }, [companyId, branchId, user?.id]);
 
   // Load settings on mount
   useEffect(() => {

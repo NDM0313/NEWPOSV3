@@ -4,6 +4,8 @@ import type { CustomerLedgerSummary } from '@/app/services/customerLedgerApi';
 import type { Transaction, Invoice } from '@/app/services/customerLedgerTypes';
 import { Badge } from '@/app/components/ui/badge';
 import { cn } from '@/app/components/ui/utils';
+import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
+import { useFormatDate } from '@/app/hooks/useFormatDate';
 
 interface OverviewTabProps {
   summary: CustomerLedgerSummary;
@@ -12,7 +14,8 @@ interface OverviewTabProps {
 }
 
 export function OverviewTab({ summary, transactions, invoices }: OverviewTabProps) {
-  const formatAmount = (amount: number) => amount.toLocaleString('en-PK');
+  const { formatCurrency } = useFormatCurrency();
+  const { formatDate } = useFormatDate();
   
   const overdueInvoices = invoices.filter(inv => inv.status === 'Unpaid');
   const partiallyPaid = invoices.filter(inv => inv.status === 'Partially Paid');
@@ -31,7 +34,7 @@ export function OverviewTab({ summary, transactions, invoices }: OverviewTabProp
             <span className="text-xs px-2 py-1 bg-blue-600 text-white rounded-full">Current</span>
           </div>
           <div className="text-xs text-blue-700 mb-1">Account Balance</div>
-          <div className="text-2xl text-blue-900">Rs {formatAmount(summary.closingBalance)}</div>
+          <div className="text-2xl text-blue-900">{formatCurrency(summary.closingBalance)}</div>
         </div>
 
         <div className="bg-white rounded-xl p-5 border border-slate-200">
@@ -43,7 +46,7 @@ export function OverviewTab({ summary, transactions, invoices }: OverviewTabProp
           </div>
           <div className="text-xs text-slate-600 mb-1">Overdue Amount</div>
           <div className="text-2xl text-slate-900">
-            Rs {formatAmount(overdueInvoices.reduce((sum, inv) => sum + inv.pendingAmount, 0))}
+            {formatCurrency(overdueInvoices.reduce((sum, inv) => sum + inv.pendingAmount, 0))}
           </div>
         </div>
 
@@ -55,7 +58,7 @@ export function OverviewTab({ summary, transactions, invoices }: OverviewTabProp
             <span className="text-xs px-2 py-1 bg-emerald-100 text-emerald-700 rounded-full">{totalPayments}</span>
           </div>
           <div className="text-xs text-slate-600 mb-1">Total Received</div>
-          <div className="text-2xl text-slate-900">Rs {formatAmount(summary.totalCredit)}</div>
+          <div className="text-2xl text-slate-900">{formatCurrency(summary.totalCredit)}</div>
         </div>
 
         <div className="bg-white rounded-xl p-5 border border-slate-200">
@@ -66,7 +69,7 @@ export function OverviewTab({ summary, transactions, invoices }: OverviewTabProp
             <span className="text-xs px-2 py-1 bg-purple-100 text-purple-700 rounded-full">{totalSales}</span>
           </div>
           <div className="text-xs text-slate-600 mb-1">Total Sales</div>
-          <div className="text-2xl text-slate-900">Rs {formatAmount(summary.totalDebit)}</div>
+          <div className="text-2xl text-slate-900">{formatCurrency(summary.totalDebit)}</div>
         </div>
       </div>
 
@@ -90,7 +93,7 @@ export function OverviewTab({ summary, transactions, invoices }: OverviewTabProp
                   <div className="flex justify-between items-start mb-2">
                     <div className="text-sm text-slate-900">{transaction.referenceNo}</div>
                     <div className="text-xs text-slate-500">
-                      {new Date(transaction.date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })}
+                      {formatDate(transaction.date)}
                     </div>
                   </div>
                   <div className="text-xs text-slate-600 mb-2">{transaction.description}</div>
@@ -105,9 +108,9 @@ export function OverviewTab({ summary, transactions, invoices }: OverviewTabProp
                     </Badge>
                     <div className="text-sm font-medium text-slate-900">
                       {transaction.debit > 0 ? (
-                        <span className="text-orange-600">+Rs {formatAmount(transaction.debit)}</span>
+                        <span className="text-orange-600">+{formatCurrency(transaction.debit)}</span>
                       ) : (
-                        <span className="text-emerald-600">-Rs {formatAmount(transaction.credit)}</span>
+                        <span className="text-emerald-600">-{formatCurrency(transaction.credit)}</span>
                       )}
                     </div>
                   </div>
@@ -130,15 +133,15 @@ export function OverviewTab({ summary, transactions, invoices }: OverviewTabProp
             </div>
             <div className="flex justify-between items-center">
               <span className="text-sm text-slate-600">Total Amount</span>
-              <span className="text-lg font-semibold text-slate-900">Rs {formatAmount(summary.totalInvoiceAmount)}</span>
+              <span className="text-lg font-semibold text-slate-900">{formatCurrency(summary.totalInvoiceAmount)}</span>
             </div>
             <div className="flex justify-between items-center">
               <span className="text-sm text-slate-600">Paid Amount</span>
-              <span className="text-lg font-semibold text-emerald-600">Rs {formatAmount(summary.totalPaymentReceived)}</span>
+              <span className="text-lg font-semibold text-emerald-600">{formatCurrency(summary.totalPaymentReceived)}</span>
             </div>
             <div className="flex justify-between items-center">
               <span className="text-sm text-slate-600">Pending Amount</span>
-              <span className="text-lg font-semibold text-red-600">Rs {formatAmount(summary.pendingAmount)}</span>
+              <span className="text-lg font-semibold text-red-600">{formatCurrency(summary.pendingAmount)}</span>
             </div>
             <div className="pt-4 border-t border-slate-200 grid grid-cols-3 gap-4">
               <div className="text-center">

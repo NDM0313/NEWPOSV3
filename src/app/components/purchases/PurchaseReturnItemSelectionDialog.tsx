@@ -30,6 +30,7 @@ import {
 } from '@/app/components/ui/table';
 import { Badge } from '@/app/components/ui/badge';
 import { useSettings } from '@/app/context/SettingsContext';
+import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
 import { PackingEntryModal } from '@/app/components/transactions/PackingEntryModal';
 import { RotateCcw, Save, X } from 'lucide-react';
 import { cn, formatBoxesPieces } from '@/app/components/ui/utils';
@@ -101,6 +102,7 @@ export function PurchaseReturnItemSelectionDialog({
   onSave,
 }: PurchaseReturnItemSelectionDialogProps) {
   const { inventorySettings } = useSettings();
+  const { formatCurrency } = useFormatCurrency();
   const enablePacking = inventorySettings.enablePacking ?? false;
 
   const [returnQuantities, setReturnQuantities] = useState<Record<string, number>>({});
@@ -343,7 +345,7 @@ export function PurchaseReturnItemSelectionDialog({
                           </TableCell>
                         )}
                         <TableCell className="text-right text-white">
-                          Rs. {item.price.toLocaleString()}
+                          {formatCurrency(item.price)}
                         </TableCell>
                         <TableCell className="text-center text-white font-medium">{qty}</TableCell>
                         {Object.keys(alreadyReturnedMap).length > 0 && (
@@ -395,7 +397,7 @@ export function PurchaseReturnItemSelectionDialog({
                         <TableCell className="text-gray-400">{unitDisplay}</TableCell>
                         <TableCell className="text-right text-red-400 font-medium">
                           {returnQtyFromPacking > 0
-                            ? `-Rs. ${(returnQtyFromPacking * item.price).toLocaleString()}`
+                            ? `-${formatCurrency(returnQtyFromPacking * item.price)}`
                             : '—'}
                         </TableCell>
                       </TableRow>

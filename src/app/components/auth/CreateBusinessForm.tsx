@@ -1,9 +1,27 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
-import { Building2, User, Mail, Lock, AlertCircle, Loader2 } from 'lucide-react';
+import { Building2, User, Mail, Lock, AlertCircle, Loader2, DollarSign, Calendar } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 import { businessService } from '@/app/services/businessService';
+
+const CURRENCIES = [
+  { code: 'PKR', label: 'PKR (Pakistani Rupee)' },
+  { code: 'USD', label: 'USD (US Dollar)' },
+  { code: 'EUR', label: 'EUR (Euro)' },
+  { code: 'GBP', label: 'GBP (British Pound)' },
+  { code: 'AED', label: 'AED (UAE Dirham)' },
+  { code: 'SAR', label: 'SAR (Saudi Riyal)' },
+];
+
+function getDefaultFiscalYearStart(): string {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = now.getMonth();
+  if (month >= 6) return `${year}-07-01`;
+  return `${year - 1}-07-01`;
+}
 
 interface CreateBusinessFormProps {
   onSuccess: (email: string, password: string) => void;
@@ -11,12 +29,15 @@ interface CreateBusinessFormProps {
 }
 
 export const CreateBusinessForm: React.FC<CreateBusinessFormProps> = ({ onSuccess, onCancel }) => {
+  const defaultFiscalStart = useMemo(() => getDefaultFiscalYearStart(), []);
   const [formData, setFormData] = useState({
     businessName: '',
     ownerName: '',
     email: '',
     password: '',
     confirmPassword: '',
+    currency: 'PKR',
+    fiscalYearStart: defaultFiscalStart,
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -63,6 +84,8 @@ export const CreateBusinessForm: React.FC<CreateBusinessFormProps> = ({ onSucces
         ownerName: formData.ownerName,
         email: formData.email,
         password: formData.password,
+        currency: formData.currency,
+        fiscalYearStart: formData.fiscalYearStart,
       });
 
       if (!result.success) {
@@ -174,6 +197,47 @@ export const CreateBusinessForm: React.FC<CreateBusinessFormProps> = ({ onSucces
                   disabled={loading}
                 />
               </div>
+            </div>
+
+            {/* Default Currency */}
+            <div>
+              <Label htmlFor="currency" className="text-gray-400 mb-2 block flex items-center gap-2">
+                <DollarSign size={16} />
+                Default Currency
+              </Label>
+              <Select
+                value={formData.currency}
+                onValueChange={(v) => setFormData({ ...formData, currency: v })}
+                disabled={loading}
+              >
+                <SelectTrigger className="bg-gray-800 border-gray-700 text-white">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {CURRENCIES.map((c) => (
+                    <SelectItem key={c.code} value={c.code}>
+                      {c.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Financial Year Start */}
+            <div>
+              <Label htmlFor="fiscalYearStart" className="text-gray-400 mb-2 block flex items-center gap-2">
+                <Calendar size={16} />
+                Financial Year Start
+              </Label>
+              <Input
+                id="fiscalYearStart"
+                type="date"
+                value={formData.fiscalYearStart}
+                onChange={(e) => setFormData({ ...formData, fiscalYearStart: e.target.value })}
+                className="bg-gray-800 border-gray-700 text-white"
+                disabled={loading}
+              />
+              <p className="text-xs text-gray-500 mt-1">Default: July 1 of current fiscal year</p>
             </div>
 
             {/* Confirm Password */}

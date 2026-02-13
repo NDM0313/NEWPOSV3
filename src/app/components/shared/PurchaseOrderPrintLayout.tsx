@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
 import { Purchase } from '@/app/context/PurchaseContext';
 import { useSettings } from '@/app/context/SettingsContext';
+import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
 import { ClassicPrintBase } from './ClassicPrintBase';
+import { usePrinterConfig } from '@/app/hooks/usePrinterConfig';
 import { Checkbox } from '../ui/checkbox';
 import { Label } from '../ui/label';
 import { formatBoxesPieces } from '../ui/utils';
@@ -13,6 +15,8 @@ interface PurchaseOrderPrintLayoutProps {
 
 export const PurchaseOrderPrintLayout: React.FC<PurchaseOrderPrintLayoutProps> = ({ purchase, onClose }) => {
   const { inventorySettings } = useSettings();
+  const { formatCurrency } = useFormatCurrency();
+  const { config: printerConfig } = usePrinterConfig();
   const enablePacking = inventorySettings.enablePacking;
   const [showDetailedPacking, setShowDetailedPacking] = useState(false);
 
@@ -79,6 +83,7 @@ export const PurchaseOrderPrintLayout: React.FC<PurchaseOrderPrintLayoutProps> =
       headerMeta={headerMeta}
       onPrint={() => window.print()}
       onClose={onClose}
+      printerMode={printerConfig.mode}
       actionChildren={
         enablePacking ? (
           <div className="flex items-center gap-4">
@@ -165,8 +170,8 @@ export const PurchaseOrderPrintLayout: React.FC<PurchaseOrderPrintLayoutProps> =
                 )}
                 <td className="text-right">{qty.toFixed(2)}</td>
                 <td>{unit}</td>
-                <td className="text-right classic-print-currency">Rs. {item.price.toLocaleString()}</td>
-                <td className="text-right classic-print-currency">Rs. {(item.price * qty).toLocaleString()}</td>
+                <td className="text-right classic-print-currency">{formatCurrency(item.price)}</td>
+                <td className="text-right classic-print-currency">{formatCurrency(item.price * qty)}</td>
               </tr>
             );
           })}
@@ -178,38 +183,38 @@ export const PurchaseOrderPrintLayout: React.FC<PurchaseOrderPrintLayoutProps> =
         <div className="classic-print-totals-inner">
           <div className="classic-print-totals-row">
             <span className="classic-print-totals-label">Subtotal:</span>
-            <span className="classic-print-totals-value classic-print-currency">Rs. {purchase.subtotal.toLocaleString()}</span>
+            <span className="classic-print-totals-value classic-print-currency">{formatCurrency(purchase.subtotal)}</span>
           </div>
           {purchase.discount > 0 && (
             <div className="classic-print-totals-row">
               <span className="classic-print-totals-label">Discount:</span>
-              <span className="classic-print-totals-value classic-print-currency">- Rs. {purchase.discount.toLocaleString()}</span>
+              <span className="classic-print-totals-value classic-print-currency">- {formatCurrency(purchase.discount)}</span>
             </div>
           )}
           {purchase.tax > 0 && (
             <div className="classic-print-totals-row">
               <span className="classic-print-totals-label">Tax:</span>
-              <span className="classic-print-totals-value classic-print-currency">Rs. {purchase.tax.toLocaleString()}</span>
+              <span className="classic-print-totals-value classic-print-currency">{formatCurrency(purchase.tax)}</span>
             </div>
           )}
           {purchase.shippingCost > 0 && (
             <div className="classic-print-totals-row">
               <span className="classic-print-totals-label">Shipping:</span>
-              <span className="classic-print-totals-value classic-print-currency">Rs. {purchase.shippingCost.toLocaleString()}</span>
+              <span className="classic-print-totals-value classic-print-currency">{formatCurrency(purchase.shippingCost)}</span>
             </div>
           )}
           <div className="classic-print-totals-row total">
             <span className="classic-print-totals-label">Total:</span>
-            <span className="classic-print-totals-value classic-print-currency">Rs. {purchase.total.toLocaleString()}</span>
+            <span className="classic-print-totals-value classic-print-currency">{formatCurrency(purchase.total)}</span>
           </div>
           <div className="classic-print-totals-row">
             <span className="classic-print-totals-label">Paid:</span>
-            <span className="classic-print-totals-value" style={{ color: '#059669' }}>Rs. {purchase.paid.toLocaleString()}</span>
+            <span className="classic-print-totals-value" style={{ color: '#059669' }}>{formatCurrency(purchase.paid)}</span>
           </div>
           {purchase.due > 0 && (
             <div className="classic-print-totals-row">
               <span className="classic-print-totals-label">Due:</span>
-              <span className="classic-print-totals-value" style={{ color: '#dc2626', fontWeight: 600 }}>Rs. {purchase.due.toLocaleString()}</span>
+              <span className="classic-print-totals-value" style={{ color: '#dc2626', fontWeight: 600 }}>{formatCurrency(purchase.due)}</span>
             </div>
           )}
         </div>

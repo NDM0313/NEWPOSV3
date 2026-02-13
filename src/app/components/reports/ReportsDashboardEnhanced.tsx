@@ -28,6 +28,9 @@ import { useAccounting } from '@/app/context/AccountingContext';
 import { BarChart, Bar, PieChart, Pie, Cell, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { ChartContainer } from '@/app/components/ui/chart';
 import { exportToCSV, exportToExcel, exportToPDF } from '@/app/utils/exportUtils';
+import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
+import { useFormatDate } from '@/app/hooks/useFormatDate';
+import { useCheckPermission } from '@/app/hooks/useCheckPermission';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -62,6 +65,9 @@ export const ReportsDashboardEnhanced = () => {
   const purchases = usePurchases();
   const expenses = useExpenses();
   const accounting = useAccounting();
+  const { formatCurrency } = useFormatCurrency();
+  const { formatDate } = useFormatDate();
+  const { canViewReports } = useCheckPermission();
 
   const [dateRange, setDateRange] = useState('30');
   const [reportType, setReportType] = useState<'overview' | 'sales' | 'purchases' | 'expenses' | 'financial'>('overview');
@@ -197,10 +203,10 @@ export const ReportsDashboardEnhanced = () => {
           title,
           headers: ['Metric', 'Value'],
           rows: [
-            ['Total Sales', `Rs ${metrics.totalSales.toLocaleString()}`],
-            ['Total Purchases', `Rs ${metrics.totalPurchases.toLocaleString()}`],
-            ['Total Expenses', `Rs ${metrics.totalExpenses.toLocaleString()}`],
-            ['Net Profit', `Rs ${metrics.profit.toLocaleString()}`],
+            ['Total Sales', formatCurrency(metrics.totalSales)],
+            ['Total Purchases', formatCurrency(metrics.totalPurchases)],
+            ['Total Expenses', formatCurrency(metrics.totalExpenses)],
+            ['Net Profit', formatCurrency(metrics.profit)],
             ['Profit Margin', `${metrics.profitMargin.toFixed(1)}%`],
             ['Invoices', metrics.salesCount],
             ['Purchase Orders', metrics.purchasesCount],
@@ -253,7 +259,7 @@ export const ReportsDashboardEnhanced = () => {
       case 'financial':
         return {
           title,
-          headers: ['Item', 'Amount (Rs)'],
+          headers: ['Item', 'Amount'],
           rows: [
             ['Total Revenue', metrics.totalSales],
             ['Total Purchases', metrics.totalPurchases],
@@ -284,6 +290,17 @@ export const ReportsDashboardEnhanced = () => {
   // ============================================
   // RENDER
   // ============================================
+
+  if (!canViewReports) {
+    return (
+      <div className="h-full w-full bg-gray-950 text-white flex items-center justify-center p-8">
+        <div className="text-center max-w-md">
+          <h2 className="text-xl font-semibold text-white mb-2">Access Denied</h2>
+          <p className="text-gray-400">You do not have permission to view financial reports.</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="h-full w-full bg-gray-950 text-white overflow-auto">
@@ -371,10 +388,10 @@ export const ReportsDashboardEnhanced = () => {
         {reportType === 'overview' && (
           <>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-              <MetricCard title="Total Sales" value={`Rs. ${metrics.totalSales.toLocaleString()}`} change={`${metrics.salesCount} invoices`} trend="up" icon={TrendingUp} iconColor="text-green-400" iconBg="bg-green-400/10" />
-              <MetricCard title="Total Purchases" value={`Rs. ${metrics.totalPurchases.toLocaleString()}`} change={`${metrics.purchasesCount} POs`} trend="up" icon={ShoppingCart} iconColor="text-blue-400" iconBg="bg-blue-400/10" />
-              <MetricCard title="Total Expenses" value={`Rs. ${metrics.totalExpenses.toLocaleString()}`} change={`${metrics.expensesCount} paid`} trend="up" icon={DollarSign} iconColor="text-orange-400" iconBg="bg-orange-400/10" />
-              <MetricCard title="Net Profit" value={`Rs. ${metrics.profit.toLocaleString()}`} change={`${metrics.profitMargin.toFixed(1)}% margin`} trend={metrics.profit > 0 ? 'up' : 'down'} icon={Activity} iconColor={metrics.profit > 0 ? 'text-green-400' : 'text-red-400'} iconBg={metrics.profit > 0 ? 'bg-green-400/10' : 'bg-red-400/10'} />
+              <MetricCard title="Total Sales" value={formatCurrency(metrics.totalSales)} change={`${metrics.salesCount} invoices`} trend="up" icon={TrendingUp} iconColor="text-green-400" iconBg="bg-green-400/10" />
+              <MetricCard title="Total Purchases" value={formatCurrency(metrics.totalPurchases)} change={`${metrics.purchasesCount} POs`} trend="up" icon={ShoppingCart} iconColor="text-blue-400" iconBg="bg-blue-400/10" />
+              <MetricCard title="Total Expenses" value={formatCurrency(metrics.totalExpenses)} change={`${metrics.expensesCount} paid`} trend="up" icon={DollarSign} iconColor="text-orange-400" iconBg="bg-orange-400/10" />
+              <MetricCard title="Net Profit" value={formatCurrency(metrics.profit)} change={`${metrics.profitMargin.toFixed(1)}% margin`} trend={metrics.profit > 0 ? 'up' : 'down'} icon={Activity} iconColor={metrics.profit > 0 ? 'text-green-400' : 'text-red-400'} iconBg={metrics.profit > 0 ? 'bg-green-400/10' : 'bg-red-400/10'} />
             </div>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <Card className="bg-gray-900 border-gray-800 p-6">
@@ -446,8 +463,8 @@ export const ReportsDashboardEnhanced = () => {
         {reportType === 'sales' && (
           <>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <MetricCard title="Total Sales" value={`Rs. ${metrics.totalSales.toLocaleString()}`} change={`${metrics.salesCount} invoices`} trend="up" icon={TrendingUp} iconColor="text-green-400" iconBg="bg-green-400/10" />
-              <MetricCard title="Receivables" value={`Rs. ${metrics.totalReceivables.toLocaleString()}`} change="Outstanding" trend="up" icon={DollarSign} iconColor="text-blue-400" iconBg="bg-blue-400/10" />
+              <MetricCard title="Total Sales" value={formatCurrency(metrics.totalSales)} change={`${metrics.salesCount} invoices`} trend="up" icon={TrendingUp} iconColor="text-green-400" iconBg="bg-green-400/10" />
+              <MetricCard title="Receivables" value={formatCurrency(metrics.totalReceivables)} change="Outstanding" trend="up" icon={DollarSign} iconColor="text-blue-400" iconBg="bg-blue-400/10" />
               <StatCard icon={ShoppingCart} label="Invoices" value={metrics.salesCount} color="bg-green-500/10 text-green-400" />
             </div>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -492,12 +509,12 @@ export const ReportsDashboardEnhanced = () => {
                     ) : (
                       filteredSales.map((s) => (
                         <tr key={s.id} className="text-gray-300">
-                          <td className="py-2 pr-4">{s.date ? new Date(s.date).toLocaleDateString() : '—'}</td>
+                          <td className="py-2 pr-4">{s.date ? formatDate(new Date(s.date)) : '—'}</td>
                           <td className="py-2 pr-4 font-mono">{s.invoiceNo || '—'}</td>
                           <td className="py-2 pr-4">{s.customerName || '—'}</td>
-                          <td className="py-2 pr-4">Rs {(s.total ?? 0).toLocaleString()}</td>
-                          <td className="py-2 pr-4">Rs {(s.paid ?? 0).toLocaleString()}</td>
-                          <td className="py-2 pr-4">Rs {(s.due ?? 0).toLocaleString()}</td>
+                          <td className="py-2 pr-4">{formatCurrency(s.total ?? 0)}</td>
+                          <td className="py-2 pr-4">{formatCurrency(s.paid ?? 0)}</td>
+                          <td className="py-2 pr-4">{formatCurrency(s.due ?? 0)}</td>
                           <td className="py-2 pr-4"><Badge variant="outline" className="text-xs">{s.paymentStatus || '—'}</Badge></td>
                         </tr>
                       ))
@@ -513,8 +530,8 @@ export const ReportsDashboardEnhanced = () => {
         {reportType === 'purchases' && (
           <>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <MetricCard title="Total Purchases" value={`Rs. ${metrics.totalPurchases.toLocaleString()}`} change={`${metrics.purchasesCount} POs`} trend="up" icon={ShoppingCart} iconColor="text-blue-400" iconBg="bg-blue-400/10" />
-              <MetricCard title="Payables" value={`Rs. ${metrics.totalPayables.toLocaleString()}`} change="Outstanding" trend="up" icon={DollarSign} iconColor="text-orange-400" iconBg="bg-orange-400/10" />
+              <MetricCard title="Total Purchases" value={formatCurrency(metrics.totalPurchases)} change={`${metrics.purchasesCount} POs`} trend="up" icon={ShoppingCart} iconColor="text-blue-400" iconBg="bg-blue-400/10" />
+              <MetricCard title="Payables" value={formatCurrency(metrics.totalPayables)} change="Outstanding" trend="up" icon={DollarSign} iconColor="text-orange-400" iconBg="bg-orange-400/10" />
               <StatCard icon={Package} label="Purchase Orders" value={metrics.purchasesCount} color="bg-blue-500/10 text-blue-400" />
             </div>
             <Card className="bg-gray-900 border-gray-800 p-6">
@@ -542,12 +559,12 @@ export const ReportsDashboardEnhanced = () => {
                     ) : (
                       filteredPurchases.map((p) => (
                         <tr key={p.id} className="text-gray-300">
-                          <td className="py-2 pr-4">{p.date ? new Date(p.date).toLocaleDateString() : '—'}</td>
+                          <td className="py-2 pr-4">{p.date ? formatDate(new Date(p.date)) : '—'}</td>
                           <td className="py-2 pr-4 font-mono">{p.purchaseNo || '—'}</td>
                           <td className="py-2 pr-4">{p.supplierName || '—'}</td>
-                          <td className="py-2 pr-4">Rs {(p.total ?? 0).toLocaleString()}</td>
-                          <td className="py-2 pr-4">Rs {(p.paid ?? 0).toLocaleString()}</td>
-                          <td className="py-2 pr-4">Rs {(p.due ?? 0).toLocaleString()}</td>
+                          <td className="py-2 pr-4">{formatCurrency(p.total ?? 0)}</td>
+                          <td className="py-2 pr-4">{formatCurrency(p.paid ?? 0)}</td>
+                          <td className="py-2 pr-4">{formatCurrency(p.due ?? 0)}</td>
                         </tr>
                       ))
                     )}
@@ -562,7 +579,7 @@ export const ReportsDashboardEnhanced = () => {
         {reportType === 'expenses' && (
           <>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <MetricCard title="Total Expenses" value={`Rs. ${metrics.totalExpenses.toLocaleString()}`} change={`${metrics.expensesCount} paid`} trend="up" icon={DollarSign} iconColor="text-orange-400" iconBg="bg-orange-400/10" />
+              <MetricCard title="Total Expenses" value={formatCurrency(metrics.totalExpenses)} change={`${metrics.expensesCount} paid`} trend="up" icon={DollarSign} iconColor="text-orange-400" iconBg="bg-orange-400/10" />
               <StatCard icon={DollarSign} label="Paid Expenses" value={metrics.expensesCount} color="bg-orange-500/10 text-orange-400" />
             </div>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -608,11 +625,11 @@ export const ReportsDashboardEnhanced = () => {
                     ) : (
                       filteredExpenses.map((e) => (
                         <tr key={e.id} className="text-gray-300">
-                          <td className="py-2 pr-4">{e.date ? new Date(e.date).toLocaleDateString() : '—'}</td>
+                          <td className="py-2 pr-4">{e.date ? formatDate(new Date(e.date)) : '—'}</td>
                           <td className="py-2 pr-4 font-mono">{e.expenseNo || '—'}</td>
                           <td className="py-2 pr-4">{e.category || '—'}</td>
                           <td className="py-2 pr-4">{e.description || '—'}</td>
-                          <td className="py-2 pr-4 text-red-400">Rs {(e.amount ?? 0).toLocaleString()}</td>
+                          <td className="py-2 pr-4 text-red-400">{formatCurrency(e.amount ?? 0)}</td>
                           <td className="py-2 pr-4">{e.paymentMethod || '—'}</td>
                           <td className="py-2 pr-4"><Badge variant="outline" className="text-xs">{e.status || '—'}</Badge></td>
                         </tr>
@@ -629,23 +646,23 @@ export const ReportsDashboardEnhanced = () => {
         {reportType === 'financial' && (
           <>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-              <MetricCard title="Total Revenue" value={`Rs. ${metrics.totalSales.toLocaleString()}`} change={`${metrics.salesCount} invoices`} trend="up" icon={TrendingUp} iconColor="text-green-400" iconBg="bg-green-400/10" />
-              <MetricCard title="Total Outflows" value={`Rs. ${(metrics.totalPurchases + metrics.totalExpenses).toLocaleString()}`} change="Purchases + Expenses" trend="up" icon={TrendingDown} iconColor="text-red-400" iconBg="bg-red-400/10" />
-              <MetricCard title="Net Profit" value={`Rs. ${metrics.profit.toLocaleString()}`} change={`${metrics.profitMargin.toFixed(1)}% margin`} trend={metrics.profit > 0 ? 'up' : 'down'} icon={Activity} iconColor={metrics.profit > 0 ? 'text-green-400' : 'text-red-400'} iconBg={metrics.profit > 0 ? 'bg-green-400/10' : 'bg-red-400/10'} />
-              <StatCard icon={FileText} label="Receivables" value={`Rs ${(metrics.totalReceivables / 1000).toFixed(0)}k`} color="bg-blue-500/10 text-blue-400" />
+              <MetricCard title="Total Revenue" value={formatCurrency(metrics.totalSales)} change={`${metrics.salesCount} invoices`} trend="up" icon={TrendingUp} iconColor="text-green-400" iconBg="bg-green-400/10" />
+              <MetricCard title="Total Outflows" value={formatCurrency(metrics.totalPurchases + metrics.totalExpenses)} change="Purchases + Expenses" trend="up" icon={TrendingDown} iconColor="text-red-400" iconBg="bg-red-400/10" />
+              <MetricCard title="Net Profit" value={formatCurrency(metrics.profit)} change={`${metrics.profitMargin.toFixed(1)}% margin`} trend={metrics.profit > 0 ? 'up' : 'down'} icon={Activity} iconColor={metrics.profit > 0 ? 'text-green-400' : 'text-red-400'} iconBg={metrics.profit > 0 ? 'bg-green-400/10' : 'bg-red-400/10'} />
+              <StatCard icon={FileText} label="Receivables" value={formatCurrency(metrics.totalReceivables)} color="bg-blue-500/10 text-blue-400" />
             </div>
             <Card className="bg-gray-900 border-gray-800 p-6 max-w-2xl">
               <h3 className="text-lg font-bold text-white mb-4 flex items-center gap-2"><FileText size={20} className="text-purple-400" /> Financial Summary</h3>
               <div className="space-y-4">
-                <SummaryRow label="Total Revenue" value={metrics.totalSales} color="text-green-400" />
-                <SummaryRow label="Total Purchases" value={metrics.totalPurchases} color="text-orange-400" />
-                <SummaryRow label="Total Expenses" value={metrics.totalExpenses} color="text-orange-400" />
+                <SummaryRow label="Total Revenue" value={formatCurrency(metrics.totalSales)} color="text-green-400" />
+                <SummaryRow label="Total Purchases" value={formatCurrency(metrics.totalPurchases)} color="text-orange-400" />
+                <SummaryRow label="Total Expenses" value={formatCurrency(metrics.totalExpenses)} color="text-orange-400" />
                 <div className="border-t border-gray-800 pt-3">
-                  <SummaryRow label="Net Profit/Loss" value={metrics.profit} color={metrics.profit > 0 ? 'text-green-400' : 'text-red-400'} bold />
+                  <SummaryRow label="Net Profit/Loss" value={formatCurrency(metrics.profit)} color={metrics.profit > 0 ? 'text-green-400' : 'text-red-400'} bold />
                 </div>
                 <div className="border-t border-gray-800 pt-3">
-                  <SummaryRow label="Accounts Receivable" value={metrics.totalReceivables} color="text-blue-400" />
-                  <SummaryRow label="Accounts Payable" value={metrics.totalPayables} color="text-orange-400" />
+                  <SummaryRow label="Accounts Receivable" value={formatCurrency(metrics.totalReceivables)} color="text-blue-400" />
+                  <SummaryRow label="Accounts Payable" value={formatCurrency(metrics.totalPayables)} color="text-orange-400" />
                 </div>
               </div>
             </Card>
@@ -689,12 +706,10 @@ const MetricCard = ({ title, value, change, trend, icon: Icon, iconColor, iconBg
   </Card>
 );
 
-const SummaryRow = ({ label, value, color, bold }: any) => (
+const SummaryRow = ({ label, value, color, bold }: { label: string; value: string; color: string; bold?: boolean }) => (
   <div className="flex items-center justify-between">
     <span className={`text-sm ${bold ? 'font-bold text-white' : 'text-gray-400'}`}>{label}</span>
-    <span className={`text-sm font-semibold ${color}`}>
-      Rs. {value.toLocaleString()}
-    </span>
+    <span className={`text-sm font-semibold ${color}`}>{value}</span>
   </div>
 );
 

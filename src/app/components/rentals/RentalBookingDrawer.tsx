@@ -1,5 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useSupabase } from '@/app/context/SupabaseContext';
+import { useRentals } from '@/app/context/RentalContext';
+import { useAccounting } from '@/app/context/AccountingContext';
+import { useNavigation } from '@/app/context/NavigationContext';
 import { rentalService } from '@/app/services/rentalService';
 import { productService } from '@/app/services/productService';
 import { contactService } from '@/app/services/contactService';
@@ -35,9 +38,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from "../ui/select";
-import { SecuritySection, SecurityDetails } from './SecuritySection';
 import { ReturnDressModal } from './ReturnDressModal';
-import { QuickAddContactModal } from '../contacts/QuickAddContactModal';
 import {
     Command,
     CommandEmpty,
@@ -49,6 +50,8 @@ import {
 import { Check, ChevronsUpDown, User, PlusCircle } from "lucide-react";
 import { Label } from "../ui/label";
 import { RentalProductSearch, SearchProduct } from './RentalProductSearch';
+import { ProductImage } from '../products/ProductImage';
+import { toast } from 'sonner';
 
 // NEW: Import rental types and utilities
 import { 
@@ -68,13 +71,19 @@ import {
 
 // Existing bookings will be loaded from Supabase
 
+import type { RentalUI } from '@/app/context/RentalContext';
+
 interface RentalBookingDrawerProps {
-    isOpen: boolean;
-    onClose: () => void;
+  isOpen: boolean;
+  onClose: () => void;
+  editRental?: RentalUI | null;
 }
 
-export const RentalBookingDrawer = ({ isOpen, onClose }: RentalBookingDrawerProps) => {
-  const { companyId, branchId } = useSupabase();
+export const RentalBookingDrawer = ({ isOpen, onClose, editRental }: RentalBookingDrawerProps) => {
+  const { companyId, branchId, user } = useSupabase();
+  const { refreshRentals } = useRentals();
+  const accounting = useAccounting();
+  const { openDrawer, createdContactId, setCreatedContactId } = useNavigation();
   const [existingBookings, setExistingBookings] = useState<RentalBooking[]>([]);
   const [loadingBookings, setLoadingBookings] = useState(false);
   
@@ -140,7 +149,6 @@ export const RentalBookingDrawer = ({ isOpen, onClose }: RentalBookingDrawerProp
 
   const [selectedCustomer, setSelectedCustomer] = useState<string>("");
   const [customerSearchOpen, setCustomerSearchOpen] = useState(false);
-  const [isQuickContactOpen, setIsQuickContactOpen] = useState(false);
   const [customerSearchTerm, setCustomerSearchTerm] = useState("");
   const [customerList, setCustomerList] = useState<Array<{id: string; name: string}>>([]);
   const [products, setProducts] = useState<any[]>([]);
@@ -151,11 +159,52 @@ export const RentalBookingDrawer = ({ isOpen, onClose }: RentalBookingDrawerProp
   const [manualRentPrice, setManualRentPrice] = useState<string>('');
   const [advancePaid, setAdvancePaid] = useState('');
   
-  // Security State
-  const [securityDetails, setSecurityDetails] = useState<SecurityDetails | null>(null);
-
   // Return Modal State
   const [showReturnModal, setShowReturnModal] = useState(false);
+
+  // Booking save state
+  const [saving, setSaving] = useState(false);
+
+  // Populate form when editing
+  useEffect(() => {
+    if (isOpen && editRental) {
+      setSelectedCustomer(editRental.customerId || '');
+      // Ensure edit rental's customer is in list (for display when contact may have been removed)
+      if (editRental.customerId && editRental.customerName) {
+        setCustomerList(prev => {
+          if (prev.some((c: any) => c.id === editRental!.customerId)) return prev;
+          return [{ id: editRental!.customerId!, name: editRental!.customerName }, ...prev];
+        });
+      }
+      setBookingDate(editRental.startDate ? new Date(editRental.startDate) : new Date());
+      setPickupDate(editRental.startDate ? new Date(editRental.startDate) : new Date());
+      setReturnDate(editRental.expectedReturnDate ? new Date(editRental.expectedReturnDate) : addDays(new Date(), 3));
+      setAdvancePaid(editRental.paidAmount?.toString() || '');
+      const firstItem = editRental.items?.[0];
+      if (firstItem) {
+        const rentVal = firstItem.total || firstItem.rate || 0;
+        const product: SearchProduct = {
+          id: firstItem.productId,
+          name: firstItem.productName,
+          sku: firstItem.sku || '',
+          image: '',
+          status: 'available',
+          rentPrice: firstItem.rate || firstItem.total || 0,
+          retailPrice: 0,
+        };
+        setSelectedProduct(product);
+        setManualRentPrice(String(rentVal || editRental.totalAmount || ''));
+      }
+    } else if (isOpen && !editRental) {
+      setSelectedCustomer('');
+      setSelectedProduct(null);
+      setManualRentPrice('');
+      setAdvancePaid('');
+      setBookingDate(new Date());
+      setPickupDate(new Date());
+      setReturnDate(addDays(new Date(), 3));
+    }
+  }, [isOpen, editRental?.id]);
 
   // Load products and customers from Supabase
   const loadData = useCallback(async () => {
@@ -168,17 +217,16 @@ export const RentalBookingDrawer = ({ isOpen, onClose }: RentalBookingDrawerProp
       const productsData = await productService.getAllProducts(companyId);
       setProducts(productsData);
 
-      // Load customers
+      // Load customers only (exclude Walk-in; rentals require a real customer)
       const contactsData = await contactService.getAllContacts(companyId);
-      const customersList = [
-        { id: 'walk-in', name: 'Walk-in Customer' },
-        ...contactsData.map(c => ({ id: c.id || '', name: c.name || '' }))
-      ];
-      setCustomerList(customersList);
+      const customersList = (contactsData || [])
+        .filter((c: any) => (c.type === 'customer' || c.type === 'both') && !(c.is_system_generated && c.system_type === 'walking_customer'))
+        .map((c: any) => ({ id: c.id || '', name: c.name || '' }));
+      setCustomerList(customersList.length > 0 ? customersList : []);
     } catch (error) {
       console.error('[RENTAL BOOKING DRAWER] Error loading data:', error);
       setProducts([]);
-      setCustomerList([{ id: 'walk-in', name: 'Walk-in Customer' }]);
+      setCustomerList([]);
     } finally {
       setLoadingProducts(false);
     }
@@ -211,7 +259,7 @@ export const RentalBookingDrawer = ({ isOpen, onClose }: RentalBookingDrawerProp
         id: p.id || '',
         name: p.name || '',
         sku: p.sku || '',
-        image: p.image_url || '',
+        image: (Array.isArray(p.image_urls) && p.image_urls[0]) ? p.image_urls[0] : (p.image_url || p.thumbnail || ''),
         status,
         unavailableReason,
         rentPrice: p.rental_price_daily || 0,
@@ -222,8 +270,9 @@ export const RentalBookingDrawer = ({ isOpen, onClose }: RentalBookingDrawerProp
     };
   });
 
-  // Update manual rent price when product changes
+  // Update manual rent price when product changes (skip in edit mode—edit effect already set it)
   useEffect(() => {
+    if (editRental?.id) return;
     if (selectedProduct) {
         if (selectedProduct.rentPrice && selectedProduct.rentPrice > 0) {
             setManualRentPrice(selectedProduct.rentPrice.toString());
@@ -231,7 +280,32 @@ export const RentalBookingDrawer = ({ isOpen, onClose }: RentalBookingDrawerProp
             setManualRentPrice(''); // Clear for manual entry
         }
     }
-  }, [selectedProduct]);
+  }, [selectedProduct, editRental?.id]);
+
+  // When a contact is created via the global Add Contact drawer, add to list and select (must be before early return)
+  useEffect(() => {
+    if (!createdContactId || !isOpen) return;
+    const applyCreatedContact = async () => {
+      try {
+        const contact = await contactService.getContact(createdContactId);
+        if (contact?.id) {
+          const { id, name } = contact;
+          setCustomerList(prev => {
+            if (prev.some(c => c.id === id)) return prev;
+            return [...prev, { id, name: name || 'Unknown' }];
+          });
+          setSelectedCustomer(id);
+          setCustomerSearchOpen(false);
+          toast.success('Customer added');
+        }
+      } catch (e) {
+        console.error('[RentalBookingDrawer] Error fetching created contact:', e);
+      } finally {
+        setCreatedContactId?.(null);
+      }
+    };
+    applyCreatedContact();
+  }, [createdContactId, isOpen, setCreatedContactId]);
 
   if (!isOpen) return null;
 
@@ -244,24 +318,120 @@ export const RentalBookingDrawer = ({ isOpen, onClose }: RentalBookingDrawerProp
       setCustomerSearchOpen(false);
   };
 
-  const handleSaveContact = (newContact: any) => {
-    setCustomerList(prev => [...prev, newContact]);
-    setSelectedCustomer(newContact.id.toString());
-    setCustomerSearchOpen(false);
-  };
-  
   const getCustomerName = () => {
-      const c = customerList.find(x => x.id.toString() === selectedCustomer);
-      return c ? c.name : "Unknown";
+    if (!selectedCustomer) return 'Select customer...';
+    const c = customerList.find(x => x.id.toString() === selectedCustomer);
+    if (c) return c.name;
+    if (editRental?.customerId === selectedCustomer) return editRental.customerName;
+    return 'Select customer...';
   };
 
-  // REAL-TIME CONFLICT DETECTION
+  const handleBookOrder = async () => {
+    if (!companyId || !branchId) {
+      toast.error('Company or branch not set');
+      return;
+    }
+    if (!selectedCustomer) {
+      toast.error('Please select or add a customer');
+      openDrawer('addContact', undefined, { contactType: 'customer', prefillName: customerSearchTerm || '' });
+      return;
+    }
+    if (!selectedProduct) {
+      toast.error('Please select a product');
+      return;
+    }
+    if (!pickupDate || !returnDate) {
+      toast.error('Please select pickup and return dates');
+      return;
+    }
+    if (hasConflict) {
+      toast.error('Selected dates conflict with an existing booking');
+      return;
+    }
+    const rentAmount = parseFloat(manualRentPrice) || 0;
+    if (rentAmount <= 0) {
+      toast.error('Please enter a valid rent amount');
+      return;
+    }
+
+    const items = [{
+      productId: String(selectedProduct.id),
+      productName: selectedProduct.name,
+      quantity: 1,
+      ratePerDay: selectedProduct.rentPrice ?? rentAmount,
+      durationDays: totalDays || 1,
+      total: rentAmount,
+    }];
+
+    try {
+      setSaving(true);
+      if (editRental?.id) {
+        await rentalService.updateBooking(editRental.id, companyId, {
+          customerId: selectedCustomer,
+          customerName: getCustomerName(),
+          pickupDate: pickupDate.toISOString().split('T')[0],
+          returnDate: returnDate.toISOString().split('T')[0],
+          rentalCharges: rentAmount,
+          securityDeposit: 0,
+          paidAmount: parseFloat(advancePaid) || 0,
+          notes: null,
+          items,
+        });
+        toast.success('Booking updated successfully');
+      } else {
+        const paidAmt = parseFloat(advancePaid) || 0;
+        const result = await rentalService.createBooking({
+          companyId,
+          branchId,
+          createdBy: user?.id ?? null,
+          customerId: selectedCustomer,
+          customerName: getCustomerName(),
+          bookingDate: bookingDate.toISOString().split('T')[0],
+          pickupDate: pickupDate.toISOString().split('T')[0],
+          returnDate: returnDate.toISOString().split('T')[0],
+          rentalCharges: rentAmount,
+          securityDeposit: 0,
+          paidAmount: paidAmt,
+          notes: null,
+          items,
+        });
+        if (paidAmt > 0) {
+          accounting.recordRentalBooking({
+            bookingId: result.id,
+            customerName: getCustomerName(),
+            customerId: selectedCustomer,
+            advanceAmount: paidAmt,
+            securityDepositAmount: 0,
+            securityDepositType: 'Document',
+            paymentMethod: 'Cash',
+          }).catch((err) => console.warn('[RentalBookingDrawer] Ledger advance posting:', err));
+        }
+        toast.success(`Booking ${result.booking_no} created successfully`);
+      }
+      await refreshRentals();
+      await loadExistingBookings();
+      setSelectedProduct(null);
+      setManualRentPrice('');
+      setAdvancePaid('');
+      onClose();
+    } catch (error: any) {
+      console.error('[RENTAL BOOKING DRAWER] Error saving booking:', error);
+      toast.error('Failed to save booking: ' + (error?.message || 'Unknown error'));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // REAL-TIME CONFLICT DETECTION (exclude current rental when editing)
+  const bookingsForConflict = editRental?.id
+    ? existingBookings.filter((b) => b.id !== editRental.id)
+    : existingBookings;
   const conflictCheck = selectedProduct && pickupDate && returnDate
     ? checkDateConflict(
         selectedProduct.id,
         pickupDate,
         returnDate,
-        existingBookings
+        bookingsForConflict
       )
     : { hasConflict: false };
 
@@ -277,7 +447,7 @@ export const RentalBookingDrawer = ({ isOpen, onClose }: RentalBookingDrawerProp
       product.id,
       pickupDate,
       returnDate,
-      existingBookings
+      bookingsForConflict
     );
     
     if (conflict.hasConflict) {
@@ -302,8 +472,8 @@ export const RentalBookingDrawer = ({ isOpen, onClose }: RentalBookingDrawerProp
               <ShoppingBag size={20} />
             </div>
             <div>
-               <h2 className="text-xl font-bold text-white">New Rental Booking</h2>
-               <p className="text-xs text-gray-400">Manage bridal dresses, security & dates</p>
+               <h2 className="text-xl font-bold text-white">{editRental ? 'Edit Booking' : 'New Rental Booking'}</h2>
+               <p className="text-xs text-gray-400">{editRental ? editRental.rentalNo : 'Manage bridal dresses, security & dates'}</p>
             </div>
           </div>
           <Button variant="ghost" size="icon" onClick={onClose} className="text-gray-400 hover:text-white">
@@ -351,7 +521,7 @@ export const RentalBookingDrawer = ({ isOpen, onClose }: RentalBookingDrawerProp
                                             <Button 
                                             variant="ghost" 
                                             className="w-full justify-start text-blue-400 hover:text-blue-300"
-                                            onClick={() => setIsQuickContactOpen(true)}
+                                            onClick={() => openDrawer('addContact', undefined, { contactType: 'customer', prefillName: customerSearchTerm || '' })}
                                             >
                                             <PlusCircle size={14} className="mr-2" />
                                             Create "{customerSearchTerm}"?
@@ -529,8 +699,13 @@ export const RentalBookingDrawer = ({ isOpen, onClose }: RentalBookingDrawerProp
                                      (isUnavailable) && "opacity-60 cursor-not-allowed bg-gray-900/50"
                                  )}
                                >
-                                   <div className="w-20 h-20 bg-gray-800 rounded-md overflow-hidden shrink-0">
-                                       <img src={product.image} alt={product.name} className={cn("w-full h-full object-cover", isUnavailable && "grayscale")} />
+                                   <div className="w-20 h-20 bg-gray-800 rounded-md overflow-hidden shrink-0 flex items-center justify-center">
+                                       {product.image ? (
+                                         <ProductImage src={product.image} alt={product.name} className={cn("w-full h-full object-cover", isUnavailable && "grayscale")} />
+                                       ) : null}
+                                       {!product.image && (
+                                         <Package className="w-8 h-8 text-gray-500" />
+                                       )}
                                    </div>
                                    <div className="flex-1 flex flex-col justify-center">
                                        <div className="flex justify-between items-start">
@@ -582,8 +757,12 @@ export const RentalBookingDrawer = ({ isOpen, onClose }: RentalBookingDrawerProp
                   {/* Selected Item Summary */}
                   {selectedProduct ? (
                       <div className="bg-gray-900 border border-gray-800 rounded-lg p-4 flex gap-4 items-center animate-in fade-in slide-in-from-bottom-4">
-                          <div className="w-16 h-16 bg-gray-800 rounded overflow-hidden">
-                              <img src={selectedProduct.image} alt="" className="w-full h-full object-cover" />
+                          <div className="w-16 h-16 bg-gray-800 rounded overflow-hidden flex items-center justify-center">
+                              {selectedProduct.image ? (
+                                <ProductImage src={selectedProduct.image} alt="" className="w-full h-full object-cover" />
+                              ) : (
+                                <Package className="w-7 h-7 text-gray-500" />
+                              )}
                           </div>
                           <div className="flex-1">
                               <div className="flex items-start justify-between">
@@ -624,9 +803,6 @@ export const RentalBookingDrawer = ({ isOpen, onClose }: RentalBookingDrawerProp
                           Select a dress from the list to proceed
                       </div>
                   )}
-
-                  {/* Security Section — disabled at booking; enable at delivery */}
-                  <SecuritySection onChange={setSecurityDetails} disabled />
 
                   {/* Notes */}
                   <div className="space-y-2">
@@ -682,9 +858,10 @@ export const RentalBookingDrawer = ({ isOpen, onClose }: RentalBookingDrawerProp
                   
                   <Button 
                     className="w-full bg-pink-600 hover:bg-pink-500 text-white font-bold h-12 text-lg shadow-lg shadow-pink-600/20"
-                    disabled={!selectedProduct || !!hasConflict}
+                    disabled={!selectedProduct || !!hasConflict || saving}
+                    onClick={handleBookOrder}
                   >
-                      {hasConflict ? "Date Conflict" : "Book Order"} <ArrowRight className="ml-2" size={18} />
+                      {saving ? "Saving..." : hasConflict ? "Date Conflict" : "Book Order"} <ArrowRight className="ml-2" size={18} />
                   </Button>
               </div>
           </div>
@@ -696,19 +873,11 @@ export const RentalBookingDrawer = ({ isOpen, onClose }: RentalBookingDrawerProp
                 isOpen={showReturnModal}
                 onClose={() => setShowReturnModal(false)}
                 customerName={getCustomerName()}
-                securityType={securityDetails?.type || 'id_card'}
-                securityValue={securityDetails?.type === 'cash' ? parseFloat(securityDetails.reference) || 0 : 0}
+                securityType="id_card"
+                securityValue={0}
                 returnDate={returnDate || new Date()}
             />
         )}
-
-        <QuickAddContactModal 
-          isOpen={isQuickContactOpen}
-          onClose={() => setIsQuickContactOpen(false)}
-          onSave={handleSaveContact}
-          initialName={customerSearchTerm}
-          contactType="customer"
-        />
 
       </div>
     </div>

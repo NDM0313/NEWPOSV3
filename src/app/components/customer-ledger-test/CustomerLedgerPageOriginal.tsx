@@ -42,11 +42,11 @@ export default function CustomerLedgerPageOriginal({
   const { companyId } = useSupabase();
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [customers, setCustomers] = useState<Customer[]>([]);
-  // Default: Last 30 Days (Pakistan timezone)
+  // Default: Last 90 Days (rentals + sales; Pakistan timezone)
   const [dateRange, setDateRange] = useState(() => {
     const to = getTodayYYYYMMDD();
     const fromD = new Date(to + 'T12:00:00');
-    fromD.setDate(fromD.getDate() - 30);
+    fromD.setDate(fromD.getDate() - 90);
     const from = fromD.toISOString().split('T')[0];
     return { from, to };
   });

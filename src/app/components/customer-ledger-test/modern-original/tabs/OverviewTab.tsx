@@ -1,5 +1,7 @@
 import { TrendingUp, TrendingDown, FileText, ArrowRight, CheckCircle } from 'lucide-react';
 import type { Transaction, LedgerData } from '@/app/services/customerLedgerTypes';
+import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
+import { useFormatDate } from '@/app/hooks/useFormatDate';
 
 interface OverviewTabProps {
   ledgerData: LedgerData;
@@ -7,7 +9,8 @@ interface OverviewTabProps {
 }
 
 export function OverviewTab({ ledgerData, onTransactionClick }: OverviewTabProps) {
-  const formatAmount = (amount: number) => amount.toLocaleString('en-PK');
+  const { formatCurrency } = useFormatCurrency();
+  const { formatDate } = useFormatDate();
   
   const recentTransactions = ledgerData.transactions.slice(0, 5);
   const overdueInvoices = ledgerData.invoices.filter(inv => inv.status === 'Unpaid');
@@ -25,7 +28,7 @@ export function OverviewTab({ ledgerData, onTransactionClick }: OverviewTabProps
           <div className="flex items-start justify-between mb-3">
             <div>
               <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Account Balance</p>
-              <p className="text-2xl font-bold text-white mt-1">Rs {formatAmount(ledgerData.closingBalance)}</p>
+              <p className="text-2xl font-bold text-white mt-1">{formatCurrency(ledgerData.closingBalance)}</p>
               <p className="text-xs text-gray-500 mt-1">Current</p>
             </div>
             <div className="w-12 h-12 rounded-full bg-blue-500/10 flex items-center justify-center">
@@ -37,7 +40,7 @@ export function OverviewTab({ ledgerData, onTransactionClick }: OverviewTabProps
           <div className="flex items-start justify-between mb-3">
             <div>
               <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Overdue Amount</p>
-              <p className="text-2xl font-bold text-yellow-400 mt-1">Rs {formatAmount(overdueInvoices.reduce((sum, inv) => sum + inv.pendingAmount, 0))}</p>
+              <p className="text-2xl font-bold text-yellow-400 mt-1">{formatCurrency(overdueInvoices.reduce((sum, inv) => sum + inv.pendingAmount, 0))}</p>
               <p className="text-xs text-gray-500 mt-1">{overdueInvoices.length} unpaid</p>
             </div>
             <div className="w-12 h-12 rounded-full bg-yellow-500/10 flex items-center justify-center">
@@ -49,7 +52,7 @@ export function OverviewTab({ ledgerData, onTransactionClick }: OverviewTabProps
           <div className="flex items-start justify-between mb-3">
             <div>
               <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Total Received</p>
-              <p className="text-2xl font-bold text-green-400 mt-1">Rs {formatAmount(ledgerData.totalCredit)}</p>
+              <p className="text-2xl font-bold text-green-400 mt-1">{formatCurrency(ledgerData.totalCredit)}</p>
               <p className="text-xs text-gray-500 mt-1">{totalPayments} payments</p>
             </div>
             <div className="w-12 h-12 rounded-full bg-green-500/10 flex items-center justify-center">
@@ -61,7 +64,7 @@ export function OverviewTab({ ledgerData, onTransactionClick }: OverviewTabProps
           <div className="flex items-start justify-between mb-3">
             <div>
               <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Total Sales</p>
-              <p className="text-2xl font-bold text-white mt-1">Rs {formatAmount(ledgerData.totalDebit)}</p>
+              <p className="text-2xl font-bold text-white mt-1">{formatCurrency(ledgerData.totalDebit)}</p>
               <p className="text-xs text-gray-500 mt-1">{totalSales} sales</p>
             </div>
             <div className="w-12 h-12 rounded-full bg-blue-500/10 flex items-center justify-center">
@@ -88,7 +91,7 @@ export function OverviewTab({ ledgerData, onTransactionClick }: OverviewTabProps
                 <div className="flex justify-between items-start mb-2">
                   <div className="text-sm font-medium text-white">{transaction.referenceNo}</div>
                   <div className="text-xs text-gray-500">
-                    {new Date(transaction.date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })}
+                    {formatDate(transaction.date)}
                   </div>
                 </div>
                 <div className="text-xs text-gray-500 mb-2">{transaction.description}</div>
@@ -101,7 +104,7 @@ export function OverviewTab({ ledgerData, onTransactionClick }: OverviewTabProps
                     {transaction.documentType}
                   </span>
                   <span className={`text-sm font-medium ${transaction.debit > 0 ? 'text-yellow-400' : 'text-green-400'}`}>
-                    {transaction.debit > 0 ? '+' : '-'} Rs {formatAmount(transaction.debit || transaction.credit)}
+                    {transaction.debit > 0 ? '+' : '-'} {formatCurrency(transaction.debit || transaction.credit)}
                   </span>
                 </div>
               </button>
@@ -123,7 +126,7 @@ export function OverviewTab({ ledgerData, onTransactionClick }: OverviewTabProps
                 <div className="flex justify-between items-start mb-2">
                   <div className="text-sm font-medium text-white">{invoice.invoiceNo}</div>
                   <div className="text-xs text-gray-500">
-                    {new Date(invoice.date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })}
+                    {formatDate(invoice.date)}
                   </div>
                 </div>
                 <div className="flex justify-between items-center">
@@ -134,7 +137,7 @@ export function OverviewTab({ ledgerData, onTransactionClick }: OverviewTabProps
                   </span>
                   <div className="text-right">
                     <div className="text-xs text-gray-500">Pending</div>
-                    <div className="text-sm font-medium text-yellow-400">Rs {formatAmount(invoice.pendingAmount)}</div>
+                    <div className="text-sm font-medium text-yellow-400">{formatCurrency(invoice.pendingAmount)}</div>
                   </div>
                 </div>
               </div>

@@ -92,6 +92,13 @@ function TransactionRowGroup({
             </div>
           )}
         </td>
+        <td className="px-4 py-3 text-sm text-gray-400 max-w-[200px]">
+          {transaction.notes ? (
+            <span className="line-clamp-2" title={transaction.notes}>{transaction.notes}</span>
+          ) : (
+            '—'
+          )}
+        </td>
         <td className="px-4 py-3 text-sm text-gray-400">
           {transaction.paymentAccount}
         </td>
@@ -110,7 +117,7 @@ function TransactionRowGroup({
       {isExpanded && hasProducts && (() => {
         return (
         <tr className="bg-gray-950/80 border-b border-gray-800">
-          <td colSpan={8} className="px-0 py-0">
+          <td colSpan={9} className="px-0 py-0">
             <div className="pt-3 pb-3 pl-14 pr-4 border-t border-gray-800">
               {studioDetails && (studioDetails.notes || studioDetails.productionStatus) && (
                 <div className="mb-3 flex flex-wrap gap-4 rounded-lg bg-blue-500/10 border border-blue-500/20 px-4 py-2.5">
@@ -229,6 +236,7 @@ export function TransactionClassicView({ transactions, saleItemsMap = new Map(),
             <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 w-[110px]">DATE</th>
             <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 w-[130px]">REFERENCE NO</th>
             <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500">DESCRIPTION</th>
+            <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 w-[180px]">NOTES</th>
             <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 w-[150px]">PAYMENT METHOD</th>
             <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 w-[130px]">DEBIT</th>
             <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 w-[130px]">CREDIT</th>

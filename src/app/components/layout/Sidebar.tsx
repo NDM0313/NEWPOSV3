@@ -28,6 +28,7 @@ import {
 import { useNavigation } from '../../context/NavigationContext';
 import { useModules } from '../../context/ModuleContext';
 import { useSettings } from '../../context/SettingsContext';
+import { useCheckPermission } from '../../hooks/useCheckPermission';
 import { clsx } from 'clsx';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -43,6 +44,7 @@ export const Sidebar = () => {
   const { currentView, setCurrentView, isSidebarOpen, toggleSidebar } = useNavigation();
   const { modules: moduleContextModules } = useModules();
   const { modules: settingsModules } = useSettings();
+  const { canViewReports, canAccessAccounting, canManageSettings, canManageUsers } = useCheckPermission();
   const [expandedItems, setExpandedItems] = useState<string[]>([]);
 
   const toggleExpand = (id: string) => {
@@ -73,9 +75,9 @@ export const Sidebar = () => {
       ]
     },
     { id: 'expenses', label: 'Expenses', icon: Receipt },
-    { id: 'accounting', label: 'Accounting', icon: Calculator },
-    { id: 'reports', label: 'Reports', icon: PieChart },
-    { id: 'settings', label: 'Settings', icon: Settings },
+    { id: 'accounting', label: 'Accounting', icon: Calculator, isHidden: !canAccessAccounting },
+    { id: 'reports', label: 'Reports', icon: PieChart, isHidden: !canViewReports },
+    { id: 'settings', label: 'Settings', icon: Settings, isHidden: !canManageSettings },
     { 
       id: 'test-pages-group', 
       label: 'Test Pages', 

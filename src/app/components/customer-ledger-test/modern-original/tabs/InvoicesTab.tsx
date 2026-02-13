@@ -2,12 +2,16 @@ import { useState } from 'react';
 import { Search, Download, ChevronDown, ChevronRight, CheckCircle2, Clock, AlertCircle } from 'lucide-react';
 import { ModernItemsTable } from '../ModernItemsTable';
 import type { Invoice } from '@/app/services/customerLedgerTypes';
+import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
+import { useFormatDate } from '@/app/hooks/useFormatDate';
 
 interface InvoicesTabProps {
   invoices: Invoice[];
 }
 
 export function InvoicesTab({ invoices }: InvoicesTabProps) {
+  const { formatCurrency } = useFormatCurrency();
+  const { formatDate } = useFormatDate();
   const [expandedInvoices, setExpandedInvoices] = useState<Set<string>>(new Set());
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'Fully Paid' | 'Partially Paid' | 'Unpaid'>('all');
@@ -83,15 +87,15 @@ export function InvoicesTab({ invoices }: InvoicesTabProps) {
       <div className="grid grid-cols-3 gap-4">
         <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
           <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Total Invoice Amount</p>
-          <p className="text-2xl font-bold text-blue-400 mt-1">Rs {stats.total.toLocaleString('en-PK')}</p>
+          <p className="text-2xl font-bold text-blue-400 mt-1">{formatCurrency(stats.total)}</p>
         </div>
         <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
           <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Total Paid</p>
-          <p className="text-2xl font-bold text-green-400 mt-1">Rs {stats.paid.toLocaleString('en-PK')}</p>
+          <p className="text-2xl font-bold text-green-400 mt-1">{formatCurrency(stats.paid)}</p>
         </div>
         <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
           <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Total Pending</p>
-          <p className="text-2xl font-bold text-yellow-400 mt-1">Rs {stats.pending.toLocaleString('en-PK')}</p>
+          <p className="text-2xl font-bold text-yellow-400 mt-1">{formatCurrency(stats.pending)}</p>
         </div>
       </div>
 
@@ -122,22 +126,22 @@ export function InvoicesTab({ invoices }: InvoicesTabProps) {
                   <div>
                     <div className="text-base font-medium text-white mb-0.5">{invoice.invoiceNo}</div>
                     <div className="text-xs text-gray-500">
-                      {new Date(invoice.date).toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' })}
+                      {formatDate(invoice.date)}
                     </div>
                   </div>
                 </div>
                 <div className="flex items-center gap-6">
                   <div className="text-right">
                     <div className="text-xs text-gray-500 mb-0.5">Invoice Total</div>
-                    <div className="text-lg font-medium text-white">Rs {invoice.invoiceTotal.toLocaleString('en-PK')}</div>
+                    <div className="text-lg font-medium text-white">{formatCurrency(invoice.invoiceTotal)}</div>
                   </div>
                   <div className="text-right">
                     <div className="text-xs text-gray-500 mb-0.5">Paid</div>
-                    <div className="text-base text-green-400 font-medium">Rs {invoice.paidAmount.toLocaleString('en-PK')}</div>
+                    <div className="text-base text-green-400 font-medium">{formatCurrency(invoice.paidAmount)}</div>
                   </div>
                   <div className="text-right">
                     <div className="text-xs text-gray-500 mb-0.5">Pending</div>
-                    <div className="text-base text-yellow-400 font-medium">Rs {invoice.pendingAmount.toLocaleString('en-PK')}</div>
+                    <div className="text-base text-yellow-400 font-medium">{formatCurrency(invoice.pendingAmount)}</div>
                   </div>
                   <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm border ${statusConfig.color}`}>
                     <StatusIcon className="w-4 h-4" />

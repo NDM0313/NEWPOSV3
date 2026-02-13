@@ -7,7 +7,7 @@
 import React, { useState, useMemo, useCallback } from 'react';
 import {
   Plus, Package, DollarSign, Calendar, MoreVertical, Eye, Edit, Trash2, FileText,
-  CornerDownLeft, Receipt, MapPin, Loader2, ShoppingBag,
+  CornerDownLeft, Receipt, MapPin, Loader2, ShoppingBag, Truck, CheckCircle2,
 } from 'lucide-react';
 import { Button } from '@/app/components/ui/button';
 import { Badge } from '@/app/components/ui/badge';
@@ -37,10 +37,15 @@ import { ListToolbar } from '@/app/components/ui/list-toolbar';
 import { formatLongDate } from '@/app/components/ui/utils';
 import { UnifiedPaymentDialog } from '@/app/components/shared/UnifiedPaymentDialog';
 import { ViewPaymentsModal } from '@/app/components/sales/ViewPaymentsModal';
+import { ViewRentalDetailsDrawer } from '@/app/components/rentals/ViewRentalDetailsDrawer';
+import { PickupModal } from '@/app/components/rentals/PickupModal';
+import { ReturnModal } from '@/app/components/rentals/ReturnModal';
 import { toast } from 'sonner';
+import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
 
 const STATUS_LABELS: Record<RentalStatus, string> = {
   draft: 'Draft',
+  booked: 'Booked',
   rented: 'Rented',
   returned: 'Returned',
   overdue: 'Overdue',
@@ -49,20 +54,25 @@ const STATUS_LABELS: Record<RentalStatus, string> = {
 
 interface RentalsPageProps {
   onAddRental?: () => void;
+  onEditRental?: (rental: RentalUI) => void;
+  /** When true, hide the page header (used when embedded in RentalDashboard with tabs) */
+  embedded?: boolean;
 }
 
 const STATUS_CLASS: Record<RentalStatus, string> = {
   draft: 'bg-gray-500/20 text-gray-400 border-gray-500/30',
+  booked: 'bg-pink-500/20 text-pink-400 border-pink-500/30',
   rented: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
   returned: 'bg-green-500/20 text-green-400 border-green-500/30',
   overdue: 'bg-red-500/20 text-red-400 border-red-500/30',
   cancelled: 'bg-gray-600/20 text-gray-500 border-gray-600/30',
 };
 
-export const RentalsPage = ({ onAddRental }: RentalsPageProps = {}) => {
+export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPageProps = {}) => {
   const { companyId, branchId } = useSupabase();
+  const { formatCurrency } = useFormatCurrency();
   const { startDate, endDate } = useDateRange();
-  const { rentals, loading, refreshRentals, finalizeRental, receiveReturn, cancelRental, addPayment, deletePayment, deleteRental } = useRentals();
+  const { rentals, loading, refreshRentals, receiveReturn, cancelRental, addPayment, deletePayment, deleteRental, markAsPickedUp, getRentalById } = useRentals();
 
   const [searchTerm, setSearchTerm] = useState('');
   const [filterOpen, setFilterOpen] = useState(false);
@@ -73,11 +83,12 @@ export const RentalsPage = ({ onAddRental }: RentalsPageProps = {}) => {
   const [currentPage, setCurrentPage] = useState(1);
   const [selectedRental, setSelectedRental] = useState<RentalUI | null>(null);
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
+  const [paymentOpenedFromPickup, setPaymentOpenedFromPickup] = useState(false);
   const [viewPaymentsOpen, setViewPaymentsOpen] = useState(false);
   const [viewDetailsOpen, setViewDetailsOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [returnDialogOpen, setReturnDialogOpen] = useState(false);
-  const [returnDate, setReturnDate] = useState('');
+  const [pickupModalOpen, setPickupModalOpen] = useState(false);
 
   const [visibleColumns, setVisibleColumns] = useState({
     rentalNo: true,
@@ -88,13 +99,14 @@ export const RentalsPage = ({ onAddRental }: RentalsPageProps = {}) => {
     expectedReturn: true,
     actualReturn: true,
     status: true,
+    action: true,
     total: true,
     paid: true,
     due: true,
   });
 
   const [columnOrder, setColumnOrder] = useState([
-    'rentalNo', 'customer', 'product', 'branch', 'startDate', 'expectedReturn', 'actualReturn', 'status', 'total', 'paid', 'due',
+    'rentalNo', 'customer', 'product', 'branch', 'startDate', 'expectedReturn', 'actualReturn', 'status', 'action', 'total', 'paid', 'due',
   ]);
 
   const columnLabels: Record<string, string> = {
@@ -106,6 +118,7 @@ export const RentalsPage = ({ onAddRental }: RentalsPageProps = {}) => {
     expectedReturn: 'Expected Return',
     actualReturn: 'Actual Return',
     status: 'Status',
+    action: 'Action',
     total: 'Total',
     paid: 'Paid',
     due: 'Due',
@@ -137,6 +150,7 @@ export const RentalsPage = ({ onAddRental }: RentalsPageProps = {}) => {
     const w: Record<string, string> = {
       rentalNo: '110px', customer: '160px', product: '140px', branch: '120px',
       startDate: '100px', expectedReturn: '110px', actualReturn: '100px', status: '100px',
+      action: '120px',
       total: '100px', paid: '90px', due: '90px',
     };
     return w[key] || '100px';
@@ -187,15 +201,22 @@ export const RentalsPage = ({ onAddRental }: RentalsPageProps = {}) => {
 
   const totalPages = Math.max(1, Math.ceil(filteredRentals.length / pageSize));
 
+  const today = new Date().toISOString().slice(0, 10);
+
   const summary = useMemo(() => {
     const thisMonth = new Date().toISOString().slice(0, 7);
     const monthRentals = rentals.filter((r) => r.startDate.startsWith(thisMonth));
     const totalAmount = monthRentals.reduce((s, r) => s + r.totalAmount, 0);
     const totalDue = rentals.filter((r) => r.status === 'rented' || r.status === 'overdue').reduce((s, r) => s + r.dueAmount, 0);
-    const active = rentals.filter((r) => r.status === 'rented' || r.status === 'overdue').length;
     const returned = rentals.filter((r) => r.status === 'returned').length;
-    return { totalAmount, totalDue, active, returned };
-  }, [rentals]);
+    const todayPickups = rentals.filter((r) => r.startDate === today && r.status === 'booked').length;
+    const todayReturns = rentals.filter((r) => r.expectedReturnDate === today && ['booked', 'rented', 'overdue'].includes(r.status)).length;
+    const active = rentals.filter((r) => r.status === 'rented').length;
+    const overdue = rentals.filter((r) => r.status === 'overdue' || (r.status === 'rented' && r.expectedReturnDate < today)).length;
+    const rentableProducts = new Set(rentals.flatMap((r) => r.items?.map((i) => i.productId) ?? [])).size;
+    const utilization = rentableProducts > 0 ? Math.round((active / rentableProducts) * 100) : 0;
+    return { totalAmount, totalDue, active, returned, todayPickups, todayReturns, overdue, utilization };
+  }, [rentals, today]);
 
   const handleDelete = (r: RentalUI) => {
     setSelectedRental(r);
@@ -215,41 +236,31 @@ export const RentalsPage = ({ onAddRental }: RentalsPageProps = {}) => {
 
   const handleReturn = (r: RentalUI) => {
     setSelectedRental(r);
-    setReturnDate(new Date().toISOString().split('T')[0]);
     setReturnDialogOpen(true);
   };
 
-  const confirmReturn = async () => {
-    if (!selectedRental) return;
-    try {
-      await receiveReturn(selectedRental.id, returnDate);
-      setReturnDialogOpen(false);
-      setSelectedRental(null);
-    } catch (e: any) {
-      toast.error(e?.message || 'Return failed');
-    }
-  };
-
   return (
-    <div className="h-screen flex flex-col bg-[#0B0F19]">
-      <div className="shrink-0 px-6 py-4 border-b border-gray-800">
-        <div className="flex justify-between items-center">
-          <div>
-            <h1 className="text-2xl font-bold text-white">Rentals</h1>
-            <p className="text-sm text-gray-400 mt-0.5">Manage rental orders and returns</p>
+    <div className="h-full flex flex-col bg-[#0B0F19]">
+      {!embedded && (
+        <div className="shrink-0 px-6 py-4 border-b border-gray-800">
+          <div className="flex justify-between items-center">
+            <div>
+              <h1 className="text-2xl font-bold text-white">Rentals</h1>
+              <p className="text-sm text-gray-400 mt-0.5">Manage rental orders and returns</p>
+            </div>
+            <Button
+              className="bg-pink-600 hover:bg-pink-500 text-white h-10 gap-2"
+              onClick={() => (onAddRental ? onAddRental() : toast.info('Add Rental – open from Rental list view'))}
+            >
+              <Plus size={16} />
+              Add Rental
+            </Button>
           </div>
-          <Button
-            className="bg-pink-600 hover:bg-pink-500 text-white h-10 gap-2"
-            onClick={() => (onAddRental ? onAddRental() : toast.info('Add Rental – open from Rental list view'))}
-          >
-            <Plus size={16} />
-            Add Rental
-          </Button>
         </div>
-      </div>
+      )}
 
       <div className="shrink-0 px-6 py-4 bg-[#0F1419] border-b border-gray-800">
-        <div className="grid grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-7 gap-4">
           <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
             <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Total Rental (Month)</p>
             <p className="text-2xl font-bold text-white mt-1">${summary.totalAmount.toLocaleString()}</p>
@@ -259,12 +270,24 @@ export const RentalsPage = ({ onAddRental }: RentalsPageProps = {}) => {
             <p className="text-2xl font-bold text-red-400 mt-1">${summary.totalDue.toLocaleString()}</p>
           </div>
           <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
+            <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Today Pickups</p>
+            <p className="text-2xl font-bold text-pink-400 mt-1">{summary.todayPickups}</p>
+          </div>
+          <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
+            <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Today Returns</p>
+            <p className="text-2xl font-bold text-amber-400 mt-1">{summary.todayReturns}</p>
+          </div>
+          <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
             <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Active Rentals</p>
             <p className="text-2xl font-bold text-blue-400 mt-1">{summary.active}</p>
           </div>
           <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
-            <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Returned</p>
-            <p className="text-2xl font-bold text-green-400 mt-1">{summary.returned}</p>
+            <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Overdue</p>
+            <p className="text-2xl font-bold text-red-500 mt-1">{summary.overdue}</p>
+          </div>
+          <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
+            <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Utilization %</p>
+            <p className="text-2xl font-bold text-cyan-400 mt-1">{summary.utilization}%</p>
           </div>
         </div>
       </div>
@@ -342,10 +365,10 @@ export const RentalsPage = ({ onAddRental }: RentalsPageProps = {}) => {
                   className="grid gap-3 px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider"
                   style={{ gridTemplateColumns: gridTemplateColumns }}
                 >
-                  {columnOrder.map((key) => {
-                    if (!visibleColumns[key as keyof typeof visibleColumns]) return null;
-                    const align =
-                      key === 'total' || key === 'paid' || key === 'due' ? 'text-right' : key === 'status' ? 'text-center' : 'text-left';
+                      {columnOrder.map((key) => {
+                        if (!visibleColumns[key as keyof typeof visibleColumns]) return null;
+                        const align =
+                          key === 'total' || key === 'paid' || key === 'due' ? 'text-right' : key === 'status' || key === 'action' ? 'text-center' : 'text-left';
                     return (
                       <div key={key} className={align}>
                         {columnLabels[key]}
@@ -416,24 +439,101 @@ export const RentalsPage = ({ onAddRental }: RentalsPageProps = {}) => {
                               </Badge>
                             );
                             break;
-                          case 'total':
-                            cell = <span className="text-sm font-semibold text-white tabular-nums">${r.totalAmount.toLocaleString()}</span>;
-                            break;
-                          case 'paid':
-                            cell = <span className="text-sm text-gray-300 tabular-nums">${r.paidAmount.toLocaleString()}</span>;
-                            break;
-                          case 'due':
+                          case 'action':
                             cell = (
-                              <span
-                                className={cn(
-                                  'text-sm tabular-nums',
-                                  r.dueAmount > 0 ? 'text-red-400 font-semibold' : 'text-gray-600'
+                              <div className="flex items-center gap-1">
+                                {r.status === 'booked' && (
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="h-8 text-amber-400 border-amber-500/50 hover:bg-amber-500/20 hover:border-amber-500"
+                                    onClick={() => { setSelectedRental(r); setPickupModalOpen(true); }}
+                                  >
+                                    <Truck size={14} className="mr-1" />
+                                    Pick Up
+                                  </Button>
                                 )}
-                              >
-                                ${r.dueAmount.toLocaleString()}
-                              </span>
+                                {(r.status === 'rented' || r.status === 'overdue') && (
+                                  <div className="flex items-center gap-1">
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      className={cn(
+                                        "h-8 border-green-500/50 hover:bg-green-500/20 hover:border-green-500",
+                                        r.status === 'overdue' ? "text-red-400" : "text-green-400"
+                                      )}
+                                      onClick={() => handleReturn(r)}
+                                    >
+                                      <CornerDownLeft size={14} className="mr-1" />
+                                      Return
+                                    </Button>
+                                    {r.status === 'overdue' && (
+                                      <Badge className="text-[10px] bg-red-500/30 text-red-400 border-red-500/50">Overdue</Badge>
+                                    )}
+                                  </div>
+                                )}
+                                {['draft', 'returned', 'cancelled'].includes(r.status) && (
+                                  <span className="text-xs text-gray-500">—</span>
+                                )}
+                              </div>
                             );
                             break;
+                          case 'total':
+                            cell = <span className="text-sm font-semibold text-white tabular-nums">{formatCurrency(r.totalAmount)}</span>;
+                            break;
+                          case 'paid': {
+                            const canAddPayment = r.status === 'rented' || r.status === 'overdue';
+                            const openPayment = () => { if (canAddPayment) { setSelectedRental(r); setPaymentDialogOpen(true); } };
+                            cell = (
+                              <div
+                                role={canAddPayment ? 'button' : undefined}
+                                tabIndex={canAddPayment ? 0 : undefined}
+                                onClick={openPayment}
+                                onKeyDown={(e) => canAddPayment && (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), openPayment())}
+                                className={cn(
+                                  'text-sm text-gray-300 tabular-nums w-full text-right',
+                                  canAddPayment && 'cursor-pointer hover:text-white hover:underline'
+                                )}
+                              >
+                                {formatCurrency(r.paidAmount)}
+                              </div>
+                            );
+                            break;
+                          }
+                          case 'due': {
+                            const canAddPayment = r.status === 'rented' || r.status === 'overdue';
+                            const openPayment = () => { if (canAddPayment) { setSelectedRental(r); setPaymentDialogOpen(true); } };
+                            const openPaymentHistory = () => { setSelectedRental(r); setViewPaymentsOpen(true); };
+                            const paymentStatus = r.dueAmount <= 0 ? 'paid' : r.paidAmount > 0 ? 'partial' : 'due';
+                            cell = (
+                              <div
+                                role="button"
+                                tabIndex={0}
+                                onClick={openPaymentHistory}
+                                onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), openPaymentHistory())}
+                                className="w-full text-right cursor-pointer hover:opacity-90"
+                              >
+                                {paymentStatus === 'paid' ? (
+                                  <Badge className="text-[10px] bg-green-500/20 text-green-400 border-green-500/30 gap-1 inline-flex">
+                                    <CheckCircle2 size={10} />
+                                    Paid
+                                  </Badge>
+                                ) : paymentStatus === 'partial' ? (
+                                  <Badge className="text-[10px] bg-amber-500/20 text-amber-400 border-amber-500/30 gap-1 inline-flex">
+                                    Partial
+                                  </Badge>
+                                ) : (
+                                  <Badge className="text-[10px] bg-red-500/20 text-red-400 border-red-500/30 gap-1 inline-flex">
+                                    Due
+                                  </Badge>
+                                )}
+                                {r.dueAmount > 0 && (
+                                  <span className="ml-1 text-xs text-gray-400">{formatCurrency(r.dueAmount)}</span>
+                                )}
+                              </div>
+                            );
+                            break;
+                          }
                           default:
                             break;
                         }
@@ -441,21 +541,10 @@ export const RentalsPage = ({ onAddRental }: RentalsPageProps = {}) => {
                       })}
 
                       <div className="flex items-center justify-center gap-1">
-                        <button
-                          type="button"
-                          onClick={() => handleDelete(r)}
-                          className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:text-red-400 hover:bg-gray-800/80"
-                          title="Delete"
-                        >
-                          <Trash2 size={16} />
-                        </button>
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
                             <button
-                              className={cn(
-                                'w-8 h-8 rounded-lg bg-gray-800/50 hover:bg-gray-700 flex items-center justify-center text-gray-400 hover:text-white',
-                                hoveredRow === r.id ? 'opacity-100' : 'opacity-0'
-                              )}
+                              className="w-8 h-8 rounded-lg bg-gray-800/50 hover:bg-gray-700 flex items-center justify-center text-gray-400 hover:text-white"
                             >
                               <MoreVertical size={16} />
                             </button>
@@ -471,10 +560,10 @@ export const RentalsPage = ({ onAddRental }: RentalsPageProps = {}) => {
                               <Eye size={14} className="mr-2 text-blue-400" />
                               View
                             </DropdownMenuItem>
-                            {r.status === 'draft' && (
+                            {(r.status === 'draft' || r.status === 'booked') && (
                               <DropdownMenuItem
                                 className="hover:bg-gray-800 cursor-pointer"
-                                onClick={() => toast.info('Edit rental – wire to RentalForm')}
+                                onClick={() => onEditRental?.(r)}
                               >
                                 <Edit size={14} className="mr-2 text-green-400" />
                                 Edit
@@ -483,18 +572,8 @@ export const RentalsPage = ({ onAddRental }: RentalsPageProps = {}) => {
                             {(r.status === 'rented' || r.status === 'overdue') && (
                               <DropdownMenuItem
                                 className="hover:bg-gray-800 cursor-pointer"
-                                onClick={() => handleReturn(r)}
-                              >
-                                <CornerDownLeft size={14} className="mr-2 text-orange-400" />
-                                Receive Return
-                              </DropdownMenuItem>
-                            )}
-                            {(r.status === 'rented' || r.status === 'overdue') && (
-                              <DropdownMenuItem
-                                className="hover:bg-gray-800 cursor-pointer"
                                 onClick={() => {
                                   setSelectedRental(r);
-                                  setViewPaymentsOpen(false);
                                   setPaymentDialogOpen(true);
                                 }}
                               >
@@ -514,17 +593,23 @@ export const RentalsPage = ({ onAddRental }: RentalsPageProps = {}) => {
                             </DropdownMenuItem>
                             <DropdownMenuItem
                               className="hover:bg-gray-800 cursor-pointer"
-                              onClick={() => toast.info('Print rental – wire to Print view')}
+                              onClick={() => {
+                                setSelectedRental(r);
+                                setViewDetailsOpen(true);
+                              }}
                             >
                               <FileText size={14} className="mr-2 text-purple-400" />
                               Print
                             </DropdownMenuItem>
-                            {r.status === 'draft' && (
+                            {(r.status === 'draft' || r.status === 'booked') && (
                               <>
                                 <DropdownMenuSeparator className="bg-gray-700" />
                                 <DropdownMenuItem
                                   className="hover:bg-gray-800 cursor-pointer text-red-400"
-                                  onClick={() => handleDelete(r)}
+                                  onClick={() => {
+                                    setSelectedRental(r);
+                                    setDeleteDialogOpen(true);
+                                  }}
                                 >
                                   <Trash2 size={14} className="mr-2" />
                                   Delete
@@ -573,6 +658,7 @@ export const RentalsPage = ({ onAddRental }: RentalsPageProps = {}) => {
             due: selectedRental.dueAmount,
             paymentStatus: selectedRental.dueAmount <= 0 ? 'paid' : selectedRental.paidAmount > 0 ? 'partial' : 'unpaid',
             payments: [],
+            referenceType: 'rental',
           }}
           onAddPayment={() => {
             setViewPaymentsOpen(false);
@@ -592,9 +678,13 @@ export const RentalsPage = ({ onAddRental }: RentalsPageProps = {}) => {
           isOpen={paymentDialogOpen}
           onClose={() => {
             setPaymentDialogOpen(false);
-            if (!viewPaymentsOpen) setSelectedRental(null);
+            if (paymentOpenedFromPickup) {
+              setPaymentOpenedFromPickup(false);
+              setPickupModalOpen(true);
+            }
+            if (!viewPaymentsOpen && !pickupModalOpen) setSelectedRental(null);
           }}
-          context="customer"
+          context="rental"
           entityName={selectedRental.customerName}
           entityId={selectedRental.customerId || selectedRental.id}
           outstandingAmount={selectedRental.dueAmount}
@@ -605,16 +695,57 @@ export const RentalsPage = ({ onAddRental }: RentalsPageProps = {}) => {
           onSuccess={async () => {
             await refreshRentals();
             setPaymentDialogOpen(false);
+            if (selectedRental && getRentalById) {
+              const updated = getRentalById(selectedRental.id);
+              if (updated) setSelectedRental(updated);
+            }
+            if (paymentOpenedFromPickup) {
+              setPaymentOpenedFromPickup(false);
+              setPickupModalOpen(true);
+            }
           }}
         />
       )}
+
+      <ViewRentalDetailsDrawer
+        isOpen={viewDetailsOpen}
+        onClose={() => {
+          setViewDetailsOpen(false);
+          setSelectedRental(null);
+        }}
+        rental={selectedRental}
+        onRefresh={refreshRentals}
+        onEdit={(r) => {
+          setViewDetailsOpen(false);
+          setSelectedRental(null);
+          onEditRental?.(r);
+        }}
+        onAddPayment={() => {
+          setViewDetailsOpen(false);
+          setPaymentDialogOpen(true);
+        }}
+        onAddPaymentForPickup={(r) => {
+          setSelectedRental(r);
+          setViewDetailsOpen(false);
+          setPaymentDialogOpen(true);
+        }}
+        onReceiveReturn={() => {
+          setViewDetailsOpen(false);
+          handleReturn(selectedRental!);
+        }}
+        onDelete={() => {
+          handleDelete(selectedRental!);
+          setViewDetailsOpen(false);
+        }}
+        onMarkAsPickedUp={markAsPickedUp}
+      />
 
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <AlertDialogContent className="bg-gray-900 border-gray-700">
           <AlertDialogHeader>
             <AlertDialogTitle className="text-white">Delete Rental</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete rental <strong>{selectedRental?.rentalNo}</strong>? Only draft rentals can be deleted.
+              Are you sure you want to delete rental <strong>{selectedRental?.rentalNo}</strong>? Only draft or booked rentals can be deleted.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -626,28 +757,29 @@ export const RentalsPage = ({ onAddRental }: RentalsPageProps = {}) => {
         </AlertDialogContent>
       </AlertDialog>
 
-      <AlertDialog open={returnDialogOpen} onOpenChange={setReturnDialogOpen}>
-        <AlertDialogContent className="bg-gray-900 border-gray-700">
-          <AlertDialogHeader>
-            <AlertDialogTitle className="text-white">Receive Return</AlertDialogTitle>
-            <AlertDialogDescription>
-              Confirm return for <strong>{selectedRental?.rentalNo}</strong>. Actual return date:
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <input
-            type="date"
-            className="w-full mt-2 bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white"
-            value={returnDate}
-            onChange={(e) => setReturnDate(e.target.value)}
-          />
-          <AlertDialogFooter>
-            <AlertDialogCancel className="bg-gray-800 text-white border-gray-700">Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmReturn} className="bg-green-600 hover:bg-green-500">
-              Confirm Return
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <PickupModal
+        open={pickupModalOpen}
+        onOpenChange={setPickupModalOpen}
+        rental={selectedRental}
+        onConfirm={async (id, payload) => await markAsPickedUp(id, payload)}
+        onAddPayment={(r) => {
+          setSelectedRental(r);
+          setPaymentOpenedFromPickup(true);
+          setPickupModalOpen(false);
+          setPaymentDialogOpen(true);
+        }}
+      />
+
+      <ReturnModal
+        open={returnDialogOpen}
+        onOpenChange={(open) => {
+          setReturnDialogOpen(open);
+          if (!open) setSelectedRental(null);
+        }}
+        rental={selectedRental}
+        documentInfo={selectedRental ? { documentType: selectedRental.documentType, documentNumber: selectedRental.documentNumber } : undefined}
+        onConfirm={async (id, payload) => await receiveReturn(id, payload)}
+      />
     </div>
   );
 };

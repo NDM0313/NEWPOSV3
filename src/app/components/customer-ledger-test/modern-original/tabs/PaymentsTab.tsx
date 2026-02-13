@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { Search, Download, CreditCard, ArrowDownRight } from 'lucide-react';
 import type { Transaction } from '@/app/services/customerLedgerTypes';
+import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
+import { useFormatDate } from '@/app/hooks/useFormatDate';
 
 interface PaymentsTabProps {
   transactions: Transaction[];
@@ -8,6 +10,8 @@ interface PaymentsTabProps {
 }
 
 export function PaymentsTab({ transactions, onTransactionClick }: PaymentsTabProps) {
+  const { formatCurrency } = useFormatCurrency();
+  const { formatDate } = useFormatDate();
   const [searchTerm, setSearchTerm] = useState('');
 
   const payments = transactions.filter(t => t.documentType === 'Payment');
@@ -69,7 +73,7 @@ export function PaymentsTab({ transactions, onTransactionClick }: PaymentsTabPro
             <div className="flex items-start justify-between mb-3">
               <div>
                 <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold truncate max-w-[120px]">{method}</p>
-                <p className="text-2xl font-bold text-white mt-1">Rs {data.total.toLocaleString('en-PK')}</p>
+                <p className="text-2xl font-bold text-white mt-1">{formatCurrency(data.total)}</p>
                 <p className="text-xs text-gray-500 mt-1">{data.count} payments</p>
               </div>
               <div className="w-12 h-12 rounded-full bg-green-500/10 flex items-center justify-center flex-shrink-0">
@@ -82,7 +86,7 @@ export function PaymentsTab({ transactions, onTransactionClick }: PaymentsTabPro
 
       <div className="flex items-center justify-between text-sm text-gray-500">
         <span>Showing <span className="text-white font-medium">{filteredPayments.length}</span> of {payments.length} payments</span>
-        <span>Total Received: <span className="text-green-400 font-semibold">Rs {payments.reduce((sum, p) => sum + p.credit, 0).toLocaleString('en-PK')}</span></span>
+        <span>Total Received: <span className="text-green-400 font-semibold">{formatCurrency(payments.reduce((sum, p) => sum + p.credit, 0))}</span></span>
       </div>
 
       <div className="overflow-x-auto border border-gray-800 rounded-xl bg-gray-900/50">
@@ -107,7 +111,7 @@ export function PaymentsTab({ transactions, onTransactionClick }: PaymentsTabPro
                 onClick={() => onTransactionClick(payment)}
               >
                 <td className="px-4 py-4 text-white whitespace-nowrap">
-                  {new Date(payment.date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
+                  {formatDate(payment.date)}
                 </td>
                 <td className="px-4 py-4">
                   <button
@@ -129,7 +133,7 @@ export function PaymentsTab({ transactions, onTransactionClick }: PaymentsTabPro
                 <td className="px-4 py-4 text-gray-400 max-w-xs truncate">{payment.description}</td>
                 <td className="px-4 py-4 text-gray-500 text-xs max-w-32 truncate">{payment.notes || '-'}</td>
                 <td className="px-4 py-4 text-right text-green-400 tabular-nums font-semibold">
-                  Rs {payment.credit.toLocaleString('en-PK')}
+                  {formatCurrency(payment.credit)}
                 </td>
               </tr>
             ))}

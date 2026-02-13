@@ -45,6 +45,7 @@ import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Badge } from "../ui/badge";
 import { cn } from "../ui/utils";
+import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
 import { ReturnDressModal } from './ReturnDressModal';
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 import { Label } from "../ui/label";
@@ -96,6 +97,7 @@ const allColumns = [
 
 export const RentalOrdersList = () => {
   const { companyId, branchId } = useSupabase();
+  const { formatCurrency } = useFormatCurrency();
   const [orders, setOrders] = useState<RentalOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [returnModalOpen, setReturnModalOpen] = useState(false);
@@ -264,7 +266,7 @@ export const RentalOrdersList = () => {
         late_fee: feeAmount,
         total_amount: currentTotal + feeAmount
       });
-      toast.success(`Late fee of Rs. ${feeAmount} applied`);
+      toast.success(`Late fee of ${formatCurrency(feeAmount)} applied`);
       setLateFeeDialogOpen(false);
       setSelectedOrder(null);
       await loadRentals();
@@ -835,10 +837,12 @@ export const RentalOrdersList = () => {
                                 Edit Booking
                               </DropdownMenuItem>
                               <DropdownMenuSeparator className="bg-gray-800" />
-                              <DropdownMenuItem onClick={() => handleAction(order, 'payment')} className="hover:bg-gray-800 cursor-pointer">
-                                <CreditCard size={14} className="mr-2" />
-                                Add Payment
-                              </DropdownMenuItem>
+                              {(order.status === 'Dispatched' || order.status === 'Overdue') && (
+                                <DropdownMenuItem onClick={() => handleAction(order, 'payment')} className="hover:bg-gray-800 cursor-pointer">
+                                  <CreditCard size={14} className="mr-2" />
+                                  Add Payment
+                                </DropdownMenuItem>
+                              )}
                               <DropdownMenuItem onClick={() => handleAction(order, 'ledger')} className="hover:bg-gray-800 cursor-pointer">
                                 <Receipt size={14} className="mr-2 text-blue-400" />
                                 View Ledger
@@ -1025,7 +1029,7 @@ export const RentalOrdersList = () => {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <div className="py-4">
-            <Label className="text-gray-300">Late Fee Amount (Rs.)</Label>
+            <Label className="text-gray-300">Late Fee Amount</Label>
             <Input
               type="number"
               id="lateFeeAmount"

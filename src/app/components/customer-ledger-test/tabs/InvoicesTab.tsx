@@ -2,13 +2,16 @@ import React from 'react';
 import type { Invoice } from '@/app/services/customerLedgerTypes';
 import { Badge } from '@/app/components/ui/badge';
 import { EmptyState } from '@/app/components/shared/EmptyState';
+import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
+import { useFormatDate } from '@/app/hooks/useFormatDate';
 
 interface InvoicesTabProps {
   invoices: Invoice[];
 }
 
 export function InvoicesTab({ invoices }: InvoicesTabProps) {
-  const formatAmount = (amount: number) => amount.toLocaleString('en-PK');
+  const { formatCurrency } = useFormatCurrency();
+  const { formatDate } = useFormatDate();
 
   const getStatusBadge = (status: Invoice['status']) => {
     switch (status) {
@@ -45,16 +48,16 @@ export function InvoicesTab({ invoices }: InvoicesTabProps) {
                 <tr key={invoice.invoiceNo} className="hover:bg-slate-50 transition-colors">
                   <td className="px-4 py-3 text-sm font-medium text-slate-900">{invoice.invoiceNo}</td>
                   <td className="px-4 py-3 text-sm text-slate-600">
-                    {new Date(invoice.date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
+                    {formatDate(invoice.date)}
                   </td>
                   <td className="px-4 py-3 text-sm text-right font-medium text-slate-900">
-                    Rs {formatAmount(invoice.invoiceTotal)}
+                    {formatCurrency(invoice.invoiceTotal)}
                   </td>
                   <td className="px-4 py-3 text-sm text-right font-medium text-emerald-600">
-                    Rs {formatAmount(invoice.paidAmount)}
+                    {formatCurrency(invoice.paidAmount)}
                   </td>
                   <td className="px-4 py-3 text-sm text-right font-medium text-red-600">
-                    Rs {formatAmount(invoice.pendingAmount)}
+                    {formatCurrency(invoice.pendingAmount)}
                   </td>
                   <td className="px-4 py-3 text-center">
                     {getStatusBadge(invoice.status)}

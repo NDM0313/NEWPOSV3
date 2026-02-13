@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { useSettings } from '@/app/context/SettingsContext';
+import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
 import { ClassicPrintBase } from './ClassicPrintBase';
+import { usePrinterConfig } from '@/app/hooks/usePrinterConfig';
 import { Checkbox } from '../ui/checkbox';
 import { Label } from '../ui/label';
 import { formatBoxesPieces } from '../ui/utils';
@@ -12,6 +14,8 @@ interface SaleReturnPrintLayoutProps {
 
 export const SaleReturnPrintLayout: React.FC<SaleReturnPrintLayoutProps> = ({ saleReturn, onClose }) => {
   const { inventorySettings } = useSettings();
+  const { formatCurrency } = useFormatCurrency();
+  const { config: printerConfig } = usePrinterConfig();
   const enablePacking = inventorySettings.enablePacking;
   const [showDetailedReturnPacking, setShowDetailedReturnPacking] = useState(false);
 
@@ -87,6 +91,7 @@ export const SaleReturnPrintLayout: React.FC<SaleReturnPrintLayoutProps> = ({ sa
       headerMeta={headerMeta}
       onPrint={() => window.print()}
       onClose={onClose}
+      printerMode={printerConfig.mode}
       actionChildren={
         enablePacking ? (
           <div className="flex items-center gap-4">
@@ -185,9 +190,9 @@ export const SaleReturnPrintLayout: React.FC<SaleReturnPrintLayoutProps> = ({ sa
                   )}
                   <td className="text-right">{returnQty.toFixed(2)}</td>
                   <td>{unit}</td>
-                  <td className="text-right classic-print-currency">Rs. {(item.unit_price || item.price || 0).toLocaleString()}</td>
+                  <td className="text-right classic-print-currency">{formatCurrency(item.unit_price || item.price || 0)}</td>
                   <td className="text-right classic-print-currency" style={{ color: '#dc2626' }}>
-                    - Rs. {((item.unit_price || item.price || 0) * returnQty).toLocaleString()}
+                    - {formatCurrency((item.unit_price || item.price || 0) * returnQty)}
                   </td>
                 </tr>
               );
@@ -208,14 +213,14 @@ export const SaleReturnPrintLayout: React.FC<SaleReturnPrintLayoutProps> = ({ sa
           <div className="classic-print-totals-row">
             <span className="classic-print-totals-label">Subtotal:</span>
             <span className="classic-print-totals-value classic-print-currency" style={{ color: '#dc2626' }}>
-              - Rs. {(saleReturn.subtotal || 0).toLocaleString()}
+              - {formatCurrency(saleReturn.subtotal || 0)}
             </span>
           </div>
           {saleReturn.discount_amount > 0 && (
             <div className="classic-print-totals-row">
               <span className="classic-print-totals-label">Discount:</span>
               <span className="classic-print-totals-value classic-print-currency" style={{ color: '#059669' }}>
-                + Rs. {saleReturn.discount_amount.toLocaleString()}
+                + {formatCurrency(saleReturn.discount_amount)}
               </span>
             </div>
           )}
@@ -223,7 +228,7 @@ export const SaleReturnPrintLayout: React.FC<SaleReturnPrintLayoutProps> = ({ sa
             <div className="classic-print-totals-row">
               <span className="classic-print-totals-label">Restocking Fee:</span>
               <span className="classic-print-totals-value classic-print-currency" style={{ color: '#dc2626' }}>
-                - Rs. {saleReturn.restocking_fee.toLocaleString()}
+                - {formatCurrency(saleReturn.restocking_fee)}
               </span>
             </div>
           )}
@@ -231,14 +236,14 @@ export const SaleReturnPrintLayout: React.FC<SaleReturnPrintLayoutProps> = ({ sa
             <div className="classic-print-totals-row">
               <span className="classic-print-totals-label">Manual Adjustment:</span>
               <span className="classic-print-totals-value classic-print-currency" style={{ color: saleReturn.manual_adjustment > 0 ? '#dc2626' : '#059669' }}>
-                {saleReturn.manual_adjustment > 0 ? '-' : '+'} Rs. {Math.abs(saleReturn.manual_adjustment).toLocaleString()}
+                {saleReturn.manual_adjustment > 0 ? '-' : '+'} {formatCurrency(Math.abs(saleReturn.manual_adjustment))}
               </span>
             </div>
           )}
           <div className="classic-print-totals-row total">
             <span className="classic-print-totals-label">Total Return Amount:</span>
             <span className="classic-print-totals-value classic-print-currency" style={{ color: '#dc2626', fontWeight: 700 }}>
-              - Rs. {(saleReturn.total || 0).toLocaleString()}
+              - {formatCurrency(saleReturn.total || 0)}
             </span>
           </div>
           {saleReturn.refund_method && (

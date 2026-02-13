@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { Banknote, Building2, CreditCard, FileText } from "lucide-react";
+import { useFormatCurrency } from "@/app/hooks/useFormatCurrency";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import {
@@ -35,6 +36,7 @@ export function PaymentFooterWidget({
   transactionType = "sale",
   onPaymentChange,
 }: PaymentFooterWidgetProps) {
+  const { formatCurrency, currency } = useFormatCurrency();
   const [selectedMethod, setSelectedMethod] = useState<PaymentMethod>("cash");
   const [amount, setAmount] = useState("");
   const [selectedAccount, setSelectedAccount] = useState("");
@@ -134,13 +136,7 @@ export function PaymentFooterWidget({
     return accounts;
   };
 
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat("en-PK", {
-      style: "currency",
-      currency: "PKR",
-      minimumFractionDigits: 0,
-    }).format(amount);
-  };
+  const { formatCurrency, currency } = useFormatCurrency();
 
   const accountLabel =
     transactionType === "sale" ? "Deposit Into Account" : "Pay From Account";
@@ -206,7 +202,7 @@ export function PaymentFooterWidget({
           </Label>
           <div className="relative">
             <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm">
-              Rs
+              {currency}
             </span>
             <Input
               id="amount"

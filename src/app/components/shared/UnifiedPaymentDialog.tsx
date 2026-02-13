@@ -4,6 +4,7 @@ import { Button } from '@/app/components/ui/button';
 import { Badge } from '@/app/components/ui/badge';
 import { useAccounting, type PaymentMethod, type Account } from '@/app/context/AccountingContext';
 import { useSettings } from '@/app/context/SettingsContext';
+import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { useDocumentNumbering } from '@/app/hooks/useDocumentNumbering';
 import { accountHelperService } from '@/app/services/accountHelperService';
@@ -98,8 +99,15 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
   editMode = false,
   paymentToEdit
 }) => {
+  // Derive outstanding from total - paid when caller passes 0 but total/paid suggest otherwise
+  const effectiveOutstanding =
+    totalAmount != null && paidAmount != null && outstandingAmount === 0 && (totalAmount - paidAmount) > 0
+      ? Math.max(0, totalAmount - paidAmount)
+      : outstandingAmount;
+
   const accounting = useAccounting();
   const settings = useSettings();
+  const { formatCurrency } = useFormatCurrency();
   const { branchId, companyId, user } = useSupabase();
   const { generateDocumentNumber, incrementNextNumber } = useDocumentNumbering();
   const [amount, setAmount] = useState<number>(0);
@@ -354,7 +362,7 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
   // 🎯 Validation - Account ALWAYS required
   const canSubmit = 
     amount > 0 && 
-    amount <= outstandingAmount && 
+    amount <= effectiveOutstanding && 
     selectedAccount !== '' &&
     !isProcessing;
 
@@ -371,8 +379,8 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
       return;
     }
     
-    if (amount > outstandingAmount) {
-      toast.error(`Payment amount cannot exceed outstanding amount of ${outstandingAmount.toLocaleString()}`);
+    if (amount > effectiveOutstanding) {
+      toast.error(`Payment amount cannot exceed outstanding amount of ${effectiveOutstanding.toLocaleString()}`);
       return;
     }
     
@@ -645,6 +653,16 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
               notes || undefined,
               user?.id ?? undefined
             );
+            // Post to ledger: Debit Cash/Bank, Credit Rental Income
+            await accounting.recordRentalDelivery({
+              bookingId: referenceId,
+              customerName: entityName,
+              customerId: entityId || '',
+              remainingAmount: amount,
+              paymentMethod,
+            }).catch((err) => {
+              console.warn('[UnifiedPaymentDialog] Ledger posting failed (payment recorded):', err);
+            });
             success = true;
           } catch (rentalError: any) {
             toast.error(rentalError?.message || 'Rental payment failed');
@@ -659,7 +677,7 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
         const selectedAccountDetails = accounting.accounts.find(a => a.id === selectedAccount);
         const accountInfo = selectedAccountDetails ? ` from ${selectedAccountDetails.name}` : '';
         toast.success(labels.successMessage, {
-          description: `Rs ${amount.toLocaleString()} via ${paymentMethod}${accountInfo} on ${paymentDateTime}`
+          description: `${formatCurrency(amount)} via ${paymentMethod}${accountInfo} on ${paymentDateTime}`
         });
         if (context === 'worker') onSuccess?.(workerPaymentRef);
         else onSuccess?.();
@@ -743,7 +761,7 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
                       <div className="flex items-center justify-between">
                         <span className="text-xs text-gray-400">Total Amount</span>
                         <span className="text-sm font-semibold text-white">
-                          Rs {totalAmount.toLocaleString()}
+                          {formatCurrency(totalAmount)}
                         </span>
                       </div>
                     )}
@@ -752,14 +770,14 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
                       <div className="flex items-center justify-between">
                         <span className="text-xs text-gray-400">Already Paid</span>
                         <span className="text-sm font-semibold text-green-400">
-                          Rs {paidAmount.toLocaleString()}
+                          {formatCurrency(paidAmount)}
                         </span>
                       </div>
                     )}
                     <div className="flex items-center justify-between pt-2 border-t border-gray-800">
                       <span className="text-xs text-gray-400">Outstanding Amount</span>
                       <span className="text-xl font-bold text-yellow-400">
-                        Rs {outstandingAmount.toLocaleString()}
+                        {formatCurrency(effectiveOutstanding)}
                       </span>
                     </div>
                   </div>
@@ -795,7 +813,7 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
                             </div>
                           </div>
                           <span className="text-sm font-semibold text-green-400">
-                            Rs {payment.amount.toLocaleString()}
+                            {formatCurrency(payment.amount)}
                           </span>
                         </div>
                       ))}
@@ -810,7 +828,7 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
                   </label>
                   <div className="relative">
                     <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 text-lg font-semibold">
-                      Rs
+                      {settings.company?.currency || 'PKR'}
                     </span>
                     <input
                       type="number"
@@ -820,21 +838,21 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
                       placeholder="0.00"
                       className="w-full bg-gray-900 border-2 border-gray-700 rounded-lg pl-14 pr-4 py-3 text-white text-xl font-bold placeholder-gray-600 focus:outline-none focus:border-blue-500 transition-colors"
                       min="0"
-                      max={outstandingAmount}
+                      max={effectiveOutstanding}
                       step="0.01"
                     />
                   </div>
-                  {amount > outstandingAmount && (
+                  {amount > effectiveOutstanding && (
                     <div className="flex items-center gap-2 mt-2 text-red-400 text-xs bg-red-500/10 border border-red-500/20 rounded-lg p-2">
                       <AlertCircle size={14} />
                       <span>Amount cannot exceed outstanding balance</span>
                     </div>
                   )}
-                  {amount > 0 && amount <= outstandingAmount && (
+                  {amount > 0 && amount <= effectiveOutstanding && (
                     <div className="flex items-center justify-between mt-2 text-xs">
                       <span className="text-gray-400">Remaining Balance</span>
                       <span className="text-green-400 font-semibold">
-                        Rs {(outstandingAmount - amount).toLocaleString()}
+                        {formatCurrency(effectiveOutstanding - amount)}
                       </span>
                     </div>
                   )}
@@ -911,7 +929,7 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
                       </option>
                       {getFilteredAccounts().map(account => (
                         <option key={account.id} value={account.id} className="text-white bg-gray-900">
-                          {account.name} • Balance: Rs {account.balance.toLocaleString()}
+                          {account.name} • Balance: {formatCurrency(account.balance)}
                         </option>
                       ))}
                     </select>

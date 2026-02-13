@@ -18,6 +18,7 @@ import { Badge } from '../ui/badge';
 import { format } from 'date-fns';
 import { useNavigation } from '@/app/context/NavigationContext';
 import { cn } from '../ui/utils';
+import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
 import { ListToolbar } from '../ui/list-toolbar';
 import {
   DropdownMenu,
@@ -66,6 +67,7 @@ interface StudioSale {
 export const StudioSalesListNew = () => {
   const { setCurrentView, setSelectedStudioSaleId, openDrawer } = useNavigation();
   const { companyId, branchId } = useSupabase();
+  const { formatCurrency } = useFormatCurrency();
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState<'all' | ProductionStatus>('all');
   const [filterOpen, setFilterOpen] = useState(false);
@@ -537,12 +539,12 @@ export const StudioSalesListNew = () => {
 
                     {/* Total Amount */}
                     <td className="p-4 text-right">
-                      <p className="text-white font-semibold">Rs {sale.totalAmount.toLocaleString()}</p>
+                      <p className="text-white font-semibold">{formatCurrency(sale.totalAmount)}</p>
                     </td>
 
                     {/* Paid Amount */}
                     <td className="p-4 text-right">
-                      <p className="text-green-400 font-semibold">Rs {sale.paidAmount.toLocaleString()}</p>
+                      <p className="text-green-400 font-semibold">{formatCurrency(sale.paidAmount)}</p>
                     </td>
 
                     {/* Balance Due */}
@@ -551,7 +553,7 @@ export const StudioSalesListNew = () => {
                         "font-semibold",
                         sale.balanceDue > 0 ? "text-orange-400" : "text-gray-500"
                       )}>
-                        Rs {sale.balanceDue.toLocaleString()}
+                        {formatCurrency(sale.balanceDue)}
                       </p>
                     </td>
 

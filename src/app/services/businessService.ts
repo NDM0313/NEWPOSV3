@@ -5,6 +5,8 @@ export interface CreateBusinessRequest {
   ownerName: string;
   email: string;
   password: string;
+  currency?: string;
+  fiscalYearStart?: string;
 }
 
 export interface CreateBusinessResponse {
@@ -50,6 +52,8 @@ export const businessService = {
           p_email: data.email,
           p_password: data.password,
           p_user_id: user.id,
+          p_currency: data.currency || 'PKR',
+          p_fiscal_year_start: data.fiscalYearStart || null,
         }
       );
 

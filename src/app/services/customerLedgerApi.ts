@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase';
+import { formatCurrency } from '@/app/utils/formatCurrency';
 import type { Customer, Transaction, Invoice, Payment, LedgerData } from './customerLedgerTypes';
 
 export interface CustomerLedgerSummary {
@@ -38,18 +39,29 @@ export const customerLedgerAPI = {
 
     if (error) throw error;
 
-    // Calculate outstanding balance from sales
+    // Calculate outstanding balance from sales + rentals
     const { data: sales } = await supabase
       .from('sales')
       .select('customer_id, due_amount')
       .eq('company_id', companyId)
       .gt('due_amount', 0);
 
-    // Create a map of customer_id to total due amount
+    const { data: rentals } = await supabase
+      .from('rentals')
+      .select('customer_id, due_amount')
+      .eq('company_id', companyId)
+      .gt('due_amount', 0);
+
     const customerDueMap = new Map<string, number>();
     (sales || []).forEach((sale: any) => {
       const current = customerDueMap.get(sale.customer_id) || 0;
       customerDueMap.set(sale.customer_id, current + (sale.due_amount || 0));
+    });
+    (rentals || []).forEach((r: any) => {
+      if (r.customer_id) {
+        const current = customerDueMap.get(r.customer_id) || 0;
+        customerDueMap.set(r.customer_id, current + (r.due_amount || 0));
+      }
     });
 
     return (data || []).map((c, index) => ({
@@ -80,14 +92,22 @@ export const customerLedgerAPI = {
     if (error) throw error;
     if (!data) return null;
 
-    // Calculate outstanding balance from sales
+    // Calculate outstanding balance from sales + rentals
     const { data: sales } = await supabase
       .from('sales')
       .select('due_amount')
       .eq('customer_id', customerId)
       .gt('due_amount', 0);
 
-    const outstandingBalance = (sales || []).reduce((sum, s: any) => sum + (s.due_amount || 0), 0) || data.opening_balance || 0;
+    const { data: rentals } = await supabase
+      .from('rentals')
+      .select('due_amount')
+      .eq('customer_id', customerId)
+      .gt('due_amount', 0);
+
+    const salesDue = (sales || []).reduce((sum, s: any) => sum + (s.due_amount || 0), 0);
+    const rentalsDue = (rentals || []).reduce((sum, r: any) => sum + (r.due_amount || 0), 0);
+    const outstandingBalance = salesDue + rentalsDue || data.opening_balance || 0;
 
     // Generate a short code from the ID
     const shortId = data.id.substring(0, 8).toUpperCase();
@@ -312,7 +332,29 @@ export const customerLedgerAPI = {
           prevStudioOrderNet += (Number(o.total_cost ?? 0) || 0) - (Number(o.advance_paid ?? 0) || 0);
         });
       }
-      openingBalance = previousTotal - previousPaid - previousReturnsTotal - prevReturnPaymentsTotal + prevStudioOrderNet;
+      // Rentals before fromDate
+      let prevRentalTotal = 0;
+      let prevRentalPaid = 0;
+      try {
+        const rpcPrevRentals = await supabase.rpc('get_customer_ledger_rentals', {
+          p_company_id: companyId,
+          p_customer_id: cId,
+          p_from_date: null,
+          p_to_date: dayBeforeFrom,
+        });
+        const prevRentals = !rpcPrevRentals.error ? (rpcPrevRentals.data ?? []) : [];
+        prevRentalTotal = prevRentals.reduce((s: number, r: any) => s + (Number(r.total_amount) || 0), 0);
+        const prevRentalIds = prevRentals.map((r: any) => r.id);
+        if (prevRentalIds.length > 0) {
+          const { data: prevRp } = await supabase
+            .from('rental_payments')
+            .select('amount')
+            .in('rental_id', prevRentalIds)
+            .lt('payment_date', fromDate);
+          prevRentalPaid = (prevRp || []).reduce((s: number, p: any) => s + (Number(p.amount) || 0), 0);
+        }
+      } catch (_) {}
+      openingBalance = previousTotal - previousPaid - previousReturnsTotal - prevReturnPaymentsTotal + prevStudioOrderNet + prevRentalTotal - prevRentalPaid;
     }
 
     // Studio orders in date range – debit total_cost, credit advance_paid
@@ -343,8 +385,37 @@ export const customerLedgerAPI = {
       const { data: rpInRange } = await rpQuery;
       returnPaymentsInRange = (rpInRange || []).reduce((s: number, p: any) => s + (Number(p.amount) || 0), 0);
     }
-    const totalDebit = totalInvoiceAmount + studioOrderDebit;
-    const totalCredit = totalPaymentReceived + returnsInRange + returnPaymentsInRange + studioOrderCredit;
+    // Rentals: charges by rental date (in range), payments by payment_date (in range)
+    let rentalDebit = 0;
+    let rentalCredit = 0;
+    try {
+      const rpcRentals = await supabase.rpc('get_customer_ledger_rentals', {
+        p_company_id: companyId,
+        p_customer_id: cId,
+        p_from_date: null,
+        p_to_date: null,
+      });
+      const allRentals = !rpcRentals.error ? (rpcRentals.data ?? []) : [];
+      allRentals.forEach((r: any) => {
+        const rawDate = r.pickup_date || r.booking_date || r.created_at;
+        const d = rawDate ? (typeof rawDate === 'string' && rawDate.length >= 10 ? rawDate.slice(0, 10) : new Date(rawDate).toISOString().slice(0, 10)) : '';
+        if (!d) return;
+        if (fromDate && d < fromDate) return;
+        if (toDate && d > toDate) return;
+        rentalDebit += Number(r.total_amount) || 0;
+      });
+      const allRentalIds = allRentals.map((r: any) => r.id);
+      if (allRentalIds.length > 0) {
+        let rpQuery = supabase.from('rental_payments').select('amount').in('rental_id', allRentalIds);
+        if (fromDate) rpQuery = rpQuery.gte('payment_date', fromDate);
+        if (toDate) rpQuery = rpQuery.lte('payment_date', toDate);
+        const { data: rpData } = await rpQuery;
+        rentalCredit = (rpData || []).reduce((s: number, p: any) => s + (Number(p.amount) || 0), 0);
+      }
+    } catch (_) {}
+
+    const totalDebit = totalInvoiceAmount + studioOrderDebit + rentalDebit;
+    const totalCredit = totalPaymentReceived + returnsInRange + returnPaymentsInRange + studioOrderCredit + rentalCredit;
     const closingBalance = openingBalance + totalDebit - totalCredit;
 
     return {
@@ -460,7 +531,7 @@ export const customerLedgerAPI = {
     // Get sale returns for this customer (CREDIT - reduces balance)
     let returnsQuery = supabase
       .from('sale_returns')
-      .select('id, return_no, return_date, total, status')
+      .select('id, return_no, return_date, total, status, notes')
       .eq('company_id', companyId)
       .eq('customer_id', cId)
       .eq('status', 'final');
@@ -490,6 +561,13 @@ export const customerLedgerAPI = {
     const { data: returnPayments, error: returnPaymentsError } = await returnPaymentsQuery.order('payment_date', { ascending: false });
     if (returnPaymentsError) {
       console.error('[CUSTOMER LEDGER API] Error fetching return payments:', returnPaymentsError);
+    }
+
+    // Fetch notes for sales (RPC doesn't return notes)
+    const saleNotesMap = new Map<string, string>();
+    if (saleIds.length > 0) {
+      const { data: saleNotes } = await supabase.from('sales').select('id, notes').in('id', saleIds);
+      (saleNotes || []).forEach((s: any) => { if (s.notes) saleNotesMap.set(s.id, s.notes); });
     }
 
     // Combine and format transactions
@@ -548,7 +626,7 @@ export const customerLedgerAPI = {
         documentType: isStudioSale ? ('Studio Sale' as const) : ('Sale' as const),
         description: isStudioSale ? `Studio Sale ${sale.invoice_no || ''}` : `Sale Invoice ${sale.invoice_no}`,
         paymentAccount: '',
-        notes: '',
+        notes: saleNotesMap.get(sale.id) || '',
         debit: debitAmount,
         credit: 0,
         runningBalance: 0, // Will be calculated
@@ -559,7 +637,7 @@ export const customerLedgerAPI = {
     // Studio orders (studio_orders table) – debit total_cost, credit advance_paid so net = balance_due
     let studioOrdersQuery = supabase
       .from('studio_orders')
-      .select('id, order_no, order_date, total_cost, advance_paid, balance_due')
+      .select('id, order_no, order_date, total_cost, advance_paid, balance_due, notes')
       .eq('company_id', companyId)
       .eq('customer_id', cId);
     if (fromDate) studioOrdersQuery = studioOrdersQuery.gte('order_date', fromDate);
@@ -572,6 +650,7 @@ export const customerLedgerAPI = {
     (studioOrders || []).forEach((order: any) => {
       const totalCost = Number(order.total_cost ?? 0) || 0;
       const advancePaid = Number(order.advance_paid ?? 0) || 0;
+      const orderNotes = [order.notes, advancePaid > 0 ? `Advance ${formatCurrency(advancePaid)}` : ''].filter(Boolean).join(' / ');
       transactions.push({
         id: order.id,
         date: order.order_date,
@@ -579,11 +658,100 @@ export const customerLedgerAPI = {
         documentType: 'Studio Order' as const,
         description: `Studio Order ${order.order_no || order.id?.slice(0, 8)}`,
         paymentAccount: '',
-        notes: advancePaid > 0 ? `Advance Rs ${advancePaid}` : '',
+        notes: orderNotes || '',
         debit: totalCost,
         credit: advancePaid,
         runningBalance: 0,
         linkedInvoices: [],
+      });
+    });
+
+    // Rentals: fetch via RPC or direct query (pass null dates to get all; filter in merge)
+    let customerRentals: any[] = [];
+    try {
+      const rpcRentals = await supabase.rpc('get_customer_ledger_rentals', {
+        p_company_id: companyId,
+        p_customer_id: cId,
+        p_from_date: null,
+        p_to_date: null,
+      });
+      if (!rpcRentals.error) {
+        customerRentals = rpcRentals.data ?? [];
+      } else {
+        const { data: directRentals } = await supabase
+          .from('rentals')
+          .select('id, booking_no, booking_date, pickup_date, return_date, total_amount, paid_amount, due_amount, created_at')
+          .eq('company_id', companyId)
+          .eq('customer_id', cId);
+        customerRentals = directRentals ?? [];
+      }
+    } catch (e) {
+      if (process.env.NODE_ENV !== 'production') console.warn('[LEDGER] Rental fetch failed:', e);
+    }
+    const rentalIds = customerRentals.map((r: any) => r.id);
+    const rentalNotesMap = new Map<string, string>();
+    if (rentalIds.length > 0) {
+      const { data: rentalNotes } = await supabase.from('rentals').select('id, notes').in('id', rentalIds);
+      (rentalNotes || []).forEach((r: any) => { if (r.notes) rentalNotesMap.set(r.id, r.notes); });
+    }
+    let customerRentalPayments: any[] = [];
+    if (rentalIds.length > 0) {
+      let rpQuery = supabase
+        .from('rental_payments')
+        .select('id, rental_id, amount, method, reference, payment_date, created_at')
+        .in('rental_id', rentalIds);
+      if (fromDate) rpQuery = rpQuery.gte('payment_date', fromDate);
+      if (toDate) rpQuery = rpQuery.lte('payment_date', toDate);
+      const { data: rpData } = await rpQuery.order('payment_date', { ascending: false });
+      customerRentalPayments = rpData ?? [];
+    }
+    const rentalsMap = new Map(customerRentals.map((r: any) => [r.id, r]));
+
+    // Add rental charges as debit transactions
+    customerRentals.forEach((r: any) => {
+      const rawDate = r.pickup_date || r.booking_date || r.created_at;
+      const d = rawDate ? (typeof rawDate === 'string' && rawDate.length >= 10 ? rawDate.slice(0, 10) : new Date(rawDate).toISOString().slice(0, 10)) : '';
+      if (!d) return;
+      if (fromDate && d < fromDate) return;
+      if (toDate && d > toDate) return;
+      const total = Number(r.total_amount) || 0;
+      if (total <= 0) return;
+      transactions.push({
+        id: r.id,
+        date: d,
+        referenceNo: r.booking_no || `RN-${(r.id || '').slice(0, 8)}`,
+        documentType: 'Rental' as const,
+        description: `Rental ${r.booking_no || r.id?.slice(0, 8)}`,
+        paymentAccount: '',
+        notes: rentalNotesMap.get(r.id) || '',
+        debit: total,
+        credit: 0,
+        runningBalance: 0,
+        linkedInvoices: [r.booking_no || ''],
+      });
+    });
+
+    // Add rental payments as credit transactions
+    customerRentalPayments.forEach((p: any) => {
+      const rawDate = p.payment_date || p.created_at;
+      const d = rawDate ? (typeof rawDate === 'string' && rawDate.length >= 10 ? rawDate.slice(0, 10) : new Date(rawDate).toISOString().slice(0, 10)) : '';
+      if (!d) return;
+      if (fromDate && d < fromDate) return;
+      if (toDate && d > toDate) return;
+      const rental = rentalsMap.get(p.rental_id);
+      const ref = rental?.booking_no || `RN-${(p.rental_id || '').slice(0, 8)}`;
+      transactions.push({
+        id: p.id,
+        date: d,
+        referenceNo: `${ref}-PAY`,
+        documentType: 'Rental Payment' as const,
+        description: `Rental Payment via ${p.method || 'other'}`,
+        paymentAccount: p.method || '',
+        notes: p.reference || '',
+        debit: 0,
+        credit: Number(p.amount) || 0,
+        runningBalance: 0,
+        linkedPayments: [`${ref}-PAY`],
       });
     });
 
@@ -613,7 +781,7 @@ export const customerLedgerAPI = {
         documentType: 'Sale Return' as const,
         description: `Sale Return ${ret.return_no || ret.id?.slice(0, 8)}`,
         paymentAccount: '',
-        notes: '',
+        notes: ret.notes || '',
         debit: 0,
         credit: ret.total || 0,
         runningBalance: 0,
@@ -699,7 +867,31 @@ export const customerLedgerAPI = {
       (prevStudioOrders || []).forEach((o: any) => {
         prevStudioOrderNet += (Number(o.total_cost ?? 0) || 0) - (Number(o.advance_paid ?? 0) || 0);
       });
-      runningBalance = prevTotal - prevPaid - prevReturnsTotal - prevReturnPmts + prevStudioOrderNet;
+
+      // Rentals before fromDate: total charges - rental payments
+      let prevRentalTotal = 0;
+      let prevRentalPaid = 0;
+      try {
+        const rpcPrevRentals = await supabase.rpc('get_customer_ledger_rentals', {
+          p_company_id: companyId,
+          p_customer_id: cId,
+          p_from_date: null,
+          p_to_date: dayBeforeFrom,
+        });
+        const prevRentals = !rpcPrevRentals.error ? (rpcPrevRentals.data ?? []) : [];
+        prevRentalTotal = prevRentals.reduce((s: number, r: any) => s + (Number(r.total_amount) || 0), 0);
+        const prevRentalIds = prevRentals.map((r: any) => r.id);
+        if (prevRentalIds.length > 0) {
+          const { data: prevRp } = await supabase
+            .from('rental_payments')
+            .select('amount')
+            .in('rental_id', prevRentalIds)
+            .lt('payment_date', fromDate);
+          prevRentalPaid = (prevRp || []).reduce((s: number, p: any) => s + (Number(p.amount) || 0), 0);
+        }
+      } catch (_) {}
+
+      runningBalance = prevTotal - prevPaid - prevReturnsTotal - prevReturnPmts + prevStudioOrderNet + prevRentalTotal - prevRentalPaid;
     }
     transactions.forEach(t => {
       runningBalance += t.debit - t.credit;

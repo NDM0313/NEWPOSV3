@@ -1,66 +1,252 @@
 import React, { useState } from 'react';
-import { Plus, LayoutList, Calendar as CalendarIcon } from 'lucide-react';
+import { Plus, LayoutList, Calendar as CalendarIcon, Truck, CornerDownLeft, DollarSign } from 'lucide-react';
 import { Button } from '../ui/button';
 import { RentalBookingDrawer } from './RentalBookingDrawer';
 import { RentalsPage } from './RentalsPage';
 import { RentalCalendar } from './RentalCalendar';
+import { PickupTodayTab } from './PickupTodayTab';
+import { ReturnTodayTab } from './ReturnTodayTab';
+import { RentalCollectionsTab } from './RentalCollectionsTab';
+import { ViewRentalDetailsDrawer } from './ViewRentalDetailsDrawer';
+import { PickupModal } from './PickupModal';
+import { ReturnModal } from './ReturnModal';
+import { UnifiedPaymentDialog } from '../shared/UnifiedPaymentDialog';
 import { clsx } from 'clsx';
+import { useRentals, type RentalUI } from '@/app/context/RentalContext';
 
 export const RentalDashboard = () => {
+  const { refreshRentals, markAsPickedUp, receiveReturn, getRentalById } = useRentals();
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
-  const [viewMode, setViewMode] = useState<'list' | 'calendar'>('list');
+  const [editRental, setEditRental] = useState<RentalUI | null>(null);
+  const [viewRental, setViewRental] = useState<RentalUI | null>(null);
+  const [pickupModalOpen, setPickupModalOpen] = useState(false);
+  const [rentalForPickup, setRentalForPickup] = useState<RentalUI | null>(null);
+  const [returnModalOpen, setReturnModalOpen] = useState(false);
+  const [rentalForReturn, setRentalForReturn] = useState<RentalUI | null>(null);
+  const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
+  const [collectionRental, setCollectionRental] = useState<RentalUI | null>(null);
+  const [activeTab, setActiveTab] = useState<'list' | 'calendar' | 'pickupToday' | 'returnToday' | 'collections'>('list');
 
-  if (viewMode === 'list') {
-    return (
-      <>
-        <RentalsPage onAddRental={() => setIsDrawerOpen(true)} />
-        <RentalBookingDrawer isOpen={isDrawerOpen} onClose={() => setIsDrawerOpen(false)} />
-      </>
-    );
-  }
+  const handleAddRental = () => {
+    setEditRental(null);
+    setIsDrawerOpen(true);
+  };
+
+  const handleEditRental = (rental: RentalUI) => {
+    setEditRental(rental);
+    setIsDrawerOpen(true);
+  };
+
+  const handleCloseDrawer = () => {
+    setIsDrawerOpen(false);
+    setEditRental(null);
+  };
 
   return (
-    <div className="space-y-6 animate-in fade-in duration-500 h-full flex flex-col">
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 shrink-0">
-        <div>
-          <h2 className="text-2xl font-bold text-white tracking-tight">Rental Management</h2>
-          <p className="text-gray-400">Track active bookings, returns, and inventory availability.</p>
-        </div>
-        <div className="flex items-center gap-3">
-          <div className="bg-gray-900 p-1 rounded-lg border border-gray-800 flex items-center">
-            <button
-              onClick={() => setViewMode('list')}
-              className={clsx(
-                'p-2 rounded-md transition-all',
-                viewMode === 'list' ? 'bg-gray-800 text-white shadow-sm' : 'text-gray-400 hover:text-white'
-              )}
-              title="List View"
-            >
-              <LayoutList size={18} />
-            </button>
-            <button
-              onClick={() => setViewMode('calendar')}
-              className={clsx(
-                'p-2 rounded-md transition-all',
-                viewMode === 'calendar' ? 'bg-gray-800 text-white shadow-sm' : 'text-gray-400 hover:text-white'
-              )}
-              title="Calendar View"
-            >
-              <CalendarIcon size={18} />
-            </button>
+    <div className="h-screen flex flex-col bg-[#0B0F19]">
+      <div className="shrink-0 px-6 py-4 border-b border-gray-800">
+        <div className="flex justify-between items-center">
+          <div>
+            <h1 className="text-2xl font-bold text-white">Rentals</h1>
+            <p className="text-sm text-gray-400 mt-0.5">Manage rental orders and availability</p>
           </div>
-          <Button
-            onClick={() => setIsDrawerOpen(true)}
-            className="bg-pink-600 hover:bg-pink-500 text-white shadow-lg shadow-pink-600/20 font-semibold"
-          >
-            <Plus size={18} className="mr-2" /> New Rental Booking
-          </Button>
+          <div className="flex items-center gap-3">
+            <div className="bg-gray-900 p-1 rounded-lg border border-gray-800 flex items-center">
+              <button
+                onClick={() => setActiveTab('list')}
+                className={clsx(
+                  'px-3 py-2 rounded-md text-sm font-medium transition-all',
+                  activeTab === 'list' ? 'bg-gray-800 text-white shadow-sm' : 'text-gray-400 hover:text-white'
+                )}
+                title="List View"
+              >
+                <LayoutList size={16} className="mr-1.5 inline" />
+                List
+              </button>
+              <button
+                onClick={() => setActiveTab('calendar')}
+                className={clsx(
+                  'px-3 py-2 rounded-md text-sm font-medium transition-all',
+                  activeTab === 'calendar' ? 'bg-gray-800 text-white shadow-sm' : 'text-gray-400 hover:text-white'
+                )}
+                title="Calendar / Availability"
+              >
+                <CalendarIcon size={16} className="mr-1.5 inline" />
+                Calendar / Availability
+              </button>
+              <button
+                onClick={() => setActiveTab('pickupToday')}
+                className={clsx(
+                  'px-3 py-2 rounded-md text-sm font-medium transition-all',
+                  activeTab === 'pickupToday' ? 'bg-gray-800 text-white shadow-sm' : 'text-gray-400 hover:text-white'
+                )}
+                title="Pickup Today"
+              >
+                <Truck size={16} className="mr-1.5 inline" />
+                Pickup Today
+              </button>
+              <button
+                onClick={() => setActiveTab('returnToday')}
+                className={clsx(
+                  'px-3 py-2 rounded-md text-sm font-medium transition-all',
+                  activeTab === 'returnToday' ? 'bg-gray-800 text-white shadow-sm' : 'text-gray-400 hover:text-white'
+                )}
+                title="Return Today"
+              >
+                <CornerDownLeft size={16} className="mr-1.5 inline" />
+                Return Today
+              </button>
+              <button
+                onClick={() => setActiveTab('collections')}
+                className={clsx(
+                  'px-3 py-2 rounded-md text-sm font-medium transition-all',
+                  activeTab === 'collections' ? 'bg-gray-800 text-white shadow-sm' : 'text-gray-400 hover:text-white'
+                )}
+                title="Collections / Outstanding"
+              >
+                <DollarSign size={16} className="mr-1.5 inline" />
+                Collections
+              </button>
+            </div>
+            <Button
+              onClick={handleAddRental}
+              className="bg-pink-600 hover:bg-pink-500 text-white shadow-lg shadow-pink-600/20 font-semibold"
+            >
+              <Plus size={18} className="mr-2" /> New Rental Booking
+            </Button>
+          </div>
         </div>
       </div>
-      <div className="flex-1 min-h-0">
-        <RentalCalendar />
+
+      <div className="flex-1 min-h-0 overflow-hidden">
+        {activeTab === 'list' && (
+          <RentalsPage onAddRental={handleAddRental} onEditRental={handleEditRental} embedded />
+        )}
+        {activeTab === 'calendar' && (
+          <div className="h-full p-4">
+            <RentalCalendar onViewRental={(r) => setViewRental(r)} />
+          </div>
+        )}
+        {activeTab === 'pickupToday' && (
+          <PickupTodayTab
+            onProcessPickup={(r) => {
+              setRentalForPickup(r);
+              setPickupModalOpen(true);
+            }}
+          />
+        )}
+        {activeTab === 'returnToday' && (
+          <ReturnTodayTab
+            onProcessReturn={(r) => {
+              setRentalForReturn(r);
+              setReturnModalOpen(true);
+            }}
+          />
+        )}
+        {activeTab === 'collections' && (
+          <RentalCollectionsTab
+            onCollectPayment={(r) => {
+              setCollectionRental(r);
+              setPaymentDialogOpen(true);
+            }}
+          />
+        )}
       </div>
-      <RentalBookingDrawer isOpen={isDrawerOpen} onClose={() => setIsDrawerOpen(false)} />
+
+      <RentalBookingDrawer isOpen={isDrawerOpen} onClose={handleCloseDrawer} editRental={editRental} />
+      <ViewRentalDetailsDrawer
+        isOpen={!!viewRental}
+        onClose={() => setViewRental(null)}
+        rental={viewRental}
+        onRefresh={refreshRentals}
+        onEdit={(r) => { setViewRental(null); handleEditRental(r); setIsDrawerOpen(true); }}
+        onMarkAsPickedUp={markAsPickedUp}
+        onAddPaymentForPickup={(r) => {
+          setRentalForPickup(r);
+          setViewRental(null);
+          setPickupModalOpen(false);
+          setPaymentDialogOpen(true);
+        }}
+        onAddPayment={() => {
+          if (viewRental) {
+            setRentalForPickup(viewRental);
+            setViewRental(null);
+            setPaymentDialogOpen(true);
+          }
+        }}
+        onReceiveReturn={() => {
+          if (viewRental) {
+            setRentalForReturn(viewRental);
+            setViewRental(null);
+            setReturnModalOpen(true);
+          }
+        }}
+      />
+
+      <PickupModal
+        open={pickupModalOpen}
+        onOpenChange={(open) => {
+          setPickupModalOpen(open);
+          if (!open) setRentalForPickup(null);
+        }}
+        rental={rentalForPickup}
+        onConfirm={async (id, payload) => {
+          await markAsPickedUp(id, payload);
+          await refreshRentals();
+        }}
+        onAddPayment={(r) => {
+          setRentalForPickup(r);
+          setPickupModalOpen(false);
+          setPaymentDialogOpen(true);
+        }}
+      />
+
+      {(rentalForPickup || collectionRental) && (
+        <UnifiedPaymentDialog
+          isOpen={paymentDialogOpen}
+          onClose={() => {
+            setPaymentDialogOpen(false);
+            if (collectionRental) setCollectionRental(null);
+            else if (rentalForPickup) setPickupModalOpen(true);
+          }}
+          context="rental"
+          entityName={(rentalForPickup || collectionRental)!.customerName}
+          entityId={(rentalForPickup || collectionRental)!.customerId || (rentalForPickup || collectionRental)!.id}
+          outstandingAmount={(rentalForPickup || collectionRental)!.dueAmount}
+          totalAmount={(rentalForPickup || collectionRental)!.totalAmount}
+          paidAmount={(rentalForPickup || collectionRental)!.paidAmount}
+          referenceNo={(rentalForPickup || collectionRental)!.rentalNo}
+          referenceId={(rentalForPickup || collectionRental)!.id}
+          onSuccess={async () => {
+            await refreshRentals();
+            setPaymentDialogOpen(false);
+            setCollectionRental(null);
+            if (rentalForPickup) {
+              const updated = getRentalById?.(rentalForPickup.id);
+              if (updated) {
+                setRentalForPickup(updated);
+                setPickupModalOpen(true);
+              } else {
+                setRentalForPickup(null);
+              }
+            }
+          }}
+        />
+      )}
+
+      <ReturnModal
+        open={returnModalOpen}
+        onOpenChange={(open) => {
+          setReturnModalOpen(open);
+          if (!open) setRentalForReturn(null);
+        }}
+        rental={rentalForReturn}
+        documentInfo={rentalForReturn ? { documentType: rentalForReturn.documentType, documentNumber: rentalForReturn.documentNumber } : undefined}
+        onConfirm={async (id, payload) => {
+          await receiveReturn(id, payload);
+          await refreshRentals();
+        }}
+      />
     </div>
   );
 };

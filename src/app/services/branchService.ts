@@ -12,6 +12,8 @@ export interface Branch {
   city?: string;
   state?: string;
   is_active: boolean;
+  fiscal_year_start?: string | null; // YYYY-MM-DD
+  fiscal_year_end?: string | null; // YYYY-MM-DD
   default_cash_account_id?: string | null;
   default_bank_account_id?: string | null;
   default_pos_drawer_account_id?: string | null;

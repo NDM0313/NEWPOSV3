@@ -156,6 +156,21 @@ export const exportToPDF = (data: ExportData, filename: string = 'report'): void
 };
 
 /**
+ * Export data as JSON (for backup/structured export)
+ */
+export const exportToJSON = (data: unknown, filename: string = 'export'): void => {
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.download = `${filename}_${new Date().toISOString().split('T')[0]}.json`;
+  link.style.visibility = 'hidden';
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(link.href);
+};
+
+/**
  * Helper: Convert report data to export format
  */
 export const prepareExportData = (

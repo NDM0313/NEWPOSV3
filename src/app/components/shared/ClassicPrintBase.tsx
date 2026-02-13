@@ -21,6 +21,8 @@ import React from 'react';
 import { Printer, X } from 'lucide-react';
 import { Button } from '../ui/button';
 
+export type PrinterMode = 'thermal' | 'a4';
+
 export interface ClassicPrintBaseProps {
   documentTitle: string;
   companyName?: string;
@@ -32,6 +34,8 @@ export interface ClassicPrintBaseProps {
   showActions?: boolean;
   /** When set, replaces default Print/Close with custom actions (e.g. orientation + Print + Save as PDF) */
   actionChildren?: React.ReactNode;
+  /** Printer mode from company config - thermal (80mm) or a4 */
+  printerMode?: PrinterMode;
 }
 
 export const ClassicPrintBase: React.FC<ClassicPrintBaseProps> = ({
@@ -44,6 +48,7 @@ export const ClassicPrintBase: React.FC<ClassicPrintBaseProps> = ({
   onClose,
   showActions = true,
   actionChildren,
+  printerMode = 'a4',
 }) => {
   const handlePrint = () => {
     window.print();
@@ -51,7 +56,7 @@ export const ClassicPrintBase: React.FC<ClassicPrintBaseProps> = ({
   };
 
   return (
-    <div className="classic-print-base">
+    <div className={`classic-print-base ${printerMode === 'thermal' ? 'classic-print-thermal' : ''}`}>
       <style>{`
         /* ============================================
            CLASSIC PRINT BASE - GLOBAL STYLES
@@ -76,6 +81,10 @@ export const ClassicPrintBase: React.FC<ClassicPrintBaseProps> = ({
           .classic-print-actions {
             display: none;
           }
+          .classic-print-base.classic-print-thermal {
+            max-width: 80mm;
+            width: 80mm;
+          }
         }
         
         @media screen {
@@ -86,6 +95,11 @@ export const ClassicPrintBase: React.FC<ClassicPrintBaseProps> = ({
             max-width: 800px;
             margin: 0 auto;
             box-shadow: 0 0 20px rgba(0,0,0,0.1);
+          }
+          .classic-print-base.classic-print-thermal {
+            max-width: 80mm;
+            padding: 16px;
+            font-size: 11px;
           }
         }
         

@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { useSettings } from '@/app/context/SettingsContext';
+import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
 import { ClassicPrintBase } from './ClassicPrintBase';
+import { usePrinterConfig } from '@/app/hooks/usePrinterConfig';
 import { Checkbox } from '../ui/checkbox';
 import { Label } from '../ui/label';
 import { formatBoxesPieces } from '../ui/utils';
@@ -12,6 +14,8 @@ interface PurchaseReturnPrintLayoutProps {
 
 export const PurchaseReturnPrintLayout: React.FC<PurchaseReturnPrintLayoutProps> = ({ purchaseReturn, onClose }) => {
   const { inventorySettings } = useSettings();
+  const { formatCurrency } = useFormatCurrency();
+  const { config: printerConfig } = usePrinterConfig();
   const enablePacking = inventorySettings.enablePacking;
   const [showDetailedReturnPacking, setShowDetailedReturnPacking] = useState(false);
 
@@ -87,6 +91,7 @@ export const PurchaseReturnPrintLayout: React.FC<PurchaseReturnPrintLayoutProps>
       headerMeta={headerMeta}
       onPrint={() => window.print()}
       onClose={onClose}
+      printerMode={printerConfig.mode}
       actionChildren={
         enablePacking ? (
           <div className="flex items-center gap-4">
@@ -185,9 +190,9 @@ export const PurchaseReturnPrintLayout: React.FC<PurchaseReturnPrintLayoutProps>
                   )}
                   <td className="text-right">{returnQty.toFixed(2)}</td>
                   <td>{unit}</td>
-                  <td className="text-right classic-print-currency">Rs. {(item.unit_price || item.price || 0).toLocaleString()}</td>
+                  <td className="text-right classic-print-currency">{formatCurrency(item.unit_price || item.price || 0)}</td>
                   <td className="text-right classic-print-currency" style={{ color: '#dc2626' }}>
-                    - Rs. {((item.unit_price || item.price || 0) * returnQty).toLocaleString()}
+                    - {formatCurrency((item.unit_price || item.price || 0) * returnQty)}
                   </td>
                 </tr>
               );
@@ -208,13 +213,13 @@ export const PurchaseReturnPrintLayout: React.FC<PurchaseReturnPrintLayoutProps>
           <div className="classic-print-totals-row">
             <span className="classic-print-totals-label">Subtotal:</span>
             <span className="classic-print-totals-value classic-print-currency" style={{ color: '#dc2626' }}>
-              - Rs. {(purchaseReturn.subtotal || purchaseReturn.total || 0).toLocaleString()}
+              - {formatCurrency(purchaseReturn.subtotal || purchaseReturn.total || 0)}
             </span>
           </div>
           <div className="classic-print-totals-row total">
             <span className="classic-print-totals-label">Total Return Amount:</span>
             <span className="classic-print-totals-value classic-print-currency" style={{ color: '#dc2626', fontWeight: 700 }}>
-              - Rs. {(purchaseReturn.total || 0).toLocaleString()}
+              - {formatCurrency(purchaseReturn.total || 0)}
             </span>
           </div>
         </div>

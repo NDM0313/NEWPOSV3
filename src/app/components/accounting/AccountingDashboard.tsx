@@ -44,9 +44,12 @@ import { AccountLedgerPage } from './AccountLedgerPage';
 import { TransactionDetailModal } from './TransactionDetailModal';
 import { AddAccountDrawer } from './AddAccountDrawer';
 import { LedgerHub } from './LedgerHub';
+import { StudioCostsTab } from './StudioCostsTab';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { accountService } from '@/app/services/accountService';
 import { toast } from 'sonner';
+import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
+import { useCheckPermission } from '@/app/hooks/useCheckPermission';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -68,12 +71,14 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Switch } from '@/app/components/ui/switch';
 
 export const AccountingDashboard = () => {
+  const { canAccessAccounting } = useCheckPermission();
   const accounting = useAccounting();
   const sales = useSales();
   const purchases = usePurchases();
   const expenses = useExpenses();
   const { openDrawer } = useNavigation();
   const { companyId, branchId } = useSupabase();
+  const { formatCurrency } = useFormatCurrency();
   const [activeTab, setActiveTab] = useState<'transactions' | 'accounts' | 'ledger' | 'receivables' | 'payables' | 'deposits' | 'studio' | 'reports'>('transactions');
   
   // UI-only view mode: Operational (day-to-day accounts) vs Professional (full Chart of Accounts)
@@ -181,6 +186,19 @@ export const AccountingDashboard = () => {
     return filtered;
   }, [transactions, searchTerm, typeFilter]);
 
+  // Permission gate – Accounting restricted to authorized roles
+  if (!canAccessAccounting) {
+    return (
+      <div className="h-screen flex items-center justify-center bg-[#0B0F19]">
+        <div className="text-center max-w-md">
+          <Shield className="w-16 h-16 mx-auto text-amber-500/60 mb-4" />
+          <h2 className="text-xl font-semibold text-white mb-2">Access Restricted</h2>
+          <p className="text-gray-400 text-sm">You do not have permission to view Accounting. Contact your administrator.</p>
+        </div>
+      </div>
+    );
+  }
+
   // Ledger full screen – same page, dropdown se select karne par full screen overlay
   if (activeTab === 'ledger') {
     return (
@@ -234,7 +252,7 @@ export const AccountingDashboard = () => {
             <div className="flex items-start justify-between mb-3">
               <div>
                 <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Total Income</p>
-                <p className="text-2xl font-bold text-green-400 mt-1">${summary.totalIncome.toLocaleString()}</p>
+                <p className="text-2xl font-bold text-green-400 mt-1">{formatCurrency(summary.totalIncome)}</p>
                 <p className="text-xs text-gray-500 mt-1">This period</p>
               </div>
               <div className="w-12 h-12 rounded-full bg-green-500/10 flex items-center justify-center">
@@ -248,7 +266,7 @@ export const AccountingDashboard = () => {
             <div className="flex items-start justify-between mb-3">
               <div>
                 <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Total Expense</p>
-                <p className="text-2xl font-bold text-red-400 mt-1">${summary.totalExpense.toLocaleString()}</p>
+                <p className="text-2xl font-bold text-red-400 mt-1">{formatCurrency(summary.totalExpense)}</p>
                 <p className="text-xs text-gray-500 mt-1">This period</p>
               </div>
               <div className="w-12 h-12 rounded-full bg-red-500/10 flex items-center justify-center">
@@ -265,7 +283,7 @@ export const AccountingDashboard = () => {
                 <p className={cn(
                   "text-2xl font-bold mt-1",
                   summary.netProfit >= 0 ? "text-green-400" : "text-red-400"
-                )}>${summary.netProfit.toLocaleString()}</p>
+                )}>{formatCurrency(summary.netProfit)}</p>
                 <p className="text-xs text-gray-500 mt-1">Income - Expense</p>
               </div>
               <div className={cn(
@@ -282,7 +300,7 @@ export const AccountingDashboard = () => {
             <div className="flex items-start justify-between mb-3">
               <div>
                 <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Receivables</p>
-                <p className="text-2xl font-bold text-blue-400 mt-1">${summary.totalReceivable.toLocaleString()}</p>
+                <p className="text-2xl font-bold text-blue-400 mt-1">{formatCurrency(summary.totalReceivable)}</p>
                 <p className="text-xs text-gray-500 mt-1">To receive</p>
               </div>
               <div className="w-12 h-12 rounded-full bg-blue-500/10 flex items-center justify-center">
@@ -296,7 +314,7 @@ export const AccountingDashboard = () => {
             <div className="flex items-start justify-between mb-3">
               <div>
                 <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Payables</p>
-                <p className="text-2xl font-bold text-orange-400 mt-1">${summary.totalPayable.toLocaleString()}</p>
+                <p className="text-2xl font-bold text-orange-400 mt-1">{formatCurrency(summary.totalPayable)}</p>
                 <p className="text-xs text-gray-500 mt-1">To pay</p>
               </div>
               <div className="w-12 h-12 rounded-full bg-orange-500/10 flex items-center justify-center">
@@ -459,10 +477,7 @@ export const AccountingDashboard = () => {
                               "px-4 py-3 text-sm font-semibold text-right tabular-nums",
                               amount >= 0 ? "text-green-400" : "text-red-400"
                             )}>
-                              {Math.abs(amount).toLocaleString('en-US', {
-                                minimumFractionDigits: 2,
-                                maximumFractionDigits: 2,
-                              })}
+                              {formatCurrency(Math.abs(amount))}
                             </td>
                             <td className="px-4 py-3 text-xs text-gray-400">
                               {entry.source || 'Manual'}
@@ -596,7 +611,7 @@ export const AccountingDashboard = () => {
                                 {accountName}
                               </td>
                               <td className="px-4 py-3 text-sm text-white font-semibold text-right tabular-nums">
-                                ${txn.amount.toLocaleString()}
+                                {formatCurrency(txn.amount)}
                               </td>
                               <td className="px-4 py-3 text-xs text-gray-500">
                                 {txn.createdBy}
@@ -740,10 +755,7 @@ export const AccountingDashboard = () => {
                             "px-4 py-3 text-sm font-semibold text-right tabular-nums",
                             account.balance >= 0 ? "text-green-400" : "text-red-400"
                           )}>
-                            Rs {account.balance.toLocaleString('en-US', {
-                              minimumFractionDigits: 2,
-                              maximumFractionDigits: 2,
-                            })}
+                            {formatCurrency(account.balance)}
                           </td>
                           <td className="px-4 py-3 text-xs">
                             {account.isActive ? (
@@ -930,13 +942,13 @@ export const AccountingDashboard = () => {
                             {new Date(sale.date).toLocaleDateString()}
                           </td>
                           <td className="px-4 py-3 text-sm text-gray-300 text-right">
-                            ${sale.total.toLocaleString()}
+                            {formatCurrency(sale.total)}
                           </td>
                           <td className="px-4 py-3 text-sm text-green-400 text-right">
-                            ${sale.paid.toLocaleString()}
+                            {formatCurrency(sale.paid)}
                           </td>
                           <td className="px-4 py-3 text-sm text-red-400 font-semibold text-right">
-                            ${sale.due.toLocaleString()}
+                            {formatCurrency(sale.due)}
                           </td>
                           <td className="px-4 py-3 text-xs">
                             <Badge className={
@@ -998,13 +1010,13 @@ export const AccountingDashboard = () => {
                             {new Date(purchase.date).toLocaleDateString()}
                           </td>
                           <td className="px-4 py-3 text-sm text-gray-300 text-right">
-                            ${purchase.total.toLocaleString()}
+                            {formatCurrency(purchase.total)}
                           </td>
                           <td className="px-4 py-3 text-sm text-green-400 text-right">
-                            ${purchase.paid.toLocaleString()}
+                            {formatCurrency(purchase.paid)}
                           </td>
                           <td className="px-4 py-3 text-sm text-red-400 font-semibold text-right">
-                            ${purchase.due.toLocaleString()}
+                            {formatCurrency(purchase.due)}
                           </td>
                           <td className="px-4 py-3 text-xs">
                             <Badge className={
@@ -1037,16 +1049,7 @@ export const AccountingDashboard = () => {
           </div>
         )}
 
-        {activeTab === 'studio' && (
-          <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-6">
-            <div className="text-center py-12">
-              <Wrench size={48} className="mx-auto text-gray-600 mb-3" />
-              <p className="text-gray-400 text-sm">Studio Production Costs</p>
-              <p className="text-gray-600 text-xs mt-1">Worker payments and job costs</p>
-              <p className="text-gray-500 text-xs mt-2">Feature coming soon - Studio module integration</p>
-            </div>
-          </div>
-        )}
+        {activeTab === 'studio' && <StudioCostsTab />}
 
         {activeTab === 'reports' && (
           <div className="space-y-4">
@@ -1056,7 +1059,7 @@ export const AccountingDashboard = () => {
                 <div className="flex items-center justify-between mb-4">
                   <div>
                     <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold mb-1">Total Income</p>
-                    <p className="text-2xl font-bold text-green-400">${summary.totalIncome.toLocaleString()}</p>
+                    <p className="text-2xl font-bold text-green-400">{formatCurrency(summary.totalIncome)}</p>
                   </div>
                   <TrendingUp size={32} className="text-green-500/50" />
                 </div>
@@ -1065,7 +1068,7 @@ export const AccountingDashboard = () => {
                 <div className="flex items-center justify-between mb-4">
                   <div>
                     <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold mb-1">Total Expense</p>
-                    <p className="text-2xl font-bold text-red-400">${summary.totalExpense.toLocaleString()}</p>
+                    <p className="text-2xl font-bold text-red-400">{formatCurrency(summary.totalExpense)}</p>
                   </div>
                   <TrendingDown size={32} className="text-red-500/50" />
                 </div>
@@ -1078,7 +1081,7 @@ export const AccountingDashboard = () => {
                       "text-2xl font-bold",
                       summary.netProfit >= 0 ? "text-green-400" : "text-red-400"
                     )}>
-                      ${summary.netProfit.toLocaleString()}
+                      {formatCurrency(summary.netProfit)}
                     </p>
                   </div>
                   <DollarSign size={32} className={summary.netProfit >= 0 ? "text-green-500/50" : "text-red-500/50"} />
@@ -1097,7 +1100,7 @@ export const AccountingDashboard = () => {
                       "text-xl font-bold",
                       balance >= 0 ? "text-green-400" : "text-red-400"
                     )}>
-                      ${balance.toLocaleString()}
+                      {formatCurrency(balance)}
                     </p>
                   </div>
                 ))}

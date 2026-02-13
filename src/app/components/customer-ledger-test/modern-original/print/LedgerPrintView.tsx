@@ -3,6 +3,7 @@ import type { Transaction } from '@/app/services/customerLedgerTypes';
 import React from 'react';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { useSettings } from '@/app/context/SettingsContext';
+import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
 import { formatBoxesPieces } from '@/app/components/ui/utils';
 import './ledger-print-view-print.css';
 
@@ -33,6 +34,7 @@ export function LedgerPrintView({
 }: LedgerPrintViewProps) {
   
   const { inventorySettings } = useSettings();
+  const { formatCurrency } = useFormatCurrency();
   const enablePacking = inventorySettings.enablePacking;
   const [orientation, setOrientation] = React.useState<'portrait' | 'landscape'>(initialOrientation);
   
@@ -326,6 +328,15 @@ export function LedgerPrintView({
                     textAlign: 'left',
                     fontWeight: '700',
                     fontSize: '10px',
+                    width: orientation === 'landscape' ? '140px' : '100px'
+                  }}>
+                    NOTES
+                  </th>
+                  <th style={{ 
+                    padding: '10px 8px', 
+                    textAlign: 'left',
+                    fontWeight: '700',
+                    fontSize: '10px',
                     width: orientation === 'landscape' ? '120px' : '80px'
                   }}>
                     PAYMENT METHOD
@@ -391,6 +402,9 @@ export function LedgerPrintView({
                             </div>
                           )}
                         </td>
+                        <td style={{ padding: '8px', color: '#000000', fontSize: '10px', maxWidth: '140px' }}>
+                          {transaction.notes || '—'}
+                        </td>
                         <td style={{ padding: '8px', color: '#000000', fontSize: '10px' }}>
                           {transaction.paymentAccount}
                         </td>
@@ -426,7 +440,7 @@ export function LedgerPrintView({
                       {/* Product breakdown – 1:1 with sale_items: Variation, Packing, Qty, Unit separate */}
                       {products.length > 0 && (
                         <tr style={{ background: '#f1f5f9' }}>
-                          <td colSpan={7} style={{ padding: '8px 8px 8px 24px' }}>
+                          <td colSpan={8} style={{ padding: '8px 8px 8px 24px' }}>
                             <table style={{ width: '100%', fontSize: '10px' }}>
                               <thead>
                                 <tr style={{ borderBottom: '1px solid #cbd5e1' }}>
@@ -515,7 +529,7 @@ export function LedgerPrintView({
                     TOTAL DEBIT:
                   </p>
                   <p style={{ fontSize: '16px', fontWeight: '700', margin: '0', fontFamily: 'monospace', color: '#000000' }}>
-                    Rs {totalDebit.toLocaleString('en-PK')}
+                    {formatCurrency(totalDebit)}
                   </p>
                 </div>
                 <div>
@@ -523,7 +537,7 @@ export function LedgerPrintView({
                     TOTAL CREDIT:
                   </p>
                   <p style={{ fontSize: '16px', fontWeight: '700', margin: '0', fontFamily: 'monospace', color: '#000000' }}>
-                    Rs {totalCredit.toLocaleString('en-PK')}
+                    {formatCurrency(totalCredit)}
                   </p>
                 </div>
                 <div style={{ 
@@ -536,7 +550,7 @@ export function LedgerPrintView({
                     CLOSING BALANCE:
                   </p>
                   <p style={{ fontSize: '18px', fontWeight: '700', margin: '0', fontFamily: 'monospace', color: '#000000' }}>
-                    Rs {closingBalance.toLocaleString('en-PK')}
+                    {formatCurrency(closingBalance)}
                   </p>
                 </div>
               </div>

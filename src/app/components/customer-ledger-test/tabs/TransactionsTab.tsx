@@ -4,18 +4,18 @@ import type { Transaction } from '@/app/services/customerLedgerTypes';
 import { Badge } from '@/app/components/ui/badge';
 import { Input } from '@/app/components/ui/input';
 import { EmptyState } from '@/app/components/shared/EmptyState';
+import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
+import { useFormatDate } from '@/app/hooks/useFormatDate';
 
 interface TransactionsTabProps {
   transactions: Transaction[];
 }
 
 export function TransactionsTab({ transactions }: TransactionsTabProps) {
+  const { formatCurrency } = useFormatCurrency();
+  const { formatDate } = useFormatDate();
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState<'all' | 'Sale' | 'Payment' | 'Discount'>('all');
-
-  const formatAmount = (amount: number) => {
-    return amount > 0 ? amount.toLocaleString('en-PK') : '-';
-  };
 
   const getDocumentIcon = (type: string) => {
     switch (type) {
@@ -112,7 +112,7 @@ export function TransactionsTab({ transactions }: TransactionsTabProps) {
                 filteredTransactions.map((transaction) => (
                   <tr key={transaction.id} className="hover:bg-slate-50 transition-colors">
                     <td className="px-4 py-3 text-sm text-slate-600">
-                      {new Date(transaction.date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
+                      {formatDate(transaction.date)}
                     </td>
                     <td className="px-4 py-3 text-sm font-medium text-slate-900">{transaction.referenceNo}</td>
                     <td className="px-4 py-3">
@@ -125,13 +125,13 @@ export function TransactionsTab({ transactions }: TransactionsTabProps) {
                     </td>
                     <td className="px-4 py-3 text-sm text-slate-600">{transaction.description}</td>
                     <td className="px-4 py-3 text-sm text-right font-medium text-orange-600">
-                      {transaction.debit > 0 ? `Rs ${formatAmount(transaction.debit)}` : '-'}
+                      {transaction.debit > 0 ? formatCurrency(transaction.debit) : '-'}
                     </td>
                     <td className="px-4 py-3 text-sm text-right font-medium text-emerald-600">
-                      {transaction.credit > 0 ? `Rs ${formatAmount(transaction.credit)}` : '-'}
+                      {transaction.credit > 0 ? formatCurrency(transaction.credit) : '-'}
                     </td>
                     <td className="px-4 py-3 text-sm text-right font-semibold text-slate-900">
-                      Rs {formatAmount(transaction.runningBalance)}
+                      {formatCurrency(transaction.runningBalance)}
                     </td>
                   </tr>
                 ))

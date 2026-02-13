@@ -10,6 +10,7 @@ import { Badge } from "../ui/badge";
 import { cn, formatBoxesPieces, formatDecimal } from "../ui/utils";
 import { useSupabase } from '../../context/SupabaseContext';
 import { useSettings } from '../../context/SettingsContext';
+import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
 import { productService } from '../../services/productService';
 import { inventoryService, InventoryOverviewRow, InventoryMovementRow } from '../../services/inventoryService';
 import { toast } from 'sonner';
@@ -24,6 +25,7 @@ type InventoryTab = 'overview' | 'analytics';
 export const InventoryDashboardNew = () => {
   const { companyId, branchId, user } = useSupabase();
   const { inventorySettings } = useSettings();
+  const { formatCurrency } = useFormatCurrency();
   const enablePacking = inventorySettings.enablePacking;
   const [activeTab, setActiveTab] = useState<InventoryTab>('overview');
   const [searchTerm, setSearchTerm] = useState('');
@@ -469,7 +471,7 @@ export const InventoryDashboardNew = () => {
                 </div>
                 <div>
                   <h3 className="text-white font-bold">Total Stock Value</h3>
-                  <p className="text-2xl font-bold text-white mt-1">Rs {totalStockValue.toLocaleString()}</p>
+                  <p className="text-2xl font-bold text-white mt-1">{formatCurrency(totalStockValue)}</p>
                 </div>
               </div>
             </div>
@@ -482,7 +484,7 @@ export const InventoryDashboardNew = () => {
                 <div>
                   <p className="text-gray-400 text-sm">Total Stock Value</p>
                   <h3 className="text-2xl font-bold text-white mt-1">
-                    Rs {totalStockValue.toLocaleString()}
+                    {formatCurrency(totalStockValue)}
                   </h3>
                 </div>
                 <div className="p-3 bg-blue-500/10 rounded-lg">
@@ -496,7 +498,7 @@ export const InventoryDashboardNew = () => {
                 <div>
                   <p className="text-gray-400 text-sm">Potential Profit</p>
                   <h3 className="text-2xl font-bold text-white mt-1">
-                    Rs {potentialProfit.toLocaleString()}
+                    {formatCurrency(potentialProfit)}
                   </h3>
                 </div>
                 <div className="p-3 bg-green-500/10 rounded-lg">
@@ -1165,7 +1167,7 @@ export const InventoryDashboardNew = () => {
                       <td className="px-6 py-4 text-center text-gray-400">{m.before_qty ?? '-'}</td>
                       <td className="px-6 py-4 text-center text-gray-400">{m.after_qty ?? '-'}</td>
                       <td className="px-6 py-4 text-right text-gray-400">
-                        {m.unit_cost != null ? `Rs ${Number(m.unit_cost).toLocaleString()}` : '-'}
+                        {m.unit_cost != null ? formatCurrency(Number(m.unit_cost)) : '-'}
                       </td>
                       <td className="px-6 py-4 text-gray-400 text-sm max-w-[200px] truncate" title={m.notes || ''}>
                         <div className="flex items-center gap-2">

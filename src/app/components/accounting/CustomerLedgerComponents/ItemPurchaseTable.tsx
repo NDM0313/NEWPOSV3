@@ -5,6 +5,7 @@ import { AccountLedgerEntry } from '@/app/services/accountingService';
 import { format } from 'date-fns';
 import { supabase } from '@/lib/supabase';
 import { formatBoxesPieces } from '@/app/components/ui/utils';
+import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
 
 interface ItemPurchaseTableProps {
   entries: AccountLedgerEntry[];
@@ -42,6 +43,7 @@ export const ItemPurchaseTable: React.FC<ItemPurchaseTableProps> = ({
   companyId,
   customerId,
 }) => {
+  const { formatCurrency } = useFormatCurrency();
   const [salesWithItems, setSalesWithItems] = useState<SaleWithItems[]>([]);
   const [loading, setLoading] = useState(false);
 
@@ -165,10 +167,7 @@ export const ItemPurchaseTable: React.FC<ItemPurchaseTableProps> = ({
                 <div className="text-right">
                   <div className="text-xs text-gray-400">Invoice Total</div>
                   <div className="font-semibold text-white">
-                    Rs {sale.invoiceTotal.toLocaleString('en-US', {
-                      minimumFractionDigits: 2,
-                      maximumFractionDigits: 2,
-                    })}
+                    {formatCurrency(sale.invoiceTotal)}
                   </div>
                 </div>
               </div>
@@ -220,10 +219,10 @@ export const ItemPurchaseTable: React.FC<ItemPurchaseTableProps> = ({
                         <td className="px-4 py-3 text-sm text-right text-gray-300">{Number(item.quantity).toFixed(2)}</td>
                         <td className="px-4 py-3 text-sm text-gray-300">{unit}</td>
                         <td className="px-4 py-3 text-sm text-right text-gray-300">
-                          Rs {Number(item.unit_price).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          {formatCurrency(Number(item.unit_price))}
                         </td>
                         <td className="px-4 py-3 text-sm text-right text-green-400 font-semibold">
-                          Rs {Number(item.total).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          {formatCurrency(Number(item.total))}
                         </td>
                       </tr>
                     );

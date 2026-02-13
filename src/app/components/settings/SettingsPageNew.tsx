@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { 
   Building2, CreditCard, Hash, ToggleLeft, Save, 
   CheckCircle, Users, Lock, Key, Settings as SettingsIcon, AlertCircle, UserCog,
-  MapPin, Store, ShoppingCart, ShoppingBag, Package, Shirt, Calculator, X, Edit
+  MapPin, Store, ShoppingCart, ShoppingBag, Package, Shirt, Calculator, X, Edit, Download
 } from 'lucide-react';
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
@@ -19,6 +19,7 @@ import { useAccounting } from '@/app/context/AccountingContext';
 import { toast } from 'sonner';
 import { AddUserModal } from '../users/AddUserModal';
 import { AddBranchModal } from '../branches/AddBranchModal';
+import { exportAndDownloadBackup } from '@/app/services/backupService';
 import { InventoryMasters, type InventoryMasterTab } from './inventory/InventoryMasters';
 import {
   Dialog,
@@ -42,7 +43,8 @@ type SettingsTab =
   | 'accounts' 
   | 'numbering' 
   | 'users' 
-  | 'modules';
+  | 'modules'
+  | 'data';
 
 export const SettingsPageNew = () => {
   const settings = useSettings();
@@ -315,6 +317,9 @@ export const SettingsPageNew = () => {
         case 'modules':
           await settings.updateModules(modulesForm);
           break;
+        case 'data':
+          // No save - export only
+          break;
       }
       setHasUnsavedChanges(false);
     } catch (error) {
@@ -337,6 +342,7 @@ export const SettingsPageNew = () => {
     { id: 'users' as const, label: 'User Management', icon: UserCog },
     // Permissions tab removed - permissions now managed per-user in User Management modal
     { id: 'modules' as const, label: 'Module Toggles', icon: ToggleLeft },
+    { id: 'data' as const, label: 'Data & Backup', icon: Download },
   ];
 
   return (
@@ -2075,6 +2081,40 @@ export const SettingsPageNew = () => {
                   <p className="text-sm text-blue-300">
                     ℹ️ <strong>Note:</strong> Disabling a module will hide it from the sidebar. Existing data will be preserved.
                   </p>
+                </div>
+              </div>
+            )}
+
+            {/* DATA & BACKUP TAB */}
+            {activeTab === 'data' && (
+              <div className="space-y-6">
+                <div className="flex items-center gap-3 mb-6">
+                  <div className="p-3 bg-emerald-500/10 rounded-lg">
+                    <Download className="text-emerald-500" size={24} />
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-bold text-white">Data & Backup</h3>
+                    <p className="text-sm text-gray-400">Export company data for backup</p>
+                  </div>
+                </div>
+
+                <div className="bg-gray-950 p-6 rounded-lg border border-gray-800">
+                  <h4 className="text-white font-medium mb-2">Company Backup (JSON)</h4>
+                  <p className="text-sm text-gray-400 mb-4">
+                    Export contacts, products, sales, purchases, expenses, and branches as a single JSON file.
+                  </p>
+                  <Button
+                    onClick={async () => {
+                      if (!companyId) return;
+                      const ok = await exportAndDownloadBackup(companyId);
+                      if (ok) toast.success('Backup downloaded');
+                    }}
+                    disabled={!companyId}
+                    className="bg-emerald-600 hover:bg-emerald-500 text-white gap-2"
+                  >
+                    <Download size={16} />
+                    Export Backup
+                  </Button>
                 </div>
               </div>
             )}

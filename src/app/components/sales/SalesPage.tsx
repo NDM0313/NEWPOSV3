@@ -58,11 +58,13 @@ import { ViewPaymentsModal, type InvoiceDetails, type Payment } from './ViewPaym
 import { AttachmentViewer } from '@/app/components/shared/AttachmentViewer';
 import { SaleReturnPrintLayout } from '@/app/components/shared/SaleReturnPrintLayout';
 import { toast } from 'sonner';
+import { useCheckPermission } from '@/app/hooks/useCheckPermission';
 
 // Mock data removed - using SalesContext which loads from Supabase
 
 export const SalesPage = () => {
   const { openDrawer, setCurrentView } = useNavigation();
+  const { canEditSale, canDeleteSale, canCreateSale } = useCheckPermission();
   const { sales, deleteSale, updateSale, recordPayment, updateShippingStatus, refreshSales, loading } = useSales();
   const { companyId, branchId } = useSupabase();
   const { startDate, endDate } = useDateRange();
@@ -1026,6 +1028,7 @@ export const SalesPage = () => {
             >
               Design test
             </Button>
+          {canCreateSale && (
           <Button 
             onClick={() => openDrawer('addSale')}
             className="bg-blue-600 hover:bg-blue-500 text-white h-10 gap-2"
@@ -1033,6 +1036,7 @@ export const SalesPage = () => {
             <Plus size={16} />
             Add Sale
           </Button>
+          )}
           </div>
         </div>
       </div>
@@ -1667,8 +1671,8 @@ export const SalesPage = () => {
                               <Eye size={14} className="mr-2 text-blue-400" />
                               View Details
                             </DropdownMenuItem>
-                            {/* 🔒 LOCK: Hide Edit if sale has returns */}
-                            {!(sale.hasReturn || salesWithReturns.has(sale.id)) && (
+                            {/* 🔒 LOCK: Hide Edit if sale has returns; permission-based */}
+                            {canEditSale && !(sale.hasReturn || salesWithReturns.has(sale.id)) && (
                               <DropdownMenuItem 
                                 className="hover:bg-gray-800 cursor-pointer"
                                 onClick={() => handleSaleAction('edit', sale)}
@@ -1767,6 +1771,7 @@ export const SalesPage = () => {
                               <Truck size={14} className="mr-2 text-orange-400" />
                               Update Shipping
                             </DropdownMenuItem>
+                            {canDeleteSale && (
                             <DropdownMenuItem 
                               className="hover:bg-gray-800 cursor-pointer text-red-400"
                               onClick={() => handleSaleAction('delete', sale)}
@@ -1774,6 +1779,7 @@ export const SalesPage = () => {
                               <Trash2 size={14} className="mr-2" />
                               Delete
                             </DropdownMenuItem>
+                            )}
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </div>

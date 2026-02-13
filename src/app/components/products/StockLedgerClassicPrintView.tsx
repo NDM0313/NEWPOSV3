@@ -12,6 +12,7 @@ import { formatStockReference } from '@/app/utils/formatters';
 import { toast } from 'sonner';
 import { useSettings } from '@/app/context/SettingsContext';
 import { ClassicPrintBase } from '../shared/ClassicPrintBase';
+import { usePrinterConfig } from '@/app/hooks/usePrinterConfig';
 
 export interface StockMovementForPrint {
   id: string;
@@ -65,6 +66,7 @@ export const StockLedgerClassicPrintView: React.FC<StockLedgerClassicPrintViewPr
   initialOrientation = 'landscape',
 }) => {
   const { inventorySettings } = useSettings();
+  const { config: printerConfig } = usePrinterConfig();
   const enablePacking = inventorySettings.enablePacking;
   const [orientation, setOrientation] = useState<'portrait' | 'landscape'>(initialOrientation);
 
@@ -175,6 +177,7 @@ export const StockLedgerClassicPrintView: React.FC<StockLedgerClassicPrintViewPr
         headerMeta={headerMeta}
         onPrint={handlePrint}
         onClose={onClose}
+        printerMode={printerConfig.mode}
         showActions={true}
         actionChildren={actionChildren}
       >

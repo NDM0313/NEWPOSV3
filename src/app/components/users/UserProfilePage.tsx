@@ -4,7 +4,7 @@ import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { Card } from '../ui/card';
-import { User, Mail, Phone, Building2, MapPin, Calendar, Save, X } from 'lucide-react';
+import { User, Mail, Phone, Building2, Calendar, Save, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
 
@@ -17,7 +17,6 @@ export const UserProfilePage = ({ onClose }: { onClose?: () => void }) => {
   const [formData, setFormData] = useState({
     full_name: '',
     phone: '',
-    avatar_url: '',
   });
 
   useEffect(() => {
@@ -42,7 +41,6 @@ export const UserProfilePage = ({ onClose }: { onClose?: () => void }) => {
         setFormData({
           full_name: data.full_name || '',
           phone: data.phone || '',
-          avatar_url: data.avatar_url || '',
         });
       }
     } catch (error: any) {
@@ -58,24 +56,37 @@ export const UserProfilePage = ({ onClose }: { onClose?: () => void }) => {
 
     try {
       setSaving(true);
-      const { error } = await supabase
+      const { data: updatedRow, error } = await supabase
         .from('users')
         .update({
           full_name: formData.full_name,
-          phone: formData.phone,
-          avatar_url: formData.avatar_url,
+          phone: formData.phone || null,
           updated_at: new Date().toISOString(),
         })
-        .eq('id', user.id);
+        .eq('id', user.id)
+        .select('full_name, phone')
+        .single();
 
       if (error) throw error;
+
+      if (!updatedRow) {
+        toast.error('Profile update failed - no rows updated. Please try again.');
+        return;
+      }
+
+      setUserData((prev: any) => prev ? { ...prev, ...updatedRow } : updatedRow);
+      setFormData((prev) => ({
+        ...prev,
+        full_name: updatedRow.full_name ?? prev.full_name,
+        phone: updatedRow.phone ?? '',
+      }));
 
       toast.success('Profile updated successfully');
       await loadUserProfile();
       if (onClose) onClose();
     } catch (error: any) {
       console.error('[USER PROFILE] Error saving profile:', error);
-      toast.error('Failed to save profile');
+      toast.error(error?.message || 'Failed to save profile');
     } finally {
       setSaving(false);
     }

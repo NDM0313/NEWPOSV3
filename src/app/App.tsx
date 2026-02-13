@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { lazy, Suspense } from 'react';
 import { NavigationProvider, useNavigation } from './context/NavigationContext';
 import { Layout } from './components/layout/Layout';
 import { Dashboard } from './components/dashboard/Dashboard';
@@ -12,13 +12,13 @@ import { ContactList } from './components/contacts/ContactList';
 import { ContactsPage } from './components/contacts/ContactsPage';
 import { ProductsPage } from './components/products/ProductsPage';
 import { PurchaseList } from './components/purchases/PurchaseList';
-import { AccountingDashboard } from './components/accounting/AccountingDashboard';
+const AccountingDashboard = lazy(() => import('./components/accounting/AccountingDashboard').then(m => ({ default: m.AccountingDashboard })));
 import { UserDashboard } from './components/users/UserDashboard';
 import { RolesDashboard } from './components/users/RolesDashboard';
 import { UserProfilePage } from './components/users/UserProfilePage';
 import { PurchasesPage } from './components/purchases/PurchasesPage';
 import { SalesPage } from './components/sales/SalesPage';
-import { RentalDashboard } from './components/rentals/RentalDashboard';
+const RentalDashboard = lazy(() => import('./components/rentals/RentalDashboard').then(m => ({ default: m.RentalDashboard })));
 import { NewRentalBooking } from './components/rentals/NewRentalBooking';
 import { PaymentFooterDemo } from './components/demo/PaymentFooterDemo';
 import { UXImprovementsDemo } from './components/demo/UXImprovementsDemo';
@@ -35,18 +35,18 @@ import { ExpenseProvider } from './context/ExpenseContext';
 import { ProductionProvider } from './context/ProductionContext';
 import { ModuleSettings } from './components/settings/ModuleSettings';
 import { ReportsDashboard } from './components/reports/ReportsDashboard';
-import { ReportsDashboardEnhanced } from './components/reports/ReportsDashboardEnhanced';
+const ReportsDashboardEnhanced = lazy(() => import('./components/reports/ReportsDashboardEnhanced').then(m => ({ default: m.ReportsDashboardEnhanced })));
 import { ViewContactProfile } from './components/contacts/ViewContactProfile';
 import { ItemLifecycleReport } from './components/reports/ItemLifecycleReport';
 import { ProductionOrderDetail } from './components/production/ProductionOrderDetail';
 import { CustomerOrderTracking } from './components/tracking/CustomerOrderTracking';
 import { InventoryDashboard } from './components/inventory/InventoryDashboard';
-import { InventoryDashboardNew } from './components/inventory/InventoryDashboardNew';
+const InventoryDashboardNew = lazy(() => import('./components/inventory/InventoryDashboardNew').then(m => ({ default: m.InventoryDashboardNew })));
 import { InventoryDesignTestPage } from './components/inventory/InventoryDesignTestPage';
 import { InventoryAnalyticsTestPage } from './components/inventory/InventoryAnalyticsTestPage';
-import { StudioDashboard } from './components/studio/StudioDashboard';
+const StudioDashboardNew = lazy(() => import('./components/studio/StudioDashboardNew').then(m => ({ default: m.StudioDashboardNew })));
 import { SettingsPage } from './components/settings/SettingsPage';
-import { SettingsPageNew } from './components/settings/SettingsPageNew';
+const SettingsPageNew = lazy(() => import('./components/settings/SettingsPageNew').then(m => ({ default: m.SettingsPageNew })));
 import { SettingsPageComplete } from './components/settings/SettingsPageComplete';
 import { SettingsPageClean } from './components/settings/SettingsPageClean';
 import { StudioWorkflowPage } from './components/studio/StudioWorkflowPage';
@@ -57,12 +57,11 @@ import { StudioSalesList } from './components/studio/StudioSalesList';
 import { StudioSaleDetail } from './components/studio/StudioSaleDetail';
 import { StudioSalesListNew } from './components/studio/StudioSalesListNew';
 import { StudioSaleDetailNew } from './components/studio/StudioSaleDetailNew';
-import { StudioDashboardNew } from './components/studio/StudioDashboardNew';
 import { WorkerDetailPage } from './components/studio/WorkerDetailPage';
 import { StudioProductionListPage } from './components/studio/StudioProductionListPage';
 import { StudioProductionDetailPage } from './components/studio/StudioProductionDetailPage';
 import { StudioProductionAddPage } from './components/studio/StudioProductionAddPage';
-import { StudioPipelinePage } from './components/studio/StudioPipelinePage';
+const StudioPipelinePage = lazy(() => import('./components/studio/StudioPipelinePage').then(m => ({ default: m.StudioPipelinePage })));
 import { AccountingIntegrationDemo } from './components/accounting/AccountingIntegrationDemo';
 import { PurchaseListExample } from './components/purchases/PurchaseListExample';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
@@ -81,6 +80,7 @@ import TestLedger from './TestLedger';
 import CustomerLedgerInteractiveTest from './components/customer-ledger-test/CustomerLedgerInteractiveTest';
 import { SupabaseProvider } from './context/SupabaseContext';
 import { ProtectedRoute } from './components/auth/ProtectedRoute';
+import { ErrorBoundary } from './components/shared/ErrorBoundary';
 import { useSettings } from './context/SettingsContext';
 import { DateRangeProvider } from './context/DateRangeContext';
 
@@ -148,14 +148,26 @@ const AppContent = () => {
       {currentView === 'dashboard' && <Dashboard />}
       {currentView === 'products' && <ProductsPage />}
       {currentView === 'sales' && <SalesPage />}
-      {currentView === 'rentals' && <RentalDashboard />}
+      {currentView === 'rentals' && (
+        <Suspense fallback={<div className="flex items-center justify-center p-12"><div className="animate-pulse text-gray-500">Loading...</div></div>}>
+          <RentalDashboard />
+        </Suspense>
+      )}
       {currentView === 'rental-booking' && <NewRentalBooking />}
       {currentView === 'stock' && <StockDashboard />}
-      {currentView === 'inventory' && <InventoryDashboardNew />}
+      {currentView === 'inventory' && <InventoryDesignTestPage />}
       {currentView === 'studio' && <StudioSalesListNew />}
-      {currentView === 'studio-dashboard-new' && <StudioDashboardNew />}
+      {currentView === 'studio-dashboard-new' && (
+        <Suspense fallback={<div className="flex items-center justify-center p-12"><div className="animate-pulse text-gray-500">Loading...</div></div>}>
+          <StudioDashboardNew />
+        </Suspense>
+      )}
       {currentView === 'studio-sales-list-new' && <StudioSalesListNew />}
-      {currentView === 'studio-pipeline' && <StudioPipelinePage />}
+      {currentView === 'studio-pipeline' && (
+        <Suspense fallback={<div className="flex items-center justify-center p-12"><div className="animate-pulse text-gray-500">Loading...</div></div>}>
+          <StudioPipelinePage />
+        </Suspense>
+      )}
       {currentView === 'studio-sale-detail' && <StudioSaleDetailNew />}
       {currentView === 'studio-sale-detail-new' && <StudioSaleDetailNew />}
       {currentView === 'studio-job' && <StudioJobCard />}
@@ -166,14 +178,26 @@ const AppContent = () => {
       {currentView === 'contacts' && <ContactsPage />}
       {currentView === 'purchases' && <PurchasesPage />}
       {currentView === 'purchase-example' && <PurchaseListExample />}
-      {currentView === 'accounting' && <AccountingDashboard />}
+      {currentView === 'accounting' && (
+        <Suspense fallback={<div className="flex items-center justify-center p-12"><div className="animate-pulse text-gray-500">Loading...</div></div>}>
+          <AccountingDashboard />
+        </Suspense>
+      )}
       {currentView === 'accounting-demo' && <AccountingIntegrationDemo />}
       {currentView === 'users' && <UserDashboard />}
       {currentView === 'roles' && <RolesDashboard />}
       
       {/* Placeholders for new modules */}
-      {currentView === 'reports' && <ReportsDashboardEnhanced />}
-      {currentView === 'settings' && <SettingsPageNew />}
+      {currentView === 'reports' && (
+        <Suspense fallback={<div className="flex items-center justify-center p-12"><div className="animate-pulse text-gray-500">Loading...</div></div>}>
+          <ReportsDashboardEnhanced />
+        </Suspense>
+      )}
+      {currentView === 'settings' && (
+        <Suspense fallback={<div className="flex items-center justify-center p-12"><div className="animate-pulse text-gray-500">Loading...</div></div>}>
+          <SettingsPageNew />
+        </Suspense>
+      )}
       {currentView === 'user-profile' && <UserProfilePage />}
       {currentView === 'contact-profile' && <ViewContactProfile />}
       {currentView === 'item-report' && <ItemLifecycleReport />}
@@ -205,34 +229,41 @@ const AppContent = () => {
 
 export default function App() {
   return (
-    <ThemeProvider attribute="class" defaultTheme="dark" enableSystem={false}>
-      <SupabaseProvider>
-        <ProtectedRoute>
-          <DateRangeProvider>
-            <ModuleProvider>
-              <AccountingProvider>
-                <SettingsProvider>
-                  <SalesProvider>
-                    <PurchaseProvider>
-                      <RentalProvider>
-                        <ExpenseProvider>
-                          <ProductionProvider>
-                          <NavigationProvider>
-                            <AppContent />
-                            <Toaster position="bottom-right" theme="dark" />
-                            <KeyboardShortcutsModal />
-                          </NavigationProvider>
-                          </ProductionProvider>
-                        </ExpenseProvider>
-                      </RentalProvider>
-                    </PurchaseProvider>
-                  </SalesProvider>
-                </SettingsProvider>
-              </AccountingProvider>
-            </ModuleProvider>
-          </DateRangeProvider>
-        </ProtectedRoute>
-      </SupabaseProvider>
-    </ThemeProvider>
+    <ErrorBoundary onError={(err, info) => {
+        // Optional: send to logging service in production
+        if (import.meta.env?.PROD) {
+          // e.g. Sentry.captureException(err, { extra: info });
+        }
+      }}>
+      <ThemeProvider attribute="class" defaultTheme="dark" enableSystem={false}>
+        <SupabaseProvider>
+          <ProtectedRoute>
+            <DateRangeProvider>
+              <ModuleProvider>
+                <AccountingProvider>
+                  <SettingsProvider>
+                    <SalesProvider>
+                      <PurchaseProvider>
+                        <RentalProvider>
+                          <ExpenseProvider>
+                            <ProductionProvider>
+                              <NavigationProvider>
+                                <AppContent />
+                                <Toaster position="bottom-right" theme="dark" />
+                                <KeyboardShortcutsModal />
+                              </NavigationProvider>
+                            </ProductionProvider>
+                          </ExpenseProvider>
+                        </RentalProvider>
+                      </PurchaseProvider>
+                    </SalesProvider>
+                  </SettingsProvider>
+                </AccountingProvider>
+              </ModuleProvider>
+            </DateRangeProvider>
+          </ProtectedRoute>
+        </SupabaseProvider>
+      </ThemeProvider>
+    </ErrorBoundary>
   );
 }

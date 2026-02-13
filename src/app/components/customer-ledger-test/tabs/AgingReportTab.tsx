@@ -2,13 +2,14 @@ import React from 'react';
 import { Clock } from 'lucide-react';
 import type { AgingReport } from '@/app/services/customerLedgerApi';
 import { EmptyState } from '@/app/components/shared/EmptyState';
+import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
 
 interface AgingReportTabProps {
   agingReport: AgingReport;
 }
 
 export function AgingReportTab({ agingReport }: AgingReportTabProps) {
-  const formatAmount = (amount: number) => amount.toLocaleString('en-PK');
+  const { formatCurrency } = useFormatCurrency();
 
   if (agingReport.total === 0) {
     return <EmptyState title="No Outstanding Amounts" message="All invoices are fully paid." />;
@@ -32,7 +33,7 @@ export function AgingReportTab({ agingReport }: AgingReportTabProps) {
               <Clock className="w-4 h-4" />
               <div className="text-xs font-medium">{bucket.label}</div>
             </div>
-            <div className="text-2xl font-bold">Rs {formatAmount(bucket.amount)}</div>
+            <div className="text-2xl font-bold">{formatCurrency(bucket.amount)}</div>
             <div className="text-xs mt-1 opacity-75">
               {((bucket.amount / agingReport.total) * 100).toFixed(1)}% of total
             </div>
@@ -48,7 +49,7 @@ export function AgingReportTab({ agingReport }: AgingReportTabProps) {
             <p className="text-sm text-slate-600">Sum of all aging buckets</p>
           </div>
           <div className="text-right">
-            <div className="text-3xl font-bold text-slate-900">Rs {formatAmount(agingReport.total)}</div>
+            <div className="text-3xl font-bold text-slate-900">{formatCurrency(agingReport.total)}</div>
             <div className="text-xs text-slate-500 mt-1">Outstanding Receivables</div>
           </div>
         </div>

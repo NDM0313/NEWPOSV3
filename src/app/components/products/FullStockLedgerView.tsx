@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { X, FileText, ArrowUpRight, ArrowDownRight, Loader2, ExternalLink, Package, Printer } from 'lucide-react';
+import { X, FileText, ArrowUpRight, ArrowDownRight, Loader2, ExternalLink, Package, Printer, Shirt } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
@@ -73,8 +73,9 @@ export const FullStockLedgerView: React.FC<FullStockLedgerViewProps> = ({
   const { companyId, branchId: contextBranchId } = useSupabase();
   const { getSaleById } = useSales();
   const { getPurchaseById } = usePurchases();
-  const { inventorySettings } = useSettings();
+  const { inventorySettings, modules } = useSettings();
   const enablePacking = inventorySettings.enablePacking ?? false;
+  const rentalModuleEnabled = modules?.rentalModuleEnabled ?? false;
   const [movements, setMovements] = useState<StockMovement[]>([]);
   const [loading, setLoading] = useState(false);
   const [runningBalance, setRunningBalance] = useState<Map<string, number>>(new Map());
@@ -400,6 +401,7 @@ export const FullStockLedgerView: React.FC<FullStockLedgerViewProps> = ({
   const totals = React.useMemo(() => {
     let totalPurchased = 0;
     let totalSold = 0;
+    let totalRented = 0;
     let totalReturned = 0;
     let totalAdjustmentPositive = 0;
     let totalAdjustmentNegative = 0;
@@ -427,6 +429,8 @@ export const FullStockLedgerView: React.FC<FullStockLedgerViewProps> = ({
         totalSold += Math.abs(qty);
         totalSoldBox += Math.abs(boxCh);
         totalSoldPiece += Math.abs(pieceCh);
+      } else if (movementType === 'rental_out') {
+        totalRented += Math.abs(qty);
       } else if (movementType === 'return' || movementType === 'sell_return' || movementType === 'rental_return') {
         totalReturned += qty;
       } else if (movementType === 'adjustment') {
@@ -451,6 +455,7 @@ export const FullStockLedgerView: React.FC<FullStockLedgerViewProps> = ({
     return {
       totalPurchased,
       totalSold,
+      totalRented,
       totalReturned,
       totalAdjustmentPositive,
       totalAdjustmentNegative,
@@ -708,7 +713,10 @@ export const FullStockLedgerView: React.FC<FullStockLedgerViewProps> = ({
         )}
 
         {/* PART 3: Top Summary Cards - Updated with proper breakdown */}
-        <div className="p-6 grid grid-cols-4 gap-4 border-b border-gray-800 bg-[#1F2937]/30">
+        <div className={cn(
+          "p-6 grid gap-4 border-b border-gray-800 bg-[#1F2937]/30",
+          rentalModuleEnabled ? "grid-cols-2 md:grid-cols-4 lg:grid-cols-5" : "grid-cols-2 md:grid-cols-4"
+        )}>
           <div className="bg-gray-900 border border-green-800 p-4 rounded-lg">
             <div className="flex items-center gap-2 mb-2">
               <ArrowDownRight size={16} className="text-green-400" />
@@ -733,6 +741,16 @@ export const FullStockLedgerView: React.FC<FullStockLedgerViewProps> = ({
               </div>
             )}
           </div>
+          {rentalModuleEnabled && (
+            <div className="bg-gray-900 border border-pink-800 p-4 rounded-lg">
+              <div className="flex items-center gap-2 mb-2">
+                <Shirt size={16} className="text-pink-400" />
+                <span className="text-xs text-gray-500 uppercase font-bold tracking-wider">Total Rented</span>
+              </div>
+              <span className="text-2xl font-bold text-pink-400">{totals.totalRented.toFixed(2)}</span>
+              <div className="text-xs text-gray-500 mt-1">Qty rented out</div>
+            </div>
+          )}
           <div className="bg-gray-900 border border-yellow-800 p-4 rounded-lg">
             <div className="flex items-center gap-2 mb-2">
               <Package size={16} className="text-yellow-400" />

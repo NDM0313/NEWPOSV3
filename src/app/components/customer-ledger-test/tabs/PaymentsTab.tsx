@@ -3,13 +3,16 @@ import { CreditCard } from 'lucide-react';
 import type { Payment } from '@/app/services/customerLedgerTypes';
 import { Badge } from '@/app/components/ui/badge';
 import { EmptyState } from '@/app/components/shared/EmptyState';
+import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
+import { useFormatDate } from '@/app/hooks/useFormatDate';
 
 interface PaymentsTabProps {
   payments: Payment[];
 }
 
 export function PaymentsTab({ payments }: PaymentsTabProps) {
-  const formatAmount = (amount: number) => amount.toLocaleString('en-PK');
+  const { formatCurrency } = useFormatCurrency();
+  const { formatDate } = useFormatDate();
 
   if (payments.length === 0) {
     return <EmptyState title="No Payments" message="No payments found for the selected period." />;
@@ -35,10 +38,10 @@ export function PaymentsTab({ payments }: PaymentsTabProps) {
                 <tr key={payment.id} className="hover:bg-slate-50 transition-colors">
                   <td className="px-4 py-3 text-sm font-medium text-slate-900">{payment.paymentNo}</td>
                   <td className="px-4 py-3 text-sm text-slate-600">
-                    {new Date(payment.date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
+                    {formatDate(payment.date)}
                   </td>
                   <td className="px-4 py-3 text-sm text-right font-medium text-emerald-600">
-                    Rs {formatAmount(payment.amount)}
+                    {formatCurrency(payment.amount)}
                   </td>
                   <td className="px-4 py-3">
                     <Badge className="bg-blue-100 text-blue-700 border-blue-200">

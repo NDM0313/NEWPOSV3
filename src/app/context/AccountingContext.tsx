@@ -94,6 +94,7 @@ interface AccountingContextType {
   recordSalePayment: (params: SalePaymentParams) => Promise<boolean>;
   recordRentalBooking: (params: RentalBookingParams) => Promise<boolean>;
   recordRentalDelivery: (params: RentalDeliveryParams) => Promise<boolean>;
+  recordRentalCreditDelivery: (params: RentalDeliveryParams) => Promise<boolean>;
   recordRentalReturn: (params: RentalReturnParams) => Promise<boolean>;
   recordStudioSale: (params: StudioSaleParams) => Promise<boolean>;
   recordWorkerJobCompletion: (params: WorkerJobParams) => Promise<boolean>;
@@ -490,6 +491,9 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
         'Cash': 'Cash',
         'bank': 'Bank',
         'Bank': 'Bank',
+        'mobile wallet': 'Mobile Wallet',
+        'Mobile Wallet': 'Mobile Wallet',
+        'mobile_wallet': 'Mobile Wallet',
         'accounts receivable': 'Accounts Receivable',
         'Accounts Receivable': 'Accounts Receivable',
         'accounts payable': 'Accounts Payable',
@@ -501,6 +505,10 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
         'sales income': 'Sales Revenue',
         'Sales Income': 'Sales Revenue',
         'Sales Revenue': 'Sales Revenue',
+        'rental income': 'Rental Income',
+        'Rental Income': 'Rental Income',
+        'rental damage income': 'Rental Damage Income',
+        'Rental Damage Income': 'Rental Damage Income',
       };
 
       normalizedDebitAccount = accountNameMap[entry.debitAccount] || entry.debitAccount;
@@ -517,11 +525,13 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
         const accCode = acc.code || '';
         return (
           accType.toLowerCase() === normalizedDebitAccount.toLowerCase() || 
+          accType.toLowerCase().replace(/_/g, ' ') === normalizedDebitAccount.toLowerCase() ||
           accName.toLowerCase() === normalizedDebitAccount.toLowerCase() ||
           accName.toLowerCase().includes(normalizedDebitAccount.toLowerCase()) ||
           // Match by code for default accounts
           (normalizedDebitAccount === 'Cash' && (accCode === '1000' || accName.toLowerCase().includes('cash'))) ||
           (normalizedDebitAccount === 'Bank' && (accCode === '1010' || accName.toLowerCase().includes('bank'))) ||
+          (normalizedDebitAccount === 'Mobile Wallet' && (accCode === '1020' || accType.toLowerCase().includes('mobile') || accName.toLowerCase().includes('wallet'))) ||
           (normalizedDebitAccount === 'Accounts Receivable' && (accCode === '1100' || accName.toLowerCase().includes('receivable'))) ||
           (normalizedDebitAccount === 'Accounts Payable' && (accCode === '2000' || accName.toLowerCase().includes('payable'))) ||
           (normalizedDebitAccount === 'Worker Payable' && (accCode === '2010' || accName.toLowerCase().includes('worker')))
@@ -540,7 +550,11 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
           (normalizedCreditAccount === 'Bank' && (accCode === '1010' || accName.toLowerCase().includes('bank'))) ||
           (normalizedCreditAccount === 'Accounts Receivable' && (accCode === '1100' || accName.toLowerCase().includes('receivable'))) ||
           (normalizedCreditAccount === 'Accounts Payable' && (accCode === '2000' || accName.toLowerCase().includes('payable'))) ||
-          (normalizedCreditAccount === 'Worker Payable' && (accCode === '2010' || accName.toLowerCase().includes('worker')))
+          (normalizedCreditAccount === 'Worker Payable' && (accCode === '2010' || accName.toLowerCase().includes('worker'))) ||
+          // Rental/Sales revenue fallback: Rental Income, Rental Damage Income, Sales Revenue
+          (normalizedCreditAccount === 'Rental Income' && (accName.toLowerCase().includes('rental') || accName.toLowerCase().includes('revenue') || accName.toLowerCase().includes('sales'))) ||
+          (normalizedCreditAccount === 'Rental Damage Income' && (accName.toLowerCase().includes('rental') || accName.toLowerCase().includes('damage') || accName.toLowerCase().includes('income'))) ||
+          (normalizedCreditAccount === 'Sales Revenue' && (accName.toLowerCase().includes('sales') || accName.toLowerCase().includes('revenue') || accName.toLowerCase().includes('income')))
         );
       });
 
@@ -580,31 +594,35 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
             
             // Retry lookup with refreshed accounts (include code in search)
             const retryDebit = refreshedAccounts.find(acc => {
-              const accType = acc.accountType || acc.type || '';
-              const accName = acc.name || '';
+              const accType = (acc.accountType || acc.type || '').toString().toLowerCase();
+              const accName = (acc.name || '').toLowerCase();
               const accCode = acc.code || '';
               return (
-                accType.toLowerCase() === normalizedDebitAccount.toLowerCase() || 
-                accName.toLowerCase() === normalizedDebitAccount.toLowerCase() ||
-                (normalizedDebitAccount === 'Cash' && (accCode === '1000' || accName.toLowerCase().includes('cash'))) ||
-                (normalizedDebitAccount === 'Accounts Payable' && (accCode === '2000' || accName.toLowerCase().includes('payable'))) ||
-                (normalizedDebitAccount === 'Worker Payable' && (accCode === '2010' || accName.toLowerCase().includes('worker'))) ||
-                (normalizedDebitAccount === 'Bank' && (accCode === '1010' || accName.toLowerCase().includes('bank'))) ||
-                (normalizedDebitAccount === 'Accounts Receivable' && (accCode === '1100' || accName.toLowerCase().includes('receivable')))
+                accType === normalizedDebitAccount.toLowerCase() ||
+                accName === normalizedDebitAccount.toLowerCase() ||
+                accName.includes(normalizedDebitAccount.toLowerCase()) ||
+                (normalizedDebitAccount === 'Cash' && (accCode === '1000' || accName.includes('cash'))) ||
+                (normalizedDebitAccount === 'Bank' && (accCode === '1010' || accName.includes('bank'))) ||
+                (normalizedDebitAccount === 'Mobile Wallet' && (accCode === '1020' || accType.includes('mobile') || accName.includes('wallet'))) ||
+                (normalizedDebitAccount === 'Accounts Receivable' && (accCode === '1100' || accName.includes('receivable'))) ||
+                (normalizedDebitAccount === 'Accounts Payable' && (accCode === '2000' || accName.includes('payable'))) ||
+                (normalizedDebitAccount === 'Worker Payable' && (accCode === '2010' || accName.includes('worker')))
               );
             });
             const retryCredit = refreshedAccounts.find(acc => {
-              const accType = acc.accountType || acc.type || '';
-              const accName = acc.name || '';
+              const accType = (acc.accountType || acc.type || '').toString().toLowerCase();
+              const accName = (acc.name || '').toLowerCase();
               const accCode = acc.code || '';
               return (
-                accType.toLowerCase() === normalizedCreditAccount.toLowerCase() || 
-                accName.toLowerCase() === normalizedCreditAccount.toLowerCase() ||
-                (normalizedCreditAccount === 'Cash' && (accCode === '1000' || accName.toLowerCase().includes('cash'))) ||
-                (normalizedCreditAccount === 'Bank' && (accCode === '1010' || accName.toLowerCase().includes('bank'))) ||
-                (normalizedCreditAccount === 'Accounts Receivable' && (accCode === '1100' || accName.toLowerCase().includes('receivable'))) ||
-                (normalizedCreditAccount === 'Accounts Payable' && (accCode === '2000' || accName.toLowerCase().includes('payable'))) ||
-                (normalizedCreditAccount === 'Worker Payable' && (accCode === '2010' || accName.toLowerCase().includes('worker')))
+                accType === normalizedCreditAccount.toLowerCase() ||
+                accName === normalizedCreditAccount.toLowerCase() ||
+                accName.includes(normalizedCreditAccount.toLowerCase()) ||
+                (normalizedCreditAccount === 'Cash' && (accCode === '1000' || accName.includes('cash'))) ||
+                (normalizedCreditAccount === 'Bank' && (accCode === '1010' || accName.includes('bank'))) ||
+                (normalizedCreditAccount === 'Accounts Receivable' && (accCode === '1100' || accName.includes('receivable'))) ||
+                (normalizedCreditAccount === 'Accounts Payable' && (accCode === '2000' || accName.includes('payable'))) ||
+                (normalizedCreditAccount === 'Worker Payable' && (accCode === '2010' || accName.includes('worker'))) ||
+                (normalizedCreditAccount === 'Sales Revenue' && (accCode === '4000' || accName.includes('sales') || accName.includes('revenue')))
               );
             });
             
@@ -1041,13 +1059,29 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
   const recordRentalDelivery = async (params: RentalDeliveryParams): Promise<boolean> => {
     const { bookingId, customerName, customerId, remainingAmount, paymentMethod } = params;
 
+    // Use Sales Revenue (code 4000) - exists in default accounts; Rental Income falls back to it
     return await createEntry({
       source: 'Rental',
       referenceNo: bookingId,
       debitAccount: paymentMethod as AccountType,
-      creditAccount: 'Rental Income',
+      creditAccount: 'Sales Revenue',
       amount: remainingAmount,
       description: `Rental remaining payment - ${customerName}`,
+      module: 'Rental',
+      metadata: { customerId, customerName, bookingId }
+    });
+  };
+
+  /** When delivering on credit: Debit AR, Credit Rental Income (customer owes) */
+  const recordRentalCreditDelivery = async (params: RentalDeliveryParams): Promise<boolean> => {
+    const { bookingId, customerName, customerId, remainingAmount } = params;
+    return await createEntry({
+      source: 'Rental',
+      referenceNo: bookingId,
+      debitAccount: 'Accounts Receivable',
+      creditAccount: 'Sales Revenue',
+      amount: remainingAmount,
+      description: `Rental credit - ${customerName}`,
       module: 'Rental',
       metadata: { customerId, customerName, bookingId }
     });
@@ -1057,14 +1091,14 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
     const { bookingId, customerName, customerId, securityDepositAmount, damageCharge, paymentMethod } = params;
 
     if (damageCharge && damageCharge > 0) {
-      // Damage charge recorded
+      // Damage charge: Debit Cash, Credit Sales Revenue (or Other Income)
       await createEntry({
         source: 'Rental',
         referenceNo: bookingId,
         debitAccount: (paymentMethod || 'Cash') as AccountType,
-        creditAccount: 'Rental Damage Income',
+        creditAccount: 'Sales Revenue',
         amount: damageCharge,
-        description: `Damage charge - ${customerName}`,
+        description: `Rental damage charge - ${customerName}`,
         module: 'Rental',
         metadata: { customerId, customerName, bookingId }
       });
@@ -1298,6 +1332,7 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
     recordSalePayment,
     recordRentalBooking,
     recordRentalDelivery,
+    recordRentalCreditDelivery,
     recordRentalReturn,
     recordStudioSale,
     recordWorkerJobCompletion,

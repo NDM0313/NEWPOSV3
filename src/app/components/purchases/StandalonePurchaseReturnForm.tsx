@@ -42,6 +42,7 @@ import { productService } from '@/app/services/productService';
 import { contactService } from '@/app/services/contactService';
 import { branchService, Branch } from '@/app/services/branchService';
 import { cn, formatBoxesPieces } from '../ui/utils';
+import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
 
 export interface StandalonePurchaseReturnItem {
   product_id: string;
@@ -65,6 +66,7 @@ interface StandalonePurchaseReturnFormProps {
 export const StandalonePurchaseReturnForm: React.FC<StandalonePurchaseReturnFormProps> = ({ open, onClose, onSuccess }) => {
   const { companyId, branchId: contextBranchId, user } = useSupabase();
   const { inventorySettings } = useSettings();
+  const { formatCurrency } = useFormatCurrency();
   const enablePacking = inventorySettings.enablePacking ?? false;
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -513,7 +515,7 @@ export const StandalonePurchaseReturnForm: React.FC<StandalonePurchaseReturnForm
               {items.length > 0 && (
                 <div className="px-4 py-3 border-t border-gray-800 flex justify-end">
                   <span className="text-sm text-gray-400">Subtotal: </span>
-                  <span className="text-lg font-semibold text-white ml-2">Rs {subtotal.toLocaleString()}</span>
+                  <span className="text-lg font-semibold text-white ml-2">{formatCurrency(subtotal)}</span>
                 </div>
               )}
             </div>

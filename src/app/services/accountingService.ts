@@ -42,6 +42,7 @@ export interface AccountLedgerEntry {
   journal_entry_id: string;
   payment_id?: string;
   sale_id?: string;
+  rental_id?: string;
   branch_id?: string;
   branch_name?: string;
   account_name?: string; // Payment Account name (from account_id)
@@ -816,9 +817,44 @@ export const accountingService = {
         salesMap.set(sale.id, { id: sale.id, invoice_no: sale.invoice_no, customer_id: customerId });
       });
       console.log('[ACCOUNTING SERVICE] getCustomerLedger - Sales map size:', salesMap.size);
-      
 
-      // PHASE 3: Filter by customer ID (from sales.customer_id OR payments via sales)
+      // PHASE 2b: Get rentals and rental_payments for this customer (for customer sub-ledger)
+      // Pass null dates to RPC so we get ALL rentals; date filtering happens in merge
+      let customerRentals: any[] = [];
+      let customerRentalPayments: any[] = [];
+      try {
+        const rpcRentals = await supabase.rpc('get_customer_ledger_rentals', {
+          p_company_id: companyId,
+          p_customer_id: customerId,
+          p_from_date: null,
+          p_to_date: null,
+        });
+        if (!rpcRentals.error) {
+          customerRentals = rpcRentals.data ?? [];
+        } else {
+          // Fallback: direct query if RPC missing
+          const { data: directRentals } = await supabase
+            .from('rentals')
+            .select('id, booking_no, booking_date, pickup_date, return_date, total_amount, paid_amount, due_amount, status, created_at')
+            .eq('company_id', companyId)
+            .eq('customer_id', customerId);
+          customerRentals = directRentals ?? [];
+        }
+        const rentalIds = customerRentals.map((r: any) => r.id);
+        if (rentalIds.length > 0) {
+          const { data: rpData } = await supabase
+            .from('rental_payments')
+            .select('id, rental_id, amount, method, payment_date, created_at')
+            .in('rental_id', rentalIds);
+          customerRentalPayments = rpData ?? [];
+        }
+      } catch (e) {
+        console.warn('[ACCOUNTING SERVICE] getCustomerLedger - Rental fetch failed (non-critical):', e);
+      }
+      const rentalsMap = new Map(customerRentals.map((r: any) => [r.id, r]));
+      console.log('[ACCOUNTING SERVICE] getCustomerLedger - Rentals:', customerRentals.length, 'Payments:', customerRentalPayments.length);
+
+      // PHASE 3: Filter by customer ID (from sales.customer_id OR payments via sales OR rentals)
       // MUST include BOTH sales (debit) AND payments (credit) entries
       console.log('[ACCOUNTING SERVICE] getCustomerLedger - PHASE 3: Filtering lines', {
         totalLines: linesToUse.length,
@@ -893,6 +929,12 @@ export const accountingService = {
               return true;
             }
           }
+        }
+
+        // Pattern 3: reference_type='rental' – EXCLUDE from journal path; rentals are shown via synthetic
+        // (Rental JEs use Cash+Revenue or AR+Revenue; synthetic gives full charge + payments correctly)
+        if (entry.reference_type === 'rental') {
+          return false;
         }
 
         return false;
@@ -993,6 +1035,9 @@ export const accountingService = {
         if (entry.reference_type === 'sale') {
           sourceModule = 'Sales';
           documentType = 'Sale Invoice';
+        } else if (entry.reference_type === 'rental') {
+          sourceModule = 'Rental';
+          documentType = 'Rental';
         } else if (entry.payment_id) {
           sourceModule = 'Payment';
           documentType = 'Payment';
@@ -1042,8 +1087,11 @@ export const accountingService = {
         if (isInvalidEntryNo) {
           // Generate short reference based on type (FALLBACK ONLY)
           const sale = entry.reference_id ? salesMap.get(entry.reference_id) : null;
+          const rental = entry.reference_type === 'rental' && entry.reference_id ? rentalsMap.get(entry.reference_id) : null;
           if (entry.reference_type === 'sale' && sale?.invoice_no) {
             referenceNumber = sale.invoice_no;
+          } else if (entry.reference_type === 'rental' && rental?.booking_no) {
+            referenceNumber = rental.booking_no;
           } else if (entry.payment_id && paymentRefsMap.has(entry.payment_id)) {
             referenceNumber = paymentRefsMap.get(entry.payment_id)!;
           } else if (entry.payment_id) {
@@ -1092,15 +1140,16 @@ export const accountingService = {
           created_by: entry.created_by,
           journal_entry_id: entry.id, // Use journal_entry_id as fallback if entry_no is missing
           payment_id: entry.payment_id,
-          sale_id: entry.reference_id,
+          sale_id: entry.reference_type === 'sale' ? entry.reference_id : undefined,
+          rental_id: entry.reference_type === 'rental' ? entry.reference_id : undefined,
           branch_id: entry.branch_id,
           branch_name: branchName,
         };
       });
 
-      // Fallback: no journal entries but we have sales/payments (e.g. studio sales) – build ledger from RPC data
-      if (ledgerEntriesFromRange.length === 0 && (customerSales.length > 0 || customerPayments.length > 0)) {
-        const items: { date: string; reference_number: string; description: string; debit: number; credit: number; sale_id?: string; payment_id?: string; source_module: string; document_type: string }[] = [];
+      // Fallback: no journal entries but we have sales/payments/rentals – build ledger from RPC data
+      if (ledgerEntriesFromRange.length === 0 && (customerSales.length > 0 || customerPayments.length > 0 || customerRentals.length > 0)) {
+        const items: { date: string; reference_number: string; description: string; debit: number; credit: number; sale_id?: string; payment_id?: string; rental_id?: string; source_module: string; document_type: string }[] = [];
         customerSales.forEach((s: any) => {
           const d = (s.invoice_date || '').toString();
           if (startDate && d < startDate) return;
@@ -1131,6 +1180,44 @@ export const accountingService = {
             document_type: 'Payment',
           });
         });
+        // Rental charges (debit – customer owes)
+        customerRentals.forEach((r: any) => {
+          const rawDate = r.pickup_date || r.booking_date || r.created_at;
+          const d = rawDate ? (typeof rawDate === 'string' && rawDate.length >= 10 ? rawDate.slice(0, 10) : new Date(rawDate).toISOString().slice(0, 10)) : '';
+          if (!d) return;
+          if (startDate && d < startDate) return;
+          if (endDate && d > endDate) return;
+          const total = Number(r.total_amount) || 0;
+          if (total <= 0) return;
+          items.push({
+            date: d,
+            reference_number: (r.booking_no || `RN-${r.id?.slice(0, 8)}`).toString(),
+            description: 'Rental Charge',
+            debit: total,
+            credit: 0,
+            rental_id: r.id,
+            source_module: 'Rental',
+            document_type: 'Rental Invoice',
+          });
+        });
+        // Rental payments (credit – customer paid)
+        customerRentalPayments.forEach((p: any) => {
+          const rawDate = p.payment_date || p.created_at;
+          const d = rawDate ? (typeof rawDate === 'string' && rawDate.length >= 10 ? rawDate.slice(0, 10) : new Date(rawDate).toISOString().slice(0, 10)) : '';
+          if (!d) return;
+          if (startDate && d < startDate) return;
+          if (endDate && d > endDate) return;
+          items.push({
+            date: d,
+            reference_number: (rentalsMap.get(p.rental_id)?.booking_no || `RN-${p.rental_id?.slice(0, 8)}`) + `-PAY`,
+            description: 'Rental Payment',
+            debit: 0,
+            credit: Number(p.amount) || 0,
+            rental_id: p.rental_id,
+            source_module: 'Rental',
+            document_type: 'Rental Payment',
+          });
+        });
         items.sort((a, b) => a.date.localeCompare(b.date) || 0);
         let runBal = 0;
         const syntheticEntries: AccountLedgerEntry[] = items.map((item) => {
@@ -1150,6 +1237,7 @@ export const accountingService = {
             notes: '',
             sale_id: item.sale_id,
             payment_id: item.payment_id,
+            rental_id: item.rental_id,
           };
         });
         const withOpening: AccountLedgerEntry[] = startDate
@@ -1162,13 +1250,15 @@ export const accountingService = {
         return withOpening;
       }
 
-      // MERGE: Add any sales/payments that have no journal line (e.g. new sales, or journal failed)
+      // MERGE: Add any sales/payments/rentals that have no journal line (rentals never hit AR, so always add synthetic)
       const saleIdsInJournal = new Set((ledgerEntriesFromRange.map((e: AccountLedgerEntry) => e.sale_id).filter(Boolean)) as string[]);
       const paymentIdsInJournal = new Set((ledgerEntriesFromRange.map((e: AccountLedgerEntry) => e.payment_id).filter(Boolean)) as string[]);
+      const rentalIdsInJournal = new Set((ledgerEntriesFromRange.map((e: AccountLedgerEntry) => e.rental_id).filter(Boolean)) as string[]);
       const missingSales = customerSales.filter((s: any) => !saleIdsInJournal.has(s.id));
       const missingPayments = customerPayments.filter((p: any) => !paymentIdsInJournal.has(p.id));
-      if (missingSales.length > 0 || missingPayments.length > 0) {
-        const mergeItems: { date: string; reference_number: string; description: string; debit: number; credit: number; sale_id?: string; payment_id?: string; source_module: string; document_type: string }[] = [];
+      const hasRentalsToAdd = customerRentals.length > 0 || customerRentalPayments.length > 0;
+      if (missingSales.length > 0 || missingPayments.length > 0 || hasRentalsToAdd) {
+        const mergeItems: { date: string; reference_number: string; description: string; debit: number; credit: number; sale_id?: string; payment_id?: string; rental_id?: string; source_module: string; document_type: string }[] = [];
         missingSales.forEach((s: any) => {
           const d = (s.invoice_date || '').toString();
           if (startDate && d < startDate) return;
@@ -1199,6 +1289,43 @@ export const accountingService = {
             document_type: 'Payment',
           });
         });
+        // Rentals: always add synthetic (journal entries use Cash/Revenue, not AR)
+        customerRentals.forEach((r: any) => {
+          const rawDate = r.pickup_date || r.booking_date || r.created_at;
+          const d = rawDate ? (typeof rawDate === 'string' && rawDate.length >= 10 ? rawDate.slice(0, 10) : new Date(rawDate).toISOString().slice(0, 10)) : '';
+          if (!d) return;
+          if (startDate && d < startDate) return;
+          if (endDate && d > endDate) return;
+          const total = Number(r.total_amount) || 0;
+          if (total <= 0) return;
+          mergeItems.push({
+            date: d,
+            reference_number: (r.booking_no || `RN-${r.id?.slice(0, 8)}`).toString(),
+            description: 'Rental Charge',
+            debit: total,
+            credit: 0,
+            rental_id: r.id,
+            source_module: 'Rental',
+            document_type: 'Rental Invoice',
+          });
+        });
+        customerRentalPayments.forEach((p: any) => {
+          const rawDate = p.payment_date || p.created_at;
+          const d = rawDate ? (typeof rawDate === 'string' && rawDate.length >= 10 ? rawDate.slice(0, 10) : new Date(rawDate).toISOString().slice(0, 10)) : '';
+          if (!d) return;
+          if (startDate && d < startDate) return;
+          if (endDate && d > endDate) return;
+          mergeItems.push({
+            date: d,
+            reference_number: (rentalsMap.get(p.rental_id)?.booking_no || `RN-${p.rental_id?.slice(0, 8)}`) + `-PAY`,
+            description: 'Rental Payment',
+            debit: 0,
+            credit: Number(p.amount) || 0,
+            rental_id: p.rental_id,
+            source_module: 'Rental',
+            document_type: 'Rental Payment',
+          });
+        });
         if (mergeItems.length > 0) {
           const syntheticMissing: AccountLedgerEntry[] = mergeItems.map((item) => ({
             date: item.date,
@@ -1215,6 +1342,7 @@ export const accountingService = {
             notes: '',
             sale_id: item.sale_id,
             payment_id: item.payment_id,
+            rental_id: item.rental_id,
           }));
           const combined = [...ledgerEntriesFromRange, ...syntheticMissing].sort((a, b) => a.date.localeCompare(b.date) || 0);
           let runBal = openingBalance;

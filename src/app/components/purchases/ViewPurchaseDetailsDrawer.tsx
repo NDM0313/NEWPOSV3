@@ -50,6 +50,8 @@ import { Label } from "../ui/label";
 import { Textarea } from "../ui/textarea";
 import { CalendarDatePicker } from "../ui/CalendarDatePicker";
 import { cn, formatBoxesPieces } from "../ui/utils";
+import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
+import { useFormatDate } from '@/app/hooks/useFormatDate';
 import { toast } from 'sonner';
 import { purchaseReturnService } from '@/app/services/purchaseReturnService';
 import {
@@ -128,6 +130,8 @@ interface ViewPurchaseDetailsDrawerProps {
   onPrint?: (id: string) => void;
   /** When provided, "Return Items" opens the Purchase Return dialog (same layout as Sales Return) instead of inline return mode */
   onOpenReturn?: () => void;
+  /** Permission: show delete option. Default true for backward compat. */
+  canDelete?: boolean;
 }
 
 export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps> = ({
@@ -139,8 +143,11 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
   onAddPayment,
   onPrint,
   onOpenReturn,
+  canDelete = true,
 }) => {
   const [activeTab, setActiveTab] = useState<'details' | 'payments' | 'history'>('details');
+  const { formatCurrency } = useFormatCurrency();
+  const { formatDateTime } = useFormatDate();
   const { getPurchaseById } = usePurchases();
   const { companyId, branchId: contextBranchId, user } = useSupabase();
   const { inventorySettings } = useSettings();
@@ -690,6 +697,7 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
                   <Share2 size={14} className="mr-2" />
                   Share
                 </DropdownMenuItem>
+                {canDelete && (
                 <DropdownMenuItem 
                   className="hover:bg-gray-800 cursor-pointer text-red-400"
                   onClick={() => onDelete?.(purchase.id)}
@@ -697,6 +705,7 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
                   <Trash2 size={14} className="mr-2" />
                   Delete
                 </DropdownMenuItem>
+                )}
               </DropdownMenuContent>
             </DropdownMenu>
 
@@ -781,9 +790,9 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
                       <div className="text-white flex items-center gap-2">
                         <Calendar size={14} className="text-gray-500" />
                         <div>
-                          <div>{new Date(purchase.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</div>
+                          <div>{formatDate(purchase.date)}</div>
                           <div className="text-xs text-gray-500 mt-0.5">
-                            {new Date(purchase.createdAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })}
+                            {formatDateTime(purchase.createdAt)}
                           </div>
                         </div>
                       </div>
@@ -797,12 +806,12 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-xs text-gray-500">Created At</span>
-                      <span className="text-white">{new Date(purchase.createdAt).toLocaleString()}</span>
+                      <span className="text-white">{formatDateTime(purchase.createdAt)}</span>
                     </div>
                     {purchase.updatedAt && (
                       <div className="flex justify-between">
                         <span className="text-xs text-gray-500">Last Updated</span>
-                        <span className="text-white">{new Date(purchase.updatedAt).toLocaleString()}</span>
+                        <span className="text-white">{formatDateTime(purchase.updatedAt)}</span>
                     </div>
                     )}
                   </div>
@@ -1019,7 +1028,7 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
                             </TableCell>
                           )}
                           <TableCell className="text-right text-white">
-                            Rs. {item.price.toLocaleString()}
+                            {formatCurrency(item.price)}
                           </TableCell>
                           <TableCell className="text-center text-white font-medium">
                             {qty}
@@ -1077,11 +1086,11 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
                           <TableCell className="text-gray-400">{unitDisplay}</TableCell>
                           {returnMode ? (
                             <TableCell className="text-right text-red-400 font-medium">
-                              {returnQtyFromPacking > 0 ? `-Rs. ${(returnQtyFromPacking * item.price).toLocaleString()}` : '—'}
+                              {returnQtyFromPacking > 0 ? `-${formatCurrency(returnQtyFromPacking * item.price)}` : '—'}
                             </TableCell>
                           ) : (
                             <TableCell className="text-right text-white font-medium">
-                              Rs. {(item.price * qty).toLocaleString()}
+                              {formatCurrency(item.price * qty)}
                             </TableCell>
                           )}
                         </TableRow>
@@ -1132,32 +1141,32 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
                     <div className="space-y-3">
                       <div>
                         <p className="text-xs text-gray-500 mb-0.5">Original Purchase Amount</p>
-                        <p className="text-lg font-bold text-green-400">Rs. {purchase.total.toLocaleString()}</p>
+                        <p className="text-lg font-bold text-green-400">{formatCurrency(purchase.total)}</p>
                         <p className="text-[10px] text-gray-500 mt-0.5">Reference only</p>
                       </div>
                       <div className="border-t border-gray-800 pt-3">
                         <p className="text-xs text-gray-500 mb-0.5">Returned Amount</p>
                         <p className="text-lg font-bold text-red-400">
-                          - Rs. {Object.entries(returnQuantities).reduce((sum, [key, qty]) => {
+                          - {formatCurrency(Object.entries(returnQuantities).reduce((sum, [key, qty]) => {
                             const item = purchase.items.find((it) => {
                               const itemKey = `${it.productId}_${it.variationId || 'null'}`;
                               return itemKey === key;
                             });
                             return sum + (qty * (item?.price || 0));
-                          }, 0).toLocaleString()}
+                          }, 0))}
                         </p>
                         <p className="text-[10px] text-gray-500 mt-0.5">Supplier credit impact</p>
                       </div>
                       <div className="border-t border-gray-800 pt-3">
                         <p className="text-xs text-gray-500 mb-0.5">Net After Return</p>
                         <p className="text-lg font-bold text-white">
-                          Rs. {Math.max(0, purchase.total - Object.entries(returnQuantities).reduce((sum, [key, qty]) => {
+                          {formatCurrency(Math.max(0, purchase.total - Object.entries(returnQuantities).reduce((sum, [key, qty]) => {
                             const item = purchase.items.find((it) => {
                               const itemKey = `${it.productId}_${it.variationId || 'null'}`;
                               return itemKey === key;
                             });
                             return sum + (qty * (item?.price || 0));
-                          }, 0)).toLocaleString()}
+                          }, 0)))}
                         </p>
                       </div>
                     </div>
@@ -1177,27 +1186,27 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
                 <div className="p-5 space-y-3">
                   <div className="flex justify-between text-sm">
                     <span className="text-gray-400">Subtotal</span>
-                    <span className="text-white font-medium">Rs. {purchase.subtotal.toLocaleString()}</span>
+                    <span className="text-white font-medium">{formatCurrency(purchase.subtotal)}</span>
                   </div>
                   
                   {purchase.discount && purchase.discount > 0 && (
                     <div className="flex justify-between text-sm">
                       <span className="text-gray-400">Discount</span>
-                      <span className="text-red-400 font-medium">- Rs. {purchase.discount.toLocaleString()}</span>
+                      <span className="text-red-400 font-medium">- {formatCurrency(purchase.discount)}</span>
                     </div>
                   )}
                   
                   {purchase.tax && purchase.tax > 0 && (
                     <div className="flex justify-between text-sm">
                       <span className="text-gray-400">Tax</span>
-                      <span className="text-white font-medium">Rs. {purchase.tax.toLocaleString()}</span>
+                      <span className="text-white font-medium">{formatCurrency(purchase.tax)}</span>
                     </div>
                   )}
                   
                   {purchase.shippingCost && purchase.shippingCost > 0 && (
                     <div className="flex justify-between text-sm">
                       <span className="text-gray-400">Shipping Charges</span>
-                      <span className="text-white font-medium">Rs. {purchase.shippingCost.toLocaleString()}</span>
+                      <span className="text-white font-medium">{formatCurrency(purchase.shippingCost)}</span>
                     </div>
                   )}
                   
@@ -1205,18 +1214,18 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
                   
                   <div className="flex justify-between">
                     <span className="text-gray-300 font-semibold">Grand Total</span>
-                    <span className="text-white text-xl font-bold">Rs. {purchase.total.toLocaleString()}</span>
+                    <span className="text-white text-xl font-bold">{formatCurrency(purchase.total)}</span>
                   </div>
                   
                   <div className="flex justify-between text-sm">
                     <span className="text-gray-400">Total Paid</span>
-                    <span className="text-green-400 font-medium">Rs. {purchase.paid.toLocaleString()}</span>
+                    <span className="text-green-400 font-medium">{formatCurrency(purchase.paid)}</span>
                   </div>
                   
                   {purchase.due > 0 && (
                     <div className="flex justify-between">
                       <span className="text-gray-400 font-medium">Amount Due</span>
-                      <span className="text-red-400 text-lg font-bold">Rs. {purchase.due.toLocaleString()}</span>
+                      <span className="text-red-400 text-lg font-bold">{formatCurrency(purchase.due)}</span>
                     </div>
                   )}
                 </div>
@@ -1322,7 +1331,7 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
                       <div className="bg-green-500/10 border border-green-500/20 rounded-xl p-4">
                         <p className="text-xs text-gray-400 mb-1">Paid (Cash)</p>
                         <p className="text-2xl font-bold text-green-400">
-                          Rs. {payments.filter((p: any) => p.method === 'cash').reduce((sum: number, p: any) => sum + p.amount, 0).toLocaleString()}
+                          {formatCurrency(payments.filter((p: any) => p.method === 'cash').reduce((sum: number, p: any) => sum + p.amount, 0))}
                         </p>
                         <p className="text-xs text-gray-500 mt-1">
                           {payments.filter((p: any) => p.method === 'cash').length} payment(s)
@@ -1333,7 +1342,7 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
                       <div className="bg-blue-500/10 border border-blue-500/20 rounded-xl p-4">
                         <p className="text-xs text-gray-400 mb-1">Paid (Bank/Card)</p>
                         <p className="text-2xl font-bold text-blue-400">
-                          Rs. {payments.filter((p: any) => p.method === 'bank' || p.method === 'card').reduce((sum: number, p: any) => sum + p.amount, 0).toLocaleString()}
+                          {formatCurrency(payments.filter((p: any) => p.method === 'bank' || p.method === 'card').reduce((sum: number, p: any) => sum + p.amount, 0))}
                         </p>
                         <p className="text-xs text-gray-500 mt-1">
                           {payments.filter((p: any) => p.method === 'bank' || p.method === 'card').length} payment(s)
@@ -1344,7 +1353,7 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
                       <div className="bg-purple-500/10 border border-purple-500/20 rounded-xl p-4">
                         <p className="text-xs text-gray-400 mb-1">Paid (Other)</p>
                         <p className="text-2xl font-bold text-purple-400">
-                          Rs. {payments.filter((p: any) => p.method === 'other' || (p.method !== 'cash' && p.method !== 'bank' && p.method !== 'card')).reduce((sum: number, p: any) => sum + p.amount, 0).toLocaleString()}
+                          {formatCurrency(payments.filter((p: any) => p.method === 'other' || (p.method !== 'cash' && p.method !== 'bank' && p.method !== 'card')).reduce((sum: number, p: any) => sum + p.amount, 0))}
                         </p>
                         <p className="text-xs text-gray-500 mt-1">
                           {payments.filter((p: any) => p.method === 'other' || (p.method !== 'cash' && p.method !== 'bank' && p.method !== 'card')).length} payment(s)
@@ -1357,7 +1366,7 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
                     <div className="flex justify-between items-center mb-4">
                       <div>
                         <p className="text-white font-semibold text-xl">
-                          Rs. {purchase.paid.toLocaleString()}
+                          {formatCurrency(purchase.paid)}
                         </p>
                         <p className="text-sm text-gray-400 mt-1">Total Paid Amount</p>
                       </div>
@@ -1373,7 +1382,7 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
                     {purchase.due > 0 && (
                       <div className="flex justify-between text-sm pt-3 border-t border-gray-800">
                         <span className="text-gray-400">Amount Due:</span>
-                        <span className="text-red-400 font-medium">Rs. {purchase.due.toLocaleString()}</span>
+                        <span className="text-red-400 font-medium">{formatCurrency(purchase.due)}</span>
                       </div>
                     )}
                   </div>
@@ -1385,7 +1394,7 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
                         <div className="flex justify-between items-start mb-2">
                           <div className="flex-1">
                             <div className="flex items-center gap-2 mb-1">
-                              <p className="text-white font-semibold">Rs. {payment.amount.toLocaleString()}</p>
+                              <p className="text-white font-semibold">{formatCurrency(payment.amount)}</p>
                               {payment.referenceNo && (
                                 <code className="text-xs bg-gray-800 px-2 py-0.5 rounded text-blue-400 border border-gray-700">
                                   {payment.referenceNo}
@@ -1393,7 +1402,7 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
                               )}
                             </div>
                             <p className="text-sm text-gray-400">
-                              {new Date(payment.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                              {formatDate(payment.date)}
                             </p>
                             {payment.accountName && (
                               <p className="text-xs text-gray-500 mt-1">Account: {payment.accountName}</p>
@@ -1503,7 +1512,7 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
                 </div>
               ) : purchase.paid > 0 ? (
                 <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-5">
-                  <p className="text-white font-semibold text-lg">Rs. {purchase.paid.toLocaleString()}</p>
+                  <p className="text-white font-semibold text-lg">{formatCurrency(purchase.paid)}</p>
                   <p className="text-sm text-gray-400 mt-1">Total paid amount (payment details loading...)</p>
                 </div>
               ) : (
@@ -1581,7 +1590,7 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
                             {log.description || activityLogService.formatActivityLog(log)}
                           </p>
                           <p className="text-sm text-gray-400 mt-1">
-                            {new Date(log.created_at).toLocaleString()}
+                            {formatDateTime(log.created_at)}
                           </p>
                           {log.performed_by_name && (
                             <p className="text-sm text-gray-500 mt-1">
@@ -1595,7 +1604,7 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
                           )}
                           {log.amount && (
                             <p className="text-sm text-gray-500 mt-1">
-                              Amount: Rs. {log.amount.toLocaleString()} {log.payment_method && `via ${log.payment_method}`}
+                              Amount: {formatCurrency(log.amount)} {log.payment_method && `via ${log.payment_method}`}
                             </p>
                       )}
                     </div>
@@ -1619,7 +1628,7 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-gray-400">Amount Due</p>
-                <p className="text-2xl font-bold text-red-400">Rs. {purchase.due.toLocaleString()}</p>
+                <p className="text-2xl font-bold text-red-400">{formatCurrency(purchase.due)}</p>
               </div>
           <Button
                 onClick={() => onAddPayment?.(purchase.id)}
@@ -1677,7 +1686,7 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
                     amount: paymentToDelete.amount,
                     paymentMethod: paymentToDelete.method,
                     performedBy: user?.id || undefined,
-                    description: `Payment of Rs ${paymentToDelete.amount.toLocaleString()} deleted from purchase ${purchase.purchaseNo}`,
+                    description: `Payment of ${formatCurrency(paymentToDelete.amount)} deleted from purchase ${purchase.purchaseNo}`,
                   });
                 } catch (logError) {
                   console.error('[VIEW PURCHASE] Error logging payment deletion:', logError);

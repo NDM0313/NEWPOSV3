@@ -41,6 +41,7 @@ import {
   AlertDialogAction,
 } from '@/app/components/ui/alert-dialog';
 import { cn } from '@/app/components/ui/utils';
+import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
 import { toast } from 'sonner';
 import { getAttachmentOpenUrl } from '@/app/utils/paymentAttachmentUrl';
 
@@ -151,6 +152,7 @@ export const ViewPaymentsModal: React.FC<ViewPaymentsModalProps> = ({
   onDeletePayment,
   onRefresh,
 }) => {
+  const { formatCurrency } = useFormatCurrency();
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [paymentToDelete, setPaymentToDelete] = useState<Payment | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -196,8 +198,8 @@ export const ViewPaymentsModal: React.FC<ViewPaymentsModalProps> = ({
                 id: p.id,
                 date: p.payment_date || p.created_at?.split('T')[0] || '',
                 referenceNo: p.reference || '',
-                amount: p.amount,
-                method: p.method,
+                amount: Number(p.amount) || 0,
+                method: p.method || 'cash',
                 notes: p.reference,
                 createdAt: p.created_at,
               })));
@@ -377,15 +379,15 @@ export const ViewPaymentsModal: React.FC<ViewPaymentsModalProps> = ({
                 <div className="grid grid-cols-3 gap-2 pt-2">
                   <div className="text-center p-2 bg-gray-900/50 rounded-lg">
                     <p className="text-xs text-gray-500">Total</p>
-                    <p className="text-sm font-bold text-white">Rs {invoice.total.toLocaleString()}</p>
+                    <p className="text-sm font-bold text-white">{formatCurrency(invoice.total)}</p>
                   </div>
                   <div className="text-center p-2 bg-green-500/10 rounded-lg border border-green-500/20">
                     <p className="text-xs text-green-400">Paid</p>
-                    <p className="text-sm font-bold text-green-400">Rs {displayedPaid.toLocaleString()}</p>
+                    <p className="text-sm font-bold text-green-400">{formatCurrency(displayedPaid)}</p>
                   </div>
                   <div className="text-center p-2 bg-red-500/10 rounded-lg border border-red-500/20">
                     <p className="text-xs text-red-400">Due</p>
-                    <p className="text-sm font-bold text-red-400">Rs {displayedDue.toLocaleString()}</p>
+                    <p className="text-sm font-bold text-red-400">{formatCurrency(displayedDue)}</p>
                   </div>
                 </div>
               </div>
@@ -462,7 +464,7 @@ export const ViewPaymentsModal: React.FC<ViewPaymentsModalProps> = ({
                         </div>
                         <div className="col-span-2 text-right">
                           <p className="text-sm font-semibold text-green-400">
-                            Rs {payment.amount.toLocaleString()}
+                            {formatCurrency(payment.amount)}
                           </p>
                         </div>
                         <div className="col-span-2">
@@ -527,8 +529,8 @@ export const ViewPaymentsModal: React.FC<ViewPaymentsModalProps> = ({
               )}
             </div>
 
-            {/* Additional Info */}
-            {invoice.due === 0 && (
+            {/* Additional Info - use displayedDue (from actual payments or invoice) */}
+            {displayedDue === 0 && displayedPaid > 0 && (
               <div className="flex items-center gap-3 p-4 bg-green-500/10 border border-green-500/30 rounded-xl">
                 <CheckCircle size={20} className="text-green-400" />
                 <div>
@@ -595,7 +597,7 @@ export const ViewPaymentsModal: React.FC<ViewPaymentsModalProps> = ({
                 <>
                   Are you sure you want to delete this payment of{' '}
                   <span className="font-semibold text-red-400">
-                    Rs {paymentToDelete.amount.toLocaleString()}
+                    {formatCurrency(paymentToDelete.amount)}
                   </span>
                   ?
                   <br />

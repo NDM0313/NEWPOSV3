@@ -1,4 +1,6 @@
 import { Clock, TrendingUp, AlertTriangle } from 'lucide-react';
+import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
+import { useFormatDate } from '@/app/hooks/useFormatDate';
 import type { Invoice } from '@/app/services/customerLedgerTypes';
 import React from 'react';
 
@@ -7,6 +9,8 @@ interface AgingReportTabProps {
 }
 
 export function AgingReportTab({ invoices }: AgingReportTabProps) {
+  const { formatCurrency } = useFormatCurrency();
+  const { formatDate } = useFormatDate();
   const safeInvoices = invoices || [];
   const today = new Date('2025-01-27');
 
@@ -73,7 +77,7 @@ export function AgingReportTab({ invoices }: AgingReportTabProps) {
               <div className="flex items-start justify-between mb-3">
                 <div>
                   <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">{bucket} days</p>
-                  <p className="text-2xl font-bold text-white mt-1">Rs {data.amount.toLocaleString('en-PK')}</p>
+                  <p className="text-2xl font-bold text-white mt-1">{formatCurrency(data.amount)}</p>
                   <p className="text-xs text-gray-500 mt-1">{data.count} invoices • {percentage}%</p>
                 </div>
                 <div className={`w-12 h-12 rounded-full flex items-center justify-center ${classes.icon}`}>
@@ -120,7 +124,7 @@ export function AgingReportTab({ invoices }: AgingReportTabProps) {
                             {bucket} Days
                           </span>
                           <span className="text-xs text-gray-500">
-                            {data.count} invoices • Rs {data.amount.toLocaleString('en-PK')} pending
+                            {data.count} invoices • {formatCurrency(data.amount)} pending
                           </span>
                         </div>
                       </td>
@@ -136,7 +140,7 @@ export function AgingReportTab({ invoices }: AgingReportTabProps) {
                         >
                           <td className="px-6 py-3 text-white font-medium">{invoice.invoiceNo}</td>
                           <td className="px-6 py-3 text-gray-400">
-                            {new Date(invoice.date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
+                            {formatDate(invoice.date)}
                           </td>
                           <td className="px-6 py-3">
                             <span className={`inline-flex items-center gap-1 px-2 py-1 rounded text-xs border ${getAgeBadgeClass(invoice.daysPast)}`}>
@@ -148,9 +152,9 @@ export function AgingReportTab({ invoices }: AgingReportTabProps) {
                               {invoice.status}
                             </span>
                           </td>
-                          <td className="px-6 py-3 text-right tabular-nums text-white">{invoice.invoiceTotal.toLocaleString('en-PK')}</td>
-                          <td className="px-6 py-3 text-right tabular-nums text-green-400">{invoice.paidAmount.toLocaleString('en-PK')}</td>
-                          <td className="px-6 py-3 text-right tabular-nums text-yellow-400 font-medium">{invoice.pendingAmount.toLocaleString('en-PK')}</td>
+                          <td className="px-6 py-3 text-right tabular-nums text-white">{formatCurrency(invoice.invoiceTotal)}</td>
+                          <td className="px-6 py-3 text-right tabular-nums text-green-400">{formatCurrency(invoice.paidAmount)}</td>
+                          <td className="px-6 py-3 text-right tabular-nums text-yellow-400 font-medium">{formatCurrency(invoice.pendingAmount)}</td>
                         </tr>
                       )),
                   ];
@@ -170,17 +174,17 @@ export function AgingReportTab({ invoices }: AgingReportTabProps) {
             <div className="grid grid-cols-3 gap-6">
               <div>
                 <div className="text-xs text-gray-500 mb-1">High Risk (90+ days)</div>
-                <div className="text-2xl font-bold text-red-400">Rs {(agingBuckets['90+']?.amount || 0).toLocaleString('en-PK')}</div>
+                <div className="text-2xl font-bold text-red-400">{formatCurrency(agingBuckets['90+']?.amount || 0)}</div>
                 <div className="text-xs text-gray-500 mt-1">{agingBuckets['90+']?.count || 0} invoices requiring immediate attention</div>
               </div>
               <div>
                 <div className="text-xs text-gray-500 mb-1">Medium Risk (61-90 days)</div>
-                <div className="text-2xl font-bold text-orange-400">Rs {(agingBuckets['61-90']?.amount || 0).toLocaleString('en-PK')}</div>
+                <div className="text-2xl font-bold text-orange-400">{formatCurrency(agingBuckets['61-90']?.amount || 0)}</div>
                 <div className="text-xs text-gray-500 mt-1">{agingBuckets['61-90']?.count || 0} invoices need follow-up</div>
               </div>
               <div>
                 <div className="text-xs text-gray-500 mb-1">Total Outstanding</div>
-                <div className="text-2xl font-bold text-white">Rs {totalPending.toLocaleString('en-PK')}</div>
+                <div className="text-2xl font-bold text-white">{formatCurrency(totalPending)}</div>
                 <div className="text-xs text-gray-500 mt-1">
                   Across {Object.values(agingBuckets).reduce((sum, b) => sum + b.count, 0)} pending invoices
                 </div>

@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
 import { Sale } from '@/app/context/SalesContext';
 import { useSettings } from '@/app/context/SettingsContext';
+import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
 import { ClassicPrintBase } from './ClassicPrintBase';
+import { usePrinterConfig } from '@/app/hooks/usePrinterConfig';
 import { Checkbox } from '../ui/checkbox';
 import { Label } from '../ui/label';
 import { formatBoxesPieces } from '../ui/utils';
@@ -13,6 +15,8 @@ interface InvoicePrintLayoutProps {
 
 export const InvoicePrintLayout: React.FC<InvoicePrintLayoutProps> = ({ sale, onClose }) => {
   const { inventorySettings } = useSettings();
+  const { formatCurrency } = useFormatCurrency();
+  const { config: printerConfig } = usePrinterConfig();
   const enablePacking = inventorySettings.enablePacking;
   const [showDetailedPacking, setShowDetailedPacking] = useState(false);
 
@@ -79,6 +83,7 @@ export const InvoicePrintLayout: React.FC<InvoicePrintLayoutProps> = ({ sale, on
       headerMeta={headerMeta}
       onPrint={() => window.print()}
       onClose={onClose}
+      printerMode={printerConfig.mode}
       actionChildren={
         enablePacking ? (
           <div className="flex items-center gap-4">
@@ -165,8 +170,8 @@ export const InvoicePrintLayout: React.FC<InvoicePrintLayoutProps> = ({ sale, on
                 )}
                 <td className="text-right">{qty.toFixed(2)}</td>
                 <td>{unit}</td>
-                <td className="text-right classic-print-currency">Rs. {item.price.toLocaleString()}</td>
-                <td className="text-right classic-print-currency">Rs. {(item.price * qty).toLocaleString()}</td>
+                <td className="text-right classic-print-currency">{formatCurrency(item.price)}</td>
+                <td className="text-right classic-print-currency">{formatCurrency(item.price * qty)}</td>
               </tr>
             );
           })}
@@ -178,38 +183,38 @@ export const InvoicePrintLayout: React.FC<InvoicePrintLayoutProps> = ({ sale, on
         <div className="classic-print-totals-inner">
           <div className="classic-print-totals-row">
             <span className="classic-print-totals-label">Subtotal:</span>
-            <span className="classic-print-totals-value classic-print-currency">Rs. {sale.subtotal.toLocaleString()}</span>
+            <span className="classic-print-totals-value classic-print-currency">{formatCurrency(sale.subtotal)}</span>
           </div>
           {sale.discount > 0 && (
             <div className="classic-print-totals-row">
               <span className="classic-print-totals-label">Discount:</span>
-              <span className="classic-print-totals-value classic-print-currency">- Rs. {sale.discount.toLocaleString()}</span>
+              <span className="classic-print-totals-value classic-print-currency">- {formatCurrency(sale.discount)}</span>
             </div>
           )}
           {sale.tax > 0 && (
             <div className="classic-print-totals-row">
               <span className="classic-print-totals-label">Tax:</span>
-              <span className="classic-print-totals-value classic-print-currency">Rs. {sale.tax.toLocaleString()}</span>
+              <span className="classic-print-totals-value classic-print-currency">{formatCurrency(sale.tax)}</span>
             </div>
           )}
           {sale.expenses > 0 && (
             <div className="classic-print-totals-row">
               <span className="classic-print-totals-label">Shipping/Other:</span>
-              <span className="classic-print-totals-value classic-print-currency">Rs. {sale.expenses.toLocaleString()}</span>
+              <span className="classic-print-totals-value classic-print-currency">{formatCurrency(sale.expenses)}</span>
             </div>
           )}
           <div className="classic-print-totals-row total">
             <span className="classic-print-totals-label">Total:</span>
-            <span className="classic-print-totals-value classic-print-currency">Rs. {sale.total.toLocaleString()}</span>
+            <span className="classic-print-totals-value classic-print-currency">{formatCurrency(sale.total)}</span>
           </div>
           <div className="classic-print-totals-row">
             <span className="classic-print-totals-label">Paid:</span>
-            <span className="classic-print-totals-value" style={{ color: '#059669' }}>Rs. {sale.paid.toLocaleString()}</span>
+            <span className="classic-print-totals-value" style={{ color: '#059669' }}>{formatCurrency(sale.paid)}</span>
           </div>
           {sale.due > 0 && (
             <div className="classic-print-totals-row">
               <span className="classic-print-totals-label">Due:</span>
-              <span className="classic-print-totals-value" style={{ color: '#dc2626', fontWeight: 600 }}>Rs. {sale.due.toLocaleString()}</span>
+              <span className="classic-print-totals-value" style={{ color: '#dc2626', fontWeight: 600 }}>{formatCurrency(sale.due)}</span>
             </div>
           )}
         </div>

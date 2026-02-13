@@ -13,6 +13,7 @@ import { branchService } from '@/app/services/branchService';
 import { comboService } from '@/app/services/comboService';
 import { getOrCreateLedger, addLedgerEntry } from '@/app/services/ledgerService';
 import { useSettings } from '@/app/context/SettingsContext';
+import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
 import { toast } from 'sonner';
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -314,6 +315,7 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
   const accounting = useAccounting();
   const { companyId, branchId, user } = useSupabase();
   const { modules } = useSettings();
+  const { formatCurrency } = useFormatCurrency();
 
   // Load sales from database
   const loadSales = useCallback(async () => {
@@ -1609,7 +1611,7 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
         accountId: paymentAccountId, // CRITICAL: Pass account ID
       });
 
-      toast.success(`Payment of Rs. ${amount.toLocaleString()} recorded!`);
+      toast.success(`Payment of ${formatCurrency(amount)} recorded!`);
     } catch (error: any) {
       console.error('[SALES CONTEXT] Error recording payment:', error);
       toast.error(`Failed to record payment: ${error.message || 'Unknown error'}`);

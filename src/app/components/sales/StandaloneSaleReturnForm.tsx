@@ -43,6 +43,7 @@ import {
 import { toast } from 'sonner';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { useSettings } from '@/app/context/SettingsContext';
+import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
 import { useAccounting } from '@/app/context/AccountingContext';
 import { PackingEntryModal, type PackingDetails } from '@/app/components/transactions/PackingEntryModal';
 import { saleReturnService, CreateSaleReturnData } from '@/app/services/saleReturnService';
@@ -74,6 +75,7 @@ interface StandaloneSaleReturnFormProps {
 export const StandaloneSaleReturnForm: React.FC<StandaloneSaleReturnFormProps> = ({ open, onClose, onSuccess }) => {
   const { companyId, branchId: contextBranchId, user } = useSupabase();
   const { inventorySettings } = useSettings();
+  const { formatCurrency } = useFormatCurrency();
   const enablePacking = inventorySettings.enablePacking ?? false;
   const accounting = useAccounting();
   const [loading, setLoading] = useState(true);
@@ -629,7 +631,7 @@ export const StandaloneSaleReturnForm: React.FC<StandaloneSaleReturnFormProps> =
               {items.length > 0 && (
                 <div className="px-4 py-3 border-t border-gray-800 flex justify-end">
                   <span className="text-sm text-gray-400">Subtotal: </span>
-                  <span className="text-lg font-semibold text-white ml-2">Rs {subtotal.toLocaleString()}</span>
+                  <span className="text-lg font-semibold text-white ml-2">{formatCurrency(subtotal)}</span>
                 </div>
               )}
             </div>
@@ -709,7 +711,7 @@ export const StandaloneSaleReturnForm: React.FC<StandaloneSaleReturnFormProps> =
                         <div className="flex items-center justify-between">
                           <span className="text-xs text-gray-400">Return Amount</span>
                           <span className="text-xl font-bold text-red-400">
-                            Rs {subtotal.toLocaleString()}
+                            {formatCurrency(subtotal)}
                           </span>
                         </div>
                       </div>
@@ -781,7 +783,7 @@ export const StandaloneSaleReturnForm: React.FC<StandaloneSaleReturnFormProps> =
                             </option>
                             {refundAccounts.map((account) => (
                               <option key={account.id} value={account.id} className="text-white bg-gray-900">
-                                {account.name} • Balance: Rs {Number(account.balance || 0).toLocaleString()}
+                                {account.name} • Balance: {formatCurrency(Number(account.balance || 0))}
                               </option>
                             ))}
                           </select>

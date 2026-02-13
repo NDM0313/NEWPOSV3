@@ -17,6 +17,7 @@ import { toast } from 'sonner';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { useAccounting } from '@/app/context/AccountingContext';
 import { useSettings } from '@/app/context/SettingsContext';
+import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
 import { saleReturnService, CreateSaleReturnData, UpdateSaleReturnData } from '@/app/services/saleReturnService';
 import { saleService } from '@/app/services/saleService';
 import { PackingEntryModal, type ReturnPackingDetails } from '../transactions/PackingEntryModal';
@@ -72,6 +73,7 @@ export const SaleReturnForm: React.FC<SaleReturnFormProps> = ({ saleId, returnId
   const { companyId, branchId: contextBranchId, user } = useSupabase();
   const accounting = useAccounting();
   const { inventorySettings } = useSettings();
+  const { formatCurrency } = useFormatCurrency();
   const enablePacking = inventorySettings.enablePacking;
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -436,7 +438,7 @@ export const SaleReturnForm: React.FC<SaleReturnFormProps> = ({ saleId, returnId
           debitAccount: 'Sales Revenue', // Reduces revenue
           creditAccount: creditAccount, // Based on refund method
           amount: total,
-          description: `Sale Return: ${saleReturn.return_no || saleReturn.id} - Original: ${originalSale.invoice_no} - ${originalSale.customer_name}${discountAmount > 0 ? ` (Discount: Rs ${discountAmount.toLocaleString()})` : ''}${restockingFee > 0 ? ` (Restocking Fee: Rs ${restockingFee.toLocaleString()})` : ''}${manualAdjustment !== 0 ? ` (Adjustment: Rs ${manualAdjustment.toLocaleString()})` : ''} - Settlement: ${refundMethod === 'cash' ? 'Cash Refund' : refundMethod === 'bank' ? 'Bank Refund' : 'Adjust in Customer Account'}`,
+          description: `Sale Return: ${saleReturn.return_no || saleReturn.id} - Original: ${originalSale.invoice_no} - ${originalSale.customer_name}${discountAmount > 0 ? ` (Discount: ${formatCurrency(discountAmount)})` : ''}${restockingFee > 0 ? ` (Restocking Fee: ${formatCurrency(restockingFee)})` : ''}${manualAdjustment !== 0 ? ` (Adjustment: ${formatCurrency(manualAdjustment)})` : ''} - Settlement: ${refundMethod === 'cash' ? 'Cash Refund' : refundMethod === 'bank' ? 'Bank Refund' : 'Adjust in Customer Account'}`,
           module: 'sales',
           metadata: {
             customerId: originalSale.customer_id,
@@ -556,7 +558,7 @@ export const SaleReturnForm: React.FC<SaleReturnFormProps> = ({ saleId, returnId
                 <TrendingUp size={12} className="shrink-0" />
                 <span className="text-[9px] font-bold uppercase tracking-wider">Original Sale</span>
               </div>
-              <p className="text-sm font-bold text-green-400 tracking-tight relative leading-tight">Rs {originalAmount.toLocaleString()}</p>
+              <p className="text-sm font-bold text-green-400 tracking-tight relative leading-tight">{formatCurrency(originalAmount)}</p>
               <p className="text-[8px] text-gray-500 relative">Reference</p>
             </div>
             <div className="rounded-xl px-2.5 py-1.5 min-w-0 h-[60px] flex flex-col justify-center bg-red-500/10 border border-red-500/30 shadow-sm relative overflow-hidden">
@@ -565,7 +567,7 @@ export const SaleReturnForm: React.FC<SaleReturnFormProps> = ({ saleId, returnId
                 <Undo2 size={12} className="shrink-0" />
                 <span className="text-[9px] font-bold uppercase tracking-wider">Return Amount</span>
               </div>
-              <p className="text-sm font-bold text-red-400 tracking-tight relative leading-tight">Rs {returnAmount.toLocaleString()}</p>
+              <p className="text-sm font-bold text-red-400 tracking-tight relative leading-tight">{formatCurrency(returnAmount)}</p>
               <p className="text-[8px] text-gray-500 relative">From items</p>
             </div>
             <div className="rounded-xl px-2.5 py-1.5 min-w-0 h-[60px] flex flex-col justify-center bg-blue-500/10 border border-blue-500/30 shadow-sm relative overflow-hidden">
@@ -576,7 +578,7 @@ export const SaleReturnForm: React.FC<SaleReturnFormProps> = ({ saleId, returnId
               <div className="flex items-center gap-1 text-blue-400 relative">
                 <span className="text-[9px] font-bold uppercase tracking-wider">Net After Return</span>
               </div>
-              <p className="text-sm font-bold text-white tracking-tight relative leading-tight">Rs {netAfterReturn.toLocaleString()}</p>
+              <p className="text-sm font-bold text-white tracking-tight relative leading-tight">{formatCurrency(netAfterReturn)}</p>
             </div>
           </div>
           <div className="flex items-center justify-between gap-4 flex-wrap">
@@ -747,7 +749,7 @@ export const SaleReturnForm: React.FC<SaleReturnFormProps> = ({ saleId, returnId
                                 </TableCell>
                               )}
                               <TableCell className="text-right text-white">
-                                Rs. {Number(item.unit_price).toLocaleString()}
+                                {formatCurrency(Number(item.unit_price))}
                               </TableCell>
                               <TableCell className="text-center text-white font-medium">
                                 {item.original_quantity}
@@ -788,7 +790,7 @@ export const SaleReturnForm: React.FC<SaleReturnFormProps> = ({ saleId, returnId
                               </TableCell>
                               <TableCell className="text-gray-400">{unitDisplay}</TableCell>
                               <TableCell className="text-right text-red-400 font-medium">
-                                {item.total > 0 ? `-Rs. ${Number(item.total).toLocaleString()}` : '—'}
+                                {item.total > 0 ? `-${formatCurrency(Number(item.total))}` : '—'}
                               </TableCell>
                             </TableRow>
                           );
@@ -801,7 +803,7 @@ export const SaleReturnForm: React.FC<SaleReturnFormProps> = ({ saleId, returnId
                   <span className="text-gray-400">
                     {filteredReturnItems.length} Item{filteredReturnItems.length !== 1 ? 's' : ''} · Qty: {filteredReturnItems.reduce((s, i) => s + i.return_quantity, 0)}
                   </span>
-                  <span className="text-red-400 font-semibold">Total: -Rs. {subtotal.toLocaleString()}</span>
+                  <span className="text-red-400 font-semibold">Total: -{formatCurrency(subtotal)}</span>
                 </div>
               </div>
           </div>
@@ -820,7 +822,7 @@ export const SaleReturnForm: React.FC<SaleReturnFormProps> = ({ saleId, returnId
           <div className="space-y-4 mt-4">
             <div className="bg-[#0F1419] border border-gray-800 rounded-lg p-4">
               <p className="text-sm text-gray-400 mb-2">Return Amount:</p>
-              <p className="text-2xl font-bold text-red-400">Rs {total.toLocaleString()}</p>
+              <p className="text-2xl font-bold text-red-400">{formatCurrency(total)}</p>
             </div>
             
             <div>

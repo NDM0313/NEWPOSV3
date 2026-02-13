@@ -51,6 +51,7 @@ import {
   DialogFooter,
 } from '@/app/components/ui/dialog';
 import { toast } from 'sonner';
+import { useCheckPermission } from '@/app/hooks/useCheckPermission';
 
 type PurchaseStatus = 'received' | 'ordered' | 'pending' | 'final' | 'draft';
 type PaymentStatus = 'paid' | 'partial' | 'unpaid';
@@ -80,6 +81,7 @@ interface Purchase {
 export const PurchasesPage = () => {
   const { openDrawer } = useNavigation();
   const { companyId, branchId } = useSupabase();
+  const { canDeletePurchase } = useCheckPermission();
   const { startDate, endDate } = useDateRange();
   const { purchases: contextPurchases, loading: contextLoading, refreshPurchases, deletePurchase } = usePurchases();
   const [purchases, setPurchases] = useState<Purchase[]>([]);
@@ -1405,6 +1407,7 @@ export const PurchasesPage = () => {
                       })}
                       {/* Actions - visible delete icon + dropdown (same as Sale) */}
                       <div className="flex items-center justify-center gap-1">
+                        {canDeletePurchase && (
                         <button
                           type="button"
                           onClick={(e) => { e.stopPropagation(); handleDelete(purchase); }}
@@ -1413,6 +1416,7 @@ export const PurchasesPage = () => {
                         >
                           <Trash2 size={16} />
                         </button>
+                        )}
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
                             <button 
@@ -1474,11 +1478,15 @@ export const PurchasesPage = () => {
                               </DropdownMenuItem>
                             )}
                             
+                            {canDeletePurchase && (
+                            <>
                             <DropdownMenuSeparator className="bg-gray-700" />
                             <DropdownMenuItem className="hover:bg-gray-800 cursor-pointer text-red-400" onClick={() => handleDelete(purchase)}>
                               <Trash2 size={14} className="mr-2" />
                               Delete
                             </DropdownMenuItem>
+                            </>
+                            )}
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </div>
@@ -1646,6 +1654,7 @@ export const PurchasesPage = () => {
             setViewDetailsOpen(false);
             setOriginalPurchaseIdToView(null);
           }}
+          canDelete={canDeletePurchase}
         />
       )}
 

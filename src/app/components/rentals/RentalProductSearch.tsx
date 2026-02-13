@@ -11,6 +11,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 import { Badge } from "../ui/badge";
 import { Input } from "../ui/input";
 import { cn } from "../ui/utils";
+import { ProductImage } from "../products/ProductImage";
 
 export interface SearchProduct {
   id: string | number;
@@ -93,8 +94,12 @@ export const RentalProductSearch = ({ onSelect, products }: RentalProductSearchP
                     disabled={isUnavailable}
                   >
                     {/* Image */}
-                    <div className="h-10 w-10 rounded bg-gray-800 overflow-hidden shrink-0 border border-gray-700">
-                      <img src={product.image} alt="" className={cn("h-full w-full object-cover", isUnavailable && "grayscale")} />
+                    <div className="h-10 w-10 rounded bg-gray-800 overflow-hidden shrink-0 border border-gray-700 flex items-center justify-center">
+                      {product.image ? (
+                        <ProductImage src={product.image} alt="" className={cn("h-full w-full object-cover", isUnavailable && "grayscale")} />
+                      ) : (
+                        <Box className="w-5 h-5 text-gray-500" />
+                      )}
                     </div>
 
                     {/* Content */}

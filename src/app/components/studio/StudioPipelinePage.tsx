@@ -27,6 +27,7 @@ import { studioService } from '@/app/services/studioService';
 import { saleService } from '@/app/services/saleService';
 import { studioProductionService } from '@/app/services/studioProductionService';
 import { cn } from '../ui/utils';
+import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
 
@@ -61,6 +62,7 @@ function formatDateSafe(value: string | undefined | null, fmt: string): string {
 export const StudioPipelinePage = () => {
   const { setCurrentView, setSelectedStudioSaleId } = useNavigation();
   const { companyId, branchId } = useSupabase();
+  const { formatCurrency } = useFormatCurrency();
   const [sales, setSales] = useState<StudioItem[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -230,9 +232,9 @@ export const StudioPipelinePage = () => {
           {alert === 'near' && <Clock size={12} className="text-yellow-400" />}
         </div>
         <div className="flex items-center justify-between text-xs">
-          <span className="text-gray-400">Rs {item.totalAmount.toLocaleString()}</span>
+          <span className="text-gray-400">{formatCurrency(item.totalAmount)}</span>
           {item.balanceDue > 0 && (
-            <span className="text-orange-400 font-medium">Due: Rs {item.balanceDue.toLocaleString()}</span>
+            <span className="text-orange-400 font-medium">Due: {formatCurrency(item.balanceDue)}</span>
           )}
         </div>
       </div>

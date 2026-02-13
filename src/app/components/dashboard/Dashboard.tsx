@@ -8,7 +8,7 @@ import { useExpenses } from '../../context/ExpenseContext';
 import { useSupabase } from '../../context/SupabaseContext';
 import { useDateRange } from '../../context/DateRangeContext';
 import { productService } from '../../services/productService';
-import { formatCurrency } from '../../utils/formatCurrency';
+import { useFormatCurrency } from '../../hooks/useFormatCurrency';
 
 interface Product {
   id: string;
@@ -24,6 +24,7 @@ export const Dashboard = () => {
   const purchases = usePurchases();
   const expenses = useExpenses();
   const { companyId, signOut } = useSupabase();
+  const { formatCurrency } = useFormatCurrency();
   const { dateRange } = useDateRange();
   const startDate = dateRange.startDate;
   const endDate = dateRange.endDate;

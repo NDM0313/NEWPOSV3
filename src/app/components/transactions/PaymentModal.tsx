@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { X, ArrowLeft, Banknote, Building2, CreditCard, FileText } from "lucide-react";
+import { useFormatCurrency } from "@/app/hooks/useFormatCurrency";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import {
@@ -37,6 +38,7 @@ export function PaymentModal({
   grandTotal,
   transactionType = "sale",
 }: PaymentModalProps) {
+  const { formatCurrency, currency } = useFormatCurrency();
   const [selectedMethod, setSelectedMethod] = useState<PaymentMethod>("cash");
   const [amount, setAmount] = useState((grandTotal || 0).toString());
   const [selectedAccount, setSelectedAccount] = useState("");
@@ -142,14 +144,6 @@ export function PaymentModal({
       return accounts.filter((acc) => acc.type === "card");
     }
     return accounts;
-  };
-
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat("en-PK", {
-      style: "currency",
-      currency: "PKR",
-      minimumFractionDigits: 0,
-    }).format(amount);
   };
 
   const handleConfirm = () => {
@@ -272,7 +266,7 @@ export function PaymentModal({
               </Label>
               <div className="relative">
                 <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm">
-                  Rs
+                  {currency}
                 </span>
                 <Input
                   id="amount"
