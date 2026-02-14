@@ -1,0 +1,5 @@
+# Caddy - automatic HTTPS for erp.dincouture.pk
+# Place at /etc/caddy/Caddyfile or run: caddy run --config deploy/Caddyfile
+erp.dincouture.pk {
+    reverse_proxy localhost:3000
+}

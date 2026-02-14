@@ -1,0 +1,22 @@
+# Systemd service for ERP frontend (Vite SPA via serve)
+# App: Vite build → dist/ served by Node "serve"
+# Place: /etc/systemd/system/erp-frontend.service
+# Deploy: /opt/erp/app (clone/copy project there)
+# Run as root, or: useradd -r erp && chown -R erp:erp /opt/erp/app, then add User=erp Group=erp
+
+[Unit]
+Description=ERP Frontend (Din Couture)
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/erp/app
+ExecStart=/usr/bin/npx serve -s dist -l 3000
+Restart=always
+RestartSec=5
+Environment=NODE_ENV=production
+# Env file for serve (optional; VITE_* are baked in at build time)
+# EnvironmentFile=/opt/erp/app/.env.production
+
+[Install]
+WantedBy=multi-user.target

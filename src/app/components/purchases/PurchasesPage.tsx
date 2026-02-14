@@ -52,6 +52,7 @@ import {
 } from '@/app/components/ui/dialog';
 import { toast } from 'sonner';
 import { useCheckPermission } from '@/app/hooks/useCheckPermission';
+import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
 
 type PurchaseStatus = 'received' | 'ordered' | 'pending' | 'final' | 'draft';
 type PaymentStatus = 'paid' | 'partial' | 'unpaid';
@@ -82,6 +83,7 @@ export const PurchasesPage = () => {
   const { openDrawer } = useNavigation();
   const { companyId, branchId } = useSupabase();
   const { canDeletePurchase } = useCheckPermission();
+  const { formatCurrency } = useFormatCurrency();
   const { startDate, endDate } = useDateRange();
   const { purchases: contextPurchases, loading: contextLoading, refreshPurchases, deletePurchase } = usePurchases();
   const [purchases, setPurchases] = useState<Purchase[]>([]);
@@ -258,8 +260,7 @@ export const PurchasesPage = () => {
     setSelectedPurchase(purchase);
     switch (action) {
       case 'edit':
-        // TODO: Implement edit functionality
-        toast.info('Edit purchase functionality coming soon');
+        openDrawer('edit-purchase', undefined, { purchase });
         break;
       case 'delete':
         setDeleteDialogOpen(true);
@@ -853,14 +854,14 @@ export const PurchasesPage = () => {
         );
       case 'grandTotal':
         return (
-          <div className="text-sm font-semibold text-white tabular-nums">{purchase.grandTotal.toLocaleString()}</div>
+          <div className="text-sm font-semibold text-white tabular-nums">{formatCurrency(purchase.grandTotal)}</div>
         );
       case 'paymentDue':
         return (
           <>
             {purchase.paymentDue > 0 ? (
               <button onClick={() => handleMakePayment(purchase)} className="text-sm font-semibold text-red-400 tabular-nums hover:text-red-300 hover:underline cursor-pointer transition-colors" title="Click to make payment">
-                {purchase.paymentDue.toLocaleString()}
+                {formatCurrency(purchase.paymentDue)}
               </button>
             ) : (
               <div className="text-sm text-gray-600">-</div>
@@ -946,13 +947,13 @@ export const PurchasesPage = () => {
               Create new return
             </Button>
           </div>
-          <div className="flex-1 overflow-auto rounded-xl border border-gray-800 bg-gray-900/50">
+          <div className="flex-1 overflow-x-auto overflow-y-auto rounded-xl border border-gray-800 bg-gray-900/50">
             {loadingPurchaseReturns ? (
               <div className="py-12 text-center text-gray-400">Loading...</div>
             ) : purchaseReturnsList.length === 0 ? (
               <div className="py-12 text-center text-gray-500">No purchase returns. Click &quot;Create new return&quot; to add one.</div>
             ) : (
-              <table className="w-full">
+              <table className="w-full min-w-[600px]">
                 <thead className="bg-gray-900/50 border-b border-gray-800 sticky top-0">
                   <tr>
                     <th className="px-4 py-3 text-left text-xs text-gray-400 uppercase font-medium">Date</th>
@@ -982,7 +983,7 @@ export const PurchasesPage = () => {
                           {String(ret?.status).toLowerCase() === 'void' ? 'Voided' : ret.status === 'final' ? 'Final' : 'Draft'}
                         </Badge>
                       </td>
-                      <td className="px-4 py-3 text-right text-sm font-semibold text-red-400">{(ret.total || 0).toLocaleString()}</td>
+                      <td className="px-4 py-3 text-right text-sm font-semibold text-red-400">{formatCurrency(ret.total ?? 0)}</td>
                       <td className="px-4 py-3 text-right">
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
@@ -1072,7 +1073,7 @@ export const PurchasesPage = () => {
             <div className="flex items-start justify-between mb-3">
               <div>
                 <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Total Purchase</p>
-                <p className="text-2xl font-bold text-white mt-1">{summary.totalPurchase.toLocaleString()}</p>
+                <p className="text-2xl font-bold text-white mt-1">{formatCurrency(summary.totalPurchase)}</p>
                 <p className="text-xs text-gray-500 mt-1">This month</p>
               </div>
               <div className="w-12 h-12 rounded-full bg-orange-500/10 flex items-center justify-center">
@@ -1086,7 +1087,7 @@ export const PurchasesPage = () => {
             <div className="flex items-start justify-between mb-3">
               <div>
                 <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Amount Due</p>
-                <p className="text-2xl font-bold text-red-400 mt-1">{summary.totalDue.toLocaleString()}</p>
+                <p className="text-2xl font-bold text-red-400 mt-1">{formatCurrency(summary.totalDue)}</p>
                 <p className="text-xs text-gray-500 mt-1">Pending payments</p>
               </div>
               <div className="w-12 h-12 rounded-full bg-red-500/10 flex items-center justify-center">
@@ -1100,7 +1101,7 @@ export const PurchasesPage = () => {
             <div className="flex items-start justify-between mb-3">
               <div>
                 <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Returns</p>
-                <p className="text-2xl font-bold text-yellow-400 mt-1">{summary.returns.toLocaleString()}</p>
+                <p className="text-2xl font-bold text-yellow-400 mt-1">{formatCurrency(summary.returns)}</p>
                 <p className="text-xs text-gray-500 mt-1">2 items returned</p>
               </div>
               <div className="w-12 h-12 rounded-full bg-yellow-500/10 flex items-center justify-center">
@@ -1769,7 +1770,7 @@ export const PurchasesPage = () => {
                           {String(ret?.status).toLowerCase() === 'void' ? 'Voided' : ret.status === 'final' ? 'FINAL / LOCKED' : 'Draft'}
                         </Badge>
                       </td>
-                      <td className="px-4 py-2 text-right text-sm font-semibold text-red-400">{(ret.total || 0).toLocaleString()}</td>
+                      <td className="px-4 py-2 text-right text-sm font-semibold text-red-400">{formatCurrency(ret.total ?? 0)}</td>
                       <td className="px-4 py-2 text-right">
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
@@ -1926,15 +1927,15 @@ export const PurchasesPage = () => {
                             <td className="px-4 py-3 text-sm text-white">{item.product_name}</td>
                             <td className="px-4 py-3 text-sm text-gray-400 font-mono">{item.sku}</td>
                             <td className="px-4 py-3 text-sm text-gray-300 text-center">{item.quantity}</td>
-                            <td className="px-4 py-3 text-sm text-gray-300 text-right tabular-nums">PKR {item.unit_price?.toLocaleString() || '0'}</td>
-                            <td className="px-4 py-3 text-sm font-semibold text-red-400 text-right tabular-nums">-PKR {item.total?.toLocaleString() || '0'}</td>
+                            <td className="px-4 py-3 text-sm text-gray-300 text-right tabular-nums">{formatCurrency(item.unit_price ?? 0)}</td>
+                            <td className="px-4 py-3 text-sm font-semibold text-red-400 text-right tabular-nums">-{formatCurrency(item.total ?? 0)}</td>
                           </tr>
                         ))}
                       </tbody>
                       <tfoot className="bg-[#0B0F19] border-t border-gray-800">
                         <tr>
                           <td colSpan={4} className="px-4 py-3 text-sm font-semibold text-gray-300 text-right">Total Return Amount:</td>
-                          <td className="px-4 py-3 text-lg font-bold text-red-400 text-right tabular-nums">-PKR {selectedPurchaseReturn.total?.toLocaleString() || '0'}</td>
+                          <td className="px-4 py-3 text-lg font-bold text-red-400 text-right tabular-nums">-{formatCurrency(selectedPurchaseReturn.total ?? 0)}</td>
                         </tr>
                       </tfoot>
                     </table>

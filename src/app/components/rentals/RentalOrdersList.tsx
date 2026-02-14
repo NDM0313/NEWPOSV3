@@ -55,6 +55,9 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSepara
 import { Checkbox } from "../ui/checkbox";
 import { UnifiedPaymentDialog } from '@/app/components/shared/UnifiedPaymentDialog';
 import { UnifiedLedgerView } from '@/app/components/shared/UnifiedLedgerView';
+import { ViewRentalDetailsDrawer } from './ViewRentalDetailsDrawer';
+import { RentalBookingDrawer } from './RentalBookingDrawer';
+import { useRentals, type RentalUI } from '@/app/context/RentalContext';
 
 type RentalStatus = 'Booked' | 'Dispatched' | 'Returned' | 'Overdue' | 'Cancelled';
 type RentalType = 'Standard' | 'Premium';
@@ -95,13 +98,71 @@ const allColumns = [
   { id: 'action', label: 'Action', default: true },
 ];
 
+// Convert Supabase rental row to RentalUI (matches RentalContext logic)
+function convertSupabaseToRentalUI(row: any): RentalUI {
+  const statusMap: Record<string, 'draft' | 'booked' | 'rented' | 'returned' | 'overdue' | 'cancelled'> = {
+    draft: 'draft', booked: 'booked', rented: 'rented', returned: 'returned', overdue: 'overdue', cancelled: 'cancelled',
+    picked_up: 'rented', active: 'rented', closed: 'returned',
+  };
+  let location = '';
+  if (row.branch) location = row.branch.name || row.branch.code || '';
+  if (location && row.branch?.code) location = `${row.branch.code} | ${location}`.trim();
+  if (!location && row.branch_id) location = row.branch_id;
+  const startDate = row.start_date || row.pickup_date || row.booking_date || '';
+  const expectedReturnDate = row.expected_return_date || row.return_date || '';
+  const actualReturnDate = row.actual_return_date ?? null;
+  const rentalNo = row.rental_no || row.booking_no || '';
+  const items = row.items || [];
+  return {
+    id: row.id,
+    rentalNo,
+    customerId: row.customer_id || null,
+    customerName: row.customer_name || row.customer?.name || 'Unknown',
+    customerContact: row.customer?.phone,
+    branchId: row.branch_id || '',
+    location,
+    startDate,
+    expectedReturnDate,
+    actualReturnDate,
+    status: (statusMap[row.status] || 'draft') as RentalUI['status'],
+    totalAmount: Number(row.total_amount ?? row.rental_charges ?? 0),
+    paidAmount: Number(row.paid_amount ?? 0),
+    dueAmount: Number(row.due_amount ?? 0),
+    itemsCount: items.length,
+    items: items.map((i: any) => ({
+      id: i.id,
+      productId: i.product_id,
+      productName: i.product_name || i.product?.name || '',
+      sku: i.sku || i.product?.sku || '',
+      quantity: Number(i.quantity ?? 0),
+      unit: i.unit || 'piece',
+      rate: Number(i.rate ?? i.rate_per_day ?? 0),
+      total: Number(i.total ?? 0),
+      boxes: i.boxes,
+      pieces: i.pieces,
+    })),
+    createdBy: row.created_by,
+    createdByName: row.created_by_user?.full_name || row.created_by_user?.email,
+    notes: row.notes,
+    documentType: row.document_type,
+    documentNumber: row.document_number,
+  };
+}
+
 export const RentalOrdersList = () => {
   const { companyId, branchId } = useSupabase();
   const { formatCurrency } = useFormatCurrency();
+  const { getRentalById, refreshRentals, markAsPickedUp, receiveReturn } = useRentals();
   const [orders, setOrders] = useState<RentalOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [returnModalOpen, setReturnModalOpen] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState<RentalOrder | null>(null);
+
+  // 🎯 View Details & Edit Drawer
+  const [viewDetailsOpen, setViewDetailsOpen] = useState(false);
+  const [viewRental, setViewRental] = useState<RentalUI | null>(null);
+  const [editDrawerOpen, setEditDrawerOpen] = useState(false);
+  const [editRental, setEditRental] = useState<RentalUI | null>(null);
 
   // 🎯 Payment & Ledger States
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
@@ -365,20 +426,39 @@ export const RentalOrdersList = () => {
     setFilterOpen(false);
   };
 
-  const handleAction = (order: RentalOrder, action: string) => {
+  const resolveRentalUI = useCallback(async (rentalId: string): Promise<RentalUI | null> => {
+    const fromContext = getRentalById(rentalId);
+    if (fromContext) return fromContext;
+    try {
+      const row = await rentalService.getRental(rentalId);
+      return row ? convertSupabaseToRentalUI(row) : null;
+    } catch (e) {
+      console.error('[RentalOrdersList] Error fetching rental:', e);
+      toast.error('Failed to load rental details');
+      return null;
+    }
+  }, [getRentalById]);
+
+  const handleAction = async (order: RentalOrder, action: string) => {
     setSelectedOrder(order);
     
     switch (action) {
-      case 'view':
-        // Open view details drawer (TASK 4 FIX)
-        // TODO: Create ViewRentalDetailsDrawer component
-        toast.info(`View details for ${order.id}`);
+      case 'view': {
+        const rental = await resolveRentalUI(order.id);
+        if (rental) {
+          setViewRental(rental);
+          setViewDetailsOpen(true);
+        }
         break;
-      case 'edit':
-        // Open edit drawer (TASK 4 FIX)
-        // TODO: Open RentalBookingDrawer in edit mode
-        toast.info(`Edit booking ${order.id}`);
+      }
+      case 'edit': {
+        const rental = await resolveRentalUI(order.id);
+        if (rental) {
+          setEditRental(rental);
+          setEditDrawerOpen(true);
+        }
         break;
+      }
       case 'return':
         setReturnModalOpen(true);
         break;
@@ -409,12 +489,14 @@ export const RentalOrdersList = () => {
     }
   };
 
-  // Handle row click to view details (TASK 4 FIX)
-  const handleRowClick = (order: RentalOrder) => {
+  // Handle row click to view details
+  const handleRowClick = async (order: RentalOrder) => {
     setSelectedOrder(order);
-    // Open view details - for now show toast, later implement drawer
-    toast.info(`Viewing details for ${order.id}`);
-    // TODO: Open ViewRentalDetailsDrawer
+    const rental = await resolveRentalUI(order.id);
+    if (rental) {
+      setViewRental(rental);
+      setViewDetailsOpen(true);
+    }
   };
 
   return (
@@ -621,14 +703,14 @@ export const RentalOrdersList = () => {
         </div>
 
         {/* Table with sticky header */}
-        <div className="overflow-auto max-h-[600px]">
+        <div className="overflow-x-auto overflow-y-auto max-h-[600px]">
           {loading ? (
             <div className="p-8 text-center text-gray-500">
               <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-pink-500"></div>
               <p className="mt-2">Loading rentals...</p>
             </div>
           ) : (
-            <table className="w-full text-sm text-left">
+            <table className="w-full text-sm text-left min-w-[700px]">
               <thead className="bg-gray-900 text-gray-400 font-medium border-b border-gray-800 sticky top-0 z-10">
                 <tr>
                   {columnVisibility.product && <th className="p-4 font-medium">Product</th>}
@@ -735,7 +817,7 @@ export const RentalOrdersList = () => {
                     {/* Rental Amount Column */}
                     {columnVisibility.rentalAmount && (
                       <td className="p-4 text-right">
-                        <div className="text-white font-medium">₹{order.rentalAmount.toLocaleString()}</div>
+                        <div className="text-white font-medium">{formatCurrency(order.rentalAmount)}</div>
                         <div className="text-xs text-gray-500">Per booking</div>
                       </td>
                     )}
@@ -743,7 +825,7 @@ export const RentalOrdersList = () => {
                     {/* Paid Amount Column */}
                     {columnVisibility.paidAmount && (
                       <td className="p-4 text-right">
-                        <div className="text-green-400 font-medium">₹{order.paidAmount.toLocaleString()}</div>
+                        <div className="text-green-400 font-medium">{formatCurrency(order.paidAmount)}</div>
                       </td>
                     )}
 
@@ -754,7 +836,7 @@ export const RentalOrdersList = () => {
                           "font-medium",
                           order.balanceDue > 0 ? "text-red-400" : "text-gray-600"
                         )}>
-                          {order.balanceDue > 0 ? `₹${order.balanceDue.toLocaleString()}` : '-'}
+                          {order.balanceDue > 0 ? formatCurrency(order.balanceDue) : '-'}
                         </div>
                       </td>
                     )}
@@ -762,7 +844,7 @@ export const RentalOrdersList = () => {
                     {/* Security Deposit Column */}
                     {columnVisibility.securityDeposit && (
                       <td className="p-4 text-right">
-                        <div className="text-white font-medium">₹{order.securityDeposit.toLocaleString()}</div>
+                        <div className="text-white font-medium">{formatCurrency(order.securityDeposit)}</div>
                         <div className="text-xs text-gray-500 flex items-center justify-end gap-1 mt-1">
                           <Shield size={10} />
                           {order.guaranteeType}
@@ -1060,6 +1142,53 @@ export const RentalOrdersList = () => {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* View Rental Details Drawer */}
+      <ViewRentalDetailsDrawer
+        isOpen={viewDetailsOpen}
+        onClose={() => {
+          setViewDetailsOpen(false);
+          setViewRental(null);
+        }}
+        rental={viewRental}
+        onRefresh={async () => {
+          await refreshRentals();
+          await loadRentals();
+        }}
+        onEdit={(r) => {
+          setViewDetailsOpen(false);
+          setViewRental(null);
+          setEditRental(r);
+          setEditDrawerOpen(true);
+        }}
+        onAddPayment={() => {
+          if (viewRental) {
+            setViewDetailsOpen(false);
+            setSelectedOrder(orders.find(o => o.id === viewRental.id) || selectedOrder);
+            setViewRental(null);
+            setPaymentDialogOpen(true);
+          }
+        }}
+        onReceiveReturn={() => {
+          if (viewRental) {
+            setViewDetailsOpen(false);
+            setSelectedOrder(orders.find(o => o.id === viewRental.id) || selectedOrder);
+            setViewRental(null);
+            setReturnModalOpen(true);
+          }
+        }}
+      />
+
+      {/* Edit Rental Booking Drawer */}
+      <RentalBookingDrawer
+        isOpen={editDrawerOpen}
+        onClose={() => {
+          setEditDrawerOpen(false);
+          setEditRental(null);
+          loadRentals();
+        }}
+        editRental={editRental}
+      />
     </div>
   );
 };

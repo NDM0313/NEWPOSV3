@@ -28,9 +28,21 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "../ui/dropdown-menu";
+import { Sheet, SheetContent } from "../ui/sheet";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "../ui/alert-dialog";
 import { toast } from "sonner";
 import { Building2, Zap, Users, ShoppingCart, Briefcase, Utensils, Car, Wallet, Home } from 'lucide-react';
 import { ListToolbar } from '../ui/list-toolbar';
+import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
 import { useExpenses } from '../../context/ExpenseContext';
 import { useAccounting } from '../../context/AccountingContext';
 import { useSupabase } from '../../context/SupabaseContext';
@@ -42,6 +54,16 @@ const getCategoryBadgeStyle = (category: string) => {
     case 'Salaries': return 'bg-purple-500/10 text-purple-400 border-purple-500/20';
     case 'Utilities': return 'bg-orange-500/10 text-orange-400 border-orange-500/20';
     case 'Stitching': return 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20';
+    default: return 'bg-gray-500/10 text-gray-400 border-gray-500/20';
+  }
+};
+
+const getStatusBadgeStyle = (status: string) => {
+  switch (status) {
+    case 'pending': return 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20';
+    case 'approved': return 'bg-blue-500/10 text-blue-400 border-blue-500/20';
+    case 'paid': return 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20';
+    case 'rejected': return 'bg-red-500/10 text-red-400 border-red-500/20';
     default: return 'bg-gray-500/10 text-gray-400 border-gray-500/20';
   }
 };
@@ -61,6 +83,7 @@ function flattenCategories(tree: ExpenseCategoryTreeItem[]): ExpenseCategoryRow[
 }
 
 export const ExpensesDashboard = () => {
+  const { formatCurrency } = useFormatCurrency();
   const { companyId } = useSupabase();
   const { expenses, loading, deleteExpense, refreshExpenses } = useExpenses();
   const { accounts } = useAccounting();
@@ -118,7 +141,8 @@ export const ExpensesDashboard = () => {
     if (selectedExpense) {
       try {
         await deleteExpense(selectedExpense.id);
-        toast.success(`Expense "${selectedExpense.expense_no || selectedExpense.id}" deleted successfully.`);
+        await refreshExpenses();
+        toast.success(`Expense "${selectedExpense.expenseNo || selectedExpense.id}" deleted successfully.`);
         setDeleteAlertOpen(false);
         setSelectedExpense(null);
       } catch (error: any) {
@@ -363,7 +387,7 @@ export const ExpensesDashboard = () => {
              </Button>
            ) : (
              <Button 
-               onClick={() => setIsDrawerOpen(true)}
+               onClick={() => { setSelectedExpense(null); setIsDrawerOpen(true); }}
                className="bg-blue-600 hover:bg-blue-500 text-white gap-2 shadow-lg shadow-blue-600/20"
              >
                <Plus size={18} />
@@ -387,7 +411,7 @@ export const ExpensesDashboard = () => {
                 <div>
                   <p className="text-gray-400 text-sm font-medium">Total Monthly Expense</p>
                   <h3 className="text-2xl font-bold text-white mt-2">
-                    Rs {expenses.reduce((sum, e) => sum + (e.amount || 0), 0).toLocaleString()}
+                    {formatCurrency(expenses.reduce((sum, e) => sum + (e.amount || 0), 0))}
                   </h3>
                 </div>
                 <div className="bg-red-500/10 p-2 rounded-lg">
@@ -465,7 +489,7 @@ export const ExpensesDashboard = () => {
                   <Tooltip 
                     contentStyle={{ backgroundColor: '#1F2937', borderColor: '#374151', color: '#F3F4F6', borderRadius: '8px' }}
                     itemStyle={{ color: '#F3F4F6' }}
-                    formatter={(value: number) => `$${value.toLocaleString()}`}
+                    formatter={(value: number) => formatCurrency(value)}
                   />
                   <Legend 
                      verticalAlign="bottom" 
@@ -641,7 +665,7 @@ export const ExpensesDashboard = () => {
                              {expense.paymentMethod}
                           </td>
                           <td className="px-6 py-4 text-right font-bold text-red-500">
-                             -Rs {expense.amount.toLocaleString()}
+                             -{formatCurrency(expense.amount)}
                           </td>
                           <td className="px-6 py-4 text-center">
                              <DropdownMenu>
@@ -686,7 +710,7 @@ export const ExpensesDashboard = () => {
                </span>
              </span>
              <span className="font-bold text-white text-lg">
-               Rs {summaryTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+               {formatCurrency(summaryTotal)}
              </span>
            </div>
         </div>
@@ -749,7 +773,74 @@ export const ExpensesDashboard = () => {
         </div>
       )}
 
-      <AddExpenseDrawer isOpen={isDrawerOpen} onClose={() => setIsDrawerOpen(false)} />
+      <AddExpenseDrawer 
+        isOpen={isDrawerOpen} 
+        onClose={() => { setIsDrawerOpen(false); setSelectedExpense(null); }} 
+        expenseToEdit={selectedExpense}
+        onSuccess={refreshExpenses}
+      />
+      
+      {/* View Expense Details Sheet */}
+      <Sheet open={viewDetailsOpen} onOpenChange={(open) => { if (!open) { setViewDetailsOpen(false); setSelectedExpense(null); } }}>
+        <SheetContent side="right" className="w-full max-w-full sm:max-w-md bg-[#111827] border-l border-gray-800 text-white overflow-y-auto">
+          {selectedExpense && (
+            <div className="space-y-6">
+              <div>
+                <h2 className="text-xl font-bold text-white">Expense Details</h2>
+                <p className="text-sm text-gray-400 mt-1">{selectedExpense.expenseNo || selectedExpense.id}</p>
+              </div>
+              <div className="space-y-4">
+                <div>
+                  <p className="text-xs text-gray-500 uppercase font-medium">Date</p>
+                  <p className="text-white mt-1">{new Date(selectedExpense.date).toLocaleDateString()}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500 uppercase font-medium">Category</p>
+                  <p className="text-white mt-1">{selectedExpense.category}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500 uppercase font-medium">Description</p>
+                  <p className="text-white mt-1">{selectedExpense.description || '—'}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500 uppercase font-medium">Amount</p>
+                  <p className="text-red-400 font-bold text-lg mt-1">-{formatCurrency(selectedExpense.amount)}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500 uppercase font-medium">Payment Method</p>
+                  <p className="text-white mt-1">{selectedExpense.paymentMethod || '—'}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500 uppercase font-medium">Payee</p>
+                  <p className="text-white mt-1">{selectedExpense.payeeName || '—'}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500 uppercase font-medium">Status</p>
+                  <Badge className={cn("mt-1", getStatusBadgeStyle(selectedExpense.status))}>
+                    {selectedExpense.status}
+                  </Badge>
+                </div>
+              </div>
+              <div className="flex gap-2 pt-4">
+                <Button 
+                  variant="outline" 
+                  className="flex-1 border-gray-700 text-gray-300"
+                  onClick={() => { setViewDetailsOpen(false); setSelectedExpense(null); }}
+                >
+                  Close
+                </Button>
+                <Button 
+                  className="flex-1 bg-blue-600 hover:bg-blue-500"
+                  onClick={() => { setViewDetailsOpen(false); setSelectedExpense(selectedExpense); setIsDrawerOpen(true); }}
+                >
+                  <Pencil size={16} className="mr-2" />
+                  Edit
+                </Button>
+              </div>
+            </div>
+          )}
+        </SheetContent>
+      </Sheet>
       
       <AddCategoryModal 
         isOpen={isCategoryModalOpen} 
@@ -757,6 +848,27 @@ export const ExpensesDashboard = () => {
         categoryToEdit={selectedCategory}
         onSuccess={loadCategoriesFromDb}
       />
+
+      {/* Delete Expense Confirmation */}
+      <AlertDialog open={deleteAlertOpen} onOpenChange={setDeleteAlertOpen}>
+        <AlertDialogContent className="bg-gray-900 border-gray-800 text-white">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Expense</AlertDialogTitle>
+            <AlertDialogDescription className="text-gray-400">
+              Are you sure you want to delete expense {selectedExpense?.expenseNo || selectedExpense?.id}? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="bg-gray-800 border-gray-700 text-white hover:bg-gray-700">Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteExpense}
+              className="bg-red-600 hover:bg-red-700 text-white"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
     </div>
   );

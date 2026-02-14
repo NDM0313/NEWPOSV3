@@ -37,11 +37,14 @@ import { expenseCategoryService, type ExpenseCategoryTreeItem } from "@/app/serv
 import { userService } from "@/app/services/userService";
 import { toast } from "sonner";
 import type { ExpenseCategory } from "@/app/context/ExpenseContext";
+import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
 
 interface AddExpenseDrawerProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess?: () => void;
+  /** When provided, opens in edit mode with form pre-filled */
+  expenseToEdit?: { id: string; expenseNo?: string; category: string; description: string; amount: number; date: string; paymentMethod: string; payeeName?: string; location?: string } | null;
 }
 
 const FALLBACK_CATEGORIES: { id: ExpenseCategory; name: string; slug: string; icon: typeof Building2; color: string }[] = [
@@ -55,9 +58,10 @@ const FALLBACK_CATEGORIES: { id: ExpenseCategory; name: string; slug: string; ic
   { id: 'Other', name: 'Other', slug: 'miscellaneous', icon: Wallet, color: 'text-gray-500' },
 ];
 
-export const AddExpenseDrawer = ({ isOpen, onClose, onSuccess }: AddExpenseDrawerProps) => {
+export const AddExpenseDrawer = ({ isOpen, onClose, onSuccess, expenseToEdit }: AddExpenseDrawerProps) => {
+  const { formatCurrency } = useFormatCurrency();
   const { companyId, branchId: contextBranchId } = useSupabase();
-  const { createExpense, refreshExpenses } = useExpenses();
+  const { createExpense, updateExpense, refreshExpenses } = useExpenses();
   const { accounts: accountingAccounts } = useAccounting();
 
   const [date, setDate] = useState<Date | undefined>(new Date());
@@ -94,6 +98,28 @@ export const AddExpenseDrawer = ({ isOpen, onClose, onSuccess }: AddExpenseDrawe
     if (isOpen && companyId) expenseCategoryService.getTree(companyId).then(setCategoryTree).catch(() => setCategoryTree([]));
   }, [isOpen, companyId]);
 
+  // Pre-fill form when editing
+  useEffect(() => {
+    if (isOpen && expenseToEdit) {
+      setDate(expenseToEdit.date ? new Date(expenseToEdit.date) : new Date());
+      setAmount(String(expenseToEdit.amount || ''));
+      setDescription(expenseToEdit.description || '');
+      const catSlug = typeof expenseToEdit.category === 'string' ? expenseToEdit.category.toLowerCase().replace(/\s+/g, '_') : '';
+      setCategorySlug(catSlug);
+      if (expenseToEdit.location) setSelectedBranchId(expenseToEdit.location);
+    } else if (isOpen && !expenseToEdit) {
+      setDate(new Date());
+      setAmount('');
+      setDescription('');
+      setCategorySlug('');
+      setMainCategoryId('');
+      setSubCategoryId('');
+      setPaidToUserId('');
+      setSalaryUserSearch('');
+      setPaidFromAccountId('');
+    }
+  }, [isOpen, expenseToEdit?.id]);
+
   const currentBranch = branches.find(b => b.id === selectedBranchId) || branches[0];
   const selectedMain = categoryTree.find((m) => m.id === mainCategoryId);
   const subOptions = selectedMain?.children ?? [];
@@ -124,6 +150,34 @@ export const AddExpenseDrawer = ({ isOpen, onClose, onSuccess }: AddExpenseDrawe
     icon: Wallet,
   }));
   const accounts = accountsList.length > 0 ? accountsList : [{ id: 'cash', name: 'Cash in Hand', balance: 0, icon: Wallet }];
+
+  // When editing, set paidFromAccountId and category from expense
+  useEffect(() => {
+    if (isOpen && expenseToEdit && accounts.length > 0) {
+      const accMatch = accounts.find((a: { id: string; name: string }) => 
+        a.name === expenseToEdit.paymentMethod || a.id === expenseToEdit.paymentMethod
+      );
+      if (accMatch) setPaidFromAccountId(accMatch.id);
+    }
+    if (isOpen && expenseToEdit && categoryTree.length > 0) {
+      const catName = String(expenseToEdit.category || '').toLowerCase();
+      for (const main of categoryTree) {
+        if ((main.name || '').toLowerCase() === catName || (main.slug || '').toLowerCase() === catName) {
+          setMainCategoryId(main.id);
+          setSubCategoryId('');
+          break;
+        }
+        const sub = main.children?.find((s: { name?: string; slug?: string }) => 
+          (s.name || '').toLowerCase() === catName || (s.slug || '').toLowerCase() === catName
+        );
+        if (sub) {
+          setMainCategoryId(main.id);
+          setSubCategoryId(sub.id);
+          break;
+        }
+      }
+    }
+  }, [isOpen, expenseToEdit?.id, expenseToEdit?.paymentMethod, expenseToEdit?.category, accounts, categoryTree]);
 
   const handleAmountFocus = (e: React.FocusEvent<HTMLInputElement>) => {
     if (window.innerWidth < 768) {
@@ -173,8 +227,8 @@ export const AddExpenseDrawer = ({ isOpen, onClose, onSuccess }: AddExpenseDrawe
     }
     setSaving(true);
     try {
-      await createExpense(
-        {
+      if (expenseToEdit) {
+        await updateExpense(expenseToEdit.id, {
           category: effectiveSlug,
           description: description.trim() || (isSalaryCategory && selectedSalaryUser ? `${selectedSalaryUser.full_name} – Salary` : selectedSub?.name ?? selectedMain?.name ?? effectiveSlug),
           amount: amt,
@@ -182,16 +236,28 @@ export const AddExpenseDrawer = ({ isOpen, onClose, onSuccess }: AddExpenseDrawe
           paymentMethod: paymentMethodName,
           payeeName: isSalaryCategory && selectedSalaryUser ? selectedSalaryUser.full_name : "",
           location: effectiveBranchId,
-          status: "paid",
-          submittedBy: "",
-          receiptAttached: false,
-        },
-        {
-          branchId: effectiveBranchId,
-          payment_account_id: paidFromAccountId && /^[0-9a-f-]{36}$/i.test(paidFromAccountId) ? paidFromAccountId : undefined,
-          paidToUserId: isSalaryCategory && paidToUserId ? paidToUserId : undefined,
-        }
-      );
+        });
+      } else {
+        await createExpense(
+          {
+            category: effectiveSlug,
+            description: description.trim() || (isSalaryCategory && selectedSalaryUser ? `${selectedSalaryUser.full_name} – Salary` : selectedSub?.name ?? selectedMain?.name ?? effectiveSlug),
+            amount: amt,
+            date: date ? format(date, "yyyy-MM-dd") : format(new Date(), "yyyy-MM-dd"),
+            paymentMethod: paymentMethodName,
+            payeeName: isSalaryCategory && selectedSalaryUser ? selectedSalaryUser.full_name : "",
+            location: effectiveBranchId,
+            status: "paid",
+            submittedBy: "",
+            receiptAttached: false,
+          },
+          {
+            branchId: effectiveBranchId,
+            payment_account_id: paidFromAccountId && /^[0-9a-f-]{36}$/i.test(paidFromAccountId) ? paidFromAccountId : undefined,
+            paidToUserId: isSalaryCategory && paidToUserId ? paidToUserId : undefined,
+          }
+        );
+      }
       refreshExpenses();
       resetForm();
       onClose();
@@ -213,7 +279,7 @@ export const AddExpenseDrawer = ({ isOpen, onClose, onSuccess }: AddExpenseDrawe
   return (
     <>
       <Sheet open={isOpen} onOpenChange={(open) => !open && handleOpenChange(false)}>
-        <SheetContent side="right" className="w-full sm:max-w-md bg-[#111827] border-l border-gray-800 text-white p-0 flex flex-col">
+        <SheetContent side="right" className="w-full max-w-full sm:max-w-md bg-[#111827] border-l border-gray-800 text-white p-0 flex flex-col">
           
           {/* TOP HEADER - Branch Info */}
           <div className="bg-gray-900 p-4 border-b border-gray-800">
@@ -268,8 +334,8 @@ export const AddExpenseDrawer = ({ isOpen, onClose, onSuccess }: AddExpenseDrawe
 
           {/* TITLE BAR */}
           <div className="p-4 border-b border-gray-800">
-            <h2 className="text-xl font-bold text-white">Record Expense</h2>
-            <p className="text-sm text-gray-400 mt-1">Track operational costs and expenditures</p>
+            <h2 className="text-xl font-bold text-white">{expenseToEdit ? 'Edit Expense' : 'Record Expense'}</h2>
+            <p className="text-sm text-gray-400 mt-1">{expenseToEdit ? expenseToEdit.expenseNo || expenseToEdit.id : 'Track operational costs and expenditures'}</p>
           </div>
 
           {/* Body (Scrollable) */}
@@ -412,7 +478,7 @@ export const AddExpenseDrawer = ({ isOpen, onClose, onSuccess }: AddExpenseDrawe
                           {acc.name}
                         </div>
                         <span className="text-xs text-green-500 font-mono">
-                          Rs {(acc.balance || 0).toLocaleString()}
+                          {formatCurrency(acc.balance || 0)}
                         </span>
                       </div>
                     </SelectItem>

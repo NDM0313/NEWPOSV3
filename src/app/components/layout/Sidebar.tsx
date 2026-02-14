@@ -95,6 +95,11 @@ export const Sidebar = () => {
         { id: 'branch-management-test', label: 'Branch Management Test' },
         { id: 'accounting-chart-test', label: 'Chart of Accounts Test' },
         { id: 'inventory-design-test', label: 'Inventory Design Test' },
+        { id: 'rls-validation', label: 'RLS Validation' },
+        { id: 'day4-certification', label: 'Day 4 Certification' },
+        { id: 'erp-integration-test', label: 'ERP Integration Test' },
+        { id: 'cutover-prep', label: 'Cutover Prep' },
+        { id: 'responsive-test', label: 'Responsive Test' },
       ]
     },
   ];

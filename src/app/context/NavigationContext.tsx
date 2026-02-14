@@ -51,7 +51,12 @@ type View =
   | 'sales-list-design-test'
   | 'worker-detail'
   | 'inventory-design-test'
-  | 'inventory-analytics-test';
+  | 'inventory-analytics-test'
+  | 'rls-validation'
+  | 'day4-certification'
+  | 'erp-integration-test'
+  | 'cutover-prep'
+  | 'responsive-test';
 
 type DrawerType = 'none' | 'addUser' | 'addProduct' | 'edit-product' | 'addSale' | 'edit-sale' | 'addPurchase' | 'edit-purchase' | 'addContact';
 

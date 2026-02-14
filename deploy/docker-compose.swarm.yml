@@ -1,0 +1,26 @@
+# ERP as Docker Stack (Swarm) - for Traefik/Dokploy
+# 1. Build: docker build -t erp-frontend:latest -f deploy/Dockerfile .
+# 2. Fix network: Replace traefik-public with your Traefik network (docker network ls)
+# 3. Deploy: docker stack deploy -c deploy/docker-compose.swarm.yml erp
+
+version: "3.8"
+
+services:
+  erp:
+    image: erp-frontend:latest
+    deploy:
+      replicas: 1
+      labels:
+        traefik.enable: "true"
+        traefik.http.routers.erp.rule: "Host(`erp.dincouture.pk`)"
+        traefik.http.routers.erp.entrypoints: "websecure"
+        traefik.http.routers.erp.tls: "true"
+        traefik.http.services.erp.loadbalancer.server.port: "80"
+      restart_policy:
+        condition: on-failure
+    networks:
+      - traefik-public
+
+networks:
+  traefik-public:
+    external: true
