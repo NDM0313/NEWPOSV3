@@ -3,6 +3,10 @@
 **Project:** ERP POS v1.0.0  
 **Last updated:** Production release + VPS hardening + Supabase self-host plan
 
+**GitHub:** https://github.com/NDM0313/NEWPOSV3  
+**Current branch:** `before-mobile-replace` (push: `git push origin before-mobile-replace`)  
+**Full system:** Repo mein source, docs, scripts, migrations sab included; `.env` / secrets gitignore mein.
+
 ---
 
 ## ✅ COMPLETED TASKS
@@ -101,6 +105,14 @@
 | PRODUCTION_VPS_DEPLOY.md | Frontend-only deploy (Supabase Cloud) |
 | docs/VPS_HARDENING_REPORT.md | Post–Phase 1 security report |
 | TASKS_STATUS.md | This file — complete vs remaining |
+
+---
+
+## 📤 GitHub Upload (Full System)
+
+- **Repo:** https://github.com/NDM0313/NEWPOSV3
+- **Push karna:** `git add .` → `git commit -m "message"` → `git push origin before-mobile-replace` (ya `main`)
+- **Jo commit nahi hai:** Naye/change files add karke commit karo, phir push. Secrets (`.env`, `*id_rsa*`) repo mein nahi jate (.gitignore).
 
 ---
 
