@@ -24,7 +24,7 @@ export async function exportCompanyBackup(companyId: string): Promise<void> {
 
   try {
     const [companyRes, contactsRes, productsRes, salesRes, purchasesRes, expensesRes] = await Promise.all([
-      supabase.from('companies').select('id, business_name').eq('id', companyId).single(),
+      supabase.from('companies').select('id, name, business_name').eq('id', companyId).single(),
       supabase.from('contacts').select('*').eq('company_id', companyId),
       supabase.from('products').select('*').eq('company_id', companyId),
       supabase.from('sales').select('*').eq('company_id', companyId),
@@ -35,7 +35,7 @@ export async function exportCompanyBackup(companyId: string): Promise<void> {
     const backup: CompanyBackupData = {
       exportedAt: new Date().toISOString(),
       companyId,
-      companyName: (companyRes.data as { business_name?: string })?.business_name,
+      companyName: (companyRes.data as { business_name?: string; name?: string })?.business_name ?? (companyRes.data as { name?: string })?.name,
       contacts: contactsRes.data ?? [],
       products: productsRes.data ?? [],
       sales: salesRes.data ?? [],
