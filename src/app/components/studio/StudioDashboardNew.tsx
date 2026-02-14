@@ -51,13 +51,13 @@ const DepartmentCard = ({ name, icon: Icon, count, color, onClick }: DepartmentC
     <div
       onClick={onClick}
       className={cn(
-        "bg-gray-900 border border-gray-800 rounded-xl p-6 cursor-pointer transition-all hover:border-gray-700 group",
+        "bg-gray-900/60 border border-gray-800 rounded-2xl p-6 cursor-pointer transition-all hover:border-gray-700 shadow-sm group",
         "hover:shadow-lg hover:-translate-y-1"
       )}
     >
       <div className="flex items-start justify-between mb-4">
         <div className={cn(
-          "h-14 w-14 rounded-xl flex items-center justify-center",
+          "h-14 w-14 rounded-2xl flex items-center justify-center",
           color === 'purple' && "bg-purple-500/20",
           color === 'blue' && "bg-blue-500/20",
           color === 'green' && "bg-green-500/20",
@@ -576,15 +576,15 @@ export const StudioDashboardNew = () => {
   );
 
   return (
-    <div className="space-y-6 p-6">
-      {/* HEADER */}
-      <div>
-        <h1 className="text-2xl font-bold text-white mb-2">Studio Production Dashboard</h1>
+    <div className="space-y-6 p-4 sm:p-6 min-h-0">
+      {/* HEADER - Figma: clean bar */}
+      <div className="pb-2 border-b border-gray-800/80">
+        <h1 className="text-xl sm:text-2xl font-bold text-white mb-1 tracking-tight">Studio Production Dashboard</h1>
         <p className="text-sm text-gray-400">Department-wise order tracking</p>
       </div>
 
       {/* DEPARTMENT CARDS – studio sales (Ready for Production) + department-wise */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4">
         <DepartmentCard
           name="Ready for Production"
           icon={Package}
@@ -624,7 +624,7 @@ export const StudioDashboardNew = () => {
 
       {/* ACTIVE FILTER INDICATOR */}
       {selectedDepartment && (
-        <div className="bg-blue-900/20 border border-blue-700/50 rounded-lg p-4 flex items-center justify-between">
+        <div className="bg-blue-900/20 border border-blue-700/50 rounded-xl p-4 flex items-center justify-between shadow-sm">
           <div className="flex items-center gap-3">
             <Filter size={18} className="text-blue-400" />
             <div>
@@ -648,7 +648,7 @@ export const StudioDashboardNew = () => {
       )}
 
       {/* SEARCH BAR */}
-      <div className="bg-gray-900 border border-gray-800 rounded-xl p-4">
+      <div className="bg-gray-900/60 border border-gray-800 rounded-2xl p-4 shadow-sm">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={18} />
           <Input
@@ -676,7 +676,7 @@ export const StudioDashboardNew = () => {
           </Button>
         </div>
 
-        <div className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
+        <div className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden shadow-sm">
           <div className="overflow-x-auto">
           <table className="w-full text-sm min-w-[900px]">
             <thead className="bg-gray-950 border-b border-gray-800">

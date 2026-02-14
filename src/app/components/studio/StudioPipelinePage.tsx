@@ -30,6 +30,7 @@ import { cn } from '../ui/utils';
 import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
+import { logger } from '@/app/utils/logger';
 
 type ProductionStatus = 'Not Started' | 'In Progress' | 'Completed';
 
@@ -141,7 +142,9 @@ export const StudioPipelinePage = () => {
               stagesBySaleId[saleId] = stages || [];
             }
           }
-        } catch (_) {}
+        } catch (e) {
+          logger.warn('[StudioPipeline] getStagesByProductionId failed for sale', saleId, e);
+        }
       }
       const fromSales = (studioSalesFromSales || []).map((sale: any) =>
         convertFromSale(sale, stagesBySaleId[sale.id])
@@ -200,7 +203,7 @@ export const StudioPipelinePage = () => {
       <div
         onClick={() => handleOpenDetail(item)}
         className={cn(
-          "rounded-xl border p-4 cursor-pointer transition-all hover:border-gray-600 bg-gray-900/80",
+          "rounded-xl border p-4 cursor-pointer transition-all hover:border-gray-600 bg-gray-900/80 shadow-sm",
           alert === 'overdue' && "border-red-700/50 bg-red-950/20",
           alert === 'near' && "border-yellow-700/50 bg-yellow-950/10"
         )}
@@ -255,10 +258,10 @@ export const StudioPipelinePage = () => {
     colorClass: string;
   }) => (
     <div className="flex flex-col min-w-[280px] max-w-[320px]">
-      <div className={cn("flex items-center gap-2 mb-4 px-3 py-2 rounded-lg", colorClass)}>
+      <div className={cn("flex items-center gap-2 mb-4 px-3 py-2 rounded-xl", colorClass)}>
         <Icon size={20} />
         <span className="font-semibold text-sm">{title}</span>
-        <Badge variant="outline" className="ml-auto text-xs">{count}</Badge>
+        <Badge variant="outline" className="ml-auto text-xs rounded-lg">{count}</Badge>
       </div>
       <div className="space-y-3 overflow-y-auto flex-1 max-h-[calc(100vh-280px)]">
         {items.map((item) => (
@@ -280,22 +283,22 @@ export const StudioPipelinePage = () => {
   }
 
   return (
-    <div className="space-y-6 p-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
+    <div className="space-y-6 p-4 sm:p-6">
+      {/* Header - Figma: clean bar */}
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div className="flex items-center gap-4 min-w-0">
           <Button
             variant="ghost"
             size="sm"
-            className="text-gray-400 hover:text-white"
+            className="text-gray-400 hover:text-white rounded-lg"
             onClick={() => setCurrentView('studio-sales-list-new')}
           >
             <ChevronLeft size={20} className="mr-1" />
             Back
           </Button>
-          <div>
-            <h1 className="text-2xl font-bold text-white">Studio Production Pipeline</h1>
-            <p className="text-sm text-gray-400 mt-0.5">Work done, pending, aur production stages – Edit button se sale form open</p>
+          <div className="min-w-0">
+            <h1 className="text-xl sm:text-2xl font-bold text-white tracking-tight">Studio Production Pipeline</h1>
+            <p className="text-sm text-gray-400 mt-0.5">Work done, pending, and production stages – Edit to open sale form</p>
           </div>
         </div>
         <Button
@@ -303,35 +306,35 @@ export const StudioPipelinePage = () => {
           size="sm"
           onClick={() => loadData()}
           disabled={loading}
-          className="border-gray-600 text-gray-300 hover:bg-gray-800"
+          className="border-gray-600 text-gray-300 hover:bg-gray-800 rounded-lg shrink-0"
         >
           {loading ? <Loader2 size={16} className="animate-spin mr-2" /> : <RotateCw size={16} className="mr-2" />}
           Refresh
         </Button>
       </div>
 
-      {/* Summary */}
-      <div className="grid grid-cols-3 gap-4">
-        <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
+      {/* Summary - Figma: stage summary cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
+        <div className="bg-gray-900/60 border border-gray-800 rounded-xl p-4 shadow-sm">
           <div className="flex items-center gap-2 text-gray-400 text-sm mb-1">
             <Circle size={16} />
             Not Started
           </div>
-          <p className="text-2xl font-bold text-white">{notStarted.length}</p>
+          <p className="text-2xl font-bold text-white tabular-nums">{notStarted.length}</p>
         </div>
-        <div className="bg-blue-500/10 border border-blue-500/30 rounded-xl p-4">
+        <div className="bg-blue-500/10 border border-blue-500/30 rounded-xl p-4 shadow-sm">
           <div className="flex items-center gap-2 text-blue-400 text-sm mb-1">
             <Clock size={16} />
             In Progress
           </div>
-          <p className="text-2xl font-bold text-white">{inProgress.length}</p>
+          <p className="text-2xl font-bold text-white tabular-nums">{inProgress.length}</p>
         </div>
-        <div className="bg-green-500/10 border border-green-500/30 rounded-xl p-4">
+        <div className="bg-green-500/10 border border-green-500/30 rounded-xl p-4 shadow-sm">
           <div className="flex items-center gap-2 text-green-400 text-sm mb-1">
             <CheckCircle2 size={16} />
             Completed
           </div>
-          <p className="text-2xl font-bold text-white">{completed.length}</p>
+          <p className="text-2xl font-bold text-white tabular-nums">{completed.length}</p>
         </div>
       </div>
 

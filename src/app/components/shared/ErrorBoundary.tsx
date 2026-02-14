@@ -7,6 +7,7 @@ import React, { Component, ErrorInfo, ReactNode } from 'react';
 import { AlertTriangle, RefreshCw } from 'lucide-react';
 import { Button } from '@/app/components/ui/button';
 import { logError } from '@/app/utils/errorUtils';
+import { logger } from '@/app/utils/logger';
 
 interface Props {
   children: ReactNode;
@@ -31,6 +32,7 @@ export class ErrorBoundary extends Component<Props, State> {
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     logError('ErrorBoundary', error, { componentStack: errorInfo.componentStack });
+    logger.error('[ErrorBoundary]', error.message, error.stack, errorInfo.componentStack);
     this.props.onError?.(error, errorInfo);
   }
 

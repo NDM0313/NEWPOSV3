@@ -13,8 +13,8 @@ import { ContactsPage } from './components/contacts/ContactsPage';
 import { ProductsPage } from './components/products/ProductsPage';
 import { PurchaseList } from './components/purchases/PurchaseList';
 const AccountingDashboard = lazy(() => import('./components/accounting/AccountingDashboard').then(m => ({ default: m.AccountingDashboard })));
-import { UserDashboard } from './components/users/UserDashboard';
-import { RolesDashboard } from './components/users/RolesDashboard';
+const UserDashboard = lazy(() => import('./components/users/UserDashboard').then(m => ({ default: m.UserDashboard })));
+const RolesDashboard = lazy(() => import('./components/users/RolesDashboard').then(m => ({ default: m.RolesDashboard })));
 import { UserProfilePage } from './components/users/UserProfilePage';
 import { PurchasesPage } from './components/purchases/PurchasesPage';
 import { SalesPage } from './components/sales/SalesPage';
@@ -42,8 +42,8 @@ import { ProductionOrderDetail } from './components/production/ProductionOrderDe
 import { CustomerOrderTracking } from './components/tracking/CustomerOrderTracking';
 import { InventoryDashboard } from './components/inventory/InventoryDashboard';
 const InventoryDashboardNew = lazy(() => import('./components/inventory/InventoryDashboardNew').then(m => ({ default: m.InventoryDashboardNew })));
-import { InventoryDesignTestPage } from './components/inventory/InventoryDesignTestPage';
-import { InventoryAnalyticsTestPage } from './components/inventory/InventoryAnalyticsTestPage';
+const InventoryDesignTestPage = lazy(() => import('./components/inventory/InventoryDesignTestPage').then(m => ({ default: m.InventoryDesignTestPage })));
+const InventoryAnalyticsTestPage = lazy(() => import('./components/inventory/InventoryAnalyticsTestPage').then(m => ({ default: m.InventoryAnalyticsTestPage })));
 const StudioDashboardNew = lazy(() => import('./components/studio/StudioDashboardNew').then(m => ({ default: m.StudioDashboardNew })));
 import { SettingsPage } from './components/settings/SettingsPage';
 const SettingsPageNew = lazy(() => import('./components/settings/SettingsPageNew').then(m => ({ default: m.SettingsPageNew })));
@@ -55,8 +55,8 @@ import { StudioOrdersList } from './components/studio/StudioOrdersList';
 import { StudioJobCard } from './components/studio/StudioJobCard';
 import { StudioSalesList } from './components/studio/StudioSalesList';
 import { StudioSaleDetail } from './components/studio/StudioSaleDetail';
-import { StudioSalesListNew } from './components/studio/StudioSalesListNew';
-import { StudioSaleDetailNew } from './components/studio/StudioSaleDetailNew';
+const StudioSalesListNew = lazy(() => import('./components/studio/StudioSalesListNew').then(m => ({ default: m.StudioSalesListNew })));
+const StudioSaleDetailNew = lazy(() => import('./components/studio/StudioSaleDetailNew').then(m => ({ default: m.StudioSaleDetailNew })));
 import { WorkerDetailPage } from './components/studio/WorkerDetailPage';
 import { StudioProductionListPage } from './components/studio/StudioProductionListPage';
 import { StudioProductionDetailPage } from './components/studio/StudioProductionDetailPage';
@@ -75,9 +75,9 @@ import { BranchManagementTestPage } from './components/test/BranchManagementTest
 import { AccountingChartTestPage } from './components/test/AccountingChartTestPage';
 import { LedgerDebugTestPage } from './components/test/LedgerDebugTestPage';
 import { SalesListDesignTestPage } from './components/test/SalesListDesignTestPage';
-import { CustomerLedgerTestPage } from './components/customer-ledger-test/CustomerLedgerTestPage';
+const CustomerLedgerTestPage = lazy(() => import('./components/customer-ledger-test/CustomerLedgerTestPage').then(m => ({ default: m.CustomerLedgerTestPage })));
 import TestLedger from './TestLedger';
-import CustomerLedgerInteractiveTest from './components/customer-ledger-test/CustomerLedgerInteractiveTest';
+const CustomerLedgerInteractiveTest = lazy(() => import('./components/customer-ledger-test/CustomerLedgerInteractiveTest').then(m => ({ default: m.default })));
 import { SupabaseProvider } from './context/SupabaseContext';
 import { ProtectedRoute } from './components/auth/ProtectedRoute';
 import { ErrorBoundary } from './components/shared/ErrorBoundary';
@@ -155,21 +155,41 @@ const AppContent = () => {
       )}
       {currentView === 'rental-booking' && <NewRentalBooking />}
       {currentView === 'stock' && <StockDashboard />}
-      {currentView === 'inventory' && <InventoryDesignTestPage />}
-      {currentView === 'studio' && <StudioSalesListNew />}
+      {currentView === 'inventory' && (
+        <Suspense fallback={<div className="flex items-center justify-center p-12"><div className="animate-pulse text-gray-500">Loading...</div></div>}>
+          <InventoryDesignTestPage />
+        </Suspense>
+      )}
+      {currentView === 'studio' && (
+        <Suspense fallback={<div className="flex items-center justify-center p-12"><div className="animate-pulse text-gray-500">Loading...</div></div>}>
+          <StudioSalesListNew />
+        </Suspense>
+      )}
       {currentView === 'studio-dashboard-new' && (
         <Suspense fallback={<div className="flex items-center justify-center p-12"><div className="animate-pulse text-gray-500">Loading...</div></div>}>
           <StudioDashboardNew />
         </Suspense>
       )}
-      {currentView === 'studio-sales-list-new' && <StudioSalesListNew />}
+      {currentView === 'studio-sales-list-new' && (
+        <Suspense fallback={<div className="flex items-center justify-center p-12"><div className="animate-pulse text-gray-500">Loading...</div></div>}>
+          <StudioSalesListNew />
+        </Suspense>
+      )}
       {currentView === 'studio-pipeline' && (
         <Suspense fallback={<div className="flex items-center justify-center p-12"><div className="animate-pulse text-gray-500">Loading...</div></div>}>
           <StudioPipelinePage />
         </Suspense>
       )}
-      {currentView === 'studio-sale-detail' && <StudioSaleDetailNew />}
-      {currentView === 'studio-sale-detail-new' && <StudioSaleDetailNew />}
+      {currentView === 'studio-sale-detail' && (
+        <Suspense fallback={<div className="flex items-center justify-center p-12"><div className="animate-pulse text-gray-500">Loading...</div></div>}>
+          <StudioSaleDetailNew />
+        </Suspense>
+      )}
+      {currentView === 'studio-sale-detail-new' && (
+        <Suspense fallback={<div className="flex items-center justify-center p-12"><div className="animate-pulse text-gray-500">Loading...</div></div>}>
+          <StudioSaleDetailNew />
+        </Suspense>
+      )}
       {currentView === 'studio-job' && <StudioJobCard />}
       {currentView === 'studio-workflow' && <StudioWorkflowPage />}
       {currentView === 'worker-detail' && <WorkerDetailPage />}
@@ -184,8 +204,16 @@ const AppContent = () => {
         </Suspense>
       )}
       {currentView === 'accounting-demo' && <AccountingIntegrationDemo />}
-      {currentView === 'users' && <UserDashboard />}
-      {currentView === 'roles' && <RolesDashboard />}
+      {currentView === 'users' && (
+        <Suspense fallback={<div className="flex items-center justify-center p-12"><div className="animate-pulse text-gray-500">Loading...</div></div>}>
+          <UserDashboard />
+        </Suspense>
+      )}
+      {currentView === 'roles' && (
+        <Suspense fallback={<div className="flex items-center justify-center p-12"><div className="animate-pulse text-gray-500">Loading...</div></div>}>
+          <RolesDashboard />
+        </Suspense>
+      )}
       
       {/* Placeholders for new modules */}
       {currentView === 'reports' && (
@@ -214,13 +242,29 @@ const AppContent = () => {
       {currentView === 'user-management-test' && <UserManagementTestPage />}
       {currentView === 'branch-management-test' && <BranchManagementTestPage />}
       {currentView === 'accounting-chart-test' && <AccountingChartTestPage />}
-      {currentView === 'customer-ledger-test' && <CustomerLedgerTestPage />}
+      {currentView === 'customer-ledger-test' && (
+        <Suspense fallback={<div className="flex items-center justify-center p-12"><div className="animate-pulse text-gray-500">Loading...</div></div>}>
+          <CustomerLedgerTestPage />
+        </Suspense>
+      )}
       {currentView === 'ledger-debug-test' && <LedgerDebugTestPage />}
       {currentView === 'test-ledger' && <TestLedger />}
-      {currentView === 'customer-ledger-interactive-test' && <CustomerLedgerInteractiveTest />}
+      {currentView === 'customer-ledger-interactive-test' && (
+        <Suspense fallback={<div className="flex items-center justify-center p-12"><div className="animate-pulse text-gray-500">Loading...</div></div>}>
+          <CustomerLedgerInteractiveTest />
+        </Suspense>
+      )}
       {currentView === 'sales-list-design-test' && <SalesListDesignTestPage />}
-      {currentView === 'inventory-design-test' && <InventoryDesignTestPage />}
-      {currentView === 'inventory-analytics-test' && <InventoryAnalyticsTestPage />}
+      {currentView === 'inventory-design-test' && (
+        <Suspense fallback={<div className="flex items-center justify-center p-12"><div className="animate-pulse text-gray-500">Loading...</div></div>}>
+          <InventoryDesignTestPage />
+        </Suspense>
+      )}
+      {currentView === 'inventory-analytics-test' && (
+        <Suspense fallback={<div className="flex items-center justify-center p-12"><div className="animate-pulse text-gray-500">Loading...</div></div>}>
+          <InventoryAnalyticsTestPage />
+        </Suspense>
+      )}
 
       <GlobalDrawer />
     </Layout>

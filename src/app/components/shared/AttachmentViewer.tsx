@@ -16,12 +16,15 @@ interface AttachmentViewerProps {
   attachments: { url: string; name: string }[];
   isOpen: boolean;
   onClose: () => void;
+  /** Optional title (e.g. "Bin Saeed", "Payment attachments") – shows next to Paperclip in dialog */
+  title?: string;
 }
 
 export const AttachmentViewer: React.FC<AttachmentViewerProps> = ({
   attachments,
   isOpen,
   onClose,
+  title = 'Attachments',
 }) => {
   const [selectedAttachment, setSelectedAttachment] = useState<{ url: string; name: string; resolvedUrl?: string } | null>(null);
   const [loadingAttachment, setLoadingAttachment] = useState(false);
@@ -52,7 +55,7 @@ export const AttachmentViewer: React.FC<AttachmentViewerProps> = ({
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-white">
               <Paperclip size={20} className="text-amber-400" />
-              Attachments
+              {title}
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-2 max-h-[60vh] sm:max-h-[50vh] md:max-h-96 overflow-y-auto">

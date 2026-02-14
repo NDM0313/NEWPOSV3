@@ -129,9 +129,9 @@ export const ReturnModal = ({ open, onOpenChange, rental, documentInfo, onConfir
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="bg-gray-900 border-gray-700 max-w-[950px] p-0 overflow-hidden">
-        <DialogHeader className="px-6 pt-6 pb-4 border-b border-gray-800">
-          <DialogTitle className="text-white text-xl">Confirm Return</DialogTitle>
+      <DialogContent className="bg-gray-900 border border-gray-700 rounded-xl shadow-xl max-w-[950px] p-0 overflow-hidden">
+        <DialogHeader className="px-4 sm:px-6 pt-6 pb-4 border-b border-gray-800">
+          <DialogTitle className="text-white text-xl tracking-tight">Confirm Return</DialogTitle>
           <DialogDescription className="text-gray-400">
             Process return for rental {rental?.rentalNo}
           </DialogDescription>
@@ -139,9 +139,9 @@ export const ReturnModal = ({ open, onOpenChange, rental, documentInfo, onConfir
 
         <div className="flex min-h-[450px]">
           {/* LEFT SIDE */}
-          <div className="flex-[6] overflow-y-auto p-6 space-y-6">
+          <div className="flex-[6] overflow-y-auto p-4 sm:p-6 space-y-6">
             {/* Card 1 – Rental Info */}
-            <div className="rounded-lg border border-gray-700 p-4 bg-gray-800/30">
+            <div className="rounded-xl border border-gray-700 p-4 bg-gray-800/30 shadow-sm">
               <h4 className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-3">Rental Info</h4>
               <div className="grid grid-cols-2 gap-3 text-sm">
                 <div><span className="text-gray-500">Rental #</span><p className="font-mono text-pink-400">{rental?.rentalNo}</p></div>
@@ -156,7 +156,7 @@ export const ReturnModal = ({ open, onOpenChange, rental, documentInfo, onConfir
             </div>
 
             {/* Card 2 – Item Inspection */}
-            <div className="rounded-lg border border-gray-700 p-4 bg-gray-800/30">
+            <div className="rounded-xl border border-gray-700 p-4 bg-gray-800/30 shadow-sm">
               <h4 className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-3">Item Inspection</h4>
               <div className="space-y-3">
                 <Label className="text-gray-400 text-sm">Condition</Label>
@@ -205,7 +205,7 @@ export const ReturnModal = ({ open, onOpenChange, rental, documentInfo, onConfir
 
             {/* Card 3 – Penalty Settlement (if penalty > 0) */}
             {hasPenalty && penalty > 0 && (
-              <div className="rounded-lg border border-gray-700 p-4 bg-gray-800/30">
+              <div className="rounded-xl border border-gray-700 p-4 bg-gray-800/30 shadow-sm">
                 <h4 className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-3">Penalty Settlement</h4>
                 <div className="flex justify-between text-sm mb-3">
                   <span className="text-gray-500">Penalty Amount</span>

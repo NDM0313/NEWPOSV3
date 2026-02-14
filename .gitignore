@@ -42,3 +42,15 @@ Thumbs.db
 *.tmp
 *.temp
 posv3.zip
+*.crdownload
+
+# Secrets / keys (do not commit)
+*.pem
+*private*id_rsa*
+*id_rsa*.txt
+docker_*private*.txt
+
+# Archives (optional)
+*.rar
+*.zip
+!posv3.zip

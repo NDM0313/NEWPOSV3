@@ -40,6 +40,7 @@ import { Separator } from "../ui/separator";
 import { cn, formatBoxesPieces } from "../ui/utils";
 import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
 import { toast } from 'sonner';
+import { AttachmentViewer } from '@/app/components/shared/AttachmentViewer';
 import { getAttachmentOpenUrl } from '@/app/utils/paymentAttachmentUrl';
 import {
   Table,
@@ -55,13 +56,6 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "../ui/dropdown-menu";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from '@/app/components/ui/dialog';
-
 interface SaleItem {
   id: number;
   productId: number;
@@ -384,15 +378,15 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
         onClick={onClose}
       />
 
-      {/* Drawer */}
-      <div className="fixed right-0 top-0 h-full w-full md:w-[1100px] bg-gray-950 shadow-2xl z-50 overflow-hidden flex flex-col border-l border-gray-800">
+      {/* Drawer - Figma: clean panel with rounded left edge */}
+      <div className="fixed right-0 top-0 h-full w-full md:w-[1100px] bg-gray-950 shadow-2xl z-50 overflow-hidden flex flex-col border-l border-gray-800 rounded-l-xl">
         {/* Header */}
-        <div className="bg-gray-900/80 border-b border-gray-800 px-6 py-4 flex items-center justify-between shrink-0">
-          <div className="flex items-center gap-4">
+        <div className="bg-gray-900/95 backdrop-blur-sm border-b border-gray-800 px-4 sm:px-6 py-4 flex items-center justify-between shrink-0">
+          <div className="flex items-center gap-4 min-w-0">
             <div>
-              <h2 className="text-xl font-bold text-white flex items-center gap-3">
+              <h2 className="text-lg sm:text-xl font-bold text-white flex items-center gap-3 tracking-tight">
                 {sale.invoiceNo}
-                <Badge className={cn("text-xs font-semibold border", getStatusColor(sale.type === 'invoice' ? 'Final' : 'Quotation'))}>
+                <Badge className={cn("text-xs font-semibold border rounded-lg", getStatusColor(sale.type === 'invoice' ? 'Final' : 'Quotation'))}>
                   {sale.type === 'invoice' ? 'Final' : 'Quotation'}
                 </Badge>
               </h2>
@@ -402,7 +396,7 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
             </div>
           </div>
           
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 shrink-0">
             {/* Action Buttons */}
             <Button
               variant="ghost"
@@ -1317,38 +1311,15 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
         />
       )}
 
-      {/* Attachments dialog: list attachments, open in new tab from here */}
-      <Dialog open={!!attachmentsDialogList} onOpenChange={(open) => !open && setAttachmentsDialogList(null)}>
-        <DialogContent className="bg-gray-900 border-gray-700 text-white max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-white">
-              <Paperclip size={20} className="text-amber-400" />
-              Attachments
-            </DialogTitle>
-          </DialogHeader>
-          <div className="space-y-2 max-h-64 overflow-y-auto">
-            {attachmentsDialogList?.map((att, idx) => (
-              <div
-                key={idx}
-                className="flex items-center justify-between gap-2 p-2 rounded-lg bg-gray-800/50 border border-gray-700"
-              >
-                <span className="text-sm text-gray-200 truncate flex-1" title={att.name}>{att.name}</span>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="shrink-0 border-gray-600 text-gray-300 hover:bg-gray-700 hover:text-white"
-                  onClick={async () => {
-                    const openUrl = await getAttachmentOpenUrl(att.url);
-                    window.open(openUrl, '_blank');
-                  }}
-                >
-                  Open in new tab
-                </Button>
-              </div>
-            ))}
-          </div>
-        </DialogContent>
-      </Dialog>
+      {/* Attachments: shared AttachmentViewer (same as Purchase / Payment) */}
+      {attachmentsDialogList && (
+        <AttachmentViewer
+          attachments={attachmentsDialogList}
+          isOpen={!!attachmentsDialogList}
+          onClose={() => setAttachmentsDialogList(null)}
+          title={sale?.customerName || sale?.invoiceNo || 'Sale attachments'}
+        />
+      )}
     </>
   );
 };

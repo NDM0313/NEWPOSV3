@@ -1,6 +1,8 @@
 import React from 'react';
 import { DollarSign, Package, TrendingUp, AlertTriangle, ArrowRight } from 'lucide-react';
 import { Button } from "../ui/button";
+import { useSupabase } from '../../context/SupabaseContext';
+import { useFormatCurrency } from '../../hooks/useFormatCurrency';
 
 const slowMovingItems = [
   { id: 1, name: 'Patterned Silk Scarf', sku: 'SCF-009', days: 120, stock: 45, value: 22500 },
@@ -9,6 +11,13 @@ const slowMovingItems = [
 ];
 
 export const StockDashboard = () => {
+  useSupabase(); // keep for future branch/company-scoped data
+  const { formatCurrency } = useFormatCurrency();
+
+  const inventoryCost = 50000;
+  const inventorySale = 80000;
+  const potentialProfit = 30000;
+
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
@@ -24,21 +33,21 @@ export const StockDashboard = () => {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <StockCard 
           title="Inventory Value (Cost)" 
-          value="$50,000" 
+          value={formatCurrency(inventoryCost)} 
           icon={Package} 
           color="text-blue-500" 
           bg="bg-blue-500/10"
         />
         <StockCard 
           title="Inventory Value (Sale)" 
-          value="$80,000" 
+          value={formatCurrency(inventorySale)} 
           icon={DollarSign} 
           color="text-purple-500" 
           bg="bg-purple-500/10"
         />
         <StockCard 
           title="Potential Profit" 
-          value="$30,000" 
+          value={formatCurrency(potentialProfit)} 
           icon={TrendingUp} 
           color="text-green-500" 
           bg="bg-green-500/10"
@@ -76,7 +85,7 @@ export const StockDashboard = () => {
                   </span>
                 </td>
                 <td className="px-6 py-4 text-center text-gray-900 dark:text-white">{item.stock}</td>
-                <td className="px-6 py-4 text-right font-bold text-gray-900 dark:text-white">${item.value.toLocaleString()}</td>
+                <td className="px-6 py-4 text-right font-bold text-gray-900 dark:text-white">{formatCurrency(item.value)}</td>
               </tr>
             ))}
           </tbody>

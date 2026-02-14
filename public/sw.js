@@ -1,4 +1,4 @@
-const CACHE_NAME = 'erp-pos-v1';
+const CACHE_NAME = 'erp-pos-v2';
 const urlsToCache = [
   '/',
   '/index.html',
@@ -6,23 +6,26 @@ const urlsToCache = [
 ];
 
 self.addEventListener('install', (event) => {
+  self.skipWaiting();
   event.waitUntil(
     caches.open(CACHE_NAME)
-      .then((cache) => {
-        return cache.addAll(urlsToCache);
-      })
+      .then((cache) => cache.addAll(urlsToCache))
+      .catch(() => {})
   );
 });
 
 self.addEventListener('fetch', (event) => {
+  if (event.request.mode !== 'navigate' && event.request.url.startsWith('chrome-extension')) return;
   event.respondWith(
-    caches.match(event.request)
+    fetch(event.request)
       .then((response) => {
-        if (response) {
-          return response;
+        const clone = response.clone();
+        if (response.ok && event.request.method === 'GET') {
+          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
         }
-        return fetch(event.request);
+        return response;
       })
+      .catch(() => caches.match(event.request).then((r) => r || caches.match('/index.html')))
   );
 });
 

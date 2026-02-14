@@ -18,6 +18,7 @@ import {
 import { cn, formatDecimal } from "@/app/components/ui/utils";
 import { useNavigation } from '@/app/context/NavigationContext';
 import { useSupabase } from '@/app/context/SupabaseContext';
+import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
 import { useSales } from '@/app/context/SalesContext';
 import { usePurchases } from '@/app/context/PurchaseContext';
 import { productService } from '@/app/services/productService';
@@ -70,6 +71,7 @@ interface Product {
 export const ProductsPage = () => {
   const { openDrawer } = useNavigation();
   const { companyId } = useSupabase();
+  const { formatCurrency } = useFormatCurrency();
   const { sales } = useSales();
   const { purchases } = usePurchases();
   const [products, setProducts] = useState<Product[]>([]);
@@ -524,13 +526,13 @@ export const ProductsPage = () => {
       case 'purchase':
         return (
           <div className="text-right">
-            <div className="text-sm font-medium text-gray-300 tabular-nums">${product.purchasePrice.toLocaleString()}</div>
+            <div className="text-sm font-medium text-gray-300 tabular-nums">{formatCurrency(product.purchasePrice)}</div>
           </div>
         );
       case 'selling':
         return (
           <div className="text-right">
-            <div className="text-sm font-semibold text-white tabular-nums">${product.sellingPrice.toLocaleString()}</div>
+            <div className="text-sm font-semibold text-white tabular-nums">{formatCurrency(product.sellingPrice)}</div>
           </div>
         );
       case 'margin': {
@@ -538,7 +540,7 @@ export const ProductsPage = () => {
         return (
           <div className="text-right">
             <div className="text-sm font-semibold text-green-400 tabular-nums">+{marginPercent}%</div>
-            <div className="text-[10px] text-gray-500 tabular-nums" title="Margin = Selling − Purchase (from product cost & retail price)">Margin ${margin.toLocaleString()}</div>
+            <div className="text-[10px] text-gray-500 tabular-nums" title="Margin = Selling − Purchase (from product cost & retail price)">Margin {formatCurrency(margin)}</div>
           </div>
         );
       }
@@ -575,17 +577,17 @@ export const ProductsPage = () => {
   };
 
   return (
-    <div className="h-screen flex flex-col bg-[#0B0F19]">
-      {/* Page Header - Fixed */}
-      <div className="shrink-0 px-6 py-4 border-b border-gray-800">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-white">Products</h1>
+    <div className="h-screen flex flex-col bg-gray-950">
+      {/* Page Header - Figma: clean bar with backdrop */}
+      <div className="shrink-0 px-4 sm:px-6 py-4 border-b border-gray-800 bg-gray-950/95 backdrop-blur-sm">
+        <div className="flex items-center justify-between gap-4">
+          <div className="min-w-0">
+            <h1 className="text-xl sm:text-2xl font-bold text-white tracking-tight">Products</h1>
             <p className="text-sm text-gray-400 mt-0.5">Manage your inventory across all branches</p>
           </div>
           <Button 
             onClick={() => openDrawer('addProduct')}
-            className="bg-blue-600 hover:bg-blue-500 text-white h-10 gap-2"
+            className="shrink-0 bg-blue-600 hover:bg-blue-500 text-white h-10 gap-2 rounded-lg shadow-lg shadow-blue-600/20"
           >
             <Package size={16} />
             Add Product
@@ -593,69 +595,69 @@ export const ProductsPage = () => {
         </div>
       </div>
 
-      {/* Summary Cards - Fixed */}
-      <div className="shrink-0 px-6 py-4 bg-[#0F1419] border-b border-gray-800">
-        <div className="grid grid-cols-4 gap-4">
+      {/* Summary Cards - Figma: responsive grid, modern card depth */}
+      <div className="shrink-0 px-4 sm:px-6 py-4 bg-gray-900/30 border-b border-gray-800">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
           {/* Total Products */}
-          <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
-            <div className="flex items-start justify-between mb-3">
-              <div>
+          <div className="bg-gray-900/60 border border-gray-800 rounded-xl p-4 shadow-sm">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
                 <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Total Products</p>
-                <p className="text-2xl font-bold text-white mt-1">{summary.totalProducts}</p>
+                <p className="text-2xl font-bold text-white mt-1 tabular-nums">{summary.totalProducts}</p>
                 <p className="text-xs text-gray-500 mt-1">Active SKUs</p>
               </div>
-              <div className="w-12 h-12 rounded-full bg-blue-500/10 flex items-center justify-center">
-                <Package size={24} className="text-blue-500" />
+              <div className="w-11 h-11 rounded-xl bg-blue-500/10 flex items-center justify-center shrink-0">
+                <Package size={22} className="text-blue-500" />
               </div>
             </div>
           </div>
 
           {/* Total Value */}
-          <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
-            <div className="flex items-start justify-between mb-3">
-              <div>
+          <div className="bg-gray-900/60 border border-gray-800 rounded-xl p-4 shadow-sm">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
                 <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Total Value</p>
-                <p className="text-2xl font-bold text-green-400 mt-1">${summary.totalValue.toLocaleString()}</p>
+                <p className="text-2xl font-bold text-green-400 mt-1 tabular-nums">{formatCurrency(summary.totalValue)}</p>
                 <p className="text-xs text-gray-500 mt-1">Inventory worth</p>
               </div>
-              <div className="w-12 h-12 rounded-full bg-green-500/10 flex items-center justify-center">
-                <DollarSign size={24} className="text-green-500" />
+              <div className="w-11 h-11 rounded-xl bg-green-500/10 flex items-center justify-center shrink-0">
+                <DollarSign size={22} className="text-green-500" />
               </div>
             </div>
           </div>
 
           {/* Low Stock */}
-          <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
-            <div className="flex items-start justify-between mb-3">
-              <div>
+          <div className="bg-gray-900/60 border border-gray-800 rounded-xl p-4 shadow-sm">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
                 <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Low Stock</p>
-                <p className="text-2xl font-bold text-yellow-400 mt-1">{summary.lowStock}</p>
+                <p className="text-2xl font-bold text-yellow-400 mt-1 tabular-nums">{summary.lowStock}</p>
                 <p className="text-xs text-gray-500 mt-1">Need reorder</p>
               </div>
-              <div className="w-12 h-12 rounded-full bg-yellow-500/10 flex items-center justify-center">
-                <TrendingDown size={24} className="text-yellow-500" />
+              <div className="w-11 h-11 rounded-xl bg-yellow-500/10 flex items-center justify-center shrink-0">
+                <TrendingDown size={22} className="text-yellow-500" />
               </div>
             </div>
           </div>
 
           {/* Out of Stock */}
-          <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
-            <div className="flex items-start justify-between mb-3">
-              <div>
+          <div className="bg-gray-900/60 border border-gray-800 rounded-xl p-4 shadow-sm">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
                 <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Out of Stock</p>
-                <p className="text-2xl font-bold text-red-400 mt-1">{summary.outOfStock}</p>
+                <p className="text-2xl font-bold text-red-400 mt-1 tabular-nums">{summary.outOfStock}</p>
                 <p className="text-xs text-gray-500 mt-1">Urgent action</p>
               </div>
-              <div className="w-12 h-12 rounded-full bg-red-500/10 flex items-center justify-center">
-                <AlertTriangle size={24} className="text-red-500" />
+              <div className="w-11 h-11 rounded-xl bg-red-500/10 flex items-center justify-center shrink-0">
+                <AlertTriangle size={22} className="text-red-500" />
               </div>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Search & Actions Bar - Fixed */}
-      <div className="shrink-0 px-6 py-3 bg-[#0B0F19] border-b border-gray-800">
+      {/* Search & Actions Bar - Figma: modern filter bar */}
+      <div className="shrink-0 px-4 sm:px-6 py-3 border-b border-gray-800 bg-gray-950/80 backdrop-blur-sm">
         <ListToolbar
           search={{
             value: searchTerm,
@@ -686,12 +688,12 @@ export const ProductsPage = () => {
             onToggle: () => setFilterOpen(!filterOpen),
             activeCount: activeFilterCount,
             renderPanel: () => (
-              <div className="absolute right-0 top-12 w-80 bg-gray-900 border border-gray-700 rounded-lg shadow-2xl p-4 z-50">
+              <div className="absolute right-0 top-12 w-80 bg-gray-900 border border-gray-700 rounded-xl shadow-xl p-4 z-50">
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="text-sm font-semibold text-white">Advanced Filters</h3>
                   <button
                     onClick={clearAllFilters}
-                    className="text-xs text-blue-400 hover:text-blue-300 transition-colors"
+                    className="text-xs text-blue-400 hover:text-blue-300 transition-colors rounded-md px-2 py-1"
                   >
                     Clear All
                   </button>
@@ -861,9 +863,9 @@ export const ProductsPage = () => {
         />
       </div>
 
-      {/* Products Table - Scrollable */}
-      <div className="flex-1 overflow-auto px-6 py-4">
-        <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden">
+      {/* Products Table - Figma: card container with depth */}
+      <div className="flex-1 overflow-auto px-4 sm:px-6 py-4">
+        <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden shadow-sm">
           {/* Wrapper for horizontal scroll */}
           <div className="overflow-x-auto">
             <div className="min-w-[1400px]">
@@ -943,7 +945,7 @@ export const ProductsPage = () => {
                             <DropdownMenuTrigger asChild>
                               <button 
                                 className={cn(
-                                  "w-8 h-8 rounded-lg bg-gray-800/50 hover:bg-gray-700 transition-all flex items-center justify-center text-gray-400 hover:text-white",
+                                  "w-8 h-8 rounded-lg bg-gray-800/50 hover:bg-gray-700 hover:ring-1 hover:ring-gray-600 transition-all flex items-center justify-center text-gray-400 hover:text-white",
                                   hoveredRow === product.id ? "opacity-100" : "opacity-0"
                                 )}
                               >

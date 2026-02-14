@@ -106,7 +106,10 @@ export const BranchSelector: React.FC<BranchSelectorProps> = ({
             ) : (
               branches.map(b => (
                   <SelectItem key={b.id} value={b.id}>
-                    {b.name}
+                    <div className="flex items-center gap-2">
+                      {b.code && <span className="text-xs text-gray-500">{b.code}</span>}
+                      <span>{b.name}</span>
+                    </div>
                   </SelectItem>
                 ))
             )}
@@ -152,7 +155,10 @@ export const BranchSelector: React.FC<BranchSelectorProps> = ({
           ) : (
             branches.map(b => (
               <SelectItem key={b.id} value={b.id}>
-                {b.name}
+                <div className="flex items-center gap-2">
+                  {b.code && <span className="text-xs text-gray-500">{b.code}</span>}
+                  <span>{b.name}</span>
+                </div>
               </SelectItem>
             ))
           )}

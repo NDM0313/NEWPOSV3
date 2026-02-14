@@ -34,6 +34,8 @@ import { ListToolbar } from '../ui/list-toolbar';
 import { useExpenses } from '../../context/ExpenseContext';
 import { useAccounting } from '../../context/AccountingContext';
 import { useSupabase } from '../../context/SupabaseContext';
+import { useFormatCurrency } from '../../hooks/useFormatCurrency';
+import { useFormatDate } from '../../hooks/useFormatDate';
 import { expenseCategoryService, type ExpenseCategoryRow, type ExpenseCategoryTreeItem } from '../../services/expenseCategoryService';
 
 const getCategoryBadgeStyle = (category: string) => {
@@ -62,6 +64,8 @@ function flattenCategories(tree: ExpenseCategoryTreeItem[]): ExpenseCategoryRow[
 
 export const ExpensesDashboard = () => {
   const { companyId } = useSupabase();
+  const { formatCurrency } = useFormatCurrency();
+  const { formatDate } = useFormatDate();
   const { expenses, loading, deleteExpense, refreshExpenses } = useExpenses();
   const { accounts } = useAccounting();
   const [activeTab, setActiveTab] = useState<'overview' | 'list' | 'categories'>('overview');
@@ -387,7 +391,7 @@ export const ExpensesDashboard = () => {
                 <div>
                   <p className="text-gray-400 text-sm font-medium">Total Monthly Expense</p>
                   <h3 className="text-2xl font-bold text-white mt-2">
-                    Rs {expenses.reduce((sum, e) => sum + (e.amount || 0), 0).toLocaleString()}
+                    {formatCurrency(expenses.reduce((sum, e) => sum + (e.amount || 0), 0))}
                   </h3>
                 </div>
                 <div className="bg-red-500/10 p-2 rounded-lg">
@@ -465,7 +469,7 @@ export const ExpensesDashboard = () => {
                   <Tooltip 
                     contentStyle={{ backgroundColor: '#1F2937', borderColor: '#374151', color: '#F3F4F6', borderRadius: '8px' }}
                     itemStyle={{ color: '#F3F4F6' }}
-                    formatter={(value: number) => `$${value.toLocaleString()}`}
+                    formatter={(value: number) => formatCurrency(value)}
                   />
                   <Legend 
                      verticalAlign="bottom" 
@@ -479,7 +483,7 @@ export const ExpensesDashboard = () => {
               {/* Center Text */}
               <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-[60%] text-center pointer-events-none">
                  <p className="text-gray-500 text-sm">Total</p>
-                 <p className="text-3xl font-bold text-white">$91.7k</p>
+                 <p className="text-3xl font-bold text-white">{formatCurrency(expenses.reduce((sum, e) => sum + (e.amount || 0), 0))}</p>
               </div>
             </div>
           </div>
@@ -623,7 +627,7 @@ export const ExpensesDashboard = () => {
                           <td className="px-6 py-4 font-medium text-gray-300">
                              <div className="flex items-center gap-2">
                                 <Calendar size={14} className="text-gray-500" />
-                                {new Date(expense.date).toLocaleDateString()}
+                                {formatDate(expense.date)}
                              </div>
                           </td>
                           <td className="px-6 py-4 text-gray-500 font-mono text-xs">
@@ -641,7 +645,7 @@ export const ExpensesDashboard = () => {
                              {expense.paymentMethod}
                           </td>
                           <td className="px-6 py-4 text-right font-bold text-red-500">
-                             -Rs {expense.amount.toLocaleString()}
+                             -{formatCurrency(expense.amount)}
                           </td>
                           <td className="px-6 py-4 text-center">
                              <DropdownMenu>
@@ -686,7 +690,7 @@ export const ExpensesDashboard = () => {
                </span>
              </span>
              <span className="font-bold text-white text-lg">
-               Rs {summaryTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+               {formatCurrency(summaryTotal)}
              </span>
            </div>
         </div>

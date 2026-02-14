@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabase';
 import { formatCurrency } from '@/app/utils/formatCurrency';
+import { logger } from '@/app/utils/logger';
 import type { Customer, Transaction, Invoice, Payment, LedgerData } from './customerLedgerTypes';
 
 export interface CustomerLedgerSummary {
@@ -353,7 +354,9 @@ export const customerLedgerAPI = {
             .lt('payment_date', fromDate);
           prevRentalPaid = (prevRp || []).reduce((s: number, p: any) => s + (Number(p.amount) || 0), 0);
         }
-      } catch (_) {}
+      } catch (e) {
+        logger.warn('[Ledger] Previous rental payments fallback failed', e);
+      }
       openingBalance = previousTotal - previousPaid - previousReturnsTotal - prevReturnPaymentsTotal + prevStudioOrderNet + prevRentalTotal - prevRentalPaid;
     }
 
@@ -412,7 +415,9 @@ export const customerLedgerAPI = {
         const { data: rpData } = await rpQuery;
         rentalCredit = (rpData || []).reduce((s: number, p: any) => s + (Number(p.amount) || 0), 0);
       }
-    } catch (_) {}
+    } catch (e) {
+      logger.warn('[Ledger] Customer ledger rentals fallback failed', e);
+    }
 
     const totalDebit = totalInvoiceAmount + studioOrderDebit + rentalDebit;
     const totalCredit = totalPaymentReceived + returnsInRange + returnPaymentsInRange + studioOrderCredit + rentalCredit;
@@ -889,7 +894,9 @@ export const customerLedgerAPI = {
             .lt('payment_date', fromDate);
           prevRentalPaid = (prevRp || []).reduce((s: number, p: any) => s + (Number(p.amount) || 0), 0);
         }
-      } catch (_) {}
+      } catch (e) {
+        logger.warn('[Ledger] Previous rental payments in getTransactions failed', e);
+      }
 
       runningBalance = prevTotal - prevPaid - prevReturnsTotal - prevReturnPmts + prevStudioOrderNet + prevRentalTotal - prevRentalPaid;
     }

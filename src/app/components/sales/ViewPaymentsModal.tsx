@@ -43,7 +43,7 @@ import {
 import { cn } from '@/app/components/ui/utils';
 import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
 import { toast } from 'sonner';
-import { getAttachmentOpenUrl } from '@/app/utils/paymentAttachmentUrl';
+import { AttachmentViewer } from '@/app/components/shared/AttachmentViewer';
 
 // ============================================
 // TYPES
@@ -311,7 +311,7 @@ export const ViewPaymentsModal: React.FC<ViewPaymentsModalProps> = ({
       {/* Main Modal */}
       <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()} modal={true}>
         <DialogContent 
-          className="bg-gray-900 border-gray-700 text-white sm:max-w-[700px] max-h-[90vh] overflow-hidden flex flex-col"
+          className="bg-gray-900 border border-gray-700 text-white sm:max-w-[700px] max-h-[90vh] overflow-hidden flex flex-col rounded-xl shadow-2xl"
           onInteractOutside={(e) => {
             // Prevent closing when clicking outside if delete confirmation is open
             if (deleteConfirmOpen) {
@@ -330,7 +330,7 @@ export const ViewPaymentsModal: React.FC<ViewPaymentsModalProps> = ({
                   <p className="text-xs text-gray-400">Invoice {invoice.invoiceNo}</p>
                 </div>
               </div>
-              <Badge className={cn('text-xs font-medium capitalize gap-1 h-7 px-3', statusConfig.bg, statusConfig.text, statusConfig.border)}>
+              <Badge className={cn('text-xs font-medium capitalize gap-1 h-7 px-3 rounded-lg', statusConfig.bg, statusConfig.text, statusConfig.border)}>
                 <StatusIcon size={14} />
                 {statusConfig.label}
               </Badge>
@@ -338,8 +338,8 @@ export const ViewPaymentsModal: React.FC<ViewPaymentsModalProps> = ({
           </DialogHeader>
 
           <div className="flex-1 overflow-y-auto py-4 space-y-4">
-            {/* Invoice Summary Card */}
-            <div className="bg-gray-800/50 rounded-xl p-4 border border-gray-700">
+            {/* Invoice Summary Card - Figma: grouped payment section */}
+            <div className="bg-gray-800/50 rounded-xl p-4 border border-gray-700 shadow-sm">
               <div className="grid grid-cols-2 gap-4 mb-4">
                 <div className="flex items-center gap-3">
                   <div className="w-9 h-9 rounded-lg bg-gray-700 flex items-center justify-center">
@@ -394,7 +394,7 @@ export const ViewPaymentsModal: React.FC<ViewPaymentsModalProps> = ({
             </div>
 
             {/* Payment History Section */}
-            <div className="bg-gray-800/30 rounded-xl border border-gray-700 overflow-hidden">
+            <div className="bg-gray-800/30 rounded-xl border border-gray-700 overflow-hidden shadow-sm">
               <div className="flex items-center justify-between px-4 py-3 border-b border-gray-700 bg-gray-800/50">
                 <div className="flex items-center gap-2">
                   <History size={16} className="text-blue-400" />
@@ -405,7 +405,7 @@ export const ViewPaymentsModal: React.FC<ViewPaymentsModalProps> = ({
                   <Button
                     size="sm"
                     onClick={onAddPayment}
-                    className="bg-green-600 hover:bg-green-500 text-white h-8 gap-1.5"
+                    className="bg-green-600 hover:bg-green-500 text-white h-8 gap-1.5 rounded-lg shadow-md"
                   >
                     <Plus size={14} />
                     Add Payment
@@ -636,38 +636,15 @@ export const ViewPaymentsModal: React.FC<ViewPaymentsModalProps> = ({
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Attachments dialog: list attachments, open in new tab from here */}
-      <Dialog open={!!attachmentsDialogList} onOpenChange={(open) => !open && setAttachmentsDialogList(null)}>
-        <DialogContent className="bg-gray-900 border-gray-700 text-white max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-white">
-              <Paperclip size={20} className="text-amber-400" />
-              Attachments
-            </DialogTitle>
-          </DialogHeader>
-          <div className="space-y-2 max-h-64 overflow-y-auto">
-            {attachmentsDialogList?.map((att, idx) => (
-              <div
-                key={idx}
-                className="flex items-center justify-between gap-2 p-2 rounded-lg bg-gray-800/50 border border-gray-700"
-              >
-                <span className="text-sm text-gray-200 truncate flex-1" title={att.name}>{att.name}</span>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="shrink-0 border-gray-600 text-gray-300 hover:bg-gray-700 hover:text-white"
-                  onClick={async () => {
-                    const openUrl = await getAttachmentOpenUrl(att.url);
-                    window.open(openUrl, '_blank');
-                  }}
-                >
-                  Open in new tab
-                </Button>
-              </div>
-            ))}
-          </div>
-        </DialogContent>
-      </Dialog>
+      {/* Attachments: shared AttachmentViewer (same as Sale / Purchase) */}
+      {attachmentsDialogList && (
+        <AttachmentViewer
+          attachments={attachmentsDialogList}
+          isOpen={!!attachmentsDialogList}
+          onClose={() => setAttachmentsDialogList(null)}
+          title="Payment attachments"
+        />
+      )}
     </>
   );
 };

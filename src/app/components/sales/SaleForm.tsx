@@ -2050,11 +2050,11 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
     }
 
     return (
-        <div className="flex flex-col h-screen bg-[#111827] text-white overflow-hidden">
-            {/* ============ LAYER 1: FIXED HEADER ============ */}
-            <div className="shrink-0 bg-[#0B1019] border-b border-gray-800 z-20">
+        <div className="flex flex-col h-screen bg-gray-950 text-white overflow-hidden">
+            {/* ============ LAYER 1: FIXED HEADER - Figma: clean invoice header ============ */}
+            <div className="shrink-0 bg-gray-900/95 backdrop-blur-sm border-b border-gray-800 z-20">
                 {/* Top Bar - Single Row with Invoice, Status, Salesman, Branch */}
-                <div className="h-12 flex items-center justify-between px-6 border-b border-gray-800/50">
+                <div className="h-12 flex items-center justify-between px-4 sm:px-6 border-b border-gray-800/50">
                     <div className="flex items-center gap-3">
                         <Button variant="ghost" size="icon" onClick={onClose} className="text-gray-400 hover:text-white h-8 w-8">
                             <X size={18} />

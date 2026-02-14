@@ -1,7 +1,7 @@
 {
   "name": "@figma/my-make-file",
   "private": true,
-  "version": "0.0.1",
+  "version": "1.0.0",
   "type": "module",
   "scripts": {
     "build": "vite build",
@@ -12,7 +12,10 @@
     "seed": "node scripts/run-seed.js",
     "validate-seed": "node scripts/validate-seed.js",
     "seed:full": "node scripts/run-phases.js",
-    "link-auth": "node scripts/run-link-auth.js"
+    "link-auth": "node scripts/run-link-auth.js",
+    "cap:sync": "npm run build && npx cap copy",
+    "cap:android": "npm run cap:sync && npx cap open android",
+    "cap:ios": "npm run cap:sync && npx cap open ios"
   },
   "dependencies": {
     "@emotion/react": "11.14.0",

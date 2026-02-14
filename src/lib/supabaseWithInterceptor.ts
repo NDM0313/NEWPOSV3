@@ -15,7 +15,7 @@ export async function supabaseWithErrorHandling<T>(
 ): Promise<T | null> {
   const { data, error } = await query();
   if (error) {
-    handleApiError(error, fallbackMessage, context);
+    handleApiError(context, error, fallbackMessage);
     return null;
   }
   return data;

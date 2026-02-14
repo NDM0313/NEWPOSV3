@@ -240,16 +240,16 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
   };
 
   return (
-    <div className="h-full flex flex-col bg-[#0B0F19]">
+    <div className="h-full flex flex-col bg-[#0B0F19] text-gray-100">
       {!embedded && (
-        <div className="shrink-0 px-6 py-4 border-b border-gray-800">
-          <div className="flex justify-between items-center">
-            <div>
-              <h1 className="text-2xl font-bold text-white">Rentals</h1>
+        <div className="shrink-0 px-4 sm:px-6 py-4 border-b border-gray-800/80 bg-[#0B0F19]/98">
+          <div className="flex justify-between items-center gap-4">
+            <div className="min-w-0">
+              <h1 className="text-xl sm:text-2xl font-bold text-white tracking-tight">Rentals</h1>
               <p className="text-sm text-gray-400 mt-0.5">Manage rental orders and returns</p>
             </div>
             <Button
-              className="bg-pink-600 hover:bg-pink-500 text-white h-10 gap-2"
+              className="shrink-0 bg-pink-600 hover:bg-pink-500 text-white h-10 gap-2 shadow-lg shadow-pink-600/20 rounded-xl font-medium"
               onClick={() => (onAddRental ? onAddRental() : toast.info('Add Rental – open from Rental list view'))}
             >
               <Plus size={16} />
@@ -259,35 +259,35 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
         </div>
       )}
 
-      <div className="shrink-0 px-6 py-4 bg-[#0F1419] border-b border-gray-800">
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-7 gap-4">
-          <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
+      <div className="shrink-0 px-4 sm:px-6 py-4 bg-gray-900/30 border-b border-gray-800">
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-7 gap-3 sm:gap-4">
+          <div className="bg-gray-900/60 border border-gray-800 rounded-2xl p-4 shadow-sm hover:border-gray-700/50 transition-colors">
             <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Total Rental (Month)</p>
-            <p className="text-2xl font-bold text-white mt-1">${summary.totalAmount.toLocaleString()}</p>
+            <p className="text-xl sm:text-2xl font-bold text-white mt-1 tabular-nums">${summary.totalAmount.toLocaleString()}</p>
           </div>
-          <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
+          <div className="bg-gray-900/60 border border-gray-800 rounded-2xl p-4 shadow-sm hover:border-gray-700/50 transition-colors">
             <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Amount Due</p>
-            <p className="text-2xl font-bold text-red-400 mt-1">${summary.totalDue.toLocaleString()}</p>
+            <p className="text-xl sm:text-2xl font-bold text-red-400 mt-1 tabular-nums">${summary.totalDue.toLocaleString()}</p>
           </div>
-          <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
+          <div className="bg-gray-900/60 border border-gray-800 rounded-2xl p-4 shadow-sm hover:border-gray-700/50 transition-colors">
             <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Today Pickups</p>
-            <p className="text-2xl font-bold text-pink-400 mt-1">{summary.todayPickups}</p>
+            <p className="text-xl sm:text-2xl font-bold text-pink-400 mt-1 tabular-nums">{summary.todayPickups}</p>
           </div>
-          <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
+          <div className="bg-gray-900/60 border border-gray-800 rounded-2xl p-4 shadow-sm hover:border-gray-700/50 transition-colors">
             <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Today Returns</p>
-            <p className="text-2xl font-bold text-amber-400 mt-1">{summary.todayReturns}</p>
+            <p className="text-xl sm:text-2xl font-bold text-amber-400 mt-1 tabular-nums">{summary.todayReturns}</p>
           </div>
-          <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
+          <div className="bg-gray-900/60 border border-gray-800 rounded-2xl p-4 shadow-sm hover:border-gray-700/50 transition-colors">
             <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Active Rentals</p>
-            <p className="text-2xl font-bold text-blue-400 mt-1">{summary.active}</p>
+            <p className="text-xl sm:text-2xl font-bold text-blue-400 mt-1 tabular-nums">{summary.active}</p>
           </div>
-          <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
+          <div className="bg-gray-900/60 border border-gray-800 rounded-2xl p-4 shadow-sm hover:border-gray-700/50 transition-colors">
             <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Overdue</p>
-            <p className="text-2xl font-bold text-red-500 mt-1">{summary.overdue}</p>
+            <p className="text-xl sm:text-2xl font-bold text-red-500 mt-1 tabular-nums">{summary.overdue}</p>
           </div>
-          <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
+          <div className="bg-gray-900/60 border border-gray-800 rounded-2xl p-4 shadow-sm hover:border-gray-700/50 transition-colors">
             <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Utilization %</p>
-            <p className="text-2xl font-bold text-cyan-400 mt-1">{summary.utilization}%</p>
+            <p className="text-xl sm:text-2xl font-bold text-cyan-400 mt-1 tabular-nums">{summary.utilization}%</p>
           </div>
         </div>
       </div>
@@ -323,7 +323,7 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
           onToggle: () => setFilterOpen(!filterOpen),
           activeCount: [statusFilter, branchFilter].filter((f) => f !== 'all').length,
           renderPanel: () => (
-            <div className="absolute right-0 top-12 w-64 bg-gray-900 border border-gray-700 rounded-lg shadow-xl p-4 z-50">
+            <div className="absolute right-0 top-12 w-64 bg-gray-900/98 border border-gray-700 rounded-xl shadow-xl ring-1 ring-gray-700/30 p-4 z-50">
               <p className="text-sm font-semibold text-white mb-2">Filters</p>
               <label className="text-xs text-gray-400">Status</label>
               <select
@@ -356,8 +356,8 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
         }}
       />
 
-      <div className="flex-1 overflow-auto px-6 py-4">
-        <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden">
+      <div className="flex-1 overflow-auto px-4 sm:px-6 py-4">
+        <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden shadow-sm">
           <div className="overflow-x-auto">
             <div className="min-w-[1200px]">
               <div className="sticky top-0 z-10 min-w-[1200px] w-max bg-gray-900 border-b border-gray-800">
@@ -434,7 +434,7 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
                             break;
                           case 'status':
                             cell = (
-                              <Badge className={cn('text-xs font-medium', STATUS_CLASS[r.status])}>
+                              <Badge className={cn('text-xs font-medium rounded-lg', STATUS_CLASS[r.status])}>
                                 {STATUS_LABELS[r.status]}
                               </Badge>
                             );
@@ -544,7 +544,7 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
                             <button
-                              className="w-8 h-8 rounded-lg bg-gray-800/50 hover:bg-gray-700 flex items-center justify-center text-gray-400 hover:text-white"
+                              className="w-8 h-8 rounded-lg bg-gray-800/50 hover:bg-gray-700 hover:ring-1 hover:ring-gray-600 flex items-center justify-center text-gray-400 hover:text-white transition-all"
                             >
                               <MoreVertical size={16} />
                             </button>

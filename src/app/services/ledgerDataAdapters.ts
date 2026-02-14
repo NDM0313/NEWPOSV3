@@ -4,6 +4,7 @@
  */
 
 import { supabase } from '@/lib/supabase';
+import { logger } from '@/app/utils/logger';
 import type { LedgerData, Transaction, Invoice } from '@/app/services/customerLedgerTypes';
 import { getOrCreateLedger, getLedgerEntries, type LedgerEntryRow } from '@/app/services/ledgerService';
 
@@ -347,7 +348,9 @@ export async function getWorkerLedgerData(
           stageMap.set(s.id, { stage_type: s.stage_type, production_no: prod?.production_no, sale_id: prod?.sale_id });
         });
       }
-    } catch (_) {}
+    } catch (e) {
+      logger.warn('[LedgerDataAdapters] Studio stages enrichment failed', e);
+    }
   }
 
   const fromTs = new Date(fromDate).getTime();

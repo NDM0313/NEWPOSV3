@@ -59,11 +59,13 @@ import { AttachmentViewer } from '@/app/components/shared/AttachmentViewer';
 import { SaleReturnPrintLayout } from '@/app/components/shared/SaleReturnPrintLayout';
 import { toast } from 'sonner';
 import { useCheckPermission } from '@/app/hooks/useCheckPermission';
+import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
 
 // Mock data removed - using SalesContext which loads from Supabase
 
 export const SalesPage = () => {
   const { openDrawer, setCurrentView } = useNavigation();
+  const { formatCurrency } = useFormatCurrency();
   const { canEditSale, canDeleteSale, canCreateSale } = useCheckPermission();
   const { sales, deleteSale, updateSale, recordPayment, updateShippingStatus, refreshSales, loading } = useSales();
   const { companyId, branchId } = useSupabase();
@@ -666,7 +668,7 @@ export const SalesPage = () => {
     };
     const { bg, text, border, icon: Icon } = config[status];
     return (
-      <Badge className={cn('text-xs font-medium capitalize gap-1 h-6 px-2', bg, text, border)}>
+      <Badge className={cn('text-xs font-medium capitalize gap-1 h-6 px-2 rounded-lg', bg, text, border)}>
         <Icon size={12} />
         {status}
       </Badge>
@@ -682,7 +684,7 @@ export const SalesPage = () => {
     };
     const { bg, text, border } = config[status];
     return (
-      <Badge className={cn('text-xs font-medium capitalize h-6 px-2', bg, text, border)}>
+      <Badge className={cn('text-xs font-medium capitalize h-6 px-2 rounded-lg', bg, text, border)}>
         {status}
       </Badge>
     );
@@ -700,7 +702,7 @@ export const SalesPage = () => {
     
     const { bg, text, border, icon: Icon } = config[status];
     return (
-      <Badge className={cn('text-xs font-medium capitalize h-6 px-2 flex items-center gap-1', bg, text, border)}>
+      <Badge className={cn('text-xs font-medium capitalize h-6 px-2 flex items-center gap-1 rounded-lg', bg, text, border)}>
         <Icon size={12} />
         {status}
       </Badge>
@@ -876,14 +878,14 @@ export const SalesPage = () => {
       case 'total':
         return (
           <div className="text-sm font-semibold text-white tabular-nums">
-            ${sale.total.toLocaleString()}
+            {formatCurrency(sale.total)}
           </div>
         );
       
       case 'paid':
         return (
           <div className="text-sm font-semibold text-green-400 tabular-nums">
-            ${sale.paid.toLocaleString()}
+            {formatCurrency(sale.paid)}
           </div>
         );
       
@@ -891,7 +893,7 @@ export const SalesPage = () => {
         return (
           sale.due > 0 ? (
             <div className="text-sm font-semibold text-red-400 tabular-nums">
-              ${sale.due.toLocaleString()}
+              {formatCurrency(sale.due)}
             </div>
           ) : (
             <div className="text-sm text-gray-600">-</div>
@@ -902,7 +904,7 @@ export const SalesPage = () => {
         return (
           sale.returnDue > 0 ? (
             <div className="text-sm font-semibold text-orange-400 tabular-nums">
-              ${sale.returnDue.toLocaleString()}
+              {formatCurrency(sale.returnDue)}
             </div>
           ) : (
             <div className="text-sm text-gray-600">-</div>
@@ -1011,27 +1013,27 @@ export const SalesPage = () => {
   };
 
   return (
-    <div className="h-screen flex flex-col bg-[#0B0F19]">
-      {/* Page Header - Fixed */}
-      <div className="shrink-0 px-6 py-4 border-b border-gray-800">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-white">Sales</h1>
+    <div className="h-screen flex flex-col bg-gray-950">
+      {/* Page Header - Figma: clean bar with backdrop */}
+      <div className="shrink-0 px-4 sm:px-6 py-4 border-b border-gray-800 bg-gray-950/95 backdrop-blur-sm">
+        <div className="flex items-center justify-between gap-4">
+          <div className="min-w-0">
+            <h1 className="text-xl sm:text-2xl font-bold text-white tracking-tight">Sales</h1>
             <p className="text-sm text-gray-400 mt-0.5">Manage your sales and customer invoices</p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 shrink-0">
             <Button
               variant="outline"
               size="sm"
               onClick={() => setCurrentView('sales-list-design-test')}
-              className="h-10 text-gray-400 border-gray-700 hover:bg-gray-800 hover:text-white"
+              className="h-10 rounded-lg text-gray-400 border-gray-700 hover:bg-gray-800 hover:text-white"
             >
               Design test
             </Button>
           {canCreateSale && (
           <Button 
             onClick={() => openDrawer('addSale')}
-            className="bg-blue-600 hover:bg-blue-500 text-white h-10 gap-2"
+            className="bg-blue-600 hover:bg-blue-500 text-white h-10 gap-2 rounded-lg shadow-lg shadow-blue-600/20"
           >
             <Plus size={16} />
             Add Sale
@@ -1041,68 +1043,69 @@ export const SalesPage = () => {
         </div>
       </div>
 
-      {/* Summary Cards - Fixed */}
-      <div className="shrink-0 px-6 py-4 bg-[#0F1419] border-b border-gray-800">
-        <div className="grid grid-cols-4 gap-4">
+      {/* Summary Cards - Figma: responsive grid, modern card depth */}
+      <div className="shrink-0 px-4 sm:px-6 py-4 bg-gray-900/30 border-b border-gray-800">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
           {/* Total Sales */}
-          <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
-            <div className="flex items-start justify-between mb-3">
-              <div>
+          <div className="bg-gray-900/60 border border-gray-800 rounded-xl p-4 shadow-sm">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
                 <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Total Sales</p>
-                <p className="text-2xl font-bold text-white mt-1">${summary.totalSales.toLocaleString()}</p>
+                <p className="text-2xl font-bold text-white mt-1 tabular-nums">{formatCurrency(summary.totalSales)}</p>
                 <p className="text-xs text-gray-500 mt-1">All invoices</p>
               </div>
-              <div className="w-12 h-12 rounded-full bg-blue-500/10 flex items-center justify-center">
-                <ShoppingCart size={24} className="text-blue-500" />
+              <div className="w-11 h-11 rounded-xl bg-blue-500/10 flex items-center justify-center shrink-0">
+                <ShoppingCart size={22} className="text-blue-500" />
               </div>
             </div>
           </div>
 
           {/* Total Paid */}
-          <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
-            <div className="flex items-start justify-between mb-3">
-              <div>
+          <div className="bg-gray-900/60 border border-gray-800 rounded-xl p-4 shadow-sm">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
                 <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Total Paid</p>
-                <p className="text-2xl font-bold text-green-400 mt-1">${summary.totalPaid.toLocaleString()}</p>
+                <p className="text-2xl font-bold text-green-400 mt-1 tabular-nums">{formatCurrency(summary.totalPaid)}</p>
                 <p className="text-xs text-gray-500 mt-1">Received amount</p>
               </div>
-              <div className="w-12 h-12 rounded-full bg-green-500/10 flex items-center justify-center">
-                <DollarSign size={24} className="text-green-500" />
+              <div className="w-11 h-11 rounded-xl bg-green-500/10 flex items-center justify-center shrink-0">
+                <DollarSign size={22} className="text-green-500" />
               </div>
             </div>
           </div>
 
           {/* Total Due */}
-          <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
-            <div className="flex items-start justify-between mb-3">
-              <div>
+          <div className="bg-gray-900/60 border border-gray-800 rounded-xl p-4 shadow-sm">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
                 <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Total Due</p>
-                <p className="text-2xl font-bold text-red-400 mt-1">${summary.totalDue.toLocaleString()}</p>
+                <p className="text-2xl font-bold text-red-400 mt-1 tabular-nums">{formatCurrency(summary.totalDue)}</p>
                 <p className="text-xs text-gray-500 mt-1">Pending payments</p>
               </div>
-              <div className="w-12 h-12 rounded-full bg-red-500/10 flex items-center justify-center">
-                <AlertCircle size={24} className="text-red-500" />
+              <div className="w-11 h-11 rounded-xl bg-red-500/10 flex items-center justify-center shrink-0">
+                <AlertCircle size={22} className="text-red-500" />
               </div>
             </div>
           </div>
 
           {/* Invoices */}
-          <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
-            <div className="flex items-start justify-between mb-3">
-              <div>
+          <div className="bg-gray-900/60 border border-gray-800 rounded-xl p-4 shadow-sm">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
                 <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Total Invoices</p>
-                <p className="text-2xl font-bold text-white mt-1">{summary.invoiceCount}</p>
+                <p className="text-2xl font-bold text-white mt-1 tabular-nums">{summary.invoiceCount}</p>
                 <p className="text-xs text-gray-500 mt-1">Active orders</p>
               </div>
-              <div className="w-12 h-12 rounded-full bg-purple-500/10 flex items-center justify-center">
-                <FileText size={24} className="text-purple-500" />
+              <div className="w-11 h-11 rounded-xl bg-purple-500/10 flex items-center justify-center shrink-0">
+                <FileText size={22} className="text-purple-500" />
               </div>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Global List Toolbar */}
+      {/* Global List Toolbar - Figma: modern filter bar */}
+      <div className="shrink-0 px-4 sm:px-6 py-3 border-b border-gray-800 bg-gray-950/80 backdrop-blur-sm">
       <ListToolbar
         search={{
           value: searchTerm,
@@ -1133,12 +1136,12 @@ export const SalesPage = () => {
           onToggle: () => setFilterOpen(!filterOpen),
           activeCount: activeFilterCount,
           renderPanel: () => (
-            <div className="absolute right-0 top-12 w-80 bg-gray-900 border border-gray-700 rounded-lg shadow-2xl p-4 z-50">
+            <div className="absolute right-0 top-12 w-80 bg-gray-900 border border-gray-700 rounded-xl shadow-xl p-4 z-50">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-sm font-semibold text-white">Advanced Filters</h3>
                 <button
                   onClick={clearAllFilters}
-                  className="text-xs text-blue-400 hover:text-blue-300 transition-colors"
+                  className="text-xs text-blue-400 hover:text-blue-300 transition-colors rounded-md px-2 py-1"
                 >
                   Clear All
                 </button>
@@ -1306,9 +1309,10 @@ export const SalesPage = () => {
           onExportPDF: () => console.log('Export PDF')
         }}
       />
+      </div>
 
       {/* Source Tabs: All | POS | Regular | Returns */}
-      <div className="shrink-0 px-6 py-3 border-b border-gray-800 bg-[#0F1419]">
+      <div className="shrink-0 px-4 sm:px-6 py-3 border-b border-gray-800 bg-gray-900/30">
         <p className="text-xs text-gray-500 uppercase tracking-wider mb-2 font-medium">Source</p>
         <div className="flex gap-2 flex-wrap items-center">
           {[
@@ -1345,9 +1349,9 @@ export const SalesPage = () => {
         </div>
       </div>
 
-      {/* Sales Table - Scrollable */}
-      <div className="flex-1 overflow-auto px-6 py-4">
-        <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden">
+      {/* Sales Table - Figma: card container with depth */}
+      <div className="flex-1 overflow-auto px-4 sm:px-6 py-4">
+        <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden shadow-sm">
           <div className="overflow-x-auto">
             <div className="min-w-[1400px]">
               {/* Table Header - full-width background (w-max so it spans full table when scrolling) */}
@@ -1490,7 +1494,7 @@ export const SalesPage = () => {
                               </Badge>
                             </div>
                             <div className="text-right">
-                              <div className="text-sm font-semibold text-red-400 tabular-nums">-PKR {ret.total?.toLocaleString() || '0'}</div>
+                              <div className="text-sm font-semibold text-red-400 tabular-nums">-{formatCurrency(ret.total ?? 0)}</div>
                             </div>
                             <div className="text-right text-sm text-gray-400">{ret.items_count || ret.items?.length || 0} items</div>
                             <div className="text-sm text-gray-400 truncate" title={ret.reason || ''}>{ret.reason || '—'}</div>
@@ -2135,7 +2139,7 @@ export const SalesPage = () => {
                       </p>
                     </div>
                     <div className="text-right">
-                      <p className="text-sm font-semibold text-red-400">-PKR {ret.total?.toLocaleString() || '0'}</p>
+                      <p className="text-sm font-semibold text-red-400">-{formatCurrency(ret.total ?? 0)}</p>
                     </div>
                   </div>
                   {ret.items && ret.items.length > 0 && (
@@ -2145,7 +2149,7 @@ export const SalesPage = () => {
                         {ret.items.map((item: any, idx: number) => (
                           <div key={idx} className="flex items-center justify-between text-sm">
                             <span className="text-gray-300">{item.product_name} {item.sku ? `(${item.sku})` : ''}</span>
-                            <span className="text-gray-400">Qty: {item.quantity} × PKR {item.unit_price?.toLocaleString() || '0'}</span>
+                            <span className="text-gray-400">Qty: {item.quantity} × {formatCurrency(item.unit_price ?? 0)}</span>
                           </div>
                         ))}
                       </div>
@@ -2271,15 +2275,15 @@ export const SalesPage = () => {
                             <td className="px-4 py-3 text-sm text-white">{item.product_name}</td>
                             <td className="px-4 py-3 text-sm text-gray-400 font-mono">{item.sku}</td>
                             <td className="px-4 py-3 text-sm text-gray-300 text-center">{item.quantity}</td>
-                            <td className="px-4 py-3 text-sm text-gray-300 text-right tabular-nums">PKR {item.unit_price?.toLocaleString() || '0'}</td>
-                            <td className="px-4 py-3 text-sm font-semibold text-red-400 text-right tabular-nums">-PKR {item.total?.toLocaleString() || '0'}</td>
+                            <td className="px-4 py-3 text-sm text-gray-300 text-right tabular-nums">{formatCurrency(item.unit_price ?? 0)}</td>
+                            <td className="px-4 py-3 text-sm font-semibold text-red-400 text-right tabular-nums">-{formatCurrency(item.total ?? 0)}</td>
                           </tr>
                         ))}
                       </tbody>
                       <tfoot className="bg-[#0B0F19] border-t border-gray-800">
                         <tr>
                           <td colSpan={4} className="px-4 py-3 text-sm font-semibold text-gray-300 text-right">Total Return Amount:</td>
-                          <td className="px-4 py-3 text-lg font-bold text-red-400 text-right tabular-nums">-PKR {selectedReturn.total?.toLocaleString() || '0'}</td>
+                          <td className="px-4 py-3 text-lg font-bold text-red-400 text-right tabular-nums">-{formatCurrency(selectedReturn.total ?? 0)}</td>
                         </tr>
                       </tfoot>
                     </table>

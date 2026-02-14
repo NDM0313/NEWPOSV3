@@ -305,7 +305,7 @@ export const ReportsDashboardEnhanced = () => {
   return (
     <div className="h-full w-full bg-gray-950 text-white overflow-auto">
       {/* Header */}
-      <div className="border-b border-gray-800 bg-gray-900/50 backdrop-blur-sm sticky top-0 z-10">
+      <div className="border-b border-gray-800/80 bg-gray-900/98 backdrop-blur-sm sticky top-0 z-10 shadow-sm">
         <div className="px-6 py-4">
           <div className="flex items-center justify-between">
             <div>
@@ -333,7 +333,7 @@ export const ReportsDashboardEnhanced = () => {
 
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button className="bg-blue-600 hover:bg-blue-700 flex items-center gap-2">
+                  <Button className="bg-blue-600 hover:bg-blue-700 flex items-center gap-2 rounded-lg shadow-md">
                     <Download size={16} />
                     Export
                     <ChevronDown size={14} />
@@ -394,7 +394,7 @@ export const ReportsDashboardEnhanced = () => {
               <MetricCard title="Net Profit" value={formatCurrency(metrics.profit)} change={`${metrics.profitMargin.toFixed(1)}% margin`} trend={metrics.profit > 0 ? 'up' : 'down'} icon={Activity} iconColor={metrics.profit > 0 ? 'text-green-400' : 'text-red-400'} iconBg={metrics.profit > 0 ? 'bg-green-400/10' : 'bg-red-400/10'} />
             </div>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <Card className="bg-gray-900 border-gray-800 p-6">
+              <Card className="bg-gray-900/80 border border-gray-800 rounded-2xl shadow-sm p-6">
                 <h3 className="text-lg font-bold text-white mb-4 flex items-center gap-2"><BarChart3 size={20} className="text-blue-400" /> Monthly Performance Trend</h3>
                 <ChartContainer className="h-[300px]">
                   <ResponsiveContainer width="100%" height="100%">
@@ -411,7 +411,7 @@ export const ReportsDashboardEnhanced = () => {
                   </ResponsiveContainer>
                 </ChartContainer>
               </Card>
-              <Card className="bg-gray-900 border-gray-800 p-6">
+              <Card className="bg-gray-900/80 border border-gray-800 rounded-2xl shadow-sm p-6">
                 <h3 className="text-lg font-bold text-white mb-4 flex items-center gap-2"><PieChartIcon size={20} className="text-green-400" /> Sales Payment Status</h3>
                 <ChartContainer className="h-[300px]">
                   <ResponsiveContainer width="100%" height="100%">
@@ -424,7 +424,7 @@ export const ReportsDashboardEnhanced = () => {
                   </ResponsiveContainer>
                 </ChartContainer>
               </Card>
-              <Card className="bg-gray-900 border-gray-800 p-6">
+              <Card className="bg-gray-900/80 border border-gray-800 rounded-2xl shadow-sm p-6">
                 <h3 className="text-lg font-bold text-white mb-4 flex items-center gap-2"><DollarSign size={20} className="text-orange-400" /> Expenses by Category</h3>
                 <ChartContainer className="h-[300px]">
                   <ResponsiveContainer width="100%" height="100%">
@@ -438,7 +438,7 @@ export const ReportsDashboardEnhanced = () => {
                   </ResponsiveContainer>
                 </ChartContainer>
               </Card>
-              <Card className="bg-gray-900 border-gray-800 p-6">
+              <Card className="bg-gray-900/80 border border-gray-800 rounded-2xl shadow-sm p-6">
                 <h3 className="text-lg font-bold text-white mb-4 flex items-center gap-2"><FileText size={20} className="text-purple-400" /> Financial Summary</h3>
                 <div className="space-y-4">
                   <SummaryRow label="Total Revenue" value={metrics.totalSales} color="text-green-400" />
@@ -468,7 +468,7 @@ export const ReportsDashboardEnhanced = () => {
               <StatCard icon={ShoppingCart} label="Invoices" value={metrics.salesCount} color="bg-green-500/10 text-green-400" />
             </div>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <Card className="bg-gray-900 border-gray-800 p-6">
+              <Card className="bg-gray-900/80 border border-gray-800 rounded-2xl shadow-sm p-6">
                 <h3 className="text-lg font-bold text-white mb-4">Sales by Payment Status</h3>
                 <ChartContainer className="h-[260px]">
                   <ResponsiveContainer width="100%" height="100%">
@@ -481,7 +481,7 @@ export const ReportsDashboardEnhanced = () => {
                   </ResponsiveContainer>
                 </ChartContainer>
               </Card>
-              <Card className="bg-gray-900 border-gray-800 p-6">
+              <Card className="bg-gray-900/80 border border-gray-800 rounded-2xl shadow-sm p-6">
                 <h3 className="text-lg font-bold text-white mb-4">Monthly Sales</h3>
                 <ChartContainer className="h-[260px]">
                   <ResponsiveContainer width="100%" height="100%">
@@ -496,7 +496,7 @@ export const ReportsDashboardEnhanced = () => {
                 </ChartContainer>
               </Card>
             </div>
-            <Card className="bg-gray-900 border-gray-800 p-6">
+            <Card className="bg-gray-900/80 border border-gray-800 rounded-2xl shadow-sm p-6">
               <h3 className="text-lg font-bold text-white mb-4">Sales List</h3>
               <div className="overflow-x-auto max-h-[400px] overflow-y-auto">
                 <table className="w-full text-sm text-left">
@@ -534,7 +534,7 @@ export const ReportsDashboardEnhanced = () => {
               <MetricCard title="Payables" value={formatCurrency(metrics.totalPayables)} change="Outstanding" trend="up" icon={DollarSign} iconColor="text-orange-400" iconBg="bg-orange-400/10" />
               <StatCard icon={Package} label="Purchase Orders" value={metrics.purchasesCount} color="bg-blue-500/10 text-blue-400" />
             </div>
-            <Card className="bg-gray-900 border-gray-800 p-6">
+            <Card className="bg-gray-900/80 border border-gray-800 rounded-2xl shadow-sm p-6">
               <h3 className="text-lg font-bold text-white mb-4">Monthly Purchases</h3>
               <ChartContainer className="h-[280px] mb-6">
                 <ResponsiveContainer width="100%" height="100%">
@@ -583,7 +583,7 @@ export const ReportsDashboardEnhanced = () => {
               <StatCard icon={DollarSign} label="Paid Expenses" value={metrics.expensesCount} color="bg-orange-500/10 text-orange-400" />
             </div>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <Card className="bg-gray-900 border-gray-800 p-6">
+              <Card className="bg-gray-900/80 border border-gray-800 rounded-2xl shadow-sm p-6">
                 <h3 className="text-lg font-bold text-white mb-4">Expenses by Category</h3>
                 <ChartContainer className="h-[300px]">
                   <ResponsiveContainer width="100%" height="100%">
@@ -597,7 +597,7 @@ export const ReportsDashboardEnhanced = () => {
                   </ResponsiveContainer>
                 </ChartContainer>
               </Card>
-              <Card className="bg-gray-900 border-gray-800 p-6">
+              <Card className="bg-gray-900/80 border border-gray-800 rounded-2xl shadow-sm p-6">
                 <h3 className="text-lg font-bold text-white mb-4">Monthly Expenses</h3>
                 <ChartContainer className="h-[300px]">
                   <ResponsiveContainer width="100%" height="100%">
@@ -612,7 +612,7 @@ export const ReportsDashboardEnhanced = () => {
                 </ChartContainer>
               </Card>
             </div>
-            <Card className="bg-gray-900 border-gray-800 p-6">
+            <Card className="bg-gray-900/80 border border-gray-800 rounded-2xl shadow-sm p-6">
               <h3 className="text-lg font-bold text-white mb-4">Expenses List</h3>
               <div className="overflow-x-auto max-h-[400px] overflow-y-auto">
                 <table className="w-full text-sm text-left">
@@ -651,7 +651,7 @@ export const ReportsDashboardEnhanced = () => {
               <MetricCard title="Net Profit" value={formatCurrency(metrics.profit)} change={`${metrics.profitMargin.toFixed(1)}% margin`} trend={metrics.profit > 0 ? 'up' : 'down'} icon={Activity} iconColor={metrics.profit > 0 ? 'text-green-400' : 'text-red-400'} iconBg={metrics.profit > 0 ? 'bg-green-400/10' : 'bg-red-400/10'} />
               <StatCard icon={FileText} label="Receivables" value={formatCurrency(metrics.totalReceivables)} color="bg-blue-500/10 text-blue-400" />
             </div>
-            <Card className="bg-gray-900 border-gray-800 p-6 max-w-2xl">
+            <Card className="bg-gray-900/80 border border-gray-800 rounded-2xl shadow-sm p-6 max-w-2xl">
               <h3 className="text-lg font-bold text-white mb-4 flex items-center gap-2"><FileText size={20} className="text-purple-400" /> Financial Summary</h3>
               <div className="space-y-4">
                 <SummaryRow label="Total Revenue" value={formatCurrency(metrics.totalSales)} color="text-green-400" />
@@ -666,7 +666,7 @@ export const ReportsDashboardEnhanced = () => {
                 </div>
               </div>
             </Card>
-            <Card className="bg-gray-900 border-gray-800 p-6">
+            <Card className="bg-gray-900/80 border border-gray-800 rounded-2xl shadow-sm p-6">
               <h3 className="text-lg font-bold text-white mb-4">Profit by Month</h3>
               <ChartContainer className="h-[280px]">
                 <ResponsiveContainer width="100%" height="100%">
@@ -692,7 +692,7 @@ export const ReportsDashboardEnhanced = () => {
 // ============================================
 
 const MetricCard = ({ title, value, change, trend, icon: Icon, iconColor, iconBg }: any) => (
-  <Card className="bg-gray-900 border-gray-800 p-6 hover:bg-gray-800/50 transition-colors">
+  <Card className="bg-gray-900/80 border border-gray-800 rounded-2xl shadow-sm p-6 hover:bg-gray-800/50 transition-colors">
     <div className="flex items-center justify-between mb-3">
       <div className={`w-12 h-12 rounded-xl ${iconBg} flex items-center justify-center`}>
         <Icon className={iconColor} size={24} />
@@ -714,7 +714,7 @@ const SummaryRow = ({ label, value, color, bold }: { label: string; value: strin
 );
 
 const StatCard = ({ icon: Icon, label, value, color }: any) => (
-  <Card className="bg-gray-900 border-gray-800 p-6">
+  <Card className="bg-gray-900/80 border border-gray-800 rounded-2xl shadow-sm p-6">
     <div className={`w-12 h-12 rounded-xl ${color} flex items-center justify-center mb-3`}>
       <Icon size={24} />
     </div>

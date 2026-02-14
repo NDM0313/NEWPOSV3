@@ -2,8 +2,9 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { 
   Building2, CreditCard, Hash, ToggleLeft, Save, 
   CheckCircle, Users, Lock, Key, Settings as SettingsIcon, AlertCircle, UserCog,
-  MapPin, Store, ShoppingCart, ShoppingBag, Package, Shirt, Calculator, X, Edit, Download
+  MapPin, Store, ShoppingCart, ShoppingBag, Package, Shirt, Calculator, X, Edit, Download, Info
 } from 'lucide-react';
+import { APP_VERSION, getBuildDateDisplay } from '@/app/config/version';
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
@@ -44,7 +45,8 @@ type SettingsTab =
   | 'numbering' 
   | 'users' 
   | 'modules'
-  | 'data';
+  | 'data'
+  | 'about';
 
 export const SettingsPageNew = () => {
   const settings = useSettings();
@@ -343,24 +345,25 @@ export const SettingsPageNew = () => {
     // Permissions tab removed - permissions now managed per-user in User Management modal
     { id: 'modules' as const, label: 'Module Toggles', icon: ToggleLeft },
     { id: 'data' as const, label: 'Data & Backup', icon: Download },
+    { id: 'about' as const, label: 'About System', icon: Info },
   ];
 
   return (
-    <div className="space-y-6 animate-in fade-in duration-500">
-      {/* Header */}
-      <div className="flex justify-between items-start border-b border-gray-800 pb-4">
-        <div>
-          <h2 className="text-3xl font-bold text-white tracking-tight flex items-center gap-3">
-            <SettingsIcon size={32} className="text-blue-500" />
+    <div className="space-y-6 animate-in fade-in duration-500 min-h-0">
+      {/* Header - Figma: clean bar */}
+      <div className="flex justify-between items-start border-b border-gray-800 pb-4 bg-gray-950/80 backdrop-blur-sm py-4 rounded-xl">
+        <div className="min-w-0">
+          <h2 className="text-2xl sm:text-3xl font-bold text-white tracking-tight flex items-center gap-3">
+            <SettingsIcon size={28} className="text-blue-500 shrink-0" />
             System Settings
           </h2>
-          <p className="text-gray-400 mt-1">Configure your ERP system defaults and preferences.</p>
+          <p className="text-gray-400 mt-1 text-sm">Configure your ERP system defaults and preferences.</p>
         </div>
         
         {hasUnsavedChanges && (
           <Button 
             onClick={handleSave}
-            className="bg-green-600 hover:bg-green-500 text-white gap-2 shadow-lg"
+            className="bg-green-600 hover:bg-green-500 text-white gap-2 shadow-lg rounded-lg shrink-0"
           >
             <Save size={16} /> Save Changes
           </Button>
@@ -2115,6 +2118,34 @@ export const SettingsPageNew = () => {
                     <Download size={16} />
                     Export Backup
                   </Button>
+                </div>
+              </div>
+            )}
+
+            {/* ABOUT SYSTEM TAB */}
+            {activeTab === 'about' && (
+              <div className="space-y-6">
+                <div className="flex items-center gap-3 mb-6">
+                  <div className="p-3 bg-blue-500/10 rounded-lg">
+                    <Info className="text-blue-500" size={24} />
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-bold text-white">About System</h3>
+                    <p className="text-sm text-gray-400">Version and build information</p>
+                  </div>
+                </div>
+                <div className="bg-gray-950 p-6 rounded-lg border border-gray-800 space-y-4">
+                  <div className="flex justify-between items-center py-2 border-b border-gray-800">
+                    <span className="text-gray-400">Version</span>
+                    <span className="text-white font-mono">{APP_VERSION}</span>
+                  </div>
+                  <div className="flex justify-between items-center py-2 border-b border-gray-800">
+                    <span className="text-gray-400">Build Date</span>
+                    <span className="text-white font-mono">{getBuildDateDisplay()}</span>
+                  </div>
+                  <p className="text-sm text-gray-500 pt-2">
+                    Modern ERP & POS · Production-ready release. Use version control and migration tracking for deployments.
+                  </p>
                 </div>
               </div>
             )}

@@ -180,9 +180,9 @@ export const PickupModal = ({ open, onOpenChange, rental, onConfirm, onAddPaymen
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="bg-gray-900 border-gray-700 max-w-[900px] max-h-[90vh] p-0 overflow-hidden flex flex-col">
-        <DialogHeader className="px-6 pt-6 pb-4 border-b border-gray-800 shrink-0">
-          <DialogTitle className="text-white text-xl">Confirm Pickup</DialogTitle>
+      <DialogContent className="bg-gray-900 border border-gray-700 rounded-xl shadow-xl max-w-[900px] max-h-[90vh] p-0 overflow-hidden flex flex-col">
+        <DialogHeader className="px-4 sm:px-6 pt-6 pb-4 border-b border-gray-800 shrink-0">
+          <DialogTitle className="text-white text-xl tracking-tight">Confirm Pickup</DialogTitle>
           <DialogDescription className="text-gray-400">
             Process delivery for rental {rental?.rentalNo}
           </DialogDescription>
@@ -190,9 +190,9 @@ export const PickupModal = ({ open, onOpenChange, rental, onConfirm, onAddPaymen
 
         <div className="flex flex-1 min-h-0 overflow-y-auto">
           {/* LEFT SIDE */}
-          <div className="flex-[6] overflow-y-auto p-6 space-y-6 min-h-0">
+          <div className="flex-[6] overflow-y-auto p-4 sm:p-6 space-y-6 min-h-0">
             {/* Card 1 – Rental Info */}
-            <div className="rounded-lg border border-gray-700 p-4 bg-gray-800/30">
+            <div className="rounded-xl border border-gray-700 p-4 bg-gray-800/30 shadow-sm">
               <h4 className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-3">Rental Info</h4>
               <div className="grid grid-cols-2 gap-3 text-sm">
                 <div><span className="text-gray-500">Rental #</span><p className="font-mono text-pink-400">{rental?.rentalNo}</p></div>
@@ -207,7 +207,7 @@ export const PickupModal = ({ open, onOpenChange, rental, onConfirm, onAddPaymen
             </div>
 
             {/* Card 2 – Payment Settlement */}
-            <div className="rounded-lg border border-gray-700 p-4 bg-gray-800/30">
+            <div className="rounded-xl border border-gray-700 p-4 bg-gray-800/30 shadow-sm">
               <h4 className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-3">Payment Settlement</h4>
               <div className="space-y-2 text-sm">
                 <div className="flex justify-between"><span className="text-gray-500">Total Amount</span><span className="text-white">{formatCurrency(rental?.totalAmount ?? 0)}</span></div>
@@ -239,7 +239,7 @@ export const PickupModal = ({ open, onOpenChange, rental, onConfirm, onAddPaymen
             </div>
 
             {/* Card 3 – Guarantee Document */}
-            <div className="rounded-lg border border-gray-700 p-4 bg-gray-800/30">
+            <div className="rounded-xl border border-gray-700 p-4 bg-gray-800/30 shadow-sm">
               <h4 className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-3">Guarantee Document</h4>
               <div className="space-y-3">
                 <div>

@@ -1873,12 +1873,13 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
         />
       )}
 
-      {/* Attachments viewer - Shared Component */}
+      {/* Attachments viewer - same dialog as Sale / Payment */}
       {attachmentsDialogList && (
         <AttachmentViewer
           attachments={attachmentsDialogList}
           isOpen={!!attachmentsDialogList}
           onClose={() => setAttachmentsDialogList(null)}
+          title={purchase?.supplierName || purchase?.purchaseNo || 'Purchase attachments'}
         />
       )}
 

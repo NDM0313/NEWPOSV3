@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase';
+import { logger } from '@/app/utils/logger';
 
 export interface JournalEntry {
   id: string;
@@ -394,7 +395,9 @@ export const accountingService = {
                 .eq('id', jeData.reference_id)
                 .single();
               if (saleData) (data as any).sale = saleData;
-            } catch {}
+            } catch (e) {
+              logger.warn('[Accounting] Fetch sale for JE failed', e);
+            }
           }
         } else if (jeError && jeError.code !== 'PGRST116') {
           error = jeError;

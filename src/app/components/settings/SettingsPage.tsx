@@ -573,7 +573,7 @@ export const SettingsPage = () => {
 
           {/* Settings Content */}
           <div className="col-span-3">
-            <div className="bg-gray-900 border border-gray-800 rounded-xl p-6">
+            <div className="bg-gray-900/80 border border-gray-800 rounded-2xl shadow-sm p-6">
               {/* General Settings */}
               {activeTab === 'general' && (
                 <div className="space-y-6">

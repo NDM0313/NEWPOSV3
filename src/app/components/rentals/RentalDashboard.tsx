@@ -43,19 +43,19 @@ export const RentalDashboard = () => {
   };
 
   return (
-    <div className="h-screen flex flex-col bg-[#0B0F19]">
-      <div className="shrink-0 px-6 py-4 border-b border-gray-800">
-        <div className="flex justify-between items-center">
-          <div>
-            <h1 className="text-2xl font-bold text-white">Rentals</h1>
+    <div className="h-screen flex flex-col bg-gray-950">
+      <div className="shrink-0 px-4 sm:px-6 py-4 border-b border-gray-800 bg-gray-950/95 backdrop-blur-sm">
+        <div className="flex flex-wrap justify-between items-center gap-4">
+          <div className="min-w-0">
+            <h1 className="text-xl sm:text-2xl font-bold text-white tracking-tight">Rentals</h1>
             <p className="text-sm text-gray-400 mt-0.5">Manage rental orders and availability</p>
           </div>
-          <div className="flex items-center gap-3">
-            <div className="bg-gray-900 p-1 rounded-lg border border-gray-800 flex items-center">
+          <div className="flex items-center gap-3 flex-wrap">
+            <div className="bg-gray-900/80 p-1 rounded-xl border border-gray-800 flex items-center flex-wrap">
               <button
                 onClick={() => setActiveTab('list')}
                 className={clsx(
-                  'px-3 py-2 rounded-md text-sm font-medium transition-all',
+                  'px-3 py-2 rounded-lg text-sm font-medium transition-all',
                   activeTab === 'list' ? 'bg-gray-800 text-white shadow-sm' : 'text-gray-400 hover:text-white'
                 )}
                 title="List View"
@@ -66,7 +66,7 @@ export const RentalDashboard = () => {
               <button
                 onClick={() => setActiveTab('calendar')}
                 className={clsx(
-                  'px-3 py-2 rounded-md text-sm font-medium transition-all',
+                  'px-3 py-2 rounded-lg text-sm font-medium transition-all',
                   activeTab === 'calendar' ? 'bg-gray-800 text-white shadow-sm' : 'text-gray-400 hover:text-white'
                 )}
                 title="Calendar / Availability"
@@ -77,7 +77,7 @@ export const RentalDashboard = () => {
               <button
                 onClick={() => setActiveTab('pickupToday')}
                 className={clsx(
-                  'px-3 py-2 rounded-md text-sm font-medium transition-all',
+                  'px-3 py-2 rounded-lg text-sm font-medium transition-all',
                   activeTab === 'pickupToday' ? 'bg-gray-800 text-white shadow-sm' : 'text-gray-400 hover:text-white'
                 )}
                 title="Pickup Today"
@@ -88,7 +88,7 @@ export const RentalDashboard = () => {
               <button
                 onClick={() => setActiveTab('returnToday')}
                 className={clsx(
-                  'px-3 py-2 rounded-md text-sm font-medium transition-all',
+                  'px-3 py-2 rounded-lg text-sm font-medium transition-all',
                   activeTab === 'returnToday' ? 'bg-gray-800 text-white shadow-sm' : 'text-gray-400 hover:text-white'
                 )}
                 title="Return Today"
@@ -99,7 +99,7 @@ export const RentalDashboard = () => {
               <button
                 onClick={() => setActiveTab('collections')}
                 className={clsx(
-                  'px-3 py-2 rounded-md text-sm font-medium transition-all',
+                  'px-3 py-2 rounded-lg text-sm font-medium transition-all',
                   activeTab === 'collections' ? 'bg-gray-800 text-white shadow-sm' : 'text-gray-400 hover:text-white'
                 )}
                 title="Collections / Outstanding"
@@ -110,7 +110,7 @@ export const RentalDashboard = () => {
             </div>
             <Button
               onClick={handleAddRental}
-              className="bg-pink-600 hover:bg-pink-500 text-white shadow-lg shadow-pink-600/20 font-semibold"
+              className="bg-pink-600 hover:bg-pink-500 text-white rounded-lg shadow-lg shadow-pink-600/20 font-semibold"
             >
               <Plus size={18} className="mr-2" /> New Rental Booking
             </Button>
@@ -123,7 +123,7 @@ export const RentalDashboard = () => {
           <RentalsPage onAddRental={handleAddRental} onEditRental={handleEditRental} embedded />
         )}
         {activeTab === 'calendar' && (
-          <div className="h-full p-4">
+          <div className="h-full p-4 sm:p-6 overflow-auto">
             <RentalCalendar onViewRental={(r) => setViewRental(r)} />
           </div>
         )}

@@ -44,6 +44,7 @@ import { ViewPaymentsModal } from '@/app/components/sales/ViewPaymentsModal';
 import { PickupModal } from '@/app/components/rentals/PickupModal';
 import { cn } from '@/app/components/ui/utils';
 import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
+import { toast } from 'sonner';
 
 interface ViewRentalDetailsDrawerProps {
   isOpen: boolean;
@@ -126,7 +127,9 @@ export const ViewRentalDetailsDrawer: React.FC<ViewRentalDetailsDrawerProps> = (
         const map = new Map<string, string>();
         branchesData.forEach((b) => map.set(b.id, b.name));
         setBranchMap(map);
-      } catch {}
+      } catch (e) {
+        toast.error('Could not load branch names');
+      }
     };
     loadBranches();
   }, [companyId]);

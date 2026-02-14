@@ -5,6 +5,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { useSettings } from '@/app/context/SettingsContext';
+import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
 import { useDocumentNumbering } from '@/app/hooks/useDocumentNumbering';
 import { productService } from '@/app/services/productService';
 import { inventoryService } from '@/app/services/inventoryService';
@@ -128,6 +129,7 @@ export const EnhancedProductForm = ({
 }: EnhancedProductFormProps) => {
   const { companyId, branchId } = useSupabase();
   const { modules } = useSettings();
+  const { formatCurrency } = useFormatCurrency();
   const { generateDocumentNumber, generateDocumentNumberSafe, incrementNextNumber } = useDocumentNumbering();
   const [saving, setSaving] = useState(false);
   /** Enable Variations toggle: default OFF for new product, from DB for edit. When ON, parent stock locked at 0. */
@@ -1138,15 +1140,15 @@ export const EnhancedProductForm = ({
         </button>
       </div>
 
-      {/* Tab Navigation */}
-      <div className="border-b border-gray-800 bg-gray-900 sticky top-[89px] z-10">
-        <div className="flex px-6 overflow-x-auto">
+      {/* Tab Navigation - Figma: clean tabs with scroll */}
+      <div className="border-b border-gray-800 bg-gray-900/95 backdrop-blur-sm sticky top-[89px] z-10">
+        <div className="flex px-4 sm:px-6 overflow-x-auto scrollbar-thin scrollbar-thumb-gray-700 scrollbar-track-transparent">
           <button
             onClick={() => setActiveTab('basic')}
             className={clsx(
-              "px-6 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap",
+              "px-4 sm:px-6 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap rounded-t-lg",
               activeTab === 'basic'
-                ? "border-blue-500 text-white"
+                ? "border-blue-500 text-white bg-gray-800/30"
                 : "border-transparent text-gray-400 hover:text-gray-300"
             )}
           >
@@ -1155,9 +1157,9 @@ export const EnhancedProductForm = ({
           <button
             onClick={() => setActiveTab('pricing')}
             className={clsx(
-              "px-6 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap",
+              "px-4 sm:px-6 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap rounded-t-lg",
               activeTab === 'pricing'
-                ? "border-blue-500 text-white"
+                ? "border-blue-500 text-white bg-gray-800/30"
                 : "border-transparent text-gray-400 hover:text-gray-300"
             )}
           >
@@ -1166,9 +1168,9 @@ export const EnhancedProductForm = ({
           <button
             onClick={() => setActiveTab('inventory')}
             className={clsx(
-              "px-6 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap",
+              "px-4 sm:px-6 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap rounded-t-lg",
               activeTab === 'inventory'
-                ? "border-blue-500 text-white"
+                ? "border-blue-500 text-white bg-gray-800/30"
                 : "border-transparent text-gray-400 hover:text-gray-300"
             )}
           >
@@ -1177,9 +1179,9 @@ export const EnhancedProductForm = ({
           <button
             onClick={() => setActiveTab('media')}
             className={clsx(
-              "px-6 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap",
+              "px-4 sm:px-6 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap rounded-t-lg",
               activeTab === 'media'
-                ? "border-blue-500 text-white"
+                ? "border-blue-500 text-white bg-gray-800/30"
                 : "border-transparent text-gray-400 hover:text-gray-300"
             )}
           >
@@ -1188,9 +1190,9 @@ export const EnhancedProductForm = ({
           <button
             onClick={() => setActiveTab('details')}
             className={clsx(
-              "px-6 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap",
+              "px-4 sm:px-6 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap rounded-t-lg",
               activeTab === 'details'
-                ? "border-blue-500 text-white"
+                ? "border-blue-500 text-white bg-gray-800/30"
                 : "border-transparent text-gray-400 hover:text-gray-300"
             )}
           >
@@ -1200,9 +1202,9 @@ export const EnhancedProductForm = ({
             <button
               onClick={() => setActiveTab('variations')}
               className={clsx(
-                "px-6 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap",
+                "px-4 sm:px-6 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap rounded-t-lg",
                 activeTab === 'variations'
-                  ? "border-blue-500 text-white"
+                  ? "border-blue-500 text-white bg-gray-800/30"
                   : "border-transparent text-gray-400 hover:text-gray-300"
               )}
             >
@@ -1213,9 +1215,9 @@ export const EnhancedProductForm = ({
           <button
             onClick={() => setActiveTab('combos')}
             className={clsx(
-              "px-6 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap",
+              "px-4 sm:px-6 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap rounded-t-lg",
               activeTab === 'combos'
-                ? "border-blue-500 text-white"
+                ? "border-blue-500 text-white bg-gray-800/30"
                 : "border-transparent text-gray-400 hover:text-gray-300"
             )}
           >
@@ -1225,14 +1227,14 @@ export const EnhancedProductForm = ({
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-6 space-y-6">
+      <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6">
         {/* TAB 1 - BASIC INFO */}
         {activeTab === 'basic' && (
           <>
-            {/* Section 1: Basic Info */}
+            {/* Section 1: Basic Info - Figma: section card styling */}
             <div className="space-y-4">
-              <h3 className="text-lg font-semibold border-l-4 border-blue-500 pl-3 flex items-center gap-2">
-                <Package size={20} />
+              <h3 className="text-lg font-semibold border-l-4 border-blue-500 pl-3 rounded-r flex items-center gap-2 text-white">
+                <Package size={20} className="text-blue-400" />
                 Product Identity
               </h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1661,16 +1663,16 @@ export const EnhancedProductForm = ({
                 </div>
               </div>
 
-              <div className="bg-purple-900/10 border border-purple-800 p-4 rounded-lg">
+              <div className="bg-purple-900/10 border border-purple-800 p-4 rounded-xl shadow-sm">
                 <h4 className="text-sm font-semibold text-purple-300 mb-2">💰 Pricing Summary</h4>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
                   <div>
                     <p className="text-gray-500">Purchase:</p>
-                    <p className="text-white font-bold">₨{watch('purchasePrice') || 0}</p>
+                    <p className="text-white font-bold">{formatCurrency(Number(watch('purchasePrice')) || 0)}</p>
                   </div>
                   <div>
                     <p className="text-gray-500">Selling:</p>
-                    <p className="text-green-400 font-bold">₨{watch('sellingPrice') || 0}</p>
+                    <p className="text-green-400 font-bold">{formatCurrency(Number(watch('sellingPrice')) || 0)}</p>
                   </div>
                   <div>
                     <p className="text-gray-500">Margin:</p>
@@ -1678,7 +1680,7 @@ export const EnhancedProductForm = ({
                   </div>
                   <div>
                     <p className="text-gray-500">Profit:</p>
-                    <p className="text-yellow-400 font-bold">₨{((watch('sellingPrice') || 0) - (watch('purchasePrice') || 0)).toFixed(2)}</p>
+                    <p className="text-yellow-400 font-bold">{formatCurrency((watch('sellingPrice') || 0) - (watch('purchasePrice') || 0))}</p>
                   </div>
                 </div>
               </div>
@@ -2447,7 +2449,7 @@ export const EnhancedProductForm = ({
                                 <p className="text-white text-sm font-medium">{product.name}</p>
                                 <p className="text-gray-500 text-xs mt-1">SKU: {product.sku}</p>
                               </div>
-                              <span className="text-green-400 text-sm font-semibold">₨{product.retail_price}</span>
+                              <span className="text-green-400 text-sm font-semibold">{formatCurrency(product.retail_price)}</span>
                             </div>
                           </button>
                         ))}
@@ -2508,7 +2510,7 @@ export const EnhancedProductForm = ({
                             placeholder="Price"
                           />
                           <span className="text-gray-500 text-sm w-24 text-right">
-                            Subtotal: ₨{((item.qty || 0) * (item.unit_price || 0)).toFixed(2)}
+                            Subtotal: {formatCurrency((item.qty || 0) * (item.unit_price || 0))}
                           </span>
                         </div>
                         <button
@@ -2527,7 +2529,7 @@ export const EnhancedProductForm = ({
                     <div className="flex justify-between items-center">
                       <span className="text-gray-400">Total Individual Price:</span>
                       <span className="text-white font-semibold">
-                        ₨{currentComboItems.reduce((sum, item) => sum + (item.qty || 0) * (item.unit_price || 0), 0).toFixed(2)}
+                        {formatCurrency(currentComboItems.reduce((sum, item) => sum + (item.qty || 0) * (item.unit_price || 0), 0))}
                       </span>
                     </div>
                     <div className="flex items-center gap-4">
@@ -2546,7 +2548,7 @@ export const EnhancedProductForm = ({
                       <div className="flex justify-between items-center text-sm">
                         <span className="text-green-400">Discount:</span>
                         <span className="text-green-400 font-semibold">
-                          ₨{(currentComboItems.reduce((sum, item) => sum + (item.qty || 0) * (item.unit_price || 0), 0) - comboFinalPrice).toFixed(2)}
+                          {formatCurrency(currentComboItems.reduce((sum, item) => sum + (item.qty || 0) * (item.unit_price || 0), 0) - comboFinalPrice)}
                         </span>
                       </div>
                     )}
@@ -2596,8 +2598,8 @@ export const EnhancedProductForm = ({
                             </div>
                             <div className="flex items-center gap-4 text-gray-400">
                               <span>Qty: {item.qty}</span>
-                              {item.unit_price && <span>₨{item.unit_price.toFixed(2)}</span>}
-                              <span className="text-white">₨{((item.qty || 0) * (item.unit_price || 0)).toFixed(2)}</span>
+                              {item.unit_price != null && <span>{formatCurrency(item.unit_price)}</span>}
+                              <span className="text-white">{formatCurrency((item.qty || 0) * (item.unit_price || 0))}</span>
                             </div>
                           </div>
                         ))}
@@ -2606,15 +2608,15 @@ export const EnhancedProductForm = ({
                       <div className="border-t border-gray-700 pt-3 space-y-1">
                         <div className="flex justify-between text-sm">
                           <span className="text-gray-400">Total Individual Price:</span>
-                          <span className="text-white">₨{combo.items.reduce((sum, item) => sum + (item.qty || 0) * (item.unit_price || 0), 0).toFixed(2)}</span>
+                          <span className="text-white">{formatCurrency(combo.items.reduce((sum, item) => sum + (item.qty || 0) * (item.unit_price || 0), 0))}</span>
                         </div>
                         <div className="flex justify-between text-sm">
                           <span className="text-green-400">Combo Price:</span>
-                          <span className="text-green-400 font-bold">₨{combo.combo_price.toFixed(2)}</span>
+                          <span className="text-green-400 font-bold">{formatCurrency(combo.combo_price)}</span>
                         </div>
                         <div className="flex justify-between text-sm">
                           <span className="text-blue-400">You Save:</span>
-                          <span className="text-blue-400 font-semibold">₨{(combo.items.reduce((sum, item) => sum + (item.qty || 0) * (item.unit_price || 0), 0) - combo.combo_price).toFixed(2)}</span>
+                          <span className="text-blue-400 font-semibold">{formatCurrency(combo.items.reduce((sum, item) => sum + (item.qty || 0) * (item.unit_price || 0), 0) - combo.combo_price)}</span>
                         </div>
                       </div>
                     </div>
