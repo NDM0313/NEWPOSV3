@@ -50,6 +50,17 @@ fi
 echo ""
 echo "=== 3. Recreate and start container ==="
 docker compose -f docker-compose.prod.yml up -d --force-recreate
+sleep 3
+# If container not running, retry once then show logs
+if ! docker compose -f docker-compose.prod.yml ps --status running 2>/dev/null | grep -q erp-frontend; then
+  echo "Container not up, retrying up -d..."
+  docker compose -f docker-compose.prod.yml up -d
+  sleep 5
+fi
+if ! docker compose -f docker-compose.prod.yml ps --status running 2>/dev/null | grep -q erp-frontend; then
+  echo "[WARN] ERP container still not running. Logs:"
+  docker compose -f docker-compose.prod.yml logs --tail 40 erp-frontend 2>/dev/null || true
+fi
 
 # Traefik must be on dokploy-network to route to ERP (Dokploy uses dokploy-traefik)
 TRAEFIK_NAME=$(docker ps --format '{{.Names}}' | grep -E 'traefik|dokploy-traefik' | head -1)
@@ -67,10 +78,6 @@ fi
 echo ""
 echo "=== 4. Check ==="
 docker compose -f docker-compose.prod.yml ps
-if ! docker compose -f docker-compose.prod.yml ps --status running | grep -q erp-frontend; then
-  echo "[WARN] ERP container not running. Last 20 log lines:"
-  docker compose -f docker-compose.prod.yml logs --tail 20 erp-frontend 2>/dev/null || true
-fi
 
 echo ""
 echo "=== 5. Diagnose (erp.dincouture.pk) ==="
