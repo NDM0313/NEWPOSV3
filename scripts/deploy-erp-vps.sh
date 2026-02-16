@@ -29,8 +29,11 @@ echo "  VITE_SUPABASE_URL=$VITE_SUPABASE_URL"
 echo "  ANON_KEY length: ${#VITE_SUPABASE_ANON_KEY} chars"
 
 echo ""
-echo "=== 1. Git pull ==="
-git pull || true
+echo "=== 1. Sync to remote (fetch + reset) ==="
+BRANCH="${BRANCH:-before-mobile-replace}"
+git fetch origin
+git checkout "$BRANCH" 2>/dev/null || true
+git reset --hard "origin/$BRANCH"
 
 echo ""
 echo "=== 2. Build image (build-args from env) ==="
