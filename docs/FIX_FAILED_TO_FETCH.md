@@ -13,7 +13,13 @@ cd /root/NEWPOSV3
 bash scripts/vps-supabase-fix-fetch.sh
 ```
 
-The script will update the Supabase Auth config and restart the auth service so that `https://erp.dincouture.pk` is allowed.
+The script **syncs the repo first** (fetch + reset), so local changes will not block it. Then it updates the Supabase Auth config and restarts the auth service so that `https://erp.dincouture.pk` is allowed.
+
+If `git pull` was failing (e.g. "local changes would be overwritten"), use this one-liner once to sync and run the fix (resets local changes):
+
+```bash
+cd /root/NEWPOSV3 && git fetch origin && git checkout before-mobile-replace 2>/dev/null; git reset --hard origin/before-mobile-replace && bash scripts/vps-supabase-fix-fetch.sh
+```
 
 ---
 

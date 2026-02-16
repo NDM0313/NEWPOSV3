@@ -1,12 +1,23 @@
 #!/usr/bin/env bash
 # Fix "Failed to fetch" on Sign In: set Supabase Auth SITE_URL and redirect list for erp.dincouture.pk, then restart auth.
-# Run on VPS where Supabase is running: bash scripts/vps-supabase-fix-fetch.sh
+# Run on VPS: cd /root/NEWPOSV3 && bash scripts/vps-supabase-fix-fetch.sh
+# Script syncs repo first (fetch + reset) so local changes do not block.
 
 set -e
+REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$REPO_ROOT"
+BRANCH="${BRANCH:-before-mobile-replace}"
+
+echo "=== 1. Sync repo (fetch + reset so pull never blocks) ==="
+git fetch origin
+git checkout "$BRANCH" 2>/dev/null || true
+git reset --hard "origin/$BRANCH"
+echo ""
+
 SITE="https://erp.dincouture.pk"
 ENV_FILE="${SUPABASE_ENV:-/root/supabase/docker/.env}"
 
-echo "=== Fix Supabase Auth for $SITE ==="
+echo "=== 2. Fix Supabase Auth for $SITE ==="
 echo "Env file: $ENV_FILE"
 echo ""
 
