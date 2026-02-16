@@ -44,7 +44,7 @@ import { ChangePasswordDialog } from '../auth/ChangePasswordDialog';
 import { useFormatCurrency } from '../../hooks/useFormatCurrency';
 
 export const TopHeader = () => {
-  const { toggleSidebar, openDrawer, setCurrentView } = useNavigation();
+  const { toggleSidebar, openDrawer, setCurrentView, setMobileNavOpen } = useNavigation();
   const { signOut, user, companyId, branchId, defaultBranchId, setBranchId } = useSupabase();
   const { formatCurrency } = useFormatCurrency();
   
@@ -232,15 +232,16 @@ export const TopHeader = () => {
   const userInitial = userDisplayName.charAt(0).toUpperCase();
 
   return (
-    <header className="h-16 bg-gray-900/95 backdrop-blur-sm border-b border-gray-800 flex items-center justify-between px-6 sticky top-0 z-50 shadow-sm">
+    <header className="h-14 md:h-16 bg-gray-900/95 backdrop-blur-md border-b border-gray-800 flex items-center justify-between px-4 md:px-6 sticky top-0 z-50 shadow-sm">
       {/* LEFT SECTION: Mobile Menu + Branch Selector */}
       <div className="flex items-center gap-4">
-        {/* Mobile Menu Toggle */}
+        {/* Mobile Menu Toggle - opens full nav drawer */}
         <button 
-          onClick={toggleSidebar}
-          className="lg:hidden p-2 rounded-lg text-muted-foreground hover:text-header-foreground hover:bg-accent transition-all duration-200"
+          onClick={() => setMobileNavOpen?.(true)}
+          className="lg:hidden p-2.5 rounded-xl text-muted-foreground hover:text-header-foreground hover:bg-accent transition-all duration-200 touch-manipulation"
+          aria-label="Open menu"
         >
-          <Menu size={22} />
+          <Menu size={22} strokeWidth={2} />
         </button>
         
         {/* Branch / Location Selector */}
@@ -326,8 +327,8 @@ export const TopHeader = () => {
       <div className="flex-1"></div>
 
       {/* RIGHT SECTION: Actions Zone */}
-      <div className="flex items-center gap-3">
-        {/* Create New Dropdown - FIRST */}
+      <div className="flex items-center gap-2 md:gap-3">
+        {/* Create New Dropdown - compact on mobile */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button 
@@ -376,12 +377,12 @@ export const TopHeader = () => {
           </DropdownMenuContent>
         </DropdownMenu>
 
-        {/* Date Range Selector - SECOND */}
+        {/* Date Range Selector - hidden on small mobile */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button 
               variant="ghost"
-              className="flex items-center gap-2 px-3 py-2 h-9 bg-accent hover:bg-muted border border-border text-foreground rounded-lg transition-all"
+              className="hidden sm:flex items-center gap-2 px-3 py-2 h-9 bg-accent hover:bg-muted border border-border text-foreground rounded-lg transition-all"
             >
               <Calendar size={16} className="text-muted-foreground" />
               <span className="text-sm font-medium hidden md:inline">{getDateRangeLabel()}</span>
@@ -476,11 +477,11 @@ export const TopHeader = () => {
           </DropdownMenuContent>
         </DropdownMenu>
 
-        {/* Notifications */}
+        {/* Notifications - compact on mobile */}
         <DropdownMenu open={showNotifications} onOpenChange={setShowNotifications}>
           <DropdownMenuTrigger asChild>
             <button 
-              className="relative p-2.5 rounded-lg transition-all bg-accent hover:bg-muted border border-border text-muted-foreground hover:text-foreground"
+              className="relative p-2 md:p-2.5 rounded-xl transition-all bg-accent hover:bg-muted border border-border text-muted-foreground hover:text-foreground touch-manipulation"
               title="Notifications"
             >
               <Bell size={20} />
@@ -536,9 +537,9 @@ export const TopHeader = () => {
           <DropdownMenuTrigger asChild>
             <Button
               variant="ghost"
-              className="flex items-center gap-2 px-3 py-2 h-10 bg-accent hover:bg-muted border border-border rounded-lg transition-all"
+              className="flex items-center gap-2 px-2 md:px-3 py-2 h-9 md:h-10 bg-accent hover:bg-muted border border-border rounded-xl transition-all touch-manipulation"
             >
-              <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-purple-500 via-blue-500 to-emerald-500 flex items-center justify-center text-white font-bold text-sm shadow-sm">
+              <div className="w-7 h-7 md:w-8 md:h-8 rounded-lg bg-gradient-to-br from-purple-500 via-blue-500 to-emerald-500 flex items-center justify-center text-white font-bold text-sm shadow-sm shrink-0">
                 {userInitial}
               </div>
               <div className="hidden xl:flex flex-col items-start">

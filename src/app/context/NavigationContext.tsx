@@ -65,6 +65,8 @@ interface NavigationContextType {
   setCurrentView: (view: View) => void;
   isSidebarOpen: boolean;
   toggleSidebar: () => void;
+  mobileNavOpen: boolean;
+  setMobileNavOpen: (open: boolean) => void;
   activeDrawer: DrawerType;
   openDrawer: (drawer: DrawerType, parentDrawer?: DrawerType, options?: { contactType?: 'customer' | 'supplier' | 'worker'; product?: any; sale?: any; purchase?: any; contact?: any; prefillName?: string; prefillPhone?: string }) => void;
   closeDrawer: () => void;
@@ -95,6 +97,8 @@ const defaultNavigationContext: NavigationContextType = {
   setCurrentView: () => {},
   isSidebarOpen: true,
   toggleSidebar: () => {},
+  mobileNavOpen: false,
+  setMobileNavOpen: () => {},
   activeDrawer: 'none',
   openDrawer: () => {},
   closeDrawer: () => {},
@@ -151,6 +155,7 @@ export const NavigationProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const toggleSidebar = () => setIsSidebarOpen(!isSidebarOpen);
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
   
   const openDrawer = (drawer: DrawerType, parent?: DrawerType, options?: { contactType?: 'customer' | 'supplier' | 'worker'; product?: any; sale?: any; purchase?: any; contact?: any; prefillName?: string; prefillPhone?: string }) => {
     // Set contact type if provided (or from contact when editing)
@@ -223,6 +228,8 @@ export const NavigationProvider = ({ children }: { children: ReactNode }) => {
       setCurrentView, 
       isSidebarOpen, 
       toggleSidebar, 
+      mobileNavOpen,
+      setMobileNavOpen,
       activeDrawer, 
       openDrawer, 
       closeDrawer, 
