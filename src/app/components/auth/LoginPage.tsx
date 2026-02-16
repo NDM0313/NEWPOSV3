@@ -30,6 +30,8 @@ export const LoginPage: React.FC = () => {
         errorMessage = 'Please confirm your email address first.';
       } else if (signInError.message.includes('User not found')) {
         errorMessage = 'User does not exist. Please create a business first.';
+      } else if (/Failed to fetch|NetworkError|Load failed|fetch failed/i.test(signInError.message)) {
+        errorMessage = 'Cannot reach the server. Ask your admin to run on the VPS: bash scripts/vps-supabase-fix-fetch.sh (see docs/FIX_FAILED_TO_FETCH.md).';
       }
       setError(errorMessage);
       setLoading(false);
@@ -81,6 +83,8 @@ export const LoginPage: React.FC = () => {
         errorMessage = 'Demo account email not confirmed. Please contact administrator.';
       } else if (signInError.message.includes('User not found')) {
         errorMessage = 'Demo account does not exist. Please contact administrator.';
+      } else if (/Failed to fetch|NetworkError|Load failed|fetch failed/i.test(signInError.message)) {
+        errorMessage = 'Cannot reach the server. Ask your admin to run on the VPS: bash scripts/vps-supabase-fix-fetch.sh (see docs/FIX_FAILED_TO_FETCH.md).';
       }
       setError(errorMessage);
       setLoading(false);

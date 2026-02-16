@@ -111,7 +111,19 @@ Deploy ke baad **diagnose** automatically chalta hai (`scripts/vps-erp-diagnose.
 
 ---
 
-## 5) Agar ab bhi issue aaye
+## 5) "Failed to fetch" on Sign In
+
+Login pe **Failed to fetch** aaye to API (Supabase/Kong) tak request nahi ho pa rahi. **VPS par ye fix chalao:**
+
+```bash
+cd /root/NEWPOSV3 && bash scripts/vps-supabase-fix-fetch.sh
+```
+
+Detail: [docs/FIX_FAILED_TO_FETCH.md](FIX_FAILED_TO_FETCH.md)
+
+---
+
+## 6) Agar ab bhi issue aaye
 
 ### CORS (browser console me CORS error)
 
@@ -139,7 +151,7 @@ Agar ab bhi issue aaye to bhejo:
 
 ---
 
-## 6) Quick checklist
+## 7) Quick checklist
 
 | Step | Action | Expected |
 |------|--------|----------|
