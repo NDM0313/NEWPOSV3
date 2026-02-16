@@ -8,8 +8,8 @@ set -e
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$REPO_ROOT"
 
-# Default Kong URL (self-hosted Supabase on same VPS)
-VITE_SUPABASE_URL="${VITE_SUPABASE_URL:-https://72.62.254.176:8443}"
+# Same-origin: app calls erp.dincouture.pk, nginx in container proxies /auth /rest /realtime to Kong (no CORS/cert block)
+VITE_SUPABASE_URL="${VITE_SUPABASE_URL:-https://erp.dincouture.pk}"
 
 # Load anon key from Supabase docker .env if not set
 SUPABASE_ENV="${SUPABASE_ENV:-/root/supabase/docker/.env}"

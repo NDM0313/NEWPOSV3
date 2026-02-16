@@ -1,6 +1,14 @@
 # Fix "Failed to fetch" on Sign In (erp.dincouture.pk)
 
-The app loads but **Sign In** shows "Failed to fetch" because the browser cannot reach the Supabase API (Kong) or the server rejects the request (CORS / redirect URL).
+The app loads but **Sign In** shows "Failed to fetch" because the browser cannot reach the Supabase API (Kong) or the server rejects the request (CORS / certificate).
+
+**Preferred fix (no CORS/cert in browser):** The ERP container now proxies `/auth`, `/rest`, `/realtime`, `/storage` to Kong. The app is built with `VITE_SUPABASE_URL=https://erp.dincouture.pk`, so all API calls are same-origin. **Redeploy the ERP frontend** so the new nginx config and build are used:
+
+```bash
+cd /root/NEWPOSV3 && bash scripts/deploy-erp-vps.sh
+```
+
+Then try Sign In again. If it still fails, run the Supabase Auth fix below and ensure Kong is listening on 8443.
 
 ---
 
