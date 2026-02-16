@@ -83,10 +83,18 @@ sudo ufw reload
 
 ---
 
+## Browser cache (zaroori)
+
+Agar console mein ab bhi **supabase.dincouture.pk** ya purana bundle (e.g. **index-C0kc_CeK.js**) dikhe, to server naya build serve kar raha hai lekin **browser purana JS cache se chala raha hai**. Naya build **erp.dincouture.pk** use karta hai.
+
+- **Hard refresh:** `Ctrl+Shift+R` (Windows) / `Cmd+Shift+R` (Mac)
+- Ya **Site settings** → Clear data for erp.dincouture.pk
+- Ya **Incognito/Private** window mein https://erp.dincouture.pk khol ke login try karein
+
 ## After the fix
 
 1. Restart Auth (and Kong if applicable) as above.
-2. Clear browser cache or use a private window.
+2. Clear browser cache or use a private window (see "Browser cache" above).
 3. Open **https://erp.dincouture.pk** and try **Sign In** again.
 
 If it still fails, open DevTools (F12) → **Network** tab, try Sign In, and check the failing request: note the URL, status code, and any CORS error message. Use that to adjust SITE_URL, redirect list, or Kong CORS.

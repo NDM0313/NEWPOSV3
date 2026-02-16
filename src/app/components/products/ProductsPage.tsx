@@ -91,14 +91,15 @@ export const ProductsPage = () => {
         unitService.getAll(companyId).catch(() => []),
       ]);
       const stockByProductId: Record<string, number> = {};
-      overviewRows.forEach((row) => { stockByProductId[row.productId] = row.stock; });
+      (overviewRows || []).forEach((row) => { stockByProductId[row.productId] = row.stock; });
       const unitLabelById: Record<string, string> = {};
       (unitsData || []).forEach((u: { id: string; name?: string; short_code?: string }) => {
         unitLabelById[u.id] = u.name || u.short_code || 'Piece';
       });
 
       // Convert Supabase format to app format; stock from inventory overview (stock_movements) when available
-      const convertedProducts: Product[] = data.map((p: any, index: number) => ({
+      // Guard: data can be undefined if API failed or migration incomplete
+      const convertedProducts: Product[] = (data || []).map((p: any, index: number) => ({
         id: index + 1, // Use index-based ID for compatibility with existing UI
         uuid: p.id, // Store actual Supabase UUID for database operations
         sku: p.sku || '',

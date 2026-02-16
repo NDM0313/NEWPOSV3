@@ -1,0 +1,17 @@
+# Copy this to your SSH config:
+#   Windows: C:\Users\<you>\.ssh\config
+#   Mac/Linux: ~/.ssh/config
+#
+# 1) Save your private key to a file, e.g. C:\Users\<you>\.ssh\dincouture_vps
+#    (The key you use for root@72.62.254.176 - paste the PRIVATE key, not the public one.)
+# 2) Set IdentityFile below to that path (e.g. id_ed25519 or dincouture_vps).
+# 3) Then: ssh dincouture-vps
+# 4) Deploy from PC: .\scripts\deploy-via-ssh.ps1  (or bash scripts/deploy-via-ssh.sh)
+
+Host dincouture-vps
+  HostName 72.62.254.176
+  User root
+  Port 22
+  IdentityFile ~/.ssh/id_ed25519
+  ServerAliveInterval 30
+  ServerAliveCountMax 3
