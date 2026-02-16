@@ -67,6 +67,10 @@ fi
 echo ""
 echo "=== 4. Check ==="
 docker compose -f docker-compose.prod.yml ps
+if ! docker compose -f docker-compose.prod.yml ps --status running | grep -q erp-frontend; then
+  echo "[WARN] ERP container not running. Last 20 log lines:"
+  docker compose -f docker-compose.prod.yml logs --tail 20 erp-frontend 2>/dev/null || true
+fi
 
 echo ""
 echo "=== 5. Diagnose (erp.dincouture.pk) ==="
