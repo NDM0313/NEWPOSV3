@@ -1,10 +1,16 @@
-Add this line to your Windows hosts file to use erp.dincouture.pk immediately (DNS workaround):
+Use erp.dincouture.pk on your PC (DNS workaround)
+================================================
 
-72.62.254.176 erp.dincouture.pk
-
-File: C:\Windows\System32\drivers\etc\hosts
-Open Notepad as Administrator → Open that file → paste line at end → Save.
-Then: ipconfig /flushdns
+EASIEST: Run PowerShell as Administrator, then:
+  cd "C:\Users\ndm31\dev\Corusr\NEW POSV3"
+  .\scripts\windows-hosts-fix.ps1
 Then open: https://erp.dincouture.pk
+
+MANUAL: Add this line to: C:\Windows\System32\drivers\etc\hosts
+  72.62.254.176 erp.dincouture.pk
+IMPORTANT: Save the file as "hosts" (NO .txt extension). Then: ipconfig /flushdns
+
+If still NXDOMAIN: Close all browsers, try "ping erp.dincouture.pk" (should show 72.62.254.176).
+Some antivirus/DNS tools block hosts file - try disabling or add exception.
 
 See docs/FIX_ERP_DOMAIN_NOW.md for full steps and permanent DNS fix.

@@ -8,26 +8,30 @@
 
 Until DNS is fixed, you can make **your PC** resolve `erp.dincouture.pk` yourself:
 
-### Windows
+### Windows (easy: run script as Admin)
 
-1. **Open Notepad as Administrator**  
-   (Right‑click Notepad → Run as administrator.)
+1. **PowerShell as Administrator** kholo (Right‑click PowerShell → Run as administrator).
+2. Repo folder me jao aur script chalao:
+   ```powershell
+   cd "C:\Users\ndm31\dev\Corusr\NEW POSV3"
+   .\scripts\windows-hosts-fix.ps1
+   ```
+3. Browser me **https://erp.dincouture.pk** kholo. Certificate warning pe **Advanced → Proceed**.
 
-2. **Open the hosts file:**  
-   `File → Open` → go to:
-   ```
-   C:\Windows\System32\drivers\etc
-   ```
-   File type = **All Files**, select **hosts**, open.
+Agar script run nahi hota (execution policy): PowerShell (Admin) me pehle ye chalao, phir script dubara:
+```powershell
+Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process -Force
+```
 
-3. **Add this line at the end** (then Save):
-   ```
-   72.62.254.176 erp.dincouture.pk
-   ```
+### Windows (manual — agar script nahi chale)
 
-4. **Save and close.**  
-   Run in PowerShell (Admin): `ipconfig /flushdns`  
-   Then open: **https://erp.dincouture.pk** in the browser.
+1. **Notepad as Administrator** kholo.
+2. **File → Open** → path: `C:\Windows\System32\drivers\etc`  
+   **Important:** Neeche "File name" me type karo: `hosts` (**.txt mat likhna** — file ka naam sirf `hosts` hona chahiye). "All Files" select karo, phir `hosts` open karo.
+3. Last line pe add karo: `72.62.254.176 erp.dincouture.pk`  
+   **Save** karte waqt dhyan se: save as **hosts** (extension .txt nahi). Agar Notepad .txt laga de to file rename karo: `hosts.txt` → `hosts`.
+4. PowerShell (Admin): `ipconfig /flushdns`  
+   Phir **https://erp.dincouture.pk** kholo.
 
 You may see a one-time certificate warning (e.g. “Your connection is not private”); use **Advanced → Proceed to erp.dincouture.pk** if the certificate is for `erp.dincouture.pk`. After that, the app should load.
 
