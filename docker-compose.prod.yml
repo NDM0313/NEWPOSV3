@@ -12,9 +12,11 @@ services:
       - dokploy-network
     labels:
       - traefik.enable=true
+      - traefik.docker.network=dokploy-network
       - "traefik.http.routers.erp.rule=Host(`erp.dincouture.pk`)"
       - traefik.http.routers.erp.entrypoints=websecure
       - traefik.http.routers.erp.tls.certresolver=letsencrypt
+      - traefik.http.routers.erp.service=erp
       - traefik.http.services.erp.loadbalancer.server.port=80
 
 networks:

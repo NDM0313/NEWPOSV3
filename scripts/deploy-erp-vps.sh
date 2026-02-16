@@ -41,6 +41,12 @@ export VITE_SUPABASE_URL
 export VITE_SUPABASE_ANON_KEY
 docker compose -f docker-compose.prod.yml build --no-cache
 
+# Ensure dokploy-network exists (Traefik and ERP both use it)
+if ! docker network inspect dokploy-network &>/dev/null; then
+  echo "Creating dokploy-network..."
+  docker network create dokploy-network
+fi
+
 echo ""
 echo "=== 3. Recreate and start container ==="
 docker compose -f docker-compose.prod.yml up -d --force-recreate
@@ -48,5 +54,10 @@ docker compose -f docker-compose.prod.yml up -d --force-recreate
 echo ""
 echo "=== 4. Check ==="
 docker compose -f docker-compose.prod.yml ps
+
+echo ""
+echo "=== 5. Diagnose (erp.dincouture.pk) ==="
+[ -f "scripts/vps-erp-diagnose.sh" ] && { chmod +x scripts/vps-erp-diagnose.sh 2>/dev/null; bash scripts/vps-erp-diagnose.sh; } || true
+
 echo ""
 echo "Done. Open https://erp.dincouture.pk to test."

@@ -85,7 +85,20 @@ bash <(curl -sL https://raw.githubusercontent.com/NDM0313/NEWPOSV3/before-mobile
 
 ---
 
-## 4) Agar ab bhi issue aaye
+## 4) erp.dincouture.pk load nahi ho raha — common causes
+
+| Cause | Fix |
+|-------|-----|
+| **Traefik wrong network** | ERP aur Traefik dono `dokploy-network` par hon. `docker network inspect dokploy-network` se check karo. Compose me `traefik.docker.network=dokploy-network` label hai. |
+| **Network missing** | Deploy script ab khud `dokploy-network` create karta hai agar nahi hai. Ya: `docker network create dokploy-network` |
+| **Traefik container not on network** | Dokploy’s Traefik (e.g. `dokploy-traefik`) ko attach karo: `docker network connect dokploy-network <traefik_container>` |
+| **Login redirect fail** | Supabase: `/root/supabase/docker/.env` me `SITE_URL=https://erp.dincouture.pk`. Phir `docker restart $(docker ps -q -f name=supabase-auth)` |
+
+Deploy ke baad **diagnose** automatically chalta hai (`scripts/vps-erp-diagnose.sh`). Dobara manually: `bash scripts/vps-erp-diagnose.sh`
+
+---
+
+## 5) Agar ab bhi issue aaye
 
 ### CORS (browser console me CORS error)
 
@@ -113,7 +126,7 @@ Agar ab bhi issue aaye to bhejo:
 
 ---
 
-## 5) Quick checklist
+## 6) Quick checklist
 
 | Step | Action | Expected |
 |------|--------|----------|
