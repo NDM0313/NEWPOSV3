@@ -9,23 +9,29 @@ import { createClient } from '@supabase/supabase-js';
 // CONFIGURATION
 // ============================================
 
-// Get these from Supabase Dashboard → Project Settings → API
+// Get these from Supabase Dashboard → Project Settings → API (or build-args on VPS)
 // Support both Vite and Next.js variable formats
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || import.meta.env.NEXT_PUBLIC_SUPABASE_URL || '';
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 
-                        import.meta.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 
-                        import.meta.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY || '';
+const supabaseUrl = (import.meta.env.VITE_SUPABASE_URL || import.meta.env.NEXT_PUBLIC_SUPABASE_URL || '').trim();
+const supabaseAnonKey = (import.meta.env.VITE_SUPABASE_ANON_KEY ||
+  import.meta.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+  import.meta.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY || '').trim();
 
-if (!supabaseUrl || !supabaseAnonKey) {
-  console.warn('Supabase URL or Anon Key is missing. Please check your .env file.');
-  console.warn('Required variables: VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY');
+const hasConfig = Boolean(supabaseUrl && supabaseAnonKey && !supabaseUrl.startsWith('http://placeholder'));
+if (!hasConfig) {
+  console.warn('[ERP] Supabase URL or Anon Key missing. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY (build-time on VPS).');
 }
+
+// Avoid createClient('', '') which can cause "Host is not valid" – use placeholder so app still mounts
+const url = hasConfig ? supabaseUrl : 'https://placeholder.supabase.co';
+const key = hasConfig ? supabaseAnonKey : 'placeholder-key';
+
+export const isSupabaseConfigured = hasConfig;
 
 // ============================================
 // CREATE CLIENT
 // ============================================
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+export const supabase = createClient(url, key, {
   auth: {
     persistSession: true,
     autoRefreshToken: true,

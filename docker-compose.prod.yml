@@ -1,0 +1,22 @@
+# ERP Frontend - production (Traefik + dokploy-network)
+# Build-args from env: VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY (or run scripts/deploy-erp-vps.sh)
+services:
+  erp-frontend:
+    image: erp-frontend:latest
+    build:
+      context: .
+      args:
+        VITE_SUPABASE_URL: ${VITE_SUPABASE_URL:-}
+        VITE_SUPABASE_ANON_KEY: ${VITE_SUPABASE_ANON_KEY:-}
+    networks:
+      - dokploy-network
+    labels:
+      - traefik.enable=true
+      - "traefik.http.routers.erp.rule=Host(`erp.dincouture.pk`)"
+      - traefik.http.routers.erp.entrypoints=websecure
+      - traefik.http.routers.erp.tls.certresolver=letsencrypt
+      - traefik.http.services.erp.loadbalancer.server.port=80
+
+networks:
+  dokploy-network:
+    external: true

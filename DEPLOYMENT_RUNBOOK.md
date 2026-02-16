@@ -22,10 +22,33 @@ Pick one:
 |--------|--------|
 | **Vercel** | Fastest: connect repo → build command `npm run build`, output `dist`. |
 | **Netlify** | Same: build `npm run build`, publish `dist`. |
-| **VPS** | Nginx + SSL (Let’s Encrypt). Serve `dist` as static. |
+| **VPS** | Nginx + SSL (Let’s Encrypt). Serve `dist` as static. See **VPS Docker (Supabase)** below. |
 | **Firebase Hosting** | `firebase init hosting` → build, deploy. |
 
 ⚠️ **PWA only works over HTTPS.** No exceptions.
+
+#### VPS Docker (Traefik + Supabase)
+
+ERP frontend uses **Supabase**; `VITE_SUPABASE_*` are **build-time** only (Vite). Image must be built with correct env.
+
+1. **Keys:**
+   - **Cloud:** Supabase Dashboard → Project Settings → API → **Project URL** + **anon public key**.
+   - **Self-hosted (VPS):** API URL = Kong gateway (e.g. `https://72.62.254.176:8443`); anon key from `/root/supabase/docker/.env` → `ANON_KEY`.
+
+2. **Build with env (on VPS or CI):**
+   ```bash
+   docker build \
+     --build-arg VITE_SUPABASE_URL=https://YOUR_KONG_OR_PROJECT_URL \
+     --build-arg VITE_SUPABASE_ANON_KEY=YOUR_ANON_KEY \
+     -t erp-frontend:latest .
+   ```
+
+3. **Run:**
+   ```bash
+   docker compose -f docker-compose.prod.yml up -d --force-recreate
+   ```
+
+4. **Verify:** `curl -I https://erp.dincouture.pk` (or your ERP host) → HTTP/2 200. Then **browser test:** Sign In + Dashboard/data pages. See **docs/ERP_VPS_TEST_AND_TROUBLESHOOT.md** for steps and CORS/redirect fixes.
 
 ---
 
