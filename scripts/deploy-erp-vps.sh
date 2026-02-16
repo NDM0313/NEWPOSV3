@@ -39,7 +39,21 @@ echo ""
 echo "=== 2. Build image (build-args from env) ==="
 export VITE_SUPABASE_URL
 export VITE_SUPABASE_ANON_KEY
-docker compose -f docker-compose.prod.yml build --no-cache
+BUILD_OK=0
+for attempt in 1 2 3; do
+  if docker compose -f docker-compose.prod.yml build --no-cache; then
+    BUILD_OK=1
+    break
+  fi
+  if [ "$attempt" -lt 3 ]; then
+    echo "[Retry $attempt/3] Docker Hub timeout? Waiting 30s..."
+    sleep 30
+  fi
+done
+if [ "$BUILD_OK" -ne 1 ]; then
+  echo "ERROR: Build failed after 3 attempts (often TLS timeout to Docker Hub). Retry later or check VPS network."
+  exit 1
+fi
 
 # Ensure dokploy-network exists (Traefik and ERP both use it)
 if ! docker network inspect dokploy-network &>/dev/null; then
