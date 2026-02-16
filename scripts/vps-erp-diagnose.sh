@@ -66,6 +66,9 @@ if [ "$HTTP" = "200" ]; then
   echo "[OK] https://$DOMAIN => $HTTP"
 elif [ "$HTTP" = "000" ]; then
   echo "[??] https://$DOMAIN unreachable (DNS/firewall/SSL or Traefik not routing)"
+  echo "     Run: bash scripts/vps-dns-verify.sh"
+  echo "     To use app from PC now: add to C:\\Windows\\System32\\drivers\\etc\\hosts:"
+  echo "       72.62.254.176 $DOMAIN"
 else
   echo "[??] https://$DOMAIN => $HTTP"
 fi

@@ -1,0 +1,10 @@
+Add this line to your Windows hosts file to use erp.dincouture.pk immediately (DNS workaround):
+
+72.62.254.176 erp.dincouture.pk
+
+File: C:\Windows\System32\drivers\etc\hosts
+Open Notepad as Administrator → Open that file → paste line at end → Save.
+Then: ipconfig /flushdns
+Then open: https://erp.dincouture.pk
+
+See docs/FIX_ERP_DOMAIN_NOW.md for full steps and permanent DNS fix.

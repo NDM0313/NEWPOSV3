@@ -6,20 +6,32 @@
 
 ## 0) DNS — erp.dincouture.pk resolve nahi ho raha (NXDOMAIN)
 
-Agar browser me **"This site can't be reached"** / **DNS_PROBE_FINISHED_NXDOMAIN** aaye, to domain ka DNS resolve nahi ho raha (record missing ya cache).
+Agar browser me **"This site can't be reached"** / **DNS_PROBE_FINISHED_NXDOMAIN** aaye, domain resolve nahi ho raha.
 
-**1) Hostinger / DNS provider me check karo:** Apne domain (dincouture.pk) ke DNS me:
+### Use app abhi (2 min) — hosts file workaround
+
+**Windows:** Notepad **Run as administrator** → Open `C:\Windows\System32\drivers\etc\hosts` (file type: All Files) → last line pe add karo:
+```
+72.62.254.176 erp.dincouture.pk
+```
+Save → PowerShell (Admin) me `ipconfig /flushdns` → browser me **https://erp.dincouture.pk** kholo. Certificate warning aaye to Advanced → Proceed.
+
+**Full steps:** [docs/FIX_ERP_DOMAIN_NOW.md](FIX_ERP_DOMAIN_NOW.md)
+
+### DNS permanently fix (Hostinger)
+
+**1) Hostinger** → Domains → dincouture.pk → DNS / Manage DNS. Ensure nameservers Hostinger ke hain.
+
+**2) A record add/edit:**
 
 | Type | Name/Host | Value/Target        | TTL  |
 |------|-----------|---------------------|------|
 | **A** | `erp`     | `72.62.254.176`     | 300  |
 
-- **Name:** `erp` (subdomain; full domain `erp.dincouture.pk` ban jayega).
-- **Value:** VPS ka IP `72.62.254.176`.
-- Save karo; propagation 5–30 min (kabhi 1–2 ghante) le sakta hai.
+Save. Propagation 5–30 min (kabhi 1–2 hr).
 
-**2) PC DNS cache clear:** Windows CMD (Admin): `ipconfig /flushdns`. Phir browser band karke dubara kholo.  
-**3) Verify:** `ping erp.dincouture.pk` ya mobile data se try karo. DNS theek hone ke baad Traefik + ERP serve karenge.
+**3) VPS par verify:** `cd /root/NEWPOSV3 && bash scripts/vps-dns-verify.sh`  
+**4) PC:** `ipconfig /flushdns`, phir https://erp.dincouture.pk
 
 ---
 
