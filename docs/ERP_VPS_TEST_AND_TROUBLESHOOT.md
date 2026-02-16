@@ -6,9 +6,9 @@
 
 ## 0) DNS — erp.dincouture.pk resolve nahi ho raha (NXDOMAIN)
 
-Agar browser me **"Can't reach this page"** / **DNS_PROBE_FINISHED_NXDOMAIN** aaye, to domain ka DNS set nahi hai.
+Agar browser me **"This site can't be reached"** / **DNS_PROBE_FINISHED_NXDOMAIN** aaye, to domain ka DNS resolve nahi ho raha (record missing ya cache).
 
-**Kya karna hai:** Apne domain (dincouture.pk) ke DNS provider (e.g. Cloudflare, Namecheap, GoDaddy) me:
+**1) Hostinger / DNS provider me check karo:** Apne domain (dincouture.pk) ke DNS me:
 
 | Type | Name/Host | Value/Target        | TTL  |
 |------|-----------|---------------------|------|
@@ -18,7 +18,8 @@ Agar browser me **"Can't reach this page"** / **DNS_PROBE_FINISHED_NXDOMAIN** aa
 - **Value:** VPS ka IP `72.62.254.176`.
 - Save karo; propagation 5–30 min (kabhi 1–2 ghante) le sakta hai.
 
-**Verify:** `ping erp.dincouture.pk` ya browser me `https://erp.dincouture.pk` — DNS resolve hone ke baad Traefik + ERP frontend serve karenge (agar VPS par `docker-compose.prod.yml` me `Host(erp.dincouture.pk)` set hai).
+**2) PC DNS cache clear:** Windows CMD (Admin): `ipconfig /flushdns`. Phir browser band karke dubara kholo.  
+**3) Verify:** `ping erp.dincouture.pk` ya mobile data se try karo. DNS theek hone ke baad Traefik + ERP serve karenge.
 
 ---
 

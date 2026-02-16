@@ -34,19 +34,16 @@ else
   echo "[??] ERP container not running. Run: docker compose -f $COMPOSE_FILE up -d"
 fi
 
-# 3. Traefik on same network
-TRAEFIK=$(docker ps -q --filter "name=traefik" 2>/dev/null | head -1)
-if [ -n "$TRAEFIK" ]; then
-  if docker network inspect "$NETWORK" 2>/dev/null | grep -q "\"$TRAEFIK\""; then
-    echo "[OK] Traefik is on $NETWORK"
+# 3. Traefik on same network (Dokploy: dokploy-traefik)
+TRAEFIK_NAME=$(docker ps --format '{{.Names}}' | grep -E 'traefik|dokploy-traefik' | head -1)
+if [ -n "$TRAEFIK_NAME" ]; then
+  if docker network inspect "$NETWORK" --format '{{range $k, $v := .Containers}}{{$v.Name}} {{end}}' 2>/dev/null | grep -qw "$TRAEFIK_NAME"; then
+    echo "[OK] Traefik ($TRAEFIK_NAME) is on $NETWORK"
   else
-    echo "[FIX] Traefik must be on $NETWORK: docker network connect $NETWORK <traefik_container>"
+    echo "[FIX] Run: docker network connect $NETWORK $TRAEFIK_NAME"
   fi
 else
-  echo "[??] No container named 'traefik' (Dokploy may use 'dokploy-traefik')"
-  if docker ps --format '{{.Names}}' | grep -q dokploy; then
-    echo "     Ensure Dokploy's Traefik is on $NETWORK."
-  fi
+  echo "[??] No Traefik container (dokploy-traefik). Attach your reverse-proxy to $NETWORK."
 fi
 
 # 4. Local curl to container (if we have container)

@@ -51,6 +51,19 @@ echo ""
 echo "=== 3. Recreate and start container ==="
 docker compose -f docker-compose.prod.yml up -d --force-recreate
 
+# Traefik must be on dokploy-network to route to ERP (Dokploy uses dokploy-traefik)
+TRAEFIK_NAME=$(docker ps --format '{{.Names}}' | grep -E 'traefik|dokploy-traefik' | head -1)
+if [ -n "$TRAEFIK_NAME" ]; then
+  if docker network inspect dokploy-network 2>/dev/null | grep -q "\"$TRAEFIK_NAME\""; then
+    echo "Traefik ($TRAEFIK_NAME) already on dokploy-network"
+  else
+    echo "Attaching Traefik ($TRAEFIK_NAME) to dokploy-network..."
+    docker network connect dokploy-network "$TRAEFIK_NAME" 2>/dev/null || true
+  fi
+else
+  echo "No Traefik container found (name containing 'traefik'). If ERP domain fails, attach your reverse-proxy container to dokploy-network."
+fi
+
 echo ""
 echo "=== 4. Check ==="
 docker compose -f docker-compose.prod.yml ps
