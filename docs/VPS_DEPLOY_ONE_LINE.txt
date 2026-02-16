@@ -1,0 +1,1 @@
+cd /root/NEWPOSV3 && git fetch origin && git checkout before-mobile-replace 2>/dev/null; git reset --hard origin/before-mobile-replace && bash scripts/deploy-erp-vps.sh

@@ -53,14 +53,19 @@ docker compose -f docker-compose.prod.yml up -d --force-recreate
 
 ### Auto-apply (ek command)
 
-VPS par repo root se ye script chalao — ye **git pull**, **build** (Supabase env ke sath), aur **container recreate** khud karega. Anon key `/root/supabase/docker/.env` se auto load hoti hai.
+**Agar `scripts/deploy-erp-vps.sh` missing ho (e.g. branch sync nahi hua):** ye ek line chalao — branch sync karke deploy chalega:
 
 ```bash
-cd /root/NEWPOSV3   # ya jahan repo clone hai
-bash scripts/deploy-erp-vps.sh
+cd /root/NEWPOSV3 && git fetch origin && git checkout before-mobile-replace 2>/dev/null; git reset --hard origin/before-mobile-replace && bash scripts/deploy-erp-vps.sh
 ```
 
-Pehli dafa: `chmod +x scripts/deploy-erp-vps.sh` (optional). Agar anon key alag path pe hai to `SUPABASE_ENV=/path/to/.env bash scripts/deploy-erp-vps.sh`.
+Ya GitHub se one-liner run karo:
+```bash
+bash <(curl -sL https://raw.githubusercontent.com/NDM0313/NEWPOSV3/before-mobile-replace/docs/VPS_DEPLOY_ONE_LINE.txt)
+```
+(Note: cd /root/NEWPOSV3 wala line repo path use karta hai; agar repo kahin aur hai to pehle wala block use karo.)
+
+**Jab script maujood ho:** repo root se `bash scripts/deploy-erp-vps.sh`. Anon key `/root/supabase/docker/.env` se auto load hoti hai.
 
 ---
 
