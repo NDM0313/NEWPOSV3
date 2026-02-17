@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, ReactNode } from 'react';
 
-export type DateRangeType = 'today' | 'last7days' | 'last15days' | 'last30days' | 'week' | 'month' | 'lastQuarter' | 'thisYear' | 'lastYear' | 'custom';
+export type DateRangeType = 'fromStart' | 'today' | 'last7days' | 'last15days' | 'last30days' | 'week' | 'month' | 'lastQuarter' | 'thisYear' | 'lastYear' | 'custom';
 
 export interface DateRange {
   type: DateRangeType;
@@ -39,6 +39,11 @@ export const DateRangeProvider: React.FC<{ children: ReactNode }> = ({ children 
     endDate.setHours(23, 59, 59, 999);
 
     switch (type) {
+      case 'fromStart':
+        // Show all data from a fixed past date (e.g. business start)
+        const fromStart = new Date(today.getFullYear() - 10, 0, 1); // 10 years back
+        return { startDate: fromStart, endDate };
+
       case 'today':
         return { startDate: today, endDate };
 
@@ -95,9 +100,9 @@ export const DateRangeProvider: React.FC<{ children: ReactNode }> = ({ children 
   };
 
   const [dateRange, setDateRangeState] = useState<DateRange>(() => {
-    const { startDate, endDate } = getDateRangeForType('today');
+    const { startDate, endDate } = getDateRangeForType('fromStart');
     return {
-      type: 'today',
+      type: 'fromStart',
       startDate,
       endDate,
     };

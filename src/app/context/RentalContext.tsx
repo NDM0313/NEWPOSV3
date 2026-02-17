@@ -186,9 +186,10 @@ export const RentalProvider = ({ children }: { children: ReactNode }) => {
     else setLoading(false);
   }, [companyId, loadRentals]);
 
-  // Real-time: reload rentals when rentals/rental_payments change
+  // Real-time: reload rentals when rentals/rental_payments change (skip if disabled or when WS fails to avoid 403 spam)
   useEffect(() => {
     if (!companyId) return;
+    if (import.meta.env.VITE_DISABLE_REALTIME === 'true') return;
     const channel = supabase
       .channel('rentals-realtime')
       .on(
@@ -201,9 +202,17 @@ export const RentalProvider = ({ children }: { children: ReactNode }) => {
         { event: '*', schema: 'public', table: 'rental_payments' },
         () => loadRentals()
       )
-      .subscribe();
+      .subscribe((status) => {
+        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+          try {
+            supabase.removeChannel(channel);
+          } catch (_) {}
+        }
+      });
     return () => {
-      supabase.removeChannel(channel);
+      try {
+        supabase.removeChannel(channel);
+      } catch (_) {}
     };
   }, [companyId, loadRentals]);
 

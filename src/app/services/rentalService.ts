@@ -903,13 +903,13 @@ export const rentalService = {
   },
 
   async getAllRentals(companyId: string, branchId?: string | null) {
+    // Use explicit FK hint so PostgREST finds rentals->users; omit if schema has no created_by
     let query = supabase
       .from('rentals')
       .select(`
         *,
         customer:contacts(name, phone),
         branch:branches(id, name, code),
-        created_by_user:users(id, full_name, email),
         items:rental_items(
           *,
           product:products(name, sku)
@@ -934,7 +934,6 @@ export const rentalService = {
         *,
         customer:contacts(*),
         branch:branches(id, name, code),
-        created_by_user:users(id, full_name, email),
         items:rental_items(
           *,
           product:products(*)

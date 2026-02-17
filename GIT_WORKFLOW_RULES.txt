@@ -1,0 +1,113 @@
+==================================================
+ERP PROJECT – OFFICIAL GIT WORKFLOW RULES
+==================================================
+
+STATUS: SAFE STABLE MODE
+Working Branch: main
+Archive Branch: archive-vps-mobile-2026 (DO NOT MERGE)
+
+==================================================
+GOLDEN RULE
+==================================================
+
+Machine change karne se pehle → PUSH
+Dusri machine par kaam start karne se pehle → PULL
+
+No branch switching.
+No force push.
+No manual merge.
+No risky commands.
+
+==================================================
+1️⃣ STARTING WORK (ANY MACHINE)
+==================================================
+
+ALWAYS RUN:
+
+git checkout main
+git pull origin main
+
+Confirm:
+- Branch is main
+- Code is up to date
+
+==================================================
+2️⃣ AFTER FINISHING WORK
+==================================================
+
+Run:
+
+git add .
+git commit -m ""
+git push origin main
+
+Examples:
+
+git commit -m "Windows: Sales cancel RPC integration"
+git commit -m "Mac: Mobile UI polish"
+git commit -m "Invoice numbering fix"
+git commit -m "Bug fix: Purchase service FK issue"
+
+==================================================
+3️⃣ SWITCHING BETWEEN WINDOWS ↔ MAC
+==================================================
+
+On current machine:
+git add .
+git commit -m "Work completed"
+git push origin main
+
+On new machine:
+git checkout main
+git pull origin main
+
+==================================================
+4️⃣ DEPLOYMENT RULE
+==================================================
+
+VPS must always deploy from main only.
+
+Never deploy from archive branch.
+
+==================================================
+5️⃣ ARCHIVE POLICY
+==================================================
+
+Archive branch:
+archive-vps-mobile-2026
+
+DO NOT:
+- Merge it
+- Delete it
+- Deploy from it
+
+If a file is needed:
+
+git checkout archive-vps-mobile-2026 -- path/to/file
+
+==================================================
+6️⃣ EMERGENCY RECOVERY
+==================================================
+
+Safety tag exists:
+
+pre-integration-safe-point
+
+To restore:
+
+git reset --hard pre-integration-safe-point
+
+==================================================
+7️⃣ STRICTLY NOT ALLOWED
+==================================================
+
+❌ git merge (manual merging without review)
+❌ git push --force
+❌ Working on other branches
+❌ Leaving uncommitted changes before switching machine
+
+==================================================
+
+MAIN BRANCH IS THE SINGLE SOURCE OF TRUTH.
+
+==================================================
