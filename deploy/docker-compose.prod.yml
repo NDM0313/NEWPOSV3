@@ -13,11 +13,13 @@ services:
       args:
         VITE_SUPABASE_URL: ${VITE_SUPABASE_URL}
         VITE_SUPABASE_ANON_KEY: ${VITE_SUPABASE_ANON_KEY}
+        VITE_DISABLE_REALTIME: ${VITE_DISABLE_REALTIME:-true}
     env_file: .env.production
     container_name: erp-frontend
     restart: always
+    # Use 3001 when 3000 is taken (e.g. Dokploy). Traefik can route erp.dincouture.pk to erp-frontend:80 on same network.
     ports:
-      - "3000:80"
+      - "3001:80"
     healthcheck:
       test: ["CMD-SHELL", "wget -q --spider http://localhost:80/ || exit 1"]
       interval: 30s
