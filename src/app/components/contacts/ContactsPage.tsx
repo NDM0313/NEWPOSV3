@@ -756,9 +756,9 @@ export const ContactsPage = () => {
         </div>
       </div>
 
-      {/* Contacts Table - Scrollable */}
-      <div className="flex-1 overflow-auto px-6 py-4">
-        <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden">
+      {/* Contacts Table - Scrollable (min-h-0 lets flex-1 shrink so overflow works) */}
+      <div className="flex-1 min-h-0 overflow-auto px-6 py-4">
+        <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden min-h-[280px]">
           {loading ? (
             <div className="py-12 text-center">
               <Loader2 size={48} className="mx-auto text-blue-500 mb-3 animate-spin" />

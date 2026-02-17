@@ -11,14 +11,20 @@ import { createClient } from '@supabase/supabase-js';
 
 // Get these from Supabase Dashboard → Project Settings → API
 // Support both Vite and Next.js variable formats
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || import.meta.env.NEXT_PUBLIC_SUPABASE_URL || '';
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 
-                        import.meta.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 
-                        import.meta.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY || '';
+// IMPORTANT: Vite inlines these at BUILD time. For production Docker build,
+// pass VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY as build args (see deploy/Dockerfile).
+const supabaseUrl = (import.meta.env.VITE_SUPABASE_URL || import.meta.env.NEXT_PUBLIC_SUPABASE_URL || '').trim();
+const supabaseAnonKey = (import.meta.env.VITE_SUPABASE_ANON_KEY ||
+                        import.meta.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+                        import.meta.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY || '').trim();
 
-if (!supabaseUrl || !supabaseAnonKey) {
-  console.warn('Supabase URL or Anon Key is missing. Please check your .env file.');
-  console.warn('Required variables: VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY');
+const isValidSupabaseUrl = supabaseUrl.startsWith('http://') || supabaseUrl.startsWith('https://');
+if (!supabaseUrl || !isValidSupabaseUrl || !supabaseAnonKey) {
+  const msg =
+    '[Supabase] Missing or invalid config. Set VITE_SUPABASE_URL (full https URL) and VITE_SUPABASE_ANON_KEY. ' +
+    'In production these must be set at BUILD time (e.g. docker compose build with --env-file .env.production).';
+  console.error(msg);
+  throw new Error(msg);
 }
 
 // ============================================

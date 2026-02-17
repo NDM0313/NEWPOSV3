@@ -206,8 +206,8 @@ export function AgingReportTab({ invoices }: AgingReportTabProps) {
                     ...data.invoices
                       .sort((a, b) => b.daysPast - a.daysPast)
                       .map((invoice, index) => {
-                        const ageBadge = getAgeBadgeStyle(invoice.daysPast);
-                        const statusBadge = getStatusBadgeStyle(invoice.status);
+                        const ageBadge = getAgeBadgeStyle(invoice.daysPast) ?? { bg: 'rgba(148, 163, 184, 0.15)', color: '#94a3b8' };
+                        const statusBadge = getStatusBadgeStyle(invoice.status) ?? { bg: 'rgba(245, 158, 11, 0.15)', color: '#f59e0b' };
                         
                         return (
                           <tr

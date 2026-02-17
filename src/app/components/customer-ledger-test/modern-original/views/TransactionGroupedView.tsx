@@ -89,9 +89,12 @@ export function TransactionGroupedView({ transactions, saleItemsMap = new Map(),
 
                 <div className="w-40">
                   <div className="text-xs mb-1 text-gray-500">Reference</div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <FileText className="w-4 h-4 text-blue-400" />
                     <span className="font-medium font-mono text-white">{transaction.referenceNo}</span>
+                    {transaction.referenceStatus === 'cancelled' && (
+                      <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-amber-500/20 text-amber-400 border border-amber-500/30">Cancelled</span>
+                    )}
                   </div>
                 </div>
 

@@ -53,8 +53,9 @@ import {
 import { toast } from 'sonner';
 import { useCheckPermission } from '@/app/hooks/useCheckPermission';
 import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
+import { getEffectivePurchaseStatus, getPurchaseStatusBadgeConfig, DEFAULT_PURCHASE_BADGE, isPaymentClosedForPurchase, canAddPaymentToPurchase } from '@/app/utils/statusHelpers';
 
-type PurchaseStatus = 'received' | 'ordered' | 'pending' | 'final' | 'draft';
+type PurchaseStatus = 'received' | 'ordered' | 'pending' | 'final' | 'draft' | 'cancelled';
 type PaymentStatus = 'paid' | 'partial' | 'unpaid';
 
 interface Purchase {
@@ -141,6 +142,8 @@ export const PurchasesPage = () => {
   const [isLedgerOpen, setIsLedgerOpen] = useState(false);
   const [viewDetailsOpen, setViewDetailsOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [cancelPurchaseDialogOpen, setCancelPurchaseDialogOpen] = useState(false);
+  const [cancellingPurchase, setCancellingPurchase] = useState(false);
   
   // STEP 2 FIX: View Payments Modal state (like Sale module)
   const [viewPaymentsOpen, setViewPaymentsOpen] = useState(false);
@@ -191,8 +194,14 @@ export const PurchasesPage = () => {
   // ✅ Action Handlers
   // STEP 2 FIX: Payment click handler - show ViewPaymentsModal first (like Sale module)
   const handleMakePayment = (purchase: Purchase) => {
+    if (!canAddPaymentToPurchase(purchase, purchase.paymentDue ?? 0)) {
+      const effective = getEffectivePurchaseStatus(purchase);
+      if (effective === 'cancelled') toast.error('Cannot add payment to a cancelled purchase order.');
+      else if (effective === 'returned') toast.error('Purchase is fully returned; no payment allowed.');
+      else toast.error('Cannot add payment.');
+      return;
+    }
     setSelectedPurchase(purchase);
-    // First show payment history modal
     setViewPaymentsOpen(true);
   };
 
@@ -247,6 +256,24 @@ export const PurchasesPage = () => {
       // Refresh on error to ensure UI consistency
       await refreshPurchases();
       await loadPurchases();
+    }
+  };
+
+  const handleCancelPurchase = async () => {
+    if (!selectedPurchase || !selectedPurchase.uuid) return;
+    setCancellingPurchase(true);
+    try {
+      await purchaseService.updatePurchaseStatus(selectedPurchase.uuid, 'cancelled');
+      toast.success(`PO ${selectedPurchase.poNo} has been cancelled. Reversed entry created.`);
+      setCancelPurchaseDialogOpen(false);
+      setSelectedPurchase(null);
+      setViewDetailsOpen(false);
+      await refreshPurchases();
+      await loadPurchases();
+    } catch (error: any) {
+      toast.error(error?.message || 'Failed to cancel purchase order');
+    } finally {
+      setCancellingPurchase(false);
     }
   };
 
@@ -314,11 +341,12 @@ export const PurchasesPage = () => {
           items: p.items?.length || 0,
           grandTotal: p.total || 0,
           paymentDue: p.due_amount || 0,
-          // Preserve API status for tabs: draft | ordered | received | final
+          // Preserve API status: draft | ordered | received | final | cancelled
           status: (p.status === 'final' ? 'final' : 
                    p.status === 'received' ? 'received' : 
                    p.status === 'ordered' ? 'ordered' : 
                    p.status === 'draft' ? 'draft' : 
+                   p.status === 'cancelled' ? 'cancelled' : 
                    'draft') as PurchaseStatus,
           paymentStatus: p.payment_status || 'unpaid',
           // STEP 3 FIX: Added By - show user name from created_by_user join or Purchase.createdBy
@@ -383,6 +411,7 @@ export const PurchasesPage = () => {
                    p.status === 'received' ? 'received' : 
                    p.status === 'ordered' ? 'ordered' : 
                    p.status === 'draft' ? 'draft' : 
+                   p.status === 'cancelled' ? 'cancelled' : 
                    'draft') as PurchaseStatus,
           paymentStatus: p.paymentStatus || 'unpaid',
           // STEP 3 FIX: Added By - show user name from created_by_user join (context purchases)
@@ -688,32 +717,24 @@ export const PurchasesPage = () => {
     branchFilter !== 'all',
   ].filter(Boolean).length;
 
-  // STEP 1 FIX: Status badge with proper mapping
-  // Final → Final (green), Received → Received (green), Draft/Ordered → Pending (yellow)
-  const getPurchaseStatusBadge = (status: PurchaseStatus) => {
-    const config: Record<string, { bg: string; text: string; border: string; icon: any; label: string }> = {
-      final: { bg: 'bg-green-500/20', text: 'text-green-400', border: 'border-green-500/30', icon: CheckCircle, label: 'Final' },
-      received: { bg: 'bg-green-500/20', text: 'text-green-400', border: 'border-green-500/30', icon: CheckCircle, label: 'Received' },
-      pending: { bg: 'bg-yellow-500/20', text: 'text-yellow-400', border: 'border-yellow-500/30', icon: AlertCircle, label: 'Pending' },
-      ordered: { bg: 'bg-blue-500/20', text: 'text-blue-400', border: 'border-blue-500/30', icon: Clock, label: 'Ordered' },
-      draft: { bg: 'bg-gray-500/20', text: 'text-gray-400', border: 'border-gray-500/30', icon: AlertCircle, label: 'Draft' },
-    };
-    const { bg, text, border, icon: Icon, label } = config[status] || config.pending;
+  // Status badge from centralized effective status (draft/ordered/received/final/cancelled/returned/partially_returned)
+  const getPurchaseStatusBadgeFromPurchase = (purchase: Purchase) => {
+    const config = getPurchaseStatusBadgeConfig(purchase) ?? DEFAULT_PURCHASE_BADGE;
     return (
-      <Badge className={cn('text-xs font-medium capitalize gap-1 h-6 px-2', bg, text, border)}>
-        <Icon size={12} />
-        {label}
+      <Badge className={cn('text-xs font-medium h-6 px-2 flex items-center gap-1', config.bg, config.text, config.border)}>
+        {config.label}
       </Badge>
     );
   };
 
   const getPaymentStatusBadge = (status: PaymentStatus) => {
-    const config = {
+    const config: Record<string, { bg: string; text: string; border: string }> = {
       paid: { bg: 'bg-green-500/20', text: 'text-green-400', border: 'border-green-500/30' },
       partial: { bg: 'bg-yellow-500/20', text: 'text-yellow-400', border: 'border-yellow-500/30' },
       unpaid: { bg: 'bg-red-500/20', text: 'text-red-400', border: 'border-red-500/30' },
     };
-    const { bg, text, border } = config[status];
+    const c = config[status] ?? config.paid;
+    const { bg, text, border } = c;
     return (
       <Badge className={cn('text-xs font-medium capitalize h-6 px-2', bg, text, border)}>
         {status}
@@ -722,7 +743,8 @@ export const PurchasesPage = () => {
   };
 
   const renderPurchaseCell = (purchase: Purchase, key: string): React.ReactNode => {
-    switch (key) {
+    try {
+      switch (key) {
       case 'date': {
         const dateTime = formatDateAndTime(purchase.date);
         return (
@@ -776,8 +798,8 @@ export const PurchasesPage = () => {
         );
       }
       case 'status': {
-        // Enhanced Status Column: Badge + Return Icon + Attachment Icon
-        const statusBadge = getPurchaseStatusBadge(purchase.status);
+        // Enhanced Status Column: Badge from effective status + Return Icon + Attachment Icon
+        const statusBadge = getPurchaseStatusBadgeFromPurchase(purchase);
         const hasReturn = (purchase.status === 'final' || purchase.status === 'received') && purchasesWithReturns.has(purchase.uuid);
         // Check for attachments - handle both array and object formats
         const hasAttachments = purchase.attachments && (
@@ -856,19 +878,47 @@ export const PurchasesPage = () => {
         return (
           <div className="text-sm font-semibold text-white tabular-nums">{formatCurrency(purchase.grandTotal)}</div>
         );
-      case 'paymentDue':
+      case 'paymentDue': {
+        const paymentClosed = isPaymentClosedForPurchase(purchase);
+        const canPay = canAddPaymentToPurchase(purchase, purchase.paymentDue ?? 0);
+        if (paymentClosed) {
+          return (
+            <span
+              className="text-sm text-gray-500 tabular-nums cursor-default"
+              title={getEffectivePurchaseStatus(purchase) === 'cancelled' ? 'Purchase order is cancelled' : 'Closed'}
+            >
+              Closed
+            </span>
+          );
+        }
+        if (purchase.paymentDue > 0 && canPay) {
+          return (
+            <button onClick={() => handleMakePayment(purchase)} className="text-sm font-semibold text-red-400 tabular-nums hover:text-red-300 hover:underline cursor-pointer transition-colors" title="Click to make payment">
+              {formatCurrency(purchase.paymentDue)}
+            </button>
+          );
+        }
         return (
-          <>
-            {purchase.paymentDue > 0 ? (
-              <button onClick={() => handleMakePayment(purchase)} className="text-sm font-semibold text-red-400 tabular-nums hover:text-red-300 hover:underline cursor-pointer transition-colors" title="Click to make payment">
-                {formatCurrency(purchase.paymentDue)}
-              </button>
-            ) : (
-              <div className="text-sm text-gray-600">-</div>
-            )}
-          </>
+          purchase.paymentDue > 0 ? (
+            <div className="text-sm font-semibold text-red-400 tabular-nums">{formatCurrency(purchase.paymentDue)}</div>
+          ) : (
+            <div className="text-sm text-gray-600">-</div>
+          )
         );
-      case 'paymentStatus':
+      }
+      case 'paymentStatus': {
+        const paymentClosed = isPaymentClosedForPurchase(purchase);
+        const isCancelled = getEffectivePurchaseStatus(purchase) === 'cancelled';
+        if (paymentClosed || isCancelled) {
+          return (
+            <span
+              className="cursor-default opacity-70 inline-block pointer-events-none"
+              title={isCancelled ? 'Purchase order is cancelled' : 'Closed'}
+            >
+              {getPaymentStatusBadge(purchase.paymentStatus)}
+            </span>
+          );
+        }
         return (
           <>
             {purchase.paymentDue > 0 ? (
@@ -880,10 +930,14 @@ export const PurchasesPage = () => {
             )}
           </>
         );
+      }
       case 'addedBy':
         return <div className="text-xs text-gray-400">{purchase.addedBy}</div>;
       default:
         return null;
+    }
+    } catch (_) {
+      return <span className="text-gray-500 text-xs">—</span>;
     }
   };
 
@@ -1253,6 +1307,7 @@ export const PurchasesPage = () => {
                       { value: 'ordered', label: 'Ordered' },
                       { value: 'received', label: 'Received' },
                       { value: 'final', label: 'Final' },
+                      { value: 'cancelled', label: 'Cancelled' },
                     ].map(opt => (
                       <label key={opt.value} className="flex items-center gap-2 cursor-pointer">
                         <input
@@ -1437,6 +1492,7 @@ export const PurchasesPage = () => {
                               <Eye size={14} className="mr-2 text-blue-400" />
                               View Details
                             </DropdownMenuItem>
+                            {getEffectivePurchaseStatus(purchase) !== 'cancelled' && (
                             <DropdownMenuItem 
                               onClick={() => handleEdit(purchase)}
                               className="hover:bg-gray-800 cursor-pointer"
@@ -1444,17 +1500,26 @@ export const PurchasesPage = () => {
                               <Edit size={14} className="mr-2 text-green-400" />
                               Edit Purchase
                             </DropdownMenuItem>
+                            )}
                             <DropdownMenuItem className="hover:bg-gray-800 cursor-pointer" onClick={() => handlePrintPO(purchase)}>
                               <FileText size={14} className="mr-2 text-purple-400" />
                               Print PO
                             </DropdownMenuItem>
                             <DropdownMenuSeparator className="bg-gray-700" />
                             
-                            {/* 🎯 MAKE PAYMENT - Only show if there's outstanding payment */}
-                            {purchase.paymentDue > 0 && (
+                            {/* 🎯 MAKE PAYMENT - When payment allowed by effective status */}
+                            {canAddPaymentToPurchase(purchase, purchase.paymentDue ?? 0) && (
                               <DropdownMenuItem className="hover:bg-gray-800 cursor-pointer" onClick={() => handleMakePayment(purchase)}>
                                 <DollarSign size={14} className="mr-2 text-yellow-400" />
                                 Make Payment
+                              </DropdownMenuItem>
+                            )}
+                            
+                            {/* 🎯 CANCEL PO - Only for final; hidden when already cancelled */}
+                            {purchase.status === 'final' && getEffectivePurchaseStatus(purchase) !== 'cancelled' && (
+                              <DropdownMenuItem className="hover:bg-gray-800 cursor-pointer text-amber-400" onClick={() => { setSelectedPurchase(purchase); setCancelPurchaseDialogOpen(true); }}>
+                                <XCircle size={14} className="mr-2" />
+                                Cancel PO
                               </DropdownMenuItem>
                             )}
                             
@@ -1464,8 +1529,8 @@ export const PurchasesPage = () => {
                               View Ledger
                             </DropdownMenuItem>
                             
-                            {/* 🎯 CREATE PURCHASE RETURN - Only for final/received purchases without existing returns */}
-                            {(purchase.status === 'final' || purchase.status === 'received') && 
+                            {/* 🎯 CREATE PURCHASE RETURN - Only for final/received (not cancelled) without existing returns */}
+                            {(purchase.status === 'final' || purchase.status === 'received') && getEffectivePurchaseStatus(purchase) !== 'cancelled' &&
                              !(purchase.hasReturn || purchasesWithReturns.has(purchase.uuid)) && (
                               <DropdownMenuItem 
                                 className="hover:bg-gray-800 cursor-pointer" 
@@ -1479,7 +1544,7 @@ export const PurchasesPage = () => {
                               </DropdownMenuItem>
                             )}
                             
-                            {canDeletePurchase && (
+                            {canDeletePurchase && getEffectivePurchaseStatus(purchase) !== 'cancelled' && (
                             <>
                             <DropdownMenuSeparator className="bg-gray-700" />
                             <DropdownMenuItem className="hover:bg-gray-800 cursor-pointer text-red-400" onClick={() => handleDelete(purchase)}>
@@ -1603,6 +1668,7 @@ export const PurchasesPage = () => {
                              purchaseData.status === 'received' ? 'received' : 
                              purchaseData.status === 'ordered' ? 'ordered' : 
                              purchaseData.status === 'draft' ? 'draft' : 
+                             purchaseData.status === 'cancelled' ? 'cancelled' : 
                              'draft') as PurchaseStatus,
                     paymentStatus: purchaseData.payment_status || 'unpaid',
                     addedBy: purchaseData.created_by_user?.full_name || purchaseData.created_by_user?.email || selectedPurchase.addedBy || 'System',
@@ -1710,6 +1776,38 @@ export const PurchasesPage = () => {
                 className="bg-red-600 hover:bg-red-700 text-white"
               >
                 Yes, Delete Purchase
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      )}
+
+      {/* Cancel Purchase Order Confirmation Dialog */}
+      {selectedPurchase && (
+        <AlertDialog open={cancelPurchaseDialogOpen} onOpenChange={setCancelPurchaseDialogOpen}>
+          <AlertDialogContent className="bg-gray-900 border-gray-700 text-white max-w-md">
+            <AlertDialogHeader>
+              <AlertDialogTitle className="text-amber-400 flex items-center gap-2">
+                <XCircle size={20} />
+                Cancel Purchase Order
+              </AlertDialogTitle>
+              <AlertDialogDescription className="text-gray-300 space-y-3 mt-4">
+                <p>
+                  Are you sure you want to cancel <strong className="text-white">{selectedPurchase.poNo}</strong>?
+                </p>
+                <p className="text-sm text-amber-300/90">A reversal entry will be created. This action cannot be undone.</p>
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel className="bg-gray-800 border-gray-700 text-white hover:bg-gray-700" disabled={cancellingPurchase}>
+                Cancel
+              </AlertDialogCancel>
+              <AlertDialogAction
+                onClick={handleCancelPurchase}
+                disabled={cancellingPurchase}
+                className="bg-amber-600 hover:bg-amber-500 text-white"
+              >
+                {cancellingPurchase ? 'Cancelling...' : 'Cancel PO'}
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>

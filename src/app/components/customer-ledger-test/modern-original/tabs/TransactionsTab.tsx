@@ -609,8 +609,11 @@ export function TransactionsTab({ transactions, saleItemsMap = new Map(), studio
                       {visibleColumns.reference && (
                         <td className="px-5 py-4">
                           <div className="flex items-center gap-2">
-                            <div className="text-sm font-semibold text-white hover:text-blue-400 flex items-center gap-1">
+                            <div className="text-sm font-semibold text-white hover:text-blue-400 flex items-center gap-2 flex-wrap">
                               {transaction.referenceNo}
+                              {transaction.referenceStatus === 'cancelled' && (
+                                <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-amber-500/20 text-amber-400 border border-amber-500/30">Cancelled</span>
+                              )}
                               <Eye className="w-3.5 h-3.5 opacity-0 group-hover:opacity-100 transition-opacity" />
                             </div>
                             {transaction.linkedInvoices && transaction.linkedInvoices.length > 0 && (

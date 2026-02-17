@@ -10,7 +10,7 @@ export interface Sale {
   customer_name: string;
   contact_number?: string;
   type: 'invoice' | 'quotation';
-  status: 'draft' | 'quotation' | 'order' | 'final';
+  status: 'draft' | 'quotation' | 'order' | 'final' | 'cancelled';
   payment_status: 'paid' | 'partial' | 'unpaid';
   payment_method?: string;
   shipping_status?: 'pending' | 'processing' | 'delivered' | 'cancelled';
@@ -470,8 +470,60 @@ export const saleService = {
     return saleData;
   },
 
-  // Update sale status
+  // Update sale status (when 'cancelled': create SALE_CANCELLED stock reversals, then update status)
   async updateSaleStatus(id: string, status: Sale['status']) {
+    if (status === 'cancelled') {
+      const { data: saleRow } = await supabase.from('sales').select('id, invoice_no, branch_id, company_id').eq('id', id).single();
+      if (!saleRow) throw new Error('Sale not found');
+      const invoiceNo = (saleRow as any).invoice_no || `SL-${id.substring(0, 8)}`;
+
+      const { data: existingReversal } = await supabase
+        .from('stock_movements')
+        .select('id')
+        .eq('reference_type', 'sale')
+        .eq('reference_id', id)
+        .eq('movement_type', 'SALE_CANCELLED')
+        .limit(1);
+      if (existingReversal && existingReversal.length > 0) {
+        const { data, error } = await supabase.from('sales').update({ status }).eq('id', id).select().single();
+        if (error) throw error;
+        return data;
+      }
+
+      const { data: stockMovements } = await supabase
+        .from('stock_movements')
+        .select('id, company_id, branch_id, product_id, variation_id, quantity, unit_cost, total_cost, box_change, piece_change')
+        .eq('reference_type', 'sale')
+        .eq('reference_id', id)
+        .eq('movement_type', 'sale');
+
+      if (stockMovements && stockMovements.length > 0) {
+        for (const m of stockMovements) {
+          const reverseMovement: Record<string, unknown> = {
+            company_id: m.company_id,
+            branch_id: m.branch_id,
+            product_id: m.product_id,
+            variation_id: m.variation_id ?? null,
+            movement_type: 'SALE_CANCELLED',
+            quantity: Math.abs(Number(m.quantity) || 0),
+            unit_cost: Number(m.unit_cost) || 0,
+            total_cost: Math.abs(Number(m.total_cost) || 0),
+            reference_type: 'sale',
+            reference_id: id,
+            notes: `Reversal of ${invoiceNo} (Cancelled)`,
+          };
+          if (m.box_change != null) reverseMovement.box_change = Math.abs(Number(m.box_change) || 0);
+          if (m.piece_change != null) reverseMovement.piece_change = Math.abs(Number(m.piece_change) || 0);
+          const { error: insertErr } = await supabase.from('stock_movements').insert(reverseMovement);
+          if (insertErr) throw insertErr;
+        }
+      }
+
+      const { data, error } = await supabase.from('sales').update({ status }).eq('id', id).select().single();
+      if (error) throw error;
+      return data;
+    }
+
     const { data, error } = await supabase
       .from('sales')
       .update({ status })
@@ -485,6 +537,11 @@ export const saleService = {
 
   // Update sale (full update)
   async updateSale(id: string, updates: Partial<Sale>) {
+    // 🔒 CANCELLED: No updates allowed on cancelled sales
+    const { data: existingSale } = await supabase.from('sales').select('status').eq('id', id).single();
+    if (existingSale && (existingSale as any).status === 'cancelled') {
+      throw new Error('Cannot edit a cancelled invoice.');
+    }
     // 🔒 LOCK CHECK: Prevent editing if sale has returns
     const { data: returns } = await supabase
       .from('sale_returns')
@@ -513,6 +570,11 @@ export const saleService = {
   // CRITICAL: This deletes ALL related data in correct order
   // Order: Payments → Journal Entries → Stock Movements (reverse) → Ledger Entries → Activity Logs → Sale Items → Sale
   async deleteSale(id: string) {
+    // 🔒 CANCELLED: No delete allowed on cancelled sales (they are already reversed)
+    const { data: existingSale } = await supabase.from('sales').select('status').eq('id', id).single();
+    if (existingSale && (existingSale as any).status === 'cancelled') {
+      throw new Error('Cannot delete a cancelled invoice.');
+    }
     console.log('[SALE SERVICE] Starting cascade delete for sale:', id);
     
     try {
@@ -715,6 +777,11 @@ export const saleService = {
     referenceNumber?: string,
     options?: { notes?: string; attachments?: any }
   ) {
+    // 🔒 CANCELLED: No payment allowed on cancelled sales
+    const { data: saleRow } = await supabase.from('sales').select('status').eq('id', saleId).single();
+    if (saleRow && (saleRow as any).status === 'cancelled') {
+      throw new Error('Cannot record payment on a cancelled invoice.');
+    }
     // CRITICAL VALIDATION: All required fields must be present
     if (!accountId) {
       throw new Error('Payment account_id is required. Cannot save payment without account.');

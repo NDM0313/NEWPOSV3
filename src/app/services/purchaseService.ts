@@ -8,7 +8,7 @@ export interface Purchase {
   po_date: string;
   supplier_id?: string;
   supplier_name: string;
-  status: 'draft' | 'ordered' | 'received' | 'final'; // Database enum values only
+  status: 'draft' | 'ordered' | 'received' | 'final' | 'cancelled'; // Database enum values only
   payment_status: 'paid' | 'partial' | 'unpaid';
   subtotal: number;
   discount_amount: number;
@@ -85,7 +85,7 @@ export const purchaseService = {
         *,
         supplier:contacts(name, phone),
         branch:branches(id, name, code),
-        created_by_user:users(id, full_name, email),
+        created_by_user:users!purchases_created_by_fkey(id, full_name, email),
         items:purchase_items(
           *,
           product:products(name)
@@ -107,7 +107,7 @@ export const purchaseService = {
           *,
           supplier:contacts(name, phone),
           branch:branches(id, name, code),
-          created_by_user:users(id, full_name, email),
+          created_by_user:users!purchases_created_by_fkey(id, full_name, email),
           items:purchase_items(
             *,
             product:products(name)
@@ -128,7 +128,7 @@ export const purchaseService = {
           *,
           supplier:contacts(name, phone),
           branch:branches(id, name, code),
-          created_by_user:users(id, full_name, email),
+          created_by_user:users!purchases_created_by_fkey(id, full_name, email),
           items:purchase_items(
             *,
             product:products(name)
@@ -153,7 +153,7 @@ export const purchaseService = {
         .from('purchases')
         .select(`
           *,
-          created_by_user:users(id, full_name, email)
+          created_by_user:users!purchases_created_by_fkey(id, full_name, email)
         `)
         .order('created_at', { ascending: false });
       
@@ -169,7 +169,7 @@ export const purchaseService = {
           .from('purchases')
           .select(`
             *,
-            created_by_user:users(id, full_name, email)
+            created_by_user:users!purchases_created_by_fkey(id, full_name, email)
           `);
         
         if (branchId) {
@@ -219,7 +219,7 @@ export const purchaseService = {
         *,
         attachments,
         supplier:contacts(*),
-        created_by_user:users(id, full_name, email),
+        created_by_user:users!purchases_created_by_fkey(id, full_name, email),
         items:purchase_items(
           *,
           product:products(*),
@@ -247,8 +247,77 @@ export const purchaseService = {
     return data;
   },
 
+  // Update purchase status (when 'cancelled': create PURCHASE_CANCELLED stock reversals, then update status)
+  async updatePurchaseStatus(id: string, status: Purchase['status']) {
+    if (status === 'cancelled') {
+      const { data: purchaseRow } = await supabase.from('purchases').select('id, po_no, branch_id, company_id').eq('id', id).single();
+      if (!purchaseRow) throw new Error('Purchase not found');
+      const poNo = (purchaseRow as any).po_no || `PUR-${id.substring(0, 8)}`;
+
+      const { data: existingReversal } = await supabase
+        .from('stock_movements')
+        .select('id')
+        .eq('reference_type', 'purchase')
+        .eq('reference_id', id)
+        .eq('movement_type', 'PURCHASE_CANCELLED')
+        .limit(1);
+      if (existingReversal && existingReversal.length > 0) {
+        const { data, error } = await supabase.from('purchases').update({ status }).eq('id', id).select().single();
+        if (error) throw error;
+        return data;
+      }
+
+      const { data: stockMovements } = await supabase
+        .from('stock_movements')
+        .select('id, company_id, branch_id, product_id, variation_id, quantity, unit_cost, total_cost, box_change, piece_change')
+        .eq('reference_type', 'purchase')
+        .eq('reference_id', id)
+        .eq('movement_type', 'purchase');
+
+      if (stockMovements && stockMovements.length > 0) {
+        for (const m of stockMovements) {
+          const reverseMovement: Record<string, unknown> = {
+            company_id: m.company_id,
+            branch_id: m.branch_id,
+            product_id: m.product_id,
+            variation_id: m.variation_id ?? null,
+            movement_type: 'PURCHASE_CANCELLED',
+            quantity: -(Number(m.quantity) || 0),
+            unit_cost: Number(m.unit_cost) || 0,
+            total_cost: -(Number(m.total_cost) || 0),
+            reference_type: 'purchase',
+            reference_id: id,
+            notes: `Reversal of ${poNo} (Cancelled)`,
+          };
+          if (m.box_change != null) (reverseMovement as any).box_change = -(Number(m.box_change) || 0);
+          if (m.piece_change != null) (reverseMovement as any).piece_change = -(Number(m.piece_change) || 0);
+          const { error: insertErr } = await supabase.from('stock_movements').insert(reverseMovement);
+          if (insertErr) throw insertErr;
+        }
+      }
+
+      const { data, error } = await supabase.from('purchases').update({ status }).eq('id', id).select().single();
+      if (error) throw error;
+      return data;
+    }
+
+    const { data, error } = await supabase
+      .from('purchases')
+      .update({ status })
+      .eq('id', id)
+      .select()
+      .single();
+    if (error) throw error;
+    return data;
+  },
+
   // Update purchase
   async updatePurchase(id: string, updates: Partial<Purchase>) {
+    // 🔒 CANCELLED: No updates allowed on cancelled purchases
+    const { data: existingPurchase } = await supabase.from('purchases').select('status').eq('id', id).single();
+    if (existingPurchase && (existingPurchase as any).status === 'cancelled') {
+      throw new Error('Cannot edit a cancelled purchase order.');
+    }
     // 🔒 LOCK CHECK: Prevent editing if purchase has returns
     const { data: returns } = await supabase
       .from('purchase_returns')
@@ -276,6 +345,11 @@ export const purchaseService = {
   // CRITICAL: This deletes ALL related data in correct order
   // Order: Payments → Journal Entries → Stock Movements → Ledger Entries → Activity Logs → Purchase Items → Purchase
   async deletePurchase(id: string) {
+    // 🔒 CANCELLED: No delete allowed on cancelled purchases
+    const { data: existingPurchase } = await supabase.from('purchases').select('status').eq('id', id).single();
+    if (existingPurchase && (existingPurchase as any).status === 'cancelled') {
+      throw new Error('Cannot delete a cancelled purchase order.');
+    }
     console.log('[PURCHASE SERVICE] Starting cascade delete for purchase:', id);
     
     try {
@@ -499,8 +573,11 @@ export const purchaseService = {
       throw new Error('Purchase not found');
     }
     
-    // STEP 2 FIX: Allow payment for 'received' and 'final' status (like payment section in form)
+    // STEP 2 FIX: Allow payment for 'received' and 'final' status; block cancelled
     const status = (purchase as any).status;
+    if (status === 'cancelled') {
+      throw new Error('Cannot record payment on a cancelled purchase order.');
+    }
     if (status !== 'final' && status !== 'completed' && status !== 'received') {
       throw new Error('Payment not allowed until purchase is Received or Final. Current status: ' + (status || 'unknown'));
     }

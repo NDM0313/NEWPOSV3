@@ -499,6 +499,8 @@ export const FullStockLedgerView: React.FC<FullStockLedgerViewProps> = ({
       'purchase_return': 'Purchase Return',
       'rental_out': 'Rental Out',
       'rental_return': 'Rental Return',
+      'sale_cancelled': 'SALE CANCELLED',
+      'purchase_cancelled': 'PURCHASE CANCELLED',
     };
     return labels[type.toLowerCase()] || type;
   };
@@ -506,6 +508,14 @@ export const FullStockLedgerView: React.FC<FullStockLedgerViewProps> = ({
   const getMovementTypeColor = (type: string, quantity: number) => {
     const typeLower = type.toLowerCase();
     const isIn = quantity > 0;
+    
+    // Cancelled reversals: amber/red, never as normal SALE/PURCHASE
+    if (typeLower === 'sale_cancelled') {
+      return 'text-amber-400 bg-amber-900/20 border-amber-900/50';
+    }
+    if (typeLower === 'purchase_cancelled') {
+      return 'text-amber-400 bg-amber-900/20 border-amber-900/50';
+    }
     
     // Adjustment: Blue/Yellow based on IN/OUT
     if (typeLower === 'adjustment') {

@@ -30,6 +30,8 @@ export const LoginPage: React.FC = () => {
         errorMessage = 'Please confirm your email address first.';
       } else if (signInError.message.includes('User not found')) {
         errorMessage = 'User does not exist. Please create a business first.';
+      } else if (signInError.message.includes('Failed to fetch') || (signInError.name && signInError.name.includes('AuthRetryableFetchError'))) {
+        errorMessage = 'Network error: Cannot reach the server. If you use erp.dincouture.pk, the admin should set VITE_SUPABASE_URL to https://erp.dincouture.pk and rebuild.';
       }
       setError(errorMessage);
       setLoading(false);
@@ -81,6 +83,8 @@ export const LoginPage: React.FC = () => {
         errorMessage = 'Demo account email not confirmed. Please contact administrator.';
       } else if (signInError.message.includes('User not found')) {
         errorMessage = 'Demo account does not exist. Please contact administrator.';
+      } else if (signInError.message.includes('Failed to fetch') || (signInError.name && signInError.name.includes('AuthRetryableFetchError'))) {
+        errorMessage = 'Network error: Cannot reach the server. Admin should set VITE_SUPABASE_URL=https://erp.dincouture.pk and rebuild.';
       }
       setError(errorMessage);
       setLoading(false);

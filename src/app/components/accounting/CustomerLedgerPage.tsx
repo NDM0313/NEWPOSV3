@@ -348,7 +348,7 @@ export const CustomerLedgerPage: React.FC<CustomerLedgerPageProps> = ({
           // Include: subtotal, shipping, expenses, discount, total (for detail breakdown)
           const { data: sales } = await supabase
             .from('sales')
-            .select('id, invoice_no, subtotal, total, discount_amount, expenses, paid_amount, due_amount, invoice_date')
+            .select('id, invoice_no, status, subtotal, total, discount_amount, expenses, paid_amount, due_amount, invoice_date')
             .in('id', saleIds);
 
           console.log('[CUSTOMER LEDGER] Fetched sale details:', {
@@ -1685,19 +1685,26 @@ export const CustomerLedgerPage: React.FC<CustomerLedgerPageProps> = ({
                           {saleDetail?.invoice_date ? format(new Date(saleDetail.invoice_date), 'dd MMM yyyy') : format(new Date(entries[0].date), 'dd MMM yyyy')}
                         </td>
                         <td className="px-4 py-3">
-                          <button
-                            onClick={() => {
-                              const firstEntry = entries[0];
-                              if (firstEntry?.entry_no && firstEntry.entry_no.trim() !== '') {
-                                setSelectedReference(firstEntry.entry_no);
-                              } else if (firstEntry?.journal_entry_id) {
-                                setSelectedReference(firstEntry.journal_entry_id);
-                              }
-                            }}
-                            className="text-blue-400 hover:text-blue-300 hover:underline text-sm font-medium font-mono"
-                          >
-                            {invoiceNo}
-                          </button>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <button
+                              onClick={() => {
+                                const firstEntry = entries[0];
+                                if (firstEntry?.entry_no && firstEntry.entry_no.trim() !== '') {
+                                  setSelectedReference(firstEntry.entry_no);
+                                } else if (firstEntry?.journal_entry_id) {
+                                  setSelectedReference(firstEntry.journal_entry_id);
+                                }
+                              }}
+                              className="text-blue-400 hover:text-blue-300 hover:underline text-sm font-medium font-mono"
+                            >
+                              {invoiceNo}
+                            </button>
+                            {(saleDetail?.status || '').toString().toLowerCase() === 'cancelled' && (
+                              <Badge className="bg-amber-500/20 text-amber-400 border-amber-500/30 text-xs">
+                                Cancelled
+                              </Badge>
+                            )}
+                          </div>
                         </td>
                         <td className="px-4 py-3">
                           <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/30 text-xs">
@@ -1817,7 +1824,12 @@ export const CustomerLedgerPage: React.FC<CustomerLedgerPageProps> = ({
                               {entry.source_module}
                             </Badge>
                           </td>
-                          <td className="px-4 py-3 text-sm text-gray-300 pl-8">{entry.description}</td>
+                          <td className="px-4 py-3 text-sm text-gray-300 pl-8">
+                            {saleDetail && (saleDetail.status || '').toString().toLowerCase() === 'cancelled' && (entry.description?.toLowerCase().includes('reversal') || entry.description?.toLowerCase().includes('reverse'))
+                              ? `Reversal of ${invoiceNo} (Cancelled)`
+                              : entry.description
+                            }
+                          </td>
                       {/* STEP 1: Debit column - DIRECT mapping, NO Math.abs(), NO conditionals */}
                       <td className={cn(
                         "px-4 py-3 text-sm text-right tabular-nums",
@@ -1840,7 +1852,7 @@ export const CustomerLedgerPage: React.FC<CustomerLedgerPageProps> = ({
                           <span className="text-gray-600">0</span>
                         )}
                       </td>
-                      {/* STEP 6: Running Balance - Formula: previous + debit - credit (already calculated in backend) */}
+                          {/* STEP 6: Running Balance - Formula: previous + debit - credit (already calculated in backend) */}
                           <td className={cn(
                             "px-4 py-3 text-sm font-semibold text-right tabular-nums",
                             runningBalanceForSale >= 0 ? "text-yellow-400" : "text-red-400"

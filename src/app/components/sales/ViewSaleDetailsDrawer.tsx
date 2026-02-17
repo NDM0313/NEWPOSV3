@@ -5,6 +5,7 @@ import { useSettings } from '@/app/context/SettingsContext';
 import { branchService, Branch } from '@/app/services/branchService';
 import { contactService } from '@/app/services/contactService';
 import { saleService } from '@/app/services/saleService';
+import { saleReturnService } from '@/app/services/saleReturnService';
 import { activityLogService } from '@/app/services/activityLogService';
 import { InvoicePrintLayout } from '../shared/InvoicePrintLayout';
 import { PaymentDeleteConfirmationModal } from '../shared/PaymentDeleteConfirmationModal';
@@ -32,7 +33,8 @@ import {
   MoreVertical,
   Paperclip,
   Image as ImageIcon,
-  File
+  File,
+  RotateCcw
 } from 'lucide-react';
 import { Button } from "../ui/button";
 import { Badge } from "../ui/badge";
@@ -41,6 +43,7 @@ import { cn, formatBoxesPieces } from "../ui/utils";
 import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
 import { toast } from 'sonner';
 import { getAttachmentOpenUrl } from '@/app/utils/paymentAttachmentUrl';
+import { getEffectiveSaleStatus, getSaleStatusBadgeConfig, canAddPaymentToSale } from '@/app/utils/statusHelpers';
 import {
   Table,
   TableBody,
@@ -157,6 +160,8 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
   const [editPaymentDialogOpen, setEditPaymentDialogOpen] = useState(false);
   const [paymentToEdit, setPaymentToEdit] = useState<any | null>(null);
   const [attachmentsDialogList, setAttachmentsDialogList] = useState<{ url: string; name: string }[] | null>(null);
+  const [saleReturns, setSaleReturns] = useState<any[]>([]);
+  const [loadingSaleReturns, setLoadingSaleReturns] = useState(false);
 
   // Load branches for location display
   useEffect(() => {
@@ -328,6 +333,32 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
     };
   }, [saleId, reloadSaleData]);
 
+  // Load sale returns for this sale when final (so effective status can show Returned/Partially Returned)
+  useEffect(() => {
+    if (!companyId || !saleId || !sale) return;
+    const isFinal = (sale.status || '').toString().toLowerCase() === 'final';
+    if (!isFinal) {
+      setSaleReturns([]);
+      return;
+    }
+    setLoadingSaleReturns(true);
+    saleReturnService.getSaleReturns(companyId, undefined)
+      .then((list) => {
+        const forThisSale = (list || []).filter((r: any) => r.original_sale_id === saleId);
+        setSaleReturns(forThisSale);
+        if (forThisSale.length > 0) {
+          setSale((prev) => {
+            if (!prev) return null;
+            const count = forThisSale.length;
+            if ((prev as any).hasReturn && (prev as any).returnCount === count) return prev;
+            return { ...prev, hasReturn: true, returnCount: count } as Sale;
+          });
+        }
+      })
+      .catch(() => setSaleReturns([]))
+      .finally(() => setLoadingSaleReturns(false));
+  }, [companyId, saleId, sale?.id, (sale as any)?.status]);
+
   if (!isOpen || !saleId) return null;
 
   if (loading) {
@@ -347,12 +378,24 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
     );
   }
 
+  const effectiveStatus = getEffectiveSaleStatus(sale);
+  const isCancelled = effectiveStatus === 'cancelled';
+  const isReturned = effectiveStatus === 'returned';
+  const isPartiallyReturned = effectiveStatus === 'partially_returned';
+  const statusBadgeConfig = getSaleStatusBadgeConfig(sale);
+  const badge = statusBadgeConfig?.bg != null ? statusBadgeConfig : { bg: 'bg-gray-500/20', text: 'text-gray-400', border: 'border-gray-500/30', label: 'Draft' };
+  const canAddPayment = canAddPaymentToSale(sale, sale.due ?? 0);
+
   const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'Final': return 'bg-green-500/10 text-green-500 border-green-500/20';
-      case 'Order': return 'bg-blue-500/10 text-blue-500 border-blue-500/20';
-      case 'Quotation': return 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20';
-      case 'Draft': return 'bg-gray-500/10 text-gray-500 border-gray-500/20';
+    const s = (status || '').toLowerCase();
+    switch (s) {
+      case 'final': return 'bg-green-500/10 text-green-500 border-green-500/20';
+      case 'order': return 'bg-blue-500/10 text-blue-500 border-blue-500/20';
+      case 'quotation': return 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20';
+      case 'draft': return 'bg-gray-500/10 text-gray-500 border-gray-500/20';
+      case 'cancelled': return 'bg-amber-500/10 text-amber-500 border-amber-500/20';
+      case 'returned': return 'bg-green-500/10 text-green-500 border-green-500/20';
+      case 'partially_returned': return 'bg-blue-500/10 text-blue-500 border-blue-500/20';
       default: return 'bg-gray-500/10 text-gray-500 border-gray-500/20';
     }
   };
@@ -386,14 +429,22 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
 
       {/* Drawer */}
       <div className="fixed right-0 top-0 h-full w-full md:w-[1100px] bg-gray-950 shadow-2xl z-50 overflow-hidden flex flex-col border-l border-gray-800">
+        {/* Cancelled banner - top of drawer when sale is cancelled */}
+        {isCancelled && (
+          <div className="shrink-0 bg-amber-500/20 border-b border-amber-500/30 px-6 py-3 flex items-center gap-2">
+            <X size={18} className="text-amber-500" />
+            <span className="font-semibold text-amber-200 uppercase tracking-wide">Cancelled Invoice</span>
+            <span className="text-amber-300/90 text-sm">Reversed entry created.</span>
+          </div>
+        )}
         {/* Header */}
         <div className="bg-gray-900/80 border-b border-gray-800 px-6 py-4 flex items-center justify-between shrink-0">
           <div className="flex items-center gap-4">
             <div>
               <h2 className="text-xl font-bold text-white flex items-center gap-3">
                 {sale.invoiceNo}
-                <Badge className={cn("text-xs font-semibold border", getStatusColor(sale.type === 'invoice' ? 'Final' : 'Quotation'))}>
-                  {sale.type === 'invoice' ? 'Final' : 'Quotation'}
+                <Badge className={cn("text-xs font-semibold border", badge.bg, badge.text, badge.border)}>
+                  {badge.label}
                 </Badge>
               </h2>
               <p className="text-sm text-gray-400 mt-0.5">
@@ -428,13 +479,15 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="bg-gray-900 border-gray-800 text-white">
-                <DropdownMenuItem 
-                  className="hover:bg-gray-800 cursor-pointer"
-                  onClick={() => onEdit?.(sale.id)}
-                >
-                  <Edit size={14} className="mr-2" />
-                  Edit Sale
-                </DropdownMenuItem>
+                {!isCancelled && (
+                  <DropdownMenuItem 
+                    className="hover:bg-gray-800 cursor-pointer"
+                    onClick={() => onEdit?.(sale.id)}
+                  >
+                    <Edit size={14} className="mr-2" />
+                    Edit Sale
+                  </DropdownMenuItem>
+                )}
                 <DropdownMenuItem className="hover:bg-gray-800 cursor-pointer">
                   <Download size={14} className="mr-2" />
                   Export PDF
@@ -443,13 +496,15 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
                   <Share2 size={14} className="mr-2" />
                   Share
                 </DropdownMenuItem>
-                <DropdownMenuItem 
-                  className="hover:bg-gray-800 cursor-pointer text-red-400"
-                  onClick={() => onDelete?.(sale.id)}
-                >
-                  <Trash2 size={14} className="mr-2" />
-                  Delete
-                </DropdownMenuItem>
+                {!isCancelled && (
+                  <DropdownMenuItem 
+                    className="hover:bg-gray-800 cursor-pointer text-red-400"
+                    onClick={() => onDelete?.(sale.id)}
+                  >
+                    <Trash2 size={14} className="mr-2" />
+                    Delete
+                  </DropdownMenuItem>
+                )}
               </DropdownMenuContent>
             </DropdownMenu>
 
@@ -577,6 +632,39 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
                   </Badge>
                 </div>
               </div>
+
+              {/* Sale Returns - when this sale has returns */}
+              {((sale as any).hasReturn || (sale as any).returnCount > 0 || saleReturns.length > 0) && (
+                <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden">
+                  <div className="px-5 py-3 bg-gray-950/50 border-b border-gray-800 flex items-center gap-2">
+                    <RotateCcw size={16} className="text-purple-400" />
+                    <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wide">Sale Returns</h3>
+                    {loadingSaleReturns && <span className="text-xs text-gray-500">Loading...</span>}
+                  </div>
+                  <div className="p-4">
+                    {loadingSaleReturns ? (
+                      <p className="text-sm text-gray-500">Loading returns...</p>
+                    ) : saleReturns.length === 0 ? (
+                      <p className="text-sm text-gray-500">No returns found for this sale.</p>
+                    ) : (
+                      <ul className="space-y-2">
+                        {saleReturns.map((ret: any) => {
+                          const retStatus = (ret.status || '').toString().toLowerCase();
+                          const statusLabel = retStatus === 'void' ? 'Voided' : retStatus === 'final' ? 'Final' : 'Draft';
+                          const statusClass = retStatus === 'void' ? 'bg-gray-500/20 text-gray-400 border-gray-500/30' : retStatus === 'final' ? 'bg-green-500/20 text-green-400 border-green-500/30' : 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30';
+                          return (
+                            <li key={ret.id} className="flex items-center justify-between py-2 border-b border-gray-800/50 last:border-0">
+                              <span className="text-sm font-medium text-white font-mono">{ret.return_no || ret.id || '—'}</span>
+                              <Badge className={cn('text-xs', statusClass)}>{statusLabel}</Badge>
+                              <span className="text-xs text-gray-500">{ret.return_date ? new Date(ret.return_date).toLocaleDateString() : ''}</span>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    )}
+                  </div>
+                </div>
+              )}
 
               {/* Items Table — same structure as ViewPurchaseDetailsDrawer (UI + data from API) */}
               <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden">
@@ -834,14 +922,13 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
 
           {activeTab === 'payments' && (
             <div className="space-y-4">
-              {/* Add Payment Button */}
+              {/* Add Payment Button - hidden when cancelled/returned; shown for final or partially_returned with due */}
               <div className="flex justify-between items-center">
                 <h3 className="text-lg font-semibold text-white">Payment History</h3>
-                {sale.status === 'final' && sale.due > 0 && (
+                {canAddPayment && (
                   <Button
                     onClick={() => {
                       onAddPayment?.(sale.id);
-                      // CRITICAL FIX: Reload will happen via event listener (paymentAdded event)
                     }}
                     className="bg-blue-600 hover:bg-blue-700 text-white"
                   >
@@ -919,7 +1006,7 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
                       </Badge>
                     </div>
                     
-{sale.due > 0 && sale.status === 'final' && (
+{sale.due > 0 && canAddPayment && (
                     <div className="flex justify-between text-sm pt-3 border-t border-gray-800">
                         <span className="text-gray-400">Amount Due:</span>
                         <span className="text-red-400 font-medium">
@@ -999,6 +1086,8 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
                                payment.method === 'bank' ? 'Bank' :
                                payment.method === 'card' ? 'Card' : 'Other'}
                         </Badge>
+                            {!isCancelled && (
+                              <>
                             <button
                               onClick={() => {
                                 setPaymentToEdit(payment);
@@ -1020,6 +1109,8 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
                             >
                               <Trash2 size={14} />
                             </button>
+                              </>
+                            )}
                       </div>
                         </div>
                         {/* Note: shown above; attachments section below */}
@@ -1180,8 +1271,8 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
           )}
         </div>
 
-        {/* Footer Actions */}
-{activeTab === 'details' && sale.status === 'final' && sale.due > 0 && (
+        {/* Footer Actions - Add Payment when allowed by effective status (final/partially_returned with due) */}
+{activeTab === 'details' && canAddPayment && (
           <div className="border-t border-gray-800 px-6 py-4 bg-gray-900/50 shrink-0">
             <div className="flex items-center justify-between">
               <div>

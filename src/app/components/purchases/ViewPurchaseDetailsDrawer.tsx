@@ -75,6 +75,7 @@ import {
   DialogTitle,
 } from '@/app/components/ui/dialog';
 import { getAttachmentOpenUrl } from '@/app/utils/paymentAttachmentUrl';
+import { getEffectivePurchaseStatus, getPurchaseStatusBadgeConfig, canAddPaymentToPurchase } from '@/app/utils/statusHelpers';
 import { AttachmentViewer } from '@/app/components/shared/AttachmentViewer';
 import { PackingEntryModal } from '@/app/components/transactions/PackingEntryModal';
 import { PurchaseReturnItemSelectionDialog } from '@/app/components/purchases/PurchaseReturnItemSelectionDialog';
@@ -147,7 +148,7 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
 }) => {
   const [activeTab, setActiveTab] = useState<'details' | 'payments' | 'history'>('details');
   const { formatCurrency } = useFormatCurrency();
-  const { formatDateTime } = useFormatDate();
+  const { formatDate, formatDateTime } = useFormatDate();
   const { getPurchaseById } = usePurchases();
   const { companyId, branchId: contextBranchId, user } = useSupabase();
   const { inventorySettings } = useSettings();
@@ -184,6 +185,8 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
   const [returnPackingDetails, setReturnPackingDetails] = useState<Record<string, any>>({}); // Store return packing per item
   const [alreadyReturnedPiecesMap, setAlreadyReturnedPiecesMap] = useState<Record<string, Set<string>>>({}); // Track already returned pieces per item
   const [itemSelectionDialogOpen, setItemSelectionDialogOpen] = useState(false);
+  const [purchaseReturns, setPurchaseReturns] = useState<any[]>([]);
+  const [loadingPurchaseReturns, setLoadingPurchaseReturns] = useState(false);
 
   // Load branches for location display
   useEffect(() => {
@@ -571,6 +574,32 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
     };
   }, [purchaseId, reloadPurchaseData]);
 
+  // Load purchase returns when purchase is final/received (so effective status can show Returned/Partially Returned)
+  useEffect(() => {
+    if (!companyId || !purchaseId || !purchase) return;
+    const isFinalOrReceived = (purchase.status || '').toString().toLowerCase() === 'final' || (purchase.status || '').toString().toLowerCase() === 'received';
+    if (!isFinalOrReceived) {
+      setPurchaseReturns([]);
+      return;
+    }
+    setLoadingPurchaseReturns(true);
+    purchaseReturnService.getPurchaseReturns(companyId, contextBranchId === 'all' ? undefined : contextBranchId)
+      .then((list) => {
+        const forThisPurchase = (list || []).filter((r: any) => r.original_purchase_id === purchaseId || r.original_purchase_id === purchase.id);
+        setPurchaseReturns(forThisPurchase);
+        if (forThisPurchase.length > 0) {
+          setPurchase((prev) => {
+            if (!prev) return null;
+            const count = forThisPurchase.length;
+            if ((prev as any).hasReturn && (prev as any).returnCount === count) return prev;
+            return { ...prev, hasReturn: true, returnCount: count } as Purchase;
+          });
+        }
+      })
+      .catch(() => setPurchaseReturns([]))
+      .finally(() => setLoadingPurchaseReturns(false));
+  }, [companyId, purchaseId, contextBranchId, purchase?.id, (purchase as any)?.status]);
+
   if (!isOpen || !purchaseId) return null;
 
   if (loading) {
@@ -590,13 +619,24 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
     );
   }
 
+  const effectiveStatus = getEffectivePurchaseStatus(purchase);
+  const isCancelled = effectiveStatus === 'cancelled';
+  const statusBadgeConfig = getPurchaseStatusBadgeConfig(purchase);
+  const badge = statusBadgeConfig?.bg != null ? statusBadgeConfig : { bg: 'bg-gray-500/20', text: 'text-gray-400', border: 'border-gray-500/30', label: 'Draft' };
+  const purchaseDue = (purchase as any).due ?? (purchase as any).paymentDue ?? 0;
+  const canAddPayment = canAddPaymentToPurchase(purchase, purchaseDue);
+
   const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'final': 
-      case 'completed': 
+    const s = (status || '').toLowerCase();
+    switch (s) {
+      case 'final':
+      case 'completed':
       case 'received': return 'bg-green-500/10 text-green-500 border-green-500/20';
       case 'ordered': return 'bg-blue-500/10 text-blue-500 border-blue-500/20';
       case 'draft': return 'bg-gray-500/10 text-gray-500 border-gray-500/20';
+      case 'cancelled': return 'bg-amber-500/10 text-amber-500 border-amber-500/20';
+      case 'returned': return 'bg-green-500/10 text-green-500 border-green-500/20';
+      case 'partially_returned': return 'bg-blue-500/10 text-blue-500 border-blue-500/20';
       default: return 'bg-gray-500/10 text-gray-500 border-gray-500/20';
     }
   };
@@ -620,6 +660,14 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
 
       {/* Drawer */}
       <div className="fixed right-0 top-0 h-full w-full md:w-[1100px] bg-gray-950 shadow-2xl z-50 overflow-hidden flex flex-col border-l border-gray-800">
+        {/* Cancelled banner - when purchase is cancelled */}
+        {isCancelled && (
+          <div className="shrink-0 bg-amber-500/20 border-b border-amber-500/30 px-6 py-3 flex items-center gap-2">
+            <X size={18} className="text-amber-500" />
+            <span className="font-semibold text-amber-200 uppercase tracking-wide">Cancelled Purchase Order</span>
+            <span className="text-amber-300/90 text-sm">Reversed entry created.</span>
+          </div>
+        )}
         {/* Header: In return mode show "Purchase Return · Ref: ..."; otherwise normal purchase title */}
         <div className="bg-gray-900/80 border-b border-gray-800 px-6 py-4 flex items-center justify-between shrink-0">
           <div className="flex items-center gap-4">
@@ -633,10 +681,8 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
                 ) : (
                   <>
                     {purchase.purchaseNo}
-                    <Badge className={cn("text-xs font-semibold border", getStatusColor(purchase.status))}>
-                      {purchase.status === 'final' || purchase.status === 'completed' ? 'Final' : 
-                       purchase.status === 'received' ? 'Received' : 
-                       purchase.status === 'ordered' ? 'Ordered' : 'Draft'}
+                    <Badge className={cn("text-xs font-semibold border", badge.bg, badge.text, badge.border)}>
+                      {badge.label}
                     </Badge>
                   </>
                 )}
@@ -673,14 +719,16 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="bg-gray-900 border-gray-800 text-white">
-                <DropdownMenuItem 
-                  className="hover:bg-gray-800 cursor-pointer"
-                  onClick={() => onEdit?.(purchase.id)}
-                >
-                  <Edit size={14} className="mr-2" />
-                  Edit Purchase
-                </DropdownMenuItem>
-                {(purchase.status === 'final' || purchase.status === 'received') && (
+                {!isCancelled && (
+                  <DropdownMenuItem 
+                    className="hover:bg-gray-800 cursor-pointer"
+                    onClick={() => onEdit?.(purchase.id)}
+                  >
+                    <Edit size={14} className="mr-2" />
+                    Edit Purchase
+                  </DropdownMenuItem>
+                )}
+                {!isCancelled && (purchase.status === 'final' || purchase.status === 'received') && effectiveStatus !== 'cancelled' && (
                   <DropdownMenuItem 
                     className="hover:bg-gray-800 cursor-pointer"
                     onClick={() => onOpenReturn ? onOpenReturn() : handleEnterReturnMode()}
@@ -697,7 +745,7 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
                   <Share2 size={14} className="mr-2" />
                   Share
                 </DropdownMenuItem>
-                {canDelete && (
+                {canDelete && !isCancelled && (
                 <DropdownMenuItem 
                   className="hover:bg-gray-800 cursor-pointer text-red-400"
                   onClick={() => onDelete?.(purchase.id)}
@@ -830,13 +878,44 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
                 </div>
                 <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
                   <p className="text-xs text-gray-500 mb-2">Order Status</p>
-                  <Badge className={cn("text-sm font-semibold", getStatusColor(purchase.status))}>
-                    {purchase.status === 'final' || purchase.status === 'completed' ? 'Final' : 
-                     purchase.status === 'received' ? 'Received' : 
-                     purchase.status === 'ordered' ? 'Ordered' : 'Draft'}
+                  <Badge className={cn("text-sm font-semibold", badge.bg, badge.text, badge.border)}>
+                    {badge.label}
                   </Badge>
                 </div>
               </div>
+              )}
+
+              {/* Purchase Returns - when this purchase has returns (from API or after loading list) */}
+              {((purchase as any).hasReturn || purchaseReturns.length > 0) && (
+                <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden">
+                  <div className="px-5 py-3 bg-gray-950/50 border-b border-gray-800 flex items-center gap-2">
+                    <RotateCcw size={16} className="text-purple-400" />
+                    <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wide">Purchase Returns</h3>
+                    {loadingPurchaseReturns && <span className="text-xs text-gray-500">Loading...</span>}
+                  </div>
+                  <div className="p-4">
+                    {loadingPurchaseReturns ? (
+                      <p className="text-sm text-gray-500">Loading returns...</p>
+                    ) : purchaseReturns.length === 0 ? (
+                      <p className="text-sm text-gray-500">No returns found for this purchase.</p>
+                    ) : (
+                      <ul className="space-y-2">
+                        {purchaseReturns.map((ret: any) => {
+                          const retStatus = (ret.status || '').toString().toLowerCase();
+                          const statusLabel = retStatus === 'void' ? 'Voided' : retStatus === 'final' ? 'Final' : 'Draft';
+                          const statusClass = retStatus === 'void' ? 'bg-gray-500/20 text-gray-400 border-gray-500/30' : retStatus === 'final' ? 'bg-green-500/20 text-green-400 border-green-500/30' : 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30';
+                          return (
+                            <li key={ret.id} className="flex items-center justify-between py-2 border-b border-gray-800/50 last:border-0">
+                              <span className="text-sm font-medium text-white font-mono">{ret.return_no || ret.id || '—'}</span>
+                              <Badge className={cn('text-xs', statusClass)}>{statusLabel}</Badge>
+                              <span className="text-xs text-gray-500">{ret.return_date ? new Date(ret.return_date).toLocaleDateString() : ''}</span>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    )}
+                  </div>
+                </div>
               )}
 
               {/* Items Table */}
@@ -851,7 +930,7 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
                       </Badge>
                     )}
                   </h3>
-                  {!returnMode && (purchase.status === 'final' || purchase.status === 'received') && (
+                  {!returnMode && !isCancelled && (purchase.status === 'final' || purchase.status === 'received') && effectiveStatus !== 'cancelled' && (
                     <Button
                       variant="outline"
                       size="sm"
@@ -1308,7 +1387,7 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
               {/* Same as ViewSaleDetailsDrawer: Payment History + Add Payment + breakdown */}
               <div className="flex justify-between items-center">
                 <h3 className="text-lg font-semibold text-white">Payment History</h3>
-                {purchase.due > 0 && (
+                {canAddPayment && (
                   <Button
                     onClick={() => {
                       onAddPayment?.(purchase.id);
@@ -1443,6 +1522,8 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
                             )}>
                               {payment.method === 'cash' ? 'Cash' : payment.method === 'bank' ? 'Bank' : payment.method === 'card' ? 'Card' : 'Other'}
                             </Badge>
+                            {!isCancelled && (
+                              <>
                             <button
                               onClick={() => {
                                 setPaymentToEdit(payment);
@@ -1464,6 +1545,8 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
                             >
                               <Trash2 size={14} />
                             </button>
+                              </>
+                            )}
                           </div>
                         </div>
                         {(payment.attachments && (Array.isArray(payment.attachments) ? payment.attachments.length > 0 : !!payment.attachments)) && (
@@ -1622,8 +1705,8 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
             )}
           </div>
 
-        {/* Footer Actions */}
-        {activeTab === 'details' && purchase.due > 0 && (
+        {/* Footer Actions - Add Payment when allowed by effective status */}
+        {activeTab === 'details' && canAddPayment && (
           <div className="border-t border-gray-800 px-6 py-4 bg-gray-900/50 shrink-0">
             <div className="flex items-center justify-between">
               <div>

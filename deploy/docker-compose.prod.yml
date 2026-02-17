@@ -1,7 +1,8 @@
 # ERP Production - erp.dincouture.pk
 # Run from project root:
 #   cp deploy/.env.production.example .env.production && edit .env.production
-#   docker compose -f deploy/docker-compose.prod.yml --env-file .env.production up -d --build
+#   docker compose -f deploy/docker-compose.prod.yml --project-directory . --env-file .env.production up -d --build
+# If port 3000 is in use (e.g. Dokploy), change ports below to "3001:80" and point Traefik to 3001.
 # UFW: 22, 80, 443 only. Never expose 5432.
 
 services:

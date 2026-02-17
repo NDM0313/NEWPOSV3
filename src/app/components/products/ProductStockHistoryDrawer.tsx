@@ -535,6 +535,9 @@ export const ProductStockHistoryDrawer = ({
                 } else if (typeLower === 'transfer') {
                   icon = <Truck size={14} />;
                   badgeColor = "text-purple-400 bg-purple-900/20 border-purple-900/50";
+                } else if (typeLower === 'sale_cancelled' || typeLower === 'purchase_cancelled') {
+                  icon = <RefreshCw size={14} />;
+                  badgeColor = "text-amber-400 bg-amber-900/20 border-amber-900/50";
                 }
 
                 // Format movement type label
@@ -542,6 +545,8 @@ export const ProductStockHistoryDrawer = ({
                   : typeLower === 'purchase_return' ? 'Purchase Return'
                   : typeLower === 'rental_out' ? 'Rental Out'
                   : typeLower === 'rental_return' ? 'Rental Return'
+                  : typeLower === 'sale_cancelled' ? 'SALE CANCELLED'
+                  : typeLower === 'purchase_cancelled' ? 'PURCHASE CANCELLED'
                   : typeLower.charAt(0).toUpperCase() + typeLower.slice(1);
 
                 return (

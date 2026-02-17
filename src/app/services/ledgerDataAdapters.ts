@@ -51,14 +51,18 @@ export async function getSupplierLedgerData(
     .map(e => e.reference_id) as string[];
   
   let existingPurchases: Set<string> = new Set();
+  const purchaseStatusMap: Record<string, { status: string; po_no: string }> = {};
   if (purchaseIds.length > 0) {
     const { data: purchases } = await supabase
       .from('purchases')
-      .select('id')
+      .select('id, status, po_no')
       .in('id', purchaseIds);
     
     if (purchases) {
       existingPurchases = new Set(purchases.map((p: any) => p.id));
+      purchases.forEach((p: any) => {
+        purchaseStatusMap[p.id] = { status: p.status || '', po_no: p.po_no || `PUR-${(p.id || '').substring(0, 8)}` };
+      });
     }
   }
   
@@ -130,12 +134,17 @@ export async function getSupplierLedgerData(
         : e.source === 'purchase_return'
           ? 'Purchase Return'
           : 'Payment';
+    const purchaseMeta = e.source === 'purchase' && e.reference_id ? purchaseStatusMap[e.reference_id] : null;
+    const isCancelled = purchaseMeta && (purchaseMeta.status || '').toString().toLowerCase() === 'cancelled';
+    const description = isCancelled
+      ? `Reversal of ${purchaseMeta!.po_no} (Cancelled)`
+      : (e.remarks || `${e.source} ${e.reference_no || ''}`.trim());
     transactions.push({
       id: e.reference_id || e.id,
       date: e.entry_date,
       referenceNo: e.reference_no || e.source,
       documentType: docType as Transaction['documentType'],
-      description: e.remarks || `${e.source} ${e.reference_no || ''}`.trim(),
+      description,
       paymentAccount: '—',
       notes: e.remarks || '',
       debit,
@@ -143,6 +152,7 @@ export async function getSupplierLedgerData(
       runningBalance,
       linkedInvoices: [],
       linkedPayments: [],
+      ...(isCancelled ? { referenceStatus: 'cancelled' as const } : {}),
     });
 
     if (e.source === 'purchase' && credit > 0) {

@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { ChevronRight, ChevronDown } from 'lucide-react';
+import { Badge } from '@/app/components/ui/badge';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import type { Transaction } from '@/app/services/customerLedgerTypes';
 import { formatBoxesPieces } from '@/app/components/ui/utils';
@@ -51,6 +52,9 @@ function TransactionRowGroup({
     if (transaction.documentType === 'Payment') {
       return `Payment Received - ${transaction.referenceNo}`;
     }
+    if (transaction.referenceStatus === 'cancelled') {
+      return transaction.description || `Reversal (Cancelled)`;
+    }
     return transaction.description || transaction.documentType;
   };
 
@@ -80,7 +84,12 @@ function TransactionRowGroup({
           })}
         </td>
         <td className="px-4 py-3 text-sm font-semibold text-blue-400">
-          {transaction.referenceNo}
+          <span className="inline-flex items-center gap-2">
+            {transaction.referenceNo}
+            {transaction.referenceStatus === 'cancelled' && (
+              <Badge className="bg-amber-500/20 text-amber-400 border-amber-500/30 text-xs">Cancelled</Badge>
+            )}
+          </span>
         </td>
         <td className="px-4 py-3">
           <div className="text-sm font-medium text-white">

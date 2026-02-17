@@ -15,6 +15,9 @@ self.addEventListener('install', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
+  // Never intercept auth or Supabase API – let browser handle (avoids "Failed to fetch" in SW)
+  const url = event.request.url || '';
+  if (url.includes('/auth/v1') || url.includes('/rest/')) return;
   event.respondWith(
     caches.match(event.request)
       .then((response) => {

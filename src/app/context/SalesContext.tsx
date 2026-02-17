@@ -50,7 +50,7 @@ export interface Sale {
   id: string;
   invoiceNo: string;
   type: SaleType;
-  status?: 'draft' | 'quotation' | 'order' | 'final'; // CRITICAL FIX: Add status field
+  status?: 'draft' | 'quotation' | 'order' | 'final' | 'cancelled'; // Sale lifecycle; cancelled = reversed
   customer: string;
   customerName: string;
   contactNumber: string;

@@ -43,7 +43,7 @@ export const StudioOrderCard: React.FC<StudioOrderCardProps> = ({ order, onViewT
   const [isExpanded, setIsExpanded] = useState(false);
   const [showAssignModal, setShowAssignModal] = useState<{ dept: string; status: string } | null>(null);
 
-  const statusConfig = STATUS_CONFIG[order.status];
+  const statusConfig = STATUS_CONFIG[order.status as keyof typeof STATUS_CONFIG] ?? STATUS_CONFIG.pending;
   const StatusIcon = statusConfig.icon;
 
   const handleWorkflowUpdate = (dept: 'dyeing' | 'tailoring' | 'handcraft', status: 'pending' | 'in-progress' | 'completed', assignedTo?: string) => {
@@ -313,7 +313,7 @@ interface WorkflowStepProps {
 }
 
 const WorkflowStep: React.FC<WorkflowStepProps> = ({ icon: Icon, label, status, assignedTo, onStart, onComplete, onAssign }) => {
-  const config = WORKFLOW_STATUS_CONFIG[status];
+  const config = WORKFLOW_STATUS_CONFIG[status as keyof typeof WORKFLOW_STATUS_CONFIG] ?? WORKFLOW_STATUS_CONFIG.pending;
   const StatusIcon = config.icon;
 
   return (

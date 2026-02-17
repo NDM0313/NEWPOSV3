@@ -59,6 +59,7 @@ import { AttachmentViewer } from '@/app/components/shared/AttachmentViewer';
 import { SaleReturnPrintLayout } from '@/app/components/shared/SaleReturnPrintLayout';
 import { toast } from 'sonner';
 import { useCheckPermission } from '@/app/hooks/useCheckPermission';
+import { getEffectiveSaleStatus, getSaleStatusBadgeConfig, DEFAULT_SALE_BADGE, isPaymentClosedForSale, canAddPaymentToSale } from '@/app/utils/statusHelpers';
 
 // Mock data removed - using SalesContext which loads from Supabase
 
@@ -186,6 +187,8 @@ export const SalesPage = () => {
   const [standaloneReturnFormOpen, setStandaloneReturnFormOpen] = useState(false);
   const [returnPaymentDialogOpen, setReturnPaymentDialogOpen] = useState(false);
   const [returnPaymentSaleId, setReturnPaymentSaleId] = useState<string | null>(null);
+  const [cancelInvoiceDialogOpen, setCancelInvoiceDialogOpen] = useState(false);
+  const [cancellingInvoice, setCancellingInvoice] = useState(false);
   
   // State for viewing sale returns
   const [viewReturnsDialogOpen, setViewReturnsDialogOpen] = useState(false);
@@ -228,7 +231,7 @@ export const SalesPage = () => {
     }
   }, []);
   const [paymentStatusFilter, setPaymentStatusFilter] = useState<'all' | PaymentStatus>('all');
-  const [saleStatusFilter, setSaleStatusFilter] = useState<'all' | 'draft' | 'quotation' | 'order' | 'final'>('all');
+  const [saleStatusFilter, setSaleStatusFilter] = useState<'all' | 'draft' | 'quotation' | 'order' | 'final' | 'cancelled'>('all');
   const [shippingStatusFilter, setShippingStatusFilter] = useState<'all' | ShippingStatus>('all');
   const [branchFilter, setBranchFilter] = useState('all');
   const [paymentMethodFilter, setPaymentMethodFilter] = useState('all');
@@ -279,7 +282,18 @@ export const SalesPage = () => {
         break;
         
       case 'receive_payment':
+        if (!canAddPaymentToSale(sale, sale.due ?? 0)) {
+          const effective = getEffectiveSaleStatus(sale);
+          if (effective === 'cancelled') toast.error('Cannot add payment to a cancelled invoice.');
+          else if (effective === 'returned') toast.error('Invoice is fully returned; no payment allowed.');
+          else toast.error('Cannot add payment.');
+          return;
+        }
         setPaymentDialogOpen(true);
+        break;
+      
+      case 'cancel_invoice':
+        setCancelInvoiceDialogOpen(true);
         break;
         
       case 'view_ledger':
@@ -324,6 +338,25 @@ export const SalesPage = () => {
     } catch (error: any) {
       console.error('Delete error:', error);
       toast.error(error.message || 'Failed to delete sale');
+    }
+  };
+
+  // 🎯 CANCEL INVOICE HANDLER
+  const handleCancelInvoice = async () => {
+    if (!selectedSale) return;
+    setCancellingInvoice(true);
+    try {
+      await saleService.updateSaleStatus(selectedSale.id, 'cancelled');
+      toast.success(`Invoice ${selectedSale.invoiceNo} has been cancelled. Reversed entry created.`);
+      setCancelInvoiceDialogOpen(false);
+      setSelectedSale(null);
+      setViewDetailsOpen(false);
+      await refreshSales();
+    } catch (error: any) {
+      console.error('Cancel invoice error:', error);
+      toast.error(error?.message || 'Failed to cancel invoice');
+    } finally {
+      setCancellingInvoice(false);
     }
   };
   
@@ -659,12 +692,13 @@ export const SalesPage = () => {
   ].filter(Boolean).length;
 
   const getPaymentStatusBadge = (status: PaymentStatus) => {
-    const config = {
+    const config: Record<string, { bg: string; text: string; border: string; icon: typeof CheckCircle }> = {
       paid: { bg: 'bg-green-500/20', text: 'text-green-400', border: 'border-green-500/30', icon: CheckCircle },
       partial: { bg: 'bg-yellow-500/20', text: 'text-yellow-400', border: 'border-yellow-500/30', icon: Clock },
       unpaid: { bg: 'bg-red-500/20', text: 'text-red-400', border: 'border-red-500/30', icon: XCircle },
     };
-    const { bg, text, border, icon: Icon } = config[status];
+    const c = config[status] ?? config.paid ?? { bg: 'bg-gray-500/20', text: 'text-gray-400', border: 'border-gray-500/30', icon: CheckCircle };
+    const { bg, text, border, icon: Icon } = c;
     return (
       <Badge className={cn('text-xs font-medium capitalize gap-1 h-6 px-2', bg, text, border)}>
         <Icon size={12} />
@@ -674,13 +708,14 @@ export const SalesPage = () => {
   };
 
   const getShippingStatusBadge = (status: ShippingStatus) => {
-    const config = {
+    const config: Record<string, { bg: string; text: string; border: string }> = {
       delivered: { bg: 'bg-green-500/20', text: 'text-green-400', border: 'border-green-500/30' },
       processing: { bg: 'bg-blue-500/20', text: 'text-blue-400', border: 'border-blue-500/30' },
       pending: { bg: 'bg-yellow-500/20', text: 'text-yellow-400', border: 'border-yellow-500/30' },
       cancelled: { bg: 'bg-red-500/20', text: 'text-red-400', border: 'border-red-500/30' },
     };
-    const { bg, text, border } = config[status];
+    const c = config[status] ?? config.pending ?? { bg: 'bg-gray-500/20', text: 'text-gray-400', border: 'border-gray-500/30' };
+    const { bg, text, border } = c;
     return (
       <Badge className={cn('text-xs font-medium capitalize h-6 px-2', bg, text, border)}>
         {status}
@@ -688,28 +723,20 @@ export const SalesPage = () => {
     );
   };
 
-  // Get sale status badge - Only show for non-final statuses (draft/quotation/order)
-  // Final sales don't show badge (clean UI - final is the default/expected state)
-  const getSaleStatusBadge = (status: 'draft' | 'quotation' | 'order' | 'final') => {
-    const config = {
-      draft: { bg: 'bg-gray-500/20', text: 'text-gray-400', border: 'border-gray-500/30', icon: FileText },
-      quotation: { bg: 'bg-blue-500/20', text: 'text-blue-400', border: 'border-blue-500/30', icon: FileText },
-      order: { bg: 'bg-purple-500/20', text: 'text-purple-400', border: 'border-purple-500/30', icon: Package },
-      final: { bg: 'bg-green-500/20', text: 'text-green-400', border: 'border-green-500/30', icon: CheckCircle },
-    };
-    
-    const { bg, text, border, icon: Icon } = config[status];
+  // Sale status badge from centralized effective status (draft/final/cancelled/returned/partially_returned)
+  const getSaleStatusBadgeFromSale = (sale: Sale) => {
+    const config = getSaleStatusBadgeConfig(sale) ?? DEFAULT_SALE_BADGE;
     return (
-      <Badge className={cn('text-xs font-medium capitalize h-6 px-2 flex items-center gap-1', bg, text, border)}>
-        <Icon size={12} />
-        {status}
+      <Badge className={cn('text-xs font-medium h-6 px-2 flex items-center gap-1', config.bg, config.text, config.border)}>
+        {config.label}
       </Badge>
     );
   };
 
-  // Render column cell based on column key
+  // Render column cell based on column key (try/catch prevents "Cannot destructure property 'bg'" in production)
   const renderColumnCell = (columnKey: string, sale: Sale) => {
-    switch (columnKey) {
+    try {
+      switch (columnKey) {
       case 'date':
         // Show date on one line, time on next line (smaller)
         // Use sale.date (the actual sale date) instead of sale.createdAt (database timestamp)
@@ -789,8 +816,8 @@ export const SalesPage = () => {
         );
       
       case 'saleStatus':
-        // Enhanced Status Column: Badge + Return Icon + Attachment Icon
-        const statusBadge = getSaleStatusBadge(sale.status);
+        // Enhanced Status Column: Badge from effective status + Return Icon + Attachment Icon
+        const statusBadge = getSaleStatusBadgeFromSale(sale);
         const hasReturn = sale.status === 'final' && salesWithReturns.has(sale.id);
         const hasAttachments = sale.attachments && Array.isArray(sale.attachments) && sale.attachments.length > 0;
         
@@ -852,8 +879,20 @@ export const SalesPage = () => {
           </div>
         );
       
-      case 'paymentStatus':
-        // Payment status badge is clickable to open View Payments modal
+      case 'paymentStatus': {
+        // When cancelled or payment closed, show badge as disabled (no click, greyed out)
+        const paymentClosed = isPaymentClosedForSale(sale);
+        const isCancelled = getEffectiveSaleStatus(sale) === 'cancelled';
+        if (paymentClosed || isCancelled) {
+          return (
+            <span
+              className="cursor-default opacity-70 inline-block pointer-events-none"
+              title={isCancelled ? 'Invoice is cancelled' : 'Closed'}
+            >
+              {getPaymentStatusBadge(sale.paymentStatus)}
+            </span>
+          );
+        }
         return (
           <button
             onClick={(e) => {
@@ -867,6 +906,7 @@ export const SalesPage = () => {
             {getPaymentStatusBadge(sale.paymentStatus)}
           </button>
         );
+      }
       
       case 'paymentMethod':
         return (
@@ -887,16 +927,41 @@ export const SalesPage = () => {
           </div>
         );
       
-      case 'due':
+      case 'due': {
+        const paymentClosed = isPaymentClosedForSale(sale);
+        const canPay = canAddPaymentToSale(sale, sale.due ?? 0);
+        if (paymentClosed) {
+          return (
+            <span
+              className="text-sm text-gray-500 tabular-nums cursor-default"
+              title={getEffectiveSaleStatus(sale) === 'cancelled' ? 'Invoice is cancelled' : 'Closed'}
+            >
+              Closed
+            </span>
+          );
+        }
+        if (sale.due > 0 && canPay) {
+          return (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleSaleAction('receive_payment', sale);
+              }}
+              className="text-sm font-semibold text-red-400 tabular-nums hover:text-red-300 hover:underline cursor-pointer text-right w-full"
+            >
+              ${sale.due.toLocaleString()}
+            </button>
+          );
+        }
         return (
           sale.due > 0 ? (
-            <div className="text-sm font-semibold text-red-400 tabular-nums">
-              ${sale.due.toLocaleString()}
-            </div>
+            <div className="text-sm font-semibold text-red-400 tabular-nums">${sale.due.toLocaleString()}</div>
           ) : (
             <div className="text-sm text-gray-600">-</div>
           )
         );
+      }
       
       case 'returnDue':
         return (
@@ -952,14 +1017,15 @@ export const SalesPage = () => {
                   <p className="text-xs text-gray-400 px-2 pb-2 border-b border-gray-800">Change Status</p>
                   {(['pending', 'processing', 'delivered', 'cancelled'] as const).map(status => {
                     const isActive = sale.shippingStatus === status;
-                    const statusConfig = {
+                    const statusConfig: Record<string, { icon: typeof Clock; color: string; bg: string }> = {
                       pending: { icon: Clock, color: 'text-yellow-400', bg: 'bg-yellow-500/10' },
                       processing: { icon: Package, color: 'text-blue-400', bg: 'bg-blue-500/10' },
                       delivered: { icon: CheckCircle, color: 'text-green-400', bg: 'bg-green-500/10' },
                       cancelled: { icon: XCircle, color: 'text-red-400', bg: 'bg-red-500/10' },
                     };
-                    const config = statusConfig[status];
-                    const Icon = config.icon;
+                    const raw = statusConfig[String(status)] ?? statusConfig.pending ?? { icon: Clock, color: 'text-yellow-400', bg: 'bg-yellow-500/10' };
+                    const config = raw && typeof raw.bg === 'string' ? raw : { icon: Clock, color: 'text-yellow-400', bg: 'bg-yellow-500/10' };
+                    const Icon = config.icon ?? Clock;
                     
                     return (
                       <button
@@ -980,11 +1046,11 @@ export const SalesPage = () => {
                         className={cn(
                           "w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-all",
                           isActive 
-                            ? `${config.bg} ${config.color} cursor-default` 
+                            ? `${config.bg ?? 'bg-yellow-500/10'} ${config.color ?? 'text-yellow-400'} cursor-default` 
                             : "text-gray-300 hover:bg-gray-800"
                         )}
                       >
-                        <Icon size={14} className={isActive ? config.color : 'text-gray-500'} />
+                        <Icon size={14} className={isActive ? (config.color ?? 'text-yellow-400') : 'text-gray-500'} />
                         <span className="capitalize">{status}</span>
                         {isActive && <CheckCircle size={12} className="ml-auto text-green-400" />}
                       </button>
@@ -1007,6 +1073,9 @@ export const SalesPage = () => {
       
       default:
         return null;
+    }
+    } catch (_) {
+      return <span className="text-gray-500 text-xs">—</span>;
     }
   };
 
@@ -1205,6 +1274,7 @@ export const SalesPage = () => {
                       { value: 'quotation', label: 'Quotation' },
                       { value: 'order', label: 'Sales Order' },
                       { value: 'final', label: 'Final Invoice' },
+                      { value: 'cancelled', label: 'Cancelled' },
                     ].map(opt => (
                       <label key={opt.value} className="flex items-center gap-2 cursor-pointer">
                         <input
@@ -1699,14 +1769,24 @@ export const SalesPage = () => {
                               View Payments
                             </DropdownMenuItem>
                             
-                            {/* 🎯 RECEIVE PAYMENT - Only show if there's a due amount */}
-                            {sale.status === 'final' && sale.due > 0 && (
+                            {/* 🎯 RECEIVE PAYMENT - Show when payment allowed (final or partially_returned with due) */}
+                            {canAddPaymentToSale(sale, sale.due ?? 0) && (
                               <DropdownMenuItem 
                                 className="hover:bg-gray-800 cursor-pointer"
                                 onClick={() => handleSaleAction('receive_payment', sale)}
                               >
                                 <DollarSign size={14} className="mr-2 text-green-400" />
                                 Add Payment
+                              </DropdownMenuItem>
+                            )}
+                            {/* 🎯 CANCEL INVOICE - Only for final; hidden when effective status is cancelled */}
+                            {sale.status === 'final' && getEffectiveSaleStatus(sale) !== 'cancelled' && (
+                              <DropdownMenuItem 
+                                className="hover:bg-gray-800 cursor-pointer text-amber-400"
+                                onClick={() => handleSaleAction('cancel_invoice', sale)}
+                              >
+                                <XCircle size={14} className="mr-2" />
+                                Cancel Invoice
                               </DropdownMenuItem>
                             )}
                             
@@ -1720,8 +1800,8 @@ export const SalesPage = () => {
                             </DropdownMenuItem>
                             
                             <DropdownMenuSeparator className="bg-gray-700" />
-                            {/* 🎯 SALE RETURN: If sale has returns → View Sale Returns; else → Create Sale Return (standard, avoids confusion) */}
-                            {sale.status === 'final' && (
+                            {/* 🎯 SALE RETURN: Only when final and not cancelled */}
+                            {sale.status === 'final' && getEffectiveSaleStatus(sale) !== 'cancelled' && (
                               <>
                                 {salesWithReturns.has(sale.id) || sale.hasReturn ? (
                                   <DropdownMenuItem 
@@ -1771,7 +1851,7 @@ export const SalesPage = () => {
                               <Truck size={14} className="mr-2 text-orange-400" />
                               Update Shipping
                             </DropdownMenuItem>
-                            {canDeleteSale && (
+                            {canDeleteSale && getEffectiveSaleStatus(sale) !== 'cancelled' && (
                             <DropdownMenuItem 
                               className="hover:bg-gray-800 cursor-pointer text-red-400"
                               onClick={() => handleSaleAction('delete', sale)}
@@ -1950,6 +2030,36 @@ export const SalesPage = () => {
               className="bg-red-600 hover:bg-red-500 text-white"
             >
               Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* 🎯 CANCEL INVOICE CONFIRMATION DIALOG */}
+      <AlertDialog open={cancelInvoiceDialogOpen} onOpenChange={setCancelInvoiceDialogOpen}>
+        <AlertDialogContent className="bg-gray-900 border-gray-700">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-white">Cancel Invoice</AlertDialogTitle>
+            <AlertDialogDescription className="text-gray-400">
+              {selectedSale && (
+                <>
+                  Are you sure you want to cancel invoice <span className="font-semibold text-white">{selectedSale.invoiceNo}</span>?
+                  <br />
+                  A reversal entry will be created. This action cannot be undone.
+                </>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="bg-gray-800 hover:bg-gray-700 text-white border-gray-700" disabled={cancellingInvoice}>
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleCancelInvoice}
+              disabled={cancellingInvoice}
+              className="bg-amber-600 hover:bg-amber-500 text-white"
+            >
+              {cancellingInvoice ? 'Cancelling...' : 'Cancel Invoice'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

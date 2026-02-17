@@ -120,8 +120,8 @@ export const PipelineBoard = () => {
               <div 
                 className="flex items-center justify-between p-3 rounded-t-lg border-t border-x backdrop-blur"
                 style={{
-                  backgroundColor: col.bg,
-                  borderColor: col.border,
+                  backgroundColor: col?.bg ?? 'rgba(59, 130, 246, 0.1)',
+                  borderColor: col?.border ?? 'rgba(59, 130, 246, 0.2)',
                   borderRadius: 'var(--radius-lg) 0 0 0'
                 }}
               >

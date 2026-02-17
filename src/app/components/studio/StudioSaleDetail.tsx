@@ -176,6 +176,7 @@ export const StudioSaleDetail = () => {
       case 'Pending': return { bg: 'bg-gray-500/20', text: 'text-gray-400', border: 'border-gray-700' };
       case 'Given': return { bg: 'bg-blue-500/20', text: 'text-blue-400', border: 'border-blue-700' };
       case 'Received': return { bg: 'bg-green-500/20', text: 'text-green-400', border: 'border-green-700' };
+      default: return { bg: 'bg-gray-500/20', text: 'text-gray-400', border: 'border-gray-700' };
     }
   };
 
@@ -375,7 +376,7 @@ export const StudioSaleDetail = () => {
         <h2 className="text-lg font-bold text-white mb-4">Production Timeline</h2>
         <div className="space-y-4">
           {saleDetail.productionSteps.map((step, index) => {
-            const statusBadge = getStatusBadge(step.status);
+            const statusBadge = getStatusBadge(step.status) ?? { bg: 'bg-gray-500/20', text: 'text-gray-400', border: 'border-gray-700' };
             const StepIcon = step.icon;
             
             return (

@@ -125,7 +125,9 @@ export const TopHeader = () => {
   };
 
   const getDateRangeLabel = () => {
-    if (dateRange.type === 'today') {
+    if (dateRange.type === 'fromStart') {
+      return 'From start';
+    } else if (dateRange.type === 'today') {
       return 'Today';
     } else if (dateRange.type === 'last7days') {
       return 'Last 7 Days';
@@ -145,7 +147,7 @@ export const TopHeader = () => {
       }
       return 'Custom Range';
     }
-    return 'Today';
+    return dateRange.type === 'fromStart' ? 'From start' : 'Today';
   };
 
   const handleLogout = async () => {
@@ -394,6 +396,17 @@ export const TopHeader = () => {
             className="w-48 bg-card border-border shadow-2xl rounded-lg p-2"
           >
             <DropdownMenuItem
+              onClick={() => setDateRangeType('fromStart')}
+              className={cn(
+                "px-3 py-2 rounded-lg cursor-pointer",
+                dateRange.type === 'fromStart' 
+                  ? "bg-primary/10 text-primary" 
+                  : "text-foreground hover:bg-accent"
+              )}
+            >
+              From start
+            </DropdownMenuItem>
+            <DropdownMenuItem
               onClick={() => setDateRangeType('today')}
               className={cn(
                 "px-3 py-2 rounded-lg cursor-pointer",
@@ -622,7 +635,7 @@ export const TopHeader = () => {
       {/* Custom Date Range Picker */}
       {showCustomDatePicker && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm">
-          <div className="bg-gray-900 border border-gray-800 rounded-xl p-6 max-w-md w-full mx-4">
+          <div className="absolute top-[1px] left-1/2 -translate-x-1/2 bg-gray-900 border border-gray-800 rounded-xl p-6 max-w-md w-full mx-4">
             <h3 className="text-lg font-semibold text-white mb-4">Select Custom Date Range</h3>
             <div className="space-y-4">
               <div>

@@ -74,8 +74,8 @@ export interface InvoiceDetails {
   payments?: Payment[];
   // 🔒 UUID ARCHITECTURE: Use referenceType instead of parsing invoiceNo
   referenceType?: 'sale' | 'purchase' | 'rental'; // Entity type (preferred over pattern matching)
-  /** Sale lifecycle: only 'final' allows payments. Omit for purchase/rental. */
-  status?: 'draft' | 'quotation' | 'order' | 'final';
+  /** Sale lifecycle: only 'final' allows payments. 'cancelled' disables Add Payment. Omit for purchase/rental. */
+  status?: 'draft' | 'quotation' | 'order' | 'final' | 'cancelled';
 }
 
 interface ViewPaymentsModalProps {
@@ -92,15 +92,17 @@ interface ViewPaymentsModalProps {
 // HELPER FUNCTIONS
 // ============================================
 
+const DEFAULT_PAYMENT_CONFIG = { bg: 'bg-red-500/20', text: 'text-red-400', border: 'border-red-500/30', icon: XCircle, label: 'Unpaid' } as const;
+
 const getPaymentStatusConfig = (status: string) => {
-  switch (status) {
+  switch (String(status || '').toLowerCase()) {
     case 'paid':
       return { bg: 'bg-green-500/20', text: 'text-green-400', border: 'border-green-500/30', icon: CheckCircle, label: 'Paid' };
     case 'partial':
       return { bg: 'bg-yellow-500/20', text: 'text-yellow-400', border: 'border-yellow-500/30', icon: Clock, label: 'Partial' };
     case 'unpaid':
     default:
-      return { bg: 'bg-red-500/20', text: 'text-red-400', border: 'border-red-500/30', icon: XCircle, label: 'Unpaid' };
+      return { ...DEFAULT_PAYMENT_CONFIG };
   }
 };
 
@@ -261,8 +263,8 @@ export const ViewPaymentsModal: React.FC<ViewPaymentsModalProps> = ({
   const displayedPaid = !loadingPayments && payments.length > 0 ? sumPayments : invoice.paid;
   const displayedDue = Math.max(0, invoice.total - displayedPaid);
 
-  const statusConfig = getPaymentStatusConfig(invoice.paymentStatus);
-  const StatusIcon = statusConfig.icon;
+  const statusConfig = getPaymentStatusConfig(invoice.paymentStatus) ?? DEFAULT_PAYMENT_CONFIG;
+  const StatusIcon = statusConfig?.icon ?? XCircle;
   const progressPercent = invoice.total > 0 ? Math.min((displayedPaid / invoice.total) * 100, 100) : 0;
 
   const handleDeleteClick = (payment: Payment) => {
@@ -330,9 +332,9 @@ export const ViewPaymentsModal: React.FC<ViewPaymentsModalProps> = ({
                   <p className="text-xs text-gray-400">Invoice {invoice.invoiceNo}</p>
                 </div>
               </div>
-              <Badge className={cn('text-xs font-medium capitalize gap-1 h-7 px-3', statusConfig.bg, statusConfig.text, statusConfig.border)}>
+              <Badge className={cn('text-xs font-medium capitalize gap-1 h-7 px-3', statusConfig?.bg ?? DEFAULT_PAYMENT_CONFIG.bg, statusConfig?.text ?? DEFAULT_PAYMENT_CONFIG.text, statusConfig?.border ?? DEFAULT_PAYMENT_CONFIG.border)}>
                 <StatusIcon size={14} />
-                {statusConfig.label}
+                {statusConfig?.label ?? DEFAULT_PAYMENT_CONFIG.label}
               </Badge>
             </DialogTitle>
           </DialogHeader>
@@ -401,7 +403,7 @@ export const ViewPaymentsModal: React.FC<ViewPaymentsModalProps> = ({
                   <h3 className="text-sm font-semibold text-white">Payment History</h3>
                   <Badge className="bg-gray-700 text-gray-300 text-xs">{payments.length}</Badge>
                 </div>
-                {displayedDue > 0 && (
+                {displayedDue > 0 && invoice.status !== 'cancelled' && (invoice.status === undefined || invoice.status === 'final') && (
                   <Button
                     size="sm"
                     onClick={onAddPayment}
@@ -425,7 +427,7 @@ export const ViewPaymentsModal: React.FC<ViewPaymentsModalProps> = ({
                   </div>
                   <p className="text-gray-400 text-sm mb-1">No payments recorded yet</p>
                   <p className="text-gray-500 text-xs mb-4">Click "Add Payment" to record a payment</p>
-                  {displayedDue > 0 && (
+                  {displayedDue > 0 && invoice.status !== 'cancelled' && (invoice.status === undefined || invoice.status === 'final') && (
                     <Button
                       size="sm"
                       onClick={onAddPayment}
@@ -554,7 +556,10 @@ export const ViewPaymentsModal: React.FC<ViewPaymentsModalProps> = ({
               >
                 Close
               </Button>
-              {invoice.due > 0 && (invoice.status === undefined || invoice.status === 'final') && (
+              {invoice.due > 0 && invoice.status === 'cancelled' && (
+                <p className="text-xs text-amber-400 mt-1">Cannot add payment to a cancelled invoice.</p>
+              )}
+              {invoice.due > 0 && invoice.status !== 'cancelled' && (invoice.status === undefined || invoice.status === 'final') && (
                 <Button
                   onClick={onAddPayment}
                   className="bg-green-600 hover:bg-green-500 text-white"
@@ -563,7 +568,7 @@ export const ViewPaymentsModal: React.FC<ViewPaymentsModalProps> = ({
                   Add Payment
                 </Button>
               )}
-              {invoice.due > 0 && invoice.status != null && invoice.status !== 'final' && (
+              {invoice.due > 0 && invoice.status != null && invoice.status !== 'final' && invoice.status !== 'cancelled' && (
                 <p className="text-xs text-amber-400 mt-1">Payments allowed only for final invoices. Convert to Final first.</p>
               )}
             </div>

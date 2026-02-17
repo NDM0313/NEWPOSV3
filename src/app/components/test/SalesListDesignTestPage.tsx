@@ -95,12 +95,13 @@ export const SalesListDesignTestPage = () => {
   };
 
   const getPaymentBadge = (status: PaymentStatus) => {
-    const config = {
+    const config: Record<string, { bg: string; text: string; icon: typeof CheckCircle }> = {
       paid: { bg: 'bg-green-500/20', text: 'text-green-400', icon: CheckCircle },
       partial: { bg: 'bg-yellow-500/20', text: 'text-yellow-400', icon: Clock },
       unpaid: { bg: 'bg-red-500/20', text: 'text-red-400', icon: XCircle },
     };
-    const { bg, text, icon: Icon } = config[status];
+    const c = config[status] ?? config.unpaid;
+    const { bg, text, icon: Icon } = c;
     return (
       <Badge className={cn('gap-1 h-6 px-2 text-xs font-medium capitalize', bg, text)}>
         <Icon size={12} />

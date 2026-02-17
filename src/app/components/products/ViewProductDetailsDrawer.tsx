@@ -96,7 +96,7 @@ export const ViewProductDetailsDrawer: React.FC<ViewProductDetailsDrawerProps> =
     return { label: 'In Stock', color: 'text-green-400', bg: 'bg-green-500/10', border: 'border-green-500/30' };
   };
 
-  const stockStatus = getStockStatus();
+  const stockStatus = getStockStatus() ?? { label: 'In Stock', color: 'text-gray-400', bg: 'bg-gray-500/10', border: 'border-gray-500/30' };
 
   return (
     <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex justify-end animate-in fade-in duration-200" onClick={onClose}>
@@ -154,8 +154,8 @@ export const ViewProductDetailsDrawer: React.FC<ViewProductDetailsDrawerProps> =
                       <h3 className="text-xl font-bold text-white mb-1">{product.name}</h3>
                       <p className="text-sm text-gray-400 mb-3">SKU: {product.sku}</p>
                       <div className="flex items-center gap-2 flex-wrap">
-                        <Badge className={`${stockStatus.bg} ${stockStatus.color} ${stockStatus.border} text-xs font-medium`}>
-                          {stockStatus.label}
+                        <Badge className={`${stockStatus?.bg ?? 'bg-gray-500/10'} ${stockStatus?.color ?? 'text-gray-400'} ${stockStatus?.border ?? 'border-gray-500/30'} text-xs font-medium`}>
+                          {stockStatus?.label ?? 'In Stock'}
                         </Badge>
                         <Badge className={product.status === 'active' ? 'bg-green-500/10 text-green-400 border-green-500/30' : 'bg-gray-500/10 text-gray-400 border-gray-500/30'}>
                           {product.status}

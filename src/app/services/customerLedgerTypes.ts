@@ -23,6 +23,8 @@ export interface Transaction {
   runningBalance: number;
   linkedInvoices?: string[];
   linkedPayments?: string[];
+  /** Set when reference (sale/purchase) is cancelled – show Cancelled badge and reversal text */
+  referenceStatus?: 'cancelled';
 }
 
 /** Build transaction list with Opening Balance as first entry (for all views). */
