@@ -85,7 +85,6 @@ export const purchaseService = {
         *,
         supplier:contacts(name, phone),
         branch:branches(id, name, code),
-        created_by_user:users!purchases_created_by_fkey(id, full_name, email),
         items:purchase_items(
           *,
           product:products(name)
@@ -98,7 +97,7 @@ export const purchaseService = {
     }
 
     const { data, error } = await query;
-    
+
     // If error is about po_date column not existing, retry with created_at
     if (error && error.code === '42703' && error.message?.includes('po_date')) {
       const retryQuery = supabase
@@ -107,7 +106,6 @@ export const purchaseService = {
           *,
           supplier:contacts(name, phone),
           branch:branches(id, name, code),
-          created_by_user:users!purchases_created_by_fkey(id, full_name, email),
           items:purchase_items(
             *,
             product:products(name)
@@ -128,7 +126,6 @@ export const purchaseService = {
           *,
           supplier:contacts(name, phone),
           branch:branches(id, name, code),
-          created_by_user:users!purchases_created_by_fkey(id, full_name, email),
           items:purchase_items(
             *,
             product:products(name)
@@ -152,8 +149,7 @@ export const purchaseService = {
       let simpleQuery = supabase
         .from('purchases')
         .select(`
-          *,
-          created_by_user:users!purchases_created_by_fkey(id, full_name, email)
+          *
         `)
         .order('created_at', { ascending: false });
       
@@ -168,8 +164,7 @@ export const purchaseService = {
         let noOrderQuery = supabase
           .from('purchases')
           .select(`
-            *,
-            created_by_user:users!purchases_created_by_fkey(id, full_name, email)
+            *
           `);
         
         if (branchId) {
@@ -219,7 +214,6 @@ export const purchaseService = {
         *,
         attachments,
         supplier:contacts(*),
-        created_by_user:users!purchases_created_by_fkey(id, full_name, email),
         items:purchase_items(
           *,
           product:products(*),

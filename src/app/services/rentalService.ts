@@ -903,7 +903,7 @@ export const rentalService = {
   },
 
   async getAllRentals(companyId: string, branchId?: string | null) {
-    // Use explicit FK hint so PostgREST finds rentals->users; omit if schema has no created_by
+    // No users join: production DB may have no FK purchases/rentals -> users (PGRST200)
     let query = supabase
       .from('rentals')
       .select(`

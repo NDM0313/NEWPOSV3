@@ -26,3 +26,10 @@ services:
       timeout: 10s
       retries: 3
       start_period: 10s
+    networks:
+      - default
+      - supabase_default
+
+networks:
+  supabase_default:
+    external: true

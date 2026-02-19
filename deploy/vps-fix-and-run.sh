@@ -5,19 +5,21 @@ set -e
 cd "$(dirname "$0")/.."
 ROOT="$(pwd)"
 
-echo "[1/5] Project root: $ROOT"
+echo "[1/6] Project root: $ROOT"
 test -f .env.production || { echo "ERROR: .env.production missing"; exit 1; }
 
-echo "[2/5] Build and start container..."
+echo "[2/6] Build and start container..."
 docker compose -f deploy/docker-compose.prod.yml --project-directory "$ROOT" --env-file .env.production up -d --build
 
-echo "[3/5] Wait for container to be ready..."
+echo "[3/6] Wait for container to be ready..."
 sleep 5
 
-echo "[4/5] Connect to proxy network (Dokploy/Traefik)..."
+echo "[4/6] Connect to Supabase network (nginx needs supabase-kong)..."
+docker network connect supabase_default erp-frontend 2>/dev/null || true
+echo "[5/6] Connect to proxy network (Dokploy/Traefik)..."
 docker network connect dokploy-network erp-frontend 2>/dev/null || true
 
-echo "[5/5] Check..."
+echo "[6/6] Check..."
 docker ps --filter name=erp-frontend --format "{{.Names}} {{.Status}} {{.Ports}}"
 echo ""
 if curl -sf -o /dev/null -w "%{http_code}" http://127.0.0.1:3001/ | grep -q 200; then
