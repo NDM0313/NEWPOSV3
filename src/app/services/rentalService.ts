@@ -903,7 +903,7 @@ export const rentalService = {
   },
 
   async getAllRentals(companyId: string, branchId?: string | null) {
-    // No users join: production DB may have no FK purchases/rentals -> users (PGRST200)
+    // No created_by_user:users join – production DB may have no FK rentals→users (PGRST200)
     let query = supabase
       .from('rentals')
       .select(`

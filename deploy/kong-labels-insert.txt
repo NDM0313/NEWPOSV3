@@ -1,0 +1,10 @@
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.supabase-kong.rule=Host(`supabase.dincouture.pk`)"
+      - "traefik.http.routers.supabase-kong.entrypoints=websecure"
+      - "traefik.http.routers.supabase-kong.tls=true"
+      - "traefik.http.routers.supabase-kong.tls.certresolver=letsencrypt"
+      - "traefik.http.services.supabase-kong.loadbalancer.server.port=8000"
+    networks:
+      - default
+      - dokploy-network

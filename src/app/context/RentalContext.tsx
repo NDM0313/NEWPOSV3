@@ -106,7 +106,7 @@ function convertFromSupabaseRental(row: any): RentalUI {
       pieces: i.pieces,
     })),
     createdBy: row.created_by,
-    createdByName: row.created_by_user?.full_name || row.created_by_user?.email,
+    createdByName: row.created_by_user?.full_name || row.created_by_user?.email || 'System',
     notes: row.notes,
     documentType: row.document_type,
     documentNumber: row.document_number,

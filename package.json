@@ -12,7 +12,9 @@
     "seed": "node scripts/run-seed.js",
     "validate-seed": "node scripts/validate-seed.js",
     "seed:full": "node scripts/run-phases.js",
-    "link-auth": "node scripts/run-link-auth.js"
+    "link-auth": "node scripts/run-link-auth.js",
+    "sync:mobile-env": "node scripts/sync-mobile-env.js",
+    "mobile:dev": "node scripts/sync-mobile-env.js && cd erp-mobile-app && npm run dev"
   },
   "dependencies": {
     "@emotion/react": "11.14.0",

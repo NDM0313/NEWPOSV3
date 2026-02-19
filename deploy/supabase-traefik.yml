@@ -1,0 +1,41 @@
+# Supabase Kong API + Studio
+http:
+  routers:
+    supabase-dincouture:
+      rule: Host(`supabase.dincouture.pk`)
+      service: supabase-dincouture
+      entryPoints:
+        - websecure
+      tls:
+        certResolver: letsencrypt
+    supabase-http-redirect:
+      rule: Host(`supabase.dincouture.pk`)
+      middlewares:
+        - redirect-to-https
+      service: supabase-dincouture
+      entryPoints:
+        - web
+    studio-dincouture:
+      rule: Host(`studio.dincouture.pk`)
+      service: studio-dincouture
+      entryPoints:
+        - websecure
+      tls:
+        certResolver: letsencrypt
+    supabase-via-ip:
+      rule: Host(`72.62.254.176`) && (PathPrefix(`/rest`) || PathPrefix(`/auth`) || PathPrefix(`/realtime`) || PathPrefix(`/storage`) || PathPrefix(`/functions`))
+      service: supabase-dincouture
+      entryPoints:
+        - websecure
+      tls: {}
+  services:
+    supabase-dincouture:
+      loadBalancer:
+        servers:
+          - url: http://supabase-kong:8000
+        passHostHeader: true
+    studio-dincouture:
+      loadBalancer:
+        servers:
+          - url: http://supabase-studio:3000
+        passHostHeader: true

@@ -76,7 +76,7 @@ export const purchaseService = {
     return purchaseData;
   },
 
-  // Get all purchases
+  // Get all purchases (no created_by_user:users join – production DB may have no FK purchases→users; PGRST200)
   async getAllPurchases(companyId: string, branchId?: string) {
     // Note: company_id and po_date columns may not exist in all databases
     let query = supabase
