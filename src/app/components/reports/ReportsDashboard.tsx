@@ -195,6 +195,7 @@ const CalendarHeatmap = () => {
 };
 
 import { ItemLifecycleReport } from './ItemLifecycleReport';
+import { DayBookReport } from './DayBookReport';
 
 export const ReportsDashboard = () => {
   const sales = useSales();
@@ -342,6 +343,9 @@ export const ReportsDashboard = () => {
       : 'All Time';
 
     switch (activeTab) {
+      case 'daybook':
+        return { title: '', headers: [], rows: [] };
+
       case 'overview':
         return {
           title: `Reports Overview - ${dateRange}`,
@@ -477,6 +481,9 @@ export const ReportsDashboard = () => {
             </div>
           </div>
         );
+
+      case 'daybook':
+        return <DayBookReport />;
 
       case 'sales':
         return (
@@ -876,7 +883,7 @@ export const ReportsDashboard = () => {
       {/* Navigation Tabs */}
       <div className="border-b border-gray-800 overflow-x-auto">
          <div className="flex gap-8 min-w-max">
-            {['overview', 'sales', 'inventory', 'rentals', 'finance', 'pnl', 'ledger', 'item-lifecycle', 'profitability'].map((tab) => (
+            {['overview', 'daybook', 'sales', 'inventory', 'rentals', 'finance', 'pnl', 'ledger', 'item-lifecycle', 'profitability'].map((tab) => (
                <button
                  key={tab}
                  onClick={() => setActiveTab(tab)}
@@ -887,7 +894,8 @@ export const ReportsDashboard = () => {
                       : "text-gray-400 hover:text-gray-200"
                  )}
                >
-                 {tab === 'ledger' ? 'Product Ledger' : 
+                 {tab === 'daybook' ? 'Roznamcha (Day Book)' :
+                  tab === 'ledger' ? 'Product Ledger' : 
                   tab === 'profitability' ? 'Customer Profitability' : 
                   tab === 'pnl' ? 'P&L Statement' : 
                   tab === 'item-lifecycle' ? 'Item Lifecycle' : tab}

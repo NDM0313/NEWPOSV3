@@ -181,14 +181,14 @@ export const Dashboard = () => {
   if (!companyId) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
-        <div className="text-center max-w-md p-8 rounded-xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800">
-          <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-2">Create your business</h2>
-          <p className="text-gray-500 dark:text-gray-400 mb-6">
-            You’re signed in but don’t have a business yet. Sign out and use <strong>Create New Business</strong> on the login page to get started.
+        <div className="text-center max-w-md p-8 rounded-xl bg-[#1F2937] border border-[#374151]">
+          <h2 className="text-xl font-bold text-white mb-2">Create your business</h2>
+          <p className="text-[#9CA3AF] mb-6">
+            You’re signed in but don’t have a business yet. Sign out and use <strong className="text-white">Create New Business</strong> on the login page to get started.
           </p>
           <button
             type="button"
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-500"
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-[#3B82F6] text-white hover:bg-[#2563EB]"
             onClick={async () => {
               await signOut();
               window.location.href = '/';
@@ -224,14 +224,14 @@ export const Dashboard = () => {
         </div>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
         <StatCard 
           title="Total Due (Receivables)" 
           value={formatCurrency(metrics.totalReceivables)} 
           change="—" 
           icon={ArrowDownRight} 
           trend="up"
-          iconColor="text-blue-500"
+          iconColor="text-[#3B82F6]"
         />
         <StatCard 
           title="Supplier Due (Payables)" 
@@ -239,7 +239,7 @@ export const Dashboard = () => {
           change="—" 
           icon={ArrowUpRight} 
           trend="down"
-          iconColor="text-orange-500"
+          iconColor="text-[#F59E0B]"
         />
         <StatCard 
           title="Net Profit" 
@@ -247,7 +247,7 @@ export const Dashboard = () => {
           change={metrics.netProfit >= 0 ? "—" : "—"} 
           icon={DollarSign} 
           trend={metrics.netProfit >= 0 ? "up" : "down"}
-          iconColor="text-green-500"
+          iconColor="text-[#10B981]"
         />
         <StatCard 
           title="Total Sales" 
@@ -255,13 +255,13 @@ export const Dashboard = () => {
           change="—" 
           icon={ShoppingBag} 
           trend="up"
-          iconColor="text-purple-500"
+          iconColor="text-[#8B5CF6]"
         />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 p-6 rounded-xl">
-          <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-6">Revenue & Profit</h3>
+        <div className="lg:col-span-2 bg-[#111827]/50 border border-[#374151] p-6 rounded-xl">
+          <h3 className="text-lg font-bold text-white mb-6">Revenue & Profit</h3>
           <div className="w-full h-[320px] min-h-[320px]">
             <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={320}>
               <AreaChart data={chartData}>
@@ -290,10 +290,10 @@ export const Dashboard = () => {
           </div>
         </div>
 
-        <div className="space-y-6">
+          <div className="space-y-6">
            {/* Low Stock List */}
-          <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 p-6 rounded-xl flex-1">
-            <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+          <div className="bg-[#111827]/50 border border-[#374151] p-6 rounded-xl flex-1">
+            <h3 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
               <AlertTriangle size={18} className="text-red-500" />
               Critical Stock
             </h3>
@@ -301,36 +301,36 @@ export const Dashboard = () => {
               <>
                 <div className="space-y-4">
                   {lowStockItems.map(item => (
-                    <div key={item.id} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800/50 rounded-lg border border-gray-100 dark:border-gray-800">
+                    <div key={item.id} className="flex items-center justify-between p-3 bg-[#1F2937] rounded-lg border border-[#374151]">
                       <div>
-                        <p className="font-medium text-gray-900 dark:text-white text-sm">{item.name}</p>
-                        <p className="text-xs text-gray-500">SKU: {item.sku}</p>
+                        <p className="font-medium text-white text-sm">{item.name}</p>
+                        <p className="text-xs text-[#9CA3AF]">SKU: {item.sku}</p>
                       </div>
                       <div className="text-right">
                         <p className="font-bold text-red-500">{item.stock}</p>
-                        <p className="text-xs text-gray-500">Min: {item.min}</p>
+                        <p className="text-xs text-[#9CA3AF]">Min: {item.min}</p>
                       </div>
                     </div>
                   ))}
                 </div>
                 <button 
                   onClick={() => setCurrentView('inventory')}
-                  className="w-full mt-4 py-2 text-sm text-center text-blue-500 hover:text-blue-400"
+                  className="w-full mt-4 py-2 text-sm text-center text-[#3B82F6] hover:text-[#60A5FA]"
                 >
                   View All Low Stock
                 </button>
               </>
             ) : (
-              <div className="text-center py-8 text-gray-500">
+              <div className="text-center py-8 text-[#9CA3AF]">
                 <p className="text-sm">No low stock items</p>
               </div>
             )}
           </div>
 
-          <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 p-6 rounded-xl">
-             <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-6">Sales by Category</h3>
+          <div className="bg-[#111827]/50 border border-[#374151] p-6 rounded-xl">
+             <h3 className="text-lg font-bold text-white mb-6">Sales by Category</h3>
              {/* Simple Placeholder for another chart */}
-             <div className="h-40 flex items-center justify-center text-gray-500">
+             <div className="h-40 flex items-center justify-center text-[#9CA3AF]">
                 <div className="flex gap-2">
                   <div className="w-4 h-4 rounded-full bg-blue-500"></div>
                   <div className="w-4 h-4 rounded-full bg-green-500"></div>
@@ -345,19 +345,18 @@ export const Dashboard = () => {
 };
 
 const StatCard = ({ title, value, change, icon: Icon, trend, iconColor }: any) => (
-  <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 p-6 rounded-xl relative overflow-hidden group hover:border-blue-500/50 hover:-translate-y-1 hover:shadow-xl transition-all duration-300">
-    <div className="absolute right-0 top-0 w-24 h-24 bg-blue-500/5 rounded-bl-full -mr-4 -mt-4 transition-transform group-hover:scale-110" />
-    <div className="flex justify-between items-start mb-4">
-      <div className={`p-2 rounded-lg ${iconColor ? iconColor.replace('text-', 'bg-').replace('500', '500/10') : 'bg-gray-100 dark:bg-gray-800'} ${iconColor || 'text-blue-500'}`}>
+  <div className="bg-[#111827]/50 border border-[#374151] rounded-xl p-4 md:p-6 relative overflow-hidden group hover:border-[#3B82F6]/50 transition-all duration-300">
+    <div className="flex justify-between items-start mb-2 md:mb-4">
+      <div className={`p-2 rounded-lg bg-[#374151]/50 ${iconColor || 'text-[#3B82F6]'}`}>
         <Icon size={20} className={iconColor} />
       </div>
       <span className={`text-xs font-medium px-2 py-1 rounded-full ${
-        trend === 'up' ? 'bg-green-500/10 text-green-500' : 'bg-red-500/10 text-red-500'
+        trend === 'up' ? 'bg-[#10B981]/10 text-[#10B981]' : 'bg-[#EF4444]/10 text-[#EF4444]'
       }`}>
         {change}
       </span>
     </div>
-    <h3 className="text-gray-500 dark:text-gray-400 text-sm font-medium">{title}</h3>
-    <p className="text-2xl font-bold text-gray-900 dark:text-white mt-1">{value}</p>
+    <h3 className="text-[#9CA3AF] text-xs md:text-sm font-medium">{title}</h3>
+    <p className="text-lg md:text-2xl font-bold text-white mt-1">{value}</p>
   </div>
 );

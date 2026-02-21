@@ -1,12 +1,14 @@
 import { useState, useEffect } from 'react';
-import { ArrowLeft, CreditCard, Plus, Minus, Trash2, Search, User as UserIcon, Loader2 } from 'lucide-react';
+import { ArrowLeft, CreditCard, Plus, Minus, Trash2, Search, User as UserIcon, Loader2, CheckCircle2 } from 'lucide-react';
 import type { User } from '../../types';
 import * as productsApi from '../../api/products';
+import * as salesApi from '../../api/sales';
 
 interface POSModuleProps {
   onBack: () => void;
   user: User;
   companyId: string | null;
+  branchId: string | null;
 }
 
 interface POSProduct {
@@ -21,26 +23,20 @@ interface CartItem extends POSProduct {
   total: number;
 }
 
-const FALLBACK_PRODUCTS: POSProduct[] = [
-  { id: '1', name: 'Bridal Lehenga', price: 15000, sku: 'BRD-001' },
-  { id: '2', name: 'Dupatta Gold', price: 5000, sku: 'DUP-002' },
-  { id: '3', name: 'Jewelry Set', price: 12000, sku: 'JWL-004' },
-  { id: '4', name: 'Bridal Shoes', price: 4500, sku: 'SHO-005' },
-  { id: '5', name: 'Silk Fabric', price: 1200, sku: 'FAB-003' },
-  { id: '6', name: 'Lace Border', price: 800, sku: 'LAC-006' },
-];
-
-export function POSModule({ onBack, user: _user, companyId }: POSModuleProps) {
+export function POSModule({ onBack, user, companyId, branchId }: POSModuleProps) {
   const [products, setProducts] = useState<POSProduct[]>([]);
   const [loading, setLoading] = useState(!!companyId);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [customer] = useState('Walk-in Customer');
   const [showCart, setShowCart] = useState(false);
+  const [checkoutLoading, setCheckoutLoading] = useState(false);
+  const [checkoutError, setCheckoutError] = useState<string | null>(null);
+  const [lastInvoiceNo, setLastInvoiceNo] = useState<string | null>(null);
 
   useEffect(() => {
     if (!companyId) {
-      setProducts(FALLBACK_PRODUCTS);
+      setProducts([]);
       setLoading(false);
       return;
     }
@@ -49,13 +45,12 @@ export function POSModule({ onBack, user: _user, companyId }: POSModuleProps) {
     productsApi.getProducts(companyId).then(({ data, error }) => {
       if (cancelled) return;
       setLoading(false);
-      if (error || !data.length) setProducts(FALLBACK_PRODUCTS);
-      else setProducts(data.map((p) => ({ id: p.id, name: p.name, price: p.retailPrice, sku: p.sku })));
+      setProducts(error ? [] : data.map((p) => ({ id: p.id, name: p.name, price: p.retailPrice, sku: p.sku })));
     });
     return () => { cancelled = true; };
   }, [companyId]);
 
-  const list = products.length ? products : FALLBACK_PRODUCTS;
+  const list = products;
   const filtered = list.filter(
     (p) =>
       p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -96,10 +91,46 @@ export function POSModule({ onBack, user: _user, companyId }: POSModuleProps) {
   const tax = Math.round(subtotal * 0.16);
   const total = subtotal + tax;
 
-  const handleCheckout = () => {
-    if (cart.length === 0) return;
+  const handleCheckout = async (): Promise<boolean> => {
+    if (cart.length === 0) return false;
+    if (!companyId || !branchId || branchId === 'all' || !user?.id) {
+      setCheckoutError('Select a specific branch to checkout.');
+      return false;
+    }
+    setCheckoutLoading(true);
+    setCheckoutError(null);
+    const items = cart.map((item) => ({
+      productId: item.id,
+      productName: item.name,
+      sku: item.sku,
+      quantity: item.quantity,
+      unitPrice: item.price,
+      total: item.total,
+    }));
+    const { data, error } = await salesApi.createSale({
+      companyId,
+      branchId,
+      customerId: null,
+      customerName: 'Walk-in',
+      items,
+      subtotal,
+      discountAmount: 0,
+      taxAmount: tax,
+      expenses: 0,
+      total,
+      paymentMethod: 'Cash',
+      isStudio: false,
+      userId: user.id,
+    });
+    setCheckoutLoading(false);
+    if (error) {
+      setCheckoutError(error);
+      return false;
+    }
+    setLastInvoiceNo(data?.invoiceNo ?? null);
     setCart([]);
     setShowCart(false);
+    return true;
   };
 
   return (
@@ -119,6 +150,15 @@ export function POSModule({ onBack, user: _user, companyId }: POSModuleProps) {
       </div>
 
       <div className="p-4">
+        {lastInvoiceNo && (
+          <div className="mb-4 flex items-center gap-3 bg-[#10B981]/20 border border-[#10B981]/50 rounded-xl p-3">
+            <CheckCircle2 className="w-6 h-6 text-[#10B981] flex-shrink-0" />
+            <div>
+              <p className="font-medium text-[#10B981]">Sale complete</p>
+              <p className="text-sm text-[#9CA3AF]">Invoice {lastInvoiceNo}</p>
+            </div>
+          </div>
+        )}
         <div className="flex items-center gap-2 text-sm text-[#9CA3AF] mb-4">
           <UserIcon size={16} />
           <span>Customer:</span>
@@ -163,7 +203,7 @@ export function POSModule({ onBack, user: _user, companyId }: POSModuleProps) {
       </div>
 
       {/* Sticky cart bar */}
-      <div className="fixed bottom-0 left-0 right-0 bg-[#1F2937] border-t border-[#374151] p-4 safe-area-bottom z-30">
+      <div className="fixed left-0 right-0 bg-[#1F2937] border-t border-[#374151] p-4 safe-area-bottom z-30 fixed-bottom-above-nav">
         <button
           onClick={() => cart.length > 0 && setShowCart(true)}
           className="w-full flex items-center justify-between rounded-xl bg-[#111827] border border-[#374151] p-4 text-left"
@@ -238,6 +278,9 @@ export function POSModule({ onBack, user: _user, companyId }: POSModuleProps) {
             </div>
             {cart.length > 0 && (
               <div className="p-4 border-t border-[#374151] space-y-2">
+                {checkoutError && (
+                  <div className="p-3 bg-[#EF4444]/20 border border-[#EF4444] rounded-lg text-[#FCA5A5] text-sm">{checkoutError}</div>
+                )}
                 <div className="flex justify-between text-sm">
                   <span className="text-[#9CA3AF]">Subtotal</span>
                   <span className="text-white">Rs. {subtotal.toLocaleString()}</span>
@@ -251,10 +294,12 @@ export function POSModule({ onBack, user: _user, companyId }: POSModuleProps) {
                   <span className="text-[#10B981]">Rs. {total.toLocaleString()}</span>
                 </div>
                 <button
-                  onClick={() => { handleCheckout(); setShowCart(false); }}
-                  className="w-full h-12 bg-[#10B981] hover:bg-[#059669] text-white rounded-lg font-semibold mt-2"
+                  onClick={async () => { await handleCheckout(); }}
+                  disabled={checkoutLoading}
+                  className="w-full h-12 bg-[#10B981] hover:bg-[#059669] disabled:opacity-50 text-white rounded-lg font-semibold mt-2 flex items-center justify-center gap-2"
                 >
-                  Complete Checkout
+                  {checkoutLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : null}
+                  {checkoutLoading ? 'Processing...' : 'Complete Checkout'}
                 </button>
               </div>
             )}

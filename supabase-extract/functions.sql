@@ -36,6 +36,7 @@ BEGIN
       WHEN 'journal' THEN 'JE-'
       WHEN 'payment' THEN 'PMT-'
       WHEN 'receipt' THEN 'RCP-'
+      WHEN 'product' THEN 'PRD-'
       ELSE 'DOC-'
     END,
     0,

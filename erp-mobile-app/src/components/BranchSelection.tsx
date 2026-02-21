@@ -11,21 +11,15 @@ interface BranchSelectionProps {
   onBranchSelect: (branch: Branch) => void;
 }
 
-const MOCK_BRANCHES: Branch[] = [
-  { id: '1', name: 'Main Branch (HQ)', location: 'Karachi, Pakistan' },
-  { id: '2', name: 'Lahore Branch', location: 'Lahore, Pakistan' },
-  { id: '3', name: 'Islamabad Branch', location: 'Islamabad, Pakistan' },
-];
-
 export function BranchSelection({ user, companyId, onBranchSelect }: BranchSelectionProps) {
   const [branches, setBranches] = useState<Branch[]>([]);
   const [loading, setLoading] = useState(!!companyId);
   const [error, setError] = useState<string | null>(null);
-  const isAdmin = user.role === 'admin' || user.role === 'Admin';
+  const isAdmin = user.role === 'admin';
 
   useEffect(() => {
     if (!companyId) {
-      setBranches(MOCK_BRANCHES);
+      setBranches([]);
       setLoading(false);
       setError(null);
       return;
@@ -36,17 +30,13 @@ export function BranchSelection({ user, companyId, onBranchSelect }: BranchSelec
     getBranches(companyId).then(({ data, error: err }) => {
       if (cancelled) return;
       setLoading(false);
-      if (err) {
-        setError(err);
-        setBranches(MOCK_BRANCHES);
-      } else {
-        setBranches(data.length ? data : MOCK_BRANCHES);
-      }
+      setError(err || null);
+      setBranches(err ? [] : data);
     });
     return () => { cancelled = true; };
   }, [companyId]);
 
-  const list = isAdmin ? [ALL_BRANCHES_OPTION, ...branches] : branches;
+  const list = isAdmin && branches.length > 0 ? [ALL_BRANCHES_OPTION, ...branches] : branches;
 
   return (
     <div className="min-h-screen p-4">
@@ -61,7 +51,7 @@ export function BranchSelection({ user, companyId, onBranchSelect }: BranchSelec
       ) : (
         <>
           {error && (
-            <p className="text-sm text-amber-400 text-center mb-4">Could not load branches. Showing default list.</p>
+            <p className="text-sm text-amber-400 text-center mb-4">Could not load branches: {error}</p>
           )}
           <div className="space-y-3 max-w-md mx-auto">
             {list.map((branch) => (

@@ -28,7 +28,25 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
         return;
       }
       if (data) {
-        const user: User = { name: data.name, email: data.email, role: data.role };
+        const user: User = { id: data.userId, name: data.name, email: data.email, role: data.role };
+        onLogin(user, data.companyId);
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleAdminLogin = async () => {
+    setError('');
+    setLoading(true);
+    try {
+      const { data, error: err } = await authApi.signIn('ndm313@yahoo.com', '123456');
+      if (err) {
+        setError(err.message);
+        return;
+      }
+      if (data) {
+        const user: User = { id: data.userId, name: data.name, email: data.email, role: data.role };
         onLogin(user, data.companyId);
       }
     } finally {
@@ -46,7 +64,7 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
         return;
       }
       if (data) {
-        const user: User = { name: data.name, email: data.email, role: data.role };
+        const user: User = { id: data.userId, name: data.name, email: data.email, role: data.role };
         onLogin(user, data.companyId);
       }
     } finally {
@@ -106,8 +124,17 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
         <button
           type="button"
           disabled={loading}
+          onClick={handleAdminLogin}
+          className="mt-4 w-full h-12 bg-[#10B981]/20 border border-[#10B981]/40 text-[#34D399] font-medium rounded-lg flex items-center justify-center gap-2 transition-colors disabled:opacity-70"
+        >
+          <Zap className="w-5 h-5" />
+          Admin
+        </button>
+        <button
+          type="button"
+          disabled={loading}
           onClick={handleDemoLogin}
-          className="mt-4 w-full h-12 bg-[#8B5CF6]/20 border border-[#8B5CF6]/40 text-[#A78BFA] font-medium rounded-lg flex items-center justify-center gap-2 transition-colors disabled:opacity-70"
+          className="mt-2 w-full h-12 bg-[#8B5CF6]/20 border border-[#8B5CF6]/40 text-[#A78BFA] font-medium rounded-lg flex items-center justify-center gap-2 transition-colors disabled:opacity-70"
         >
           <Zap className="w-5 h-5" />
           Demo Login

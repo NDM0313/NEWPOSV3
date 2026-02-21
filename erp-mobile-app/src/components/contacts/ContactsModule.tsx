@@ -2,20 +2,12 @@ import { useState, useEffect } from 'react';
 import { ArrowLeft, Users, Plus, Search, Phone, Loader2 } from 'lucide-react';
 import type { User } from '../../types';
 import * as contactsApi from '../../api/contacts';
+import type { Contact, ContactRole } from '../../api/contacts';
+import { AddContactFlow, type AddContactFormData } from './AddContactFlow';
+import { EditContactFlow } from './EditContactFlow';
+import { ContactDetailView } from './ContactDetailView';
 
-export type ContactRole = 'customer' | 'supplier' | 'worker';
-
-export interface Contact {
-  id: string;
-  name: string;
-  roles: ContactRole[];
-  phone: string;
-  email?: string;
-  address?: string;
-  city?: string;
-  balance: number;
-  status: 'active' | 'inactive';
-}
+export type { Contact, ContactRole };
 
 interface ContactsModuleProps {
   onBack: () => void;
@@ -23,280 +15,7 @@ interface ContactsModuleProps {
   companyId: string | null;
 }
 
-const MOCK_CONTACTS: Contact[] = [
-  { id: '1', name: 'Ahmed Retailers', roles: ['customer'], phone: '+92 300 1234567', email: 'ahmed@example.com', city: 'Karachi', balance: 50000, status: 'active' },
-  { id: '2', name: 'Textile Suppliers Co.', roles: ['supplier'], phone: '+92 333 4567890', city: 'Faisalabad', balance: -85000, status: 'active' },
-  { id: '3', name: 'Usman - Master Tailor', roles: ['worker', 'supplier'], phone: '+92 321 9988776', city: 'Lahore', balance: -12000, status: 'active' },
-  { id: '4', name: 'Fatima Dyer', roles: ['worker'], phone: '+92 300 5544332', city: 'Karachi', balance: -8500, status: 'active' },
-  { id: '5', name: 'Ayesha Fashion', roles: ['customer', 'supplier'], phone: '+92 321 9876543', city: 'Lahore', balance: 25000, status: 'active' },
-];
-
-function ContactDetail({ contact, onBack, onEdit }: { contact: Contact; onBack: () => void; onEdit: () => void }) {
-  return (
-    <div className="min-h-screen bg-[#111827] p-4 pb-24">
-      <div className="flex items-center justify-between mb-6">
-        <button onClick={onBack} className="p-2 hover:bg-[#374151] rounded-lg text-white">
-          <ArrowLeft className="w-5 h-5" />
-        </button>
-        <button onClick={onEdit} className="px-4 py-2 bg-[#3B82F6] hover:bg-[#2563EB] rounded-lg text-sm font-medium text-white">
-          Edit
-        </button>
-      </div>
-      <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-6">
-        <h1 className="text-xl font-bold text-white mb-4">{contact.name}</h1>
-        <div className="flex flex-wrap gap-2 mb-4">
-          {contact.roles.map((r) => (
-            <span key={r} className="px-2 py-1 rounded-full text-xs font-medium bg-[#3B82F6]/20 text-[#93C5FD]">
-              {r}
-            </span>
-          ))}
-        </div>
-        <div className="space-y-3 text-sm">
-          <div className="flex items-center gap-2">
-            <Phone className="w-4 h-4 text-[#6B7280]" />
-            <span className="text-white">{contact.phone}</span>
-          </div>
-          {contact.email && (
-            <div className="flex items-center gap-2">
-              <span className="text-[#6B7280]">Email:</span>
-              <span className="text-white">{contact.email}</span>
-            </div>
-          )}
-          {contact.city && (
-            <div className="flex items-center gap-2">
-              <span className="text-[#6B7280]">City:</span>
-              <span className="text-white">{contact.city}</span>
-            </div>
-          )}
-          <div className="flex items-center gap-2 pt-2 border-t border-[#374151]">
-            <span className="text-[#6B7280]">Balance:</span>
-            <span className={contact.balance >= 0 ? 'text-[#EF4444]' : 'text-[#10B981]'}>
-              Rs. {Math.abs(contact.balance).toLocaleString()} {contact.balance >= 0 ? '(Receivable)' : '(Payable)'}
-            </span>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function EditContactForm({
-  contact,
-  onBack,
-  onSubmit,
-  error: formError,
-}: {
-  contact: Contact;
-  onBack: () => void;
-  onSubmit: (c: Contact) => void;
-  error: string;
-}) {
-  const [name, setName] = useState(contact.name);
-  const [phone, setPhone] = useState(contact.phone);
-  const [email, setEmail] = useState(contact.email ?? '');
-  const [city, setCity] = useState(contact.city ?? '');
-  const [roles, setRoles] = useState<ContactRole[]>(contact.roles.length ? contact.roles : ['customer']);
-
-  const toggleRole = (r: ContactRole) => {
-    setRoles((prev) => (prev.includes(r) ? prev.filter((x) => x !== r) : [...prev, r]));
-  };
-
-  const handleSubmit = () => {
-    if (!name.trim() || !phone.trim()) return;
-    onSubmit({
-      ...contact,
-      name: name.trim(),
-      phone: phone.trim(),
-      email: email.trim() || undefined,
-      city: city.trim() || undefined,
-      roles: roles.length ? roles : ['customer'],
-    });
-  };
-
-  return (
-    <div className="min-h-screen bg-[#111827] p-4 pb-24">
-      <div className="flex items-center justify-between mb-6">
-        <button onClick={onBack} className="p-2 hover:bg-[#374151] rounded-lg text-white">
-          <ArrowLeft className="w-5 h-5" />
-        </button>
-        <h1 className="text-lg font-semibold text-white">Edit Contact</h1>
-      </div>
-      {formError && <p className="text-sm text-red-400 mb-4">{formError}</p>}
-      <div className="space-y-4">
-        <div>
-          <label className="block text-xs font-medium text-[#9CA3AF] mb-2">Name *</label>
-          <input
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="Contact name"
-            className="w-full h-12 bg-[#1F2937] border border-[#374151] rounded-lg px-4 text-white placeholder-[#6B7280] focus:outline-none focus:border-[#3B82F6]"
-          />
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-[#9CA3AF] mb-2">Phone *</label>
-          <input
-            value={phone}
-            onChange={(e) => setPhone(e.target.value)}
-            placeholder="+92 300 1234567"
-            className="w-full h-12 bg-[#1F2937] border border-[#374151] rounded-lg px-4 text-white placeholder-[#6B7280] focus:outline-none focus:border-[#3B82F6]"
-          />
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-[#9CA3AF] mb-2">Email</label>
-          <input
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="email@example.com"
-            className="w-full h-12 bg-[#1F2937] border border-[#374151] rounded-lg px-4 text-white placeholder-[#6B7280] focus:outline-none focus:border-[#3B82F6]"
-          />
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-[#9CA3AF] mb-2">City</label>
-          <input
-            value={city}
-            onChange={(e) => setCity(e.target.value)}
-            placeholder="City"
-            className="w-full h-12 bg-[#1F2937] border border-[#374151] rounded-lg px-4 text-white placeholder-[#6B7280] focus:outline-none focus:border-[#3B82F6]"
-          />
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-[#9CA3AF] mb-2">Role(s)</label>
-          <div className="flex gap-2">
-            {(['customer', 'supplier', 'worker'] as ContactRole[]).map((r) => (
-              <button
-                key={r}
-                type="button"
-                onClick={() => toggleRole(r)}
-                className={`px-4 py-2 rounded-lg text-sm font-medium capitalize ${
-                  roles.includes(r) ? 'bg-[#8B5CF6] text-white' : 'bg-[#1F2937] text-[#9CA3AF] border border-[#374151]'
-                }`}
-              >
-                {r}
-              </button>
-            ))}
-          </div>
-        </div>
-        <button
-          onClick={handleSubmit}
-          disabled={!name.trim() || !phone.trim()}
-          className="w-full h-12 bg-[#3B82F6] hover:bg-[#2563EB] disabled:bg-[#374151] disabled:text-[#6B7280] rounded-lg font-medium text-white mt-4"
-        >
-          Save Changes
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function AddContactForm({
-  onBack,
-  onSubmit,
-  error: formError,
-}: {
-  onBack: () => void;
-  onSubmit: (c: Omit<Contact, 'id' | 'status'>) => void;
-  error: string;
-}) {
-  const [name, setName] = useState('');
-  const [phone, setPhone] = useState('');
-  const [email, setEmail] = useState('');
-  const [city, setCity] = useState('');
-  const [roles, setRoles] = useState<ContactRole[]>(['customer']);
-
-  const toggleRole = (r: ContactRole) => {
-    setRoles((prev) => (prev.includes(r) ? prev.filter((x) => x !== r) : [...prev, r]));
-  };
-
-  const handleSubmit = () => {
-    if (!name.trim() || !phone.trim()) return;
-    onSubmit({
-      name: name.trim(),
-      phone: phone.trim(),
-      email: email.trim() || undefined,
-      city: city.trim() || undefined,
-      roles: roles.length ? roles : ['customer'],
-      balance: 0,
-    });
-  };
-
-  return (
-    <div className="min-h-screen bg-[#111827] p-4 pb-24">
-      <div className="flex items-center justify-between mb-6">
-        <button onClick={onBack} className="p-2 hover:bg-[#374151] rounded-lg text-white">
-          <ArrowLeft className="w-5 h-5" />
-        </button>
-        <h1 className="text-lg font-semibold text-white">Add Contact</h1>
-      </div>
-      {formError && <p className="text-sm text-red-400 mb-4">{formError}</p>}
-      <div className="space-y-4">
-        <div>
-          <label className="block text-xs font-medium text-[#9CA3AF] mb-2">Name *</label>
-          <input
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="Contact name"
-            className="w-full h-12 bg-[#1F2937] border border-[#374151] rounded-lg px-4 text-white placeholder-[#6B7280] focus:outline-none focus:border-[#3B82F6]"
-          />
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-[#9CA3AF] mb-2">Phone *</label>
-          <input
-            value={phone}
-            onChange={(e) => setPhone(e.target.value)}
-            placeholder="+92 300 1234567"
-            className="w-full h-12 bg-[#1F2937] border border-[#374151] rounded-lg px-4 text-white placeholder-[#6B7280] focus:outline-none focus:border-[#3B82F6]"
-          />
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-[#9CA3AF] mb-2">Email</label>
-          <input
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="email@example.com"
-            className="w-full h-12 bg-[#1F2937] border border-[#374151] rounded-lg px-4 text-white placeholder-[#6B7280] focus:outline-none focus:border-[#3B82F6]"
-          />
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-[#9CA3AF] mb-2">City</label>
-          <input
-            value={city}
-            onChange={(e) => setCity(e.target.value)}
-            placeholder="City"
-            className="w-full h-12 bg-[#1F2937] border border-[#374151] rounded-lg px-4 text-white placeholder-[#6B7280] focus:outline-none focus:border-[#3B82F6]"
-          />
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-[#9CA3AF] mb-2">Role(s)</label>
-          <div className="flex gap-2">
-            {(['customer', 'supplier', 'worker'] as ContactRole[]).map((r) => (
-              <button
-                key={r}
-                type="button"
-                onClick={() => toggleRole(r)}
-                className={`px-4 py-2 rounded-lg text-sm font-medium capitalize ${
-                  roles.includes(r) ? 'bg-[#8B5CF6] text-white' : 'bg-[#1F2937] text-[#9CA3AF] border border-[#374151]'
-                }`}
-              >
-                {r}
-              </button>
-            ))}
-          </div>
-        </div>
-        <button
-          onClick={handleSubmit}
-          disabled={!name.trim() || !phone.trim()}
-          className="w-full h-12 bg-[#8B5CF6] hover:bg-[#7C3AED] disabled:bg-[#374151] disabled:text-[#6B7280] rounded-lg font-medium text-white mt-4"
-        >
-          Save Contact
-        </button>
-      </div>
-    </div>
-  );
-}
-
-export function ContactsModule({ onBack, user: _user, companyId }: ContactsModuleProps) {
+export function ContactsModule({ onBack, user, companyId }: ContactsModuleProps) {
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [loading, setLoading] = useState(!!companyId);
   const [search, setSearch] = useState('');
@@ -305,20 +24,27 @@ export function ContactsModule({ onBack, user: _user, companyId }: ContactsModul
   const [selected, setSelected] = useState<Contact | null>(null);
   const [addError, setAddError] = useState('');
   const [updateError, setUpdateError] = useState('');
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!companyId) {
-      setContacts(MOCK_CONTACTS);
+      setContacts([]);
       setLoading(false);
+      setLoadError('Company not selected.');
       return;
     }
     let cancelled = false;
     setLoading(true);
+    setLoadError(null);
     contactsApi.getContacts(companyId).then(({ data, error }) => {
       if (cancelled) return;
       setLoading(false);
-      if (error) setContacts(MOCK_CONTACTS);
-      else setContacts(data);
+      if (error) {
+        setLoadError(error);
+        setContacts([]);
+      } else {
+        setContacts(data || []);
+      }
     });
     return () => { cancelled = true; };
   }, [companyId]);
@@ -336,42 +62,44 @@ export function ContactsModule({ onBack, user: _user, companyId }: ContactsModul
     workers: contacts.filter((c) => c.roles.includes('worker')).length,
   };
 
-  const handleAdd = async (c: Omit<Contact, 'id' | 'status'>) => {
-    if (!companyId) {
-      setContacts([{ ...c, id: `c${Date.now()}`, status: 'active' }, ...contacts]);
-      setView('list');
-      return;
-    }
+  const handleAdd = async (data: AddContactFormData) => {
+    if (!companyId) return;
     setAddError('');
-    const { data, error } = await contactsApi.createContact(companyId, {
-      name: c.name,
-      phone: c.phone,
-      email: c.email,
-      city: c.city,
-      roles: c.roles.length ? c.roles : ['customer'],
+    const { data: created, error } = await contactsApi.createContact(companyId, {
+      name: data.name,
+      phone: data.phone,
+      email: data.email || undefined,
+      city: data.city || undefined,
+      address: data.address || undefined,
+      roles: data.roles.length ? data.roles : ['customer'],
+      openingBalance: data.balance,
+      creditLimit: data.creditLimit || undefined,
+      workerType: data.workerType || undefined,
+      workerRate: data.workerRate || undefined,
     });
     if (error) {
       setAddError(error);
       return;
     }
-    if (data) setContacts([data, ...contacts]);
+    if (created) setContacts([created, ...contacts]);
     setView('list');
   };
 
-  const handleUpdate = async (updated: Contact) => {
-    if (!companyId) {
-      setContacts(contacts.map((c) => (c.id === updated.id ? updated : c)));
-      setSelected(updated);
-      setView('detail');
-      return;
-    }
+  const handleUpdate = async (updates: Partial<Contact>) => {
+    if (!selected || !companyId) return;
     setUpdateError('');
-    const { data, error } = await contactsApi.updateContact(updated.id, {
-      name: updated.name,
-      phone: updated.phone,
-      email: updated.email,
-      city: updated.city,
-      roles: updated.roles.length ? updated.roles : ['customer'],
+    const { data, error } = await contactsApi.updateContact(selected.id, {
+      name: updates.name ?? selected.name,
+      phone: updates.phone ?? selected.phone,
+      email: updates.email ?? selected.email,
+      city: updates.city ?? selected.city,
+      address: updates.address ?? selected.address,
+      roles: updates.roles?.length ? updates.roles : selected.roles,
+      openingBalance: updates.balance ?? selected.balance,
+      creditLimit: updates.creditLimit ?? selected.creditLimit,
+      workerType: updates.workerType ?? selected.workerType,
+      workerRate: updates.workerRate ?? selected.workerRate,
+      status: updates.status ?? selected.status,
     });
     if (error) {
       setUpdateError(error);
@@ -385,12 +113,18 @@ export function ContactsModule({ onBack, user: _user, companyId }: ContactsModul
   };
 
   if (view === 'add') {
-    return <AddContactForm onBack={() => { setAddError(''); setView('list'); }} onSubmit={handleAdd} error={addError} />;
+    return (
+      <AddContactFlow
+        onBack={() => { setAddError(''); setView('list'); }}
+        onSubmit={handleAdd}
+        error={addError}
+      />
+    );
   }
 
   if (view === 'edit' && selected) {
     return (
-      <EditContactForm
+      <EditContactFlow
         contact={selected}
         onBack={() => { setUpdateError(''); setView('detail'); }}
         onSubmit={handleUpdate}
@@ -401,10 +135,11 @@ export function ContactsModule({ onBack, user: _user, companyId }: ContactsModul
 
   if (view === 'detail' && selected) {
     return (
-      <ContactDetail
+      <ContactDetailView
         contact={selected}
         onBack={() => { setView('list'); setSelected(null); }}
         onEdit={() => setView('edit')}
+        user={user}
       />
     );
   }
@@ -429,6 +164,11 @@ export function ContactsModule({ onBack, user: _user, companyId }: ContactsModul
       </div>
 
       <div className="p-4">
+        {loadError && (
+          <div className="mb-4 p-3 bg-[#EF4444]/10 border border-[#EF4444]/50 rounded-xl text-[#FCA5A5] text-sm">
+            {loadError}
+          </div>
+        )}
         {loading ? (
           <div className="flex justify-center py-12">
             <Loader2 className="w-8 h-8 text-[#8B5CF6] animate-spin" />

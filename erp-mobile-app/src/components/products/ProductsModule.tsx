@@ -1,141 +1,55 @@
 import { useState, useEffect } from 'react';
-import { ArrowLeft, Package, Plus, Search, Loader2 } from 'lucide-react';
+import { ArrowLeft, Package, Plus, Search, Loader2, Edit2 } from 'lucide-react';
 import type { User } from '../../types';
 import * as productsApi from '../../api/products';
+import type { ProductVariationRow } from '../../api/products';
+import { AddProductFlow, type AddProductFlowSavePayload } from './AddProductFlow';
+
+/** Total stock: sum of variation stocks when hasVariations, else product stock */
+function getDisplayStock(p: productsApi.Product): number {
+  if (p.hasVariations && p.variations?.length) {
+    return p.variations.reduce((s, v) => s + (v.stock ?? 0), 0);
+  }
+  return p.stock ?? 0;
+}
+
+/** Variation summary: "Size: S, M, L · Color: Red, Blue" or "3 variations" */
+function getVariationSummary(variations: ProductVariationRow[]): string {
+  if (!variations?.length) return '';
+  const attrMap: Record<string, Set<string>> = {};
+  for (const v of variations) {
+    for (const [key, val] of Object.entries(v.attributes || {})) {
+      if (!key || val == null) continue;
+      if (!attrMap[key]) attrMap[key] = new Set();
+      attrMap[key].add(String(val));
+    }
+  }
+  const parts = Object.entries(attrMap).map(([k, set]) => `${k}: ${[...set].sort().join(', ')}`);
+  return parts.length > 0 ? parts.join(' · ') : `${variations.length} variations`;
+}
 
 interface ProductsModuleProps {
   onBack: () => void;
   user: User;
   companyId: string | null;
+  branchId?: string | null;
 }
 
-export interface Product {
-  id: string;
-  sku: string;
-  name: string;
-  category: string;
-  costPrice: number;
-  retailPrice: number;
-  stock: number;
-  unit: string;
-  status: 'active' | 'inactive';
-}
+export type Product = productsApi.Product;
 
-const MOCK_PRODUCTS: Product[] = [
-  { id: '1', sku: 'BRD-001', name: 'Bridal Lehenga - Red & Gold', category: 'Bridal', costPrice: 12000, retailPrice: 15000, stock: 5, unit: 'Piece', status: 'active' },
-  { id: '2', sku: 'DUP-002', name: 'Dupatta - Gold Embroidered', category: 'Accessories', costPrice: 4000, retailPrice: 5000, stock: 12, unit: 'Piece', status: 'active' },
-  { id: '3', sku: 'FAB-003', name: 'Silk Fabric - Royal Blue', category: 'Fabric', costPrice: 1000, retailPrice: 1200, stock: 25, unit: 'Meter', status: 'active' },
-  { id: '4', sku: 'JWL-004', name: 'Jewelry Set - Pearl', category: 'Accessories', costPrice: 8000, retailPrice: 12000, stock: 3, unit: 'Piece', status: 'active' },
-];
-
-function AddProductForm({
-  onBack,
-  onSave,
-  saving,
-  error,
-}: {
-  onBack: () => void;
-  onSave: (p: Omit<Product, 'id'>) => void;
-  saving: boolean;
-  error: string;
-}) {
-  const [name, setName] = useState('');
-  const [sku, setSku] = useState('');
-  const [category, setCategory] = useState('Bridal');
-  const [costPrice, setCostPrice] = useState('');
-  const [retailPrice, setRetailPrice] = useState('');
-  const [stock, setStock] = useState('');
-  const [unit, setUnit] = useState('Piece');
-
-  const handleSubmit = () => {
-    if (!name.trim() || !sku.trim()) return;
-    const cost = parseFloat(costPrice) || 0;
-    const retail = parseFloat(retailPrice) || cost;
-    const st = parseInt(stock, 10) || 0;
-    onSave({
-      sku: sku.trim(),
-      name: name.trim(),
-      category,
-      costPrice: cost,
-      retailPrice: retail,
-      stock: st,
-      unit,
-      status: 'active',
-    });
-  };
-
-  return (
-    <div className="min-h-screen bg-[#111827] p-4 pb-24">
-      <div className="flex items-center justify-between mb-6">
-        <button onClick={onBack} className="p-2 hover:bg-[#374151] rounded-lg text-white">
-          <ArrowLeft className="w-5 h-5" />
-        </button>
-        <h1 className="text-lg font-semibold text-white">Add Product</h1>
-      </div>
-      <div className="space-y-4">
-        <div>
-          <label className="block text-xs font-medium text-[#9CA3AF] mb-2">Name *</label>
-          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Product name" className="w-full h-12 bg-[#1F2937] border border-[#374151] rounded-lg px-4 text-white placeholder-[#6B7280] focus:outline-none focus:border-[#3B82F6]" />
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-[#9CA3AF] mb-2">SKU *</label>
-          <input value={sku} onChange={(e) => setSku(e.target.value)} placeholder="e.g. BRD-001" className="w-full h-12 bg-[#1F2937] border border-[#374151] rounded-lg px-4 text-white placeholder-[#6B7280] focus:outline-none focus:border-[#3B82F6]" />
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-[#9CA3AF] mb-2">Category</label>
-          <select value={category} onChange={(e) => setCategory(e.target.value)} className="w-full h-12 bg-[#1F2937] border border-[#374151] rounded-lg px-4 text-white focus:outline-none focus:border-[#3B82F6]">
-            <option value="Bridal">Bridal</option>
-            <option value="Accessories">Accessories</option>
-            <option value="Fabric">Fabric</option>
-            <option value="Other">Other</option>
-          </select>
-        </div>
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="block text-xs font-medium text-[#9CA3AF] mb-2">Cost (Rs)</label>
-            <input type="number" value={costPrice} onChange={(e) => setCostPrice(e.target.value)} placeholder="0" className="w-full h-12 bg-[#1F2937] border border-[#374151] rounded-lg px-4 text-white placeholder-[#6B7280] focus:outline-none focus:border-[#3B82F6]" />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-[#9CA3AF] mb-2">Retail (Rs)</label>
-            <input type="number" value={retailPrice} onChange={(e) => setRetailPrice(e.target.value)} placeholder="0" className="w-full h-12 bg-[#1F2937] border border-[#374151] rounded-lg px-4 text-white placeholder-[#6B7280] focus:outline-none focus:border-[#3B82F6]" />
-          </div>
-        </div>
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="block text-xs font-medium text-[#9CA3AF] mb-2">Stock</label>
-            <input type="number" value={stock} onChange={(e) => setStock(e.target.value)} placeholder="0" className="w-full h-12 bg-[#1F2937] border border-[#374151] rounded-lg px-4 text-white placeholder-[#6B7280] focus:outline-none focus:border-[#3B82F6]" />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-[#9CA3AF] mb-2">Unit</label>
-            <select value={unit} onChange={(e) => setUnit(e.target.value)} className="w-full h-12 bg-[#1F2937] border border-[#374151] rounded-lg px-4 text-white focus:outline-none focus:border-[#3B82F6]">
-              <option value="Piece">Piece</option>
-              <option value="Meter">Meter</option>
-              <option value="Yard">Yard</option>
-            </select>
-          </div>
-        </div>
-        {error && <p className="text-sm text-red-400">{error}</p>}
-        <button onClick={handleSubmit} disabled={!name.trim() || !sku.trim() || saving} className="w-full h-12 bg-[#10B981] hover:bg-[#059669] disabled:bg-[#374151] disabled:text-[#6B7280] rounded-lg font-medium text-white mt-4 flex items-center justify-center gap-2">
-          {saving ? <Loader2 className="w-5 h-5 animate-spin" /> : null}
-          Save Product
-        </button>
-      </div>
-    </div>
-  );
-}
-
-export function ProductsModule({ onBack, user: _user, companyId }: ProductsModuleProps) {
+export function ProductsModule({ onBack, user: _user, companyId, branchId }: ProductsModuleProps) {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(!!companyId);
   const [search, setSearch] = useState('');
   const [filterCat, setFilterCat] = useState<string>('all');
   const [view, setView] = useState<'list' | 'add'>('list');
+  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [saveError, setSaveError] = useState('');
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (!companyId) {
-      setProducts(MOCK_PRODUCTS);
+      setProducts([]);
       setLoading(false);
       return;
     }
@@ -144,8 +58,7 @@ export function ProductsModule({ onBack, user: _user, companyId }: ProductsModul
     productsApi.getProducts(companyId).then(({ data, error }) => {
       if (cancelled) return;
       setLoading(false);
-      if (error) setProducts(MOCK_PRODUCTS);
-      else setProducts(data);
+      setProducts(error ? [] : data);
     });
     return () => { cancelled = true; };
   }, [companyId]);
@@ -158,37 +71,75 @@ export function ProductsModule({ onBack, user: _user, companyId }: ProductsModul
 
   const categories = ['all', ...Array.from(new Set(products.map((p) => p.category)))];
 
-  const handleSave = async (p: Omit<Product, 'id'>) => {
-    if (!companyId) {
-      setProducts([{ ...p, id: `p${Date.now()}` }, ...products]);
-      setView('list');
-      return;
-    }
+  const handleAddEditSave = async (payload: AddProductFlowSavePayload) => {
+    if (!companyId) return;
     setSaveError('');
     setSaving(true);
-    const { data, error } = await productsApi.createProduct(companyId, {
-      name: p.name,
-      sku: p.sku,
-      category: p.category,
-      costPrice: p.costPrice,
-      retailPrice: p.retailPrice,
-      stock: p.stock,
-      unit: p.unit,
-    });
-    setSaving(false);
-    if (error) {
-      setSaveError(error);
-      return;
+    if (payload.id) {
+      const { data, error } = await productsApi.updateProduct(companyId, payload.id, {
+        name: payload.name,
+        sku: payload.sku,
+        category: payload.category,
+        categoryId: payload.categoryId,
+        brandId: payload.brandId,
+        unitId: payload.unitId,
+        description: payload.description,
+        barcode: payload.barcode,
+        costPrice: payload.costPrice,
+        retailPrice: payload.retailPrice,
+        wholesalePrice: payload.wholesalePrice,
+        stock: payload.stock,
+        minStock: payload.minStock,
+        unit: payload.unit,
+        status: payload.status,
+      });
+      setSaving(false);
+      if (error) {
+        setSaveError(error);
+        return;
+      }
+      if (data) {
+        setProducts(products.map((p) => (p.id === payload.id ? data : p)));
+      }
+    } else {
+      const { data, error } = await productsApi.createProduct(companyId, {
+        name: payload.name,
+        sku: payload.sku,
+        category: payload.category,
+        categoryId: payload.categoryId,
+        brandId: payload.brandId,
+        unitId: payload.unitId,
+        description: payload.description,
+        barcode: payload.barcode,
+        costPrice: payload.costPrice,
+        retailPrice: payload.retailPrice,
+        wholesalePrice: payload.wholesalePrice,
+        stock: payload.stock,
+        minStock: payload.minStock,
+        unit: payload.unit,
+        status: payload.status,
+        hasVariations: payload.hasVariations,
+        variations: payload.variations,
+      });
+      setSaving(false);
+      if (error) {
+        setSaveError(error);
+        return;
+      }
+      if (data) setProducts([data, ...products]);
     }
-    if (data) setProducts([data, ...products]);
     setView('list');
+    setEditingProduct(null);
   };
 
   if (view === 'add') {
     return (
-      <AddProductForm
-        onBack={() => setView('list')}
-        onSave={handleSave}
+      <AddProductFlow
+        companyId={companyId}
+        branchId={branchId ?? null}
+        onClose={() => setView('list')}
+        onSave={handleAddEditSave}
+        product={editingProduct}
         saving={saving}
         error={saveError}
       />
@@ -208,7 +159,13 @@ export function ProductsModule({ onBack, user: _user, companyId }: ProductsModul
             </div>
             <h1 className="text-white font-semibold text-base">Products</h1>
           </div>
-          <button onClick={() => setView('add')} className="p-2 bg-[#10B981] hover:bg-[#059669] rounded-lg text-white">
+          <button
+            onClick={() => {
+              setEditingProduct(null);
+              setView('add');
+            }}
+            className="p-2 bg-[#10B981] hover:bg-[#059669] rounded-lg text-white"
+          >
             <Plus size={20} />
           </button>
         </div>
@@ -233,21 +190,44 @@ export function ProductsModule({ onBack, user: _user, companyId }: ProductsModul
           ))}
         </div>
         <div className="space-y-3">
-          {filtered.map((p) => (
-            <div key={p.id} className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">
-              <div className="flex justify-between items-start">
-                <div>
-                  <h3 className="font-medium text-white">{p.name}</h3>
-                  <p className="text-xs text-[#6B7280]">{p.sku} · {p.category}</p>
-                  <p className="text-sm text-[#10B981] mt-1">Rs. {p.retailPrice.toLocaleString()} <span className="text-[#9CA3AF]">/ {p.unit}</span></p>
-                </div>
-                <div className="text-right">
-                  <p className="text-sm font-medium text-white">Stock: {p.stock}</p>
-                  <span className={`text-xs px-2 py-0.5 rounded ${p.status === 'active' ? 'bg-[#10B981]/20 text-[#10B981]' : 'bg-[#6B7280]/20 text-[#9CA3AF]'}`}>{p.status}</span>
+          {filtered.map((p) => {
+            const displayStock = getDisplayStock(p);
+            const variationSummary = p.hasVariations && p.variations?.length ? getVariationSummary(p.variations) : '';
+            const prices = p.variations?.map((v) => v.price).filter((n) => typeof n === 'number') ?? [];
+            const priceMin = prices.length ? Math.min(...prices) : p.retailPrice;
+            const priceMax = prices.length ? Math.max(...prices) : p.retailPrice;
+            const priceLabel = priceMin !== priceMax ? `Rs. ${priceMin.toLocaleString()} - ${priceMax.toLocaleString()}` : `Rs. ${p.retailPrice.toLocaleString()}`;
+            return (
+              <div key={p.id} className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">
+                <div className="flex justify-between items-start">
+                  <div className="min-w-0 flex-1">
+                    <h3 className="font-medium text-white">{p.name}</h3>
+                    <p className="text-xs text-[#6B7280]">{p.sku} · {p.category}</p>
+                    {variationSummary ? (
+                      <p className="text-xs text-[#9CA3AF] mt-0.5 truncate" title={variationSummary}>{variationSummary}</p>
+                    ) : null}
+                    <p className="text-sm text-[#10B981] mt-1">{priceLabel} <span className="text-[#9CA3AF]">/ {p.unit}</span></p>
+                  </div>
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    <button
+                      onClick={() => {
+                        setEditingProduct(p);
+                        setView('add');
+                      }}
+                      className="p-2 hover:bg-[#374151] rounded-lg text-[#9CA3AF] hover:text-white"
+                      aria-label="Edit"
+                    >
+                      <Edit2 size={16} />
+                    </button>
+                    <div className="text-right">
+                      <p className="text-sm font-medium text-white">Stock: {displayStock}</p>
+                      <span className={`text-xs px-2 py-0.5 rounded ${p.status === 'active' ? 'bg-[#10B981]/20 text-[#10B981]' : 'bg-[#6B7280]/20 text-[#9CA3AF]'}`}>{p.status}</span>
+                    </div>
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
         {filtered.length === 0 && <p className="text-center text-[#6B7280] py-8">No products found</p>}
         </>

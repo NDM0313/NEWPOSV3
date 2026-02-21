@@ -22,7 +22,7 @@ interface ModuleItem {
 
 export function TabletSidebar({ user, branch, currentScreen, onNavigate, onLogout }: TabletSidebarProps) {
   const modules: ModuleItem[] = [
-    { id: 'home', title: 'Dashboard', icon: <Home size={20} />, color: '#8B5CF6', enabled: true },
+    { id: 'dashboard', title: 'Dashboard', icon: <Home size={20} />, color: '#8B5CF6', enabled: true },
     { id: 'sales', title: 'Sales', icon: <ShoppingCart size={20} />, color: '#3B82F6', enabled: true },
     { id: 'purchase', title: 'Purchase', icon: <ShoppingBag size={20} />, color: '#10B981', enabled: true },
     { id: 'rental', title: 'Rental', icon: <Shirt size={20} />, color: '#8B5CF6', enabled: true },

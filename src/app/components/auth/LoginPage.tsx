@@ -60,6 +60,22 @@ export const LoginPage: React.FC = () => {
     }
   };
 
+  const handleAdminLogin = async () => {
+    setLoading(true);
+    setError('');
+    const adminEmail = 'ndm313@yahoo.com';
+    const adminPassword = '123456';
+    setEmail(adminEmail);
+    setPassword(adminPassword);
+    const { data, error: signInError } = await signIn(adminEmail, adminPassword);
+    if (signInError) {
+      setError(signInError.message);
+      setLoading(false);
+    } else if (data?.user) {
+      setTimeout(() => window.location.reload(), 500);
+    }
+  };
+
   const handleDemoLogin = async () => {
     setLoading(true);
     setError('');
@@ -110,17 +126,20 @@ export const LoginPage: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-[#111827] flex items-center justify-center p-4">
-      <div className="max-w-md w-full">
-        {/* Logo */}
-        <div className="text-center mb-8">
-          <h1 className="text-4xl font-bold text-white mb-2">Din Collection</h1>
-          <p className="text-gray-400">Bridal Rental Management ERP</p>
+    <div className="min-h-screen flex flex-col items-center justify-center p-4 bg-[#111827]">
+      <div className="w-full max-w-sm">
+        {/* Logo - Mobile style */}
+        <div className="mb-8 text-center">
+          <div className="w-20 h-20 mx-auto mb-4 bg-gradient-to-br from-[#3B82F6] to-[#8B5CF6] rounded-2xl flex items-center justify-center">
+            <span className="text-3xl font-bold text-white">DC</span>
+          </div>
+          <h1 className="text-2xl font-bold mb-1 text-white">Din Collection</h1>
+          <p className="text-sm text-[#9CA3AF]">Bridal Rental Management ERP</p>
         </div>
 
         {/* Login Form */}
-        <div className="bg-gray-900 border border-gray-800 rounded-2xl p-8">
-          <h2 className="text-2xl font-bold text-white mb-6">Sign In</h2>
+        <div className="bg-[#1F2937] border border-[#374151] rounded-2xl p-6">
+          <h2 className="text-xl font-bold text-white mb-6">Sign In</h2>
 
           {error && (
             <div className="mb-4 p-3 bg-red-500/10 border border-red-500/30 rounded-lg flex items-center gap-2 text-red-400">
@@ -138,15 +157,15 @@ export const LoginPage: React.FC = () => {
           <form onSubmit={handleLogin} className="space-y-4">
             {/* Email */}
             <div>
-              <label className="block text-sm text-gray-400 mb-2">Email</label>
+              <label className="block text-xs font-medium text-[#9CA3AF] mb-2">Email</label>
               <div className="relative">
-                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={18} />
+                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#6B7280]" />
                 <Input
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="your@email.com"
-                  className="pl-10 bg-gray-800 border-gray-700 text-white"
+                  className="h-12 pl-11 pr-4 bg-[#1F2937] border-[#374151] text-white placeholder:text-[#6B7280] focus:border-[#3B82F6] focus:ring-2 focus:ring-[#3B82F6]/20 rounded-lg"
                   required
                   disabled={loading}
                 />
@@ -155,15 +174,15 @@ export const LoginPage: React.FC = () => {
 
             {/* Password */}
             <div>
-              <label className="block text-sm text-gray-400 mb-2">Password</label>
+              <label className="block text-xs font-medium text-[#9CA3AF] mb-2">Password</label>
               <div className="relative">
-                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={18} />
+                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#6B7280]" />
                 <Input
                   type="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••"
-                  className="pl-10 bg-gray-800 border-gray-700 text-white"
+                  className="h-12 pl-11 pr-4 bg-[#1F2937] border-[#374151] text-white placeholder:text-[#6B7280] focus:border-[#3B82F6] focus:ring-2 focus:ring-[#3B82F6]/20 rounded-lg"
                   required
                   disabled={loading}
                 />
@@ -174,7 +193,7 @@ export const LoginPage: React.FC = () => {
             <Button
               type="submit"
               disabled={loading}
-              className="w-full bg-blue-600 hover:bg-blue-700 text-white h-12 text-base font-semibold"
+              className="w-full h-12 bg-[#3B82F6] hover:bg-[#2563EB] text-white font-medium rounded-lg"
             >
               {loading ? 'Signing in...' : 'Sign In'}
             </Button>
@@ -182,23 +201,34 @@ export const LoginPage: React.FC = () => {
 
           {/* Divider */}
           <div className="my-6 flex items-center">
-            <div className="flex-1 border-t border-gray-700"></div>
-            <span className="px-4 text-sm text-gray-400">OR</span>
-            <div className="flex-1 border-t border-gray-700"></div>
+            <div className="flex-1 border-t border-[#374151]"></div>
+            <span className="px-4 text-sm text-[#9CA3AF]">OR</span>
+            <div className="flex-1 border-t border-[#374151]"></div>
           </div>
+
+          {/* Admin Login Button */}
+          <Button
+            type="button"
+            onClick={handleAdminLogin}
+            disabled={loading}
+            className="w-full h-12 bg-[#10B981] hover:bg-[#059669] text-white font-medium rounded-lg flex items-center justify-center gap-2 mb-2"
+          >
+            <User size={18} />
+            {loading ? 'Logging in...' : 'Admin'}
+          </Button>
 
           {/* Demo Login Button */}
           <Button
             type="button"
             onClick={handleDemoLogin}
             disabled={loading}
-            className="w-full bg-purple-600 hover:bg-purple-700 text-white h-12 text-base font-semibold flex items-center justify-center gap-2 mb-3"
+            className="w-full h-12 bg-[#8B5CF6] hover:bg-[#7C3AED] text-white font-medium rounded-lg flex items-center justify-center gap-2 mb-3"
           >
             <User size={18} />
-            {loading ? 'Logging in...' : 'Demo Login (Admin)'}
+            {loading ? 'Logging in...' : 'Demo Login'}
           </Button>
-          <p className="text-xs text-gray-400 text-center mb-4">
-            Quick access with demo admin account
+          <p className="text-xs text-[#9CA3AF] text-center mb-4">
+            Quick access with demo or admin account
           </p>
 
           {/* Create Business Button */}
@@ -207,12 +237,12 @@ export const LoginPage: React.FC = () => {
             onClick={() => setShowCreateBusiness(true)}
             disabled={loading}
             variant="outline"
-            className="w-full bg-gray-800 border-gray-700 text-white hover:bg-gray-700 h-12 text-base font-semibold flex items-center justify-center gap-2"
+            className="w-full h-12 bg-[#1F2937] border-[#374151] text-white hover:bg-[#374151] font-medium rounded-lg flex items-center justify-center gap-2"
           >
             <Building2 size={18} />
             Create New Business
           </Button>
-          <p className="text-xs text-gray-400 text-center mt-2">
+          <p className="text-xs text-[#9CA3AF] text-center mt-2">
             Don't have an account? Create your business to get started
           </p>
         </div>

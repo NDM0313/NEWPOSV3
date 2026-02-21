@@ -1,0 +1,410 @@
+@custom-variant dark (&:is(.dark *));
+
+/* ====================================
+   DIN COLLECTION ERP - COLOR THEME
+   Version: 1.0.0
+   Last Updated: February 2026
+   ==================================== */
+
+:root {
+  --font-size: 16px;
+  
+  /* ============ LIGHT MODE THEME ============ */
+  /* Background Colors */
+  --background: #ffffff;
+  --foreground: #1a1a1a;
+  --card: #ffffff;
+  --card-foreground: #1a1a1a;
+  --popover: #ffffff;
+  --popover-foreground: #1a1a1a;
+  
+  /* Primary & Secondary */
+  --primary: #030213;
+  --primary-foreground: #ffffff;
+  --secondary: #f3f3f5;
+  --secondary-foreground: #030213;
+  
+  /* Muted & Accent */
+  --muted: #ececf0;
+  --muted-foreground: #717182;
+  --accent: #e9ebef;
+  --accent-foreground: #030213;
+  
+  /* Destructive (Error/Danger) */
+  --destructive: #d4183d;
+  --destructive-foreground: #ffffff;
+  
+  /* Border & Input */
+  --border: rgba(0, 0, 0, 0.1);
+  --input: transparent;
+  --input-background: #f3f3f5;
+  --switch-background: #cbced4;
+  --ring: #b3b3b3;
+  
+  /* Font Weights */
+  --font-weight-medium: 500;
+  --font-weight-normal: 400;
+  
+  /* Chart Colors (Light Mode) */
+  --chart-1: #e67e22; /* Orange */
+  --chart-2: #3498db; /* Blue */
+  --chart-3: #2c3e50; /* Navy */
+  --chart-4: #f1c40f; /* Yellow */
+  --chart-5: #e74c3c; /* Red */
+  
+  /* Radius */
+  --radius: 0.625rem;
+  
+  /* Sidebar Colors (Light Mode) */
+  --sidebar: #f9f9f9;
+  --sidebar-foreground: #1a1a1a;
+  --sidebar-primary: #030213;
+  --sidebar-primary-foreground: #f9f9f9;
+  --sidebar-accent: #f5f5f5;
+  --sidebar-accent-foreground: #333333;
+  --sidebar-border: #ebebeb;
+  --sidebar-ring: #b3b3b3;
+  
+  /* Header Colors (Light Mode) */
+  --header-background: rgba(255, 255, 255, 0.95);
+  --header-foreground: #1a1a1a;
+  --header-border: rgba(0, 0, 0, 0.1);
+  
+  /* Status Colors (Light Mode) */
+  --success: #22c55e;
+  --warning: #f59e0b;
+  --error: #d4183d;
+  --info: #3b82f6;
+  
+  /* Gray Scale */
+  --gray-50: #f9fafb;
+  --gray-100: #f3f4f6;
+  --gray-200: #e5e7eb;
+  --gray-300: #d1d5db;
+  --gray-400: #9ca3af;
+  --gray-500: #6b7280;
+  --gray-600: #4b5563;
+  --gray-700: #374151;
+  --gray-800: #1f2937;
+  --gray-900: #111827;
+}
+
+.dark {
+  /* ============ DARK MODE THEME ============ */
+  /* Background Colors */
+  --background: #111827;
+  --foreground: #f9fafb;
+  --card: #111827;
+  --card-foreground: #f9fafb;
+  --popover: #111827;
+  --popover-foreground: #f9fafb;
+  
+  /* Primary & Secondary */
+  --primary: #f9fafb;
+  --primary-foreground: #333333;
+  --secondary: #374151;
+  --secondary-foreground: #f9fafb;
+  
+  /* Muted & Accent */
+  --muted: #374151;
+  --muted-foreground: #b3b3b3;
+  --accent: #374151;
+  --accent-foreground: #f9fafb;
+  
+  /* Destructive (Error/Danger) */
+  --destructive: #7f1d1d;
+  --destructive-foreground: #fca5a5;
+  
+  /* Border & Input */
+  --border: #374151;
+  --input: #374151;
+  --input-background: #1f2937;
+  --switch-background: #4b5563;
+  --ring: #6b7280;
+  
+  /* Font Weights */
+  --font-weight-medium: 500;
+  --font-weight-normal: 400;
+  
+  /* Chart Colors (Dark Mode) */
+  --chart-1: #6366f1; /* Purple */
+  --chart-2: #10b981; /* Green */
+  --chart-3: #f59e0b; /* Orange */
+  --chart-4: #a855f7; /* Violet */
+  --chart-5: #ef4444; /* Red */
+  
+  /* Sidebar Colors (Dark Mode) */
+  --sidebar: #1f2937;
+  --sidebar-foreground: #f9fafb;
+  --sidebar-primary: #6366f1;
+  --sidebar-primary-foreground: #f9fafb;
+  --sidebar-accent: #374151;
+  --sidebar-accent-foreground: #f9fafb;
+  --sidebar-border: #374151;
+  --sidebar-ring: #6b7280;
+  
+  /* Header Colors (Dark Mode) */
+  --header-background: #111827;
+  --header-foreground: #f9fafb;
+  --header-border: rgba(31, 41, 55, 0.5);
+  
+  /* Status Colors (Dark Mode) */
+  --success: #10b981;
+  --warning: #f59e0b;
+  --error: #ef4444;
+  --info: #6366f1;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-input-background: var(--input-background);
+  --color-switch-background: var(--switch-background);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+}
+
+/**
+ * Base typography. This is not applied to elements which have an ancestor with a Tailwind text class.
+ */
+@layer base {
+  :where(:not(:has([class*=' text-']), :not(:has([class^='text-'])))) {
+    h1 {
+      font-size: var(--text-2xl);
+      font-weight: var(--font-weight-medium);
+      line-height: 1.5;
+    }
+
+    h2 {
+      font-size: var(--text-xl);
+      font-weight: var(--font-weight-medium);
+      line-height: 1.5;
+    }
+
+    h3 {
+      font-size: var(--text-lg);
+      font-weight: var(--font-weight-medium);
+      line-height: 1.5;
+    }
+
+    h4 {
+      font-size: var(--text-base);
+      font-weight: var(--font-weight-medium);
+      line-height: 1.5;
+    }
+
+    label {
+      font-size: var(--text-base);
+      font-weight: var(--font-weight-medium);
+      line-height: 1.5;
+    }
+
+    button {
+      font-size: var(--text-base);
+      font-weight: var(--font-weight-medium);
+      line-height: 1.5;
+    }
+
+    input {
+      font-size: var(--text-base);
+      font-weight: var(--font-weight-normal);
+      line-height: 1.5;
+    }
+  }
+}
+
+html {
+  font-size: var(--font-size);
+}
+
+/* Custom animations for Din Collection ERP */
+@keyframes scale-in {
+  0% {
+    transform: scale(0);
+    opacity: 0;
+  }
+  50% {
+    transform: scale(1.1);
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes ping {
+  75%, 100% {
+    transform: scale(1.5);
+    opacity: 0;
+  }
+}
+
+@keyframes slide-up {
+  from {
+    transform: translateY(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes slide-down {
+  from {
+    height: 0;
+    opacity: 0;
+  }
+  to {
+    height: auto;
+    opacity: 1;
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.animate-scale-in {
+  animation: scale-in 0.5s ease-out;
+}
+
+.animate-ping {
+  animation: ping 1.5s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
+
+.animate-slide-up {
+  animation: slide-up 0.3s ease-out;
+}
+
+.animate-slideDown {
+  animation: slide-down 0.2s ease-out;
+}
+
+.animate-fadeIn {
+  animation: fade-in 0.2s ease-out;
+}
+
+/* Mobile-first utilities */
+.safe-area-bottom {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+/* Hide scrollbar but keep functionality */
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
+/* Line clamp utilities */
+.line-clamp-1 {
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 1;
+}
+
+.line-clamp-2 {
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.line-clamp-3 {
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
+/* Print styles for invoice printing */
+@media print {
+  .print-hide {
+    display: none !important;
+  }
+  
+  .print-only {
+    display: block !important;
+  }
+  
+  @page {
+    margin: 1cm;
+    size: A4;
+  }
+  
+  /* Terminal printer page settings */
+  @page :first {
+    size: 80mm auto;
+    margin: 0;
+  }
+  
+  body {
+    background: white !important;
+    color: black !important;
+  }
+  
+  /* Ensure terminal print doesn't get cut off */
+  .print-only[style*="80mm"] {
+    max-width: 80mm !important;
+  }
+}
+
+@media screen {
+  .print-only {
+    display: none;
+  }
+}

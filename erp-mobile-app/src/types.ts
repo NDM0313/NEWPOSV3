@@ -2,6 +2,7 @@ export type Screen =
   | 'login'
   | 'branch-selection'
   | 'home'
+  | 'dashboard'
   | 'sales'
   | 'purchase'
   | 'rental'
@@ -16,6 +17,7 @@ export type Screen =
   | 'settings';
 
 export interface User {
+  id: string;
   name: string;
   email: string;
   role: 'admin' | 'manager' | 'staff' | 'viewer';

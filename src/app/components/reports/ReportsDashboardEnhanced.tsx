@@ -16,7 +16,8 @@ import {
   BarChart3,
   PieChart as PieChartIcon,
   Activity,
-  ChevronDown
+  ChevronDown,
+  BookMarked
 } from 'lucide-react';
 import { Card } from '@/app/components/ui/card';
 import { Button } from '@/app/components/ui/button';
@@ -37,6 +38,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/app/components/ui/dropdown-menu';
+import { DayBookReport } from './DayBookReport';
 
 const COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899'];
 const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -70,7 +72,7 @@ export const ReportsDashboardEnhanced = () => {
   const { canViewReports } = useCheckPermission();
 
   const [dateRange, setDateRange] = useState('30');
-  const [reportType, setReportType] = useState<'overview' | 'sales' | 'purchases' | 'expenses' | 'financial'>('overview');
+  const [reportType, setReportType] = useState<'overview' | 'daybook' | 'sales' | 'purchases' | 'expenses' | 'financial'>('overview');
 
   const { start: rangeStart, end: rangeEnd } = useMemo(() => getDateRangeBounds(dateRange), [dateRange]);
   const filterByRange = useCallback(
@@ -198,6 +200,8 @@ export const ReportsDashboardEnhanced = () => {
   const getExportData = useCallback((): { headers: string[]; rows: (string | number)[][]; title: string } => {
     const title = `Reports - ${reportType} - ${dateRangeLabel}`;
     switch (reportType) {
+      case 'daybook':
+        return { title: '', headers: [], rows: [] };
       case 'overview':
         return {
           title,
@@ -358,6 +362,7 @@ export const ReportsDashboardEnhanced = () => {
           <div className="flex items-center gap-2 mt-4">
             {[
               { key: 'overview', label: 'Overview', icon: Activity },
+              { key: 'daybook', label: 'Roznamcha (Day Book)', icon: BookMarked },
               { key: 'sales', label: 'Sales', icon: TrendingUp },
               { key: 'purchases', label: 'Purchases', icon: ShoppingCart },
               { key: 'expenses', label: 'Expenses', icon: DollarSign },
@@ -382,7 +387,10 @@ export const ReportsDashboardEnhanced = () => {
 
       {/* Content – tab-specific */}
       <div className="p-6 space-y-6">
-        <div className="text-xs text-gray-500 mb-2">Period: {dateRangeLabel}</div>
+        {reportType !== 'daybook' && <div className="text-xs text-gray-500 mb-2">Period: {dateRangeLabel}</div>}
+
+        {/* Day Book Tab */}
+        {reportType === 'daybook' && <DayBookReport />}
 
         {/* Overview Tab */}
         {reportType === 'overview' && (

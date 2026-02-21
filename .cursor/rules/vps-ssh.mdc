@@ -1,0 +1,35 @@
+---
+description: VPS SSH - use dincouture-vps host when connecting or running commands
+alwaysApply: true
+---
+
+# VPS SSH Connection
+
+**Always use the SSH config host** when connecting to the DIN COUTURE VPS or running remote commands.
+
+## SSH Config (~/.ssh/config)
+
+```
+Host dincouture-vps
+  HostName 72.62.254.176
+  User root
+  Port 22
+  IdentityFile ~/.ssh/<your-ed25519-key>
+  ServerAliveInterval 30
+  ServerAliveCountMax 3
+```
+
+## Usage
+
+```bash
+# Connect
+ssh dincouture-vps
+
+# Run command
+ssh dincouture-vps "docker ps"
+
+# Run script
+ssh dincouture-vps "cd /root/NEWPOSV3 && git pull && bash deploy-erp-domain.sh"
+```
+
+**Do NOT use** `ssh -i /path/to/key root@72.62.254.176` — use `ssh dincouture-vps` instead.

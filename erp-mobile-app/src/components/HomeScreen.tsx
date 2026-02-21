@@ -2,14 +2,16 @@ import {
   ShoppingCart, ShoppingBag, Shirt, Camera, DollarSign, Receipt, Package, User as UserIcon,
   LogOut, TrendingUp, Settings as SettingsIcon, Sparkles,
 } from 'lucide-react';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import type { User, Branch, Screen } from '../types';
 import { useResponsive } from '../hooks/useResponsive';
 import { FeaturesShowcase } from './FeaturesShowcase';
+import * as reportsApi from '../api/reports';
 
 interface HomeScreenProps {
   user: User;
   branch: Branch;
+  companyId: string | null;
   onNavigate: (screen: Screen) => void;
   onLogout: () => void;
 }
@@ -37,9 +39,26 @@ const MODULES: ModuleCard[] = [
   { id: 'settings', title: 'Settings', icon: <SettingsIcon className="w-8 h-8" />, color: '#6B7280', bgColor: 'bg-[#6B7280]/10', enabled: true },
 ];
 
-export function HomeScreen({ user, branch, onNavigate, onLogout }: HomeScreenProps) {
+export function HomeScreen({ user, branch, companyId, onNavigate, onLogout }: HomeScreenProps) {
   const responsive = useResponsive();
   const [showFeatures, setShowFeatures] = useState(false);
+  const [todaySales, setTodaySales] = useState<number>(0);
+  const [pendingAmount, setPendingAmount] = useState<number>(0);
+
+  useEffect(() => {
+    if (!companyId || !branch?.id) return;
+    let cancelled = false;
+    const branchId = branch.id;
+    Promise.all([
+      reportsApi.getSalesSummary(companyId, branchId, 1),
+      reportsApi.getReceivables(companyId, branchId),
+    ]).then(([todayRes, receivablesRes]) => {
+      if (cancelled) return;
+      setTodaySales(todayRes.data?.totalSales ?? 0);
+      setPendingAmount(receivablesRes.data ?? 0);
+    }).catch(() => { if (!cancelled) setTodaySales(0); });
+    return () => { cancelled = true; };
+  }, [companyId, branch?.id]);
 
   if (showFeatures) {
     return <FeaturesShowcase onClose={() => setShowFeatures(false)} />;
@@ -70,11 +89,11 @@ export function HomeScreen({ user, branch, onNavigate, onLogout }: HomeScreenPro
         <div className="grid grid-cols-2 gap-3">
           <div className="bg-[#111827]/50 border border-[#374151] rounded-xl p-4">
             <p className="text-xs text-[#9CA3AF] mb-1">Today's Sales</p>
-            <p className="text-lg font-bold text-[#10B981]">Rs. 45,000</p>
+            <p className="text-lg font-bold text-[#10B981]">Rs. {todaySales.toLocaleString()}</p>
           </div>
           <div className="bg-[#111827]/50 border border-[#374151] rounded-xl p-4">
             <p className="text-xs text-[#9CA3AF] mb-1">Pending</p>
-            <p className="text-lg font-bold text-[#F59E0B]">Rs. 12,000</p>
+            <p className="text-lg font-bold text-[#F59E0B]">Rs. {pendingAmount.toLocaleString()}</p>
           </div>
         </div>
       </div>

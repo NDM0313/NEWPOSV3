@@ -1,7 +1,12 @@
 import { useState } from 'react';
 import type { User } from '../../types';
+import type { PackingDetails } from '../transactions/PackingEntryModal';
+import { useResponsive } from '../../hooks/useResponsive';
+import * as salesApi from '../../api/sales';
+import { getBranches } from '../../api/branches';
 import { SalesHome } from './SalesHome';
 import { SelectCustomer } from './SelectCustomer';
+import { SelectCustomerTablet } from './SelectCustomerTablet';
 import { AddProducts } from './AddProducts';
 import { SaleSummary } from './SaleSummary';
 import { PaymentDialog } from './PaymentDialog';
@@ -19,10 +24,15 @@ export interface Customer {
 export interface Product {
   id: string;
   name: string;
+  sku?: string;
   price: number;
   quantity: number;
+  /** Display label for selected variation (e.g. "M / Red") */
   variation?: string;
+  /** Backend variation_id for product_variations */
+  variationId?: string;
   total: number;
+  packingDetails?: PackingDetails;
 }
 
 export interface SaleData {
@@ -41,10 +51,16 @@ interface SalesModuleProps {
   onBack: () => void;
   user: User;
   companyId: string | null;
+  branchId: string | null;
+  initialSaleType?: 'regular' | 'studio';
 }
 
-export function SalesModule({ onBack, user: _user, companyId }: SalesModuleProps) {
-  const [step, setStep] = useState<SalesStep>('home');
+export function SalesModule({ onBack, user, companyId, branchId, initialSaleType }: SalesModuleProps) {
+  const responsive = useResponsive();
+  const [step, setStep] = useState<SalesStep>(initialSaleType === 'studio' ? 'customer' : 'home');
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [createdInvoiceNo, setCreatedInvoiceNo] = useState<string | null>(null);
   const [saleData, setSaleData] = useState<SaleData>({
     customer: null,
     products: [],
@@ -54,7 +70,7 @@ export function SalesModule({ onBack, user: _user, companyId }: SalesModuleProps
     tax: 0,
     total: 0,
     notes: '',
-    saleType: 'regular',
+    saleType: initialSaleType === 'studio' ? 'studio' : 'regular',
   });
 
   const handleStepBack = () => {
@@ -83,9 +99,68 @@ export function SalesModule({ onBack, user: _user, companyId }: SalesModuleProps
       return next;
     });
   };
-  const handleProceedToPayment = () => setStep('payment');
-  const handlePaymentComplete = () => setStep('confirmation');
+  const handleProceedToPayment = () => {
+    setSaveError(null);
+    setStep('payment');
+  };
+  const handlePaymentComplete = async (result: { paymentMethod: string; paidAmount?: number; dueAmount?: number }) => {
+    if (!companyId || !user?.id) {
+      setSaveError('Company or user missing.');
+      return;
+    }
+    // When "All Branches" selected, use first branch (RPC requires valid UUID)
+    let effectiveBranchId = branchId && branchId !== 'all' ? branchId : null;
+    if (!effectiveBranchId && companyId) {
+      const { data: branches } = await getBranches(companyId);
+      effectiveBranchId = branches?.[0]?.id ?? null;
+    }
+    if (!effectiveBranchId) {
+      setSaveError('Please select a specific branch to create sales.');
+      return;
+    }
+    setSaving(true);
+    setSaveError(null);
+    const items = saleData.products.map((p) => ({
+      productId: p.id,
+      variationId: p.variationId,
+      productName: p.name,
+      sku: p.sku ?? '—',
+      quantity: p.quantity,
+      unitPrice: p.price,
+      total: p.total,
+      packingDetails: p.packingDetails && (p.packingDetails.total_meters ?? 0) > 0
+        ? { total_boxes: p.packingDetails.total_boxes, total_pieces: p.packingDetails.total_pieces }
+        : undefined,
+    }));
+    const { data, error } = await salesApi.createSale({
+      companyId,
+      branchId: effectiveBranchId,
+      customerId: saleData.customer?.id ?? null,
+      customerName: saleData.customer?.name ?? 'Walk-in',
+      contactNumber: saleData.customer?.phone,
+      items,
+      subtotal: saleData.subtotal,
+      discountAmount: saleData.discount,
+      taxAmount: 0,
+      expenses: saleData.shipping,
+      total: saleData.total,
+      paymentMethod: result.paymentMethod,
+      paidAmount: result.paidAmount,
+      dueAmount: result.dueAmount,
+      notes: saleData.notes || undefined,
+      isStudio: saleData.saleType === 'studio',
+      userId: user.id,
+    });
+    setSaving(false);
+    if (error) {
+      setSaveError(error);
+      return;
+    }
+    setCreatedInvoiceNo(data?.invoiceNo ?? null);
+    setStep('confirmation');
+  };
   const handleNewSaleFromConfirmation = () => {
+    setCreatedInvoiceNo(null);
     setSaleData({
       customer: null,
       products: [],
@@ -100,6 +175,7 @@ export function SalesModule({ onBack, user: _user, companyId }: SalesModuleProps
     setStep('customer');
   };
   const handleBackToHome = () => {
+    setCreatedInvoiceNo(null);
     setSaleData({
       customer: null,
       products: [],
@@ -114,8 +190,20 @@ export function SalesModule({ onBack, user: _user, companyId }: SalesModuleProps
     onBack();
   };
 
-  if (step === 'home') return <SalesHome onBack={onBack} onNewSale={handleNewSale} />;
-  if (step === 'customer') return <SelectCustomer companyId={companyId} onBack={handleStepBack} onSelect={handleCustomerSelect} />;
+  if (step === 'home') return <SalesHome onBack={onBack} onNewSale={handleNewSale} companyId={companyId} branchId={branchId} />;
+  if (step === 'customer') {
+    if (responsive.isTablet) {
+      return (
+        <SelectCustomerTablet
+          companyId={companyId}
+          onBack={handleStepBack}
+          onSelect={handleCustomerSelect}
+          initialSaleType={saleData.saleType}
+        />
+      );
+    }
+    return <SelectCustomer companyId={companyId} onBack={handleStepBack} onSelect={handleCustomerSelect} />;
+  }
   if (step === 'products' && saleData.customer)
     return (
       <AddProducts
@@ -128,7 +216,24 @@ export function SalesModule({ onBack, user: _user, companyId }: SalesModuleProps
       />
     );
   if (step === 'summary') return <SaleSummary onBack={handleStepBack} saleData={saleData} onUpdate={handleSummaryUpdate} onProceedToPayment={handleProceedToPayment} />;
-  if (step === 'payment') return <PaymentDialog onBack={handleStepBack} totalAmount={saleData.total} onComplete={handlePaymentComplete} />;
-  if (step === 'confirmation') return <SaleConfirmation saleData={saleData} onNewSale={handleNewSaleFromConfirmation} onBackToHome={handleBackToHome} />;
+  if (step === 'payment')
+    return (
+      <PaymentDialog
+        onBack={handleStepBack}
+        totalAmount={saleData.total}
+        onComplete={handlePaymentComplete}
+        saving={saving}
+        saveError={saveError}
+      />
+    );
+  if (step === 'confirmation')
+    return (
+      <SaleConfirmation
+        saleData={saleData}
+        invoiceNo={createdInvoiceNo}
+        onNewSale={handleNewSaleFromConfirmation}
+        onBackToHome={handleBackToHome}
+      />
+    );
   return null;
 }

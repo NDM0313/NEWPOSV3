@@ -15,6 +15,18 @@
   padding-bottom: env(safe-area-inset-bottom, 0);
 }
 
+/* Fixed bottom action bars (Next, Save) – sit above BottomNav on mobile */
+.action-bar-above-nav,
+.fixed-bottom-above-nav {
+  bottom: 80px;
+}
+@media (min-width: 768px) {
+  .action-bar-above-nav,
+  .fixed-bottom-above-nav {
+    bottom: 0;
+  }
+}
+
 @keyframes slide-up {
   from {
     opacity: 0;

@@ -22,6 +22,7 @@ import {
   X,
   Upload,
   Plus,
+  Minus,
   Trash2,
   RefreshCcw,
   Barcode,
@@ -171,6 +172,9 @@ export const EnhancedProductForm = ({
     stock: number;
     barcode: string;
   }>>([]);
+  const [productsWithVariations, setProductsWithVariations] = useState<Array<{ id: string; name: string; sku: string; variations?: Array<{ attributes?: Record<string, string> }> }>>([]);
+  const [loadingProductsWithVariations, setLoadingProductsWithVariations] = useState(false);
+  const [copyFromProductId, setCopyFromProductId] = useState<string>('');
 
   // Combos State
   const [combos, setCombos] = useState<Array<{
@@ -330,6 +334,35 @@ export const EnhancedProductForm = ({
     };
     loadSuppliers();
   }, [companyId]);
+
+  // Load products with variations when Variations tab is active (for "copy from" option)
+  useEffect(() => {
+    if (!companyId || activeTab !== 'variations' || !enableVariations) return;
+    let cancelled = false;
+    setLoadingProductsWithVariations(true);
+    productService.getAllProducts(companyId)
+      .then((data: any) => {
+        if (cancelled) return;
+        const withVars = (data || []).filter(
+          (p: any) => p.has_variations && Array.isArray(p.variations) && p.variations.length > 0
+        );
+        setProductsWithVariations(
+          withVars.map((p: any) => ({
+            id: p.id,
+            name: p.name || 'Unnamed',
+            sku: p.sku || '',
+            variations: p.variations || [],
+          }))
+        );
+      })
+      .catch(() => {
+        if (!cancelled) setProductsWithVariations([]);
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingProductsWithVariations(false);
+      });
+    return () => { cancelled = true; };
+  }, [companyId, activeTab, enableVariations]);
 
   const selectedCategoryId = watch('category');
 
@@ -682,6 +715,30 @@ export const EnhancedProductForm = ({
     updatedAttributes[attrIndex].values.splice(valueIndex, 1);
     setVariantAttributes(updatedAttributes);
     setGeneratedVariations([]);
+  };
+
+  /** Copy attribute structure from an existing product's variations */
+  const copyAttributesFromProduct = (product: { variations?: Array<{ attributes?: Record<string, string> }> }) => {
+    const vars = product.variations || [];
+    if (vars.length === 0) return;
+    const attrMap: Record<string, Set<string>> = {};
+    for (const v of vars) {
+      const attrs = v.attributes || {};
+      for (const [key, val] of Object.entries(attrs)) {
+        if (!key || val == null) continue;
+        if (!attrMap[key]) attrMap[key] = new Set();
+        attrMap[key].add(String(val));
+      }
+    }
+    const derived: Array<{ name: string; values: string[] }> = Object.entries(attrMap).map(([name, set]) => ({
+      name,
+      values: Array.from(set).sort(),
+    }));
+    if (derived.length > 0) {
+      setVariantAttributes(derived);
+      setGeneratedVariations([]);
+      toast.success(`Copied ${derived.length} attribute(s) from existing product`);
+    }
   };
 
   /** Max variations per product (frontend + backend consistency; avoid runaway combinations) */
@@ -2093,6 +2150,19 @@ export const EnhancedProductForm = ({
         {/* TAB 2 - VARIATIONS */}
         {activeTab === 'variations' && (
           <>
+            {/* Supplier display - shows selected supplier from Details tab */}
+            <div className="bg-gray-800 border border-gray-700 rounded-xl p-4">
+              <Label className="text-gray-400 text-xs uppercase tracking-wide">Supplier for this product</Label>
+              <p className="text-white font-medium mt-1">
+                {watch('supplier') && suppliers.length > 0
+                  ? suppliers.find((s) => s.id === watch('supplier'))?.name ?? '—'
+                  : 'Select supplier in Details tab'}
+              </p>
+              {watch('supplier') && (
+                <p className="text-xs text-gray-500 mt-0.5">Variations will be associated with this supplier</p>
+              )}
+            </div>
+
             {/* Info Banner */}
             <div className="bg-blue-900/20 border border-blue-800 rounded-xl p-4">
               <p className="text-sm text-blue-300">
@@ -2100,6 +2170,45 @@ export const EnhancedProductForm = ({
                 Each variant will have its own SKU, price, and stock level.
               </p>
             </div>
+
+            {/* Copy from existing product */}
+            {productsWithVariations.length > 0 && (
+              <div className="bg-gray-800 border border-gray-700 rounded-xl p-4">
+                <Label className="text-gray-200 mb-2 block">Use attributes from existing product</Label>
+                <p className="text-xs text-gray-500 mb-2">Select a product that already has variations to copy its attribute structure (Size, Color, etc.)</p>
+                <Select
+                  value={copyFromProductId}
+                  onValueChange={(id) => {
+                    setCopyFromProductId(id);
+                    const p = productsWithVariations.find((x) => x.id === id);
+                    if (p && p.id !== (initialProduct?.uuid || initialProduct?.id)) {
+                      copyAttributesFromProduct(p);
+                      setCopyFromProductId(''); // Reset so user can copy from another if needed
+                    } else if (p) {
+                      toast.info('This is the current product');
+                      setCopyFromProductId('');
+                    }
+                  }}
+                >
+                  <SelectTrigger className="bg-gray-900 border-gray-700 text-white">
+                    <SelectValue placeholder="Select product to copy from..." />
+                  </SelectTrigger>
+                  <SelectContent className="bg-gray-900 border-gray-800 text-white">
+                    {loadingProductsWithVariations ? (
+                      <div className="px-2 py-1.5 text-sm text-gray-400">Loading...</div>
+                    ) : (
+                      productsWithVariations
+                        .filter((p) => p.id !== (initialProduct?.uuid || initialProduct?.id))
+                        .map((p) => (
+                          <SelectItem key={p.id} value={p.id}>
+                            {p.name} ({p.variations?.length ?? 0} variations)
+                          </SelectItem>
+                        ))
+                    )}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
 
             {/* Step 1: Add Attributes */}
             <div className="space-y-4">
@@ -2296,32 +2405,85 @@ export const EnhancedProductForm = ({
                                 />
                               </td>
                               <td className="px-4 py-3">
-                                <Input
-                                  type="number"
-                                  value={variation.price || ''}
-                                  onChange={(e) => {
-                                    const updated = [...generatedVariations];
-                                    updated[index].price = parseFloat(e.target.value) || 0;
-                                    setGeneratedVariations(updated);
-                                  }}
-                                  className="bg-gray-900 border-gray-700 text-white text-sm w-24"
-                                  placeholder="0.00"
-                                />
+                                <div className="flex items-center gap-1">
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const updated = [...generatedVariations];
+                                      updated[index].price = Math.max(0, (updated[index].price || 0) - 1);
+                                      setGeneratedVariations(updated);
+                                    }}
+                                    className="p-1 rounded bg-gray-700 hover:bg-gray-600 text-gray-300"
+                                    title="Decrease price"
+                                  >
+                                    <Minus size={12} />
+                                  </button>
+                                  <Input
+                                    type="number"
+                                    step={0.01}
+                                    value={variation.price || ''}
+                                    onChange={(e) => {
+                                      const updated = [...generatedVariations];
+                                      updated[index].price = parseFloat(e.target.value) || 0;
+                                      setGeneratedVariations(updated);
+                                    }}
+                                    className="bg-gray-900 border-gray-700 text-white text-sm w-20"
+                                    placeholder="0.00"
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const updated = [...generatedVariations];
+                                      updated[index].price = (updated[index].price || 0) + 1;
+                                      setGeneratedVariations(updated);
+                                    }}
+                                    className="p-1 rounded bg-gray-700 hover:bg-gray-600 text-gray-300"
+                                    title="Increase price"
+                                  >
+                                    <Plus size={12} />
+                                  </button>
+                                </div>
                               </td>
                               <td className="px-4 py-3">
-                                <Input
-                                  type="number"
-                                  min={0}
-                                  value={variation.stock ?? ''}
-                                  onChange={(e) => {
-                                    const updated = [...generatedVariations];
-                                    updated[index].stock = parseInt(e.target.value, 10) || 0;
-                                    setGeneratedVariations(updated);
-                                  }}
-                                  className="bg-gray-900 border-gray-700 text-white text-sm w-20"
-                                  placeholder="0"
-                                  title="Opening stock for this variation (saved as stock movement on save)"
-                                />
+                                <div className="flex items-center gap-1">
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const updated = [...generatedVariations];
+                                      updated[index].stock = Math.max(0, (updated[index].stock ?? 0) - 1);
+                                      setGeneratedVariations(updated);
+                                    }}
+                                    className="p-1 rounded bg-gray-700 hover:bg-gray-600 text-gray-300"
+                                    title="Decrease stock"
+                                  >
+                                    <Minus size={12} />
+                                  </button>
+                                  <Input
+                                    type="number"
+                                    min={0}
+                                    value={variation.stock ?? ''}
+                                    onChange={(e) => {
+                                      const updated = [...generatedVariations];
+                                      updated[index].stock = Math.max(0, parseInt(e.target.value, 10) || 0);
+                                      setGeneratedVariations(updated);
+                                    }}
+                                    className="bg-gray-900 border-gray-700 text-white text-sm w-16"
+                                    placeholder="0"
+                                    title="Opening stock for this variation (saved as stock movement on save)"
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const updated = [...generatedVariations];
+                                      updated[index].stock = (updated[index].stock ?? 0) + 1;
+                                      setGeneratedVariations(updated);
+                                    }}
+                                    className="p-1 rounded bg-gray-700 hover:bg-gray-600 text-gray-300"
+                                    title="Increase stock"
+                                  >
+                                    <Plus size={12} />
+                                  </button>
+                                </div>
                               </td>
                               <td className="px-4 py-3">
                                 <Input

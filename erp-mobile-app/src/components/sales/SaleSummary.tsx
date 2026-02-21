@@ -41,7 +41,8 @@ export function SaleSummary({ onBack, saleData, onUpdate, onProceedToPayment }: 
             </div>
             <div className="flex-1">
               <p className="text-xs text-[#9CA3AF] mb-1">Invoice</p>
-              <p className="font-semibold text-white">INV-Draft</p>
+              <p className="font-semibold text-white">Final Invoice</p>
+              <p className="text-xs text-[#10B981] mt-0.5">Invoice # assigned on payment confirmation</p>
               <p className="text-sm text-[#9CA3AF] mt-1">Customer: {saleData.customer?.name}</p>
             </div>
           </div>
@@ -54,7 +55,13 @@ export function SaleSummary({ onBack, saleData, onUpdate, onProceedToPayment }: 
               <div key={i} className="flex justify-between text-sm">
                 <div>
                   <p className="text-white font-medium">{p.name}</p>
+                  {p.variation && <p className="text-xs text-[#9CA3AF]">{p.variation}</p>}
                   <p className="text-xs text-[#9CA3AF]">{p.quantity} × Rs. {p.price.toLocaleString()}</p>
+                  {p.packingDetails && (p.packingDetails.total_meters ?? 0) > 0 && (
+                    <p className="text-xs text-[#3B82F6] mt-0.5">
+                      {p.packingDetails.total_boxes ?? 0} Box / {p.packingDetails.total_pieces ?? 0} Pc / {(p.packingDetails.total_meters ?? 0).toFixed(1)} M
+                    </p>
+                  )}
                 </div>
                 <p className="font-semibold text-white">Rs. {p.total.toLocaleString()}</p>
               </div>
@@ -141,7 +148,7 @@ export function SaleSummary({ onBack, saleData, onUpdate, onProceedToPayment }: 
         </div>
       </div>
 
-      <div className="fixed bottom-0 left-0 right-0 bg-[#1F2937] border-t border-[#374151] p-4 safe-area-bottom">
+      <div className="fixed left-0 right-0 bg-[#1F2937] border-t border-[#374151] p-4 safe-area-bottom fixed-bottom-above-nav z-40">
         <button
           onClick={onProceedToPayment}
           className="w-full h-12 bg-[#3B82F6] hover:bg-[#2563EB] rounded-lg font-medium text-white transition-colors"

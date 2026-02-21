@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { initInputKeyboard } from './utils/inputKeyboard';
 import type { Screen, User, Branch, BottomNavTab } from './types';
 import * as authApi from './api/auth';
 
@@ -18,11 +19,18 @@ import { SettingsModule } from './components/settings/SettingsModule';
 import { ProductsModule } from './components/products/ProductsModule';
 import { PurchaseModule } from './components/purchase/PurchaseModule';
 import { ReportsModule } from './components/reports/ReportsModule';
+import { RentalModule } from './components/rental/RentalModule';
+import { StudioModule } from './components/studio/StudioModule';
+import { AccountsModule } from './components/accounts/AccountsModule';
+import { ExpenseModule } from './components/expense/ExpenseModule';
+import { InventoryModule } from './components/inventory/InventoryModule';
+import { DashboardModule } from './components/dashboard/DashboardModule';
 
 const MODULE_TITLES: Record<Screen, string> = {
   login: 'Login',
   'branch-selection': 'Branch',
   home: 'Home',
+  dashboard: 'Dashboard',
   sales: 'Sales',
   purchase: 'Purchase',
   rental: 'Rental',
@@ -46,6 +54,12 @@ export default function App() {
   const [selectedBranch, setSelectedBranch] = useState<Branch | null>(null);
   const [activeBottomTab, setActiveBottomTab] = useState<BottomNavTab>('home');
   const [showModuleGrid, setShowModuleGrid] = useState(false);
+  const [salesInitialType, setSalesInitialType] = useState<'regular' | 'studio' | null>(null);
+
+  useEffect(() => {
+    const cleanup = initInputKeyboard();
+    return () => { cleanup?.(); };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -62,7 +76,7 @@ export default function App() {
           setCurrentScreen('login');
           return;
         }
-        setUser({ name: profile.name, email: profile.email, role: profile.role });
+        setUser({ id: profile.userId, name: profile.name, email: profile.email, role: profile.role });
         setCompanyId(profile.companyId);
         try {
           const saved = localStorage.getItem(BRANCH_STORAGE_KEY);
@@ -96,9 +110,10 @@ export default function App() {
     setActiveBottomTab('home');
   };
 
-  const navigateToModule = (screen: Screen) => {
+  const navigateToModule = (screen: Screen, options?: { studioSale?: boolean }) => {
     setCurrentScreen(screen);
     setShowModuleGrid(false);
+    if (options?.studioSale) setSalesInitialType('studio');
     if (screen === 'home') setActiveBottomTab('home');
     else if (screen === 'sales') setActiveBottomTab('sales');
     else if (screen === 'pos') setActiveBottomTab('pos');
@@ -159,30 +174,73 @@ export default function App() {
   const content = (
     <>
       {currentScreen === 'home' && user && selectedBranch && (
-        <HomeScreen user={user} branch={selectedBranch} onNavigate={navigateToModule} onLogout={handleLogout} />
+        <HomeScreen user={user} branch={selectedBranch} companyId={companyId} onNavigate={navigateToModule} onLogout={handleLogout} />
       )}
       {currentScreen === 'sales' && user && (
-        <SalesModule onBack={navigateHome} user={user} companyId={companyId} />
+        <SalesModule
+          onBack={() => { setSalesInitialType(null); navigateHome(); }}
+          user={user}
+          companyId={companyId}
+          branchId={selectedBranch?.id ?? null}
+          initialSaleType={salesInitialType ?? undefined}
+        />
       )}
       {currentScreen === 'pos' && user && (
-        <POSModule onBack={navigateHome} user={user} companyId={companyId} />
+        <POSModule onBack={navigateHome} user={user} companyId={companyId} branchId={selectedBranch?.id ?? null} />
       )}
       {currentScreen === 'contacts' && user && (
         <ContactsModule onBack={navigateHome} user={user} companyId={companyId} />
       )}
-      {currentScreen === 'settings' && user && (
-        <SettingsModule onBack={navigateHome} user={user} onLogout={handleLogout} />
+      {currentScreen === 'settings' && user && selectedBranch && (
+        <SettingsModule
+          onBack={navigateHome}
+          user={user}
+          branch={selectedBranch}
+          onChangeBranch={() => setCurrentScreen('branch-selection')}
+          onLogout={handleLogout}
+        />
       )}
       {currentScreen === 'products' && user && (
-        <ProductsModule onBack={navigateHome} user={user} companyId={companyId} />
+        <ProductsModule onBack={navigateHome} user={user} companyId={companyId} branchId={selectedBranch?.id ?? null} />
       )}
       {currentScreen === 'purchase' && user && (
-        <PurchaseModule onBack={navigateHome} user={user} />
+        <PurchaseModule onBack={navigateHome} user={user} companyId={companyId} branchId={selectedBranch?.id ?? null} />
       )}
-      {currentScreen === 'reports' && (
-        <ReportsModule onBack={navigateHome} />
+      {currentScreen === 'reports' && user && (
+        <ReportsModule onBack={navigateHome} user={user} companyId={companyId} branchId={selectedBranch?.id ?? null} />
       )}
-      {currentScreen !== 'home' && currentScreen !== 'sales' && currentScreen !== 'pos' && currentScreen !== 'contacts' && currentScreen !== 'settings' && currentScreen !== 'products' && currentScreen !== 'purchase' && currentScreen !== 'reports' && user && (
+      {currentScreen === 'rental' && user && (
+        <RentalModule onBack={navigateHome} user={user} companyId={companyId} branch={selectedBranch} />
+      )}
+      {currentScreen === 'studio' && user && (
+        <StudioModule
+          onBack={navigateHome}
+          user={user}
+          companyId={companyId}
+          branch={selectedBranch}
+          onNewStudioSale={() => navigateToModule('sales', { studioSale: true })}
+        />
+      )}
+      {currentScreen === 'accounts' && user && (
+        <AccountsModule onBack={navigateHome} user={user} companyId={companyId} branch={selectedBranch} />
+      )}
+      {currentScreen === 'expense' && user && (
+        <ExpenseModule onBack={navigateHome} user={user} companyId={companyId} branch={selectedBranch} />
+      )}
+      {currentScreen === 'inventory' && user && (
+        <InventoryModule onBack={navigateHome} user={user} companyId={companyId} branch={selectedBranch} />
+      )}
+      {currentScreen === 'dashboard' && user && (
+        <DashboardModule
+          onBack={navigateHome}
+          user={user}
+          companyId={companyId}
+          branchId={selectedBranch?.id ?? null}
+          onNewSale={() => navigateToModule('sales')}
+          onNewPurchase={() => navigateToModule('purchase')}
+        />
+      )}
+      {currentScreen !== 'home' && currentScreen !== 'dashboard' && currentScreen !== 'sales' && currentScreen !== 'pos' && currentScreen !== 'contacts' && currentScreen !== 'settings' && currentScreen !== 'products' && currentScreen !== 'purchase' && currentScreen !== 'reports' && currentScreen !== 'rental' && currentScreen !== 'studio' && currentScreen !== 'accounts' && currentScreen !== 'expense' && currentScreen !== 'inventory' && user && (
         <PlaceholderModule title={MODULE_TITLES[currentScreen] || currentScreen} onBack={navigateHome} />
       )}
     </>

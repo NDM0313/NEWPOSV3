@@ -100,8 +100,9 @@ export const GlobalDrawer = () => {
   } else {
     contentClasses += "h-full flex flex-col ";
     if (isSale || isPurchase) {
-      // Responsive width for Sale/Purchase: full width on mobile/tablet, 1100px on desktop (lg+)
-      contentClasses += "w-full lg:w-[1200px]"; // Desktop: 1180px, Mobile/Tablet: full width
+      // Responsive width for Sale/Purchase: full width on mobile/tablet, 1200px on desktop (lg+)
+      // Override base Sheet's sm:max-w-md (448px) so drawer gets actual size
+      contentClasses += "!max-w-none w-full lg:w-[1200px] lg:max-w-[1200px]";
     } else if (isProduct) {
        contentClasses += "!w-[900px] !max-w-[95vw] sm:!max-w-[900px] flex flex-col min-h-0"; // Product form + variations table; flex so form can scroll
     } else if (isContact) {
@@ -212,7 +213,7 @@ export const GlobalDrawer = () => {
     // Render parent drawer (Sale/Purchase) with lower z-index
     const parentIsSale = parentDrawer === 'addSale' || parentDrawer === 'edit-sale';
     const parentIsPurchase = parentDrawer === 'addPurchase';
-    const parentContentClasses = "border-l border-gray-800 bg-gray-950 text-white p-0 gap-0 h-full w-full lg:w-[1200px] !z-[60] overflow-y-auto";
+    const parentContentClasses = "border-l border-gray-800 bg-gray-950 text-white p-0 gap-0 h-full !max-w-none w-full lg:w-[1200px] lg:max-w-[1200px] !z-[60] overflow-y-auto";
     
     return (
       <>

@@ -58,8 +58,8 @@
      ============================================ */
   
   /* Primary Actions */
-  --color-primary: #2563EB; /* Primary (blue-600) - From POS_System_Design.md */
-  --color-primary-hover: #1D4ED8; /* Primary hover (blue-700) - From design patterns */
+  --color-primary: #3B82F6; /* Primary (blue-500) - Mobile UI aligned */
+  --color-primary-hover: #2563EB; /* Primary hover (blue-600) - Mobile UI aligned */
   --color-primary-selected: #1E40AF; /* Primary selected (blue-800) - From design patterns */
   
   /* Success/Green */
@@ -192,6 +192,13 @@
   --transition-fast: 150ms ease-in-out;
   --transition-base: 200ms ease-in-out;
   --transition-slow: 300ms ease-in-out;
+
+  /* Mobile UI - Aligned with erp-mobile-app */
+  --color-bg-dark: #111827;
+  --color-bg-card: #1F2937;
+  --color-border: #374151;
+  --color-text-muted: #9CA3AF;
+  --color-text-light: #F9FAFB;
 }
 
 /**

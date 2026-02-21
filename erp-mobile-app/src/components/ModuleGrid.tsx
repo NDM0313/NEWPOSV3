@@ -28,7 +28,8 @@ export function ModuleGrid({ onClose, onModuleSelect, userRole }: ModuleGridProp
     { id: 'contacts', name: 'Contacts', icon: <Users className="w-6 h-6" />, color: '#6366F1', enabled: true },
     { id: 'reports', name: 'Reports', icon: <TrendingUp className="w-6 h-6" />, color: '#8B5CF6', enabled: true },
     { id: 'settings', name: 'Settings', icon: <Settings className="w-6 h-6" />, color: '#6B7280', enabled: true },
-    { id: 'home', name: 'Dashboard', icon: <LayoutGrid className="w-6 h-6" />, color: '#3B82F6', enabled: true },
+    { id: 'dashboard', name: 'Dashboard', icon: <LayoutGrid className="w-6 h-6" />, color: '#3B82F6', enabled: true },
+    { id: 'home', name: 'Home', icon: <LayoutGrid className="w-6 h-6" />, color: '#6B7280', enabled: true },
   ];
 
   const enabled = modules.filter((m) => m.enabled);
