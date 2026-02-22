@@ -25,7 +25,7 @@ fi
 echo ""
 echo "=== 2. VPS deploy (SSH) ==="
 for attempt in 1 2 3; do
-  if ssh "$SSH_HOST" "cd $VPS_PROJECT && git pull --rebase 2>/dev/null || true && bash deploy/deploy.sh"; then
+  if ssh "$SSH_HOST" "cd $VPS_PROJECT && git fetch origin main 2>/dev/null; git reset --hard origin/main 2>/dev/null; bash deploy/deploy.sh"; then
     echo "[OK] VPS deploy complete"
     exit 0
   fi

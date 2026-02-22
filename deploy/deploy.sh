@@ -5,8 +5,17 @@
 
 set -e
 cd "$(dirname "$0")/.."
-# So VPS always runs latest script and fixes
-git pull --rebase 2>/dev/null || true
+
+# Bootstrap: if first run, fetch+reset to get latest (including this script), then re-exec so container fix runs
+if [ -z "$RUN_DEPLOY" ]; then
+  BRANCH="${BRANCH:-$(git branch --show-current 2>/dev/null)}"
+  [ -z "$BRANCH" ] && BRANCH=main
+  git fetch origin "$BRANCH" 2>/dev/null || true
+  git reset --hard "origin/$BRANCH" 2>/dev/null || true
+  export RUN_DEPLOY=1
+  exec bash deploy/deploy.sh
+  exit 0
+fi
 
 # --- Auto-fix .env.production (VPS: use Supabase API URL + Kong anon key) ---
 SUPABASE_API_URL="https://supabase.dincouture.pk"
