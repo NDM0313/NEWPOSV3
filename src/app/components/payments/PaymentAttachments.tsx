@@ -177,7 +177,7 @@ export const PaymentAttachments: React.FC<PaymentAttachmentsProps> = ({
                     type="file"
                     multiple
                     accept="image/*,application/pdf"
-                    onChange={(e) => handleFileSelect(e.target.files)}
+                    onChange={(e) => { handleFileSelect(e.target.files); e.target.value = ''; }}
                     className="hidden"
                     disabled={disabled}
                 />

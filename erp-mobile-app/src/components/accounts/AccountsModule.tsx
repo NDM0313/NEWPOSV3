@@ -7,6 +7,8 @@ import { AccountTransferFlow } from './AccountTransferFlow';
 import { SupplierPaymentFlow } from './SupplierPaymentFlow';
 import { WorkerPaymentFlow } from './WorkerPaymentFlow';
 import { ExpenseEntryFlow } from './ExpenseEntryFlow';
+import { ChartOfAccountsView } from './ChartOfAccountsView';
+import { AddAccountForm } from './AddAccountForm';
 
 interface AccountsModuleProps {
   onBack: () => void;
@@ -23,6 +25,8 @@ type View =
   | 'worker-payment'
   | 'expense-entry'
   | 'reports'
+  | 'chart'
+  | 'add-account'
   | 'entry-detail';
 
 export function AccountsModule({ onBack, user, companyId, branch }: AccountsModuleProps) {
@@ -56,6 +60,7 @@ export function AccountsModule({ onBack, user, companyId, branch }: AccountsModu
             onWorkerPayment={() => setView('worker-payment')}
             onExpenseEntry={() => setView('expense-entry')}
             onViewReports={() => setView('reports')}
+            onChartOfAccounts={() => setView('chart')}
             onEntryClick={(entry) => {
               setSelectedEntry(entry);
               setView('entry-detail');
@@ -121,6 +126,26 @@ export function AccountsModule({ onBack, user, companyId, branch }: AccountsModu
         user={user}
         companyId={companyId}
         branchId={branch?.id}
+      />
+    );
+  }
+
+  if (view === 'chart') {
+    return (
+      <ChartOfAccountsView
+        onBack={() => setView('dashboard')}
+        onAddAccount={() => setView('add-account')}
+        companyId={companyId ?? null}
+      />
+    );
+  }
+
+  if (view === 'add-account') {
+    return (
+      <AddAccountForm
+        companyId={companyId ?? null}
+        onBack={() => setView('chart')}
+        onSuccess={() => setView('chart')}
       />
     );
   }

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { ArrowLeft, ArrowRight, Check, Search, ArrowLeftRight } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Check, Search, ArrowLeftRight, Paperclip } from 'lucide-react';
 import type { User } from '../../types';
 import { DateInputField } from '../shared/DateTimePicker';
 import { getPaymentAccounts, createJournalEntry } from '../../api/accounts';
@@ -28,6 +28,8 @@ interface TransferData {
   date: string;
   reference: string;
   notes: string;
+  attachmentUrl: string;
+  attachmentName: string;
 }
 
 const getAccountIcon = (type: string) => {
@@ -52,6 +54,8 @@ export function AccountTransferFlow({ onBack, onComplete, user, companyId, branc
     date: new Date().toISOString().split('T')[0],
     reference: '',
     notes: '',
+    attachmentUrl: '',
+    attachmentName: '',
   });
 
   useEffect(() => {
@@ -82,6 +86,10 @@ export function AccountTransferFlow({ onBack, onComplete, user, companyId, branc
     setSubmitting(true);
     setError(null);
     const desc = transferData.notes?.trim() || `Transfer from ${transferData.fromAccountName} to ${transferData.toAccountName}`;
+    const attachments =
+      transferData.attachmentUrl?.trim()
+        ? [{ url: transferData.attachmentUrl.trim(), name: transferData.attachmentName?.trim() || 'Attachment' }]
+        : undefined;
     const { error: err } = await createJournalEntry({
       companyId,
       branchId: branchId ?? undefined,
@@ -93,6 +101,7 @@ export function AccountTransferFlow({ onBack, onComplete, user, companyId, branc
         { accountId: transferData.fromAccountId, debit: 0, credit: transferData.amount },
       ],
       userId: user.id,
+      attachments: attachments ?? undefined,
     });
     setSubmitting(false);
     if (err) {
@@ -297,6 +306,28 @@ export function AccountTransferFlow({ onBack, onComplete, user, companyId, branc
                 placeholder="Additional notes..."
                 rows={3}
                 className="w-full px-4 py-3 bg-[#374151] border border-[#4B5563] rounded-lg text-white placeholder-[#6B7280] focus:outline-none focus:border-[#3B82F6] resize-none"
+              />
+            </div>
+
+            <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">
+              <div className="flex items-center gap-2 mb-2">
+                <Paperclip className="w-4 h-4 text-[#9CA3AF]" />
+                <label className="block text-sm font-medium text-[#D1D5DB]">Attachment (Optional)</label>
+              </div>
+              <p className="text-xs text-[#9CA3AF] mb-2">Link to document or image (saved to database with entry).</p>
+              <input
+                type="url"
+                value={transferData.attachmentUrl}
+                onChange={(e) => setTransferData({ ...transferData, attachmentUrl: e.target.value })}
+                placeholder="https://..."
+                className="w-full px-4 py-3 bg-[#374151] border border-[#4B5563] rounded-lg text-white placeholder-[#6B7280] focus:outline-none focus:border-[#3B82F6] mb-2"
+              />
+              <input
+                type="text"
+                value={transferData.attachmentName}
+                onChange={(e) => setTransferData({ ...transferData, attachmentName: e.target.value })}
+                placeholder="Label (e.g. Receipt, Transfer slip)"
+                className="w-full px-4 py-3 bg-[#374151] border border-[#4B5563] rounded-lg text-white placeholder-[#6B7280] focus:outline-none focus:border-[#3B82F6]"
               />
             </div>
 

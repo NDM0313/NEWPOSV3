@@ -83,6 +83,7 @@ export const Sidebar = () => {
       label: 'Test Pages', 
       icon: FlaskConical,
       children: [
+        { id: 'test-account-entry', label: 'Account Entry' },
         { id: 'customer-ledger-test', label: 'Customer Ledger Test' },
         { id: 'ledger-debug-test', label: 'Ledger Debug (RPC vs API)' },
         { id: 'test-ledger', label: 'Test Ledger (API Tests)' },

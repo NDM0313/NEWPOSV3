@@ -262,3 +262,37 @@ export const formatStockReference = (options: {
   if (referenceId) return referenceId;
   return '—';
 };
+
+const ONES = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen'];
+const TENS = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
+
+function hundreds(n: number): string {
+  if (n === 0) return '';
+  if (n < 20) return ONES[n];
+  if (n < 100) return TENS[Math.floor(n / 10)] + (n % 10 ? ' ' + ONES[n % 10] : '');
+  return ONES[Math.floor(n / 100)] + ' Hundred' + (n % 100 ? ' ' + hundreds(n % 100) : '');
+}
+
+/**
+ * Convert numeric amount to words (English). E.g. 50000 -> "Fifty Thousand Only"
+ */
+export function amountToWords(num: number): string {
+  if (num <= 0 || !Number.isFinite(num)) return '—';
+  const n = Math.floor(num);
+  if (n >= 1_00_00_00_00) {
+    const cr = Math.floor(n / 1_00_00_00_00);
+    const rest = n % 1_00_00_00_00;
+    return hundreds(cr) + ' Crore' + (rest ? ' ' + amountToWords(rest) : '') + ' Only';
+  }
+  if (n >= 1_00_000) {
+    const l = Math.floor(n / 1_00_000);
+    const rest = n % 1_00_000;
+    return hundreds(l) + ' Lakh' + (rest ? ' ' + amountToWords(rest) : '') + ' Only';
+  }
+  if (n >= 1000) {
+    const t = Math.floor(n / 1000);
+    const rest = n % 1000;
+    return hundreds(t) + ' Thousand' + (rest ? ' ' + hundreds(rest) : '') + ' Only';
+  }
+  return hundreds(n) + ' Only';
+}

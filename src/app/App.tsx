@@ -79,6 +79,7 @@ import { Day4FullFlowCertificationPage } from './components/test/Day4FullFlowCer
 import { ERPIntegrationTestBlockPage } from './components/test/ERPIntegrationTestBlockPage';
 import { CutoverPrepPage } from './components/test/CutoverPrepPage';
 import { ResponsiveTestPage } from './components/test/ResponsiveTestPage';
+import { AccountingTestPage } from './components/test/AccountingTestPage';
 import { SalesListDesignTestPage } from './components/test/SalesListDesignTestPage';
 const CustomerLedgerTestPage = lazy(() => import('./components/customer-ledger-test/CustomerLedgerTestPage').then(m => ({ default: m.CustomerLedgerTestPage })));
 import TestLedger from './TestLedger';
@@ -254,6 +255,7 @@ const AppContent = () => {
       {currentView === 'erp-integration-test' && <ERPIntegrationTestBlockPage />}
       {currentView === 'cutover-prep' && <CutoverPrepPage />}
       {currentView === 'responsive-test' && <ResponsiveTestPage />}
+      {currentView === 'test-account-entry' && <AccountingTestPage />}
       {currentView === 'test-ledger' && <TestLedger />}
       {currentView === 'customer-ledger-interactive-test' && (
         <Suspense fallback={<div className="flex items-center justify-center p-12"><div className="animate-pulse text-gray-500">Loading...</div></div>}>

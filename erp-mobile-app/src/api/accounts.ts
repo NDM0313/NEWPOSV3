@@ -9,6 +9,82 @@ export interface AccountRow {
   balance: number;
 }
 
+/** Account types supported for Create Account (same as web ERP) */
+export const ACCOUNT_TYPES = [
+  { value: 'cash', label: 'Cash' },
+  { value: 'bank', label: 'Bank' },
+  { value: 'mobile_wallet', label: 'Mobile Wallet' },
+  { value: 'expense', label: 'Expense' },
+  { value: 'income', label: 'Income' },
+  { value: 'receivable', label: 'Receivable' },
+  { value: 'payable', label: 'Payable' },
+  { value: 'asset', label: 'Asset' },
+  { value: 'liability', label: 'Liability' },
+  { value: 'equity', label: 'Equity' },
+  { value: 'revenue', label: 'Revenue' },
+] as const;
+
+/** Reserved codes for cash/bank/wallet – same as web ERP (AddAccountDrawer) */
+const RESERVED_CODES: Record<string, string> = {
+  cash: '1000',
+  bank: '1010',
+  mobile_wallet: '1020',
+};
+
+/** Next account code in same series as web: 1000/1001… (cash), 1010/1011/1012… (bank), 1020… (wallet), 2000… (others). */
+async function getNextAccountCode(companyId: string, type: string): Promise<string> {
+  const { data: existing } = await getAccounts(companyId);
+  const codes = (existing || []).map((a) => (a.code || '').trim()).filter(Boolean);
+  const typeLower = (type || '').toLowerCase().trim();
+  const reserved = RESERVED_CODES[typeLower];
+
+  if (reserved) {
+    const prefix = reserved.slice(0, 3);
+    const startSuffix = parseInt(reserved.slice(3), 10);
+    const sameSeries = codes.filter((c) => c.length > prefix.length && c.startsWith(prefix) && /^\d+$/.test(c));
+    const suffixes = sameSeries.map((c) => parseInt(c.slice(prefix.length), 10)).filter((n) => !Number.isNaN(n));
+    const maxSuffix = suffixes.length ? Math.max(...suffixes) : startSuffix - 1;
+    return prefix + (maxSuffix + 1);
+  }
+
+  const prefix = '200';
+  const sameSeries = codes.filter((c) => c.length >= 3 && c.startsWith(prefix) && /^\d+$/.test(c));
+  const suffixes = sameSeries.map((c) => parseInt(c.slice(3), 10)).filter((n) => !Number.isNaN(n));
+  const maxSuffix = suffixes.length ? Math.max(...suffixes) : -1;
+  return prefix + (maxSuffix + 1);
+}
+
+/** Create account (Chart of Accounts) – same backend and code numbering as web ERP. */
+export async function createAccount(
+  companyId: string,
+  params: { code?: string; name: string; type: string; balance?: number; is_active?: boolean }
+): Promise<{ data: AccountRow | null; error: string | null }> {
+  if (!isSupabaseConfigured) return { data: null, error: 'App not configured.' };
+  const trimmedCode = (params.code || '').trim();
+  const code = trimmedCode || (await getNextAccountCode(companyId, params.type || 'expense'));
+  const payload = {
+    company_id: companyId,
+    code,
+    name: (params.name || '').trim(),
+    type: (params.type || 'expense').toLowerCase().trim(),
+    balance: Number(params.balance) || 0,
+    is_active: params.is_active !== false,
+  };
+  const { data, error } = await supabase.from('accounts').insert(payload).select('id, code, name, type, balance').single();
+  if (error) return { data: null, error: error.message };
+  const row = data as Record<string, unknown>;
+  return {
+    data: {
+      id: String(row.id ?? ''),
+      code: String(row.code ?? '—'),
+      name: String(row.name ?? '—'),
+      type: String(row.type ?? '—'),
+      balance: Number(row.balance) || 0,
+    },
+    error: null,
+  };
+}
+
 export async function getAccounts(companyId: string): Promise<{ data: AccountRow[]; error: string | null }> {
   if (!isSupabaseConfigured) return { data: [], error: 'App not configured.' };
   const q = supabase
@@ -102,7 +178,7 @@ export async function getJournalEntries(
 }
 
 
-/** Create journal entry (general entry or account transfer) */
+/** Create journal entry (general entry or account transfer). Optional attachments (same as web). */
 export async function createJournalEntry(params: {
   companyId: string;
   branchId?: string | null;
@@ -111,9 +187,10 @@ export async function createJournalEntry(params: {
   referenceType: string;
   lines: { accountId: string; debit: number; credit: number; description?: string }[];
   userId?: string | null;
+  attachments?: { url: string; name: string }[] | null;
 }): Promise<{ data: { id: string; entry_no: string } | null; error: string | null }> {
   if (!isSupabaseConfigured) return { data: null, error: 'App not configured.' };
-  const { companyId, branchId, entryDate, description, referenceType, lines, userId } = params;
+  const { companyId, branchId, entryDate, description, referenceType, lines, userId, attachments } = params;
   const totalDebit = lines.reduce((s, l) => s + l.debit, 0);
   const totalCredit = lines.reduce((s, l) => s + l.credit, 0);
   if (Math.abs(totalDebit - totalCredit) > 0.01) {
@@ -129,12 +206,14 @@ export async function createJournalEntry(params: {
     created_by: userId ?? null,
   };
   if (branchId && branchId !== 'all') entryRow.branch_id = branchId;
+  if (attachments && attachments.length > 0) entryRow.attachments = attachments;
 
-  const { data: entry, error: entryErr } = await supabase
-    .from('journal_entries')
-    .insert(entryRow)
-    .select('id, entry_no')
-    .single();
+  let result = await supabase.from('journal_entries').insert(entryRow).select('id, entry_no').single();
+  if (result.error && result.error.code === 'PGRST204' && result.error.message?.includes('attachments')) {
+    delete entryRow.attachments;
+    result = await supabase.from('journal_entries').insert(entryRow).select('id, entry_no').single();
+  }
+  const { data: entry, error: entryErr } = result;
   if (entryErr || !entry) return { data: null, error: entryErr?.message ?? 'Failed to create entry.' };
 
   for (const line of lines) {

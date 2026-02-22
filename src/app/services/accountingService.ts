@@ -13,6 +13,8 @@ export interface JournalEntry {
   created_by?: string;
   created_at?: string;
   updated_at?: string;
+  /** Optional attachments (same as payments: [{ url, name }]). Requires journal_entries.attachments column. */
+  attachments?: { url: string; name: string }[] | null;
 }
 
 export interface JournalEntryLine {
@@ -1421,13 +1423,20 @@ export const accountingService = {
     if (paymentId) {
       insertData.payment_id = paymentId;
     }
-    
+    if (entry.attachments !== undefined && entry.attachments != null && Array.isArray(entry.attachments) && entry.attachments.length > 0) {
+      insertData.attachments = JSON.parse(JSON.stringify(entry.attachments));
+    }
+
     // STEP 2 FIX: Fix journal_entries query - use proper select instead of select()
-    const { data: entryData, error: entryError } = await supabase
-      .from('journal_entries')
-      .insert(insertData)
-      .select('*')
-      .single();
+    let result = await supabase.from('journal_entries').insert(insertData).select('*').single();
+    let entryData = result.data;
+    let entryError = result.error;
+    if (entryError && entryError.code === 'PGRST204' && entryError.message?.includes('attachments')) {
+      delete insertData.attachments;
+      result = await supabase.from('journal_entries').insert(insertData).select('*').single();
+      entryData = result.data;
+      entryError = result.error;
+    }
 
     // CRITICAL FIX: Handle missing table error with helpful message
     if (entryError && (entryError.code === 'PGRST205' || entryError.message?.includes('does not exist'))) {

@@ -109,7 +109,7 @@ export const SearchableSelect: React.FC<SearchableSelectProps> = ({
                     : 'bg-orange-500/20 text-orange-400'
                 )}
               >
-                Due: ${selectedOption.dueBalance.toLocaleString()}
+                {selectedOption.dueBalance.toLocaleString()}
               </span>
             )}
           </div>
@@ -117,7 +117,7 @@ export const SearchableSelect: React.FC<SearchableSelectProps> = ({
         </Button>
       </PopoverTrigger>
       <PopoverContent 
-        className="w-[300px] p-0 bg-gray-950 border-gray-800 text-white overflow-visible z-[80]"
+        className="w-[300px] p-0 bg-gray-950 border-gray-800 text-white overflow-visible z-[200]"
         align="start"
         side="bottom"
         sideOffset={4}
@@ -171,11 +171,25 @@ export const SearchableSelect: React.FC<SearchableSelectProps> = ({
                   >
                     <Check
                       className={cn(
-                        'mr-2 h-4 w-4',
+                        'mr-2 h-4 w-4 shrink-0',
                         value === option.id ? 'opacity-100' : 'opacity-0'
                       )}
                     />
-                    {renderOption ? renderOption(option) : option.name}
+                    <div className="flex flex-1 items-center justify-between gap-2 min-w-0">
+                      <span className="truncate">{renderOption ? renderOption(option) : option.name}</span>
+                      {option.dueBalance != null && Number(option.dueBalance) > 0 && (
+                        <span
+                          className={cn(
+                            'text-xs font-medium px-1.5 py-0.5 rounded shrink-0',
+                            badgeColor === 'red'
+                              ? 'bg-red-500/20 text-red-400'
+                              : 'bg-orange-500/20 text-orange-400'
+                          )}
+                        >
+                          {(typeof option.dueBalance === 'number' ? option.dueBalance : Number(option.dueBalance)).toLocaleString()}
+                        </span>
+                      )}
+                    </div>
                   </CommandItem>
                 ))}
               </CommandGroup>

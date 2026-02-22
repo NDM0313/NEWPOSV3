@@ -60,6 +60,10 @@ export interface AccountingEntry {
     invoiceId?: string;
     purchaseId?: string;
     stage?: string;
+    /** Attachments for journal entry (saved to journal_entries.attachments). */
+    attachments?: { url: string; name: string }[];
+    /** Optional user reference (e.g. voucher no); saved with description, primary reference is always entry_no. */
+    optionalReference?: string;
   };
 }
 
@@ -632,23 +636,28 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
               creditAccountObj = retryCredit;
               
               // Use retry accounts - continue with journal entry creation
-              // CRITICAL FIX: Use validBranchId (not "all")
-              const journalEntry: JournalEntry = {
-                company_id: companyId,
-                branch_id: validBranchId,
-                entry_no: `JE-${Date.now()}-${Math.random().toString(36).substr(2, 5).toUpperCase()}`,
-                entry_date: new Date().toISOString().split('T')[0],
-                description: entry.description,
-                reference_type: entry.source.toLowerCase(),
-                reference_id: entry.metadata?.saleId || entry.metadata?.purchaseId || entry.metadata?.expenseId || entry.metadata?.bookingId || null,
-                created_by: currentUserId || null,
-              };
-              const lines: JournalEntryLine[] = [
-                { account_id: retryDebit.id, debit: entry.amount, credit: 0, description: entry.description },
-                { account_id: retryCredit.id, debit: 0, credit: entry.amount, description: entry.description },
-              ];
-              const paymentId = entry.metadata?.paymentId;
-              const savedEntry = await accountingService.createEntry(journalEntry, lines, paymentId);
+              // Primary reference = auto entry_no; optional user ref in description
+              let descRetry = entry.description || '';
+              if (entry.metadata?.optionalReference?.trim()) {
+                descRetry += (descRetry ? '\n' : '') + 'Ref: ' + entry.metadata.optionalReference.trim();
+              }
+      const journalEntry: JournalEntry = {
+        company_id: companyId,
+        branch_id: validBranchId,
+        entry_no: `JE-${Date.now()}-${Math.random().toString(36).substr(2, 5).toUpperCase()}`,
+        entry_date: new Date().toISOString().split('T')[0],
+        description: descRetry || undefined,
+        reference_type: entry.source.toLowerCase(),
+        reference_id: entry.metadata?.saleId || entry.metadata?.purchaseId || entry.metadata?.expenseId || entry.metadata?.bookingId || null,
+        created_by: currentUserId || null,
+        attachments: entry.metadata?.attachments && entry.metadata.attachments.length > 0 ? entry.metadata.attachments : undefined,
+      };
+      const lines: JournalEntryLine[] = [
+        { account_id: retryDebit.id, debit: entry.amount, credit: 0, description: descRetry || entry.description },
+        { account_id: retryCredit.id, debit: 0, credit: entry.amount, description: descRetry || entry.description },
+      ];
+      const paymentId = entry.metadata?.paymentId;
+      const savedEntry = await accountingService.createEntry(journalEntry, lines, paymentId);
               if (entry.debitAccount === 'Worker Payable' && entry.source === 'Payment' && entry.metadata?.workerId && companyId && !entry.metadata?.stageId) {
                 try {
                   const { studioProductionService } = await import('@/app/services/studioProductionService');
@@ -683,6 +692,12 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
         return false;
       }
 
+      // Primary reference is always auto (entry_no). Optional user reference saved in description.
+      let descriptionToSave = entry.description || '';
+      if (entry.metadata?.optionalReference?.trim()) {
+        descriptionToSave += (descriptionToSave ? '\n' : '') + 'Ref: ' + entry.metadata.optionalReference.trim();
+      }
+
       // Create journal entry (matching database schema)
       // CRITICAL FIX: Use null instead of undefined for optional UUID fields to prevent "undefinedundefined" error
       // CRITICAL FIX: Use validBranchId (not "all") to prevent UUID error
@@ -691,12 +706,13 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
         branch_id: validBranchId,
         entry_no: entryNo,
         entry_date: entryDate,
-        description: entry.description,
+        description: descriptionToSave || undefined,
         reference_type: entry.source.toLowerCase(),
         // CRITICAL FIX: reference_id must be UUID, not invoice number
         // Use saleId/purchaseId/expenseId from metadata (UUIDs), not invoiceId (string)
         reference_id: entry.metadata?.saleId || entry.metadata?.purchaseId || entry.metadata?.expenseId || entry.metadata?.bookingId || null,
         created_by: currentUserId || null,
+        attachments: entry.metadata?.attachments && entry.metadata.attachments.length > 0 ? entry.metadata.attachments : undefined,
       };
 
       // Create journal entry lines (matching database schema - no account_name)
@@ -705,13 +721,13 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
           account_id: debitAccountObj.id,
           debit: entry.amount,
           credit: 0,
-          description: entry.description,
+          description: descriptionToSave || entry.description,
         },
         {
           account_id: creditAccountObj.id,
           debit: 0,
           credit: entry.amount,
-          description: entry.description,
+          description: descriptionToSave || entry.description,
         },
       ];
 

@@ -11,6 +11,7 @@ import {
   TrendingUp,
   TrendingDown,
   Clock,
+  BookMarked,
 } from 'lucide-react';
 import type { User } from '../../types';
 import { useResponsive } from '../../hooks/useResponsive';
@@ -41,6 +42,7 @@ interface AccountsDashboardProps {
   onWorkerPayment: () => void;
   onExpenseEntry: () => void;
   onViewReports: () => void;
+  onChartOfAccounts: () => void;
   onEntryClick: (entry: AccountEntry) => void;
 }
 
@@ -61,6 +63,7 @@ export function AccountsDashboard({
   onWorkerPayment,
   onExpenseEntry,
   onViewReports,
+  onChartOfAccounts,
   onEntryClick,
 }: AccountsDashboardProps) {
   useResponsive();
@@ -212,6 +215,7 @@ export function AccountsDashboard({
           <ActionButton icon={Users} label="Supplier Payment" color="bg-[#F59E0B]" onClick={onSupplierPayment} />
           <ActionButton icon={Wrench} label="Worker Payment" color="bg-[#10B981]" onClick={onWorkerPayment} />
           <ActionButton icon={Receipt} label="Expense Entry" color="bg-[#EF4444]" onClick={onExpenseEntry} />
+          <ActionButton icon={BookMarked} label="Chart of Accounts" color="bg-[#F59E0B]" onClick={onChartOfAccounts} />
           <ActionButton icon={BarChart3} label="Reports" color="bg-[#6366F1]" onClick={onViewReports} />
         </div>
       </div>

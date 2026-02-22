@@ -56,7 +56,8 @@ type View =
   | 'day4-certification'
   | 'erp-integration-test'
   | 'cutover-prep'
-  | 'responsive-test';
+  | 'responsive-test'
+  | 'test-account-entry';
 
 type DrawerType = 'none' | 'addUser' | 'addProduct' | 'edit-product' | 'addSale' | 'edit-sale' | 'addPurchase' | 'edit-purchase' | 'addContact';
 
