@@ -51,14 +51,21 @@ const ENTRY_OPTIONS: { key: ModalType; icon: string; title: string; subtitle: st
   { key: 'customer', icon: '💳', title: 'Customer Receipt', subtitle: 'Payment Received' },
 ];
 
-export function AccountingTestPage() {
+export interface AccountingTestPageProps {
+  /** When true, only type selector + modals are shown (no header/entries list). Used inside Accounting dashboard. */
+  embedded?: boolean;
+  /** Called when flow should close (type selector closed or entry saved). */
+  onClose?: () => void;
+}
+
+export function AccountingTestPage({ embedded = false, onClose }: AccountingTestPageProps = {}) {
   const { companyId, branchId, user } = useSupabase();
   const [accounts, setAccounts] = useState<{ id: string; name: string }[]>([]);
   const [suppliers, setSuppliers] = useState<{ id: string; name: string; dueBalance?: number }[]>([]);
   const [customers, setCustomers] = useState<{ id: string; name: string }[]>([]);
   const [workers, setWorkers] = useState<{ id: string; name: string; dueBalance?: number }[]>([]);
   const [expenseCategories, setExpenseCategories] = useState<{ id: string; name: string }[]>([]);
-  const [showTypeSelector, setShowTypeSelector] = useState(false);
+  const [showTypeSelector, setShowTypeSelector] = useState(embedded);
   const [openModal, setOpenModal] = useState<ModalType>(null);
   const [loading, setLoading] = useState(true);
   const [entries, setEntries] = useState<TestEntry[]>([]);
@@ -139,7 +146,10 @@ export function AccountingTestPage() {
   );
 
   const openTypeSelector = () => setShowTypeSelector(true);
-  const closeTypeSelector = () => setShowTypeSelector(false);
+  const closeTypeSelector = () => {
+    setShowTypeSelector(false);
+    if (embedded) onClose?.();
+  };
   const onSelectType = (type: ModalType) => {
     closeTypeSelector();
     setOpenModal(type);
@@ -152,13 +162,101 @@ export function AccountingTestPage() {
   const onEntrySaved = () => {
     setOpenModal(null);
     loadEntries();
+    if (embedded) onClose?.();
   };
+
+  useEffect(() => {
+    if (embedded) setShowTypeSelector(true);
+  }, [embedded]);
 
   if (!companyId) {
     return (
       <div className="p-6 text-gray-400">
         <p>Please log in and select a company to use the Accounting Test module.</p>
       </div>
+    );
+  }
+
+  if (embedded) {
+    return (
+      <>
+        {showTypeSelector && (
+          <TypeSelectionDialog
+            onSelect={(type) => {
+              setShowTypeSelector(false);
+              setOpenModal(type);
+            }}
+            onClose={closeTypeSelector}
+          />
+        )}
+        {openModal === 'manual' && (
+          <ManualEntryModal
+            companyId={companyId}
+            branchId={branchId}
+            createdBy={user?.id}
+            accounts={accounts}
+            onClose={() => { setOpenModal(null); onClose?.(); }}
+            onBack={onBackFromForm}
+            onSuccess={() => { onEntrySaved(); toast.success('Manual entry saved.'); }}
+          />
+        )}
+        {openModal === 'transfer' && (
+          <TransferModal
+            companyId={companyId}
+            branchId={branchId}
+            createdBy={user?.id}
+            accounts={accounts}
+            onClose={() => { setOpenModal(null); onClose?.(); }}
+            onBack={onBackFromForm}
+            onSuccess={() => { onEntrySaved(); toast.success('Transfer saved.'); }}
+          />
+        )}
+        {openModal === 'supplier' && (
+          <SupplierPaymentModal
+            companyId={companyId}
+            branchId={branchId}
+            createdBy={user?.id}
+            suppliers={suppliers}
+            paymentAccounts={paymentAccounts.length ? paymentAccounts : accounts}
+            onClose={() => { setOpenModal(null); onClose?.(); }}
+            onBack={onBackFromForm}
+            onSuccess={() => { onEntrySaved(); toast.success('Supplier payment saved.'); }}
+          />
+        )}
+        {openModal === 'worker' && (
+          <WorkerPaymentModal
+            companyId={companyId}
+            branchId={branchId}
+            createdBy={user?.id}
+            workers={workers}
+            paymentAccounts={paymentAccounts.length ? paymentAccounts : accounts}
+            onClose={() => { setOpenModal(null); onClose?.(); }}
+            onBack={onBackFromForm}
+            onSuccess={() => { onEntrySaved(); toast.success('Worker payment saved.'); }}
+          />
+        )}
+        {openModal === 'expense' && (
+          <AddExpenseDrawer
+            open={true}
+            onOpenChange={(open) => { if (!open) { setOpenModal(null); onClose?.(); } }}
+            companyId={companyId}
+            branchId={branchId}
+            onSuccess={() => { setOpenModal(null); onEntrySaved(); toast.success('Expense recorded.'); }}
+          />
+        )}
+        {openModal === 'customer' && (
+          <CustomerReceiptModal
+            companyId={companyId}
+            branchId={branchId}
+            createdBy={user?.id}
+            customers={customers}
+            paymentAccounts={paymentAccounts.length ? paymentAccounts : accounts}
+            onClose={() => { setOpenModal(null); onClose?.(); }}
+            onBack={onBackFromForm}
+            onSuccess={() => { onEntrySaved(); toast.success('Customer receipt saved.'); }}
+          />
+        )}
+      </>
     );
   }
 

@@ -321,80 +321,71 @@ export const ExpensesDashboard = () => {
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
       
-      {/* Header Section */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4 border-b border-gray-800 pb-4">
-        <div className="space-y-4 w-full md:w-auto">
-          <div>
-            <h2 className="text-3xl font-bold text-white tracking-tight">Expenses</h2>
-            <p className="text-gray-400 mt-1">Track and manage business operational costs.</p>
-          </div>
-          
-          {/* Tabs */}
-          <div className="flex items-center gap-6 mt-6">
-            <button
-              onClick={() => setActiveTab('overview')}
-              className={cn(
-                "pb-2 text-sm font-medium transition-all relative",
-                activeTab === 'overview' 
-                  ? "text-blue-400" 
-                  : "text-gray-400 hover:text-gray-300"
-              )}
-            >
-              Overview
-              {activeTab === 'overview' && (
-                <span className="absolute bottom-0 left-0 w-full h-0.5 bg-blue-500 rounded-full" />
-              )}
-            </button>
-            <button
-              onClick={() => setActiveTab('list')}
-              className={cn(
-                "pb-2 text-sm font-medium transition-all relative",
-                activeTab === 'list' 
-                  ? "text-blue-400" 
-                  : "text-gray-400 hover:text-gray-300"
-              )}
-            >
-              All Expenses
-              {activeTab === 'list' && (
-                <span className="absolute bottom-0 left-0 w-full h-0.5 bg-blue-500 rounded-full" />
-              )}
-            </button>
-            <button
-              onClick={() => setActiveTab('categories')}
-              className={cn(
-                "pb-2 text-sm font-medium transition-all relative",
-                activeTab === 'categories' 
-                  ? "text-blue-400" 
-                  : "text-gray-400 hover:text-gray-300"
-              )}
-            >
-              Categories
-              {activeTab === 'categories' && (
-                <span className="absolute bottom-0 left-0 w-full h-0.5 bg-blue-500 rounded-full" />
-              )}
-            </button>
-          </div>
+      {/* Header: title left, Add button right - always same row (like Accounting) */}
+      <div className="flex items-center justify-between gap-4 border-b border-gray-800 pb-4 flex-nowrap">
+        <div className="min-w-0">
+          <h2 className="text-2xl md:text-3xl font-bold text-white tracking-tight">Expenses</h2>
+          <p className="text-gray-400 mt-0.5 text-sm">Track and manage business operational costs.</p>
         </div>
+        <div className="flex-shrink-0">
+          {activeTab === 'categories' ? (
+            <Button
+              onClick={handleAddCategory}
+              className="bg-blue-600 hover:bg-blue-500 text-white h-10 px-4 gap-2 shadow-lg shadow-blue-900/30 whitespace-nowrap"
+            >
+              <Plus size={18} />
+              Add Category
+            </Button>
+          ) : (
+            <Button
+              onClick={() => { setSelectedExpense(null); setIsDrawerOpen(true); }}
+              className="bg-blue-600 hover:bg-blue-500 text-white h-10 px-4 gap-2 shadow-lg shadow-blue-900/30 whitespace-nowrap"
+            >
+              <Plus size={18} />
+              Add Expense
+            </Button>
+          )}
+        </div>
+      </div>
 
-        <div className="flex items-center gap-3 w-full md:w-auto justify-end">
-           {activeTab === 'categories' ? (
-             <Button 
-               onClick={handleAddCategory}
-               className="bg-blue-600 hover:bg-blue-500 text-white gap-2 shadow-lg shadow-blue-600/20"
-             >
-               <Plus size={18} />
-               Add New Category
-             </Button>
-           ) : (
-             <Button 
-               onClick={() => { setSelectedExpense(null); setIsDrawerOpen(true); }}
-               className="bg-blue-600 hover:bg-blue-500 text-white gap-2 shadow-lg shadow-blue-600/20"
-             >
-               <Plus size={18} />
-               Record Expense
-             </Button>
-           )}
-        </div>
+      {/* Tabs */}
+      <div className="flex items-center gap-6">
+        <button
+          onClick={() => setActiveTab('overview')}
+          className={cn(
+            "pb-2 text-sm font-medium transition-all relative",
+            activeTab === 'overview' ? "text-blue-400" : "text-gray-400 hover:text-gray-300"
+          )}
+        >
+          Overview
+          {activeTab === 'overview' && (
+            <span className="absolute bottom-0 left-0 w-full h-0.5 bg-blue-500 rounded-full" />
+          )}
+        </button>
+        <button
+          onClick={() => setActiveTab('list')}
+          className={cn(
+            "pb-2 text-sm font-medium transition-all relative",
+            activeTab === 'list' ? "text-blue-400" : "text-gray-400 hover:text-gray-300"
+          )}
+        >
+          All Expenses
+          {activeTab === 'list' && (
+            <span className="absolute bottom-0 left-0 w-full h-0.5 bg-blue-500 rounded-full" />
+          )}
+        </button>
+        <button
+          onClick={() => setActiveTab('categories')}
+          className={cn(
+            "pb-2 text-sm font-medium transition-all relative",
+            activeTab === 'categories' ? "text-blue-400" : "text-gray-400 hover:text-gray-300"
+          )}
+        >
+          Categories
+          {activeTab === 'categories' && (
+            <span className="absolute bottom-0 left-0 w-full h-0.5 bg-blue-500 rounded-full" />
+          )}
+        </button>
       </div>
 
       {/* Content Area */}
@@ -522,6 +513,12 @@ export const ExpensesDashboard = () => {
               value: pageSize,
               onChange: handlePageSizeChange,
               totalItems: filteredExpenses.length
+            }}
+            primaryAction={{
+              label: 'Add Expense',
+              icon: <Plus size={18} />,
+              onClick: () => { setSelectedExpense(null); setIsDrawerOpen(true); },
+              className: 'bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-900/30'
             }}
             filter={{
               isOpen: filterOpen,

@@ -144,8 +144,9 @@ export default function App() {
     else if (tab === 'more') setShowModuleGrid(true);
   };
 
-  const showBottomNav = currentScreen !== 'login' && currentScreen !== 'branch-selection' && user && selectedBranch;
-  const showSidebar = showBottomNav && responsive.isTablet;
+  // Only show BottomNav on home so modules (Sales, Purchase, Expense, Settings, etc.) are full screen
+  const showBottomNav = currentScreen === 'home' && user && selectedBranch;
+  const showSidebar = (currentScreen !== 'login' && currentScreen !== 'branch-selection' && user && selectedBranch) && responsive.isTablet;
 
   if (authLoading) {
     return (

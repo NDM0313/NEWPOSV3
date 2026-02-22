@@ -286,9 +286,10 @@ export function PurchaseModule({ onBack, user, companyId, branchId }: PurchaseMo
           <button
             onClick={handleAddClick}
             disabled={!companyId || (!canAddDirect && !canAddWithPicker)}
-            className="p-2 bg-white/20 hover:bg-white/30 disabled:opacity-50 rounded-lg transition-colors text-white"
+            className="flex items-center gap-2 px-3 py-2.5 bg-white text-[#059669] hover:bg-white/90 disabled:opacity-50 rounded-lg font-medium text-sm shadow-lg transition-colors"
           >
             <Plus className="w-5 h-5" />
+            Add
           </button>
         </div>
 

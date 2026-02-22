@@ -68,12 +68,13 @@ export function RentalModule({ onBack, user, companyId, branch }: RentalModulePr
               <p className="text-xs text-white/80">Manage bookings & returns</p>
             </div>
           </div>
-          {branch?.id !== 'all' && (
-            <button onClick={() => setShowCreate(true)} className="p-2.5 bg-white/20 hover:bg-white/30 rounded-lg transition-colors text-white flex items-center gap-2">
-              <Plus className="w-5 h-5" />
-              <span className="text-sm font-medium">New Booking</span>
-            </button>
-          )}
+          <button
+            onClick={() => setShowCreate(true)}
+            className="flex items-center gap-2 px-3 py-2.5 bg-white text-[#7C3AED] hover:bg-white/90 rounded-lg font-medium text-sm shadow-lg transition-colors"
+          >
+            <Plus className="w-5 h-5" />
+            Add
+          </button>
         </div>
         {!loading && list.length > 0 && (
           <div className="grid grid-cols-2 gap-3">

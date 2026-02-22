@@ -50,14 +50,39 @@ $COMPOSE_CMD down 2>/dev/null || true
 docker rm -f erp-frontend 2>/dev/null || true
 $COMPOSE_CMD up -d
 
-# Auto-apply storage RLS on VPS (no PGPASSWORD needed; uses docker exec into Supabase DB)
+# Auto-apply storage buckets (if storage schema exists) + RLS on VPS
 apply_rls() {
   CONTAINER=$(docker ps --format '{{.Names}}' | grep -E '^db$|^supabase-db$|^postgres$|supabase.*db' | head -1)
   [ -z "$CONTAINER" ] && return 0
-  echo "[deploy] Applying storage RLS to $CONTAINER..."
+  echo "[deploy] Ensuring storage buckets and RLS in $CONTAINER..."
+
+  # 1) Create buckets if storage.buckets exists (self-hosted Supabase; skip errors if not allowed)
+  docker exec -i "$CONTAINER" psql -U postgres -d postgres -v ON_ERROR_STOP=0 <<'EOSQL' || true
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'storage' AND table_name = 'buckets') THEN
+    INSERT INTO storage.buckets (id, name, public, created_at, updated_at)
+    SELECT gen_random_uuid(), 'payment-attachments', false, now(), now()
+    WHERE NOT EXISTS (SELECT 1 FROM storage.buckets WHERE name = 'payment-attachments');
+    INSERT INTO storage.buckets (id, name, public, created_at, updated_at)
+    SELECT gen_random_uuid(), 'expense-receipts', false, now(), now()
+    WHERE NOT EXISTS (SELECT 1 FROM storage.buckets WHERE name = 'expense-receipts');
+    INSERT INTO storage.buckets (id, name, public, created_at, updated_at)
+    SELECT gen_random_uuid(), 'purchase-attachments', false, now(), now()
+    WHERE NOT EXISTS (SELECT 1 FROM storage.buckets WHERE name = 'purchase-attachments');
+    INSERT INTO storage.buckets (id, name, public, created_at, updated_at)
+    SELECT gen_random_uuid(), 'sale-attachments', false, now(), now()
+    WHERE NOT EXISTS (SELECT 1 FROM storage.buckets WHERE name = 'sale-attachments');
+  END IF;
+EXCEPTION WHEN OTHERS THEN NULL;
+END $$;
+EOSQL
+
+  # 2) Apply RLS for payment-attachments + expense-receipts
   docker exec -i "$CONTAINER" psql -U postgres -d postgres -v ON_ERROR_STOP=1 <<'EOSQL'
 DO $$
 BEGIN
+  -- payment-attachments
   DROP POLICY IF EXISTS "payment_attachments_insert" ON storage.objects;
   DROP POLICY IF EXISTS "payment_attachments_select" ON storage.objects;
   DROP POLICY IF EXISTS "payment_attachments_update" ON storage.objects;
@@ -68,9 +93,31 @@ BEGIN
   CREATE POLICY "payment_attachments_update" ON storage.objects FOR UPDATE TO authenticated USING (bucket_id = 'payment-attachments') WITH CHECK (bucket_id = 'payment-attachments');
   CREATE POLICY "payment_attachments_journal_insert" ON storage.objects FOR INSERT TO authenticated WITH CHECK (bucket_id = 'payment-attachments' AND (name LIKE 'journal-entries/%' OR (storage.foldername(name))[1] = 'journal-entries'));
   CREATE POLICY "payment_attachments_journal_select" ON storage.objects FOR SELECT TO authenticated USING (bucket_id = 'payment-attachments' AND (name LIKE 'journal-entries/%' OR (storage.foldername(name))[1] = 'journal-entries'));
+
+  -- expense-receipts (mobile + web Add Expense)
+  DROP POLICY IF EXISTS "expense_receipts_insert" ON storage.objects;
+  DROP POLICY IF EXISTS "expense_receipts_select" ON storage.objects;
+  DROP POLICY IF EXISTS "expense_receipts_update" ON storage.objects;
+  CREATE POLICY "expense_receipts_insert" ON storage.objects FOR INSERT TO authenticated WITH CHECK (bucket_id = 'expense-receipts');
+  CREATE POLICY "expense_receipts_select" ON storage.objects FOR SELECT TO authenticated USING (bucket_id = 'expense-receipts');
+  CREATE POLICY "expense_receipts_update" ON storage.objects FOR UPDATE TO authenticated USING (bucket_id = 'expense-receipts') WITH CHECK (bucket_id = 'expense-receipts');
+
+  -- purchase-attachments & sale-attachments
+  DROP POLICY IF EXISTS "purchase_attachments_insert" ON storage.objects;
+  DROP POLICY IF EXISTS "purchase_attachments_select" ON storage.objects;
+  DROP POLICY IF EXISTS "purchase_attachments_update" ON storage.objects;
+  CREATE POLICY "purchase_attachments_insert" ON storage.objects FOR INSERT TO authenticated WITH CHECK (bucket_id = 'purchase-attachments');
+  CREATE POLICY "purchase_attachments_select" ON storage.objects FOR SELECT TO authenticated USING (bucket_id = 'purchase-attachments');
+  CREATE POLICY "purchase_attachments_update" ON storage.objects FOR UPDATE TO authenticated USING (bucket_id = 'purchase-attachments') WITH CHECK (bucket_id = 'purchase-attachments');
+  DROP POLICY IF EXISTS "sale_attachments_insert" ON storage.objects;
+  DROP POLICY IF EXISTS "sale_attachments_select" ON storage.objects;
+  DROP POLICY IF EXISTS "sale_attachments_update" ON storage.objects;
+  CREATE POLICY "sale_attachments_insert" ON storage.objects FOR INSERT TO authenticated WITH CHECK (bucket_id = 'sale-attachments');
+  CREATE POLICY "sale_attachments_select" ON storage.objects FOR SELECT TO authenticated USING (bucket_id = 'sale-attachments');
+  CREATE POLICY "sale_attachments_update" ON storage.objects FOR UPDATE TO authenticated USING (bucket_id = 'sale-attachments') WITH CHECK (bucket_id = 'sale-attachments');
 END $$;
 EOSQL
-  echo "[deploy] Storage RLS applied."
+  echo "[deploy] Storage buckets + RLS applied."
 }
 if [ -f deploy/apply-storage-rls-vps.sh ]; then
   bash deploy/apply-storage-rls-vps.sh || apply_rls

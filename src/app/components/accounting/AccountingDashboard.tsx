@@ -45,6 +45,7 @@ import { TransactionDetailModal } from './TransactionDetailModal';
 import { AddAccountDrawer } from './AddAccountDrawer';
 import { LedgerHub } from './LedgerHub';
 import { StudioCostsTab } from './StudioCostsTab';
+import { AccountingTestPage } from '@/app/components/test/AccountingTestPage';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { accountService } from '@/app/services/accountService';
 import { toast } from 'sonner';
@@ -88,7 +89,9 @@ export const AccountingDashboard = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [filterOpen, setFilterOpen] = useState(false);
   
-  // 🎯 Manual Entry Dialog State
+  // 🎯 Add Entry flow (type selector + modals, same as Accounting Test page)
+  const [addEntryFlowOpen, setAddEntryFlowOpen] = useState(false);
+  // Legacy manual-entry-only dialog (kept for any direct use)
   const [manualEntryOpen, setManualEntryOpen] = useState(false);
   
   // 🎯 Account Management State
@@ -234,11 +237,11 @@ export const AccountingDashboard = () => {
           </div>
           {userRole === 'Admin' && activeTab === 'transactions' && (
             <Button 
-              onClick={() => setManualEntryOpen(true)}
+              onClick={() => setAddEntryFlowOpen(true)}
               className="bg-blue-600 hover:bg-blue-500 text-white h-10 gap-2 shadow-lg shadow-blue-900/30"
             >
               <Plus size={16} />
-              Manual Entry
+              Add Entry
             </Button>
           )}
         </div>
@@ -1139,7 +1142,18 @@ export const AccountingDashboard = () => {
         )}
       </div>
       
-      {/* Manual Entry Dialog */}
+      {/* Add Entry flow: type selector + Journal/Transfer/Supplier/Expense/Worker/Customer modals */}
+      {addEntryFlowOpen && (
+        <AccountingTestPage
+          embedded
+          onClose={() => {
+            setAddEntryFlowOpen(false);
+            accounting.refreshEntries();
+          }}
+        />
+      )}
+
+      {/* Manual Entry Dialog (legacy) */}
       <ManualEntryDialog 
         isOpen={manualEntryOpen}
         onClose={() => setManualEntryOpen(false)}

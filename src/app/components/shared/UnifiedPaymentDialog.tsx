@@ -11,7 +11,7 @@ import { accountHelperService } from '@/app/services/accountHelperService';
 import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
 import { getAttachmentOpenUrl, getSupabaseStorageDashboardUrl } from '@/app/utils/paymentAttachmentUrl';
-import { showStorageRlsToast } from '@/app/utils/uploadTransactionAttachments';
+import { showStorageRlsToast, MAX_FILE_SIZE_BYTES, showFileTooLargeToast } from '@/app/utils/uploadTransactionAttachments';
 
 // ============================================
 // 🎯 TYPES
@@ -405,6 +405,11 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
             const prefix = `${companyId}/${referenceId}/${Date.now()}`;
             for (let i = 0; i < attachments.length; i++) {
               const file = attachments[i];
+              if (file.size > MAX_FILE_SIZE_BYTES) {
+                anyUploadFailed = true;
+                showFileTooLargeToast(file.name);
+                continue;
+              }
               const safeName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
               const path = `${prefix}_${i}_${safeName}`;
               const { error: upError } = await supabase.storage.from(bucket).upload(path, file, {
@@ -418,7 +423,8 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
                 anyUploadFailed = true;
                 console.warn('[UnifiedPaymentDialog] Edit: upload failed', upError);
                 const em = String(upError?.message || '').toLowerCase();
-                if (em.includes('row-level security') || em.includes('policy')) showStorageRlsToast();
+                if (em.includes('exceeded') && (em.includes('maximum') || em.includes('size'))) showFileTooLargeToast(file.name);
+                else if (em.includes('row-level security') || em.includes('policy')) showStorageRlsToast();
                 else if (em.includes('bucket not found')) {
                   toast.warning('Storage bucket "payment-attachments" not found. Create it in Supabase, then run migration 20.', {
                     duration: 10000,
@@ -485,6 +491,11 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
                 const prefix = `${companyId}/${referenceId}/${Date.now()}`;
                 for (let i = 0; i < attachments.length; i++) {
                   const file = attachments[i];
+                  if (file.size > MAX_FILE_SIZE_BYTES) {
+                    anyUploadFailed = true;
+                    showFileTooLargeToast(file.name);
+                    continue;
+                  }
                   const safeName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
                   const path = `${prefix}_${i}_${safeName}`;
                   const { error: upError } = await supabase.storage.from(bucket).upload(path, file, {
@@ -498,7 +509,8 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
                     anyUploadFailed = true;
                     console.warn('[UnifiedPaymentDialog] Supplier upload failed', upError);
                     const em = String(upError?.message || '').toLowerCase();
-                    if (em.includes('row-level security') || em.includes('policy')) showStorageRlsToast();
+                    if (em.includes('exceeded') && (em.includes('maximum') || em.includes('size'))) showFileTooLargeToast(file.name);
+                    else if (em.includes('row-level security') || em.includes('policy')) showStorageRlsToast();
                     else if (em.includes('bucket not found')) {
                       toast.warning('Storage bucket "payment-attachments" not found. Create it in Supabase, then run migration 20.', {
                         duration: 10000,
@@ -570,6 +582,11 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
                 const prefix = `${companyId}/${referenceId}/${Date.now()}`;
                 for (let i = 0; i < attachments.length; i++) {
                   const file = attachments[i];
+                  if (file.size > MAX_FILE_SIZE_BYTES) {
+                    anyUploadFailed = true;
+                    showFileTooLargeToast(file.name);
+                    continue;
+                  }
                   const safeName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
                   const path = `${prefix}_${i}_${safeName}`;
                   const { error: upError } = await supabase.storage.from(bucket).upload(path, file, {
@@ -583,7 +600,8 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
                     anyUploadFailed = true;
                     console.warn('[UnifiedPaymentDialog] Customer upload failed', upError);
                     const em = String(upError?.message || '').toLowerCase();
-                    if (em.includes('row-level security') || em.includes('policy')) showStorageRlsToast();
+                    if (em.includes('exceeded') && (em.includes('maximum') || em.includes('size'))) showFileTooLargeToast(file.name);
+                    else if (em.includes('row-level security') || em.includes('policy')) showStorageRlsToast();
                     else if (em.includes('bucket not found')) {
                       toast.warning('Storage bucket "payment-attachments" not found. Create it in Supabase, then run migration 20.', {
                         duration: 10000,

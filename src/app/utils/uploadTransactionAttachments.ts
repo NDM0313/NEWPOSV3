@@ -7,13 +7,55 @@ export type AttachmentResult = { url: string; name: string };
 const STORAGE_RLS_TOAST_MESSAGE =
   'Storage upload blocked by RLS. Fix: (1) VPS: cd /root/NEWPOSV3 && bash deploy/deploy.sh — RLS applies automatically. (2) Or Supabase Dashboard → SQL Editor → run RUN_THIS_FOR_STORAGE_RLS.sql. (3) Local: npm run apply-storage-rls (DATABASE_URL in .env.local).';
 
+/** Max file size for storage uploads (20MB). Keep under typical Supabase/server limits. */
+export const MAX_FILE_SIZE_BYTES = 20 * 1024 * 1024;
+const MAX_FILE_SIZE_MB = 20;
+
 function isStorageRlsError(error: { message?: string } | null): boolean {
   const msg = String(error?.message || '').toLowerCase();
   return msg.includes('row-level security') || msg.includes('policy');
 }
 
+function isFileTooLargeError(error: { message?: string } | null): boolean {
+  const msg = String(error?.message || '').toLowerCase();
+  return msg.includes('exceeded') && (msg.includes('maximum') || msg.includes('size'));
+}
+
+export function showFileTooLargeToast(fileName: string, maxMB: number = MAX_FILE_SIZE_MB): void {
+  toast.error(`File too large: "${fileName}". Max size is ${maxMB} MB. Use a smaller file or compress it.`, {
+    duration: 8000,
+  });
+}
+
+function isFileTooLargeException(err: unknown): boolean {
+  const msg = String((err as any)?.message ?? '').toLowerCase();
+  return (msg.includes('exceeded') && (msg.includes('maximum') || msg.includes('size'))) || msg.includes('payload too large');
+}
+
 export function showStorageRlsToast(): void {
   toast.error(STORAGE_RLS_TOAST_MESSAGE, { duration: 14000 });
+}
+
+function isBucketNotFoundError(error: { message?: string; statusCode?: number } | null): boolean {
+  if (!error) return false;
+  const msg = String(error?.message || '').toLowerCase();
+  return (
+    msg.includes('bucket') && (msg.includes('not found') || msg.includes('does not exist')) ||
+    (error.statusCode === 400 && msg.includes('bucket'))
+  );
+}
+
+/** Show a single, clear toast when the storage bucket is missing. */
+export function showBucketNotFoundToast(bucketName: string = 'payment-attachments'): void {
+  toast.error(
+    `Storage bucket "${bucketName}" not found. Create it in Supabase Dashboard → Storage → New bucket (name: ${bucketName}). Then run the storage RLS SQL (RUN_THIS_FOR_STORAGE_RLS.sql or migration 20) in SQL Editor.`,
+    {
+      duration: 12000,
+      action: getSupabaseStorageDashboardUrl()
+        ? { label: 'Open Storage', onClick: () => window.open(getSupabaseStorageDashboardUrl(), '_blank') }
+        : undefined,
+    }
+  );
 }
 
 /**
@@ -33,6 +75,11 @@ export async function uploadPurchaseAttachments(
   
   for (let i = 0; i < files.length; i++) {
     const file = files[i];
+    if (file.size > MAX_FILE_SIZE_BYTES) {
+      anyUploadFailed = true;
+      showFileTooLargeToast(file.name);
+      continue;
+    }
     const safeName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
     const path = `${prefix}_${i}_${safeName}`;
     
@@ -45,25 +92,17 @@ export async function uploadPurchaseAttachments(
       if (error) {
         anyUploadFailed = true;
         console.error(`[UPLOAD PURCHASE ATTACHMENTS] Failed to upload ${file.name}:`, error);
-        
-        // Check if bucket doesn't exist
         const errorMsg = String(error?.message || '').toLowerCase();
         if (isStorageRlsError(error)) {
           showStorageRlsToast();
           break;
         }
-        if (errorMsg.includes('bucket not found') || errorMsg.includes('does not exist') || error.statusCode === 400) {
-          toast.error(
-            `Storage bucket "purchase-attachments" not found. Please create it in Supabase Dashboard → Storage.`,
-            {
-              duration: 10000,
-              action: {
-                label: 'Open Storage',
-                onClick: () => window.open(getSupabaseStorageDashboardUrl(), '_blank'),
-              },
-            }
-          );
-          // Don't continue trying other files if bucket is missing
+        if (isFileTooLargeError(error)) {
+          showFileTooLargeToast(file.name);
+          continue;
+        }
+        if (isBucketNotFoundError(error)) {
+          showBucketNotFoundToast('purchase-attachments');
           break;
         }
       } else {
@@ -74,6 +113,7 @@ export async function uploadPurchaseAttachments(
     } catch (err: any) {
       anyUploadFailed = true;
       console.error(`[UPLOAD PURCHASE ATTACHMENTS] Exception uploading ${file.name}:`, err);
+      if (isFileTooLargeException(err)) showFileTooLargeToast(file.name);
     }
   }
   
@@ -103,6 +143,11 @@ export async function uploadSaleAttachments(
   
   for (let i = 0; i < files.length; i++) {
     const file = files[i];
+    if (file.size > MAX_FILE_SIZE_BYTES) {
+      anyUploadFailed = true;
+      showFileTooLargeToast(file.name);
+      continue;
+    }
     const safeName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
     const path = `${prefix}_${i}_${safeName}`;
     
@@ -115,25 +160,17 @@ export async function uploadSaleAttachments(
       if (error) {
         anyUploadFailed = true;
         console.error(`[UPLOAD SALE ATTACHMENTS] Failed to upload ${file.name}:`, error);
-        
-        // Check if bucket doesn't exist
         const errorMsg = String(error?.message || '').toLowerCase();
         if (isStorageRlsError(error)) {
           showStorageRlsToast();
           break;
         }
-        if (errorMsg.includes('bucket not found') || errorMsg.includes('does not exist') || error.statusCode === 400) {
-          toast.error(
-            `Storage bucket "sale-attachments" not found. Please create it in Supabase Dashboard → Storage.`,
-            {
-              duration: 10000,
-              action: {
-                label: 'Open Storage',
-                onClick: () => window.open(getSupabaseStorageDashboardUrl(), '_blank'),
-              },
-            }
-          );
-          // Don't continue trying other files if bucket is missing
+        if (isFileTooLargeError(error)) {
+          showFileTooLargeToast(file.name);
+          continue;
+        }
+        if (isBucketNotFoundError(error)) {
+          showBucketNotFoundToast('sale-attachments');
           break;
         }
       } else {
@@ -144,6 +181,7 @@ export async function uploadSaleAttachments(
     } catch (err: any) {
       anyUploadFailed = true;
       console.error(`[UPLOAD SALE ATTACHMENTS] Exception uploading ${file.name}:`, err);
+      if (isFileTooLargeException(err)) showFileTooLargeToast(file.name);
     }
   }
   
@@ -173,6 +211,11 @@ export async function uploadJournalEntryAttachments(
 
   for (let i = 0; i < files.length; i++) {
     const file = files[i];
+    if (file.size > MAX_FILE_SIZE_BYTES) {
+      anyUploadFailed = true;
+      showFileTooLargeToast(file.name);
+      continue;
+    }
     const safeName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
     const path = `${prefix}_${i}_${safeName}`;
     try {
@@ -188,14 +231,12 @@ export async function uploadJournalEntryAttachments(
           showStorageRlsToast();
           break;
         }
-        if (errorMsg.includes('bucket not found') || errorMsg.includes('does not exist') || error.statusCode === 400) {
-          toast.error(
-            'Storage bucket "payment-attachments" not found. Create it in Supabase Dashboard → Storage (see migration 20).',
-            {
-              duration: 10000,
-              action: { label: 'Open Storage', onClick: () => window.open(getSupabaseStorageDashboardUrl(), '_blank') },
-            }
-          );
+        if (isFileTooLargeError(error)) {
+          showFileTooLargeToast(file.name);
+          continue;
+        }
+        if (isBucketNotFoundError(error)) {
+          showBucketNotFoundToast('payment-attachments');
           break;
         }
       } else {
@@ -205,6 +246,7 @@ export async function uploadJournalEntryAttachments(
     } catch (err: any) {
       anyUploadFailed = true;
       console.error(`[UPLOAD JOURNAL ATTACHMENTS] Exception uploading ${file.name}:`, err);
+      if (isFileTooLargeException(err)) showFileTooLargeToast(file.name);
     }
   }
   if (anyUploadFailed && results.length === 0) {

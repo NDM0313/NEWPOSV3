@@ -122,15 +122,13 @@ export function StudioModule({ onBack, companyId, branch, onNewStudioSale }: Stu
                 <p className="text-xs text-white/80">Production pipeline management</p>
               </div>
             </div>
-            {onNewStudioSale && (
-              <button
-                onClick={onNewStudioSale}
-                className="p-2.5 bg-white/20 hover:bg-white/30 rounded-lg transition-colors text-white flex items-center gap-2"
-              >
-                <Plus className="w-5 h-5" />
-                <span className="text-sm font-medium">New Sale</span>
-              </button>
-            )}
+            <button
+              onClick={() => onNewStudioSale?.()}
+              className="flex items-center gap-2 px-3 py-2.5 bg-white text-[#7C3AED] hover:bg-white/90 rounded-lg font-medium text-sm shadow-lg transition-colors"
+            >
+              <Plus className="w-5 h-5" />
+              Add
+            </button>
           </div>
         </div>
         <div className="p-4">
