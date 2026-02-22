@@ -8,6 +8,7 @@
     "dev": "node scripts/run-migrations.js && vite",
     "dev:no-migrate": "vite",
     "migrate": "node scripts/run-migrations.js",
+    "apply-storage-rls": "node scripts/apply-storage-rls.js",
     "dev:with-migrate": "node scripts/run-migrations.js && vite",
     "seed": "node scripts/run-seed.js",
     "validate-seed": "node scripts/validate-seed.js",

@@ -11,6 +11,7 @@ import { accountHelperService } from '@/app/services/accountHelperService';
 import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
 import { getAttachmentOpenUrl, getSupabaseStorageDashboardUrl } from '@/app/utils/paymentAttachmentUrl';
+import { showStorageRlsToast } from '@/app/utils/uploadTransactionAttachments';
 
 // ============================================
 // 🎯 TYPES
@@ -295,6 +296,7 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
     setAttachments(prev => [...prev, ...files]);
+    e.target.value = '';
   };
 
   // Remove attachment
@@ -415,7 +417,9 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
               } else {
                 anyUploadFailed = true;
                 console.warn('[UnifiedPaymentDialog] Edit: upload failed', upError);
-                if (String(upError?.message || '').toLowerCase().includes('bucket not found')) {
+                const em = String(upError?.message || '').toLowerCase();
+                if (em.includes('row-level security') || em.includes('policy')) showStorageRlsToast();
+                else if (em.includes('bucket not found')) {
                   toast.warning('Storage bucket "payment-attachments" not found. Create it in Supabase, then run migration 20.', {
                     duration: 10000,
                     action: { label: 'Open Storage', onClick: () => window.open(getSupabaseStorageDashboardUrl(), '_blank') },
@@ -493,7 +497,9 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
                   } else {
                     anyUploadFailed = true;
                     console.warn('[UnifiedPaymentDialog] Supplier upload failed', upError);
-                    if (String(upError?.message || '').toLowerCase().includes('bucket not found')) {
+                    const em = String(upError?.message || '').toLowerCase();
+                    if (em.includes('row-level security') || em.includes('policy')) showStorageRlsToast();
+                    else if (em.includes('bucket not found')) {
                       toast.warning('Storage bucket "payment-attachments" not found. Create it in Supabase, then run migration 20.', {
                         duration: 10000,
                         action: { label: 'Open Storage', onClick: () => window.open(getSupabaseStorageDashboardUrl(), '_blank') },
@@ -576,7 +582,9 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
                   } else {
                     anyUploadFailed = true;
                     console.warn('[UnifiedPaymentDialog] Customer upload failed', upError);
-                    if (String(upError?.message || '').toLowerCase().includes('bucket not found')) {
+                    const em = String(upError?.message || '').toLowerCase();
+                    if (em.includes('row-level security') || em.includes('policy')) showStorageRlsToast();
+                    else if (em.includes('bucket not found')) {
                       toast.warning('Storage bucket "payment-attachments" not found. Create it in Supabase, then run migration 20.', {
                         duration: 10000,
                         action: { label: 'Open Storage', onClick: () => window.open(getSupabaseStorageDashboardUrl(), '_blank') },

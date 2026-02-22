@@ -1,20 +1,18 @@
 # ERP Production - erp.dincouture.pk
 # Run from project root:
-#   cp deploy/.env.production.example .env.production && edit .env.production
-#   docker compose -f deploy/docker-compose.prod.yml --project-directory . --env-file .env.production up -d --build
-# If port 3000 is in use (e.g. Dokploy), change ports below to "3001:80" and point Traefik to 3001.
-# UFW: 22, 80, 443 only. Never expose 5432.
+#   cd /root/NEWPOSV3 && bash deploy/deploy.sh
+# Storage RLS is applied automatically by deploy.sh (no extra env needed).
 
 services:
   erp:
     build:
-      context: .
+      context: ..
       dockerfile: deploy/Dockerfile
       args:
         VITE_SUPABASE_URL: ${VITE_SUPABASE_URL}
         VITE_SUPABASE_ANON_KEY: ${VITE_SUPABASE_ANON_KEY}
         VITE_DISABLE_REALTIME: ${VITE_DISABLE_REALTIME:-true}
-    env_file: .env.production
+    env_file: ../.env.production
     container_name: erp-frontend
     restart: always
     # Use 3001 when 3000 is taken (e.g. Dokploy). Traefik can route erp.dincouture.pk to erp-frontend:80 on same network.
