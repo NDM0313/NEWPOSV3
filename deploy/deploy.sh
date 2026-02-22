@@ -78,4 +78,7 @@ else
   apply_rls
 fi
 
+# Fix supabase.dincouture.pk: Kong host + anon key (API_EXTERNAL_URL, sync key, restart Kong)
+[ -f deploy/fix-supabase-kong-domain.sh ] && bash deploy/fix-supabase-kong-domain.sh || true
+
 echo "ERP running. Configure Caddy/Nginx for https://erp.dincouture.pk"
