@@ -105,9 +105,18 @@ export async function createExpense(input: {
   };
   if (input.paymentAccountId) row.payment_account_id = input.paymentAccountId;
   if (input.receiptUrl) row.receipt_url = input.receiptUrl;
-  const { data, error } = await supabase.from('expenses').insert(row).select('id, expense_no').single();
-  if (error) return { data: null, error: error.message };
-  return { data, error: null };
+  let result = await supabase.from('expenses').insert(row).select('id, expense_no').single();
+  if (result.error) {
+    const msg = String(result.error.message || '').toLowerCase();
+    const schemaMissing = msg.includes("payment_account_id") || msg.includes("receipt_url") || msg.includes("column") && msg.includes("schema cache");
+    if (schemaMissing && (input.paymentAccountId || input.receiptUrl)) {
+      delete row.payment_account_id;
+      delete row.receipt_url;
+      result = await supabase.from('expenses').insert(row).select('id, expense_no').single();
+    }
+  }
+  if (result.error) return { data: null, error: result.error.message };
+  return { data: result.data, error: null };
 }
 
 const EXPENSE_RECEIPT_BUCKET = 'expense-receipts';
