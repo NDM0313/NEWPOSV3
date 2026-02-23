@@ -82,6 +82,7 @@ export const Sidebar = () => {
       id: 'test-pages-group', 
       label: 'Test Pages', 
       icon: FlaskConical,
+      isHidden: true, // Developer only - hidden from all users
       children: [
         { id: 'test-account-entry', label: 'Account Entry' },
         { id: 'customer-ledger-test', label: 'Customer Ledger Test' },
