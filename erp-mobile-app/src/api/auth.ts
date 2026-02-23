@@ -44,9 +44,10 @@ export async function signIn(email: string, password: string): Promise<{ data: A
   const user = authData.user;
   if (!user?.id) return { data: null, error: { message: 'Login failed.' } };
 
+  // users table has company_id, role. branch_id does not exist; branch lock uses user_branches.
   const { data: row, error: profileError } = await supabase
     .from('users')
-    .select('company_id, role, branch_id')
+    .select('company_id, role')
     .eq('id', user.id)
     .maybeSingle();
 
@@ -60,8 +61,9 @@ export async function signIn(email: string, password: string): Promise<{ data: A
   const role = (row.role?.toLowerCase() || 'staff') as UserRole;
   const validRoles: UserRole[] = ['admin', 'manager', 'staff', 'viewer'];
   const finalRole = validRoles.includes(role) ? role : 'staff';
-  const branchId = (row as { branch_id?: string | null }).branch_id ?? null;
-  const branchLocked = !!branchId;
+  // branch_id not on users; branch lock would come from user_branches (future)
+  const branchId: string | null = null;
+  const branchLocked = false;
 
   return {
     data: {
@@ -110,7 +112,7 @@ export async function refreshSessionFromRefreshToken(refreshToken: string): Prom
 export async function getProfile(userId: string): Promise<AuthProfile | null> {
   const { data: row, error } = await supabase
     .from('users')
-    .select('company_id, role, branch_id')
+    .select('company_id, role')
     .eq('id', userId)
     .maybeSingle();
   if (error || !row) return null;
@@ -118,8 +120,8 @@ export async function getProfile(userId: string): Promise<AuthProfile | null> {
   if (!user) return null;
   const role = (row.role?.toLowerCase() || 'staff') as UserRole;
   const validRoles: UserRole[] = ['admin', 'manager', 'staff', 'viewer'];
-  const branchId = (row as { branch_id?: string | null }).branch_id ?? null;
-  const branchLocked = !!branchId;
+  const branchId: string | null = null;
+  const branchLocked = false;
   return {
     name: user.user_metadata?.name || user.email?.split('@')[0] || 'User',
     email: user.email || '',
@@ -151,4 +153,21 @@ export async function getPinLockedUntil(): Promise<number> {
 
 export async function clearPin(): Promise<void> {
   await clearSecure();
+}
+
+/** Change PIN: verify current PIN, then save payload with new PIN. */
+export async function changePin(oldPin: string, newPin: string): Promise<{ ok: boolean; error?: string }> {
+  if (newPin.length < 4 || newPin.length > 6) {
+    return { ok: false, error: 'New PIN must be 4–6 digits.' };
+  }
+  const result = await verifyPinAndUnlock(oldPin);
+  if (result.success && 'payload' in result) {
+    const payload = result.payload;
+    await saveSecurePayload(newPin, { ...payload, savedAt: Date.now() });
+    return { ok: true };
+  }
+  if (!result.success && 'locked' in result && result.locked) {
+    return { ok: false, error: 'Too many attempts. Try again later.' };
+  }
+  return { ok: false, error: (result as { message?: string }).message || 'Wrong PIN.' };
 }

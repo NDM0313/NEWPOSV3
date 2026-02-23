@@ -4,6 +4,7 @@ import type { PackingDetails } from '../transactions/PackingEntryModal';
 import { useResponsive } from '../../hooks/useResponsive';
 import * as salesApi from '../../api/sales';
 import { getBranches } from '../../api/branches';
+import { addPending } from '../../lib/offlineStore';
 import { SalesHome } from './SalesHome';
 import { SelectCustomer } from './SelectCustomer';
 import { SelectCustomerTablet } from './SelectCustomerTablet';
@@ -132,7 +133,7 @@ export function SalesModule({ onBack, user, companyId, branchId, initialSaleType
         ? { total_boxes: p.packingDetails.total_boxes, total_pieces: p.packingDetails.total_pieces }
         : undefined,
     }));
-    const { data, error } = await salesApi.createSale({
+    const salePayload = {
       companyId,
       branchId: effectiveBranchId,
       customerId: saleData.customer?.id ?? null,
@@ -150,7 +151,21 @@ export function SalesModule({ onBack, user, companyId, branchId, initialSaleType
       notes: saleData.notes || undefined,
       isStudio: saleData.saleType === 'studio',
       userId: user.id,
-    });
+    };
+
+    if (!navigator.onLine) {
+      try {
+        await addPending('sale', salePayload, companyId, effectiveBranchId);
+        setCreatedInvoiceNo('Pending sync');
+        setStep('confirmation');
+      } catch (e) {
+        setSaveError(e instanceof Error ? e.message : 'Failed to save offline.');
+      }
+      setSaving(false);
+      return;
+    }
+
+    const { data, error } = await salesApi.createSale(salePayload);
     setSaving(false);
     if (error) {
       setSaveError(error);

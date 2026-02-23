@@ -6,6 +6,7 @@ import * as expensesApi from '../../api/expenses';
 import * as authApi from '../../api/auth';
 import * as accountsApi from '../../api/accounts';
 import * as branchesApi from '../../api/branches';
+import { addPending } from '../../lib/offlineStore';
 
 interface ExpenseModuleProps {
   onBack: () => void;
@@ -170,7 +171,7 @@ export function ExpenseModule({ onBack, user: _user, companyId, branch }: Expens
     setSaving(true);
     setAddError(null);
     let receiptUrl: string | null = null;
-    if (addReceiptFile) {
+    if (addReceiptFile && navigator.onLine) {
       const up = await expensesApi.uploadExpenseReceipt(companyId, addReceiptFile);
       if (up.error) {
         const isBucketMissing = up.error.toLowerCase().includes('bucket') && up.error.toLowerCase().includes('not found');
@@ -187,6 +188,42 @@ export function ExpenseModule({ onBack, user: _user, companyId, branch }: Expens
       }
     }
     const paymentMethod = paymentAccounts.length > 0 ? paymentMethodFromAccount : 'cash';
+
+    if (!navigator.onLine) {
+      try {
+        await addPending('expense', {
+          companyId,
+          branchId: effectiveBranchId,
+          category: effectiveCategorySlug,
+          description: addDesc.trim(),
+          amount: amt,
+          paymentMethod,
+          userId: session.userId,
+          paymentAccountId: addAccountId || undefined,
+          receiptUrl: receiptUrl || undefined,
+        }, companyId, effectiveBranchId);
+        const displayCategory = selectedSub?.name ?? selectedMain?.name ?? addCategory;
+        const tempId = `offline-${Date.now()}`;
+        setList((prev) => [
+          { id: tempId, expense_no: 'Pending sync', date: new Date().toISOString().slice(0, 10), category: displayCategory, description: addDesc.trim(), amount: amt },
+          ...prev,
+        ]);
+        setAddError(null);
+        setShowAdd(false);
+        setAddDesc('');
+        setAddAmount('');
+        setAddAccountId('');
+        setMainCategoryId('');
+        setSubCategoryId('');
+        setAddReceiptFile(null);
+        setAddBranchId('');
+      } catch (e) {
+        setAddError(e instanceof Error ? e.message : 'Failed to save offline.');
+      }
+      setSaving(false);
+      return;
+    }
+
     const { data, error } = await expensesApi.createExpense({
       companyId,
       branchId: effectiveBranchId,

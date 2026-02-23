@@ -66,6 +66,17 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    const onSignedOut = () => {
+      setUser(null);
+      setCompanyId(null);
+      setSelectedBranch(null);
+      setCurrentScreen('login');
+    };
+    window.addEventListener('erp-auth-signed-out', onSignedOut);
+    return () => window.removeEventListener('erp-auth-signed-out', onSignedOut);
+  }, []);
+
+  useEffect(() => {
     if (!online || !user) return;
     let cancelled = false;
     const doSync = () => {
@@ -79,13 +90,21 @@ export default function App() {
     };
     doSync();
     const t = setInterval(doSync, 60 * 1000);
-    return () => { cancelled = true; clearInterval(t); };
+    const onOnline = () => doSync();
+    window.addEventListener('online', onOnline);
+    return () => { cancelled = true; clearInterval(t); window.removeEventListener('online', onOnline); };
   }, [online, user?.id, setStatus]);
 
   useEffect(() => {
     let cancelled = false;
-    authApi.getSession().then((session) => {
+    const run = async () => {
+      const [session, pinSet] = await Promise.all([authApi.getSession(), authApi.hasPinSet()]);
       if (cancelled) return;
+      if (pinSet && !session) {
+        setCurrentScreen('login');
+        setAuthLoading(false);
+        return;
+      }
       if (!session) {
         setAuthLoading(false);
         return;
@@ -107,7 +126,6 @@ export default function App() {
         };
         setUser(u);
         setCompanyId(profile.companyId);
-        const pinSet = await authApi.hasPinSet();
         if (pinSet) {
           setCurrentScreen('login');
           setAuthLoading(false);
@@ -146,7 +164,8 @@ export default function App() {
         }
         setAuthLoading(false);
       }).catch(() => { if (!cancelled) setAuthLoading(false); });
-    }).catch(() => { if (!cancelled) setAuthLoading(false); });
+    };
+    run().catch(() => { setAuthLoading(false); });
     return () => { cancelled = true; };
   }, []);
 
@@ -268,8 +287,14 @@ export default function App() {
           onBack={navigateHome}
           user={user}
           branch={selectedBranch}
+          companyId={companyId}
+          isOnline={online}
           onChangeBranch={() => setCurrentScreen('branch-selection')}
           onLogout={handleLogout}
+          onSyncTriggered={() => {
+            setStatus('syncing');
+            runSync().then(({ errors }) => setStatus(errors > 0 ? 'sync_error' : 'online')).catch(() => setStatus('sync_error'));
+          }}
         />
       )}
       {currentScreen === 'products' && user && (

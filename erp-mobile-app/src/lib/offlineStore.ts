@@ -78,13 +78,13 @@ export async function addPending(
 
 export async function getUnsynced(): Promise<PendingRecord[]> {
   const database = await getDb();
-  return new Promise((resolve, reject) => {
+  const all = await new Promise<PendingRecord[]>((resolve, reject) => {
     const tx = database.transaction(STORE_NAME, 'readonly');
-    const idx = tx.objectStore(STORE_NAME).index('is_synced');
-    const req = idx.getAll(false);
+    const req = tx.objectStore(STORE_NAME).getAll();
     req.onsuccess = () => resolve(req.result || []);
     req.onerror = () => reject(req.error);
   });
+  return all.filter((r) => !r.is_synced);
 }
 
 export async function markSynced(id: string, serverId: string): Promise<void> {
@@ -133,4 +133,24 @@ export async function getUnsyncedCount(): Promise<number> {
 export async function hasSyncErrors(): Promise<boolean> {
   const list = await getUnsynced();
   return list.some((r) => r.sync_error);
+}
+
+/** Clear all pending records (synced + unsynced). Use with caution – unsynced data will be lost. */
+export async function clearAllPending(): Promise<number> {
+  const database = await getDb();
+  const all = await new Promise<PendingRecord[]>((resolve, reject) => {
+    const tx = database.transaction(STORE_NAME, 'readonly');
+    const req = tx.objectStore(STORE_NAME).getAll();
+    req.onsuccess = () => resolve(req.result || []);
+    req.onerror = () => reject(req.error);
+  });
+  const count = all.length;
+  if (count === 0) return 0;
+  await new Promise<void>((resolve, reject) => {
+    const tx = database.transaction(STORE_NAME, 'readwrite');
+    tx.objectStore(STORE_NAME).clear();
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+  return count;
 }

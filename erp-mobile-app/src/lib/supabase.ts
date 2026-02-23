@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import { clearSecure } from './secureStorage';
 
 const supabaseUrl = (import.meta.env.VITE_SUPABASE_URL || '').trim();
 const supabaseAnonKey = (import.meta.env.VITE_SUPABASE_ANON_KEY || '').trim();
@@ -22,3 +23,13 @@ export const supabase = createClient(url, key, {
     detectSessionInUrl: true,
   },
 });
+
+/** Auto-fix: when session is lost (refresh failed, CORS, etc.), clear PIN vault and notify app */
+if (hasConfig) {
+  supabase.auth.onAuthStateChange((event, session) => {
+    if (event === 'SIGNED_OUT' && !session) {
+      clearSecure().catch(() => {});
+      window.dispatchEvent(new CustomEvent('erp-auth-signed-out'));
+    }
+  });
+}

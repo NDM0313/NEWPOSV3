@@ -3,6 +3,7 @@ import { ArrowLeft, ArrowRight, Check, Search, ArrowLeftRight, Paperclip } from 
 import type { User } from '../../types';
 import { DateInputField } from '../shared/DateTimePicker';
 import { getPaymentAccounts, createJournalEntry } from '../../api/accounts';
+import { addPending } from '../../lib/offlineStore';
 
 interface AccountTransferFlowProps {
   onBack: () => void;
@@ -90,7 +91,7 @@ export function AccountTransferFlow({ onBack, onComplete, user, companyId, branc
       transferData.attachmentUrl?.trim()
         ? [{ url: transferData.attachmentUrl.trim(), name: transferData.attachmentName?.trim() || 'Attachment' }]
         : undefined;
-    const { error: err } = await createJournalEntry({
+    const payload = {
       companyId,
       branchId: branchId ?? undefined,
       entryDate: transferData.date,
@@ -101,8 +102,19 @@ export function AccountTransferFlow({ onBack, onComplete, user, companyId, branc
         { accountId: transferData.fromAccountId, debit: 0, credit: transferData.amount },
       ],
       userId: user.id,
-      attachments: attachments ?? undefined,
-    });
+    };
+    if (!navigator.onLine) {
+      const effectiveBranchId = branchId ?? '';
+      try {
+        await addPending('journal_entry', payload, companyId, effectiveBranchId);
+        onComplete();
+      } catch (e) {
+        setError(e instanceof Error ? e.message : 'Failed to save offline.');
+      }
+      setSubmitting(false);
+      return;
+    }
+    const { error: err } = await createJournalEntry({ ...payload, attachments });
     setSubmitting(false);
     if (err) {
       setError(err);

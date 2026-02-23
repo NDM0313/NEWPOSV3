@@ -3,6 +3,7 @@ import { ArrowLeft, ArrowRight, Check, Search } from 'lucide-react';
 import type { User } from '../../types';
 import { DateInputField } from '../shared/DateTimePicker';
 import { getAccounts, createJournalEntry } from '../../api/accounts';
+import { addPending } from '../../lib/offlineStore';
 
 interface GeneralEntryFlowProps {
   onBack: () => void;
@@ -65,7 +66,7 @@ export function GeneralEntryFlow({ onBack, onComplete, user, companyId, branchId
     if (!companyId || !entryData.debitAccountId || !entryData.creditAccountId || entryData.amount <= 0 || !entryData.description.trim()) return;
     setSubmitting(true);
     setError(null);
-    const { error: err } = await createJournalEntry({
+    const payload = {
       companyId,
       branchId: branchId ?? undefined,
       entryDate: entryData.date,
@@ -76,7 +77,19 @@ export function GeneralEntryFlow({ onBack, onComplete, user, companyId, branchId
         { accountId: entryData.creditAccountId, debit: 0, credit: entryData.amount },
       ],
       userId: user.id,
-    });
+    };
+    if (!navigator.onLine) {
+      const effectiveBranchId = branchId ?? '';
+      try {
+        await addPending('journal_entry', payload, companyId, effectiveBranchId);
+        onComplete();
+      } catch (e) {
+        setError(e instanceof Error ? e.message : 'Failed to save offline.');
+      }
+      setSubmitting(false);
+      return;
+    }
+    const { error: err } = await createJournalEntry(payload);
     setSubmitting(false);
     if (err) {
       setError(err);

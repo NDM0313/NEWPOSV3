@@ -12,7 +12,7 @@ interface LoginScreenProps {
 
 const PIN_LENGTH = 6;
 
-export function LoginScreen({ onLogin, pinUnlockUser, pinUnlockCompanyId }: LoginScreenProps) {
+export function LoginScreen({ onLogin, pinUnlockUser, pinUnlockCompanyId: _pinUnlockCompanyId }: LoginScreenProps) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [pin, setPin] = useState('');
@@ -29,7 +29,7 @@ export function LoginScreen({ onLogin, pinUnlockUser, pinUnlockCompanyId }: Logi
     authApi.getPinLockedUntil().then(setPinLockedUntil);
   }, []);
 
-  const isPinMode = pinUnlockUser && hasPinSet;
+  const isPinMode = hasPinSet;
   const isLocked = pinLockedUntil > Date.now();
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -70,7 +70,7 @@ export function LoginScreen({ onLogin, pinUnlockUser, pinUnlockCompanyId }: Logi
   const [branchIdForSetPin, setBranchIdForSetPin] = useState<string | null>(null);
 
   const handleSetPinSubmit = async () => {
-    if (setPinValue.length < 4 || setPinValue !== setPinConfirm) {
+    if (setPinValue.length < 4 || setPinValue.length > 6 || setPinValue !== setPinConfirm) {
       setError('PIN must be 4–6 digits and match.');
       return;
     }
@@ -145,11 +145,16 @@ export function LoginScreen({ onLogin, pinUnlockUser, pinUnlockCompanyId }: Logi
           branchLocked: profile.branchLocked,
         };
         onLogin(user, profile.companyId);
-      } else if (result.locked && 'lockedUntil' in result) {
+      } else if (!result.success && 'lockedUntil' in result && result.locked) {
         setPinLockedUntil(result.lockedUntil);
         setError(`Too many attempts. Try again after ${new Date(result.lockedUntil).toLocaleTimeString()}.`);
+      } else if (!result.success && 'expired' in result && result.expired) {
+        setError(result.message || 'Session expired. Please sign in again.');
+        await authApi.signOut();
+        setHasPinSet(false);
       } else {
-        setError('locked' in result && result.locked ? 'PIN locked.' : (result.message || 'Wrong PIN'));
+        const msg = !result.success && 'message' in result ? result.message : 'Wrong PIN';
+        setError(msg || 'Wrong PIN');
       }
     } finally {
       setLoading(false);
@@ -205,6 +210,7 @@ export function LoginScreen({ onLogin, pinUnlockUser, pinUnlockCompanyId }: Logi
             <KeyRound className="w-12 h-12 mx-auto mb-2 text-[#3B82F6]" />
             <h2 className="text-lg font-semibold text-white">Set PIN for next time</h2>
             <p className="text-sm text-[#9CA3AF] mt-1">Enter 4–6 digits. Stored securely on this device.</p>
+            <p className="text-xs text-[#6B7280] mt-2">Change or remove in Settings after login.</p>
           </div>
           <div className="space-y-4">
             <div>
@@ -212,7 +218,9 @@ export function LoginScreen({ onLogin, pinUnlockUser, pinUnlockCompanyId }: Logi
               <input
                 type="password"
                 inputMode="numeric"
+                pattern="[0-9]*"
                 maxLength={6}
+                autoComplete="new-password"
                 value={setPinValue}
                 onChange={(e) => setSetPinValue(e.target.value.replace(/\D/g, ''))}
                 placeholder="••••••"
@@ -224,7 +232,9 @@ export function LoginScreen({ onLogin, pinUnlockUser, pinUnlockCompanyId }: Logi
               <input
                 type="password"
                 inputMode="numeric"
+                pattern="[0-9]*"
                 maxLength={6}
+                autoComplete="new-password"
                 value={setPinConfirm}
                 onChange={(e) => setSetPinConfirm(e.target.value.replace(/\D/g, ''))}
                 placeholder="••••••"
@@ -236,16 +246,16 @@ export function LoginScreen({ onLogin, pinUnlockUser, pinUnlockCompanyId }: Logi
               type="button"
               disabled={loading}
               onClick={handleSetPinSubmit}
-              className="w-full h-12 bg-[#3B82F6] hover:bg-[#2563EB] disabled:opacity-70 text-white font-medium rounded-lg"
+              className="w-full h-12 bg-[#3B82F6] hover:bg-[#2563EB] disabled:opacity-70 text-white font-medium rounded-lg flex items-center justify-center gap-2"
             >
-              {loading ? <Loader2 className="w-5 h-5 animate-spin mx-auto" /> : 'Set PIN & continue'}
+              {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Set PIN & continue'}
             </button>
             <button
               type="button"
               onClick={handleSkipSetPin}
-              className="w-full h-11 text-[#9CA3AF] text-sm"
+              className="w-full h-11 text-[#9CA3AF] text-sm hover:text-white transition-colors"
             >
-              Skip
+              Skip (set PIN later in Settings)
             </button>
           </div>
         </div>
@@ -263,7 +273,7 @@ export function LoginScreen({ onLogin, pinUnlockUser, pinUnlockCompanyId }: Logi
           </div>
           <h1 className="text-2xl font-bold mb-1 text-white">Din Collection</h1>
           <p className="text-sm text-[#9CA3AF]">Enter PIN to continue</p>
-          {pinUnlockUser && <p className="text-xs text-[#6B7280] mt-2">{pinUnlockUser.email}</p>}
+          {pinUnlockUser?.email && <p className="text-xs text-[#6B7280] mt-2">{pinUnlockUser.email}</p>}
         </div>
         <div className="w-full max-w-sm">
           {isLocked ? (

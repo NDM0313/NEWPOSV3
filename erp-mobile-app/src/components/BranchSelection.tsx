@@ -44,6 +44,12 @@ export function BranchSelection({ user, companyId, onBranchSelect }: BranchSelec
     return isAdmin && branches.length > 0 ? [ALL_BRANCHES_OPTION, ...branches] : branches;
   })();
 
+  useEffect(() => {
+    if (user.branchLocked && user.branchId && list.length === 1 && list[0].id === user.branchId) {
+      onBranchSelect(list[0]);
+    }
+  }, [user.branchLocked, user.branchId, list, onBranchSelect]);
+
   return (
     <div className="min-h-screen p-4">
       <div className="pt-8 pb-6 text-center">
