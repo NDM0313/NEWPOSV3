@@ -36,21 +36,33 @@ export function SettingsModule({ onBack, user, branch, onChangeBranch, onLogout 
           </span>
         </div>
 
-        <button
-          onClick={onChangeBranch}
-          className="w-full bg-[#1F2937] border border-[#374151] rounded-xl p-4 flex items-center justify-between hover:border-[#3B82F6] transition-colors text-left"
-        >
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-[#3B82F6]/20 rounded-lg flex items-center justify-center">
-              <MapPin className="w-5 h-5 text-[#3B82F6]" />
+        {user.branchLocked ? (
+          <div className="w-full bg-[#1F2937] border border-[#374151] rounded-xl p-4 flex items-center gap-3 text-left">
+            <div className="w-10 h-10 bg-[#6B7280]/20 rounded-lg flex items-center justify-center">
+              <MapPin className="w-5 h-5 text-[#9CA3AF]" />
             </div>
             <div>
-              <p className="font-medium text-white">Current Branch</p>
-              <p className="text-sm text-[#9CA3AF]">{branch?.name ?? 'Not selected'}</p>
+              <p className="font-medium text-white">Branch (set by admin)</p>
+              <p className="text-sm text-[#9CA3AF]">{branch?.name ?? '—'}</p>
             </div>
           </div>
-          <ChevronRight className="w-5 h-5 text-[#6B7280]" />
-        </button>
+        ) : (
+          <button
+            onClick={onChangeBranch}
+            className="w-full bg-[#1F2937] border border-[#374151] rounded-xl p-4 flex items-center justify-between hover:border-[#3B82F6] transition-colors text-left"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-[#3B82F6]/20 rounded-lg flex items-center justify-center">
+                <MapPin className="w-5 h-5 text-[#3B82F6]" />
+              </div>
+              <div>
+                <p className="font-medium text-white">Current Branch</p>
+                <p className="text-sm text-[#9CA3AF]">{branch?.name ?? 'Not selected'}</p>
+              </div>
+            </div>
+            <ChevronRight className="w-5 h-5 text-[#6B7280]" />
+          </button>
+        )}
 
         <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">
           <div className="flex items-center gap-3">

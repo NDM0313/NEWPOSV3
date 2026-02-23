@@ -1,7 +1,8 @@
 #!/bin/bash
 # One-shot deploy script. Run from project root.
 # On VPS:  cd /root/NEWPOSV3  then  bash deploy/deploy.sh
-# Auto-fixes (run on every deploy): expenses columns, storage buckets, storage RLS.
+# Auto-fixes (run on every deploy): Studio storage JWT, expenses columns, storage buckets, storage RLS, RLS performance, enable RLS on public tables (Security Advisor), Studio settings API.
+# DB backup (manual/cron): bash deploy/backup-supabase-db.sh [retention_days] — see deploy/SELF_HOSTED_STUDIO_GAPS.md
 # Fixes-only (no build):  DEPLOY_ONLY_FIXES=1 bash deploy/deploy.sh   or   bash deploy/apply-fixes-now.sh
 
 set -e
@@ -83,6 +84,32 @@ EOSQL
   echo "[deploy] Storage buckets + RLS applied."
 }
 
+# RLS performance: use (select auth.role()) so not re-evaluated per row (Studio advisory)
+apply_rls_performance() {
+  if [ -f deploy/apply-rls-performance-vps.sh ]; then
+    bash deploy/apply-rls-performance-vps.sh || true
+  else
+    CONTAINER=$(docker ps --format '{{.Names}}' | grep -E '^db$|^supabase-db$|^postgres$|supabase.*db' | head -1)
+    [ -z "$CONTAINER" ] && return 0
+    echo "[deploy] Applying RLS performance fix (account_transactions) in $CONTAINER..."
+    docker exec -i "$CONTAINER" psql -U postgres -d postgres -v ON_ERROR_STOP=0 <<'EOSQL' || true
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'account_transactions') THEN
+    DROP POLICY IF EXISTS "Allow authenticated read access" ON public.account_transactions;
+    CREATE POLICY "Allow authenticated read access" ON public.account_transactions
+      FOR SELECT USING ((SELECT auth.role()) = 'authenticated');
+    DROP POLICY IF EXISTS "Allow authenticated insert access" ON public.account_transactions;
+    CREATE POLICY "Allow authenticated insert access" ON public.account_transactions
+      FOR INSERT WITH CHECK ((SELECT auth.role()) = 'authenticated');
+  END IF;
+EXCEPTION WHEN OTHERS THEN NULL;
+END $$;
+EOSQL
+    echo "[deploy] RLS performance fix applied."
+  fi
+}
+
 apply_expenses_columns() {
   CONTAINER=$(docker ps --format '{{.Names}}' | grep -E '^db$|^supabase-db$|^postgres$|supabase.*db' | head -1)
   [ -z "$CONTAINER" ] && return 0
@@ -103,11 +130,19 @@ EOSQL
 
 # Fixes-only mode: apply DB/storage fixes and exit (no build, no docker up)
 if [ -n "$DEPLOY_ONLY_FIXES" ]; then
+  [ -f deploy/fix-supabase-storage-jwt.sh ] && bash deploy/fix-supabase-storage-jwt.sh || true
   apply_expenses_columns
   [ -f deploy/apply-storage-rls-vps.sh ] && bash deploy/apply-storage-rls-vps.sh || apply_rls
+  apply_rls_performance
+  [ -f deploy/apply-enable-rls-public.sh ] && bash deploy/apply-enable-rls-public.sh || true
+  [ -f deploy/fix-supabase-studio-settings-api.sh ] && bash deploy/fix-supabase-studio-settings-api.sh || true
+  [ -f deploy/add-kong-backup-route.sh ] && bash deploy/add-kong-backup-route.sh || true
   echo "[deploy] Fixes applied. Run deploy/deploy.sh for full build+up."
   exit 0
 fi
+
+# --- Storage JWT fix (Studio "Failed to retrieve buckets") before .env so Kong gets new keys ---
+[ -f deploy/fix-supabase-storage-jwt.sh ] && bash deploy/fix-supabase-storage-jwt.sh || true
 
 # --- Auto-fix .env.production (VPS: use Supabase API URL + Kong anon key) ---
 SUPABASE_API_URL="https://supabase.dincouture.pk"
@@ -144,15 +179,30 @@ $COMPOSE_CMD down 2>/dev/null || true
 docker rm -f erp-frontend 2>/dev/null || true
 $COMPOSE_CMD up -d
 
-# Auto-apply expenses columns + storage buckets + RLS (same as apply-fixes-now)
+# Auto-apply expenses columns + storage buckets + RLS + RLS performance + Studio API fix
 apply_expenses_columns
 if [ -f deploy/apply-storage-rls-vps.sh ]; then
   bash deploy/apply-storage-rls-vps.sh || apply_rls
 else
   apply_rls
 fi
+apply_rls_performance
+[ -f deploy/apply-enable-rls-public.sh ] && bash deploy/apply-enable-rls-public.sh || true
+[ -f deploy/fix-supabase-studio-settings-api.sh ] && bash deploy/fix-supabase-studio-settings-api.sh || true
 
-# Fix supabase.dincouture.pk: Kong host + anon key (API_EXTERNAL_URL, sync key, restart Kong)
+# Fix supabase.dincouture.pk: Kong host (API_EXTERNAL_URL), sync key to ERP, restart Auth
 [ -f deploy/fix-supabase-kong-domain.sh ] && bash deploy/fix-supabase-kong-domain.sh || true
 
+# Studio storage/API: ensure anon key is JWT-signed (run again after services up)
+[ -f deploy/fix-supabase-storage-jwt.sh ] && bash deploy/fix-supabase-storage-jwt.sh || true
+
+# Supabase /backup route: https://supabase.dincouture.pk/backup serves backup page (erp-backup-page)
+[ -d deploy/backup-page ] && chmod -R 755 deploy/backup-page || true
+[ -f deploy/add-kong-backup-route.sh ] && bash deploy/add-kong-backup-route.sh || true
+
+# Studio sidebar: inject "Backups" under Platform (Kong -> studio-injector -> Studio)
+docker compose -f deploy/docker-compose.prod.yml up -d studio-injector --build 2>/dev/null || true
+[ -f deploy/point-kong-dashboard-to-injector.sh ] && bash deploy/point-kong-dashboard-to-injector.sh || true
+
 echo "ERP running. Configure Caddy/Nginx for https://erp.dincouture.pk"
+echo "Backup: https://supabase.dincouture.pk/backup (and under Studio Platform after injector)"

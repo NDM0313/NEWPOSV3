@@ -1,0 +1,4 @@
+# Ensure shell scripts and SQL use LF so they run on Linux/VPS
+*.sh text eol=lf
+deploy/*.sh text eol=lf
+deploy/*.sql text eol=lf

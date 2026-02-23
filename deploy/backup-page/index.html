@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Database Backups – Supabase</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: system-ui, -apple-system, sans-serif; background: #1c1c1c; color: #ededed; min-height: 100vh; }
+    .layout { display: flex; min-height: 100vh; }
+    .sidebar { width: 240px; background: #252525; border-right: 1px solid #2e2e2e; padding: 1rem 0; flex-shrink: 0; }
+    .sidebar-section { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em; color: #6b6b6b; padding: 0.5rem 1.25rem; }
+    .sidebar a { display: block; padding: 0.5rem 1.25rem; color: #a1a1a1; text-decoration: none; font-size: 0.9rem; }
+    .sidebar a:hover { color: #ededed; background: rgba(255,255,255,0.05); }
+    .sidebar a.active { color: #ededed; background: rgba(255,255,255,0.08); }
+    .main { flex: 1; padding: 2rem 2.5rem; }
+    h1 { font-size: 1.5rem; font-weight: 600; margin: 0 0 0.25rem; color: #ededed; }
+    .sub { color: #6b6b6b; font-size: 0.9rem; margin-bottom: 1.5rem; }
+    .tabs { display: flex; gap: 0; border-bottom: 1px solid #2e2e2e; margin-bottom: 1.5rem; }
+    .tabs a { padding: 0.6rem 1rem; color: #a1a1a1; text-decoration: none; font-size: 0.9rem; border-bottom: 2px solid transparent; margin-bottom: -1px; }
+    .tabs a:hover { color: #ededed; }
+    .tabs a.active { color: #ededed; border-bottom-color: #3b82f6; }
+    .info-box { background: #252525; border: 1px solid #2e2e2e; border-radius: 8px; padding: 1rem 1.25rem; display: flex; align-items: flex-start; gap: 1rem; margin-bottom: 1rem; }
+    .info-box .icon { font-size: 1.25rem; color: #6b6b6b; }
+    .info-box .body { flex: 1; }
+    .info-box strong { color: #ededed; }
+    .info-box p { margin: 0.5rem 0 0; color: #a1a1a1; font-size: 0.9rem; line-height: 1.5; }
+    pre { background: #0f0f0f; border: 1px solid #2e2e2e; border-radius: 6px; padding: 1rem; font-size: 0.8rem; overflow-x: auto; margin: 0.75rem 0; color: #d4d4d4; }
+    .btn { display: inline-flex; align-items: center; padding: 0.5rem 1rem; border-radius: 6px; font-size: 0.9rem; font-weight: 500; cursor: pointer; border: none; }
+    .btn-primary { background: #22c55e; color: #0f172a; }
+    .btn-primary:hover { background: #16a34a; }
+    .note { font-size: 0.85rem; color: #6b6b6b; margin-top: 1rem; }
+    .note code { background: #252525; padding: 0.15rem 0.4rem; border-radius: 4px; font-size: 0.8rem; }
+    a.link { color: #3b82f6; text-decoration: none; }
+    a.link:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <div class="layout">
+    <nav class="sidebar">
+      <div class="sidebar-section">Database Management</div>
+      <a href="/">Schema Visualizer</a>
+      <a href="/">Tables</a>
+      <a href="/">Functions</a>
+      <a href="/">Triggers</a>
+      <div class="sidebar-section">Configuration</div>
+      <a href="/">Roles</a>
+      <a href="/">Policies</a>
+      <a href="/">Settings</a>
+      <div class="sidebar-section">Platform</div>
+      <a href="/">Replication</a>
+      <a class="active" href="/backup">Backups</a>
+      <a href="/">Migrations</a>
+      <a href="/">Webhooks</a>
+    </nav>
+    <main class="main">
+      <h1>Database Backups</h1>
+      <p class="sub">Self-hosted project – scheduled backups via server script.</p>
+      <div class="tabs">
+        <a class="active" href="/backup">Scheduled backups</a>
+        <a href="/backup">Point in time</a>
+        <a href="/backup">Restore to new project</a>
+      </div>
+      <p style="color:#a1a1a1;font-size:0.9rem;margin-bottom:1rem;">Backups are created on the server. Run the command below on your VPS to generate a full database dump. Optionally schedule it with cron for daily backups.</p>
+      <div class="info-box">
+        <span class="icon">&#128197;</span>
+        <div class="body">
+          <strong>Self-hosted backup command</strong>
+          <p>Run on the server (e.g. <code>ssh root@your-vps</code>) to create a backup. Retention = last argument (days).</p>
+          <pre id="cmd">cd /root/NEWPOSV3 && bash deploy/backup-supabase-db.sh 7</pre>
+          <button type="button" class="btn btn-primary" onclick="copy()">Copy command</button>
+        </div>
+      </div>
+      <p class="note">Backups are saved under <code>./backups/supabase_db_YYYYMMDD_HHMMSS.dump</code>. Daily cron example: <code>0 2 * * * cd /root/NEWPOSV3 && bash deploy/backup-supabase-db.sh 14</code></p>
+      <p class="note">You can also use <a class="link" href="https://erp.dincouture.pk">ERP</a> → Settings → Data &amp; Backup for the same instructions.</p>
+    </main>
+  </div>
+  <script>
+    function copy() {
+      var pre = document.getElementById('cmd');
+      navigator.clipboard.writeText(pre.textContent).then(function() { alert('Command copied'); });
+    }
+  </script>
+</body>
+</html>

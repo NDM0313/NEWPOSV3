@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { 
   Building2, CreditCard, Hash, ToggleLeft, Save, 
   CheckCircle, Users, Lock, Key, Settings as SettingsIcon, AlertCircle, UserCog,
-  MapPin, Store, ShoppingCart, ShoppingBag, Package, Shirt, Calculator, X, Edit, Download
+  MapPin, Store, ShoppingCart, ShoppingBag, Package, Shirt, Calculator, X, Edit, Download, Server, Copy
 } from 'lucide-react';
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
@@ -2114,6 +2114,34 @@ export const SettingsPageNew = () => {
                   >
                     <Download size={16} />
                     Export Backup
+                  </Button>
+                </div>
+
+                <div className="bg-gray-950 p-6 rounded-lg border border-gray-800">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Server className="text-amber-500" size={20} />
+                    <h4 className="text-white font-medium">Server Database Backup (Self-Hosted)</h4>
+                  </div>
+                  <p className="text-sm text-gray-400 mb-3">
+                    Supabase Studio mein &quot;Backup&quot; option sirf Cloud par hota hai. Self-hosted par full database backup aapke server (VPS) par run karo.
+                  </p>
+                  <p className="text-sm text-gray-300 mb-2 font-mono bg-gray-900 px-3 py-2 rounded border border-gray-700 break-all">
+                    cd /root/NEWPOSV3 &amp;&amp; bash deploy/backup-supabase-db.sh 7
+                  </p>
+                  <p className="text-xs text-gray-500 mb-3">
+                    Backups save: <code className="bg-gray-800 px-1 rounded">./backups/supabase_db_YYYYMMDD_HHMMSS.dump</code>. Last argument = retention (days). Daily cron: <code className="bg-gray-800 px-1 rounded">0 2 * * * cd /root/NEWPOSV3 &amp;&amp; bash deploy/backup-supabase-db.sh 14</code>
+                  </p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="border-gray-600 text-gray-300 hover:bg-gray-800 gap-2"
+                    onClick={() => {
+                      const cmd = 'cd /root/NEWPOSV3 && bash deploy/backup-supabase-db.sh 7';
+                      navigator.clipboard.writeText(cmd).then(() => toast.success('Command copied'));
+                    }}
+                  >
+                    <Copy size={14} />
+                    Copy command
                   </Button>
                 </div>
               </div>

@@ -21,6 +21,9 @@ export interface User {
   name: string;
   email: string;
   role: 'admin' | 'manager' | 'staff' | 'viewer';
+  /** When set, user is locked to this branch (no branch selector). */
+  branchId?: string;
+  branchLocked?: boolean;
 }
 
 export interface Branch {

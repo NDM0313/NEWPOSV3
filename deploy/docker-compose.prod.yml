@@ -3,8 +3,32 @@
 #   cd /root/NEWPOSV3 && bash deploy/deploy.sh
 # Storage RLS is applied automatically by deploy.sh (no extra env needed).
 # Traefik (Dokploy) routes erp.dincouture.pk to erp-frontend:80; container must be on dokploy-network.
+# backup-page is on supabase_default so Kong can serve https://supabase.dincouture.pk/backup
+# studio-injector proxies Studio and injects "Backups" link in sidebar (Platform section)
 
 services:
+  studio-injector:
+    build: ./studio-injector
+    image: erp-studio-injector:latest
+    container_name: erp-studio-injector
+    restart: unless-stopped
+    environment:
+      STUDIO_UPSTREAM: http://studio:3000
+      PORT: "8080"
+    networks:
+      - supabase_default
+
+  backup-page:
+    image: nginx:alpine
+    container_name: erp-backup-page
+    restart: unless-stopped
+    volumes:
+      - ./backup-page:/usr/share/nginx/html:ro
+      - ./backup-page/default.conf:/etc/nginx/conf.d/default.conf:ro
+    networks:
+      - default
+      - supabase_default
+
   erp:
     build:
       context: ..

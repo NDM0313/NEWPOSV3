@@ -36,13 +36,21 @@ export function BranchSelection({ user, companyId, onBranchSelect }: BranchSelec
     return () => { cancelled = true; };
   }, [companyId]);
 
-  const list = isAdmin && branches.length > 0 ? [ALL_BRANCHES_OPTION, ...branches] : branches;
+  const list = (() => {
+    if (user.branchLocked && user.branchId) {
+      const locked = branches.find((b) => b.id === user.branchId);
+      return locked ? [locked] : branches;
+    }
+    return isAdmin && branches.length > 0 ? [ALL_BRANCHES_OPTION, ...branches] : branches;
+  })();
 
   return (
     <div className="min-h-screen p-4">
       <div className="pt-8 pb-6 text-center">
         <h1 className="text-xl font-semibold mb-2 text-white">Welcome, {user.name}</h1>
-        <p className="text-sm text-[#9CA3AF]">Select your branch to continue</p>
+        <p className="text-sm text-[#9CA3AF]">
+          {user.branchLocked ? 'Your branch is set by admin.' : 'Select your branch to continue'}
+        </p>
       </div>
       {loading ? (
         <div className="flex justify-center py-12">

@@ -25,6 +25,9 @@ import { AccountsModule } from './components/accounts/AccountsModule';
 import { ExpenseModule } from './components/expense/ExpenseModule';
 import { InventoryModule } from './components/inventory/InventoryModule';
 import { DashboardModule } from './components/dashboard/DashboardModule';
+import { SyncStatusBar } from './components/SyncStatusBar';
+import { useNetworkStatus } from './hooks/useNetworkStatus';
+import { runSync, getUnsyncedCount } from './lib/syncEngine';
 
 const MODULE_TITLES: Record<Screen, string> = {
   login: 'Login',
@@ -47,6 +50,7 @@ const MODULE_TITLES: Record<Screen, string> = {
 
 export default function App() {
   const responsive = useResponsive();
+  const { online, status, setStatus } = useNetworkStatus();
   const [authLoading, setAuthLoading] = useState(true);
   const [currentScreen, setCurrentScreen] = useState<Screen>('login');
   const [user, setUser] = useState<User | null>(null);
@@ -62,6 +66,23 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    if (!online || !user) return;
+    let cancelled = false;
+    const doSync = () => {
+      getUnsyncedCount().then((n) => {
+        if (cancelled || n === 0) return;
+        setStatus('syncing');
+        runSync().then(({ errors }) => {
+          if (!cancelled) setStatus(errors > 0 ? 'sync_error' : 'online');
+        }).catch(() => { if (!cancelled) setStatus('sync_error'); });
+      });
+    };
+    doSync();
+    const t = setInterval(doSync, 60 * 1000);
+    return () => { cancelled = true; clearInterval(t); };
+  }, [online, user?.id, setStatus]);
+
+  useEffect(() => {
     let cancelled = false;
     authApi.getSession().then((session) => {
       if (cancelled) return;
@@ -69,27 +90,59 @@ export default function App() {
         setAuthLoading(false);
         return;
       }
-      authApi.getProfile(session.userId).then((profile) => {
+      authApi.getProfile(session.userId).then(async (profile) => {
         if (cancelled) return;
         if (!profile) {
           setAuthLoading(false);
           setCurrentScreen('login');
           return;
         }
-        setUser({ id: profile.userId, name: profile.name, email: profile.email, role: profile.role });
+        const u: User = {
+          id: profile.userId,
+          name: profile.name,
+          email: profile.email,
+          role: profile.role,
+          branchId: profile.branchId ?? undefined,
+          branchLocked: profile.branchLocked,
+        };
+        setUser(u);
         setCompanyId(profile.companyId);
-        try {
-          const saved = localStorage.getItem(BRANCH_STORAGE_KEY);
-          const branch = saved ? (JSON.parse(saved) as Branch) : null;
-          if (branch?.id && branch?.name) {
-            setSelectedBranch(branch);
-            setCurrentScreen('home');
-            setActiveBottomTab('home');
-          } else {
+        const pinSet = await authApi.hasPinSet();
+        if (pinSet) {
+          setCurrentScreen('login');
+          setAuthLoading(false);
+          return;
+        }
+        if (profile.branchLocked && profile.branchId) {
+          try {
+            const { getBranches } = await import('./api/branches');
+            const { data: branches } = await getBranches(profile.companyId || '');
+            const lockedBranch = branches?.find((b) => b.id === profile.branchId);
+            if (lockedBranch) {
+              setSelectedBranch(lockedBranch);
+              try { localStorage.setItem(BRANCH_STORAGE_KEY, JSON.stringify(lockedBranch)); } catch { /* ignore */ }
+              setCurrentScreen('home');
+              setActiveBottomTab('home');
+            } else {
+              setCurrentScreen('branch-selection');
+            }
+          } catch {
             setCurrentScreen('branch-selection');
           }
-        } catch {
-          setCurrentScreen('branch-selection');
+        } else {
+          try {
+            const saved = localStorage.getItem(BRANCH_STORAGE_KEY);
+            const branch = saved ? (JSON.parse(saved) as Branch) : null;
+            if (branch?.id && branch?.name) {
+              setSelectedBranch(branch);
+              setCurrentScreen('home');
+              setActiveBottomTab('home');
+            } else {
+              setCurrentScreen('branch-selection');
+            }
+          } catch {
+            setCurrentScreen('branch-selection');
+          }
         }
         setAuthLoading(false);
       }).catch(() => { if (!cancelled) setAuthLoading(false); });
@@ -97,9 +150,23 @@ export default function App() {
     return () => { cancelled = true; };
   }, []);
 
-  const handleLogin = (u: User, cid: string | null) => {
+  const handleLogin = async (u: User, cid: string | null) => {
     setUser(u);
     setCompanyId(cid);
+    if (u.branchLocked && u.branchId && cid) {
+      try {
+        const { getBranches } = await import('./api/branches');
+        const { data: branches } = await getBranches(cid);
+        const lockedBranch = branches?.find((b) => b.id === u.branchId);
+        if (lockedBranch) {
+          setSelectedBranch(lockedBranch);
+          try { localStorage.setItem(BRANCH_STORAGE_KEY, JSON.stringify(lockedBranch)); } catch { /* ignore */ }
+          setCurrentScreen('home');
+          setActiveBottomTab('home');
+          return;
+        }
+      } catch { /* fall through */ }
+    }
     setCurrentScreen('branch-selection');
   };
 
@@ -159,7 +226,11 @@ export default function App() {
   if (currentScreen === 'login') {
     return (
       <div className="min-h-screen bg-[#111827] text-[#F9FAFB]">
-        <LoginScreen onLogin={handleLogin} />
+        <LoginScreen
+          onLogin={handleLogin}
+          pinUnlockUser={user}
+          pinUnlockCompanyId={companyId}
+        />
       </div>
     );
   }
@@ -247,6 +318,12 @@ export default function App() {
     </>
   );
 
+  const syncBar = user && selectedBranch ? (
+    <div className="flex justify-end p-2 border-b border-[#374151]/50 bg-[#111827]">
+      <SyncStatusBar status={status} />
+    </div>
+  ) : null;
+
   if (responsive.isTablet) {
     return (
       <div className="min-h-screen bg-[#111827] text-[#F9FAFB] flex overflow-hidden">
@@ -259,13 +336,17 @@ export default function App() {
             onLogout={handleLogout}
           />
         )}
-        <div className="flex-1 overflow-y-auto">{content}</div>
+        <div className="flex-1 flex flex-col overflow-hidden">
+          {syncBar}
+          <div className="flex-1 overflow-y-auto">{content}</div>
+        </div>
       </div>
     );
   }
 
   return (
     <div className="min-h-screen bg-[#111827] text-[#F9FAFB]">
+      {syncBar}
       {content}
       {showBottomNav && (
         <BottomNav activeTab={activeBottomTab} onTabChange={handleBottomNavChange} />

@@ -16,21 +16,21 @@ if [ ! -f "$SUPABASE_ENV" ]; then
   exit 0
 fi
 
-echo "[fix-jwt] Regenerating anon and service_role keys from JWT_SECRET..."
-
 # shellcheck source=/dev/null
 source "$SUPABASE_ENV" 2>/dev/null || true
 JWT_SECRET="${JWT_SECRET:-}"
 if [ -z "$JWT_SECRET" ]; then
-  echo "[fix-jwt] JWT_SECRET not set in $SUPABASE_ENV. Cannot regenerate keys."
-  exit 1
+  echo "[fix-jwt] JWT_SECRET not set in $SUPABASE_ENV. Skip (Studio storage may fail until keys match)."
+  exit 0
 fi
+
+echo "[fix-jwt] Regenerating anon and service_role keys from JWT_SECRET..."
 
 # Generate keys (run from repo; use node or docker run node)
 cd "$ROOT"
 if [ ! -f deploy/gen-jwt-keys.cjs ]; then
-  echo "[fix-jwt] deploy/gen-jwt-keys.cjs not found. Run from NEWPOSV3 repo root."
-  exit 1
+  echo "[fix-jwt] deploy/gen-jwt-keys.cjs not found. Skip."
+  exit 0
 fi
 if command -v node >/dev/null 2>&1; then
   OUTPUT=$(JWT_SECRET="$JWT_SECRET" node deploy/gen-jwt-keys.cjs 2>/dev/null)
@@ -38,14 +38,14 @@ else
   OUTPUT=$(docker run --rm -e JWT_SECRET="$JWT_SECRET" -v "$ROOT/deploy:/app" node:20-alpine node /app/gen-jwt-keys.cjs 2>/dev/null)
 fi
 if [ -z "$OUTPUT" ]; then
-  echo "[fix-jwt] Failed to generate keys (node or docker run node)."
-  exit 1
+  echo "[fix-jwt] Failed to generate keys (node or docker run node). Skip."
+  exit 0
 fi
 NEW_ANON=$(echo "$OUTPUT" | grep '^ANON_KEY=' | cut -d= -f2-)
 NEW_SERVICE=$(echo "$OUTPUT" | grep '^SERVICE_ROLE_KEY=' | cut -d= -f2-)
 if [ -z "$NEW_ANON" ] || [ -z "$NEW_SERVICE" ]; then
-  echo "[fix-jwt] Failed to parse generated keys."
-  exit 1
+  echo "[fix-jwt] Failed to parse generated keys. Skip."
+  exit 0
 fi
 
 # Update Supabase .env (avoid sed special chars: use grep -v + echo)
@@ -65,12 +65,14 @@ if [ -f "$ERP_ENV" ]; then
   echo "[fix-jwt] Updated VITE_SUPABASE_ANON_KEY in .env.production"
 fi
 
-# Restart Kong (reads ANON_KEY from env at start, expands kong.yml) and Auth
+# Recreate containers that use ANON_KEY (restart does NOT reload .env in Docker)
+# Studio serves the key to the browser; Storage/Kong use it for API. All must get new key from .env.
 if [ -f "$SUPABASE_DIR/docker-compose.yml" ] || [ -f "$SUPABASE_DIR/docker-compose.yaml" ]; then
-  (cd "$SUPABASE_DIR" && docker compose restart kong auth rest storage 2>/dev/null) || true
-  echo "[fix-jwt] Restarted Kong, Auth, Rest, Storage. Studio Storage should work now."
+  (cd "$SUPABASE_DIR" && docker compose up -d kong studio storage --force-recreate 2>/dev/null) || true
+  (cd "$SUPABASE_DIR" && docker compose restart auth rest 2>/dev/null) || true
+  echo "[fix-jwt] Recreated Kong, Studio, Storage (new anon key); restarted Auth, Rest."
 else
-  echo "[fix-jwt] docker-compose not found; restart Kong and Auth manually so they pick up new keys."
+  echo "[fix-jwt] docker-compose not found; recreate Kong, Studio, Storage manually so they pick up new keys."
 fi
 
 echo "[fix-jwt] Done. Rebuild ERP so the app gets the new anon key: bash deploy/deploy.sh"

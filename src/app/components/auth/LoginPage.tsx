@@ -60,11 +60,27 @@ export const LoginPage: React.FC = () => {
     }
   };
 
+  const handleMainLogin = async () => {
+    setLoading(true);
+    setError('');
+    const mainEmail = 'ndm313@yahoo.com';
+    const mainPassword = 'iPhone@14max';
+    setEmail(mainEmail);
+    setPassword(mainPassword);
+    const { data, error: signInError } = await signIn(mainEmail, mainPassword);
+    if (signInError) {
+      setError(signInError.message);
+      setLoading(false);
+    } else if (data?.user) {
+      setTimeout(() => window.location.reload(), 500);
+    }
+  };
+
   const handleAdminLogin = async () => {
     setLoading(true);
     setError('');
-    const adminEmail = 'ndm313@yahoo.com';
-    const adminPassword = '123456';
+    const adminEmail = 'admin@dincouture.pk';
+    const adminPassword = 'AdminDincouture2026';
     setEmail(adminEmail);
     setPassword(adminPassword);
     const { data, error: signInError } = await signIn(adminEmail, adminPassword);
@@ -206,15 +222,30 @@ export const LoginPage: React.FC = () => {
             <div className="flex-1 border-t border-[#374151]"></div>
           </div>
 
+          <p className="text-xs text-[#6B7280] mb-3 text-center">
+            Quick login (fills form and signs in):
+          </p>
+
+          {/* Main Login Button */}
+          <Button
+            type="button"
+            onClick={handleMainLogin}
+            disabled={loading}
+            className="w-full h-12 bg-[#3B82F6]/20 hover:bg-[#3B82F6]/30 border border-[#3B82F6]/40 text-[#60A5FA] font-medium rounded-lg flex items-center justify-center gap-2 mb-2"
+          >
+            <User size={18} />
+            {loading ? 'Logging in...' : 'Main (ndm313@yahoo.com)'}
+          </Button>
+
           {/* Admin Login Button */}
           <Button
             type="button"
             onClick={handleAdminLogin}
             disabled={loading}
-            className="w-full h-12 bg-[#10B981] hover:bg-[#059669] text-white font-medium rounded-lg flex items-center justify-center gap-2 mb-2"
+            className="w-full h-12 bg-[#10B981]/20 hover:bg-[#10B981]/30 border border-[#10B981]/40 text-[#34D399] font-medium rounded-lg flex items-center justify-center gap-2 mb-2"
           >
             <User size={18} />
-            {loading ? 'Logging in...' : 'Admin'}
+            {loading ? 'Logging in...' : 'Admin (admin@dincouture.pk)'}
           </Button>
 
           {/* Demo Login Button */}

@@ -1,4 +1,13 @@
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import {
+  hasSecurePayload,
+  saveSecurePayload,
+  verifyPinAndUnlock,
+  clearSecure,
+  getLockedUntil,
+  type SecurePayload,
+  type VerifyResult,
+} from '../lib/secureStorage';
 
 export type UserRole = 'admin' | 'manager' | 'staff' | 'viewer';
 
@@ -8,6 +17,9 @@ export interface AuthProfile {
   role: UserRole;
   companyId: string | null;
   userId: string;
+  /** Set when admin assigned user to a branch; then branch selector is hidden and locked */
+  branchId: string | null;
+  branchLocked: boolean;
 }
 
 export async function signIn(email: string, password: string): Promise<{ data: AuthProfile | null; error: { message: string } | null }> {
@@ -34,7 +46,7 @@ export async function signIn(email: string, password: string): Promise<{ data: A
 
   const { data: row, error: profileError } = await supabase
     .from('users')
-    .select('company_id, role')
+    .select('company_id, role, branch_id')
     .eq('id', user.id)
     .maybeSingle();
 
@@ -48,6 +60,8 @@ export async function signIn(email: string, password: string): Promise<{ data: A
   const role = (row.role?.toLowerCase() || 'staff') as UserRole;
   const validRoles: UserRole[] = ['admin', 'manager', 'staff', 'viewer'];
   const finalRole = validRoles.includes(role) ? role : 'staff';
+  const branchId = (row as { branch_id?: string | null }).branch_id ?? null;
+  const branchLocked = !!branchId;
 
   return {
     data: {
@@ -56,6 +70,8 @@ export async function signIn(email: string, password: string): Promise<{ data: A
       role: finalRole,
       companyId: row.company_id || null,
       userId: user.id,
+      branchId,
+      branchLocked,
     },
     error: null,
   };
@@ -63,6 +79,7 @@ export async function signIn(email: string, password: string): Promise<{ data: A
 
 export async function signOut(): Promise<void> {
   await supabase.auth.signOut();
+  await clearSecure();
 }
 
 export async function getSession(): Promise<{ userId: string; email: string } | null> {
@@ -71,10 +88,29 @@ export async function getSession(): Promise<{ userId: string; email: string } | 
   return { userId: session.user.id, email: session.user.email || '' };
 }
 
+/** Returns session with refresh_token for storing in secure vault. */
+export async function getSessionWithRefresh(): Promise<{ userId: string; email: string; refreshToken: string } | null> {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session?.user?.id || !session.refresh_token) return null;
+  return {
+    userId: session.user.id,
+    email: session.user.email || '',
+    refreshToken: session.refresh_token,
+  };
+}
+
+/** Restore Supabase session from refresh token (e.g. after PIN unlock when session was lost). */
+export async function refreshSessionFromRefreshToken(refreshToken: string): Promise<{ ok: boolean; error?: string }> {
+  const { data, error } = await supabase.auth.refreshSession({ refresh_token: refreshToken });
+  if (error) return { ok: false, error: error.message };
+  if (!data?.session) return { ok: false, error: 'No session returned.' };
+  return { ok: true };
+}
+
 export async function getProfile(userId: string): Promise<AuthProfile | null> {
   const { data: row, error } = await supabase
     .from('users')
-    .select('company_id, role')
+    .select('company_id, role, branch_id')
     .eq('id', userId)
     .maybeSingle();
   if (error || !row) return null;
@@ -82,11 +118,37 @@ export async function getProfile(userId: string): Promise<AuthProfile | null> {
   if (!user) return null;
   const role = (row.role?.toLowerCase() || 'staff') as UserRole;
   const validRoles: UserRole[] = ['admin', 'manager', 'staff', 'viewer'];
+  const branchId = (row as { branch_id?: string | null }).branch_id ?? null;
+  const branchLocked = !!branchId;
   return {
     name: user.user_metadata?.name || user.email?.split('@')[0] || 'User',
     email: user.email || '',
     role: validRoles.includes(role) ? role : 'staff',
     companyId: row.company_id || null,
     userId: user.id,
+    branchId,
+    branchLocked,
   };
+}
+
+// --- PIN: secure storage (IndexedDB + encrypted). No raw token in localStorage. ---
+
+export async function hasPinSet(): Promise<boolean> {
+  return hasSecurePayload();
+}
+
+export async function setPinWithPayload(pin: string, payload: Omit<SecurePayload, 'savedAt'>): Promise<void> {
+  await saveSecurePayload(pin, { ...payload, savedAt: Date.now() });
+}
+
+export async function verifyPin(pin: string): Promise<VerifyResult> {
+  return verifyPinAndUnlock(pin);
+}
+
+export async function getPinLockedUntil(): Promise<number> {
+  return getLockedUntil();
+}
+
+export async function clearPin(): Promise<void> {
+  await clearSecure();
 }
