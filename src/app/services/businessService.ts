@@ -7,6 +7,8 @@ export interface CreateBusinessRequest {
   password: string;
   currency?: string;
   fiscalYearStart?: string;
+  branchName?: string;
+  branchCode?: string;
 }
 
 export interface CreateBusinessResponse {
@@ -54,6 +56,8 @@ export const businessService = {
           p_user_id: user.id,
           p_currency: data.currency || 'PKR',
           p_fiscal_year_start: data.fiscalYearStart || null,
+          p_branch_name: data.branchName || 'Main Branch',
+          p_branch_code: data.branchCode || 'HQ',
         }
       );
 

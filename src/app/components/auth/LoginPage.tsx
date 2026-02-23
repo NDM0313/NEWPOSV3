@@ -3,7 +3,7 @@ import { useSupabase } from '@/app/context/SupabaseContext';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Lock, Mail, AlertCircle, Building2, User } from 'lucide-react';
-import { CreateBusinessForm } from './CreateBusinessForm';
+import { CreateBusinessWizard } from './CreateBusinessWizard';
 
 export const LoginPage: React.FC = () => {
   const { signIn } = useSupabase();
@@ -128,10 +128,10 @@ export const LoginPage: React.FC = () => {
     }
   };
 
-  // Show create business form
+  // Show create business wizard
   if (showCreateBusiness) {
     return (
-      <CreateBusinessForm
+      <CreateBusinessWizard
         onSuccess={(email, password) => handleCreateBusinessSuccess(email, password)}
         onCancel={() => {
           setShowCreateBusiness(false);
