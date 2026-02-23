@@ -26,6 +26,28 @@ else
   echo "[fix-supabase-kong] Supabase .env not found at $SUPABASE_ENV, skipping."
 fi
 
+# 2a. Ensure SITE_URL and redirect allow-list for Auth (GoTrue) before restart
+if [ -f "$SUPABASE_ENV" ]; then
+  SITE_URL_VAL="https://erp.dincouture.pk"
+  REDIRECT_LIST="https://erp.dincouture.pk,https://erp.dincouture.pk/,https://erp.dincouture.pk/**"
+  if grep -q "^SITE_URL=" "$SUPABASE_ENV" 2>/dev/null; then
+    sed -i "s|^SITE_URL=.*|SITE_URL=$SITE_URL_VAL|" "$SUPABASE_ENV"
+  else
+    echo "SITE_URL=$SITE_URL_VAL" >> "$SUPABASE_ENV"
+  fi
+  if grep -q "^ADDITIONAL_REDIRECT_URLS=" "$SUPABASE_ENV" 2>/dev/null; then
+    sed -i "s|^ADDITIONAL_REDIRECT_URLS=.*|ADDITIONAL_REDIRECT_URLS=$REDIRECT_LIST|" "$SUPABASE_ENV"
+  else
+    echo "ADDITIONAL_REDIRECT_URLS=$REDIRECT_LIST" >> "$SUPABASE_ENV"
+  fi
+  if grep -q "^GOTRUE_URI_ALLOW_LIST=" "$SUPABASE_ENV" 2>/dev/null; then
+    sed -i "s|^GOTRUE_URI_ALLOW_LIST=.*|GOTRUE_URI_ALLOW_LIST=$REDIRECT_LIST|" "$SUPABASE_ENV"
+  else
+    echo "GOTRUE_URI_ALLOW_LIST=$REDIRECT_LIST" >> "$SUPABASE_ENV"
+  fi
+  echo "[fix-supabase-kong] SITE_URL and redirect allow-list set for erp.dincouture.pk"
+fi
+
 # 2. Sync Kong anon key to ERP .env.production (avoids 401 from wrong key)
 if docker ps --format '{{.Names}}' | grep -q 'supabase-kong'; then
   KONG_ANON=$(docker exec supabase-kong sh -c 'echo "$SUPABASE_ANON_KEY"' 2>/dev/null | tr -d '\n\r')
@@ -41,11 +63,11 @@ if docker ps --format '{{.Names}}' | grep -q 'supabase-kong'; then
     fi
     echo "[fix-supabase-kong] Synced Kong anon key to ERP .env.production"
   fi
-  # Restart Kong so it picks up API_EXTERNAL_URL / host config
+  # Restart Kong and Auth so they pick up API_EXTERNAL_URL and SITE_URL / host config
   SUPABASE_DIR="$(dirname "$SUPABASE_ENV")"
   if [ -f "$SUPABASE_DIR/docker-compose.yml" ] || [ -f "$SUPABASE_DIR/docker-compose.yaml" ]; then
-    (cd "$SUPABASE_DIR" && docker compose restart kong 2>/dev/null) || true
-    echo "[fix-supabase-kong] Kong restarted."
+    (cd "$SUPABASE_DIR" && docker compose restart kong auth 2>/dev/null) || true
+    echo "[fix-supabase-kong] Kong and Auth restarted."
   fi
 else
   echo "[fix-supabase-kong] Kong container not found, skip key sync and restart."
