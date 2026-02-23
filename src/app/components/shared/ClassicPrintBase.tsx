@@ -22,6 +22,7 @@ import { Printer, X } from 'lucide-react';
 import { Button } from '../ui/button';
 
 export type PrinterMode = 'thermal' | 'a4';
+export type PaperSize = '58mm' | '80mm';
 
 export interface ClassicPrintBaseProps {
   documentTitle: string;
@@ -34,8 +35,10 @@ export interface ClassicPrintBaseProps {
   showActions?: boolean;
   /** When set, replaces default Print/Close with custom actions (e.g. orientation + Print + Save as PDF) */
   actionChildren?: React.ReactNode;
-  /** Printer mode from company config - thermal (80mm) or a4 */
+  /** Printer mode from company config - thermal (58mm/80mm) or a4 */
   printerMode?: PrinterMode;
+  /** Paper size for thermal mode - 58mm or 80mm */
+  paperSize?: PaperSize;
 }
 
 export const ClassicPrintBase: React.FC<ClassicPrintBaseProps> = ({
@@ -49,14 +52,19 @@ export const ClassicPrintBase: React.FC<ClassicPrintBaseProps> = ({
   showActions = true,
   actionChildren,
   printerMode = 'a4',
+  paperSize = '80mm',
 }) => {
+  const thermalWidth = paperSize === '58mm' ? '58mm' : '80mm';
   const handlePrint = () => {
     window.print();
     if (onPrint) onPrint();
   };
 
   return (
-    <div className={`classic-print-base ${printerMode === 'thermal' ? 'classic-print-thermal' : ''}`}>
+    <div
+      className={`classic-print-base ${printerMode === 'thermal' ? 'classic-print-thermal' : ''}`}
+      style={printerMode === 'thermal' ? { ['--thermal-width' as string]: thermalWidth } : undefined}
+    >
       <style>{`
         /* ============================================
            CLASSIC PRINT BASE - GLOBAL STYLES
@@ -82,8 +90,8 @@ export const ClassicPrintBase: React.FC<ClassicPrintBaseProps> = ({
             display: none;
           }
           .classic-print-base.classic-print-thermal {
-            max-width: 80mm;
-            width: 80mm;
+            max-width: var(--thermal-width, 80mm);
+            width: var(--thermal-width, 80mm);
           }
         }
         
@@ -97,7 +105,7 @@ export const ClassicPrintBase: React.FC<ClassicPrintBaseProps> = ({
             box-shadow: 0 0 20px rgba(0,0,0,0.1);
           }
           .classic-print-base.classic-print-thermal {
-            max-width: 80mm;
+            max-width: var(--thermal-width, 80mm);
             padding: 16px;
             font-size: 11px;
           }

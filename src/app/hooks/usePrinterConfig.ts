@@ -7,15 +7,18 @@ import { supabase } from '@/lib/supabase';
 import { useSupabase } from '@/app/context/SupabaseContext';
 
 export type PrinterMode = 'thermal' | 'a4';
+export type PaperSize = '58mm' | '80mm';
 
 export interface PrinterConfig {
   mode: PrinterMode;
+  paperSize: PaperSize;
   defaultPrinterName: string | null;
   autoPrintReceipt: boolean;
 }
 
 const DEFAULT_CONFIG: PrinterConfig = {
   mode: 'a4',
+  paperSize: '80mm',
   defaultPrinterName: null,
   autoPrintReceipt: false,
 };
@@ -23,6 +26,7 @@ const DEFAULT_CONFIG: PrinterConfig = {
 export function usePrinterConfig(): {
   config: PrinterConfig;
   setMode: (mode: PrinterMode) => Promise<void>;
+  setPaperSize: (size: PaperSize) => Promise<void>;
   setAutoPrintReceipt: (enabled: boolean) => Promise<void>;
   refresh: () => Promise<void>;
 } {
@@ -35,17 +39,30 @@ export function usePrinterConfig(): {
       return;
     }
     try {
-      const { data } = await supabase
+      // Try with paper_size first (migration 54); fallback if column not yet added
+      let { data, error } = await supabase
         .from('companies')
-        .select('printer_mode, default_printer_name, print_receipt_auto')
+        .select('printer_mode, paper_size, default_printer_name, print_receipt_auto')
         .eq('id', companyId)
         .single();
 
-      if (data) {
+      if (error) {
+        const fallback = await supabase
+          .from('companies')
+          .select('printer_mode, default_printer_name, print_receipt_auto')
+          .eq('id', companyId)
+          .single();
+        data = fallback.data;
+        error = fallback.error;
+      }
+
+      if (data && !error) {
+        const raw = data as Record<string, unknown>;
         setConfig({
-          mode: (data.printer_mode as PrinterMode) || 'a4',
-          defaultPrinterName: data.default_printer_name ?? null,
-          autoPrintReceipt: data.print_receipt_auto ?? false,
+          mode: (raw.printer_mode as PrinterMode) || 'a4',
+          paperSize: (raw.paper_size === '58mm' ? '58mm' : '80mm') as PaperSize,
+          defaultPrinterName: (raw.default_printer_name as string) ?? null,
+          autoPrintReceipt: !!raw.print_receipt_auto,
         });
       }
     } catch {
@@ -66,6 +83,15 @@ export function usePrinterConfig(): {
     [companyId]
   );
 
+  const setPaperSize = useCallback(
+    async (paperSize: PaperSize) => {
+      if (!companyId) return;
+      await supabase.from('companies').update({ paper_size: paperSize }).eq('id', companyId);
+      setConfig((c) => ({ ...c, paperSize }));
+    },
+    [companyId]
+  );
+
   const setAutoPrintReceipt = useCallback(
     async (enabled: boolean) => {
       if (!companyId) return;
@@ -75,5 +101,5 @@ export function usePrinterConfig(): {
     [companyId]
   );
 
-  return { config, setMode, setAutoPrintReceipt, refresh: loadConfig };
+  return { config, setMode, setPaperSize, setAutoPrintReceipt, refresh: loadConfig };
 }

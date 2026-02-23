@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { 
   Building2, CreditCard, Hash, ToggleLeft, Save, 
   CheckCircle, Users, Lock, Key, Settings as SettingsIcon, AlertCircle, UserCog,
-  MapPin, Store, ShoppingCart, ShoppingBag, Package, Shirt, Calculator, X, Edit, Download, Server, Copy
+  MapPin, Store, ShoppingCart, ShoppingBag, Package, Shirt, Calculator, X, Edit, Download, Server, Copy, Printer
 } from 'lucide-react';
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
@@ -11,6 +11,7 @@ import { Badge } from "../ui/badge";
 import { Switch } from "../ui/switch";
 import { cn } from "../ui/utils";
 import { useSettings, BranchSettings } from '@/app/context/SettingsContext';
+import { usePrinterConfig } from '@/app/hooks/usePrinterConfig';
 import { branchService } from '@/app/services/branchService';
 import { accountService } from '@/app/services/accountService';
 import { useSupabase } from '@/app/context/SupabaseContext';
@@ -42,12 +43,14 @@ type SettingsTab =
   | 'accounting'
   | 'accounts' 
   | 'numbering' 
+  | 'printer'
   | 'users' 
   | 'modules'
   | 'data';
 
 export const SettingsPageNew = () => {
   const settings = useSettings();
+  const printer = usePrinterConfig();
   const { companyId, refreshEnablePacking } = useSupabase();
   const accounting = useAccounting();
   const [activeTab, setActiveTab] = useState<SettingsTab>('company');
@@ -339,6 +342,7 @@ export const SettingsPageNew = () => {
     { id: 'accounting' as const, label: 'Accounting Settings', icon: Calculator },
     { id: 'accounts' as const, label: 'Default Accounts', icon: CreditCard },
     { id: 'numbering' as const, label: 'Numbering Rules', icon: Hash },
+    { id: 'printer' as const, label: 'Printer Configuration', icon: Printer },
     { id: 'users' as const, label: 'User Management', icon: UserCog },
     // Permissions tab removed - permissions now managed per-user in User Management modal
     { id: 'modules' as const, label: 'Module Toggles', icon: ToggleLeft },
@@ -1833,6 +1837,81 @@ export const SettingsPageNew = () => {
                       </div>
                     </div>
                     <p className="text-xs text-gray-500 mt-2">Preview: {(numberingForm.journalPrefix || 'JV-')}{String(numberingForm.journalNextNumber ?? 1).padStart(4, '0')}</p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* PRINTER CONFIGURATION TAB */}
+            {activeTab === 'printer' && (
+              <div className="space-y-6">
+                <div className="flex items-center gap-3 mb-6">
+                  <div className="p-3 bg-slate-500/10 rounded-lg">
+                    <Printer className="text-slate-400" size={24} />
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-bold text-white">Printer Configuration</h3>
+                    <p className="text-sm text-gray-400">Receipt and invoice print settings (58mm / 80mm thermal, A4)</p>
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between bg-gray-950 p-4 rounded-lg border border-gray-800">
+                    <div>
+                      <p className="text-white font-medium">Printer Mode</p>
+                      <p className="text-sm text-gray-400">Thermal receipt or A4 invoice layout</p>
+                    </div>
+                    <select
+                      value={printer.config.mode}
+                      onChange={(e) => printer.setMode(e.target.value as 'thermal' | 'a4')}
+                      className="bg-gray-800 border border-gray-700 text-white rounded-lg px-3 py-2"
+                    >
+                      <option value="a4">A4 (Standard)</option>
+                      <option value="thermal">Thermal Receipt</option>
+                    </select>
+                  </div>
+
+                  {printer.config.mode === 'thermal' && (
+                    <div className="flex items-center justify-between bg-gray-950 p-4 rounded-lg border border-gray-800">
+                      <div>
+                        <p className="text-white font-medium">Paper Size</p>
+                        <p className="text-sm text-gray-400">58mm or 80mm thermal roll</p>
+                      </div>
+                      <select
+                        value={printer.config.paperSize}
+                        onChange={(e) => printer.setPaperSize(e.target.value as '58mm' | '80mm')}
+                        className="bg-gray-800 border border-gray-700 text-white rounded-lg px-3 py-2"
+                      >
+                        <option value="58mm">58mm</option>
+                        <option value="80mm">80mm</option>
+                      </select>
+                    </div>
+                  )}
+
+                  <div className="flex items-center justify-between bg-gray-950 p-4 rounded-lg border border-gray-800">
+                    <div>
+                      <p className="text-white font-medium">Auto Print Receipt</p>
+                      <p className="text-sm text-gray-400">Print receipt after POS sale</p>
+                    </div>
+                    <Switch
+                      checked={printer.config.autoPrintReceipt}
+                      onCheckedChange={(val) => printer.setAutoPrintReceipt(val)}
+                    />
+                  </div>
+
+                  <div className="flex items-center gap-3 pt-4">
+                    <Button
+                      variant="outline"
+                      className="border-gray-600 text-gray-300 hover:bg-gray-800"
+                      onClick={() => {
+                        window.print();
+                        toast.success('Test print dialog opened');
+                      }}
+                    >
+                      <Printer size={16} className="mr-2" />
+                      Test Print
+                    </Button>
+                    <span className="text-sm text-gray-500">Opens browser print dialog</span>
                   </div>
                 </div>
               </div>

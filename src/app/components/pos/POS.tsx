@@ -38,6 +38,7 @@ import { productService } from '../../services/productService';
 import { contactService } from '../../services/contactService';
 import { saleService } from '../../services/saleService';
 import { useSales } from '../../context/SalesContext';
+import { useSettings } from '../../context/SettingsContext';
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Badge } from "../ui/badge";
@@ -78,6 +79,7 @@ export const POS = () => {
   const { setCurrentView } = useNavigation();
   const { companyId, branchId, user } = useSupabase();
   const { sales, createSale, updateSale, refreshSales, getSaleById } = useSales();
+  const { posSettings } = useSettings();
   const [products, setProducts] = useState<POSProduct[]>([]);
   const [customers, setCustomers] = useState<POSCustomer[]>([
     { id: "walk-in", name: "Walk-in Customer" }
@@ -422,16 +424,18 @@ export const POS = () => {
       return;
     }
 
-    // Stock validation: use productId; check total qty per product (same product can be in multiple lines)
-    const qtyByProduct = cart.reduce<Record<string, number>>((acc, item) => {
-      acc[item.productId] = (acc[item.productId] ?? 0) + item.qty;
-      return acc;
-    }, {});
-    for (const [pid, totalQty] of Object.entries(qtyByProduct)) {
-      const product = products.find(p => p.id === pid);
-      if (product && totalQty > product.stock) {
-        toast.error(`${product.name}: total quantity (${totalQty}) exceeds available stock (${product.stock})`);
-        return;
+    // Stock validation: when negativeStockAllowed=false, block if qty exceeds stock
+    if (!posSettings.negativeStockAllowed) {
+      const qtyByProduct = cart.reduce<Record<string, number>>((acc, item) => {
+        acc[item.productId] = (acc[item.productId] ?? 0) + item.qty;
+        return acc;
+      }, {});
+      for (const [pid, totalQty] of Object.entries(qtyByProduct)) {
+        const product = products.find(p => p.id === pid);
+        if (product && totalQty > product.stock) {
+          toast.error(`${product.name}: total quantity (${totalQty}) exceeds available stock (${product.stock})`);
+          return;
+        }
       }
     }
 

@@ -314,7 +314,7 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
   const { generateDocumentNumber, incrementNextNumber } = useDocumentNumbering();
   const accounting = useAccounting();
   const { companyId, branchId, user } = useSupabase();
-  const { modules } = useSettings();
+  const { modules, inventorySettings } = useSettings();
   const { formatCurrency } = useFormatCurrency();
 
   // Load sales from database
@@ -391,6 +391,30 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
       if (!invoiceNo || invoiceNo.includes('undefined') || invoiceNo.includes('NaN')) {
         throw new Error(`Invalid invoice number generated: ${invoiceNo}. Check document numbering settings.`);
       }
+
+      // Negative stock enforcement: when negativeStockAllowed=false, block sale if any item would go negative
+      const isFinal = saleData.status === 'final' || saleData.type === 'invoice';
+      if (isFinal && !inventorySettings.negativeStockAllowed && saleData.items?.length > 0) {
+        const { supabase } = await import('@/lib/supabase');
+        const productIds = [...new Set(saleData.items.map((i) => i.productId))];
+        const { data: prods } = await supabase.from('products').select('id, current_stock, has_variations').in('id', productIds);
+        const productMap = new Map((prods || []).map((p: any) => [p.id, p]));
+
+        for (const item of saleData.items) {
+          const p = productMap.get(item.productId) as { current_stock?: number; has_variations?: boolean } | undefined;
+          if (!p) continue;
+          let stock = Number(p.current_stock || 0);
+          if (p.has_variations && (item as any).variationId) {
+            const movements = await productService.getStockMovements(item.productId, companyId, (item as any).variationId);
+            const { calculateStockFromMovements } = await import('@/app/utils/stockCalculation');
+            stock = calculateStockFromMovements(movements).currentBalance;
+          }
+          if (stock < item.quantity) {
+            throw new Error(`${item.productName}: quantity (${item.quantity}) exceeds available stock (${stock})`);
+          }
+        }
+      }
+
       // Convert to Supabase format (use effectiveBranchId – valid UUID for DB)
       const supabaseSale: SupabaseSale = {
         company_id: companyId,
@@ -1140,6 +1164,30 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
         } catch (deltaError: any) {
           console.error('[SALES CONTEXT] ❌ Delta calculation error:', deltaError);
           // Don't block sale update if delta calculation fails
+        }
+      }
+
+      // Negative stock enforcement: when negativeStockAllowed=false, block if any delta would cause negative stock
+      const reducingDeltas = stockMovementDeltas.filter((d) => d.deltaQty < 0);
+      if (!inventorySettings.negativeStockAllowed && reducingDeltas.length > 0 && companyId) {
+        const { supabase } = await import('@/lib/supabase');
+        const productIds = [...new Set(reducingDeltas.map((d) => d.productId))];
+        const { data: prods } = await supabase.from('products').select('id, current_stock, has_variations').in('id', productIds);
+        const productMap = new Map((prods || []).map((p: any) => [p.id, p]));
+
+        for (const delta of reducingDeltas) {
+          const p = productMap.get(delta.productId) as { current_stock?: number; has_variations?: boolean } | undefined;
+          if (!p) continue;
+          let stock = Number(p.current_stock || 0);
+          if (p.has_variations && delta.variationId) {
+            const movements = await productService.getStockMovements(delta.productId, companyId, delta.variationId);
+            const { calculateStockFromMovements } = await import('@/app/utils/stockCalculation');
+            stock = calculateStockFromMovements(movements).currentBalance;
+          }
+          const qtyNeeded = Math.abs(delta.deltaQty);
+          if (stock < qtyNeeded) {
+            throw new Error(`${delta.name}: quantity (${qtyNeeded}) exceeds available stock (${stock})`);
+          }
         }
       }
 
