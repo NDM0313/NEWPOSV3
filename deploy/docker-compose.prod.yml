@@ -2,6 +2,7 @@
 # Run from project root:
 #   cd /root/NEWPOSV3 && bash deploy/deploy.sh
 # Storage RLS is applied automatically by deploy.sh (no extra env needed).
+# Traefik (Dokploy) routes erp.dincouture.pk to erp-frontend:80; container must be on dokploy-network.
 
 services:
   erp:
@@ -15,7 +16,6 @@ services:
     env_file: ../.env.production
     container_name: erp-frontend
     restart: always
-    # Use 3001 when 3000 is taken (e.g. Dokploy). Traefik can route erp.dincouture.pk to erp-frontend:80 on same network.
     ports:
       - "3001:80"
     healthcheck:
@@ -27,7 +27,11 @@ services:
     networks:
       - default
       - supabase_default
+      - dokploy_network
 
 networks:
   supabase_default:
     external: true
+  dokploy_network:
+    external: true
+    name: dokploy-network
