@@ -30,11 +30,11 @@
 
 ## Medium Issues
 
-| # | Issue | Action |
-|---|-------|--------|
-| 1 | Duplicate invoice/PO possible (no DB UNIQUE) | Add UNIQUE(company_id, branch_id, invoice_no) on sales; same for purchases |
-| 2 | paper_size column may not exist | Run migration 54_companies_printer_paper_size.sql |
-| 3 | Mobile: No Bluetooth/thermal printer | Add post go-live if POS-on-mobile required |
+| # | Issue | Action | Status |
+|---|-------|--------|--------|
+| 1 | Duplicate invoice/PO possible (no DB UNIQUE) | Add UNIQUE(company_id, branch_id, invoice_no) on sales; same for purchases | ✅ Done (migrations 55, 56) |
+| 2 | paper_size column may not exist | Run migration 54_companies_printer_paper_size.sql | ✅ Done |
+| 3 | Mobile: No Bluetooth/thermal printer | Add post go-live if POS-on-mobile required | Pending |
 
 ---
 
