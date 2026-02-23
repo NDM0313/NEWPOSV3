@@ -1,7 +1,7 @@
 # TRUNCATE PLAN — Production Data Reset
 
 **Generated:** 2025-02-23  
-**Status:** PLAN ONLY — DO NOT EXECUTE without explicit approval
+**Status:** EXECUTED 2025-02-23 — Use deploy/truncate-all-data.sql for future runs
 
 ---
 
