@@ -16,7 +16,7 @@ INSERT INTO auth.users (
 SELECT
   gen_random_uuid(),
   'admin@dincouture.pk',
-  crypt('Admin@Dincouture2026!', gen_salt('bf')),
+  crypt('AdminDincouture2026', gen_salt('bf')),
   now(),
   'authenticated',
   'authenticated',
