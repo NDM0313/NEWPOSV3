@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { 
   Building2, CreditCard, Hash, ToggleLeft, Save, 
   CheckCircle, Users, Lock, Key, Settings as SettingsIcon, AlertCircle, UserCog,
-  MapPin, Store, ShoppingCart, ShoppingBag, Package, Shirt, Calculator, X, Edit, Download, Server, Copy, Printer
+  MapPin, Store, ShoppingCart, ShoppingBag, Package, Shirt, Calculator, X, Edit, Download, Server, Copy, Printer, RefreshCw
 } from 'lucide-react';
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
@@ -2221,6 +2221,33 @@ export const SettingsPageNew = () => {
                   >
                     <Copy size={14} />
                     Copy command
+                  </Button>
+                </div>
+
+                <div className="bg-gray-950 p-6 rounded-lg border border-gray-800">
+                  <div className="flex items-center gap-2 mb-2">
+                    <RefreshCw className="text-blue-500" size={20} />
+                    <h4 className="text-white font-medium">Clear cache & refresh</h4>
+                  </div>
+                  <p className="text-sm text-gray-400 mb-3">
+                    Agar purana data dikh raha ho (e.g. truncate ke baad), cache clear karke page refresh karo. Fresh data database se load hoga.
+                  </p>
+                  <Button
+                    variant="outline"
+                    className="border-blue-600 text-blue-400 hover:bg-blue-500/10 gap-2"
+                    onClick={() => {
+                      try {
+                        localStorage.removeItem('erp_modules');
+                        sessionStorage.clear();
+                        toast.success('Cache cleared. Refreshing...');
+                        setTimeout(() => window.location.reload(), 500);
+                      } catch (e) {
+                        toast.error('Failed to clear cache');
+                      }
+                    }}
+                  >
+                    <RefreshCw size={16} />
+                    Clear cache & refresh
                   </Button>
                 </div>
               </div>
