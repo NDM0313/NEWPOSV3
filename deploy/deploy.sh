@@ -134,6 +134,8 @@ fi
 [ -z "$VITE_SUPABASE_ANON_KEY" ] && echo "WARN: VITE_SUPABASE_ANON_KEY empty. Set it in .env.production or ensure Kong is running."
 echo "[deploy] Using VITE_SUPABASE_URL=$VITE_SUPABASE_URL"
 
+# Kong fix BEFORE build so app image gets correct anon key (avoids "Invalid authentication credentials")
+[ -f deploy/fix-supabase-kong-domain.sh ] && bash deploy/fix-supabase-kong-domain.sh || true
 source .env.production
 COMPOSE_CMD="docker compose -f deploy/docker-compose.prod.yml --env-file .env.production"
 $COMPOSE_CMD build --no-cache
