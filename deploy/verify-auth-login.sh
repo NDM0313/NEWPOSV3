@@ -3,8 +3,12 @@
 set -e
 ENV_FILE="${SUPABASE_ENV:-/root/supabase/docker/.env}"
 [ ! -f "$ENV_FILE" ] && echo "Missing $ENV_FILE" && exit 1
-ANON_KEY=$(sed -n 's/^ANON_KEY=//p' "$ENV_FILE" | head -1 | tr -d '\r\n" ')
-[ -z "$ANON_KEY" ] && echo "ANON_KEY not found in $ENV_FILE" && exit 1
+# Use key from Kong (what it validates against); fallback to .env
+if docker ps --format '{{.Names}}' | grep -q supabase-kong; then
+  ANON_KEY=$(docker exec supabase-kong printenv SUPABASE_ANON_KEY 2>/dev/null | tr -d '\r\n')
+fi
+[ -z "$ANON_KEY" ] && ANON_KEY=$(sed -n 's/^ANON_KEY=//p' "$ENV_FILE" | head -1 | tr -d '\r\n" ')
+[ -z "$ANON_KEY" ] && echo "ANON_KEY not found (Kong or $ENV_FILE)" && exit 1
 # Prefer Kong directly (8000) so apikey is validated by Kong; else use Traefik (443)
 API="${SUPABASE_API_URL:-http://127.0.0.1:8000}"
 HOST="Host: supabase.dincouture.pk"
