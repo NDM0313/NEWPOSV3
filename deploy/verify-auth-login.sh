@@ -5,11 +5,14 @@ ENV_FILE="${SUPABASE_ENV:-/root/supabase/docker/.env}"
 [ ! -f "$ENV_FILE" ] && echo "Missing $ENV_FILE" && exit 1
 ANON_KEY=$(sed -n 's/^ANON_KEY=//p' "$ENV_FILE" | head -1 | tr -d '\r\n" ')
 [ -z "$ANON_KEY" ] && echo "ANON_KEY not found in $ENV_FILE" && exit 1
-API="https://127.0.0.1"
+# Prefer Kong directly (8000) so apikey is validated by Kong; else use Traefik (443)
+API="${SUPABASE_API_URL:-http://127.0.0.1:8000}"
 HOST="Host: supabase.dincouture.pk"
+# Use -k to allow self-signed if HTTPS
+CURL_OPTS="-sk"
 
 echo "=== Testing ndm313@yahoo.com ==="
-R1=$(curl -sk -X POST "$API/auth/v1/token?grant_type=password" \
+R1=$(curl $CURL_OPTS -X POST "$API/auth/v1/token?grant_type=password" \
   -H "$HOST" -H "apikey: $ANON_KEY" -H "Content-Type: application/json" \
   -d '{"email":"ndm313@yahoo.com","password":"iPhone@14max"}' 2>/dev/null)
 if echo "$R1" | grep -q '"access_token"'; then
@@ -20,7 +23,7 @@ fi
 
 echo ""
 echo "=== Testing admin@dincouture.pk ==="
-R2=$(curl -sk -X POST "$API/auth/v1/token?grant_type=password" \
+R2=$(curl $CURL_OPTS -X POST "$API/auth/v1/token?grant_type=password" \
   -H "$HOST" -H "apikey: $ANON_KEY" -H "Content-Type: application/json" \
   -d '{"email":"admin@dincouture.pk","password":"Admin@Dincouture2026!"}' 2>/dev/null)
 if echo "$R2" | grep -q '"access_token"'; then
