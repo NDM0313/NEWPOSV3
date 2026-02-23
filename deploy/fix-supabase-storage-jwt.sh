@@ -26,16 +26,21 @@ if [ -z "$JWT_SECRET" ]; then
   exit 1
 fi
 
-# Generate keys (run from repo so gen-jwt-keys.cjs is available)
+# Generate keys (run from repo; use node or docker run node)
 cd "$ROOT"
 if [ ! -f deploy/gen-jwt-keys.cjs ]; then
   echo "[fix-jwt] deploy/gen-jwt-keys.cjs not found. Run from NEWPOSV3 repo root."
   exit 1
 fi
-OUTPUT=$(JWT_SECRET="$JWT_SECRET" node deploy/gen-jwt-keys.cjs 2>/dev/null) || {
-  echo "[fix-jwt] node deploy/gen-jwt-keys.cjs failed. Is node installed?"
+if command -v node >/dev/null 2>&1; then
+  OUTPUT=$(JWT_SECRET="$JWT_SECRET" node deploy/gen-jwt-keys.cjs 2>/dev/null)
+else
+  OUTPUT=$(docker run --rm -e JWT_SECRET="$JWT_SECRET" -v "$ROOT/deploy:/app" node:20-alpine node /app/gen-jwt-keys.cjs 2>/dev/null)
+fi
+if [ -z "$OUTPUT" ]; then
+  echo "[fix-jwt] Failed to generate keys (node or docker run node)."
   exit 1
-}
+fi
 NEW_ANON=$(echo "$OUTPUT" | grep '^ANON_KEY=' | cut -d= -f2-)
 NEW_SERVICE=$(echo "$OUTPUT" | grep '^SERVICE_ROLE_KEY=' | cut -d= -f2-)
 if [ -z "$NEW_ANON" ] || [ -z "$NEW_SERVICE" ]; then
