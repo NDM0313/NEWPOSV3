@@ -3,7 +3,8 @@
 set -e
 ENV_FILE="${SUPABASE_ENV:-/root/supabase/docker/.env}"
 [ ! -f "$ENV_FILE" ] && echo "Missing $ENV_FILE" && exit 1
-source "$ENV_FILE"
+ANON_KEY=$(grep -E '^ANON_KEY=' "$ENV_FILE" | cut -d= -f2- | tr -d '\r\n" ')
+[ -z "$ANON_KEY" ] && echo "ANON_KEY not found in $ENV_FILE" && exit 1
 API="https://127.0.0.1"
 HOST="Host: supabase.dincouture.pk"
 
