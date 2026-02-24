@@ -14,6 +14,7 @@ import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
 import { productService } from '../../services/productService';
 import { inventoryService, InventoryOverviewRow, InventoryMovementRow } from '../../services/inventoryService';
 import { toast } from 'sonner';
+import { exportToCSV, exportToExcel, exportToPDF, type ExportData } from '@/app/utils/exportUtils';
 import { FullStockLedgerView } from '../products/FullStockLedgerView';
 import { StockAdjustmentDrawer } from './StockAdjustmentDrawer';
 import { ListToolbar } from '../ui/list-toolbar';
@@ -620,20 +621,32 @@ export const InventoryDashboardNew = () => {
                   const headers = enablePacking ? ['Product', 'SKU', 'Category', 'Stock', 'Unit', 'Avg Cost', 'Selling Price', 'Stock Value', 'Movement', 'Status'] : ['Product', 'SKU', 'Category', 'Stock', 'Avg Cost', 'Selling Price', 'Stock Value', 'Movement', 'Status'];
                   const rows = filteredProducts.map((p) =>
                     enablePacking
-                      ? [p.name, p.sku, p.category, p.stock, p.stock, p.avgCost, p.sellingPrice, p.stockValue, p.movement, p.status].join(',')
-                      : [p.name, p.sku, p.category, p.stock, p.avgCost, p.sellingPrice, p.stockValue, p.movement, p.status].join(',')
+                      ? [p.name, p.sku, p.category, p.stock, p.stock, p.avgCost, p.sellingPrice, p.stockValue, p.movement, p.status]
+                      : [p.name, p.sku, p.category, p.stock, p.avgCost, p.sellingPrice, p.stockValue, p.movement, p.status]
                   );
-                  const csv = [headers.join(','), ...rows].join('\n');
-                  const blob = new Blob([csv], { type: 'text/csv' });
-                  const url = URL.createObjectURL(blob);
-                  const a = document.createElement('a');
-                  a.href = url;
-                  a.download = `inventory-overview-${new Date().toISOString().slice(0, 10)}.csv`;
-                  a.click();
-                  URL.revokeObjectURL(url);
+                  const data: ExportData = { headers, rows, title: 'Inventory Overview' };
+                  try { exportToCSV(data, 'inventory-overview'); toast.success('Inventory exported as CSV'); } catch (e) { toast.error('Export failed'); }
                 },
-                onExportExcel: () => {},
-                onExportPDF: () => {},
+                onExportExcel: () => {
+                  const headers = enablePacking ? ['Product', 'SKU', 'Category', 'Stock', 'Unit', 'Avg Cost', 'Selling Price', 'Stock Value', 'Movement', 'Status'] : ['Product', 'SKU', 'Category', 'Stock', 'Avg Cost', 'Selling Price', 'Stock Value', 'Movement', 'Status'];
+                  const rows = filteredProducts.map((p) =>
+                    enablePacking
+                      ? [p.name, p.sku, p.category, p.stock, p.stock, p.avgCost, p.sellingPrice, p.stockValue, p.movement, p.status]
+                      : [p.name, p.sku, p.category, p.stock, p.avgCost, p.sellingPrice, p.stockValue, p.movement, p.status]
+                  );
+                  const data: ExportData = { headers, rows, title: 'Inventory Overview' };
+                  try { exportToExcel(data, 'inventory-overview'); toast.success('Inventory exported as Excel'); } catch (e) { toast.error('Export failed'); }
+                },
+                onExportPDF: () => {
+                  const headers = enablePacking ? ['Product', 'SKU', 'Category', 'Stock', 'Unit', 'Avg Cost', 'Selling Price', 'Stock Value', 'Movement', 'Status'] : ['Product', 'SKU', 'Category', 'Stock', 'Avg Cost', 'Selling Price', 'Stock Value', 'Movement', 'Status'];
+                  const rows = filteredProducts.map((p) =>
+                    enablePacking
+                      ? [p.name, p.sku, p.category, p.stock, p.stock, p.avgCost, p.sellingPrice, p.stockValue, p.movement, p.status]
+                      : [p.name, p.sku, p.category, p.stock, p.avgCost, p.sellingPrice, p.stockValue, p.movement, p.status]
+                  );
+                  const data: ExportData = { headers, rows, title: 'Inventory Overview' };
+                  try { exportToPDF(data, 'inventory-overview'); toast.success('PDF opened for print'); } catch (e) { toast.error('Export failed'); }
+                },
               }}
             />
 

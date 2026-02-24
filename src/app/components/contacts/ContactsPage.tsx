@@ -31,6 +31,7 @@ import { GenericLedgerView } from '@/app/components/accounting/GenericLedgerView
 import { ViewContactProfile } from './ViewContactProfile';
 import { ImportContactsModal } from './ImportContactsModal';
 import { toast } from 'sonner';
+import { formatCurrency } from '@/app/utils/formatCurrency';
 import { Pagination } from '@/app/components/ui/pagination';
 import { CustomSelect } from '@/app/components/ui/custom-select';
 import { ListToolbar } from '@/app/components/ui/list-toolbar';
@@ -476,7 +477,7 @@ export const ContactsPage = () => {
             <div className="flex items-start justify-between mb-3">
               <div>
                 <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Total Receivables</p>
-                <p className="text-2xl font-bold text-green-400 mt-1">${summary.totalReceivables.toLocaleString()}</p>
+                <p className="text-2xl font-bold text-green-400 mt-1">{formatCurrency(summary.totalReceivables)}</p>
                 <p className="text-xs text-gray-500 mt-1">
                   Money to receive
                 </p>
@@ -492,7 +493,7 @@ export const ContactsPage = () => {
             <div className="flex items-start justify-between mb-3">
               <div>
                 <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Total Payables</p>
-                <p className="text-2xl font-bold text-red-400 mt-1">${summary.totalPayables.toLocaleString()}</p>
+                <p className="text-2xl font-bold text-red-400 mt-1">{formatCurrency(summary.totalPayables)}</p>
                 <p className="text-xs text-gray-500 mt-1">
                   Money to pay
                 </p>
@@ -897,7 +898,7 @@ export const ContactsPage = () => {
                           "text-sm font-semibold tabular-nums leading-[1.4]",
                           contact.receivables > 0 ? "text-green-400" : "text-gray-600"
                         )}>
-                          ${contact.receivables.toLocaleString()}
+                          {formatCurrency(contact.receivables)}
                         </div>
                       </div>
 
@@ -907,7 +908,7 @@ export const ContactsPage = () => {
                           "text-sm font-semibold tabular-nums leading-[1.4]",
                           contact.payables > 0 ? "text-red-400" : "text-gray-600"
                         )}>
-                          ${contact.payables.toLocaleString()}
+                          {formatCurrency(contact.payables)}
                         </div>
                       </div>
 

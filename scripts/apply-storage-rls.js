@@ -1,8 +1,14 @@
 /**
- * Apply storage RLS policies for payment-attachments bucket (fixes journal entry uploads).
- * Uses DATABASE_POOLER_URL or DATABASE_URL from .env.local (same as run-migrations.js).
+ * Apply storage RLS policies (payment-attachments + product-images).
+ * Uses DATABASE_POOLER_URL or DATABASE_URL from .env.local.
  *
  * Usage: npm run apply-storage-rls
+ *
+ * Fix options when storage upload is blocked by RLS:
+ *   (1) VPS: cd /root/NEWPOSV3 && bash deploy/deploy.sh — RLS applies automatically.
+ *   (2) Supabase Dashboard → SQL Editor → run RUN_THIS_FOR_STORAGE_RLS.sql (and
+ *       RUN_PRODUCT_IMAGES_STORAGE_RLS.sql if product image uploads fail).
+ *   (3) Local: npm run apply-storage-rls (set DATABASE_URL or DATABASE_POOLER_URL in .env.local).
  */
 
 import pg from 'pg';
@@ -12,6 +18,12 @@ import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, '..');
+const migrationsDir = path.join(root, 'supabase-extract', 'migrations');
+
+const SQL_FILES = [
+  'RUN_THIS_FOR_STORAGE_RLS.sql',
+  'RUN_PRODUCT_IMAGES_STORAGE_RLS.sql',
+];
 
 function loadEnvLocal() {
   const envPath = path.join(root, '.env.local');
@@ -38,26 +50,31 @@ if (!connectionString) {
   console.error('Add one of them (e.g. postgresql://postgres.xxx:password@host:6543/postgres) and run again.');
   process.exit(1);
 }
-
-const sqlPath = path.join(root, 'supabase-extract', 'migrations', 'RUN_THIS_FOR_STORAGE_RLS.sql');
-if (!fs.existsSync(sqlPath)) {
-  console.error('[apply-storage-rls] SQL file not found:', sqlPath);
-  process.exit(1);
-}
-
-const sql = fs.readFileSync(sqlPath, 'utf8');
-if (!sql.trim()) {
-  console.error('[apply-storage-rls] SQL file is empty');
-  process.exit(1);
-}
+// Hint: ensure this DB is the SAME project as your app (check Supabase project URL vs host in .env.local)
+try {
+  const u = new URL(connectionString.replace(/^postgresql:\/\//, 'https://'));
+  console.log('[apply-storage-rls] Using DB host:', u.hostname);
+} catch (_) {}
 
 async function run() {
   const client = new pg.Client({ connectionString });
   try {
     await client.connect();
-    console.log('[apply-storage-rls] Applying storage RLS policies...');
-    await client.query(sql);
-    console.log('[apply-storage-rls] Done. payment-attachments bucket RLS is updated.');
+    for (const file of SQL_FILES) {
+      const sqlPath = path.join(migrationsDir, file);
+      if (!fs.existsSync(sqlPath)) {
+        console.warn('[apply-storage-rls] Skip (not found):', file);
+        continue;
+      }
+      const sql = fs.readFileSync(sqlPath, 'utf8').trim();
+      if (!sql) {
+        console.warn('[apply-storage-rls] Skip (empty):', file);
+        continue;
+      }
+      console.log('[apply-storage-rls] Applying', file, '...');
+      await client.query(sql);
+    }
+    console.log('[apply-storage-rls] Done. Storage RLS (payment-attachments + product-images) updated.');
   } catch (err) {
     console.error('[apply-storage-rls] Error:', err.message);
     if (err.detail) console.error('Detail:', err.detail);

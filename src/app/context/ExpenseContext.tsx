@@ -72,9 +72,8 @@ export const useExpenses = () => {
   const context = useContext(ExpenseContext);
   if (!context) {
     // During hot reload in development, context might not be available
-    // Return a safe default to prevent crashes
+    // During hot reload or initial mount, context might not be available; return safe default to prevent crashes
     if (import.meta.env.DEV) {
-      console.warn('[ExpenseContext] useExpenses called outside ExpenseProvider, returning default context');
       const defaultError = () => { throw new Error('ExpenseProvider not available'); };
       return {
         expenses: [],

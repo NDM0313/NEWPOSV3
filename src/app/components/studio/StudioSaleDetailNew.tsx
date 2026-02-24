@@ -377,14 +377,14 @@ export const StudioSaleDetailNew = () => {
   // Convert studio_production_stages to ProductionStep[] (so UI can show and persist edits)
   // ledgerStatusByStageId: optional map from stage id to 'unpaid'|'paid' for Payable vs Paid
   const stagesToProductionSteps = useCallback((
-    stages: Array<{ id: string; stage_type: string; assigned_worker_id?: string | null; cost?: number; status?: string; expected_completion_date?: string | null; completed_at?: string | null; notes?: string | null; worker?: { id: string; name: string } }>,
+    stages: Array<{ id: string; stage_type: string; assigned_worker_id?: string | null; assigned_at?: string | null; cost?: number; expected_cost?: number | null; status?: string; expected_completion_date?: string | null; completed_at?: string | null; notes?: string | null; worker?: { id: string; name: string } }>,
     ledgerStatusByStageId?: Record<string, 'unpaid' | 'paid'>
   ): ProductionStep[] => {
     const statusMap: Record<string, StepStatus> = { pending: 'Pending', in_progress: 'In Progress', completed: 'Completed' };
     const stageTypeMap: Record<string, 'dyer' | 'stitching' | 'handwork'> = { dyer: 'dyer', dyeing: 'dyer', stitching: 'stitching', handwork: 'handwork' };
     return stages.map((s, i) => {
       const { name, icon } = stageTypeToStep(s.stage_type, i);
-      const workerName = s.worker?.name || '';
+      const workerName = s.assigned_worker_id ? (s.worker?.name || '') : '';
       const stageType = stageTypeMap[s.stage_type] || undefined;
       const ledgerStatus = ledgerStatusByStageId?.[s.id];
       const workerPaymentStatus: 'Payable' | 'Pending' | 'Paid' =
@@ -398,7 +398,7 @@ export const StudioSaleDetailNew = () => {
         assignedWorker: workerName,
         workerId: s.assigned_worker_id || undefined,
         assignedWorkers: s.assigned_worker_id ? [{ id: `aw-${s.id}`, workerId: s.assigned_worker_id, workerName, role: 'Main', cost: s.cost ?? 0 }] : [],
-        assignedDate: '',
+        assignedDate: s.assigned_at || '',
         expectedCompletionDate: s.expected_completion_date || '',
         actualCompletionDate: s.completed_at || undefined,
         workerCost: s.cost ?? 0,
@@ -572,17 +572,19 @@ export const StudioSaleDetailNew = () => {
     loadWorkers();
   }, [loadStudioOrder, loadWorkers]);
 
-  /** Reload production steps from DB so status/costs are always DB-driven (no ghost in-progress). */
-  const reloadProductionSteps = useCallback(async () => {
-    if (!productionId || !saleDetail) return;
+  /** Reload production steps from DB. Returns the loaded steps (with real server ids) for next-step auto-apply. */
+  const reloadProductionSteps = useCallback(async (): Promise<ProductionStep[] | undefined> => {
+    if (!productionId || !saleDetail) return undefined;
     try {
       await studioProductionService.syncWorkerLedgerEntriesForProduction(productionId);
       window.dispatchEvent(new CustomEvent('studio-production-saved'));
       const stages = await studioProductionService.getStagesByProductionId(productionId);
       const steps = stagesToProductionSteps(stages);
       setSaleDetail(prev => prev ? { ...prev, productionSteps: steps } : prev);
+      return steps;
     } catch (e) {
       console.warn('[StudioSaleDetail] Reload stages failed:', e);
+      return undefined;
     }
   }, [productionId, saleDetail, stagesToProductionSteps]);
 
@@ -608,18 +610,20 @@ export const StudioSaleDetailNew = () => {
   const effectiveTotalAmount = saleDetail ? saleDetail.baseAmount + saleDetail.shipmentCharges + studioCharges : 0;
   const effectiveBalanceDue = saleDetail ? effectiveTotalAmount - saleDetail.paidAmount : 0;
 
-  // Check if all production tasks are completed
-  const allTasksCompleted = saleDetail ? (saleDetail.productionSteps.length > 0 && 
-    saleDetail.productionSteps.every(step => step.status === 'Completed')) : false;
+  // Check if all production tasks are completed (normalize status so 'Completed'/'completed' both count)
+  const isStepCompleted = (s: { status?: string }) => (s.status || '').toLowerCase() === 'completed';
+  const allTasksCompleted = saleDetail
+    ? saleDetail.productionSteps.length > 0 && saleDetail.productionSteps.every(isStepCompleted)
+    : false;
 
-  /** Header status: ONLY from production stages. Completed = all stages received; never from assign/start. */
+  /** Header status: ONLY from production stages. Completed = all stages completed; else In Progress / Pending. */
   const headerStatus: SaleStatus = !saleDetail
     ? 'Draft'
     : saleDetail.productionSteps.length === 0
       ? 'Draft'
       : allTasksCompleted
         ? 'Completed'
-        : saleDetail.productionSteps.some(s => s.status === 'In Progress' || s.status === 'Completed')
+        : saleDetail.productionSteps.some(s => s.status === 'In Progress' || isStepCompleted(s))
           ? 'In Progress'
           : 'Pending';
 
@@ -657,6 +661,23 @@ export const StudioSaleDetailNew = () => {
 
   const updateStepStatus = async (stepId: string, newStatus: StepStatus) => {
     if (!saleDetail) return;
+    const isServerUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(stepId);
+    const isReopen = newStatus === 'In Progress' && step?.status === 'Completed';
+    if (isServerUuid && isReopen) {
+      setSavingStage(true);
+      try {
+        await studioProductionService.reopenStage(stepId);
+        toast.success('Task reopened. Journal reversed, status reset to Pending.');
+        await reloadProductionSteps();
+        setReopenStepId(null);
+        window.dispatchEvent(new CustomEvent('studio-production-saved'));
+      } catch (e: any) {
+        toast.error(e?.message || 'Failed to reopen task');
+      } finally {
+        setSavingStage(false);
+      }
+      return;
+    }
     setSaleDetail(prev => {
       if (!prev) return prev;
       return {
@@ -694,17 +715,30 @@ export const StudioSaleDetailNew = () => {
     const workerName = step?.assignedWorker || 'Worker';
     setSavingStage(true);
     try {
-      await studioProductionService.receiveStage(stageId, actual, receiveNotes.trim() || null);
+      await studioProductionService.receiveStage(stageId, actual, receiveNotes.trim() || null, workerId || undefined);
       toast.success('Received from worker. Stage completed & worker ledger updated.');
       setShowReceiveModal(null);
       setReceiveActualCost('');
       setReceiveNotes('');
       savedSuccessfullyRef.current = false;
       setHasUnsavedChanges(true);
-      await reloadProductionSteps();
+      const currentStep = saleDetail?.productionSteps.find((s) => s.id === stageId);
+      const nextOrder = currentStep ? currentStep.order + 1 : 0;
+      const stepsAfterReload = await reloadProductionSteps();
+      const nextStep = stepsAfterReload?.find((s) => s.order === nextOrder);
+      if (nextStep) {
+        setExpandedSteps((prev) => new Set(prev).add(nextStep.id));
+        if (nextStep.status === 'Pending') {
+          setShowWorkerEditModal(nextStep.id);
+          setEditingWorkerData({
+            workers: [{ id: `aw-${nextStep.id}`, workerId: '', workerName: '', role: 'Main', cost: 0 }],
+            expectedCompletionDate: '',
+            notes: '',
+          });
+        }
+      }
       window.dispatchEvent(new CustomEvent('studio-production-saved'));
       window.dispatchEvent(new CustomEvent('ledgerUpdated', { detail: { ledgerType: 'worker', entityId: workerId } }));
-      // Show "Worker Payment" modal: Pay Now or Pay Later (no auto payment)
       setPayChoiceAfterReceive({ stageId, workerId, workerName, amount: actual });
     } catch (e: any) {
       toast.error(e?.message || 'Receive failed');
@@ -781,29 +815,51 @@ export const StudioSaleDetailNew = () => {
       toast.error('No production stages to save. Add stages first.');
       return;
     }
-    setSavingStage(true);
-    try {
-      const serverStages = await studioProductionService.getStagesByProductionId(currentProductionId);
-      if (serverStages.length === 0) {
-        toast.error('No stages found on server. Refresh the page and try again.');
-        setSavingStage(false);
+    const validWorkerIds = new Set(workers.map(w => w.id));
+    const resolveWorkerId = (id: string | undefined): string | null => {
+      if (!id) return null;
+      return validWorkerIds.has(id) ? id : null;
+    };
+    for (const step of localSteps) {
+      if (step.status !== 'Completed') continue;
+      const cost = step.workerCost ?? 0;
+      if (cost <= 0) continue;
+      const wid = resolveWorkerId(step.workerId || step.assignedWorkers?.[0]?.workerId);
+      if (!wid) {
+        toast.error('Completed tasks with cost must have a worker assigned. Please assign a worker to each completed task before saving.');
         return;
       }
-      const validWorkerIds = new Set(workers.map(w => w.id));
-      const resolveWorkerId = (id: string | undefined): string | null => {
-        if (!id) return null;
-        return validWorkerIds.has(id) ? id : null;
-      };
+    }
+    setSavingStage(true);
+    try {
+      let serverStages = await studioProductionService.getStagesByProductionId(currentProductionId);
+      if (serverStages.length === 0) {
+        const production = await studioProductionService.getProductionById(currentProductionId);
+        if (production?.id) {
+          const stageTypes = ['dyer', 'handwork', 'stitching'] as const;
+          for (const st of stageTypes) {
+            await studioProductionService.createStage(currentProductionId, { stage_type: st, cost: 0 });
+          }
+          serverStages = await studioProductionService.getStagesByProductionId(currentProductionId);
+        }
+        if (serverStages.length === 0) {
+          toast.error('No stages found on server. Refresh the page and try again.');
+          setSavingStage(false);
+          return;
+        }
+      }
       const serverStageById = new Map(serverStages.map((s: any) => [s.id, s]));
+      const serverStagesByOrder = [...serverStages].sort((a, b) => (a.created_at || '').localeCompare(b.created_at || ''));
+      const completedOrdersJustSaved: number[] = [];
       for (const step of localSteps) {
-        const isServerUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(step.id);
-        if (!isServerUuid) continue;
-        const serverStage = serverStageById.get(step.id);
+        const serverStageByOrder = serverStagesByOrder[step.order - 1];
+        const serverStage = serverStageById.get(step.id) ?? serverStageByOrder;
         if (!serverStage) continue;
+        const stageId = (serverStage as any).id;
         const serverIsCompleted = (serverStage as any).status === 'completed';
         const localIsCompleted = step.status === 'Completed';
+        if (localIsCompleted && !serverIsCompleted) completedOrdersJustSaved.push(step.order);
         if (serverIsCompleted && localIsCompleted) continue;
-        const stageId = step.id;
         const backendStatus = step.status === 'Pending' ? 'pending' : step.status === 'In Progress' ? 'in_progress' : 'completed';
         const workerId = resolveWorkerId(step.workerId || step.assignedWorkers?.[0]?.workerId);
         await studioProductionService.updateStage(stageId, {
@@ -819,7 +875,20 @@ export const StudioSaleDetailNew = () => {
             : null
         });
       }
-      await reloadProductionSteps();
+      const maxCompletedOrder = completedOrdersJustSaved.length ? Math.max(...completedOrdersJustSaved) : 0;
+      const stepsAfterReload = await reloadProductionSteps();
+      const nextStepAfterSave = stepsAfterReload?.find((s) => s.order === maxCompletedOrder + 1);
+      if (nextStepAfterSave) {
+        setExpandedSteps((prev) => new Set(prev).add(nextStepAfterSave.id));
+        if (nextStepAfterSave.status === 'Pending') {
+          setShowWorkerEditModal(nextStepAfterSave.id);
+          setEditingWorkerData({
+            workers: [{ id: `aw-${nextStepAfterSave.id}`, workerId: '', workerName: '', role: 'Main', cost: 0 }],
+            expectedCompletionDate: '',
+            notes: '',
+          });
+        }
+      }
       setHasUnsavedChanges(false);
       savedSuccessfullyRef.current = true;
       toast.success('Changes saved to database.');
@@ -988,7 +1057,7 @@ export const StudioSaleDetailNew = () => {
     setShowWorkerEditModal(stepId);
   };
 
-  const handleSaveWorkerEdit = (andStart: boolean = false) => {
+  const handleSaveWorkerEdit = async (andStart: boolean = false) => {
     if (!showWorkerEditModal) return;
 
     const totalWorkerCost = editingWorkerData.workers.reduce((sum, w) => sum + w.cost, 0);
@@ -997,7 +1066,29 @@ export const StudioSaleDetailNew = () => {
       : editingWorkerData.workers[0]?.workerName || '';
 
     const stepId = showWorkerEditModal;
-    // Assign → In Progress: as soon as a worker is assigned, stage is In Progress
+    const isServerUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(stepId);
+    const oneWorker = editingWorkerData.workers.length === 1 && editingWorkerData.workers[0]?.workerId;
+
+    if (isServerUuid && oneWorker && editingWorkerData.workers[0]) {
+      setSavingStage(true);
+      try {
+        await studioProductionService.assignWorkerToStage(stepId, {
+          worker_id: editingWorkerData.workers[0].workerId,
+          expected_cost: totalWorkerCost,
+          expected_completion_date: editingWorkerData.expectedCompletionDate?.trim() || null,
+        });
+        toast.success('Worker assigned. Task is now In Progress.');
+        await reloadProductionSteps();
+        setShowWorkerEditModal(null);
+        window.dispatchEvent(new CustomEvent('studio-production-saved'));
+      } catch (e: any) {
+        toast.error(e?.message || 'Assign failed');
+      } finally {
+        setSavingStage(false);
+      }
+      return;
+    }
+
     const setInProgress = editingWorkerData.workers.length > 0;
     setSaleDetail(prev => ({
       ...prev!,
@@ -1075,8 +1166,8 @@ export const StudioSaleDetailNew = () => {
   // Map stageType to template id (for modal selection)
   const stageTypeToTemplateId: Record<string, string> = { dyer: 'dyeing', handwork: 'handwork', stitching: 'stitching' };
 
-  // Apply task configuration – PRESERVE existing step data (assignments, status, cost, notes)
-  const handleApplyTaskConfiguration = (selectedTaskIds: string[]) => {
+  // Apply task configuration – PRESERVE existing step data, then PERSIST to backend so it survives navigation
+  const handleApplyTaskConfiguration = async (selectedTaskIds: string[]) => {
     const existingSteps = saleDetail.productionSteps;
     const newSteps: ProductionStep[] = [];
     let order = 1;
@@ -1186,6 +1277,39 @@ export const StudioSaleDetailNew = () => {
     }));
 
     setShowTaskCustomizationModal(false);
+
+    // Persist configuration so it survives back/forward navigation
+    try {
+      let currentProductionId = productionId;
+      if (!currentProductionId) {
+        const result = await ensureProductionForSale();
+        if (result.productionId) {
+          currentProductionId = result.productionId;
+          setProductionId(result.productionId);
+        }
+      }
+      if (currentProductionId) {
+        const stages = await studioProductionService.getStagesByProductionId(currentProductionId);
+        const taskIdToStageType: Record<string, 'dyer' | 'handwork' | 'stitching'> = {
+          dyeing: 'dyer',
+          handwork: 'handwork',
+          stitching: 'stitching',
+        };
+        const existingTypes = new Set((stages as any[]).map((s: any) => s.stage_type));
+        for (const taskId of selectedTaskIds) {
+          const stageType = taskIdToStageType[taskId];
+          if (stageType && !existingTypes.has(stageType)) {
+            await studioProductionService.createStage(currentProductionId, { stage_type: stageType, cost: 0 });
+            existingTypes.add(stageType);
+          }
+        }
+        await reloadProductionSteps();
+        toast.success('Configuration saved.');
+      }
+    } catch (e: any) {
+      console.warn('[StudioSaleDetail] Persist task config failed:', e?.message);
+      toast.warning('Configuration applied locally. Save from the page to persist.');
+    }
   };
 
   // Handle Tracking ID Update
@@ -1619,16 +1743,21 @@ export const StudioSaleDetailNew = () => {
                                       </Button>
                                     )}
                                     
-                                                    {/* In Progress → Receive from Worker (only when step has server UUID; else ask to save first) */}
-                                    {!stepLocked && step.status === 'In Progress' && step.assignedWorker && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(step.id) && (
+                                    {/* In Progress → Receive from Worker: job done? Enter actual cost & confirm to mark complete */}
+                                    {!stepLocked && step.status === 'In Progress' && step.assignedWorker && (
                                       <Button
                                         size="sm"
                                         onClick={() => {
+                                          if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(step.id)) {
+                                            toast.error('Save your changes first to create production stages, then try Receive again.');
+                                            return;
+                                          }
                                           setReceiveActualCost(String(step.workerCost || ''));
                                           setReceiveNotes(step.notes || '');
                                           setShowReceiveModal(step.id);
                                         }}
                                         className="text-xs h-8 bg-green-600 hover:bg-green-700"
+                                        title="Worker job done? Enter actual cost and confirm to mark this task complete"
                                       >
                                         Receive from Worker
                                       </Button>

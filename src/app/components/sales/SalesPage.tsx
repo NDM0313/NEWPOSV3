@@ -58,14 +58,17 @@ import { ViewPaymentsModal, type InvoiceDetails, type Payment } from './ViewPaym
 import { AttachmentViewer } from '@/app/components/shared/AttachmentViewer';
 import { SaleReturnPrintLayout } from '@/app/components/shared/SaleReturnPrintLayout';
 import { toast } from 'sonner';
+import { exportToCSV, exportToExcel, exportToPDF, type ExportData } from '@/app/utils/exportUtils';
 import { useCheckPermission } from '@/app/hooks/useCheckPermission';
 import { getEffectiveSaleStatus, getSaleStatusBadgeConfig, DEFAULT_SALE_BADGE, isPaymentClosedForSale, canAddPaymentToSale } from '@/app/utils/statusHelpers';
+import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
 
 // Mock data removed - using SalesContext which loads from Supabase
 
 export const SalesPage = () => {
   const { openDrawer, setCurrentView } = useNavigation();
   const { canEditSale, canDeleteSale, canCreateSale } = useCheckPermission();
+  const { formatCurrency } = useFormatCurrency();
   const { sales, deleteSale, updateSale, recordPayment, updateShippingStatus, refreshSales, loading } = useSales();
   const { companyId, branchId } = useSupabase();
   const { startDate, endDate } = useDateRange();
@@ -916,14 +919,14 @@ export const SalesPage = () => {
       case 'total':
         return (
           <div className="text-sm font-semibold text-white tabular-nums">
-            ${sale.total.toLocaleString()}
+            {formatCurrency(sale.total)}
           </div>
         );
       
       case 'paid':
         return (
           <div className="text-sm font-semibold text-green-400 tabular-nums">
-            ${sale.paid.toLocaleString()}
+            {formatCurrency(sale.paid)}
           </div>
         );
       
@@ -950,13 +953,13 @@ export const SalesPage = () => {
               }}
               className="text-sm font-semibold text-red-400 tabular-nums hover:text-red-300 hover:underline cursor-pointer text-right w-full"
             >
-              ${sale.due.toLocaleString()}
+              {formatCurrency(sale.due)}
             </button>
           );
         }
         return (
           sale.due > 0 ? (
-            <div className="text-sm font-semibold text-red-400 tabular-nums">${sale.due.toLocaleString()}</div>
+            <div className="text-sm font-semibold text-red-400 tabular-nums">{formatCurrency(sale.due)}</div>
           ) : (
             <div className="text-sm text-gray-600">-</div>
           )
@@ -967,7 +970,7 @@ export const SalesPage = () => {
         return (
           sale.returnDue > 0 ? (
             <div className="text-sm font-semibold text-orange-400 tabular-nums">
-              ${sale.returnDue.toLocaleString()}
+              {formatCurrency(sale.returnDue)}
             </div>
           ) : (
             <div className="text-sm text-gray-600">-</div>
@@ -1118,7 +1121,7 @@ export const SalesPage = () => {
             <div className="flex items-start justify-between mb-3">
               <div>
                 <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Total Sales</p>
-                <p className="text-2xl font-bold text-white mt-1">${summary.totalSales.toLocaleString()}</p>
+                <p className="text-2xl font-bold text-white mt-1">{formatCurrency(summary.totalSales)}</p>
                 <p className="text-xs text-gray-500 mt-1">All invoices</p>
               </div>
               <div className="w-12 h-12 rounded-full bg-blue-500/10 flex items-center justify-center">
@@ -1132,7 +1135,7 @@ export const SalesPage = () => {
             <div className="flex items-start justify-between mb-3">
               <div>
                 <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Total Paid</p>
-                <p className="text-2xl font-bold text-green-400 mt-1">${summary.totalPaid.toLocaleString()}</p>
+                <p className="text-2xl font-bold text-green-400 mt-1">{formatCurrency(summary.totalPaid)}</p>
                 <p className="text-xs text-gray-500 mt-1">Received amount</p>
               </div>
               <div className="w-12 h-12 rounded-full bg-green-500/10 flex items-center justify-center">
@@ -1146,7 +1149,7 @@ export const SalesPage = () => {
             <div className="flex items-start justify-between mb-3">
               <div>
                 <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Total Due</p>
-                <p className="text-2xl font-bold text-red-400 mt-1">${summary.totalDue.toLocaleString()}</p>
+                <p className="text-2xl font-bold text-red-400 mt-1">{formatCurrency(summary.totalDue)}</p>
                 <p className="text-xs text-gray-500 mt-1">Pending payments</p>
               </div>
               <div className="w-12 h-12 rounded-full bg-red-500/10 flex items-center justify-center">
@@ -1371,9 +1374,30 @@ export const SalesPage = () => {
           onImport: () => toast.info('Sales import coming soon. Use Add Sale to create invoices.')
         }}
         exportConfig={{
-          onExportCSV: () => console.log('Export CSV'),
-          onExportExcel: () => console.log('Export Excel'),
-          onExportPDF: () => console.log('Export PDF')
+          onExportCSV: () => {
+            const data: ExportData = {
+              headers: ['Invoice #', 'Date', 'Customer', 'Contact', 'Location', 'Items', 'Subtotal', 'Total', 'Paid', 'Due', 'Payment Status', 'Payment Method'],
+              rows: sortedSales.map(s => [s.invoiceNo, s.date, s.customerName, s.contactNumber || '', s.location || '', s.itemsCount, s.subtotal, s.total, s.paid, s.due, s.paymentStatus, s.paymentMethod || '']),
+              title: 'Sales'
+            };
+            try { exportToCSV(data, 'sales'); toast.success('Sales exported as CSV'); } catch (e) { toast.error('Export failed'); }
+          },
+          onExportExcel: () => {
+            const data: ExportData = {
+              headers: ['Invoice #', 'Date', 'Customer', 'Contact', 'Location', 'Items', 'Subtotal', 'Total', 'Paid', 'Due', 'Payment Status', 'Payment Method'],
+              rows: sortedSales.map(s => [s.invoiceNo, s.date, s.customerName, s.contactNumber || '', s.location || '', s.itemsCount, s.subtotal, s.total, s.paid, s.due, s.paymentStatus, s.paymentMethod || '']),
+              title: 'Sales'
+            };
+            try { exportToExcel(data, 'sales'); toast.success('Sales exported as Excel'); } catch (e) { toast.error('Export failed'); }
+          },
+          onExportPDF: () => {
+            const data: ExportData = {
+              headers: ['Invoice #', 'Date', 'Customer', 'Contact', 'Location', 'Items', 'Subtotal', 'Total', 'Paid', 'Due', 'Payment Status', 'Payment Method'],
+              rows: sortedSales.map(s => [s.invoiceNo, s.date, s.customerName, s.contactNumber || '', s.location || '', s.itemsCount, s.subtotal, s.total, s.paid, s.due, s.paymentStatus, s.paymentMethod || '']),
+              title: 'Sales'
+            };
+            try { exportToPDF(data, 'sales'); toast.success('PDF opened for print'); } catch (e) { toast.error('Export failed'); }
+          }
         }}
       />
 
@@ -1560,7 +1584,7 @@ export const SalesPage = () => {
                               </Badge>
                             </div>
                             <div className="text-right">
-                              <div className="text-sm font-semibold text-red-400 tabular-nums">-PKR {ret.total?.toLocaleString() || '0'}</div>
+                              <div className="text-sm font-semibold text-red-400 tabular-nums">-Rs. {ret.total?.toLocaleString() || '0'}</div>
                             </div>
                             <div className="text-right text-sm text-gray-400">{ret.items_count || ret.items?.length || 0} items</div>
                             <div className="text-sm text-gray-400 truncate" title={ret.reason || ''}>{ret.reason || '—'}</div>
@@ -2245,7 +2269,7 @@ export const SalesPage = () => {
                       </p>
                     </div>
                     <div className="text-right">
-                      <p className="text-sm font-semibold text-red-400">-PKR {ret.total?.toLocaleString() || '0'}</p>
+                      <p className="text-sm font-semibold text-red-400">-Rs. {ret.total?.toLocaleString() || '0'}</p>
                     </div>
                   </div>
                   {ret.items && ret.items.length > 0 && (
@@ -2255,7 +2279,7 @@ export const SalesPage = () => {
                         {ret.items.map((item: any, idx: number) => (
                           <div key={idx} className="flex items-center justify-between text-sm">
                             <span className="text-gray-300">{item.product_name} {item.sku ? `(${item.sku})` : ''}</span>
-                            <span className="text-gray-400">Qty: {item.quantity} × PKR {item.unit_price?.toLocaleString() || '0'}</span>
+                            <span className="text-gray-400">Qty: {item.quantity} × Rs. {item.unit_price?.toLocaleString() || '0'}</span>
                           </div>
                         ))}
                       </div>
@@ -2381,15 +2405,15 @@ export const SalesPage = () => {
                             <td className="px-4 py-3 text-sm text-white">{item.product_name}</td>
                             <td className="px-4 py-3 text-sm text-gray-400 font-mono">{item.sku}</td>
                             <td className="px-4 py-3 text-sm text-gray-300 text-center">{item.quantity}</td>
-                            <td className="px-4 py-3 text-sm text-gray-300 text-right tabular-nums">PKR {item.unit_price?.toLocaleString() || '0'}</td>
-                            <td className="px-4 py-3 text-sm font-semibold text-red-400 text-right tabular-nums">-PKR {item.total?.toLocaleString() || '0'}</td>
+                            <td className="px-4 py-3 text-sm text-gray-300 text-right tabular-nums">Rs. {item.unit_price?.toLocaleString() || '0'}</td>
+                            <td className="px-4 py-3 text-sm font-semibold text-red-400 text-right tabular-nums">-Rs. {item.total?.toLocaleString() || '0'}</td>
                           </tr>
                         ))}
                       </tbody>
                       <tfoot className="bg-[#0B0F19] border-t border-gray-800">
                         <tr>
                           <td colSpan={4} className="px-4 py-3 text-sm font-semibold text-gray-300 text-right">Total Return Amount:</td>
-                          <td className="px-4 py-3 text-lg font-bold text-red-400 text-right tabular-nums">-PKR {selectedReturn.total?.toLocaleString() || '0'}</td>
+                          <td className="px-4 py-3 text-lg font-bold text-red-400 text-right tabular-nums">-Rs. {selectedReturn.total?.toLocaleString() || '0'}</td>
                         </tr>
                       </tfoot>
                     </table>

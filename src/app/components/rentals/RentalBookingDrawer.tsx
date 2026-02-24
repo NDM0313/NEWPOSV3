@@ -38,6 +38,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from "../ui/select";
+import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
 import { ReturnDressModal } from './ReturnDressModal';
 import {
     Command,
@@ -83,6 +84,7 @@ export const RentalBookingDrawer = ({ isOpen, onClose, editRental }: RentalBooki
   const { companyId, branchId, user } = useSupabase();
   const { refreshRentals } = useRentals();
   const accounting = useAccounting();
+  const { formatCurrency } = useFormatCurrency();
   const { openDrawer, createdContactId, setCreatedContactId } = useNavigation();
   const [existingBookings, setExistingBookings] = useState<RentalBooking[]>([]);
   const [loadingBookings, setLoadingBookings] = useState(false);
@@ -731,11 +733,11 @@ export const RentalBookingDrawer = ({ isOpen, onClose, editRental }: RentalBooki
                                        </div>
                                        <p className="text-xs text-gray-500 mb-2">{product.sku}</p>
                                        <div className="flex items-center gap-4 text-sm">
-                                           <span className="text-gray-500 line-through text-xs">Retail: ${product.retailPrice.toLocaleString()}</span>
+                                           <span className="text-gray-500 line-through text-xs">Retail: {formatCurrency(Number(product.retailPrice) || 0)}</span>
                                            {product.status === 'retail_only' ? (
                                              <span className="font-bold text-blue-400 text-xs bg-blue-900/20 px-2 py-0.5 rounded">Set Rent Manually</span>
                                            ) : (
-                                             <span className="font-bold text-pink-400">Rent: ${product.rentPrice?.toLocaleString() ?? '0'}</span>
+                                             <span className="font-bold text-pink-400">Rent: {formatCurrency(Number(product.rentPrice) || 0)}</span>
                                            )}
                                        </div>
                                    </div>
@@ -835,7 +837,7 @@ export const RentalBookingDrawer = ({ isOpen, onClose, editRental }: RentalBooki
                   <div className="space-y-3 mb-4">
                       <div className="flex justify-between text-sm text-gray-400">
                           <span>Total Rent</span>
-                          <span className="text-white font-medium">${currentRentPrice.toLocaleString()}</span>
+                          <span className="text-white font-medium">{formatCurrency(currentRentPrice)}</span>
                       </div>
                       <div className="flex justify-between items-center text-sm text-gray-400">
                           <span>Advance / Booking Amount</span>
@@ -851,7 +853,7 @@ export const RentalBookingDrawer = ({ isOpen, onClose, editRental }: RentalBooki
                       <div className="flex justify-between text-sm font-bold text-white pt-2 border-t border-gray-800">
                           <span>Balance Due</span>
                           <span className="text-pink-500">
-                              ${Math.max(0, currentRentPrice - (parseFloat(advancePaid) || 0)).toLocaleString()}
+                              {formatCurrency(Math.max(0, currentRentPrice - (parseFloat(advancePaid) || 0)))}
                           </span>
                       </div>
                   </div>

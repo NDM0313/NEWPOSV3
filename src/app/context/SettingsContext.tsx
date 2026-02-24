@@ -148,6 +148,7 @@ export interface InventorySettings {
   autoReorderEnabled: boolean;
   barcodeRequired: boolean;
   enablePacking: boolean; // Global toggle: ON = boxes/pieces enabled everywhere, OFF = completely hidden
+  defaultUnitId: string | null; // Default unit for new products / dropdowns when none selected
 }
 
 export interface RentalSettings {
@@ -262,7 +263,7 @@ function getDefaultSettingsStub(): SettingsContextType {
     updateSalesSettings: noop,
     purchaseSettings: { defaultSupplierPayableAccount: '', overReceiveAllowed: false, purchaseApprovalRequired: false, grnRequired: false, autoPostToInventory: true, defaultPaymentTerms: 0 },
     updatePurchaseSettings: noop,
-    inventorySettings: { lowStockThreshold: 0, reorderAlertDays: 0, negativeStockAllowed: false, valuationMethod: 'FIFO', autoReorderEnabled: false, barcodeRequired: false, enablePacking: false },
+    inventorySettings: { lowStockThreshold: 0, reorderAlertDays: 0, negativeStockAllowed: false, valuationMethod: 'FIFO', autoReorderEnabled: false, barcodeRequired: false, enablePacking: false, defaultUnitId: null },
     updateInventorySettings: noop,
     rentalSettings: { defaultLateFeePerDay: 0, gracePeriodDays: 0, advanceRequired: false, advancePercentage: 0, securityDepositRequired: false, securityDepositAmount: 0, damageChargeEnabled: false, autoExtendAllowed: false },
     updateRentalSettings: noop,
@@ -354,6 +355,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
     autoReorderEnabled: false,
     barcodeRequired: false,
     enablePacking: false, // Default: Packing disabled
+    defaultUnitId: null,
   });
 
   // Rental Settings
@@ -561,6 +563,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
         autoReorderEnabled: inventoryData.autoReorderEnabled || false,
         barcodeRequired: inventoryData.barcodeRequired || false,
         enablePacking: enablePacking || false,
+        defaultUnitId: inventoryData.defaultUnitId ?? null,
       });
 
       // Load Rental Settings
@@ -795,7 +798,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
     setInventorySettings(updated);
     
     try {
-      // Save inventory_settings (excluding enablePacking)
+      // Save inventory_settings (excluding enablePacking; defaultUnitId is included)
       const { enablePacking, ...otherSettings } = updated;
       await settingsService.setSetting(companyId, 'inventory_settings', otherSettings, 'inventory', 'Inventory module settings');
       

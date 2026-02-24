@@ -181,6 +181,64 @@ export const productService = {
     return data;
   },
 
+  /** Create a product variation (Size, Color, etc.). product_variations table.
+   * Supports two schemas: (name, cost_price, retail_price, current_stock) and (price, stock) only. */
+  async createVariation(params: {
+    product_id: string;
+    name: string;
+    sku: string;
+    barcode?: string | null;
+    attributes?: Record<string, string>;
+    cost_price?: number;
+    retail_price?: number;
+    wholesale_price?: number;
+    current_stock?: number;
+  }) {
+    const payloadFull = {
+      product_id: params.product_id,
+      name: params.name,
+      sku: params.sku,
+      barcode: params.barcode ?? null,
+      attributes: params.attributes ?? {},
+      cost_price: params.cost_price ?? null,
+      retail_price: params.retail_price ?? null,
+      wholesale_price: params.wholesale_price ?? null,
+      current_stock: params.current_stock ?? 0,
+      is_active: true,
+    };
+    const { data, error } = await supabase
+      .from('product_variations')
+      .insert(payloadFull)
+      .select()
+      .single();
+
+    if (error) {
+      const msg = (error as any).message || '';
+      const columnNotFound = /could not find.*column|column.*does not exist|PGRST/i.test(msg);
+      if (columnNotFound) {
+        const payloadAlt: Record<string, unknown> = {
+          product_id: params.product_id,
+          name: params.name,
+          sku: params.sku,
+          barcode: params.barcode ?? null,
+          attributes: params.attributes ?? {},
+          price: params.retail_price ?? params.cost_price ?? null,
+          stock: params.current_stock ?? 0,
+          is_active: true,
+        };
+        let res = await supabase.from('product_variations').insert(payloadAlt).select().single();
+        if (res.error && /could not find.*column|column.*does not exist|name/i.test((res.error as any).message || '')) {
+          const { name: _n, ...payloadNoName } = payloadAlt;
+          res = await supabase.from('product_variations').insert(payloadNoName).select().single();
+        }
+        if (res.error) throw res.error;
+        return res.data;
+      }
+      throw error;
+    }
+    return data;
+  },
+
   // Update product (form sends unit_id, category_id, brand_id in updates)
   async updateProduct(id: string, updates: Partial<Product>) {
     const { data, error } = await supabase

@@ -326,12 +326,10 @@ const ContactFormContent = ({ onClose }: { onClose: () => void }) => {
     supplier: boolean;
     worker: boolean;
   }>({
-    // All roles initially UNSELECTED (no default selection)
     customer: drawerContactType === 'customer' ? true : false,
     supplier: drawerContactType === 'supplier' ? true : false,
     worker: drawerContactType === 'worker' ? true : false,
   });
-  // Worker role = DB value. Must match Studio category filter: Dyeing (dyer) | Stitching (tailor, stitching-master, cutter) | Handwork (hand-worker, helper, embroidery)
   const WORKER_ROLES = [
     { value: 'dyer', label: 'Dyer', category: 'Dyeing' },
     { value: 'tailor', label: 'Tailor', category: 'Stitching' },
@@ -347,22 +345,63 @@ const ContactFormContent = ({ onClose }: { onClose: () => void }) => {
   const [selectedGroupId, setSelectedGroupId] = useState<string>('none');
   const [contactGroups, setContactGroups] = useState<any[]>([]);
   const [loadingGroups, setLoadingGroups] = useState(false);
-  
-  // Prefill name and phone from search text
+  const [editContact, setEditContact] = useState<any>(null);
+  const [loadingEdit, setLoadingEdit] = useState(false);
+
   const [prefillName, setPrefillName] = useState<string>(drawerPrefillName || '');
   const [prefillPhone, setPrefillPhone] = useState<string>(drawerPrefillPhone || '');
-  
-  // Update prefill when drawerPrefillName changes
+
+  // When opening for edit: prefill from list row immediately, then fetch full contact
   React.useEffect(() => {
-    if (drawerPrefillName) {
-      setPrefillName(drawerPrefillName);
+    if (drawerPrefillName) setPrefillName(drawerPrefillName);
+    if (drawerPrefillPhone) setPrefillPhone(drawerPrefillPhone);
+    if (drawerData?.contact) {
+      setPrefillName(drawerData.contact.name ?? drawerPrefillName ?? '');
+      setPrefillPhone(drawerData.contact.phone ?? drawerPrefillPhone ?? '');
     }
-    if (drawerPrefillPhone) {
-      setPrefillPhone(drawerPrefillPhone);
+  }, [drawerPrefillName, drawerPrefillPhone, drawerData?.contact]);
+
+  // Fetch full contact when editing (Step B: Edit Contact form pre-population)
+  React.useEffect(() => {
+    const uuid = drawerData?.contact?.uuid;
+    if (!uuid) {
+      setEditContact(null);
+      return;
     }
-  }, [drawerPrefillName, drawerPrefillPhone]);
-  
-  // Update contactRoles when drawerContactType changes (only if explicitly set)
+    let cancelled = false;
+    setLoadingEdit(true);
+    contactService.getContact(uuid)
+      .then((data) => {
+        if (!cancelled) {
+          setEditContact(data);
+          const t = data?.type;
+          if (t === 'worker') {
+            setContactRoles({ customer: false, supplier: false, worker: true });
+            setWorkerType((data?.worker_role || 'dyer') as string);
+          } else if (t === 'supplier') {
+            setContactRoles({ customer: false, supplier: true, worker: false });
+          } else if (t === 'both') {
+            setContactRoles({ customer: true, supplier: true, worker: false });
+          } else {
+            setContactRoles({ customer: true, supplier: false, worker: false });
+          }
+          const c = (data?.country || '').toString().toLowerCase();
+          setCountry(c.includes('india') ? 'in' : c.includes('bangladesh') ? 'bd' : 'pk');
+          setSelectedGroupId(data?.group_id || 'none');
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setEditContact(null);
+          toast.error('Could not load contact details. You can still edit name and phone.');
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingEdit(false);
+      });
+    return () => { cancelled = true; };
+  }, [drawerData?.contact?.uuid]);
+
   React.useEffect(() => {
     if (drawerContactType) {
       setContactRoles({
@@ -371,14 +410,14 @@ const ContactFormContent = ({ onClose }: { onClose: () => void }) => {
         worker: drawerContactType === 'worker' ? true : false,
       });
       if (drawerContactType === 'worker') setWorkerType('dyer');
-    } else {
+    } else if (!drawerData?.contact) {
       setContactRoles({
         customer: false,
         supplier: false,
         worker: false,
       });
     }
-  }, [drawerContactType]);
+  }, [drawerContactType, drawerData?.contact]);
 
   // Load contact groups based on selected roles
   React.useEffect(() => {
@@ -674,13 +713,29 @@ const ContactFormContent = ({ onClose }: { onClose: () => void }) => {
     }
   };
   
+  const ec = editContact;
+  const defaultName = ec?.name ?? prefillName ?? '';
+  const defaultPhone = ec?.phone ?? ec?.mobile ?? prefillPhone ?? '';
+  const defaultEmail = ec?.email ?? '';
+  const defaultAddress = ec?.address ?? '';
+  const defaultCity = ec?.city ?? '';
+  const defaultOpeningBalance = ec?.opening_balance != null ? String(ec.opening_balance) : '';
+  const defaultCreditLimit = ec?.credit_limit != null ? String(ec.credit_limit) : '';
+  const defaultPayTerm = ec?.payment_terms != null ? String(ec.payment_terms) : '';
+  const defaultTaxId = ec?.tax_number ?? ec?.ntn ?? '';
+  const defaultNotes = ec?.notes ?? '';
+  const defaultSupplierBusinessName = ec?.business_name ?? '';
+  const defaultContactPerson = ec?.contact_person ?? '';
+  const defaultSupplierNtn = ec?.ntn ?? '';
+  const defaultSupplierOpeningBalance = ec?.supplier_opening_balance != null ? String(ec.supplier_opening_balance) : '';
+
   return (
     <div className="flex flex-col h-full min-h-0">
       <div className="p-6 border-b border-gray-800 bg-gray-950 sticky top-0 z-10 shrink-0">
         <h2 className="text-xl font-bold text-white">{drawerData?.contact ? 'Edit Contact' : 'Add New Contact'}</h2>
         <p className="text-sm text-gray-400 mt-1">
           {drawerData?.contact
-            ? 'Update contact details below.'
+            ? (loadingEdit ? 'Loading contact...' : 'Update contact details below.')
             : drawerContactType 
             ? `Adding new ${drawerContactType}. Other roles disabled.`
             : 'Select contact roles (Customer/Supplier can be combined, Worker is separate)'}
@@ -771,7 +826,11 @@ const ContactFormContent = ({ onClose }: { onClose: () => void }) => {
         </div>
       </div>
 
-      <form onSubmit={handleContactSubmit} className="flex-1 min-h-0 overflow-y-auto p-6 space-y-6">
+      <form
+        key={`contact-form-${ec?.id ?? 'new'}`}
+        onSubmit={handleContactSubmit}
+        className="flex-1 min-h-0 overflow-y-auto p-6 space-y-6"
+      >
         {/* Contact Group / Category - Show for Customer and Supplier, hide for Worker */}
         {(contactRoles.customer || contactRoles.supplier) && (
           <div className="space-y-2">
@@ -819,7 +878,7 @@ const ContactFormContent = ({ onClose }: { onClose: () => void }) => {
             <Input 
               id="business-name"
               name="business-name"
-              defaultValue={prefillName}
+              defaultValue={defaultName}
               placeholder={
                 contactRoles.worker 
                   ? 'e.g. Ahmed Ali' 
@@ -836,12 +895,13 @@ const ContactFormContent = ({ onClose }: { onClose: () => void }) => {
           {contactRoles.supplier && (
             <div className="space-y-2">
               <Label htmlFor="contact-person" className="text-gray-200">Contact Person</Label>
-              <Input 
-                id="contact-person"
-                name="contact-person"
-                placeholder="e.g. John Doe (optional)" 
-                className="bg-gray-900 border-gray-800 text-white" 
-              />
+            <Input 
+              id="contact-person"
+              name="contact-person"
+              defaultValue={defaultContactPerson}
+              placeholder="e.g. John Doe (optional)" 
+              className="bg-gray-900 border-gray-800 text-white" 
+            />
               <p className="text-xs text-gray-500">Primary contact person at supplier</p>
             </div>
           )}
@@ -851,7 +911,7 @@ const ContactFormContent = ({ onClose }: { onClose: () => void }) => {
             <Input 
               id="mobile"
               name="mobile"
-              defaultValue={prefillPhone}
+              defaultValue={defaultPhone}
               placeholder="+92 300 1234567" 
               className="bg-gray-900 border-gray-800 text-white" 
               required 
@@ -864,6 +924,7 @@ const ContactFormContent = ({ onClose }: { onClose: () => void }) => {
               id="email"
               name="email"
               type="email"
+              defaultValue={defaultEmail}
               placeholder="contact@business.com" 
               className="bg-gray-900 border-gray-800 text-white" 
             />
@@ -887,6 +948,7 @@ const ContactFormContent = ({ onClose }: { onClose: () => void }) => {
                     <Input 
                       id="supplier-business-name"
                       name="supplier-business-name"
+                      defaultValue={defaultSupplierBusinessName}
                       placeholder="e.g. ABC Trading Company" 
                       className="bg-gray-900 border-gray-800 text-white" 
                     />
@@ -898,6 +960,7 @@ const ContactFormContent = ({ onClose }: { onClose: () => void }) => {
                     <Input 
                       id="supplier-ntn"
                       name="supplier-ntn"
+                      defaultValue={defaultSupplierNtn}
                       placeholder="NTN-1234567" 
                       className="bg-gray-900 border-gray-800 text-white" 
                     />
@@ -923,6 +986,7 @@ const ContactFormContent = ({ onClose }: { onClose: () => void }) => {
                       id="supplier-opening-balance"
                       name="supplier-opening-balance"
                       type="number"
+                      defaultValue={defaultSupplierOpeningBalance}
                       placeholder="0.00" 
                       className="bg-gray-900 border-gray-800 text-white" 
                     />
@@ -986,6 +1050,7 @@ const ContactFormContent = ({ onClose }: { onClose: () => void }) => {
                       id="opening-balance"
                       name="opening-balance"
                       type="number"
+                      defaultValue={defaultOpeningBalance}
                       placeholder="0.00" 
                       className="bg-gray-900 border-gray-800 text-white" 
                     />
@@ -996,6 +1061,7 @@ const ContactFormContent = ({ onClose }: { onClose: () => void }) => {
                       id="credit-limit"
                       name="credit-limit"
                       type="number"
+                      defaultValue={defaultCreditLimit}
                       placeholder="0.00" 
                       className="bg-gray-900 border-gray-800 text-white" 
                     />
@@ -1008,9 +1074,10 @@ const ContactFormContent = ({ onClose }: { onClose: () => void }) => {
                     id="pay-term"
                     name="pay-term"
                     type="number"
+                    defaultValue={defaultPayTerm}
                     placeholder="30" 
                     className="bg-gray-900 border-gray-800 text-white" 
-                    />
+                  />
                   <p className="text-xs text-gray-500">Number of days to settle payments</p>
                 </div>
               </div>
@@ -1028,6 +1095,7 @@ const ContactFormContent = ({ onClose }: { onClose: () => void }) => {
                   <Input 
                     id="tax-id"
                     name="tax-id"
+                    defaultValue={defaultTaxId}
                     placeholder="NTN-1234567" 
                     className="bg-gray-900 border-gray-800 text-white" 
                   />
@@ -1056,6 +1124,7 @@ const ContactFormContent = ({ onClose }: { onClose: () => void }) => {
                   <Textarea 
                     id="address"
                     name="address"
+                    defaultValue={defaultAddress}
                     placeholder="Enter full address"
                     className="bg-gray-900 border-gray-800 text-white min-h-[80px]" 
                   />
@@ -1066,6 +1135,7 @@ const ContactFormContent = ({ onClose }: { onClose: () => void }) => {
                     <Input 
                       id="city"
                       name="city"
+                      defaultValue={defaultCity}
                       placeholder="Karachi" 
                       className="bg-gray-900 border-gray-800 text-white" 
                     />

@@ -43,6 +43,7 @@ import { toast } from "sonner";
 import { Building2, Zap, Users, ShoppingCart, Briefcase, Utensils, Car, Wallet, Home } from 'lucide-react';
 import { ListToolbar } from '../ui/list-toolbar';
 import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
+import { exportToCSV, exportToExcel, exportToPDF, type ExportData } from '@/app/utils/exportUtils';
 import { useExpenses } from '../../context/ExpenseContext';
 import { useAccounting } from '../../context/AccountingContext';
 import { useSupabase } from '../../context/SupabaseContext';
@@ -311,17 +312,31 @@ export const ExpensesDashboard = () => {
     [filteredExpenses]
   );
 
-  // Export handlers
+  // Export handlers (use filtered list from backend)
+  const getExportData = (): ExportData => ({
+    headers: ['Date', 'Reference #', 'Category', 'Expense For', 'Paid Via', 'Amount', 'Status'],
+    rows: filteredExpenses.map((e) => [
+      new Date(e.date).toLocaleDateString(),
+      e.expenseNo || '—',
+      e.category,
+      e.description,
+      e.paymentMethod,
+      e.amount ?? 0,
+      e.status ?? '',
+    ]),
+    title: 'Expenses',
+  });
+
   const handleExportCSV = () => {
-    console.log('Export Expenses CSV');
+    try { exportToCSV(getExportData(), 'expenses'); toast.success('Expenses exported as CSV'); } catch (e) { toast.error('Export failed'); }
   };
 
   const handleExportExcel = () => {
-    console.log('Export Expenses Excel');
+    try { exportToExcel(getExportData(), 'expenses'); toast.success('Expenses exported as Excel'); } catch (e) { toast.error('Export failed'); }
   };
 
   const handleExportPDF = () => {
-    console.log('Export Expenses PDF');
+    try { exportToPDF(getExportData(), 'expenses'); toast.success('PDF opened for print'); } catch (e) { toast.error('Export failed'); }
   };
 
   return (

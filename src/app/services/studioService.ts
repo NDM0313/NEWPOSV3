@@ -171,32 +171,87 @@ export const studioService = {
     if (error) throw error;
   },
 
-  // Get workers
-  async getAllWorkers(companyId: string) {
-    // Handle missing table gracefully
+  /**
+   * Get workers for studio. Uses contacts (type=worker) as primary source so IDs match
+   * studio_production_stages.assigned_worker_id (Studio Sale Detail saves contact id).
+   * Merges with workers table for rate/current_balance when sync exists.
+   */
+  async getAllWorkers(companyId: string): Promise<Worker[]> {
+    const result: Worker[] = [];
+    const seenIds = new Set<string>();
+
     try {
-      const { data, error } = await supabase
+      // 1) Load workers table first (for merge: rate, current_balance)
+      let workersRows: any[] = [];
+      const { data: workersData, error: workersErr } = await supabase
         .from('workers')
         .select('*')
         .eq('company_id', companyId)
-        .eq('is_active', true)
+        .order('name');
+      if (!workersErr && workersData?.length) workersRows = workersData;
+      const workersById = new Map(workersRows.map((w: any) => [w.id, w]));
+
+      // 2) Load from contacts (type=worker) – same source as Studio Sale Detail dropdown
+      const { data: contactWorkers, error: contactErr } = await supabase
+        .from('contacts')
+        .select('id, company_id, name, phone, mobile, is_active')
+        .eq('company_id', companyId)
+        .eq('type', 'worker')
         .order('name');
 
-      // If table doesn't exist (PGRST205), return empty array
-      if (error && (error.code === 'PGRST205' || error.message?.includes('Could not find the table'))) {
-        console.warn('[STUDIO SERVICE] workers table not found, returning empty array');
-        return [];
+      const contacts = (contactWorkers || []) as any[];
+      if (!contactErr && contacts.length > 0) {
+        for (const c of contacts) {
+          const id = c.id;
+          if (!id || seenIds.has(id)) continue;
+          seenIds.add(id);
+          const wr = workersById.get(id);
+          result.push({
+            id,
+            company_id: c.company_id,
+            name: c.name || '',
+            phone: c.phone || c.mobile || undefined,
+            worker_type: ((c as any).worker_role || wr?.worker_type || 'General') as Worker['worker_type'],
+            rate: wr ? Number(wr.rate) || 0 : 0,
+            current_balance: wr ? Number(wr.current_balance) || 0 : 0,
+            is_active: c.is_active !== false,
+          });
+        }
       }
 
-      if (error) throw error;
-      return data || [];
-    } catch (error: any) {
-      // If table doesn't exist, return empty array instead of throwing
-      if (error?.code === 'PGRST205' || error?.message?.includes('Could not find the table')) {
-        console.warn('[STUDIO SERVICE] workers table not found, returning empty array');
-        return [];
+      // 3) Add any workers-table-only rows (legacy) so we don’t drop anyone
+      for (const w of workersRows) {
+        const id = w.id;
+        if (!id || seenIds.has(id)) continue;
+        seenIds.add(id);
+        result.push({
+          id,
+          company_id: w.company_id,
+          name: w.name || '',
+          phone: w.phone || undefined,
+          worker_type: (w.worker_type || 'General') as Worker['worker_type'],
+          rate: Number(w.rate) || 0,
+          current_balance: Number(w.current_balance) || 0,
+          is_active: w.is_active !== false,
+        });
       }
-      throw error;
+
+      result.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+      return result;
+    } catch (e: any) {
+      if (e?.code === 'PGRST205' || e?.message?.includes('Could not find')) {
+        console.warn('[STUDIO SERVICE] workers/contacts error, falling back to workers table only', e);
+        try {
+          const { data, error } = await supabase
+            .from('workers')
+            .select('*')
+            .eq('company_id', companyId)
+            .eq('is_active', true)
+            .order('name');
+          if (!error && data?.length) return data as Worker[];
+        } catch (_) {}
+      }
+      return [];
     }
   },
 
@@ -348,6 +403,44 @@ export const studioService = {
       });
     } catch (e: any) {
       if (e?.code !== 'PGRST205' && !e?.message?.includes('Could not find')) throw e;
+    }
+
+    // Include any worker ID that has stages/ledger but wasn’t in getAllWorkers (e.g. contact id when contacts type=worker empty)
+    const listIds = new Set(list.map((w) => w.id).filter(Boolean) as string[]);
+    const missingIds = [
+      ...Object.keys(stageCounts),
+      ...Object.keys(totalEarningsByWorker),
+      ...Object.keys(dueBalanceByWorker),
+    ].filter((id) => id && !listIds.has(id));
+    const uniqueMissing = [...new Set(missingIds)];
+
+    for (const wid of uniqueMissing) {
+      const { data: fromWorkers } = await supabase.from('workers').select('*').eq('id', wid).eq('company_id', companyId).maybeSingle();
+      if (fromWorkers) {
+        list.push({
+          id: fromWorkers.id,
+          company_id: fromWorkers.company_id,
+          name: fromWorkers.name || '',
+          phone: fromWorkers.phone || undefined,
+          worker_type: (fromWorkers.worker_type || 'General') as Worker['worker_type'],
+          rate: Number(fromWorkers.rate) || 0,
+          current_balance: Number(fromWorkers.current_balance) || 0,
+          is_active: fromWorkers.is_active !== false,
+        });
+        continue;
+      }
+      const { data: fromContacts } = await supabase.from('contacts').select('id, company_id, name, phone, mobile, is_active').eq('id', wid).eq('company_id', companyId).maybeSingle();
+      if (fromContacts)
+        list.push({
+          id: fromContacts.id,
+          company_id: fromContacts.company_id,
+          name: fromContacts.name || '',
+          phone: fromContacts.phone || (fromContacts as any).mobile || undefined,
+          worker_type: ((fromContacts as any).worker_role || 'General') as Worker['worker_type'],
+          rate: 0,
+          current_balance: 0,
+          is_active: (fromContacts as any).is_active !== false,
+        });
     }
 
     return list.map((w) => {

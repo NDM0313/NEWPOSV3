@@ -175,6 +175,18 @@ export const studioCostsService = {
     const workerNameMap = new Map<string, { name: string; code?: string }>();
     (workers || []).forEach((w: any) => workerNameMap.set(w.id, { name: w.name || 'Unknown', code: w.code }));
 
+    // Resolve names for worker_ids not in workers table (e.g. contact id when workers sync exists but id = contact id)
+    const missingWorkerIds = workerIds.filter((id) => !workerNameMap.has(id));
+    if (missingWorkerIds.length > 0) {
+      const { data: contacts } = await supabase
+        .from('contacts')
+        .select('id, name')
+        .in('id', missingWorkerIds);
+      (contacts || []).forEach((c: any) => {
+        workerNameMap.set(c.id, { name: c.name || 'Unknown', code: undefined });
+      });
+    }
+
     const byWorker = new Map<string, WorkerCostSummary>();
     entries.forEach((e) => {
       const wid = e.worker_id;
@@ -298,6 +310,18 @@ export const studioCostsService = {
     const stageList = (stages || []) as any[];
     const stageIds = stageList.map((s) => s.id);
 
+    const missingStageWorkerIds = [...new Set(
+      stageList.filter((s) => s.assigned_worker_id && !s.worker?.name).map((s) => s.assigned_worker_id)
+    )] as string[];
+    const stageWorkerNameById = new Map<string, string>();
+    if (missingStageWorkerIds.length > 0) {
+      const { data: contacts } = await supabase
+        .from('contacts')
+        .select('id, name')
+        .in('id', missingStageWorkerIds);
+      (contacts || []).forEach((c: any) => stageWorkerNameById.set(c.id, c.name || 'Unknown'));
+    }
+
     let ledgerMap = new Map<string, { status: string; document_no?: string | null }>();
     if (stageIds.length > 0) {
       const { data: ledgerRows } = await supabase
@@ -315,10 +339,11 @@ export const studioCostsService = {
       const prodStages = stageList.filter((s) => s.production_id === p.id);
       const stagesDetail: StageCostDetail[] = prodStages.map((s) => {
         const ledger = ledgerMap.get(s.id);
+        const workerName = s.worker?.name || (s.assigned_worker_id ? stageWorkerNameById.get(s.assigned_worker_id) ?? null : null);
         return {
           stageId: s.id,
           stageType: s.stage_type || '',
-          workerName: s.worker?.name || null,
+          workerName: workerName || null,
           workerId: s.assigned_worker_id || null,
           cost: Number(s.cost) || 0,
           status: s.status || 'pending',

@@ -542,16 +542,20 @@ export const FullStockLedgerView: React.FC<FullStockLedgerViewProps> = ({
     return 'text-gray-400 bg-gray-900/20 border-gray-800';
   };
   
-  // Handle reference click to open sale/purchase detail
+  // Handle reference click to open sale/purchase detail or show adjustment info
   const handleReferenceClick = async (movement: StockMovement) => {
     const refType = movement.reference_type?.toLowerCase();
     const refId = movement.reference_id;
-    
+
     if (!refId) {
-      toast.info('No reference available for this movement');
+      if (refType?.includes('adjustment') || refType?.includes('audit')) {
+        toast.info(movement.notes ? `Adjustment: ${movement.notes}` : 'Stock adjustment – no linked document.');
+      } else {
+        toast.info('This movement has no linked document to open.');
+      }
       return;
     }
-    
+
     try {
       if (refType === 'sale') {
         // Try to get sale from context

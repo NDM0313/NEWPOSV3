@@ -474,17 +474,17 @@ export const SaleItemsSection: React.FC<SaleItemsSectionProps> = ({
                                     </div>
                                     )}
 
-                                    {/* Qty (Fixed 80px) */}
+                                    {/* Qty (Fixed 80px) - no spinner; show empty when 0 */}
                                     <div className="w-[80px]">
                                         <Input 
                                             ref={(el) => (itemQtyRefs.current[item.id] = el)}
                                             type="number"
                                             step={item.unitAllowDecimal === false ? "1" : "0.01"}
-                                            className="h-7 w-full text-center bg-transparent border-transparent hover:border-gray-700 focus:bg-gray-950 focus:border-blue-500 p-0.5 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-                                            value={item.qty}
+                                            className="h-7 w-full text-center bg-transparent border-transparent hover:border-gray-700 focus:bg-gray-950 focus:border-blue-500 p-0.5 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                            value={item.qty === 0 ? '' : item.qty}
                                             onChange={(e) => {
-                                                const value = parseFloat(e.target.value) || 0;
-                                                // Validate: if unit doesn't allow decimals, reject decimal input
+                                                const raw = e.target.value;
+                                                const value = raw === '' ? 0 : parseFloat(raw) || 0;
                                                 if (item.unitAllowDecimal === false && value % 1 !== 0) {
                                                     toast.error('This product unit does not allow decimal quantities');
                                                     return;
@@ -497,14 +497,17 @@ export const SaleItemsSection: React.FC<SaleItemsSectionProps> = ({
                                         />
                                     </div>
 
-                                    {/* Price (Fixed 100px - RIGHT ALIGNED) */}
+                                    {/* Price (Fixed 100px - RIGHT ALIGNED) - no spinner; show empty when 0 */}
                                     <div className="w-[100px]">
                                         <Input 
                                             ref={(el) => (itemPriceRefs.current[item.id] = el)}
                                             type="number"
-                                            className="h-7 w-full text-right bg-transparent border-transparent hover:border-gray-700 focus:bg-gray-950 focus:border-blue-500 px-2 py-0.5 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-                                            value={item.price}
-                                            onChange={(e) => updateItem(item.id, 'price', parseFloat(e.target.value) || 0)}
+                                            className="h-7 w-full text-right bg-transparent border-transparent hover:border-gray-700 focus:bg-gray-950 focus:border-blue-500 px-2 py-0.5 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                            value={item.price === 0 ? '' : item.price}
+                                            onChange={(e) => {
+                                                const raw = e.target.value;
+                                                updateItem(item.id, 'price', raw === '' ? 0 : parseFloat(raw) || 0);
+                                            }}
                                             onKeyDown={(e) => handlePriceKeyDown(e, item.id)}
                                             disabled={item.showVariations && !item.selectedVariationId}
                                             placeholder={item.showVariations && !item.selectedVariationId ? "—" : ""}

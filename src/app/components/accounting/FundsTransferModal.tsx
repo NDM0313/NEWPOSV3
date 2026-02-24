@@ -15,6 +15,7 @@ import { Textarea } from "../ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
 import { cn } from "../ui/utils";
 import { CalendarDatePicker } from "../ui/CalendarDatePicker";
+import { useFormatCurrency } from "@/app/hooks/useFormatCurrency";
 
 import { VirtualNumpad } from '../ui/virtual-numpad';
 
@@ -24,6 +25,7 @@ interface FundsTransferModalProps {
 }
 
 export const FundsTransferModal = ({ isOpen, onClose }: FundsTransferModalProps) => {
+  const { currencySymbol } = useFormatCurrency();
   const [amount, setAmount] = useState<string>("");
   const [fromAccount, setFromAccount] = useState("meezan");
   const [toAccount, setToAccount] = useState("jazzcash");
@@ -119,7 +121,7 @@ export const FundsTransferModal = ({ isOpen, onClose }: FundsTransferModalProps)
           <div className="space-y-3 text-center">
              <Label className="text-sm text-gray-400">Amount to Transfer</Label>
              <div className="relative max-w-[240px] mx-auto">
-                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 text-2xl font-light">$</span>
+                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 text-2xl font-light">{currencySymbol}</span>
                 <Input 
                   value={amount}
                   onChange={(e) => setAmount(e.target.value)}

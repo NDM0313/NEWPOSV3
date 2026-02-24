@@ -338,19 +338,23 @@ export const ProductStockHistoryDrawer = ({
     });
   };
 
-  // Handle reference click to open sale/purchase detail
+  // Handle reference click to open sale/purchase detail or show adjustment info
   const handleReferenceClick = async (movement: StockMovement) => {
     const refType = movement.reference_type?.toLowerCase();
     const refId = movement.reference_id;
-    
+
     if (!refId) {
-      toast.info('No reference available for this movement');
+      // Movements like adjustment often have no reference_id – show friendly message
+      if (refType?.includes('adjustment') || refType?.includes('audit')) {
+        toast.info(movement.notes ? `Adjustment: ${movement.notes}` : 'Stock adjustment – no linked document.');
+      } else {
+        toast.info('This movement has no linked document to open.');
+      }
       return;
     }
-    
+
     try {
       if (refType === 'sale' || refType?.includes('sale') || refType?.includes('invoice')) {
-        // Try to get sale from context
         const sale = getSaleById(refId);
         if (sale) {
           setSelectedSaleId(sale.id);
@@ -359,7 +363,6 @@ export const ProductStockHistoryDrawer = ({
           toast.info('Opening sale record...');
         }
       } else if (refType === 'purchase' || refType?.includes('purchase') || refType?.includes('order')) {
-        // Try to get purchase from context
         const purchase = getPurchaseById(refId);
         if (purchase) {
           setSelectedPurchase(purchase);
@@ -368,7 +371,7 @@ export const ProductStockHistoryDrawer = ({
           toast.info('Opening purchase record...');
         }
       } else if (refType === 'adjustment' || refType?.includes('adjustment') || refType?.includes('audit')) {
-        toast.info('Adjustment details: ' + (movement.notes || 'No additional details'));
+        toast.info(movement.notes ? `Adjustment: ${movement.notes}` : 'Adjustment – no additional details.');
       } else {
         toast.info(`Reference type: ${refType || 'N/A'}`);
       }

@@ -854,7 +854,7 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
                   </label>
                   <div className="relative">
                     <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 text-lg font-semibold">
-                      {settings.company?.currency || 'PKR'}
+                      {settings.company?.currency === 'PKR' || !settings.company?.currency ? 'Rs.' : settings.company.currency}
                     </span>
                     <input
                       type="number"

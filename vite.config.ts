@@ -2,16 +2,16 @@ import { defineConfig } from 'vite'
 import path from 'path'
 import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
+import { applyStorageRlsPlugin } from './vite-plugin-apply-storage-rls'
 
 export default defineConfig({
   server: {
     host: true, // Expose on 0.0.0.0 for mobile/network access
   },
   plugins: [
-    // The React and Tailwind plugins are both required for Make, even if
-    // Tailwind is not being actively used – do not remove them
     react(),
     tailwindcss(),
+    applyStorageRlsPlugin(),
   ],
   resolve: {
     alias: {

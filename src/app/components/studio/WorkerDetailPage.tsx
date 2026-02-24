@@ -25,6 +25,7 @@ import { format } from 'date-fns';
 import { useNavigation } from '../../context/NavigationContext';
 import { useSupabase } from '../../context/SupabaseContext';
 import { studioService } from '../../services/studioService';
+import { studioProductionService } from '../../services/studioProductionService';
 
 // ============================================
 // 🎯 TYPES
@@ -44,6 +45,8 @@ interface WorkerJob {
   assignedDate: Date;
   paymentAmount: number;
   isPaid: boolean;
+  /** Sale id for opening Studio Sale Detail when viewing this job */
+  saleId?: string;
 }
 
 interface WorkerDetail {
@@ -129,7 +132,7 @@ interface LedgerEntry {
 }
 
 export const WorkerDetailPage: React.FC = () => {
-  const { setCurrentView, setSelectedWorkerId, selectedWorkerId } = useNavigation();
+  const { setCurrentView, setSelectedWorkerId, selectedWorkerId, setSelectedStudioSaleId } = useNavigation();
   const { companyId } = useSupabase();
   const [worker, setWorker] = useState<WorkerDetail | null>(null);
   const [loading, setLoading] = useState(true);
@@ -152,6 +155,10 @@ export const WorkerDetailPage: React.FC = () => {
       }
       const w = data.worker;
       const mapDept = (tt?: string) => mapStageTypeToDept(tt || w.worker_type || '');
+      const stageIds = [...data.currentStages.map((s) => s.id), ...data.recentCompletedStages.map((s) => s.id)];
+      const ledgerStatus = stageIds.length > 0
+        ? await studioProductionService.getLedgerStatusForStages(stageIds)
+        : {};
       const currentJobs: WorkerJob[] = data.currentStages.map((s) => ({
         id: s.id,
         jobCardId: s.production_no || '—',
@@ -162,7 +169,8 @@ export const WorkerDetailPage: React.FC = () => {
         status: s.status as JobStatus,
         assignedDate: new Date(),
         paymentAmount: s.cost,
-        isPaid: false,
+        isPaid: ledgerStatus[s.id] === 'paid',
+        saleId: s.sale_id,
       }));
       const recentCompletedJobs: WorkerJob[] = data.recentCompletedStages.map((s) => ({
         id: s.id,
@@ -174,14 +182,14 @@ export const WorkerDetailPage: React.FC = () => {
         status: 'completed',
         assignedDate: new Date(),
         paymentAmount: s.cost,
-        isPaid: true,
+        isPaid: ledgerStatus[s.id] === 'paid',
       }));
       setWorker({
         id: w.id!,
         name: w.name,
         phone: w.phone || '',
         department: mapDept(w.worker_type),
-        rating: 4.5,
+        rating: typeof (w as any).rating === 'number' ? (w as any).rating : 4.5,
         joinedDate: (w as any).created_at ? new Date((w as any).created_at) : new Date(),
         activeJobs: w.activeJobs ?? 0,
         pendingJobs: w.pendingJobs ?? 0,
@@ -232,9 +240,13 @@ export const WorkerDetailPage: React.FC = () => {
     // TODO: pass worker filter when accounting supports it
   };
 
-  const handleViewJob = (jobId: string) => {
-    // Stage id – could open studio sale detail if we had sale_id on the stage payload
-    setCurrentView('studio-dashboard-new');
+  const handleViewJob = (job: WorkerJob) => {
+    if (job.saleId && setSelectedStudioSaleId) {
+      setSelectedStudioSaleId(job.saleId);
+      setCurrentView('studio-sale-detail-new');
+    } else {
+      setCurrentView('studio-dashboard-new');
+    }
   };
 
   if (loading) {
@@ -286,7 +298,7 @@ export const WorkerDetailPage: React.FC = () => {
               className="bg-blue-600 hover:bg-blue-500 text-white gap-2"
             >
               <ExternalLink size={16} />
-              View Full Ledger
+              View in Accounting
             </Button>
           </div>
         </div>
@@ -528,7 +540,7 @@ export const WorkerDetailPage: React.FC = () => {
                           variant="ghost"
                           size="sm"
                           className="text-blue-400 hover:text-blue-300 hover:bg-blue-500/10"
-                          onClick={() => handleViewJob(job.id)}
+                          onClick={() => handleViewJob(job)}
                         >
                           <Eye size={16} className="mr-2" />
                           View
@@ -591,10 +603,16 @@ export const WorkerDetailPage: React.FC = () => {
                       </p>
                     </td>
                     <td className="px-6 py-4 text-center">
-                      <Badge variant="outline" className="bg-green-500/10 text-green-400 border-green-500/20">
-                        <CheckCircle2 size={12} className="mr-1" />
-                        Paid
-                      </Badge>
+                      {job.isPaid ? (
+                        <Badge variant="outline" className="bg-green-500/10 text-green-400 border-green-500/20">
+                          <CheckCircle2 size={12} className="mr-1" />
+                          Paid
+                        </Badge>
+                      ) : (
+                        <Badge variant="outline" className="bg-orange-500/10 text-orange-400 border-orange-500/20">
+                          Pending
+                        </Badge>
+                      )}
                     </td>
                   </tr>
                 ))}

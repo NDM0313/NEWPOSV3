@@ -128,7 +128,8 @@ export const EnhancedProductForm = ({
   onSaveAndAdd,
 }: EnhancedProductFormProps) => {
   const { companyId, branchId } = useSupabase();
-  const { modules } = useSettings();
+  const settings = useSettings();
+  const { modules } = settings;
   const { generateDocumentNumber, generateDocumentNumberSafe, incrementNextNumber } = useDocumentNumbering();
   const [saving, setSaving] = useState(false);
   /** Enable Variations toggle: default OFF for new product, from DB for edit. When ON, parent stock locked at 0. */
@@ -297,11 +298,14 @@ export const EnhancedProductForm = ({
           allow_decimal: u.allow_decimal
         })));
         
-        // Set default unit (Piece) if no unit is selected and not editing
+        // Set default unit when creating (not editing): use Settings → Inventory → Default Unit, else unit with is_default, else first
         if (!initialProduct) {
           const currentUnit = getValues('unit');
           if (!currentUnit) {
-            const defaultUnit = data.find(u => u.is_default) || data[0];
+            const settingsDefaultId = settings.inventorySettings?.defaultUnitId;
+            const defaultUnit = (settingsDefaultId && data.find(u => u.id === settingsDefaultId))
+              || data.find(u => u.is_default)
+              || data[0];
             if (defaultUnit) {
               setValue('unit', defaultUnit.id);
             }
@@ -315,7 +319,7 @@ export const EnhancedProductForm = ({
       }
     };
     loadUnits();
-  }, [companyId, initialProduct, setValue, getValues]);
+  }, [companyId, initialProduct, setValue, getValues, settings.inventorySettings?.defaultUnitId]);
 
   // Load suppliers from contacts (type = supplier)
   useEffect(() => {
@@ -758,6 +762,7 @@ export const EnhancedProductForm = ({
     }
     const baseSku = (getValues('sku') || '').trim() || generateSKU();
     
+    const basicSellingPrice = getValues('sellingPrice') ?? 0;
     const newVariations = combinations.map((combination, index) => {
       const combinationObj: Record<string, string> = {};
       variantAttributes.forEach((attr, i) => {
@@ -766,7 +771,7 @@ export const EnhancedProductForm = ({
       return {
         combination: combinationObj,
         sku: `${baseSku}-V${index + 1}`,
-        price: 0,
+        price: Number(basicSellingPrice) || 0,
         stock: 0,
         barcode: '',
       };
@@ -2378,7 +2383,6 @@ export const EnhancedProductForm = ({
                             <th className="px-4 py-3 text-left text-sm font-semibold text-gray-300">Price</th>
                             <th className="px-4 py-3 text-left text-sm font-semibold text-gray-300">Opening Stock</th>
                             <th className="px-4 py-3 text-left text-sm font-semibold text-gray-300">Barcode</th>
-                            <th className="px-4 py-3 text-center text-sm font-semibold text-gray-300">Action</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -2405,85 +2409,35 @@ export const EnhancedProductForm = ({
                                 />
                               </td>
                               <td className="px-4 py-3">
-                                <div className="flex items-center gap-1">
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      const updated = [...generatedVariations];
-                                      updated[index].price = Math.max(0, (updated[index].price || 0) - 1);
-                                      setGeneratedVariations(updated);
-                                    }}
-                                    className="p-1 rounded bg-gray-700 hover:bg-gray-600 text-gray-300"
-                                    title="Decrease price"
-                                  >
-                                    <Minus size={12} />
-                                  </button>
-                                  <Input
-                                    type="number"
-                                    step={0.01}
-                                    value={variation.price || ''}
-                                    onChange={(e) => {
-                                      const updated = [...generatedVariations];
-                                      updated[index].price = parseFloat(e.target.value) || 0;
-                                      setGeneratedVariations(updated);
-                                    }}
-                                    className="bg-gray-900 border-gray-700 text-white text-sm w-20"
-                                    placeholder="0.00"
-                                  />
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      const updated = [...generatedVariations];
-                                      updated[index].price = (updated[index].price || 0) + 1;
-                                      setGeneratedVariations(updated);
-                                    }}
-                                    className="p-1 rounded bg-gray-700 hover:bg-gray-600 text-gray-300"
-                                    title="Increase price"
-                                  >
-                                    <Plus size={12} />
-                                  </button>
-                                </div>
+                                <Input
+                                  type="number"
+                                  step={0.01}
+                                  value={variation.price != null && variation.price !== '' ? variation.price : (watch('sellingPrice') ?? 0)}
+                                  onChange={(e) => {
+                                    const updated = [...generatedVariations];
+                                    const v = parseFloat(e.target.value);
+                                    updated[index].price = Number.isNaN(v) ? (watch('sellingPrice') ?? 0) : v;
+                                    setGeneratedVariations(updated);
+                                  }}
+                                  className="bg-gray-900 border-gray-700 text-white text-sm w-24"
+                                  placeholder={String(watch('sellingPrice') ?? 0)}
+                                  title="From Basic tab if not set"
+                                />
                               </td>
                               <td className="px-4 py-3">
-                                <div className="flex items-center gap-1">
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      const updated = [...generatedVariations];
-                                      updated[index].stock = Math.max(0, (updated[index].stock ?? 0) - 1);
-                                      setGeneratedVariations(updated);
-                                    }}
-                                    className="p-1 rounded bg-gray-700 hover:bg-gray-600 text-gray-300"
-                                    title="Decrease stock"
-                                  >
-                                    <Minus size={12} />
-                                  </button>
-                                  <Input
-                                    type="number"
-                                    min={0}
-                                    value={variation.stock ?? ''}
-                                    onChange={(e) => {
-                                      const updated = [...generatedVariations];
-                                      updated[index].stock = Math.max(0, parseInt(e.target.value, 10) || 0);
-                                      setGeneratedVariations(updated);
-                                    }}
-                                    className="bg-gray-900 border-gray-700 text-white text-sm w-16"
-                                    placeholder="0"
-                                    title="Opening stock for this variation (saved as stock movement on save)"
-                                  />
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      const updated = [...generatedVariations];
-                                      updated[index].stock = (updated[index].stock ?? 0) + 1;
-                                      setGeneratedVariations(updated);
-                                    }}
-                                    className="p-1 rounded bg-gray-700 hover:bg-gray-600 text-gray-300"
-                                    title="Increase stock"
-                                  >
-                                    <Plus size={12} />
-                                  </button>
-                                </div>
+                                <Input
+                                  type="number"
+                                  min={0}
+                                  value={variation.stock ?? ''}
+                                  onChange={(e) => {
+                                    const updated = [...generatedVariations];
+                                    updated[index].stock = Math.max(0, parseInt(e.target.value, 10) || 0);
+                                    setGeneratedVariations(updated);
+                                  }}
+                                  className="bg-gray-900 border-gray-700 text-white text-sm w-20"
+                                  placeholder="0"
+                                  title="Opening stock for this variation (saved as stock movement on save)"
+                                />
                               </td>
                               <td className="px-4 py-3">
                                 <Input
@@ -2496,18 +2450,6 @@ export const EnhancedProductForm = ({
                                   className="bg-gray-900 border-gray-700 text-white text-sm w-32"
                                   placeholder="Barcode"
                                 />
-                              </td>
-                              <td className="px-4 py-3 text-center">
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    const updated = generatedVariations.filter((_, i) => i !== index);
-                                    setGeneratedVariations(updated);
-                                  }}
-                                  className="text-red-500 hover:text-red-400 transition-colors p-2"
-                                >
-                                  <Trash2 size={16} />
-                                </button>
                               </td>
                             </tr>
                           ))}

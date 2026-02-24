@@ -32,8 +32,47 @@ function isFileTooLargeException(err: unknown): boolean {
   return (msg.includes('exceeded') && (msg.includes('maximum') || msg.includes('size'))) || msg.includes('payload too large');
 }
 
+const APPLY_RLS_PATH = '/__apply_storage_rls';
+
+function isLocalDev(): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    const origin = window.location?.origin ?? '';
+    return (
+      import.meta.env.DEV === true &&
+      (origin.startsWith('http://localhost') || origin.startsWith('http://127.0.0.1'))
+    );
+  } catch {
+    return false;
+  }
+}
+
 export function showStorageRlsToast(): void {
-  toast.error(STORAGE_RLS_TOAST_MESSAGE, { duration: 14000 });
+  const action =
+    isLocalDev()
+      ? {
+          label: 'Apply RLS now',
+          onClick: async () => {
+            toast.loading('Applying storage RLS...', { id: 'apply-rls' });
+            try {
+              const res = await fetch(APPLY_RLS_PATH, { method: 'POST' });
+              const data = await res.json().catch(() => ({}));
+              if (data.ok) {
+                toast.success(data.message || 'Storage RLS applied. Try uploading again.', { id: 'apply-rls', duration: 6000 });
+              } else {
+                toast.error(data.error || 'Apply failed. Run: npm run apply-storage-rls', { id: 'apply-rls', duration: 8000 });
+              }
+            } catch (e: any) {
+              toast.error(e?.message || 'Could not apply RLS. Run: npm run apply-storage-rls', {
+                id: 'apply-rls',
+                duration: 8000,
+              });
+            }
+          },
+        }
+      : undefined;
+
+  toast.error(STORAGE_RLS_TOAST_MESSAGE, { duration: 14000, action });
 }
 
 function isBucketNotFoundError(error: { message?: string; statusCode?: number } | null): boolean {
@@ -114,9 +153,10 @@ export async function uploadPurchaseAttachments(
       anyUploadFailed = true;
       console.error(`[UPLOAD PURCHASE ATTACHMENTS] Exception uploading ${file.name}:`, err);
       if (isFileTooLargeException(err)) showFileTooLargeToast(file.name);
+      else if (isStorageRlsError(err)) showStorageRlsToast();
     }
   }
-  
+
   if (anyUploadFailed && results.length === 0) {
     console.warn('[UPLOAD PURCHASE ATTACHMENTS] All uploads failed');
   } else if (anyUploadFailed) {
@@ -182,9 +222,10 @@ export async function uploadSaleAttachments(
       anyUploadFailed = true;
       console.error(`[UPLOAD SALE ATTACHMENTS] Exception uploading ${file.name}:`, err);
       if (isFileTooLargeException(err)) showFileTooLargeToast(file.name);
+      else if (isStorageRlsError(err)) showStorageRlsToast();
     }
   }
-  
+
   if (anyUploadFailed && results.length === 0) {
     console.warn('[UPLOAD SALE ATTACHMENTS] All uploads failed');
   } else if (anyUploadFailed) {
@@ -247,6 +288,7 @@ export async function uploadJournalEntryAttachments(
       anyUploadFailed = true;
       console.error(`[UPLOAD JOURNAL ATTACHMENTS] Exception uploading ${file.name}:`, err);
       if (isFileTooLargeException(err)) showFileTooLargeToast(file.name);
+      else if (isStorageRlsError(err)) showStorageRlsToast();
     }
   }
   if (anyUploadFailed && results.length === 0) {

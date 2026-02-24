@@ -263,11 +263,11 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-7 gap-4">
           <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
             <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Total Rental (Month)</p>
-            <p className="text-2xl font-bold text-white mt-1">${summary.totalAmount.toLocaleString()}</p>
+            <p className="text-2xl font-bold text-white mt-1">{formatCurrency(summary.totalAmount)}</p>
           </div>
           <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
             <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Amount Due</p>
-            <p className="text-2xl font-bold text-red-400 mt-1">${summary.totalDue.toLocaleString()}</p>
+            <p className="text-2xl font-bold text-red-400 mt-1">{formatCurrency(summary.totalDue)}</p>
           </div>
           <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
             <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Today Pickups</p>

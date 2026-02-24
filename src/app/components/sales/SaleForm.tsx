@@ -101,13 +101,14 @@ import { UnifiedPaymentDialog } from '@/app/components/shared/UnifiedPaymentDial
 import { uploadSaleAttachments } from '@/app/utils/uploadTransactionAttachments';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { useSettings } from '@/app/context/SettingsContext';
-import { formatCurrency } from '@/app/utils/formatCurrency';
+import { formatCurrency, getCurrencySymbol } from '@/app/utils/formatCurrency';
 import { contactService } from '@/app/services/contactService';
 import { saleService } from '@/app/services/saleService';
 import { productService } from '@/app/services/productService';
 import { inventoryService } from '@/app/services/inventoryService';
 import { branchService, Branch } from '@/app/services/branchService';
-import { useSales, convertFromSupabaseSale } from '@/app/context/SalesContext';
+import { useSales, convertFromSupabaseSale, Sale } from '@/app/context/SalesContext';
+import { InvoicePrintLayout } from '@/app/components/shared/InvoicePrintLayout';
 import { useNavigation } from '@/app/context/NavigationContext';
 import { Loader2 } from 'lucide-react';
 import { useDocumentNumbering } from '@/app/hooks/useDocumentNumbering';
@@ -262,6 +263,10 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
     const [saleAttachmentFiles, setSaleAttachmentFiles] = useState<File[]>([]);
     const saleAttachmentInputRef = useRef<HTMLInputElement>(null);
     const [savedSaleAttachments, setSavedSaleAttachments] = useState<{ url: string; name: string }[]>([]);
+
+    // Print layout after Save & Print
+    const [showPrintLayout, setShowPrintLayout] = useState(false);
+    const [saleForPrint, setSaleForPrint] = useState<Sale | null>(null);
 
     // Extra Expenses State
     const [extraExpenses, setExtraExpenses] = useState<ExtraExpense[]>([]);
@@ -1323,25 +1328,11 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
         c.name.toLowerCase().includes(customerSearchTerm.toLowerCase())
     );
 
-    // Helper to format due balance as currency (compact for header & dropdown)
+    // Helper to format due balance as currency (compact for header & dropdown). Uses Rs. for PKR globally.
     const formatDueBalanceCompact = (due: number) => {
-        const currency = company?.currency || 'Rs';
-        if (due === 0) {
-            return `${currency} ${(0).toLocaleString('en-US', { 
-                minimumFractionDigits: 2, 
-                maximumFractionDigits: 2 
-            })}`;
-        }
-        if (due < 0) {
-            return `-${currency} ${Math.abs(due).toLocaleString('en-US', { 
-                minimumFractionDigits: 2, 
-                maximumFractionDigits: 2 
-            })}`;
-        }
-        return `${currency} ${due.toLocaleString('en-US', { 
-            minimumFractionDigits: 2, 
-            maximumFractionDigits: 2 
-        })}`;
+        const code = company?.currency || 'PKR';
+        const prec = company?.decimalPrecision ?? 2;
+        return formatCurrency(due, code, prec);
     };
 
     // Helper to get due balance color: green = customer owes us, red = we owe customer
@@ -1929,8 +1920,17 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                 setSavedSaleInvoiceNo(documentNumber);
                 
                 if (print) {
-                    // TODO: Implement print functionality
-                    toast.info('Print functionality coming soon');
+                    try {
+                        const full = await saleService.getSaleById(initialSale.id);
+                        const saleToPrint = full ? convertFromSupabaseSale(full) : null;
+                        if (saleToPrint) {
+                            setSaleForPrint(saleToPrint);
+                            setShowPrintLayout(true);
+                        }
+                    } catch (e) {
+                        toast.warning('Sale saved. Open it from the list to print.');
+                    }
+                    return { saleId: initialSale.id, invoiceNo: documentNumber };
                 }
                 
                 // If payment dialog should open, don't close form yet
@@ -1971,12 +1971,12 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                   setSelectedStudioSaleId(created.id);
                   closeDrawer();
                   setCurrentView('studio-sale-detail-new');
-                  return { saleId: null, invoiceNo: null }; // Don't call onClose – we already closed and navigated
+                  return { saleId: null, invoiceNo: null, studioRedirect: true }; // Don't open payment dialog – we navigated to studio
                 }
                 
-                if (print) {
-                    // TODO: Implement print functionality
-                    toast.info('Print functionality coming soon');
+                if (print && created) {
+                    setSaleForPrint(created);
+                    setShowPrintLayout(true);
                 }
                 
                 // If payment dialog should open, don't close form yet
@@ -1985,8 +1985,8 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                     return { saleId: created.id, invoiceNo: documentNumber };
                 }
                 
-                // Close form (unless payment dialog will open)
-                if (!shouldOpenPaymentDialog) {
+                // Close form (unless payment dialog will open or print view is showing)
+                if (!shouldOpenPaymentDialog && !print) {
                     onClose();
                 }
                 
@@ -2650,7 +2650,7 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                                             </SelectTrigger>
                                             <SelectContent className="bg-gray-950 border-gray-800 text-white min-w-[60px]">
                                                 <SelectItem value="percentage">%</SelectItem>
-                                                <SelectItem value="fixed">$</SelectItem>
+                                                <SelectItem value="fixed">{getCurrencySymbol(company?.currency)}</SelectItem>
                                             </SelectContent>
                                         </Select>
                                         <Input 
@@ -2752,7 +2752,7 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                                                         </SelectTrigger>
                                                         <SelectContent className="bg-gray-950 border-gray-800 text-white min-w-[60px]">
                                                             <SelectItem value="percentage">%</SelectItem>
-                                                            <SelectItem value="fixed">$</SelectItem>
+                                                            <SelectItem value="fixed">{getCurrencySymbol(company?.currency)}</SelectItem>
                                                         </SelectContent>
                                                     </Select>
                                                     <Input 
@@ -2923,7 +2923,10 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                                     // Save first, then open payment dialog
                                     // Pass shouldOpenPaymentDialog=true so form doesn't close
                                     const result = await proceedWithSave(printFlag, true);
-                                    
+                                    if ((result as any)?.studioRedirect) {
+                                        toast.success('Sale saved. Add payment from the sale detail if needed.');
+                                        return;
+                                    }
                                     // If sale was created/updated, open payment dialog
                                     if (result.saleId) {
                                         console.log('[SALE FORM] ✅ Sale saved, opening payment dialog:', {
@@ -2932,7 +2935,6 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                                         });
                                         setSavedSaleId(result.saleId);
                                         setSavedSaleInvoiceNo(result.invoiceNo);
-                                        // Open dialog immediately after state is set
                                         setUnifiedPaymentDialogOpen(true);
                                     } else {
                                         console.warn('[SALE FORM] ⚠️ Sale saved but no saleId returned');
@@ -3123,6 +3125,22 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                     </Button>
                 </div>
             </div>
+
+            {/* Print Layout Modal - after Save & Print */}
+            {showPrintLayout && saleForPrint && (
+                <div className="fixed inset-0 z-[100] bg-black/80 flex items-center justify-center p-4">
+                    <div className="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-auto">
+                        <InvoicePrintLayout
+                            sale={saleForPrint}
+                            onClose={() => {
+                                setShowPrintLayout(false);
+                                setSaleForPrint(null);
+                                onClose();
+                            }}
+                        />
+                    </div>
+                </div>
+            )}
 
             {/* Packing Modal - Now rendered globally in GlobalDrawer */}
         </div>

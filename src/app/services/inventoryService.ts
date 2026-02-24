@@ -154,12 +154,15 @@ export const inventoryService = {
 
     const { data: movements, error: movementsError } = await stockQuery;
 
-    // Step 3: Get product variations for products that have them
-    const { data: variations } = await supabase
+    // Step 3: Get product variations (minimal select for schema compatibility: id, product_id, sku only)
+    const { data: variations, error: variationsError } = await supabase
       .from('product_variations')
-      .select('id, product_id, sku, attributes, stock')
+      .select('id, product_id, sku')
       .in('product_id', productIds)
       .eq('is_active', true);
+    if (variationsError) {
+      console.warn('[INVENTORY SERVICE] product_variations fetch failed (schema may differ):', variationsError.message);
+    }
 
     const variationMap: Record<string, any[]> = {};
     if (variations) {
@@ -264,7 +267,7 @@ export const inventoryService = {
           calculatedStock: totalStock,
           hasVariations,
           productLevelStock: productStockMap[p.id],
-          variationStocks: hasVariations ? variationMap[p.id].map((v: any) => ({
+          variationStocks: hasVariations ? (variationMap[p.id] || []).map((v: any) => ({
             variationId: v.id,
             stock: variationStockMap[v.id] || 0
           })) : [],
@@ -309,7 +312,7 @@ export const inventoryService = {
         reorderLevel: minStock,
         // Add variation data for UI (STEP 2: Show variations with individual stock)
         hasVariations: hasVariations,
-        variations: hasVariations ? variationMap[p.id].map(v => ({
+        variations: hasVariations ? (variationMap[p.id] || []).map(v => ({
           id: v.id,
           sku: v.sku,
           attributes: v.attributes,
@@ -323,6 +326,47 @@ export const inventoryService = {
     });
 
     return rows;
+  },
+
+  /**
+   * Get variations with current stock for a single product (e.g. Adjust Stock dialog for variable products).
+   * Stock is from stock_movements (single source of truth).
+   */
+  async getVariationsWithStock(
+    companyId: string,
+    productId: string,
+    branchId?: string | null
+  ): Promise<Array<{ id: string; sku: string; name?: string; attributes: Record<string, unknown>; stock: number }>> {
+    const { data: variations, error: varError } = await supabase
+      .from('product_variations')
+      .select('id, product_id, sku, attributes')
+      .eq('product_id', productId)
+      .eq('is_active', true);
+    if (varError || !variations?.length) return [];
+
+    let movementQuery = supabase
+      .from('stock_movements')
+      .select('variation_id, quantity')
+      .eq('company_id', companyId)
+      .eq('product_id', productId)
+      .not('variation_id', 'is', null);
+    if (branchId && branchId !== 'all') {
+      movementQuery = movementQuery.eq('branch_id', branchId);
+    }
+    const { data: movements } = await movementQuery;
+    const stockByVariation: Record<string, number> = {};
+    (movements || []).forEach((m: any) => {
+      const vid = m.variation_id;
+      if (vid) stockByVariation[vid] = (stockByVariation[vid] || 0) + (Number(m.quantity) || 0);
+    });
+
+    return variations.map((v: any) => ({
+      id: v.id,
+      sku: v.sku || '',
+      name: v.name, // optional column in some schemas
+      attributes: v.attributes || {},
+      stock: stockByVariation[v.id] ?? 0,
+    }));
   },
 
   /**

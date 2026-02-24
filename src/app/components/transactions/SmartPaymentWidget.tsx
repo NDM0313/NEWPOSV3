@@ -18,6 +18,7 @@ import {
 import { Calendar } from "../ui/calendar";
 import { format } from "date-fns";
 import { cn } from "../ui/utils";
+import { useFormatCurrency } from "@/app/hooks/useFormatCurrency";
 
 type PaymentMode = 'cash' | 'card' | 'bank' | 'cheque';
 type PaymentStrategy = 'full_credit' | 'full_cash' | 'partial';
@@ -42,6 +43,7 @@ export const SmartPaymentWidget = ({
   onPaymentChange,
   type = 'sale'
 }: SmartPaymentWidgetProps) => {
+  const { formatCurrency, currencySymbol } = useFormatCurrency();
   const [strategy, setStrategy] = useState<PaymentStrategy>('full_cash');
   const [paidAmount, setPaidAmount] = useState<number>(grandTotal);
   const [paymentMode, setPaymentMode] = useState<PaymentMode>('cash');
@@ -136,7 +138,7 @@ export const SmartPaymentWidget = ({
           )}
         </div>
         <div className="text-[32px] font-bold text-white leading-none">
-          ${grandTotal.toFixed(2)}
+          {formatCurrency(grandTotal)}
         </div>
       </div>
 
@@ -195,7 +197,7 @@ export const SmartPaymentWidget = ({
             Amount Collecting
           </Label>
           <div className="relative">
-            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-lg">$</span>
+            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-lg">{currencySymbol}</span>
             <Input
               ref={amountInputRef}
               id="amount"
@@ -218,7 +220,7 @@ export const SmartPaymentWidget = ({
             <div className="flex items-center gap-2 text-sm">
               <AlertCircle size={14} className="text-red-400" />
               <span className="text-red-400 font-medium">
-                Balance Due: ${balanceDue.toFixed(2)}
+                Balance Due: {formatCurrency(balanceDue)}
               </span>
             </div>
           )}
@@ -228,11 +230,11 @@ export const SmartPaymentWidget = ({
             <div className="grid grid-cols-2 gap-2 mt-2">
               <div className="bg-green-500/10 border border-green-500/30 rounded-lg p-2">
                 <div className="text-xs text-green-400 mb-1">Collecting Now</div>
-                <div className="text-lg font-bold text-green-400">${paidAmount.toFixed(2)}</div>
+                <div className="text-lg font-bold text-green-400">{formatCurrency(paidAmount)}</div>
               </div>
               <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-2">
                 <div className="text-xs text-yellow-400 mb-1">On Account</div>
-                <div className="text-lg font-bold text-yellow-400">${balanceDue.toFixed(2)}</div>
+                <div className="text-lg font-bold text-yellow-400">{formatCurrency(balanceDue)}</div>
               </div>
             </div>
           )}

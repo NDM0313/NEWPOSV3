@@ -14,6 +14,7 @@ import { useSettings, BranchSettings } from '@/app/context/SettingsContext';
 import { usePrinterConfig } from '@/app/hooks/usePrinterConfig';
 import { branchService } from '@/app/services/branchService';
 import { accountService } from '@/app/services/accountService';
+import { unitService } from '@/app/services/unitService';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { userService, User as UserType } from '@/app/services/userService';
 import { useAccounting } from '@/app/context/AccountingContext';
@@ -85,6 +86,7 @@ export const SettingsPageNew = () => {
   const [numberingForm, setNumberingForm] = useState(settings.numberingRules);
   const [modulesForm, setModulesForm] = useState(settings.modules);
   const [inventorySubTab, setInventorySubTab] = useState<InventoryMasterTab>('general');
+  const [units, setUnits] = useState<{ id: string; name: string; short_code?: string }[]>([]);
 
   // Load users function
   const loadUsers = useCallback(async () => {
@@ -155,6 +157,15 @@ export const SettingsPageNew = () => {
       loadBranches();
     }
   }, [activeTab, loadBranches]);
+
+  // Load units when inventory tab is active (for Default Unit dropdown)
+  useEffect(() => {
+    if (activeTab === 'inventory' && companyId) {
+      unitService.getAll(companyId, { includeInactive: false }).then((list) => {
+        setUnits(list || []);
+      }).catch(() => setUnits([]));
+    }
+  }, [activeTab, companyId]);
 
   // 🔧 FIX: Auto-select default core accounts if not already set
   // This runs when accounts tab is opened and accounts are loaded
@@ -1000,6 +1011,26 @@ export const SettingsPageNew = () => {
                             <option value="LIFO">LIFO (Last In First Out)</option>
                             <option value="Weighted Average">Weighted Average</option>
                           </select>
+                        </div>
+
+                        <div className="col-span-2">
+                          <Label className="text-gray-300 mb-2 block">Default Unit</Label>
+                          <select
+                            value={inventoryForm.defaultUnitId ?? ''}
+                            onChange={(e) => {
+                              setInventoryForm({ ...inventoryForm, defaultUnitId: e.target.value || null });
+                              setHasUnsavedChanges(true);
+                            }}
+                            className="w-full bg-gray-950 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm"
+                          >
+                            <option value="">No default (select per product)</option>
+                            {units.map((u) => (
+                              <option key={u.id} value={u.id}>
+                                {u.name}{u.short_code ? ` (${u.short_code})` : ''}
+                              </option>
+                            ))}
+                          </select>
+                          <p className="text-xs text-gray-500 mt-1">Used when creating products or when no unit is selected</p>
                         </div>
                       </div>
 

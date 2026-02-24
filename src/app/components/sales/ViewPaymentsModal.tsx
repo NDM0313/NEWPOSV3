@@ -44,6 +44,7 @@ import { cn } from '@/app/components/ui/utils';
 import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
 import { toast } from 'sonner';
 import { getAttachmentOpenUrl } from '@/app/utils/paymentAttachmentUrl';
+import { AttachmentPreviewRow } from '@/app/components/shared/AttachmentPreviewRow';
 
 // ============================================
 // TYPES
@@ -641,34 +642,18 @@ export const ViewPaymentsModal: React.FC<ViewPaymentsModalProps> = ({
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Attachments dialog: list attachments, open in new tab from here */}
+      {/* Attachments dialog: standard size (same as product image preview), preview + name viewable */}
       <Dialog open={!!attachmentsDialogList} onOpenChange={(open) => !open && setAttachmentsDialogList(null)}>
-        <DialogContent className="bg-gray-900 border-gray-700 text-white max-w-md">
+        <DialogContent className="bg-gray-900 border-gray-700 text-white w-full max-w-2xl min-h-[320px] max-h-[90vh] flex flex-col p-4 sm:p-6">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-white">
               <Paperclip size={20} className="text-amber-400" />
               Attachments
             </DialogTitle>
           </DialogHeader>
-          <div className="space-y-2 max-h-64 overflow-y-auto">
+          <div className="space-y-4 flex-1 min-h-0 overflow-y-auto">
             {attachmentsDialogList?.map((att, idx) => (
-              <div
-                key={idx}
-                className="flex items-center justify-between gap-2 p-2 rounded-lg bg-gray-800/50 border border-gray-700"
-              >
-                <span className="text-sm text-gray-200 truncate flex-1" title={att.name}>{att.name}</span>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="shrink-0 border-gray-600 text-gray-300 hover:bg-gray-700 hover:text-white"
-                  onClick={async () => {
-                    const openUrl = await getAttachmentOpenUrl(att.url);
-                    window.open(openUrl, '_blank');
-                  }}
-                >
-                  Open in new tab
-                </Button>
-              </div>
+              <AttachmentPreviewRow key={idx} att={att} />
             ))}
           </div>
         </DialogContent>

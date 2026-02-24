@@ -45,24 +45,31 @@ export const exportToCSV = (data: ExportData, filename: string = 'report'): void
 };
 
 /**
- * Export data as Excel (XLSX format using CSV with .xlsx extension)
- * Note: For true Excel format, you'd need a library like xlsx
- * This creates a CSV file with .xlsx extension that Excel can open
+ * Export data as Excel (CSV content with .xlsx extension so Excel opens it by default)
+ * For true .xlsx binary format, add the 'xlsx' library and use XLSX.utils.aoa_to_sheet + writeFile
  */
 export const exportToExcel = (data: ExportData, filename: string = 'report'): void => {
-  // For now, we'll use CSV format which Excel can open
-  // In production, consider using 'xlsx' library for proper Excel format
-  exportToCSV(data, filename);
-  
-  // If you want true Excel format, install: npm install xlsx
-  // Then use:
-  /*
-  import * as XLSX from 'xlsx';
-  const ws = XLSX.utils.aoa_to_sheet([data.headers, ...data.rows]);
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, 'Sheet1');
-  XLSX.writeFile(wb, `${filename}_${new Date().toISOString().split('T')[0]}.xlsx`);
-  */
+  const { headers, rows } = data;
+  const csvContent = [
+    headers.join(','),
+    ...rows.map(row => row.map(cell => {
+      const cellStr = String(cell);
+      if (cellStr.includes(',') || cellStr.includes('"') || cellStr.includes('\n')) {
+        return `"${cellStr.replace(/"/g, '""')}"`;
+      }
+      return cellStr;
+    }).join(','))
+  ].join('\n');
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8' });
+  const link = document.createElement('a');
+  const url = URL.createObjectURL(blob);
+  link.setAttribute('href', url);
+  link.setAttribute('download', `${filename}_${new Date().toISOString().split('T')[0]}.xlsx`);
+  link.style.visibility = 'hidden';
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
 };
 
 /**

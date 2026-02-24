@@ -305,7 +305,7 @@ export function AccountingTestPage({ embedded = false, onClose }: AccountingTest
                     <th className="px-4 py-3 font-medium">Entry #</th>
                     <th className="px-4 py-3 font-medium">Type</th>
                     <th className="px-4 py-3 font-medium">Description</th>
-                    <th className="px-4 py-3 font-medium text-right">Amount (PKR)</th>
+                    <th className="px-4 py-3 font-medium text-right">Amount (Rs.)</th>
                     <th className="px-4 py-3 w-20"></th>
                   </tr>
                 </thead>
@@ -438,7 +438,7 @@ function ViewEntryDetailModal({ entry, onClose }: { entry: TestEntry; onClose: (
           <div className="p-5 space-y-4">
             <div className="grid grid-cols-2 gap-3 text-sm">
               <div><span className="text-gray-500">Date</span><p className="text-white font-medium">{entry.entry_date}</p></div>
-              <div><span className="text-gray-500">Amount</span><p className="text-white font-medium">PKR {entry.amount.toLocaleString()}</p></div>
+              <div><span className="text-gray-500">Amount</span><p className="text-white font-medium">Rs. {entry.amount.toLocaleString()}</p></div>
             </div>
             {entry.description && (
               <div>
@@ -680,7 +680,7 @@ function ManualEntryModal({
                 <div className="bg-gray-950/50 border border-gray-800 rounded-xl p-4">
                   <Label className="block text-sm font-semibold text-gray-300 mb-2">Amount <span className="text-red-400">*</span></Label>
                   <div className="relative">
-                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 font-semibold">PKR</span>
+                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 font-semibold">Rs.</span>
                     <Input type="number" min="0" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0.00" className="pl-12 bg-gray-900 border-2 border-gray-700 rounded-lg text-white text-lg font-semibold focus:border-blue-500" />
                   </div>
                   <p className="text-xs text-gray-500 mt-1">In Words: {inWords}</p>
@@ -844,7 +844,7 @@ function TransferModal({
                 <div className="bg-gray-950/50 border border-gray-800 rounded-xl p-4">
                   <Label className="block text-sm font-semibold text-gray-300 mb-2">Amount <span className="text-red-400">*</span></Label>
                   <div className="relative">
-                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 font-semibold">PKR</span>
+                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 font-semibold">Rs.</span>
                     <Input type="number" min="0" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} className="pl-12 bg-gray-900 border-2 border-gray-700 rounded-lg text-white focus:border-blue-500" />
                   </div>
                 </div>
@@ -858,7 +858,7 @@ function TransferModal({
                   <div className="bg-blue-500/10 border border-blue-500/20 rounded-xl p-4">
                     <span className="text-xs font-semibold text-blue-400 uppercase tracking-wide">Summary</span>
                     <p className="text-sm text-blue-200 mt-2">Dr <strong>{toName}</strong>, Cr <strong>{fromName}</strong></p>
-                    <p className="text-lg font-bold text-blue-300 mt-1">PKR {amountNum.toLocaleString()}</p>
+                    <p className="text-lg font-bold text-blue-300 mt-1">Rs. {amountNum.toLocaleString()}</p>
                   </div>
                 )}
                 <div className="bg-gray-950/50 border border-gray-800 rounded-xl p-4">
@@ -1009,7 +1009,7 @@ function SupplierPaymentModal({
                 <div className="bg-gray-950/50 border border-gray-800 rounded-xl p-4">
                   <Label className="block text-sm font-semibold text-gray-300 mb-2">Amount <span className="text-red-400">*</span></Label>
                   <div className="relative">
-                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 font-semibold">PKR</span>
+                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 font-semibold">Rs.</span>
                     <Input type="number" min="0" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} className="pl-12 bg-gray-900 border-2 border-gray-700 rounded-lg text-white focus:border-blue-500" />
                   </div>
                 </div>
@@ -1023,7 +1023,7 @@ function SupplierPaymentModal({
                   <div className="bg-blue-500/10 border border-blue-500/20 rounded-xl p-4">
                     <span className="text-xs font-semibold text-blue-400 uppercase tracking-wide">Summary</span>
                     <p className="text-sm text-blue-200 mt-2">Dr Accounts Payable ({supplierName}), Cr Payment Account</p>
-                    <p className="text-lg font-bold text-blue-300 mt-1">PKR {amountNum.toLocaleString()}</p>
+                    <p className="text-lg font-bold text-blue-300 mt-1">Rs. {amountNum.toLocaleString()}</p>
                   </div>
                 )}
                 <div className="bg-gray-950/50 border border-gray-800 rounded-xl p-4">
@@ -1191,7 +1191,7 @@ function WorkerPaymentModal({
                 <div className="bg-gray-950/50 border border-gray-800 rounded-xl p-4">
                   <Label className="block text-sm font-semibold text-gray-300 mb-2">Amount <span className="text-red-400">*</span></Label>
                   <div className="relative">
-                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 font-semibold">PKR</span>
+                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 font-semibold">Rs.</span>
                     <Input type="number" min="0" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} className="pl-12 bg-gray-900 border-2 border-gray-700 rounded-lg text-white focus:border-blue-500" />
                   </div>
                 </div>
@@ -1205,7 +1205,7 @@ function WorkerPaymentModal({
                   <div className="bg-blue-500/10 border border-blue-500/20 rounded-xl p-4">
                     <span className="text-xs font-semibold text-blue-400 uppercase tracking-wide">Summary</span>
                     <p className="text-sm text-blue-200 mt-2">Dr Salary/Worker Payable ({workerName}), Cr Payment Account</p>
-                    <p className="text-lg font-bold text-blue-300 mt-1">PKR {amountNum.toLocaleString()}</p>
+                    <p className="text-lg font-bold text-blue-300 mt-1">Rs. {amountNum.toLocaleString()}</p>
                   </div>
                 )}
                 <div className="bg-gray-950/50 border border-gray-800 rounded-xl p-4">
@@ -1353,7 +1353,7 @@ function ExpenseEntryModal({
                 <div className="bg-gray-950/50 border border-gray-800 rounded-xl p-4">
                   <Label className="block text-sm font-semibold text-gray-300 mb-2">Amount <span className="text-red-400">*</span></Label>
                   <div className="relative">
-                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 font-semibold">PKR</span>
+                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 font-semibold">Rs.</span>
                     <Input type="number" min="0" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} className="pl-12 bg-gray-900 border-2 border-gray-700 rounded-lg text-white focus:border-blue-500" />
                   </div>
 
@@ -1368,7 +1368,7 @@ function ExpenseEntryModal({
                   <div className="bg-blue-500/10 border border-blue-500/20 rounded-xl p-4">
                     <span className="text-xs font-semibold text-blue-400 uppercase tracking-wide">Summary</span>
                     <p className="text-sm text-blue-200 mt-2">Dr <strong>{expenseName}</strong>, Cr Payment Account</p>
-                    <p className="text-lg font-bold text-blue-300 mt-1">PKR {amountNum.toLocaleString()}</p>
+                    <p className="text-lg font-bold text-blue-300 mt-1">Rs. {amountNum.toLocaleString()}</p>
                   </div>
                 )}
                 <div className="bg-gray-950/50 border border-gray-800 rounded-xl p-4">
@@ -1517,7 +1517,7 @@ function CustomerReceiptModal({
                 <div className="bg-gray-950/50 border border-gray-800 rounded-xl p-4">
                   <Label className="block text-sm font-semibold text-gray-300 mb-2">Amount <span className="text-red-400">*</span></Label>
                   <div className="relative">
-                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 font-semibold">PKR</span>
+                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 font-semibold">Rs.</span>
                     <Input type="number" min="0" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} className="pl-12 bg-gray-900 border-2 border-gray-700 rounded-lg text-white focus:border-blue-500" />
                   </div>
                 </div>
@@ -1531,7 +1531,7 @@ function CustomerReceiptModal({
                   <div className="bg-blue-500/10 border border-blue-500/20 rounded-xl p-4">
                     <span className="text-xs font-semibold text-blue-400 uppercase tracking-wide">Summary</span>
                     <p className="text-sm text-blue-200 mt-2">Dr Payment Account, Cr Accounts Receivable ({customerName})</p>
-                    <p className="text-lg font-bold text-blue-300 mt-1">PKR {amountNum.toLocaleString()}</p>
+                    <p className="text-lg font-bold text-blue-300 mt-1">Rs. {amountNum.toLocaleString()}</p>
                   </div>
                 )}
                 <div className="bg-gray-950/50 border border-gray-800 rounded-xl p-4">

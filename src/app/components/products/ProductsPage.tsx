@@ -33,6 +33,8 @@ import { ProductImage } from './ProductImage';
 import { AdjustPriceDialog } from './AdjustPriceDialog';
 import { AdjustStockDialog } from './AdjustStockDialog';
 import { toast } from 'sonner';
+import { formatCurrency } from '@/app/utils/formatCurrency';
+import { exportToCSV, exportToExcel, exportToPDF, type ExportData } from '@/app/utils/exportUtils';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -524,13 +526,13 @@ export const ProductsPage = () => {
       case 'purchase':
         return (
           <div className="text-right">
-            <div className="text-sm font-medium text-gray-300 tabular-nums">${product.purchasePrice.toLocaleString()}</div>
+            <div className="text-sm font-medium text-gray-300 tabular-nums">{formatCurrency(product.purchasePrice)}</div>
           </div>
         );
       case 'selling':
         return (
           <div className="text-right">
-            <div className="text-sm font-semibold text-white tabular-nums">${product.sellingPrice.toLocaleString()}</div>
+            <div className="text-sm font-semibold text-white tabular-nums">{formatCurrency(product.sellingPrice)}</div>
           </div>
         );
       case 'margin': {
@@ -538,7 +540,7 @@ export const ProductsPage = () => {
         return (
           <div className="text-right">
             <div className="text-sm font-semibold text-green-400 tabular-nums">+{marginPercent}%</div>
-            <div className="text-[10px] text-gray-500 tabular-nums" title="Margin = Selling − Purchase (from product cost & retail price)">Margin ${margin.toLocaleString()}</div>
+            <div className="text-[10px] text-gray-500 tabular-nums" title="Margin = Selling − Purchase (from product cost & retail price)">Margin {formatCurrency(margin)}</div>
           </div>
         );
       }
@@ -615,7 +617,7 @@ export const ProductsPage = () => {
             <div className="flex items-start justify-between mb-3">
               <div>
                 <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Total Value</p>
-                <p className="text-2xl font-bold text-green-400 mt-1">${summary.totalValue.toLocaleString()}</p>
+                <p className="text-2xl font-bold text-green-400 mt-1">{formatCurrency(summary.totalValue)}</p>
                 <p className="text-xs text-gray-500 mt-1">Inventory worth</p>
               </div>
               <div className="w-12 h-12 rounded-full bg-green-500/10 flex items-center justify-center">
@@ -854,9 +856,42 @@ export const ProductsPage = () => {
             onImport: () => setImportModalOpen(true)
           }}
           exportConfig={{
-            onExportCSV: () => console.log('Export CSV'),
-            onExportExcel: () => console.log('Export Excel'),
-            onExportPDF: () => console.log('Export PDF')
+            onExportCSV: () => {
+              const data: ExportData = {
+                headers: ['SKU', 'Name', 'Branch', 'Unit', 'Purchase', 'Selling', 'Margin', 'Margin %', 'Stock', 'Stock Status', 'Type', 'Category', 'Brand', 'Status'],
+                rows: sortedProducts.map(p => {
+                  const { marginPercent } = getMargin(p);
+                  const stockStatus = getStockStatus(p);
+                  return [p.sku, p.name, p.branch, p.unit, p.purchasePrice, p.sellingPrice, p.sellingPrice - p.purchasePrice, `${marginPercent}%`, p.stock, stockStatus, p.type, p.category, p.brand, p.status];
+                }),
+                title: 'Products'
+              };
+              try { exportToCSV(data, 'products'); toast.success('Products exported as CSV'); } catch (e) { toast.error('Export failed'); }
+            },
+            onExportExcel: () => {
+              const data: ExportData = {
+                headers: ['SKU', 'Name', 'Branch', 'Unit', 'Purchase', 'Selling', 'Margin', 'Margin %', 'Stock', 'Stock Status', 'Type', 'Category', 'Brand', 'Status'],
+                rows: sortedProducts.map(p => {
+                  const { marginPercent } = getMargin(p);
+                  const stockStatus = getStockStatus(p);
+                  return [p.sku, p.name, p.branch, p.unit, p.purchasePrice, p.sellingPrice, p.sellingPrice - p.purchasePrice, `${marginPercent}%`, p.stock, stockStatus, p.type, p.category, p.brand, p.status];
+                }),
+                title: 'Products'
+              };
+              try { exportToExcel(data, 'products'); toast.success('Products exported as Excel'); } catch (e) { toast.error('Export failed'); }
+            },
+            onExportPDF: () => {
+              const data: ExportData = {
+                headers: ['SKU', 'Name', 'Branch', 'Unit', 'Purchase', 'Selling', 'Margin', 'Margin %', 'Stock', 'Stock Status', 'Type', 'Category', 'Brand', 'Status'],
+                rows: sortedProducts.map(p => {
+                  const { marginPercent } = getMargin(p);
+                  const stockStatus = getStockStatus(p);
+                  return [p.sku, p.name, p.branch, p.unit, p.purchasePrice, p.sellingPrice, p.sellingPrice - p.purchasePrice, `${marginPercent}%`, p.stock, stockStatus, p.type, p.category, p.brand, p.status];
+                }),
+                title: 'Products'
+              };
+              try { exportToPDF(data, 'products'); toast.success('PDF opened for print'); } catch (e) { toast.error('Export failed'); }
+            }
           }}
         />
       </div>

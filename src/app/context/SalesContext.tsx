@@ -100,10 +100,8 @@ const SalesContext = createContext<SalesContextType | undefined>(undefined);
 export const useSales = () => {
   const context = useContext(SalesContext);
   if (!context) {
-    // During hot reload in development, context might not be available
-    // Return a safe default to prevent crashes
+    // During hot reload or initial mount, context might not be available; return safe default to prevent crashes
     if (import.meta.env.DEV) {
-      console.warn('[SalesContext] useSales called outside SalesProvider, returning default context');
       const defaultError = () => { throw new Error('SalesProvider not available'); };
       return {
         sales: [],
@@ -410,7 +408,10 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
             stock = calculateStockFromMovements(movements).currentBalance;
           }
           if (stock < item.quantity) {
-            throw new Error(`${item.productName}: quantity (${item.quantity}) exceeds available stock (${stock})`);
+            throw new Error(
+              `${item.productName}: quantity (${item.quantity}) exceeds available stock (${stock}). ` +
+              'To allow this sale, enable "Negative Stock Allowed" in Settings → Inventory.'
+            );
           }
         }
       }
@@ -464,7 +465,24 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
       };
       });
 
-      const result = await saleService.createSale(supabaseSale, supabaseItems);
+      let result: any;
+      let effectiveInvoiceNo = invoiceNo;
+      try {
+        result = await saleService.createSale(supabaseSale, supabaseItems);
+      } catch (insertError: any) {
+        const msg = insertError?.message || '';
+        const isDuplicateInvoice = insertError?.code === '23505' || (msg && String(msg).includes('sales_company_branch_invoice_unique'));
+        if (isDuplicateInvoice) {
+          effectiveInvoiceNo = generateDocumentNumber(docType);
+          incrementNextNumber(docType);
+          supabaseSale.invoice_no = effectiveInvoiceNo;
+          result = await saleService.createSale(supabaseSale, supabaseItems);
+          if (weGeneratedNumber) incrementNextNumber(docType);
+          console.warn('[SALES CONTEXT] Duplicate invoice number; retried with', effectiveInvoiceNo);
+        } else {
+          throw insertError;
+        }
+      }
       // Set is_studio after create (avoids 400 if sales.is_studio column not yet added by migration)
       if (isStudioSale && result?.id) {
         try {
@@ -898,18 +916,61 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
             || arAccounts?.[0];
           const arAccountId = arAccount?.id;
           
-          // Get Sales Revenue account (can be "Sales" or "Sales Revenue")
-          const { data: salesAccounts } = await supabase
+          // Get Sales Revenue account: try code 4000/4001/4002/4003, then name containing "Sales" or "Revenue"
+          let salesAccountId: string | undefined;
+          const { data: salesByCode } = await supabase
             .from('accounts')
             .select('id')
             .eq('company_id', companyId)
-            .or('name.ilike.Sales Revenue,name.ilike.Sales,code.eq.4000')
+            .in('code', ['4000', '4001', '4002', '4003'])
+            .eq('is_active', true)
             .limit(1);
-          
-          const salesAccountId = salesAccounts?.[0]?.id;
-          
+          salesAccountId = salesByCode?.[0]?.id;
+          if (!salesAccountId) {
+            const { data: salesByName } = await supabase
+              .from('accounts')
+              .select('id')
+              .eq('company_id', companyId)
+              .or('name.ilike.%Sales%,name.ilike.%Revenue%')
+              .eq('is_active', true)
+              .limit(1);
+            salesAccountId = salesByName?.[0]?.id;
+          }
+          // If still missing, create default Sales Revenue account so sale can proceed
+          if (!salesAccountId) {
+            const payload: Record<string, unknown> = {
+              company_id: companyId,
+              code: '4000',
+              name: 'Sales Revenue',
+              type: 'revenue',
+              is_active: true,
+            };
+            let { data: newAccount, error: createErr } = await supabase
+              .from('accounts')
+              .insert({ ...payload, balance: 0 })
+              .select('id')
+              .single();
+            if (createErr && (createErr.message?.includes('balance') || createErr.message?.includes('column'))) {
+              const { data: retry, error: retryErr } = await supabase
+                .from('accounts')
+                .insert(payload)
+                .select('id')
+                .single();
+              if (!retryErr && retry?.id) {
+                newAccount = retry;
+                createErr = null;
+              }
+            }
+            if (!createErr && newAccount?.id) {
+              salesAccountId = newAccount.id;
+              console.log('[SALES CONTEXT] Created default Sales Revenue account (4000) for company');
+            } else if (createErr?.code === '23505') {
+              const { data: existing } = await supabase.from('accounts').select('id').eq('company_id', companyId).eq('code', '4000').limit(1).single();
+              if (existing?.id) salesAccountId = existing.id;
+            }
+          }
           if (!arAccountId || !salesAccountId) {
-            const errorMsg = `Missing required accounts for sale journal entry. AR: ${arAccountId ? 'OK' : 'MISSING'}, Sales: ${salesAccountId ? 'OK' : 'MISSING'}`;
+            const errorMsg = `Missing required accounts for sale journal entry. AR: ${arAccountId ? 'OK' : 'MISSING'}, Sales: ${salesAccountId ? 'OK' : 'MISSING'}. Add a "Sales Revenue" account (code 4000) in Settings → Accounting → Chart of Accounts.`;
             console.error('[SALES CONTEXT] ❌ CRITICAL:', errorMsg);
             throw new Error(errorMsg);
           }
@@ -1000,7 +1061,7 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
       }
 
       const createdLabel = docType === 'pos' ? 'POS sale' : docType === 'invoice' ? 'Invoice' : docType === 'quotation' ? 'Quotation' : docType === 'order' ? 'Order' : 'Draft';
-      toast.success(`${createdLabel} ${invoiceNo} created successfully!`);
+      toast.success(`${createdLabel} ${effectiveInvoiceNo} created successfully!`);
       
       // Dispatch event to refresh inventory
       window.dispatchEvent(new CustomEvent('saleSaved', { detail: { saleId: newSale.id } }));
@@ -1186,7 +1247,10 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
           }
           const qtyNeeded = Math.abs(delta.deltaQty);
           if (stock < qtyNeeded) {
-            throw new Error(`${delta.name}: quantity (${qtyNeeded}) exceeds available stock (${stock})`);
+            throw new Error(
+              `${delta.name}: quantity (${qtyNeeded}) exceeds available stock (${stock}). ` +
+              'To allow this, enable "Negative Stock Allowed" in Settings → Inventory.'
+            );
           }
         }
       }

@@ -39,6 +39,7 @@ import { contactService } from '../../services/contactService';
 import { saleService } from '../../services/saleService';
 import { useSales } from '../../context/SalesContext';
 import { useSettings } from '../../context/SettingsContext';
+import { useFormatCurrency } from '../../hooks/useFormatCurrency';
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Badge } from "../ui/badge";
@@ -80,6 +81,7 @@ export const POS = () => {
   const { companyId, branchId, user } = useSupabase();
   const { sales, createSale, updateSale, refreshSales, getSaleById } = useSales();
   const { posSettings } = useSettings();
+  const { formatCurrency, currencySymbol } = useFormatCurrency();
   const [products, setProducts] = useState<POSProduct[]>([]);
   const [customers, setCustomers] = useState<POSCustomer[]>([
     { id: "walk-in", name: "Walk-in Customer" }
@@ -539,7 +541,7 @@ export const POS = () => {
                 <span className="text-xs text-gray-400 uppercase font-medium">Total Sales Today</span>
                 <TrendingUp size={14} className="text-blue-400" />
               </div>
-              <p className="text-2xl font-bold text-white">${todayStats.total.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
+              <p className="text-2xl font-bold text-white">{formatCurrency(todayStats.total)}</p>
               <p className="text-xs text-blue-400 mt-0.5">{todayStats.count} transactions</p>
             </div>
 
@@ -570,7 +572,7 @@ export const POS = () => {
                 <ShoppingCart size={14} className="text-orange-400" />
               </div>
               <p className="text-2xl font-bold text-white">{cartCount}</p>
-              <p className="text-xs text-orange-400 mt-0.5">${total.toFixed(2)} total</p>
+              <p className="text-xs text-orange-400 mt-0.5">{formatCurrency(total)} total</p>
             </div>
           </div>
         </div>
@@ -728,7 +730,7 @@ export const POS = () => {
                     <div className="flex items-end justify-between">
                       <div>
                         <span className="text-xl font-bold text-white">
-                          ${(isWholesale ? product.wholesalePrice : product.retailPrice).toFixed(2)}
+                          {formatCurrency(isWholesale ? product.wholesalePrice : product.retailPrice)}
                         </span>
                       </div>
                       <div className="bg-blue-600 text-white p-1.5 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity">
@@ -881,18 +883,18 @@ export const POS = () => {
                   <div className="flex items-start justify-between">
                     <div>
                       <h4 className="font-semibold text-white text-sm mb-1">{item.productName}</h4>
-                      <p className="text-xs text-gray-500">${(item.price || 0).toFixed(2)} × {item.quantity}</p>
+                      <p className="text-xs text-gray-500">{formatCurrency(item.price || 0)} × {item.quantity}</p>
                     </div>
-                    <p className="font-bold text-blue-400 text-sm">${(item.total || 0).toFixed(2)}</p>
+                    <p className="font-bold text-blue-400 text-sm">{formatCurrency(item.total || 0)}</p>
                   </div>
                 </div>
               ))}
               <div className="pt-3 border-t border-gray-700 space-y-1 text-sm">
-                <div className="flex justify-between text-gray-400"><span>Subtotal</span><span>${(viewingSale.subtotal || 0).toFixed(2)}</span></div>
-                {(viewingSale.discount || 0) > 0 && <div className="flex justify-between text-green-400"><span>Discount</span><span>-${(viewingSale.discount || 0).toFixed(2)}</span></div>}
-                <div className="flex justify-between text-gray-400"><span>Tax</span><span>${(viewingSale.tax || 0).toFixed(2)}</span></div>
-                <div className="flex justify-between font-bold text-white pt-2"><span>Total</span><span>${(viewingSale.total || 0).toFixed(2)}</span></div>
-                <div className="flex justify-between text-green-400"><span>Paid</span><span>${(viewingSalePayments.length > 0 ? viewingSalePayments.reduce((s, p) => s + (p.amount || 0), 0) : (viewingSale.paid || 0)).toFixed(2)}</span></div>
+                <div className="flex justify-between text-gray-400"><span>Subtotal</span><span>{formatCurrency(viewingSale.subtotal || 0)}</span></div>
+                {(viewingSale.discount || 0) > 0 && <div className="flex justify-between text-green-400"><span>Discount</span><span>-{formatCurrency(viewingSale.discount || 0)}</span></div>}
+                <div className="flex justify-between text-gray-400"><span>Tax</span><span>{formatCurrency(viewingSale.tax || 0)}</span></div>
+                <div className="flex justify-between font-bold text-white pt-2"><span>Total</span><span>{formatCurrency(viewingSale.total || 0)}</span></div>
+                <div className="flex justify-between text-green-400"><span>Paid</span><span>{formatCurrency(viewingSalePayments.length > 0 ? viewingSalePayments.reduce((s, p) => s + (p.amount || 0), 0) : (viewingSale.paid || 0))}</span></div>
               </div>
             </div>
           ) : cart.length === 0 ? (
@@ -933,7 +935,7 @@ export const POS = () => {
                     </div>
                     <div className="flex flex-col items-end gap-1">
                       <p className="font-bold text-blue-400 text-sm">
-                        ${((item.customPrice !== undefined ? item.customPrice : getPrice(item)) * item.qty).toFixed(2)}
+                        {formatCurrency((item.customPrice !== undefined ? item.customPrice : getPrice(item)) * item.qty)}
                       </p>
                       <button
                         onClick={() => removeItem(item.id)}
@@ -1000,7 +1002,7 @@ export const POS = () => {
                       discountType === 'amount' ? "bg-blue-600 text-white" : "text-gray-400 hover:text-white"
                     )}
                   >
-                    <DollarSign size={12} className="inline mr-1" />$
+                    <DollarSign size={12} className="inline mr-1" />{currencySymbol}
                   </button>
                 </div>
                 <div className="flex-1 relative">
@@ -1015,18 +1017,18 @@ export const POS = () => {
                 </div>
               </div>
               {discountAmount > 0 && (
-                <p className="text-xs text-green-400 mt-2">Discount applied: -${discountAmount.toFixed(2)}{discountType === 'percentage' && ` (${discountValue}%)`}</p>
+                <p className="text-xs text-green-400 mt-2">Discount applied: -{formatCurrency(discountAmount)}{discountType === 'percentage' && ` (${discountValue}%)`}</p>
               )}
             </div>
 
             {/* Totals */}
             <div className="px-5 py-4 space-y-2 border-b border-gray-800">
-              <div className="flex justify-between text-sm"><span className="text-gray-400">Subtotal</span><span className="text-white font-medium">${subtotal.toFixed(2)}</span></div>
-              {discountAmount > 0 && <div className="flex justify-between text-sm"><span className="text-gray-400">Discount</span><span className="text-green-400 font-medium">-${discountAmount.toFixed(2)}</span></div>}
-              <div className="flex justify-between text-sm"><span className="text-gray-400">Tax (10%)</span><span className="text-white font-medium">${tax.toFixed(2)}</span></div>
+              <div className="flex justify-between text-sm"><span className="text-gray-400">Subtotal</span><span className="text-white font-medium">{formatCurrency(subtotal)}</span></div>
+              {discountAmount > 0 && <div className="flex justify-between text-sm"><span className="text-gray-400">Discount</span><span className="text-green-400 font-medium">-{formatCurrency(discountAmount)}</span></div>}
+              <div className="flex justify-between text-sm"><span className="text-gray-400">Tax (10%)</span><span className="text-white font-medium">{formatCurrency(tax)}</span></div>
               <div className="flex justify-between items-center pt-2 border-t border-gray-700">
                 <span className="text-base font-semibold text-white">Total</span>
-                <span className="text-2xl font-bold text-blue-400">${total.toFixed(2)}</span>
+                <span className="text-2xl font-bold text-blue-400">{formatCurrency(total)}</span>
               </div>
             </div>
 
@@ -1035,8 +1037,8 @@ export const POS = () => {
               <div className="px-5 py-3 border-b border-gray-800 bg-amber-900/10 border-amber-800/30 rounded-lg mx-2 mb-2">
                 <p className="text-xs text-amber-400/90 font-semibold uppercase mb-2">Amount difference</p>
                 <div className="space-y-1.5 text-sm mb-3">
-                  <div className="flex justify-between text-gray-400"><span>Old total</span><span>${(viewingSale.total ?? 0).toFixed(2)}</span></div>
-                  <div className="flex justify-between text-white"><span>New total</span><span>${total.toFixed(2)}</span></div>
+                  <div className="flex justify-between text-gray-400"><span>Old total</span><span>{formatCurrency(viewingSale.total ?? 0)}</span></div>
+                  <div className="flex justify-between text-white"><span>New total</span><span>{formatCurrency(total)}</span></div>
                   <div className={cn(
                     "flex justify-between font-semibold pt-1.5 border-t border-amber-800/40",
                     total - (viewingSale.total ?? 0) >= 0 ? "text-green-400" : "text-red-400"
@@ -1082,7 +1084,7 @@ export const POS = () => {
                   <div className="flex justify-between text-sm pt-1 border-t border-amber-800/40">
                     <span className="text-gray-400">Due</span>
                     <span className={cn(Math.max(0, total - editPaidAmount) > 0 ? "text-amber-400 font-medium" : "text-green-400")}>
-                      ${(Math.max(0, total - editPaidAmount)).toFixed(2)}
+                      {formatCurrency(Math.max(0, total - editPaidAmount))}
                     </span>
                   </div>
                 </div>

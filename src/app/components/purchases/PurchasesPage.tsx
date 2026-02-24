@@ -51,6 +51,7 @@ import {
   DialogFooter,
 } from '@/app/components/ui/dialog';
 import { toast } from 'sonner';
+import { exportToCSV, exportToExcel, exportToPDF, type ExportData } from '@/app/utils/exportUtils';
 import { useCheckPermission } from '@/app/hooks/useCheckPermission';
 import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
 import { getEffectivePurchaseStatus, getPurchaseStatusBadgeConfig, DEFAULT_PURCHASE_BADGE, isPaymentClosedForPurchase, canAddPaymentToPurchase } from '@/app/utils/statusHelpers';
@@ -1378,9 +1379,30 @@ export const PurchasesPage = () => {
           onImport: () => toast.info('Purchases import coming soon. Use Add Purchase to create orders.')
         }}
         exportConfig={{
-          onExportCSV: () => console.log('Export CSV'),
-          onExportExcel: () => console.log('Export Excel'),
-          onExportPDF: () => console.log('Export PDF')
+          onExportCSV: () => {
+            const data: ExportData = {
+              headers: ['PO #', 'Date', 'Supplier', 'Contact', 'Reference', 'Location', 'Items', 'Grand Total', 'Payment Due', 'Status', 'Payment Status'],
+              rows: sortedPurchases.map(p => [p.poNo, p.date, p.supplier, p.supplierContact || '', p.reference || '', p.location, p.items, p.grandTotal, p.paymentDue, p.status, p.paymentStatus]),
+              title: 'Purchases'
+            };
+            try { exportToCSV(data, 'purchases'); toast.success('Purchases exported as CSV'); } catch (e) { toast.error('Export failed'); }
+          },
+          onExportExcel: () => {
+            const data: ExportData = {
+              headers: ['PO #', 'Date', 'Supplier', 'Contact', 'Reference', 'Location', 'Items', 'Grand Total', 'Payment Due', 'Status', 'Payment Status'],
+              rows: sortedPurchases.map(p => [p.poNo, p.date, p.supplier, p.supplierContact || '', p.reference || '', p.location, p.items, p.grandTotal, p.paymentDue, p.status, p.paymentStatus]),
+              title: 'Purchases'
+            };
+            try { exportToExcel(data, 'purchases'); toast.success('Purchases exported as Excel'); } catch (e) { toast.error('Export failed'); }
+          },
+          onExportPDF: () => {
+            const data: ExportData = {
+              headers: ['PO #', 'Date', 'Supplier', 'Contact', 'Reference', 'Location', 'Items', 'Grand Total', 'Payment Due', 'Status', 'Payment Status'],
+              rows: sortedPurchases.map(p => [p.poNo, p.date, p.supplier, p.supplierContact || '', p.reference || '', p.location, p.items, p.grandTotal, p.paymentDue, p.status, p.paymentStatus]),
+              title: 'Purchases'
+            };
+            try { exportToPDF(data, 'purchases'); toast.success('PDF opened for print'); } catch (e) { toast.error('Export failed'); }
+          }
         }}
       />
 
