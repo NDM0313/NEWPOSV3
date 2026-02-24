@@ -1,0 +1,6 @@
+name,sku,category,unit,cost_price,selling_price,opening_stock,barcode,description
+Sample Product 1,PROD-001,General,Piece,100,200,10,,Sample description
+Sample Product 2,PROD-002,General,Piece,150,300,5,,Another product
+Sample Product 3,PROD-003,General,Piece,200,400,0,,
+Sample Product 4,PROD-004,General,Meter,50,120,20,,Fabric roll
+Sample Product 5,PROD-005,General,Piece,80,180,0,,Accessory item

@@ -1368,7 +1368,7 @@ export const SalesPage = () => {
           )
         }}
         importConfig={{
-          onImport: () => console.log('Import Sales')
+          onImport: () => toast.info('Sales import coming soon. Use Add Sale to create invoices.')
         }}
         exportConfig={{
           onExportCSV: () => console.log('Export CSV'),

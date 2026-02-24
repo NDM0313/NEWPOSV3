@@ -121,25 +121,32 @@ export const ExpenseProvider = ({ children }: { children: ReactNode }) => {
     return mapping[category as ExpenseCategory] || (typeof category === 'string' ? category.toLowerCase().replace(/\s+/g, '_') : 'miscellaneous');
   };
 
-  // Map category from Supabase format to app format (can return display name or slug)
+  // Map category from Supabase format to app format (slug, name, or display name)
   const mapCategoryFromSupabase = (category: string | null | undefined): ExpenseCategory | string => {
     const mapping: Record<string, ExpenseCategory> = {
       'rent': 'Rent', 'utilities': 'Utilities', 'salaries': 'Salaries', 'marketing': 'Marketing',
       'travel': 'Travel', 'office_supplies': 'Office Supplies', 'repairs': 'Repairs & Maintenance',
       'professional_fees': 'Other', 'insurance': 'Other', 'taxes': 'Other', 'miscellaneous': 'Other',
     };
-    if (category && mapping[category]) return mapping[category];
-    return category || 'Other';
+    if (!category) return 'Other';
+    const slug = category.toLowerCase().trim().replace(/\s+/g, '_');
+    if (mapping[slug]) return mapping[slug];
+    if (mapping[category]) return mapping[category];
+    return category; // Already display name from expense_categories.name
   };
 
   // Convert Supabase expense format to app format
   const convertFromSupabaseExpense = useCallback((supabaseExpense: any): Expense => {
     const id = supabaseExpense.id || '';
     const expenseNo = supabaseExpense.expense_no || '';
+    // Use expense_category join when category string is empty (expense_category_id used)
+    const categoryRaw = supabaseExpense.category
+      || supabaseExpense.expense_category?.name
+      || supabaseExpense.expense_category?.slug;
     return {
       id,
       expenseNo,
-      category: mapCategoryFromSupabase(supabaseExpense.category),
+      category: mapCategoryFromSupabase(categoryRaw),
       description: supabaseExpense.description || '',
       amount: supabaseExpense.amount || 0,
       date: supabaseExpense.expense_date || new Date().toISOString().split('T')[0],

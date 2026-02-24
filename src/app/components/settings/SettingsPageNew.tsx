@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { 
   Building2, CreditCard, Hash, ToggleLeft, Save, 
   CheckCircle, Users, Lock, Key, Settings as SettingsIcon, AlertCircle, UserCog,
-  MapPin, Store, ShoppingCart, ShoppingBag, Package, Shirt, Calculator, X, Edit, Download, Server, Copy, Printer, RefreshCw
+  MapPin, Store, ShoppingCart, ShoppingBag, Package, Shirt, Calculator, X, Edit, Download, Server, Copy, Printer, RefreshCw, QrCode
 } from 'lucide-react';
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
@@ -22,6 +22,7 @@ import { AddUserModal } from '../users/AddUserModal';
 import { AddBranchModal } from '../branches/AddBranchModal';
 import { exportAndDownloadBackup } from '@/app/services/backupService';
 import { InventoryMasters, type InventoryMasterTab } from './inventory/InventoryMasters';
+import { LeadTools } from './LeadTools';
 import {
   Dialog,
   DialogContent,
@@ -43,9 +44,10 @@ type SettingsTab =
   | 'accounting'
   | 'accounts' 
   | 'numbering' 
-  | 'printer'
+  | 'printer' 
   | 'users' 
   | 'modules'
+  | 'leadTools'
   | 'data';
 
 export const SettingsPageNew = () => {
@@ -132,10 +134,13 @@ export const SettingsPageNew = () => {
     }
   }, [companyId, settings]);
 
-  // Sync inventory form when user switches to Inventory tab (so toggles show saved values)
+  // Sync forms when switching tabs (show latest from DB)
   useEffect(() => {
     if (activeTab === 'inventory') setInventoryForm(settings.inventorySettings);
   }, [activeTab]);
+  useEffect(() => {
+    if (activeTab === 'company') setCompanyForm(settings.company);
+  }, [activeTab, settings.company]);
 
   // Load users when users tab is active
   useEffect(() => {
@@ -346,6 +351,7 @@ export const SettingsPageNew = () => {
     { id: 'users' as const, label: 'User Management', icon: UserCog },
     // Permissions tab removed - permissions now managed per-user in User Management modal
     { id: 'modules' as const, label: 'Module Toggles', icon: ToggleLeft },
+    { id: 'leadTools' as const, label: 'Lead Tools', icon: QrCode },
     { id: 'data' as const, label: 'Data & Backup', icon: Download },
   ];
 
@@ -2161,6 +2167,22 @@ export const SettingsPageNew = () => {
                     ℹ️ <strong>Note:</strong> Disabling a module will hide it from the sidebar. Existing data will be preserved.
                   </p>
                 </div>
+              </div>
+            )}
+
+            {/* LEAD TOOLS TAB */}
+            {activeTab === 'leadTools' && (
+              <div className="space-y-6">
+                <div className="flex items-center gap-3 mb-6">
+                  <div className="p-3 bg-blue-500/10 rounded-lg">
+                    <QrCode className="text-blue-500" size={24} />
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-bold text-white">Lead Tools</h3>
+                    <p className="text-sm text-gray-400">Generate QR codes and links for public contact registration</p>
+                  </div>
+                </div>
+                <LeadTools />
               </div>
             )}
 

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { 
   Search, Filter, Download, Upload, X, Columns3, FileText, 
   FileSpreadsheet, Printer, Check, ChevronUp, ChevronDown 
@@ -98,12 +98,38 @@ export const ListToolbar: React.FC<ListToolbarProps> = ({
   primaryAction,
 }) => {
   const [columnVisibilityOpen, setColumnVisibilityOpen] = useState(false);
+  const filterRef = useRef<HTMLDivElement>(null);
+  const columnsRef = useRef<HTMLDivElement>(null);
+
+  // Close filter when clicking outside (allows Import/Export buttons to receive clicks)
+  useEffect(() => {
+    if (!filter?.isOpen) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (filterRef.current && !filterRef.current.contains(e.target as Node)) {
+        filter.onToggle();
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [filter?.isOpen, filter?.onToggle]);
+
+  // Close columns dropdown when clicking outside
+  useEffect(() => {
+    if (!columnVisibilityOpen) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (columnsRef.current && !columnsRef.current.contains(e.target as Node)) {
+        setColumnVisibilityOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [columnVisibilityOpen]);
 
   // Default rows options
   const rowsOptions = rowsSelector.options || [25, 50, 100, 500, 1000];
 
   return (
-    <div className="shrink-0 px-6 py-3 bg-[#0B0F19] border-b border-gray-800">
+    <div className="shrink-0 px-6 py-3 bg-[#0B0F19] border-b border-gray-800 relative z-10">
       <div className="flex items-center gap-3">
         {/* ============================================ */}
         {/* LEFT SECTION - SEARCH (Full Width) */}
@@ -142,7 +168,7 @@ export const ListToolbar: React.FC<ListToolbarProps> = ({
 
         {/* Column Manager (Optional) */}
         {columnsManager && (
-          <div className="relative">
+          <div ref={columnsRef} className="relative">
             <Button
               variant="outline"
               onClick={() => setColumnVisibilityOpen(!columnVisibilityOpen)}
@@ -155,8 +181,8 @@ export const ListToolbar: React.FC<ListToolbarProps> = ({
             {columnVisibilityOpen && (
               <>
                 <div 
-                  className="fixed inset-0 z-40" 
-                  onClick={() => setColumnVisibilityOpen(false)}
+                  className="fixed inset-0 z-40 pointer-events-none" 
+                  aria-hidden
                 />
                 
                 <div className="absolute right-0 top-12 w-64 bg-gray-900 border border-gray-700 rounded-lg shadow-2xl p-4 z-50">
@@ -229,7 +255,7 @@ export const ListToolbar: React.FC<ListToolbarProps> = ({
 
         {/* 1. Filter Button */}
         {filter && (
-          <div className="relative">
+          <div ref={filterRef} className="relative">
             <Button
               variant="outline"
               onClick={filter.onToggle}
@@ -249,9 +275,10 @@ export const ListToolbar: React.FC<ListToolbarProps> = ({
 
             {filter.isOpen && (
               <>
+                {/* Backdrop: pointer-events-none so Import/Export buttons remain clickable */}
                 <div 
-                  className="fixed inset-0 z-40" 
-                  onClick={filter.onToggle}
+                  className="fixed inset-0 z-40 pointer-events-none" 
+                  aria-hidden
                 />
                 {filter.renderPanel()}
               </>
@@ -262,9 +289,13 @@ export const ListToolbar: React.FC<ListToolbarProps> = ({
         {/* 2. Import Button */}
         {importConfig && (
           <Button 
+            type="button"
             variant="outline" 
-            className="h-10 gap-2 bg-gray-900 border-gray-700"
-            onClick={importConfig.onImport}
+            className="h-10 gap-2 bg-gray-900 border-gray-700 relative z-10"
+            onClick={(e) => {
+              e.stopPropagation();
+              importConfig.onImport();
+            }}
           >
             <Upload size={16} />
             Import

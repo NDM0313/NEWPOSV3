@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { 
   Search, Filter, Download, Upload, Users, DollarSign, TrendingUp, 
   MoreVertical, Eye, Edit, Trash2, FileText, X, Phone, Mail, MapPin,
@@ -29,6 +29,7 @@ import { CustomerLedgerPage } from '@/app/components/accounting/CustomerLedgerPa
 import CustomerLedgerPageOriginal from '@/app/components/customer-ledger-test/CustomerLedgerPageOriginal';
 import { GenericLedgerView } from '@/app/components/accounting/GenericLedgerView';
 import { ViewContactProfile } from './ViewContactProfile';
+import { ImportContactsModal } from './ImportContactsModal';
 import { toast } from 'sonner';
 import { Pagination } from '@/app/components/ui/pagination';
 import { CustomSelect } from '@/app/components/ui/custom-select';
@@ -97,6 +98,8 @@ export const ContactsPage = () => {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [editContactOpen, setEditContactOpen] = useState(false);
   const [viewProfileOpen, setViewProfileOpen] = useState(false);
+  const [importModalOpen, setImportModalOpen] = useState(false);
+  const filterRef = useRef<HTMLDivElement>(null);
 
   // Convert Supabase contact to app format (receivables = due from customer, payables = due to supplier/worker)
   const convertFromSupabaseContact = useCallback((supabaseContact: any, index: number, sales: any[], purchases: any[]): Contact => {
@@ -232,6 +235,18 @@ export const ContactsPage = () => {
     window.addEventListener('focus', onFocus);
     return () => window.removeEventListener('focus', onFocus);
   }, [companyId, loadContacts]);
+
+  // Close filter when clicking outside (allows Import button to receive clicks)
+  useEffect(() => {
+    if (!filterOpen) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (filterRef.current && !filterRef.current.contains(e.target as Node)) {
+        setFilterOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [filterOpen]);
   
   // Filter states
   const [typeFilter, setTypeFilter] = useState<string[]>([]);
@@ -507,7 +522,7 @@ export const ContactsPage = () => {
       </div>
 
       {/* Search & Actions Bar - Fixed */}
-      <div className="shrink-0 px-6 py-3 bg-[#0B0F19] border-b border-gray-800">
+      <div className="shrink-0 px-6 py-3 bg-[#0B0F19] border-b border-gray-800 relative z-10">
         <div className="flex items-center gap-3">
           {/* Search */}
           <div className="flex-1 relative">
@@ -543,7 +558,7 @@ export const ContactsPage = () => {
           />
 
           {/* Filter Button */}
-          <div className="relative">
+          <div ref={filterRef} className="relative">
             <Button
               variant="outline"
               onClick={() => setFilterOpen(!filterOpen)}
@@ -564,10 +579,10 @@ export const ContactsPage = () => {
             {/* Filter Dropdown */}
             {filterOpen && (
               <>
-                {/* Backdrop */}
+                {/* Backdrop: pointer-events-none so Import button remains clickable */}
                 <div 
-                  className="fixed inset-0 z-40" 
-                  onClick={() => setFilterOpen(false)}
+                  className="fixed inset-0 z-40 pointer-events-none" 
+                  aria-hidden
                 />
                 
                 <div className="absolute right-0 top-12 w-80 bg-gray-900 border border-gray-700 rounded-lg shadow-2xl p-4 z-50">
@@ -724,7 +739,15 @@ export const ContactsPage = () => {
           </div>
 
           {/* Import Button */}
-          <Button variant="outline" className="h-10 gap-2 bg-gray-900 border-gray-700">
+          <Button
+            type="button"
+            variant="outline"
+            className="h-10 gap-2 bg-gray-900 border-gray-700 relative z-10"
+            onClick={(e) => {
+              e.stopPropagation();
+              setImportModalOpen(true);
+            }}
+          >
             <Upload size={16} />
             Import
           </Button>
@@ -1322,6 +1345,12 @@ export const ContactsPage = () => {
           </AlertDialogContent>
         </AlertDialog>
       )}
+
+      <ImportContactsModal
+        isOpen={importModalOpen}
+        onClose={() => setImportModalOpen(false)}
+        onSuccess={() => { setImportModalOpen(false); loadContacts(); }}
+      />
     </div>
   );
 };

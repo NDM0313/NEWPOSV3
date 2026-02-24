@@ -1020,6 +1020,7 @@ export const ProductsPage = () => {
       <ImportProductsModal
         isOpen={importModalOpen}
         onClose={() => setImportModalOpen(false)}
+        onSuccess={() => { setImportModalOpen(false); loadProducts(); }}
       />
 
       {/* View Product Details Drawer */}

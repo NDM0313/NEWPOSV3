@@ -86,6 +86,7 @@ import TestLedger from './TestLedger';
 const CustomerLedgerInteractiveTest = lazy(() => import('./components/customer-ledger-test/CustomerLedgerInteractiveTest').then(m => ({ default: m.CustomerLedgerInteractiveTest })));
 import { SupabaseProvider } from './context/SupabaseContext';
 import { ProtectedRoute } from './components/auth/ProtectedRoute';
+import { PublicContactForm } from './components/public/PublicContactForm';
 import { ErrorBoundary } from './components/shared/ErrorBoundary';
 import { useSettings } from './context/SettingsContext';
 import { DateRangeProvider } from './context/DateRangeContext';
@@ -280,6 +281,22 @@ const AppContent = () => {
 };
 
 export default function App() {
+  const pathname = typeof window !== 'undefined' ? window.location.pathname : '';
+
+  // Public contact registration - no login required
+  if (pathname === '/register-contact' || pathname.startsWith('/register-contact')) {
+    return (
+      <ErrorBoundary>
+        <ThemeProvider attribute="class" defaultTheme="dark" enableSystem={false}>
+          <SupabaseProvider>
+            <PublicContactForm />
+            <Toaster position="bottom-right" theme="dark" />
+          </SupabaseProvider>
+        </ThemeProvider>
+      </ErrorBoundary>
+    );
+  }
+
   return (
     <ErrorBoundary onError={(err, info) => {
         // Optional: send to logging service in production

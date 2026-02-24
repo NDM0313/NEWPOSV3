@@ -9,6 +9,11 @@ export interface CreateBusinessRequest {
   fiscalYearStart?: string;
   branchName?: string;
   branchCode?: string;
+  /** Company & branch address - saved to DB, shown in Settings */
+  phone?: string;
+  address?: string;
+  country?: string;
+  timezone?: string;
 }
 
 export interface CreateBusinessResponse {
@@ -58,6 +63,10 @@ export const businessService = {
           p_fiscal_year_start: data.fiscalYearStart || null,
           p_branch_name: data.branchName || 'Main Branch',
           p_branch_code: data.branchCode || 'HQ',
+          p_phone: data.phone || null,
+          p_address: data.address || null,
+          p_country: data.country || null,
+          p_timezone: data.timezone || null,
         }
       );
 

@@ -1375,7 +1375,7 @@ export const PurchasesPage = () => {
           )
         }}
         importConfig={{
-          onImport: () => console.log('Import Purchases')
+          onImport: () => toast.info('Purchases import coming soon. Use Add Purchase to create orders.')
         }}
         exportConfig={{
           onExportCSV: () => console.log('Export CSV'),

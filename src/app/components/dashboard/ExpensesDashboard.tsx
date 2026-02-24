@@ -199,6 +199,12 @@ export const ExpensesDashboard = () => {
     }));
   }, [expenses]);
 
+  // Total expense amount for Expense Breakdown center display (from real DB)
+  const totalExpenseAmount = useMemo(
+    () => expenses.reduce((sum, e) => sum + (e.amount || 0), 0),
+    [expenses]
+  );
+
   // Categories list: from expense_categories (DB) when available, else from expense counts
   const categoriesList = useMemo(() => {
     const flat = flattenCategories(categoriesFromDb);
@@ -444,13 +450,13 @@ export const ExpensesDashboard = () => {
                 </div>
               </div>
               <div className="mt-4">
-                 {chartData.length > 0 && (
+                 {chartData.length > 0 && totalExpenseAmount > 0 && (
                    <>
                      <div className="w-full bg-gray-800 h-1.5 rounded-full overflow-hidden">
-                        <div className="bg-blue-500 h-full rounded-full" style={{ width: `${(chartData[0].value / expenses.reduce((sum, e) => sum + (e.amount || 0), 0)) * 100}%` }}></div>
+                        <div className="bg-blue-500 h-full rounded-full" style={{ width: `${(chartData[0].value / totalExpenseAmount) * 100}%` }}></div>
                      </div>
                      <p className="text-gray-500 text-xs mt-2">
-                       {((chartData[0].value / expenses.reduce((sum, e) => sum + (e.amount || 0), 0)) * 100).toFixed(1)}% of total expenses
+                       {((chartData[0].value / totalExpenseAmount) * 100).toFixed(1)}% of total expenses
                      </p>
                    </>
                  )}
@@ -491,10 +497,10 @@ export const ExpensesDashboard = () => {
                 </PieChart>
               </ResponsiveContainer>
               
-              {/* Center Text */}
+              {/* Center Text - Real total from database */}
               <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-[60%] text-center pointer-events-none">
                  <p className="text-gray-500 text-sm">Total</p>
-                 <p className="text-3xl font-bold text-white">$91.7k</p>
+                 <p className="text-3xl font-bold text-white">{formatCurrency(totalExpenseAmount)}</p>
               </div>
             </div>
           </div>

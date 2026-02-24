@@ -203,6 +203,10 @@ export const CreateBusinessWizard: React.FC<CreateBusinessWizardProps> = ({ onSu
         fiscalYearStart: formData.fiscalYearStart,
         branchName: formData.branchName,
         branchCode: formData.branchCode,
+        phone: formData.phone || undefined,
+        address: formData.address || undefined,
+        country: formData.country || undefined,
+        timezone: formData.timezone || undefined,
       });
       if (!result.success) throw new Error(result.error || 'Failed to create business');
       onSuccess(formData.email, formData.password);

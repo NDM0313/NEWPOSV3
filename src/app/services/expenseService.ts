@@ -33,12 +33,14 @@ export const expenseService = {
     return data;
   },
 
-  // Get all expenses
+  // Get all expenses (join expense_categories for category name when expense_category_id is used)
   async getAllExpenses(companyId: string, branchId?: string) {
-    // Note: company_id and expense_date columns may not exist in all databases
     let query = supabase
       .from('expenses')
-      .select('*')
+      .select(`
+        *,
+        expense_category:expense_categories(name, slug)
+      `)
       .eq('company_id', companyId)
       .order('expense_date', { ascending: false });
 
@@ -46,7 +48,16 @@ export const expenseService = {
       query = query.eq('branch_id', branchId);
     }
 
-    const { data, error } = await query;
+    let { data, error } = await query;
+
+    // Fallback to plain select if join fails (e.g. expense_categories missing)
+    if (error && (error.code === 'PGRST200' || error.message?.includes('expense_categories'))) {
+      let fallback = supabase.from('expenses').select('*').eq('company_id', companyId).order('expense_date', { ascending: false });
+      if (branchId) fallback = fallback.eq('branch_id', branchId);
+      const res = await fallback;
+      data = res.data;
+      error = res.error;
+    }
     
     // If error is about company_id or expense_date column not existing, retry without them
     if (error && error.code === '42703' && (error.message?.includes('company_id') || error.message?.includes('expense_date'))) {

@@ -1,0 +1,6 @@
+name,type,email,phone,address,city,notes
+John Customer,customer,john@example.com,0300-1234567,123 Main St,Karachi,Customer since 2024
+Jane Supplier,supplier,jane@example.com,0300-7654321,456 Trade Ave,Lahore,Preferred supplier
+ABC Trading,both,abc@trading.com,021-1234567,789 Business Rd,Islamabad,Both customer and supplier
+Maria Retail,customer,maria@retail.com,0300-1112233,10 Shop Lane,Karachi,Walk-in customer
+Tech Supplies,supplier,tech@supplies.com,021-9876543,100 Industrial Area,Karachi,IT equipment supplier

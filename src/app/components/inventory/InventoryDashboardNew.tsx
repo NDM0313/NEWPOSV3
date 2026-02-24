@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { 
   Package, TrendingDown, DollarSign, AlertTriangle, 
   BarChart3, Search, Filter, Download, Warehouse, Loader2,
-  ExternalLink, SlidersHorizontal, FileDown, Printer, List, Layers, Upload
+  ExternalLink, SlidersHorizontal, FileDown, Printer, List, Layers, Upload, Info
 } from 'lucide-react';
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
@@ -858,19 +858,81 @@ export const InventoryDashboardNew = () => {
 
       {/* Import Inventory CSV modal */}
       <Dialog open={importInventoryModalOpen} onOpenChange={(open) => { if (!open) { setImportInventoryModalOpen(false); setImportRows([]); } }}>
-        <DialogContent className="bg-gray-900 border-gray-700 text-white max-w-lg">
+        <DialogContent className="bg-gray-900 border-gray-700 text-white max-w-2xl max-h-[90vh] flex flex-col">
           <DialogHeader>
             <DialogTitle className="text-white flex items-center gap-2">
               <Upload size={20} />
-              Import inventory
+              Import Inventory (Opening Balance)
             </DialogTitle>
           </DialogHeader>
-          <p className="text-sm text-gray-400">Upload a CSV with columns <code className="bg-gray-800 px-1 rounded">sku</code> and <code className="bg-gray-800 px-1 rounded">quantity</code>. Quantities will be added as opening balance.</p>
-          <div>
-            <input
-              type="file"
-              accept=".csv"
-              className="block w-full text-sm text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:bg-gray-700 file:text-white file:text-sm"
+
+          <div className="space-y-4 overflow-y-auto flex-1">
+            {/* Instructions */}
+            <div className="bg-blue-500/10 border border-blue-500/30 rounded-xl p-4">
+              <div className="flex items-start gap-3">
+                <Info size={20} className="text-blue-400 shrink-0 mt-0.5" />
+                <div className="flex-1">
+                  <h3 className="text-sm font-semibold text-blue-400 mb-2">How it works</h3>
+                  <ul className="text-xs text-gray-300 space-y-1">
+                    <li>• Upload a CSV with <code className="bg-gray-800 px-1 rounded">sku</code> and <code className="bg-gray-800 px-1 rounded">quantity</code> (or <code className="bg-gray-800 px-1 rounded">qty</code>)</li>
+                    <li>• SKU must match existing products in your catalog (Products page)</li>
+                    <li>• Quantities will be added as <strong>opening balance</strong> stock movements</li>
+                    <li>• Rows with unknown SKUs will be skipped (no product match)</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+
+            {/* Example */}
+            <div>
+              <label className="text-sm font-semibold text-white mb-2 block">Example format</label>
+              <div className="bg-gray-800/50 border border-gray-700 rounded-lg p-3 font-mono text-xs overflow-x-auto">
+                <pre className="text-gray-300">{`sku,quantity
+PROD-001,10
+PROD-002,5
+PROD-003,20`}</pre>
+              </div>
+            </div>
+
+            {/* Step 1: Download Template */}
+            <div>
+              <label className="text-sm font-semibold text-white mb-2 block">Step 1: Download Template</label>
+              <Button
+                type="button"
+                variant="outline"
+                className="h-10 bg-gray-800 border-gray-700 hover:bg-gray-700 text-white gap-2"
+                onClick={() => {
+                  const template = `sku,quantity
+PROD-001,10
+PROD-002,5
+PROD-003,20`;
+                  const blob = new Blob([template], { type: 'text/csv;charset=utf-8;' });
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement('a');
+                  a.href = url;
+                  a.download = 'inventory_import_template.csv';
+                  a.style.display = 'none';
+                  document.body.appendChild(a);
+                  a.click();
+                  setTimeout(() => {
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                  }, 100);
+                  toast.success('Template downloaded');
+                }}
+              >
+                <Download size={16} />
+                Download CSV Template
+              </Button>
+            </div>
+
+            {/* Step 2: Upload */}
+            <div>
+              <label className="text-sm font-semibold text-white mb-2 block">Step 2: Upload your file</label>
+              <input
+                type="file"
+                accept=".csv"
+                className="block w-full text-sm text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:bg-gray-700 file:text-white file:text-sm file:cursor-pointer"
               onChange={(e) => {
                 const file = e.target.files?.[0];
                 if (!file) return;
@@ -899,32 +961,49 @@ export const InventoryDashboardNew = () => {
                 reader.readAsText(file);
                 e.target.value = '';
               }}
-            />
-          </div>
-          {importRows.length > 0 && (
-            <div className="max-h-48 overflow-y-auto rounded-lg border border-gray-700">
-              <table className="w-full text-sm">
-                <thead className="bg-gray-800 sticky top-0">
-                  <tr>
-                    <th className="text-left px-3 py-2 text-gray-400">SKU</th>
-                    <th className="text-left px-3 py-2 text-gray-400">Product</th>
-                    <th className="text-right px-3 py-2 text-gray-400">Qty</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {importRows.slice(0, 20).map((r, i) => (
-                    <tr key={i} className="border-t border-gray-800">
-                      <td className="px-3 py-1.5 font-mono">{r.sku}</td>
-                      <td className="px-3 py-1.5 text-gray-400">{r.name ?? '—'}</td>
-                      <td className="px-3 py-1.5 text-right">{r.quantity}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              {importRows.length > 20 && <p className="text-xs text-gray-500 px-3 py-1">+ {importRows.length - 20} more</p>}
+              />
             </div>
-          )}
-          <DialogFooter className="gap-2">
+
+            {/* Preview */}
+            {importRows.length > 0 && (
+            <div>
+              <label className="text-sm font-semibold text-white mb-2 block">Preview</label>
+              <div className="max-h-40 overflow-y-auto rounded-lg border border-gray-700">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-800 sticky top-0">
+                    <tr>
+                      <th className="text-left px-3 py-2 text-gray-400">SKU</th>
+                      <th className="text-left px-3 py-2 text-gray-400">Product</th>
+                      <th className="text-right px-3 py-2 text-gray-400">Qty</th>
+                      <th className="text-center px-3 py-2 text-gray-400 w-20">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {importRows.slice(0, 20).map((r, i) => (
+                      <tr key={i} className="border-t border-gray-800">
+                        <td className="px-3 py-1.5 font-mono">{r.sku}</td>
+                        <td className="px-3 py-1.5 text-gray-400">{r.name ?? '—'}</td>
+                        <td className="px-3 py-1.5 text-right">{r.quantity}</td>
+                        <td className="px-3 py-1.5 text-center">
+                          {r.productId ? (
+                            <span className="text-green-400 text-xs">✓</span>
+                          ) : (
+                            <span className="text-amber-400 text-xs">No match</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {importRows.length > 20 && <p className="text-xs text-gray-500 px-3 py-1">+ {importRows.length - 20} more</p>}
+              </div>
+              <p className="text-xs text-gray-500 mt-1">
+                {importRows.filter((r) => r.productId).length} of {importRows.length} rows match existing products. Only matched rows will be imported.
+              </p>
+            </div>
+            )}
+          </div>
+          <DialogFooter className="gap-2 shrink-0 pt-4 border-t border-gray-800">
             <Button variant="outline" className="border-gray-700" onClick={() => { setImportInventoryModalOpen(false); setImportRows([]); }}>Cancel</Button>
             <Button
               className="bg-blue-600 hover:bg-blue-500"
@@ -940,7 +1019,7 @@ export const InventoryDashboardNew = () => {
                       await inventoryService.insertOpeningBalanceMovement(companyId, branchIdOrNull, row.productId, row.quantity, 0);
                   }
                   await loadOverview();
-                  toast.success(`Imported ${valid.length} item(s).`);
+                  toast.success(`Imported ${valid.length} item(s) as opening balance.`);
                   setImportInventoryModalOpen(false);
                   setImportRows([]);
                 } catch (err: any) {

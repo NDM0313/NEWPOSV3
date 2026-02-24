@@ -1,73 +1,58 @@
 import React, { useState, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { X, Upload, FileText, Download, AlertCircle, CheckCircle2, Info } from 'lucide-react';
 import { Button } from '@/app/components/ui/button';
 import { cn } from '@/app/components/ui/utils';
 import { useSupabase } from '@/app/context/SupabaseContext';
-import { productService } from '@/app/services/productService';
-import { inventoryService } from '@/app/services/inventoryService';
-import { productCategoryService } from '@/app/services/productCategoryService';
-import { unitService } from '@/app/services/unitService';
-import { brandService } from '@/app/services/brandService';
+import { contactService } from '@/app/services/contactService';
 import { toast } from 'sonner';
 
-/** CSV column mapping - header names (case-insensitive) to field keys */
-const PRODUCT_CSV_COLUMNS: Record<string, string> = {
+const CONTACT_CSV_COLUMNS: Record<string, string> = {
   name: 'name',
-  'product name': 'name',
-  sku: 'sku',
-  category: 'category',
-  unit: 'unit',
-  brand: 'brand',
-  'cost price': 'cost_price',
-  'purchase price': 'cost_price',
-  'purchase_price': 'cost_price',
-  'cost_price': 'cost_price',
-  'selling price': 'selling_price',
-  'retail price': 'selling_price',
-  'retail_price': 'selling_price',
-  'selling_price': 'selling_price',
-  'wholesale price': 'wholesale_price',
-  'wholesale_price': 'wholesale_price',
-  'opening stock': 'opening_stock',
-  'opening_stock': 'opening_stock',
-  'initial stock': 'opening_stock',
-  quantity: 'opening_stock',
-  qty: 'opening_stock',
-  barcode: 'barcode',
-  description: 'description',
+  type: 'type',
+  email: 'email',
+  phone: 'phone',
+  mobile: 'mobile',
+  address: 'address',
+  city: 'city',
+  state: 'state',
+  country: 'country',
+  notes: 'notes',
+  'opening balance': 'opening_balance',
+  opening_balance: 'opening_balance',
 };
 
-interface ParsedProductRow {
+interface ParsedContactRow {
   name: string;
-  sku: string;
-  category?: string;
-  unit?: string;
-  brand?: string;
-  cost_price: number;
-  selling_price: number;
-  wholesale_price?: number;
-  opening_stock: number;
-  barcode?: string;
-  description?: string;
+  type: 'customer' | 'supplier' | 'both';
+  email?: string;
+  phone?: string;
+  mobile?: string;
+  address?: string;
+  city?: string;
+  state?: string;
+  country?: string;
+  notes?: string;
+  opening_balance?: number;
 }
 
-interface ImportProductsModalProps {
+interface ImportContactsModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess?: () => void;
 }
 
-const PRODUCT_CSV_TEMPLATE = `name,sku,category,unit,cost_price,selling_price,opening_stock,barcode,description
-Sample Product 1,PROD-001,General,Piece,100,200,10,,Sample description
-Sample Product 2,PROD-002,General,Piece,150,300,5,,Another product
-Sample Product 3,PROD-003,General,Piece,200,400,0,,`;
+const CONTACT_CSV_TEMPLATE = `name,type,email,phone,address,city,notes
+John Customer,customer,john@example.com,0300-1234567,123 Main St,Karachi,Customer since 2024
+Jane Supplier,supplier,jane@example.com,0300-7654321,456 Trade Ave,Lahore,Preferred supplier
+ABC Trading,both,abc@trading.com,021-1234567,789 Business Rd,Islamabad,Both customer and supplier`;
 
-export const ImportProductsModal = ({ isOpen, onClose, onSuccess }: ImportProductsModalProps) => {
-  const { companyId, branchId } = useSupabase();
+export const ImportContactsModal = ({ isOpen, onClose, onSuccess }: ImportContactsModalProps) => {
+  const { companyId } = useSupabase();
   const [isDragging, setIsDragging] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [importStatus, setImportStatus] = useState<'idle' | 'processing' | 'success' | 'error'>('idle');
-  const [parsedRows, setParsedRows] = useState<ParsedProductRow[]>([]);
+  const [parsedRows, setParsedRows] = useState<ParsedContactRow[]>([]);
   const [importError, setImportError] = useState<string | null>(null);
   const [importedCount, setImportedCount] = useState(0);
 
@@ -79,41 +64,40 @@ export const ImportProductsModal = ({ isOpen, onClose, onSuccess }: ImportProduc
     setImportedCount(0);
   }, []);
 
-  const parseCSV = useCallback((text: string): ParsedProductRow[] => {
+  const parseCSV = useCallback((text: string): ParsedContactRow[] => {
     const lines = text.split(/\r?\n/).filter((l) => l.trim());
     if (lines.length < 2) return [];
     const header = lines[0].split(',').map((h) => h.trim().toLowerCase());
     const colMap: Record<string, number> = {};
     header.forEach((h, i) => {
-      const key = PRODUCT_CSV_COLUMNS[h] || h;
+      const key = CONTACT_CSV_COLUMNS[h] || h;
       colMap[key] = i;
     });
-    const nameIdx = colMap.name ?? header.findIndex((h) => PRODUCT_CSV_COLUMNS[h] === 'name');
-    const skuIdx = colMap.sku ?? header.findIndex((h) => PRODUCT_CSV_COLUMNS[h] === 'sku');
+    const nameIdx = colMap.name ?? header.findIndex((h) => CONTACT_CSV_COLUMNS[h] === 'name');
+    const typeIdx = colMap.type ?? header.findIndex((h) => CONTACT_CSV_COLUMNS[h] === 'type');
     if (nameIdx < 0) return [];
 
-    const rows: ParsedProductRow[] = [];
+    const rows: ParsedContactRow[] = [];
     for (let i = 1; i < lines.length; i++) {
       const cells = lines[i].split(',').map((c) => c.trim());
       const name = (cells[nameIdx] ?? '').trim();
       if (!name) continue;
-      const sku = (cells[skuIdx] ?? '').trim() || `PRD-IMP-${Date.now()}-${i}`;
-      const costPrice = parseFloat(cells[colMap.cost_price ?? -1] ?? '0') || 0;
-      const sellingPrice = parseFloat(cells[colMap.selling_price ?? -1] ?? '0') || 0;
-      const wholesalePrice = parseFloat(cells[colMap.wholesale_price ?? -1] ?? '') || undefined;
-      const openingStock = parseInt(cells[colMap.opening_stock ?? -1] ?? '0', 10) || 0;
+      const typeRaw = (cells[typeIdx ?? -1] ?? 'customer').toLowerCase();
+      const type: 'customer' | 'supplier' | 'both' =
+        typeRaw === 'supplier' ? 'supplier' : typeRaw === 'both' ? 'both' : 'customer';
+
       rows.push({
         name,
-        sku,
-        category: (cells[colMap.category ?? -1] ?? '').trim() || undefined,
-        unit: (cells[colMap.unit ?? -1] ?? '').trim() || undefined,
-        brand: (cells[colMap.brand ?? -1] ?? '').trim() || undefined,
-        cost_price: costPrice,
-        selling_price: sellingPrice,
-        wholesale_price: wholesalePrice,
-        opening_stock: openingStock,
-        barcode: (cells[colMap.barcode ?? -1] ?? '').trim() || undefined,
-        description: (cells[colMap.description ?? -1] ?? '').trim() || undefined,
+        type,
+        email: (cells[colMap.email ?? -1] ?? '').trim() || undefined,
+        phone: (cells[colMap.phone ?? -1] ?? '').trim() || undefined,
+        mobile: (cells[colMap.mobile ?? -1] ?? '').trim() || undefined,
+        address: (cells[colMap.address ?? -1] ?? '').trim() || undefined,
+        city: (cells[colMap.city ?? -1] ?? '').trim() || undefined,
+        state: (cells[colMap.state ?? -1] ?? '').trim() || undefined,
+        country: (cells[colMap.country ?? -1] ?? '').trim() || undefined,
+        notes: (cells[colMap.notes ?? -1] ?? '').trim() || undefined,
+        opening_balance: parseFloat(cells[colMap.opening_balance ?? -1] ?? '') || undefined,
       });
     }
     return rows;
@@ -162,14 +146,12 @@ export const ImportProductsModal = ({ isOpen, onClose, onSuccess }: ImportProduc
     if (file) handleFileSelect(file);
   };
 
-  const downloadTemplate = (format: 'csv' | 'xlsx') => {
-    const filename = 'products_import_template.csv';
-    const mimeType = 'text/csv;charset=utf-8;';
-    const blob = new Blob([PRODUCT_CSV_TEMPLATE], { type: mimeType });
+  const downloadTemplate = () => {
+    const blob = new Blob([CONTACT_CSV_TEMPLATE], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = filename;
+    a.download = 'contacts_import_template.csv';
     a.style.display = 'none';
     document.body.appendChild(a);
     a.click();
@@ -187,65 +169,29 @@ export const ImportProductsModal = ({ isOpen, onClose, onSuccess }: ImportProduc
     setImportError(null);
 
     try {
-      const categories = await productCategoryService.getAllCategoriesFlat(companyId, { includeInactive: true });
-      const units = await unitService.getAll(companyId, { includeInactive: true });
-      const brands = await brandService.getAll(companyId, { includeInactive: true });
-
-      const categoryByName = new Map<string, string>(categories.map((c) => [c.name.toLowerCase(), c.id]));
-      const unitByName = new Map<string, string>(
-        units.map((u) => [u.name.toLowerCase(), u.id]).concat(units.map((u) => [(u.short_code || '').toLowerCase(), u.id]).filter(([k]) => k))
-      );
-      const brandByName = new Map<string, string>(brands.map((b) => [b.name.toLowerCase(), b.id]));
-
       let successCount = 0;
-      const branchIdOrNull = branchId && branchId !== 'all' ? branchId : null;
-
-      for (let i = 0; i < parsedRows.length; i++) {
-        const row = parsedRows[i];
-        const categoryId = row.category ? categoryByName.get(row.category.toLowerCase()) ?? null : null;
-        const unitId = row.unit ? unitByName.get(row.unit.toLowerCase()) ?? null : null;
-        const brandId = row.brand ? brandByName.get(row.brand.toLowerCase()) ?? null : null;
-
-        const productData = {
+      for (const row of parsedRows) {
+        await contactService.createContact({
           company_id: companyId,
-          category_id: categoryId,
-          brand_id: brandId,
-          unit_id: unitId,
+          type: row.type,
           name: row.name,
-          sku: row.sku,
-          barcode: row.barcode || null,
-          description: row.description || null,
-          cost_price: row.cost_price,
-          retail_price: row.selling_price,
-          wholesale_price: row.wholesale_price ?? row.selling_price,
-          current_stock: 0,
-          min_stock: 0,
-          max_stock: 1000,
-          has_variations: false,
-          is_rentable: false,
-          is_sellable: true,
-          track_stock: true,
+          email: row.email || undefined,
+          phone: row.phone || undefined,
+          mobile: row.mobile || undefined,
+          address: row.address || undefined,
+          city: row.city || undefined,
+          state: row.state || undefined,
+          country: row.country || undefined,
+          notes: row.notes || undefined,
+          opening_balance: row.opening_balance,
           is_active: true,
-          is_combo_product: false,
-        };
-
-        const result = await productService.createProduct(productData);
-
-        if (row.opening_stock > 0 && result?.id) {
-          await inventoryService.insertOpeningBalanceMovement(
-            companyId,
-            branchIdOrNull,
-            result.id,
-            row.opening_stock,
-            row.cost_price
-          );
-        }
+        });
         successCount++;
       }
 
       setImportedCount(successCount);
       setImportStatus('success');
-      toast.success(`Imported ${successCount} product(s) successfully`);
+      toast.success(`Imported ${successCount} contact(s) successfully`);
       onSuccess?.();
     } catch (err: any) {
       const msg = err?.message ?? 'Unknown error';
@@ -262,11 +208,11 @@ export const ImportProductsModal = ({ isOpen, onClose, onSuccess }: ImportProduc
 
   if (!isOpen) return null;
 
-  return (
+  const modalContent = (
     <>
-      <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50" onClick={handleClose} />
+      <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[9999]" onClick={handleClose} />
 
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 pointer-events-none">
+      <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 pointer-events-none">
         <div
           className="bg-gray-900 border border-gray-800 rounded-2xl shadow-2xl w-full max-w-2xl pointer-events-auto max-h-[90vh] flex flex-col"
           onClick={(e) => e.stopPropagation()}
@@ -277,8 +223,8 @@ export const ImportProductsModal = ({ isOpen, onClose, onSuccess }: ImportProduc
                 <Upload size={20} className="text-blue-500" />
               </div>
               <div>
-                <h2 className="text-lg font-bold text-white">Import Products</h2>
-                <p className="text-xs text-gray-400 mt-0.5">Upload CSV to bulk import products</p>
+                <h2 className="text-lg font-bold text-white">Import Contacts</h2>
+                <p className="text-xs text-gray-400 mt-0.5">Upload CSV to bulk import contacts</p>
               </div>
             </div>
             <button
@@ -296,9 +242,8 @@ export const ImportProductsModal = ({ isOpen, onClose, onSuccess }: ImportProduc
                 <div className="flex-1">
                   <h3 className="text-sm font-semibold text-blue-400 mb-2">CSV Format</h3>
                   <ul className="text-xs text-gray-300 space-y-1">
-                    <li>• <strong>name</strong> (required), <strong>sku</strong> (optional – auto-generated if empty)</li>
-                    <li>• category, unit, brand – match names from Settings → Inventory</li>
-                    <li>• cost_price, selling_price, opening_stock – numbers</li>
+                    <li>• <strong>name</strong> (required), <strong>type</strong> (customer / supplier / both)</li>
+                    <li>• Optional: email, phone, mobile, address, city, state, country, notes, opening_balance</li>
                     <li>• Download the template below and fill in your data</li>
                   </ul>
                 </div>
@@ -307,27 +252,15 @@ export const ImportProductsModal = ({ isOpen, onClose, onSuccess }: ImportProduc
 
             <div>
               <label className="text-sm font-semibold text-white mb-3 block">Step 1: Download Template</label>
-              <div className="flex gap-3">
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="flex-1 h-12 bg-gray-800 border-gray-700 hover:bg-gray-700 text-white gap-2"
-                  onClick={() => downloadTemplate('csv')}
-                >
-                  <Download size={16} />
-                  Download CSV Template
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="flex-1 h-12 bg-gray-800 border-gray-700 hover:bg-gray-700 text-white gap-2"
-                  onClick={() => downloadTemplate('xlsx')}
-                >
-                  <Download size={16} />
-                  Download Excel Template
-                </Button>
-              </div>
-              <p className="text-xs text-gray-500 mt-2">Both templates are CSV format. Excel can open CSV files directly.</p>
+              <Button
+                type="button"
+                variant="outline"
+                className="h-12 bg-gray-800 border-gray-700 hover:bg-gray-700 text-white gap-2"
+                onClick={downloadTemplate}
+              >
+                <Download size={16} />
+                Download CSV Template
+              </Button>
             </div>
 
             <div>
@@ -348,7 +281,7 @@ export const ImportProductsModal = ({ isOpen, onClose, onSuccess }: ImportProduc
                     </div>
                     <p className="text-sm font-semibold text-white mb-1">{selectedFile.name}</p>
                     <p className="text-xs text-gray-400 mb-1">{(selectedFile.size / 1024).toFixed(2)} KB</p>
-                    <p className="text-xs text-green-400 mb-3">{parsedRows.length} product(s) ready to import</p>
+                    <p className="text-xs text-green-400 mb-3">{parsedRows.length} contact(s) ready to import</p>
                     <button onClick={() => { setSelectedFile(null); setParsedRows([]); }} className="text-xs text-red-400 hover:text-red-300 transition-colors">
                       Remove file
                     </button>
@@ -379,20 +312,18 @@ export const ImportProductsModal = ({ isOpen, onClose, onSuccess }: ImportProduc
                   <thead className="bg-gray-800 sticky top-0">
                     <tr>
                       <th className="text-left px-2 py-1.5 text-gray-400">Name</th>
-                      <th className="text-left px-2 py-1.5 text-gray-400">SKU</th>
-                      <th className="text-right px-2 py-1.5 text-gray-400">Cost</th>
-                      <th className="text-right px-2 py-1.5 text-gray-400">Price</th>
-                      <th className="text-right px-2 py-1.5 text-gray-400">Stock</th>
+                      <th className="text-left px-2 py-1.5 text-gray-400">Type</th>
+                      <th className="text-left px-2 py-1.5 text-gray-400">Email</th>
+                      <th className="text-left px-2 py-1.5 text-gray-400">Phone</th>
                     </tr>
                   </thead>
                   <tbody>
                     {parsedRows.slice(0, 10).map((r, i) => (
                       <tr key={i} className="border-t border-gray-800">
                         <td className="px-2 py-1.5 text-gray-300">{r.name}</td>
-                        <td className="px-2 py-1.5 font-mono text-gray-400">{r.sku}</td>
-                        <td className="px-2 py-1.5 text-right text-gray-400">{r.cost_price}</td>
-                        <td className="px-2 py-1.5 text-right text-gray-400">{r.selling_price}</td>
-                        <td className="px-2 py-1.5 text-right text-gray-400">{r.opening_stock}</td>
+                        <td className="px-2 py-1.5 text-gray-400">{r.type}</td>
+                        <td className="px-2 py-1.5 text-gray-400">{r.email || '—'}</td>
+                        <td className="px-2 py-1.5 text-gray-400">{r.phone || '—'}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -420,7 +351,7 @@ export const ImportProductsModal = ({ isOpen, onClose, onSuccess }: ImportProduc
                   {importStatus === 'success' && (
                     <>
                       <CheckCircle2 size={20} className="text-green-500" />
-                      <span className="text-sm text-green-400">Imported {importedCount} product(s) successfully!</span>
+                      <span className="text-sm text-green-400">Imported {importedCount} contact(s) successfully!</span>
                     </>
                   )}
                   {importStatus === 'error' && (
@@ -452,7 +383,7 @@ export const ImportProductsModal = ({ isOpen, onClose, onSuccess }: ImportProduc
                 ) : (
                   <>
                     <Upload size={16} />
-                    Import {parsedRows.length} Product(s)
+                    Import {parsedRows.length} Contact(s)
                   </>
                 )}
               </Button>
@@ -462,4 +393,6 @@ export const ImportProductsModal = ({ isOpen, onClose, onSuccess }: ImportProduc
       </div>
     </>
   );
+
+  return createPortal(modalContent, document.body);
 };

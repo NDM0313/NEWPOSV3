@@ -45,6 +45,8 @@ import { TransactionDetailModal } from './TransactionDetailModal';
 import { AddAccountDrawer } from './AddAccountDrawer';
 import { LedgerHub } from './LedgerHub';
 import { StudioCostsTab } from './StudioCostsTab';
+import { DepositsTab } from './DepositsTab';
+import { useSettings } from '@/app/context/SettingsContext';
 import { AccountingTestPage } from '@/app/components/test/AccountingTestPage';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { accountService } from '@/app/services/accountService';
@@ -73,6 +75,7 @@ import { Switch } from '@/app/components/ui/switch';
 
 export const AccountingDashboard = () => {
   const { canAccessAccounting } = useCheckPermission();
+  const { modules: settingsModules } = useSettings();
   const accounting = useAccounting();
   const sales = useSales();
   const purchases = usePurchases();
@@ -147,16 +150,24 @@ export const AccountingDashboard = () => {
   }, [transactions]);
   
   // Tab configuration – Ledger: one tab, dropdown on same page for type (Customer/Supplier/User/Worker) + entity
-  const tabs = [
+  // Deposits: only when Rental module enabled. Studio Costs: only when Studio module enabled.
+  const allTabs = [
     { key: 'transactions', label: 'Transactions', icon: Receipt },
     { key: 'accounts', label: 'Accounts', icon: Wallet },
     { key: 'ledger', label: 'Ledger', icon: FileText },
     { key: 'receivables', label: 'Receivables', icon: TrendingUp },
     { key: 'payables', label: 'Payables', icon: TrendingDown },
-    { key: 'deposits', label: 'Deposits', icon: Shield },
-    { key: 'studio', label: 'Studio Costs', icon: Wrench },
+    { key: 'deposits', label: 'Deposits', icon: Shield, isHidden: !settingsModules.rentalModuleEnabled },
+    { key: 'studio', label: 'Studio Costs', icon: Wrench, isHidden: !settingsModules.studioModuleEnabled },
     { key: 'reports', label: 'Reports', icon: BarChart3 },
   ];
+  const tabs = allTabs.filter((t) => !('isHidden' in t) || !(t as any).isHidden);
+
+  // Reset activeTab if current tab becomes hidden (e.g. rental/studio disabled)
+  useEffect(() => {
+    if (activeTab === 'deposits' && !settingsModules.rentalModuleEnabled) setActiveTab('transactions');
+    if (activeTab === 'studio' && !settingsModules.studioModuleEnabled) setActiveTab('transactions');
+  }, [activeTab, settingsModules.rentalModuleEnabled, settingsModules.studioModuleEnabled]);
 
   // Filter transactions based on search and filters
   const filteredTransactions = useMemo(() => {
@@ -1041,16 +1052,7 @@ export const AccountingDashboard = () => {
           </div>
         )}
 
-        {activeTab === 'deposits' && (
-          <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-6">
-            <div className="text-center py-12">
-              <Shield size={48} className="mx-auto text-gray-600 mb-3" />
-              <p className="text-gray-400 text-sm">Security Deposits</p>
-              <p className="text-gray-600 text-xs mt-1">Rental security deposits tracking</p>
-              <p className="text-gray-500 text-xs mt-2">Feature coming soon - Rental module integration</p>
-            </div>
-          </div>
-        )}
+        {activeTab === 'deposits' && settingsModules.rentalModuleEnabled && <DepositsTab />}
 
         {activeTab === 'studio' && <StudioCostsTab />}
 

@@ -23,7 +23,8 @@ import {
   Warehouse,
   Sparkles,
   Factory,
-  FlaskConical
+  FlaskConical,
+  Plus
 } from 'lucide-react';
 import { useNavigation } from '../../context/NavigationContext';
 import { useModules } from '../../context/ModuleContext';
@@ -41,7 +42,7 @@ type NavItem = {
 };
 
 export const Sidebar = () => {
-  const { currentView, setCurrentView, isSidebarOpen, toggleSidebar } = useNavigation();
+  const { currentView, setCurrentView, isSidebarOpen, toggleSidebar, openDrawer } = useNavigation();
   const { modules: moduleContextModules } = useModules();
   const { modules: settingsModules } = useSettings();
   const { canViewReports, canAccessAccounting, canManageSettings, canManageUsers } = useCheckPermission();
@@ -153,40 +154,54 @@ export const Sidebar = () => {
           
           return (
             <div key={item.id}>
-              <button
-                onClick={() => handleItemClick(item)}
-                className={clsx(
-                  "w-full flex items-center justify-between p-3 rounded-xl transition-all duration-200 group relative",
-                  isActive && !item.children
-                    ? "bg-blue-600 text-white shadow-lg shadow-blue-900/20" 
-                    : "text-gray-400 hover:bg-gray-800 hover:text-white"
-                )}
-              >
-                <div className="flex items-center gap-3">
-                  <item.icon size={20} strokeWidth={1.5} className={clsx("shrink-0", isActive && "text-white")} />
-                  
-                  {isSidebarOpen ? (
-                    <motion.span 
-                      initial={{ opacity: 0 }} 
-                      animate={{ opacity: 1 }}
-                      className="font-medium whitespace-nowrap text-sm"
-                    >
-                      {item.label}
-                    </motion.span>
-                  ) : (
-                    <div className="absolute left-14 bg-gray-900 text-white text-sm px-2 py-1 rounded opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity border border-gray-700 whitespace-nowrap z-50 shadow-xl">
-                      {item.label}
-                    </div>
+              <div className="flex items-center gap-1 w-full group/item">
+                <button
+                  onClick={() => handleItemClick(item)}
+                  className={clsx(
+                    "flex-1 flex items-center justify-between p-3 rounded-xl transition-all duration-200 group relative min-w-0",
+                    isActive && !item.children
+                      ? "bg-blue-600 text-white shadow-lg shadow-blue-900/20" 
+                      : "text-gray-400 hover:bg-gray-800 hover:text-white"
                   )}
-                </div>
-                
-                {item.children && isSidebarOpen && (
-                  <ChevronDown 
-                    size={16} 
-                    className={clsx("transition-transform duration-200", isExpanded && "rotate-180")} 
-                  />
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    <item.icon size={20} strokeWidth={1.5} className={clsx("shrink-0", isActive && "text-white")} />
+                    
+                    {isSidebarOpen ? (
+                      <motion.span 
+                        initial={{ opacity: 0 }} 
+                        animate={{ opacity: 1 }}
+                        className="font-medium whitespace-nowrap text-sm truncate"
+                      >
+                        {item.label}
+                      </motion.span>
+                    ) : (
+                      <div className="absolute left-14 bg-gray-900 text-white text-sm px-2 py-1 rounded opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity border border-gray-700 whitespace-nowrap z-50 shadow-xl">
+                        {item.label}
+                      </div>
+                    )}
+                  </div>
+                  
+                  {item.children && isSidebarOpen && (
+                    <ChevronDown 
+                      size={16} 
+                      className={clsx("shrink-0 transition-transform duration-200", isExpanded && "rotate-180")} 
+                    />
+                  )}
+                </button>
+                {/* Quick Add / Import for Contacts */}
+                {item.id === 'contacts' && isSidebarOpen && (
+                  <div className="flex gap-0.5 opacity-0 group-hover/item:opacity-100 transition-opacity shrink-0">
+                    <button
+                      onClick={(e) => { e.stopPropagation(); openDrawer('addContact'); }}
+                      className="p-1.5 rounded-lg hover:bg-gray-700 text-gray-400 hover:text-white"
+                      title="Add Contact"
+                    >
+                      <Plus size={14} />
+                    </button>
+                  </div>
                 )}
-              </button>
+              </div>
 
               {/* Submenu */}
               <AnimatePresence>
