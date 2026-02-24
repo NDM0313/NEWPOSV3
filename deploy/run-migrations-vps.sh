@@ -48,7 +48,7 @@ run_one() {
   fi
 }
 
-SKIP="01_full_database_wipe.sql|14_demo_dummy_data.sql|15_demo_reset_script.sql|cleanup_demo_data.sql|controlled_demo_seed.sql"
+SKIP="|01_full_database_wipe.sql|14_demo_dummy_data.sql|15_demo_reset_script.sql|cleanup_demo_data.sql|controlled_demo_seed.sql|"
 
 # supabase-extract/migrations
 for f in $(ls -1 supabase-extract/migrations/*.sql 2>/dev/null | xargs -I{} basename {} | sort -V); do
