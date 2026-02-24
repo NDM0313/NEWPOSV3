@@ -32,7 +32,7 @@ BEGIN
       WHEN 'purchase' THEN 'PO-'
       WHEN 'expense' THEN 'EXP-'
       WHEN 'rental' THEN 'RNT-'
-      WHEN 'studio' THEN 'STU-'
+      WHEN 'studio' THEN 'STD-'
       WHEN 'journal' THEN 'JE-'
       WHEN 'payment' THEN 'PMT-'
       WHEN 'receipt' THEN 'RCP-'

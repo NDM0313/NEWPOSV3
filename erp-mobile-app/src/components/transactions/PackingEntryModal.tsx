@@ -194,7 +194,7 @@ export function PackingEntryModal({
         onClick={() => onOpenChange(false)}
         aria-hidden
       />
-      <div className="fixed inset-x-4 top-1/2 -translate-y-1/2 bg-[#1F2937] border border-[#374151] rounded-2xl z-[80] max-h-[85vh] overflow-hidden flex flex-col">
+      <div className="fixed inset-x-4 top-4 sm:top-[5vh] bg-[#1F2937] border border-[#374151] rounded-2xl z-[80] max-h-[70vh] overflow-hidden flex flex-col">
         {/* Header */}
         <div className="p-4 border-b border-[#374151] flex items-center justify-between flex-shrink-0">
           <div className="flex items-center gap-2">

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { ArrowLeft, FileText } from 'lucide-react';
 import type { SaleData } from './SalesModule';
 
@@ -148,14 +149,17 @@ export function SaleSummary({ onBack, saleData, onUpdate, onProceedToPayment }: 
         </div>
       </div>
 
-      <div className="fixed left-0 right-0 bg-[#1F2937] border-t border-[#374151] p-4 safe-area-bottom fixed-bottom-above-nav z-40">
-        <button
-          onClick={onProceedToPayment}
-          className="w-full h-12 bg-[#3B82F6] hover:bg-[#2563EB] rounded-lg font-medium text-white transition-colors"
-        >
-          Proceed to Payment →
-        </button>
-      </div>
+      {createPortal(
+        <div className="fixed left-0 right-0 bottom-0 bg-[#1F2937] border-t border-[#374151] p-4 pb-[calc(1rem+env(safe-area-inset-bottom,0))] z-[60]">
+          <button
+            onClick={onProceedToPayment}
+            className="w-full h-12 bg-[#3B82F6] hover:bg-[#2563EB] rounded-lg font-medium text-white transition-colors"
+          >
+            Proceed to Payment →
+          </button>
+        </div>,
+        document.body
+      )}
     </div>
   );
 }

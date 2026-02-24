@@ -76,50 +76,58 @@ CREATE INDEX IF NOT EXISTS idx_product_combo_items_variation_id ON product_combo
 ALTER TABLE product_combos ENABLE ROW LEVEL SECURITY;
 ALTER TABLE product_combo_items ENABLE ROW LEVEL SECURITY;
 
--- RLS Policies for product_combos
+-- RLS Policies for product_combos (idempotent)
+DROP POLICY IF EXISTS "Users can view combos for their company" ON product_combos;
 CREATE POLICY "Users can view combos for their company"
   ON product_combos FOR SELECT
   USING (
     company_id = (SELECT company_id FROM users WHERE id = auth.uid())
   );
 
+DROP POLICY IF EXISTS "Users can insert combos for their company" ON product_combos;
 CREATE POLICY "Users can insert combos for their company"
   ON product_combos FOR INSERT
   WITH CHECK (
     company_id = (SELECT company_id FROM users WHERE id = auth.uid())
   );
 
+DROP POLICY IF EXISTS "Users can update combos for their company" ON product_combos;
 CREATE POLICY "Users can update combos for their company"
   ON product_combos FOR UPDATE
   USING (
     company_id = (SELECT company_id FROM users WHERE id = auth.uid())
   );
 
+DROP POLICY IF EXISTS "Users can delete combos for their company" ON product_combos;
 CREATE POLICY "Users can delete combos for their company"
   ON product_combos FOR DELETE
   USING (
     company_id = (SELECT company_id FROM users WHERE id = auth.uid())
   );
 
--- RLS Policies for product_combo_items
+-- RLS Policies for product_combo_items (idempotent)
+DROP POLICY IF EXISTS "Users can view combo items for their company" ON product_combo_items;
 CREATE POLICY "Users can view combo items for their company"
   ON product_combo_items FOR SELECT
   USING (
     company_id = (SELECT company_id FROM users WHERE id = auth.uid())
   );
 
+DROP POLICY IF EXISTS "Users can insert combo items for their company" ON product_combo_items;
 CREATE POLICY "Users can insert combo items for their company"
   ON product_combo_items FOR INSERT
   WITH CHECK (
     company_id = (SELECT company_id FROM users WHERE id = auth.uid())
   );
 
+DROP POLICY IF EXISTS "Users can update combo items for their company" ON product_combo_items;
 CREATE POLICY "Users can update combo items for their company"
   ON product_combo_items FOR UPDATE
   USING (
     company_id = (SELECT company_id FROM users WHERE id = auth.uid())
   );
 
+DROP POLICY IF EXISTS "Users can delete combo items for their company" ON product_combo_items;
 CREATE POLICY "Users can delete combo items for their company"
   ON product_combo_items FOR DELETE
   USING (
@@ -139,6 +147,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+DROP TRIGGER IF EXISTS trigger_update_product_combos_updated_at ON product_combos;
 CREATE TRIGGER trigger_update_product_combos_updated_at
   BEFORE UPDATE ON product_combos
   FOR EACH ROW

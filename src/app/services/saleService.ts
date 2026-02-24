@@ -319,14 +319,20 @@ export const saleService = {
 
   // Get sales for Studio Sales list by invoice_no prefix 'STD-%' so STD-0002 etc. show (avoids 400 when is_studio column missing).
   async getStudioSales(companyId: string, branchId?: string) {
-    let q = supabase
-      .from('sales')
-      .select(`*, customer:contacts(name, phone), items:sales_items(*)`)
-      .eq('company_id', companyId)
-      .ilike('invoice_no', 'STD-%')
-      .order('invoice_date', { ascending: false });
-    if (branchId && branchId !== 'all') q = q.eq('branch_id', branchId);
-    const { data, error } = await q;
+    const selectWithItems = (itemsTable: 'sales_items' | 'sale_items') =>
+      `*, customer:contacts(name, phone), items:${itemsTable}(*)`;
+    const runQuery = async (itemsTable: 'sales_items' | 'sale_items', orderBy: string) => {
+      let q = supabase.from('sales').select(selectWithItems(itemsTable)).eq('company_id', companyId).ilike('invoice_no', 'STD-%');
+      if (branchId && branchId !== 'all') q = q.eq('branch_id', branchId);
+      q = q.order(orderBy, { ascending: false });
+      return await q;
+    };
+    let { data, error } = await runQuery('sales_items', 'invoice_date');
+    if (error && (error.code === '42P01' || error.code === '42703' || String(error.message || '').includes('sales_items') || String(error.message || '').includes('invoice_date'))) {
+      const ret = await runQuery('sale_items', 'created_at');
+      data = ret.data;
+      error = ret.error;
+    }
     if (error) throw error;
     return data || [];
   },

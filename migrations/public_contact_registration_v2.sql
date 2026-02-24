@@ -64,20 +64,21 @@ CREATE TABLE IF NOT EXISTS public.public_registration_config (
 );
 -- Insert default: use first company (run once, ignore if rows exist)
 INSERT INTO public.public_registration_config (company_id, is_active)
-SELECT id, true FROM companies WHERE is_active = true LIMIT 1
-WHERE NOT EXISTS (SELECT 1 FROM public_registration_config LIMIT 1);
+SELECT id, true FROM companies
+WHERE is_active = true AND NOT EXISTS (SELECT 1 FROM public_registration_config LIMIT 1)
+LIMIT 1;
 
 -- 6. RPC: register_public_contact_v2
 CREATE OR REPLACE FUNCTION public.register_public_contact_v2(
   p_first_name VARCHAR(100),
   p_last_name VARCHAR(100),
   p_mobile VARCHAR(50),
+  p_contact_type VARCHAR(20),
   p_email VARCHAR(255) DEFAULT NULL,
   p_address TEXT DEFAULT NULL,
   p_city VARCHAR(100) DEFAULT NULL,
   p_country VARCHAR(100) DEFAULT NULL,
   p_notes TEXT DEFAULT NULL,
-  p_contact_type VARCHAR(20),
   p_lead_source VARCHAR(100) DEFAULT NULL,
   p_referral_code VARCHAR(100) DEFAULT NULL,
   p_device_info TEXT DEFAULT NULL,

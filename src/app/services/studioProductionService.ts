@@ -548,8 +548,8 @@ export const studioProductionService = {
     }
   },
 
-  /** Ledger status per stage (for Payable vs Paid). Returns {} if status column missing. */
-  async getLedgerStatusForStages(stageIds: string[]): Promise<Record<string, 'unpaid' | 'paid'>> {
+  /** Ledger status per stage (for Payable vs Paid vs Partial). Returns {} if status column missing. */
+  async getLedgerStatusForStages(stageIds: string[]): Promise<Record<string, 'unpaid' | 'partial' | 'paid'>> {
     if (stageIds.length === 0) return {};
     try {
       const { data, error } = await supabase
@@ -558,10 +558,19 @@ export const studioProductionService = {
         .eq('reference_type', 'studio_production_stage')
         .in('reference_id', stageIds);
       if (error) return {}; // e.g. column "status" does not exist before migration
-      const out: Record<string, 'unpaid' | 'paid'> = {};
+      const byStage: Record<string, { paid: number; unpaid: number }> = {};
       (data || []).forEach((row: { reference_id: string; status?: string }) => {
+        const sid = row.reference_id;
+        if (!byStage[sid]) byStage[sid] = { paid: 0, unpaid: 0 };
         const st = (row.status || 'unpaid').toLowerCase();
-        out[row.reference_id] = st === 'paid' ? 'paid' : 'unpaid';
+        if (st === 'paid') byStage[sid].paid++;
+        else byStage[sid].unpaid++;
+      });
+      const out: Record<string, 'unpaid' | 'partial' | 'paid'> = {};
+      Object.entries(byStage).forEach(([sid, counts]) => {
+        if (counts.unpaid === 0) out[sid] = 'paid';
+        else if (counts.paid === 0) out[sid] = 'unpaid';
+        else out[sid] = 'partial';
       });
       return out;
     } catch {

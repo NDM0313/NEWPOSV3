@@ -24,8 +24,10 @@ import { Badge } from '../ui/badge';
 import { format } from 'date-fns';
 import { useNavigation } from '../../context/NavigationContext';
 import { useSupabase } from '../../context/SupabaseContext';
+import { cn } from '../ui/utils';
 import { studioService } from '../../services/studioService';
 import { studioProductionService } from '../../services/studioProductionService';
+import { WorkerPaymentHistoryModal } from './WorkerPaymentHistoryModal';
 
 // ============================================
 // 🎯 TYPES
@@ -33,6 +35,8 @@ import { studioProductionService } from '../../services/studioProductionService'
 
 type DepartmentType = 'Dyeing' | 'Stitching' | 'Handwork';
 type JobStatus = 'pending' | 'in_progress' | 'completed';
+
+type PaymentStatus = 'paid' | 'partial' | 'unpaid';
 
 interface WorkerJob {
   id: string;
@@ -44,7 +48,8 @@ interface WorkerJob {
   status: JobStatus;
   assignedDate: Date;
   paymentAmount: number;
-  isPaid: boolean;
+  /** Payment status: paid (all paid), partial (some paid), unpaid (none paid) */
+  paymentStatus: PaymentStatus;
   /** Sale id for opening Studio Sale Detail when viewing this job */
   saleId?: string;
 }
@@ -116,6 +121,18 @@ const getJobStatusIcon = (status: JobStatus) => {
   }
 };
 
+const getPaymentStatusBadge = (status: PaymentStatus) => {
+  switch (status) {
+    case 'paid':
+      return { className: 'bg-green-500/10 text-green-400 border-green-500/20', label: 'Paid' };
+    case 'partial':
+      return { className: 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20', label: 'Partial' };
+    case 'unpaid':
+    default:
+      return { className: 'bg-orange-500/10 text-orange-400 border-orange-500/20', label: 'Unpaid' };
+  }
+};
+
 // ============================================
 // 🎯 MAIN COMPONENT
 // ============================================
@@ -139,6 +156,7 @@ export const WorkerDetailPage: React.FC = () => {
   const [ledgerEntries, setLedgerEntries] = useState<LedgerEntry[]>([]);
   const [ledgerLoading, setLedgerLoading] = useState(false);
   const [ledgerOpen, setLedgerOpen] = useState(false);
+  const [paymentHistoryJob, setPaymentHistoryJob] = useState<WorkerJob | null>(null);
 
   const loadDetail = useCallback(async () => {
     if (!companyId || !selectedWorkerId) {
@@ -159,6 +177,7 @@ export const WorkerDetailPage: React.FC = () => {
       const ledgerStatus = stageIds.length > 0
         ? await studioProductionService.getLedgerStatusForStages(stageIds)
         : {};
+      const paymentStatus = (sid: string): PaymentStatus => ledgerStatus[sid] || 'unpaid';
       const currentJobs: WorkerJob[] = data.currentStages.map((s) => ({
         id: s.id,
         jobCardId: s.production_no || '—',
@@ -169,20 +188,20 @@ export const WorkerDetailPage: React.FC = () => {
         status: s.status as JobStatus,
         assignedDate: new Date(),
         paymentAmount: s.cost,
-        isPaid: ledgerStatus[s.id] === 'paid',
+        paymentStatus: paymentStatus(s.id),
         saleId: s.sale_id,
       }));
       const recentCompletedJobs: WorkerJob[] = data.recentCompletedStages.map((s) => ({
         id: s.id,
         jobCardId: s.production_no || '—',
-        customerName: '—',
+        customerName: s.customer_name || '—',
         itemDescription: s.stage_type,
         currentStage: mapDept(s.stage_type),
         deadline: s.completed_at ? new Date(s.completed_at) : new Date(),
         status: 'completed',
         assignedDate: new Date(),
         paymentAmount: s.cost,
-        isPaid: ledgerStatus[s.id] === 'paid',
+        paymentStatus: paymentStatus(s.id),
       }));
       setWorker({
         id: w.id!,
@@ -228,6 +247,10 @@ export const WorkerDetailPage: React.FC = () => {
   useEffect(() => {
     if (ledgerOpen && selectedWorkerId) loadLedger();
   }, [ledgerOpen, selectedWorkerId, loadLedger]);
+
+  useEffect(() => {
+    if (paymentHistoryJob && selectedWorkerId) loadLedger();
+  }, [paymentHistoryJob, selectedWorkerId, loadLedger]);
 
   const handleGoBack = () => {
     setSelectedWorkerId?.(undefined);
@@ -439,9 +462,36 @@ export const WorkerDetailPage: React.FC = () => {
                             Rs {entry.amount.toLocaleString()}
                           </td>
                           <td className="px-4 py-3 text-center">
-                            <Badge variant="outline" className={entry.status === 'paid' ? 'bg-green-500/20 text-green-400 border-green-700' : 'bg-orange-500/20 text-orange-400 border-orange-700'}>
-                              {entry.status === 'paid' ? 'Paid' : 'Payable'}
-                            </Badge>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const job = worker?.currentJobs.find((j) => j.id === entry.reference_id)
+                                  || worker?.recentCompletedJobs.find((j) => j.id === entry.reference_id);
+                                if (job) setPaymentHistoryJob(job);
+                                else {
+                                  setPaymentHistoryJob({
+                                    id: entry.reference_id,
+                                    jobCardId: entry.reference_id?.slice(0, 8) || '—',
+                                    customerName: '—',
+                                    itemDescription: '—',
+                                    currentStage: 'Stitching',
+                                    deadline: new Date(),
+                                    status: 'completed',
+                                    assignedDate: new Date(),
+                                    paymentAmount: entry.amount,
+                                    paymentStatus: (entry.status || 'unpaid') === 'paid' ? 'paid' : 'unpaid',
+                                  });
+                                }
+                              }}
+                              className="cursor-pointer"
+                            >
+                              <Badge variant="outline" className={cn(
+                                entry.status === 'paid' ? 'bg-green-500/20 text-green-400 border-green-700' : 'bg-orange-500/20 text-orange-400 border-orange-700',
+                                'cursor-pointer hover:opacity-80'
+                              )}>
+                                {entry.status === 'paid' ? 'Paid' : 'Payable'}
+                              </Badge>
+                            </button>
                           </td>
                           <td className="px-4 py-3 text-gray-500 text-xs">
                             {entry.paid_at ? format(new Date(entry.paid_at), 'dd MMM yyyy') : '—'}
@@ -523,11 +573,15 @@ export const WorkerDetailPage: React.FC = () => {
                         <p className="font-bold text-white">
                           Rs {job.paymentAmount.toLocaleString()}
                         </p>
-                        {!job.isPaid && (
-                          <Badge variant="outline" className="bg-orange-500/10 text-orange-400 border-orange-500/20 mt-1">
-                            Unpaid
+                        <button
+                          type="button"
+                          onClick={() => setPaymentHistoryJob(job)}
+                          className="mt-1"
+                        >
+                          <Badge variant="outline" className={cn(getPaymentStatusBadge(job.paymentStatus).className, 'cursor-pointer hover:opacity-80')}>
+                            {getPaymentStatusBadge(job.paymentStatus).label}
                           </Badge>
-                        )}
+                        </button>
                       </td>
                       <td className="px-6 py-4 text-center">
                         <Badge variant="outline" className={getJobStatusColor(job.status)}>
@@ -603,16 +657,16 @@ export const WorkerDetailPage: React.FC = () => {
                       </p>
                     </td>
                     <td className="px-6 py-4 text-center">
-                      {job.isPaid ? (
-                        <Badge variant="outline" className="bg-green-500/10 text-green-400 border-green-500/20">
-                          <CheckCircle2 size={12} className="mr-1" />
-                          Paid
+                      <button
+                        type="button"
+                        onClick={() => setPaymentHistoryJob(job)}
+                        className="cursor-pointer"
+                      >
+                        <Badge variant="outline" className={cn(getPaymentStatusBadge(job.paymentStatus).className, 'cursor-pointer hover:opacity-80')}>
+                          {job.paymentStatus === 'paid' && <CheckCircle2 size={12} className="mr-1" />}
+                          {getPaymentStatusBadge(job.paymentStatus).label}
                         </Badge>
-                      ) : (
-                        <Badge variant="outline" className="bg-orange-500/10 text-orange-400 border-orange-500/20">
-                          Pending
-                        </Badge>
-                      )}
+                      </button>
                     </td>
                   </tr>
                 ))}
@@ -633,6 +687,18 @@ export const WorkerDetailPage: React.FC = () => {
         </div>
 
       </div>
+
+      {/* Payment History Modal */}
+      {paymentHistoryJob && (
+        <WorkerPaymentHistoryModal
+          isOpen={!!paymentHistoryJob}
+          onClose={() => setPaymentHistoryJob(null)}
+          jobCardId={paymentHistoryJob.jobCardId}
+          customerName={paymentHistoryJob.customerName}
+          stageId={paymentHistoryJob.id}
+          entries={ledgerEntries}
+        />
+      )}
     </div>
   );
 };

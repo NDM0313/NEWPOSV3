@@ -87,9 +87,8 @@ export const studioService = {
     return orderData;
   },
 
-  // Get all studio orders
+  // Get all studio orders (studio_orders + job_cards when tables exist)
   async getAllStudioOrders(companyId: string, branchId?: string) {
-    // Handle missing table gracefully
     try {
       let query = supabase
         .from('studio_orders')
@@ -97,28 +96,33 @@ export const studioService = {
           *,
           customer:contacts(name, phone),
           items:studio_order_items(*),
+          job_cards:job_cards(*, worker:workers(name, phone)),
           created_by:users(full_name)
         `)
         .eq('company_id', companyId)
         .order('order_date', { ascending: false });
 
-      // Only filter by branch when a specific branch is selected (not "all")
-      if (branchId && branchId !== 'all') {
-        query = query.eq('branch_id', branchId);
-      }
+      if (branchId && branchId !== 'all') query = query.eq('branch_id', branchId);
 
-      const { data, error } = await query;
-      
-      // If table doesn't exist (PGRST205), return empty array
+      let { data, error } = await query;
+      if (error && (error.code === '42P01' || String(error.message || '').includes('job_cards'))) {
+        query = supabase
+          .from('studio_orders')
+          .select(`*, customer:contacts(name, phone), items:studio_order_items(*), created_by:users(full_name)`)
+          .eq('company_id', companyId)
+          .order('order_date', { ascending: false });
+        if (branchId && branchId !== 'all') query = query.eq('branch_id', branchId);
+        const ret = await query;
+        data = ret.data;
+        error = ret.error;
+      }
       if (error && (error.code === 'PGRST205' || error.message?.includes('Could not find the table'))) {
         console.warn('[STUDIO SERVICE] studio_orders table not found, returning empty array');
         return [];
       }
-      
       if (error) throw error;
       return data || [];
     } catch (error: any) {
-      // If table doesn't exist, return empty array instead of throwing
       if (error?.code === 'PGRST205' || error?.message?.includes('Could not find the table')) {
         console.warn('[STUDIO SERVICE] studio_orders table not found, returning empty array');
         return [];
@@ -481,6 +485,7 @@ export const studioService = {
       cost: number;
       completed_at?: string | null;
       production_no?: string;
+      customer_name?: string;
     }>;
   } | null> {
     const withStats = await this.getWorkersWithStats(companyId);
@@ -504,12 +509,13 @@ export const studioService = {
       cost: number;
       completed_at?: string | null;
       production_no?: string;
+      customer_name?: string;
     }> = [];
 
     try {
       const { data: prods } = await supabase
         .from('studio_productions')
-        .select('id, production_no, sale_id, sale:sales(customer:contacts(name))')
+        .select('id, production_no, sale_id, sale:sales(customer_name, customer:contacts(name))')
         .eq('company_id', companyId);
       const prodMap = new Map((prods || []).map((p: any) => [p.id, p]));
 
@@ -524,7 +530,7 @@ export const studioService = {
         const prod = prodMap.get(s.production_id);
         const productionNo = prod?.production_no;
         const sale = prod?.sale;
-        const customerName = sale?.customer?.name;
+        const customerName = sale?.customer?.name || sale?.customer_name || undefined;
         const item = {
           id: s.id,
           stage_type: s.stage_type,
@@ -543,6 +549,7 @@ export const studioService = {
             cost: item.cost,
             completed_at: s.completed_at,
             production_no: productionNo,
+            customer_name: customerName,
           });
         } else {
           currentStages.push(item);

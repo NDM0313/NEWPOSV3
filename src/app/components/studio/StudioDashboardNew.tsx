@@ -518,15 +518,20 @@ export const StudioDashboardNew = () => {
   // Load studio orders + studio sales with real production/stage data from DB
   const loadStudioOrders = useCallback(async () => {
     if (!companyId) return;
+    setLoading(true);
     try {
-      setLoading(true);
       const [studioOrdersData, studioSalesData] = await Promise.all([
-        studioService.getAllStudioOrders(companyId, branchId === 'all' ? undefined : branchId || undefined),
+        studioService.getAllStudioOrders(companyId, branchId === 'all' ? undefined : branchId || undefined).catch(() => []),
         saleService.getStudioSales(companyId, branchId === 'all' ? undefined : branchId || undefined).catch(() => []),
       ]);
       const fromOrders = (studioOrdersData || []).map(convertFromSupabaseOrder);
-      const fromSales = await Promise.all((studioSalesData || []).map((sale: any) => convertSaleToDisplay(sale)));
-      setOrders([...fromOrders, ...fromSales]);
+      const fromSales = await Promise.all(
+        (studioSalesData || []).map((sale: any) =>
+          convertSaleToDisplay(sale).catch(() => null)
+        )
+      );
+      const validFromSales = fromSales.filter((o): o is StudioOrderDisplay => o != null);
+      setOrders([...fromOrders, ...validFromSales]);
     } catch (error) {
       console.error('[STUDIO DASHBOARD] Error loading studio orders:', error);
       toast.error('Failed to load studio orders');

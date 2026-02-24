@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback, memo } from 'react';
+import { createPortal } from 'react-dom';
 import { Delete, CornerDownLeft } from 'lucide-react';
 
 const DEBOUNCE_MS = 80;
@@ -143,11 +144,12 @@ function NumpadInputInner({
         autoComplete="off"
       />
 
-      {showNumpad && (
-        <div
-          data-numpad
-          className="fixed inset-x-0 bottom-0 z-[90] bg-[#1F2937] border-t border-[#374151] p-4 pb-[env(safe-area-inset-bottom,0)] safe-area-bottom"
-        >
+      {showNumpad &&
+        createPortal(
+          <div
+            data-numpad
+            className="fixed inset-x-0 bottom-0 z-[9999] bg-[#1F2937] border-t border-[#374151] p-4 pb-[env(safe-area-inset-bottom,0)] safe-area-bottom"
+          >
           <div className="grid grid-cols-3 gap-2 max-w-sm mx-auto">
             {getKeys(allowDecimal).map((row) =>
               row.map((key) =>
@@ -184,8 +186,9 @@ function NumpadInputInner({
             <CornerDownLeft className="w-5 h-5" />
             Enter
           </button>
-        </div>
-      )}
+        </div>,
+          document.body
+        )}
     </div>
   );
 }

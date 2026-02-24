@@ -38,8 +38,24 @@ CREATE INDEX IF NOT EXISTS idx_rentals_company ON rentals(company_id);
 CREATE INDEX IF NOT EXISTS idx_rentals_branch ON rentals(branch_id);
 CREATE INDEX IF NOT EXISTS idx_rentals_customer ON rentals(customer_id);
 CREATE INDEX IF NOT EXISTS idx_rentals_status ON rentals(status);
-CREATE INDEX IF NOT EXISTS idx_rentals_dates ON rentals(start_date, expected_return_date);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_rentals_rental_no ON rentals(rental_no);
+-- Support both schemas: start_date/expected_return_date (this migration) or pickup_date/return_date (schema.sql)
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='rentals' AND column_name='start_date') THEN
+    CREATE INDEX IF NOT EXISTS idx_rentals_dates ON rentals(start_date, expected_return_date);
+  ELSIF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='rentals' AND column_name='pickup_date') THEN
+    CREATE INDEX IF NOT EXISTS idx_rentals_dates ON rentals(pickup_date, return_date);
+  END IF;
+END $$;
+-- rental_no (this migration) or booking_no (schema.sql)
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='rentals' AND column_name='rental_no') THEN
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_rentals_rental_no ON rentals(rental_no);
+  ELSIF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='rentals' AND column_name='booking_no') THEN
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_rentals_booking_no ON rentals(booking_no);
+  END IF;
+END $$;
 
 COMMENT ON TABLE rentals IS 'Rental orders. rental_no is set by trigger (AUTO).';
 COMMENT ON COLUMN rentals.status IS 'draft | rented | returned | overdue | cancelled';
@@ -55,11 +71,14 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-DROP TRIGGER IF EXISTS trigger_set_rental_no ON rentals;
-CREATE TRIGGER trigger_set_rental_no
-  BEFORE INSERT ON rentals
-  FOR EACH ROW
-  EXECUTE FUNCTION set_rental_no();
+-- Only create rental_no trigger if table has rental_no column
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='rentals' AND column_name='rental_no') THEN
+    DROP TRIGGER IF EXISTS trigger_set_rental_no ON rentals;
+    CREATE TRIGGER trigger_set_rental_no BEFORE INSERT ON rentals FOR EACH ROW EXECUTE FUNCTION set_rental_no();
+  END IF;
+END $$;
 
 -- updated_at trigger (use existing helper if present)
 DO $$
@@ -93,7 +112,15 @@ CREATE TABLE IF NOT EXISTS rental_items (
 CREATE INDEX IF NOT EXISTS idx_rental_items_rental ON rental_items(rental_id);
 CREATE INDEX IF NOT EXISTS idx_rental_items_product ON rental_items(product_id);
 
-COMMENT ON COLUMN rental_items.rate IS 'Rental rate per day or per unit as per business rule.';
+-- Comment on rate column (this migration) or rate_per_day (schema.sql)
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='rental_items' AND column_name='rate') THEN
+    COMMENT ON COLUMN rental_items.rate IS 'Rental rate per day or per unit as per business rule.';
+  ELSIF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='rental_items' AND column_name='rate_per_day') THEN
+    COMMENT ON COLUMN rental_items.rate_per_day IS 'Rental rate per day or per unit as per business rule.';
+  END IF;
+END $$;
 
 -- ----------------------------------------------------------------------------
 -- 3. rental_payments

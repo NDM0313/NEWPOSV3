@@ -19,6 +19,7 @@ ON contacts (company_id, branch_id, system_type)
 WHERE system_type IS NOT NULL;
 
 -- Add constraint to ensure system_type is set when is_system_generated is true
+ALTER TABLE contacts DROP CONSTRAINT IF EXISTS check_system_type_when_generated;
 ALTER TABLE contacts
 ADD CONSTRAINT check_system_type_when_generated 
 CHECK (

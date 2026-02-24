@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { ArrowLeft, Search, Plus, Minus, Package, Edit2, Trash2 } from 'lucide-react';
 import type { Customer, Product } from './SalesModule';
 import type { PackingDetails } from '../transactions/PackingEntryModal';
@@ -268,21 +269,23 @@ export function AddProducts({
         </div>
       )}
 
-      {/* Bottom bar */}
-      {products.length > 0 && (
-        <div className="fixed left-0 right-0 bg-[#1F2937] border-t border-[#374151] p-4 z-[60] safe-area-bottom fixed-bottom-above-nav">
-          <div className="flex justify-between items-center mb-3">
-            <span className="text-[#9CA3AF]">Subtotal</span>
-            <span className="text-xl font-bold text-[#F9FAFB]">Rs. {subtotal.toLocaleString()}</span>
-          </div>
-          <button
-            onClick={onNext}
-            className="w-full h-12 bg-[#3B82F6] hover:bg-[#2563EB] rounded-lg font-medium text-[#F9FAFB] transition-colors"
-          >
-            Continue to Summary →
-          </button>
-        </div>
-      )}
+      {/* Bottom bar – portal to body so fixed bottom works (avoids transform/overflow ancestors) */}
+      {products.length > 0 &&
+        createPortal(
+          <div className="fixed left-0 right-0 bottom-0 bg-[#1F2937] border-t border-[#374151] p-4 pb-[calc(1rem+env(safe-area-inset-bottom,0))] z-[60]">
+            <div className="flex justify-between items-center mb-3">
+              <span className="text-[#9CA3AF]">Subtotal</span>
+              <span className="text-xl font-bold text-[#F9FAFB]">Rs. {subtotal.toLocaleString()}</span>
+            </div>
+            <button
+              onClick={onNext}
+              className="w-full h-12 bg-[#3B82F6] hover:bg-[#2563EB] rounded-lg font-medium text-[#F9FAFB] transition-colors"
+            >
+              Continue to Summary →
+            </button>
+          </div>,
+          document.body
+        )}
 
       {/* Add to Cart Modal */}
       {showModal && selectedProduct && (
@@ -368,11 +371,8 @@ function AddToCartModal({
 
   return (
     <>
-      <div className="fixed inset-0 bg-black/60 z-[70] flex items-end sm:items-center justify-center">
-        <div className="bg-[#1F2937] rounded-t-3xl sm:rounded-2xl w-full max-w-md max-h-[85vh] overflow-y-auto pb-6">
-          <div className="flex justify-center pt-2 pb-4 sm:hidden">
-            <div className="w-12 h-1 bg-[#374151] rounded-full" />
-          </div>
+      <div className="fixed inset-0 bg-black/60 z-[70] flex items-center justify-center p-4">
+        <div className="bg-[#1F2937] rounded-2xl w-full max-w-md max-h-[85vh] overflow-y-auto pb-6">
 
           <div className="px-6 pb-4 border-b border-[#374151]">
             <h2 className="text-lg font-semibold text-[#F9FAFB]">{product.name}</h2>

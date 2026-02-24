@@ -112,7 +112,7 @@ interface ProductionStep {
   expectedCompletionDate: string;
   actualCompletionDate?: string;
   workerCost: number; // Legacy - total cost
-  workerPaymentStatus?: 'Payable' | 'Pending' | 'Paid'; // ERP: Payment status (handled in Accounting)
+  workerPaymentStatus?: 'Payable' | 'Pending' | 'Partial' | 'Paid'; // ERP: Payment status (handled in Accounting)
   status: StepStatus;
   notes?: string;
 }
@@ -375,10 +375,10 @@ export const StudioSaleDetailNew = () => {
   };
 
   // Convert studio_production_stages to ProductionStep[] (so UI can show and persist edits)
-  // ledgerStatusByStageId: optional map from stage id to 'unpaid'|'paid' for Payable vs Paid
+  // ledgerStatusByStageId: optional map from stage id to 'unpaid'|'partial'|'paid' for Payable vs Partial vs Paid
   const stagesToProductionSteps = useCallback((
     stages: Array<{ id: string; stage_type: string; assigned_worker_id?: string | null; assigned_at?: string | null; cost?: number; expected_cost?: number | null; status?: string; expected_completion_date?: string | null; completed_at?: string | null; notes?: string | null; worker?: { id: string; name: string } }>,
-    ledgerStatusByStageId?: Record<string, 'unpaid' | 'paid'>
+    ledgerStatusByStageId?: Record<string, 'unpaid' | 'partial' | 'paid'>
   ): ProductionStep[] => {
     const statusMap: Record<string, StepStatus> = { pending: 'Pending', in_progress: 'In Progress', completed: 'Completed' };
     const stageTypeMap: Record<string, 'dyer' | 'stitching' | 'handwork'> = { dyer: 'dyer', dyeing: 'dyer', stitching: 'stitching', handwork: 'handwork' };
@@ -387,8 +387,10 @@ export const StudioSaleDetailNew = () => {
       const workerName = s.assigned_worker_id ? (s.worker?.name || '') : '';
       const stageType = stageTypeMap[s.stage_type] || undefined;
       const ledgerStatus = ledgerStatusByStageId?.[s.id];
-      const workerPaymentStatus: 'Payable' | 'Pending' | 'Paid' =
-        ledgerStatus === 'paid' ? 'Paid' : (s.status === 'completed' ? 'Payable' : 'Pending');
+      const workerPaymentStatus: 'Payable' | 'Pending' | 'Partial' | 'Paid' =
+        ledgerStatus === 'paid' ? 'Paid' : ledgerStatus === 'partial' ? 'Partial' : (s.status === 'completed' ? 'Payable' : 'Pending');
+      const isCompleted = (s.status || '').toLowerCase() === 'completed';
+      const displayCost = isCompleted ? (s.cost ?? 0) : (s.expected_cost ?? s.cost ?? 0);
       return {
         id: s.id,
         name,
@@ -397,11 +399,11 @@ export const StudioSaleDetailNew = () => {
         stageType,
         assignedWorker: workerName,
         workerId: s.assigned_worker_id || undefined,
-        assignedWorkers: s.assigned_worker_id ? [{ id: `aw-${s.id}`, workerId: s.assigned_worker_id, workerName, role: 'Main', cost: s.cost ?? 0 }] : [],
+        assignedWorkers: s.assigned_worker_id ? [{ id: `aw-${s.id}`, workerId: s.assigned_worker_id, workerName, role: 'Main', cost: displayCost }] : [],
         assignedDate: s.assigned_at || '',
         expectedCompletionDate: s.expected_completion_date || '',
         actualCompletionDate: s.completed_at || undefined,
-        workerCost: s.cost ?? 0,
+        workerCost: displayCost,
         workerPaymentStatus,
         status: statusMap[s.status || 'pending'] || 'Pending',
         notes: s.notes || ''
@@ -661,6 +663,7 @@ export const StudioSaleDetailNew = () => {
 
   const updateStepStatus = async (stepId: string, newStatus: StepStatus) => {
     if (!saleDetail) return;
+    const step = saleDetail.productionSteps.find((s) => s.id === stepId);
     const isServerUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(stepId);
     const isReopen = newStatus === 'In Progress' && step?.status === 'Completed';
     if (isServerUuid && isReopen) {
@@ -1714,6 +1717,7 @@ export const StudioSaleDetailNew = () => {
                                                 "text-[10px] px-1.5 py-0",
                                                 step.workerPaymentStatus === 'Paid' && "bg-green-500/20 text-green-400 border-green-700",
                                                 step.workerPaymentStatus === 'Pending' && "bg-yellow-500/20 text-yellow-400 border-yellow-700",
+                                                step.workerPaymentStatus === 'Partial' && "bg-yellow-500/20 text-yellow-400 border-yellow-700",
                                                 step.workerPaymentStatus === 'Payable' && "bg-orange-500/20 text-orange-400 border-orange-700"
                                               )}
                                             >
@@ -1871,12 +1875,20 @@ export const StudioSaleDetailNew = () => {
                     {/* Payment Status Breakdown */}
                     <div className="pt-2 border-t border-gray-800">
                       <p className="text-xs text-gray-500 mb-2">Payment Status:</p>
-                      <div className="grid grid-cols-3 gap-2">
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                         <div className="bg-green-950/30 border border-green-800/30 rounded-lg p-2 text-center">
                           <p className="text-[10px] text-green-400 mb-1">Paid</p>
                           <p className="text-sm font-bold text-green-400">
                             {formatCurrency(saleDetail.productionSteps
                               .filter(s => s.workerPaymentStatus === 'Paid')
+                              .reduce((sum, s) => sum + s.workerCost, 0))}
+                          </p>
+                        </div>
+                        <div className="bg-amber-950/30 border border-amber-800/30 rounded-lg p-2 text-center">
+                          <p className="text-[10px] text-amber-400 mb-1">Partial</p>
+                          <p className="text-sm font-bold text-amber-400">
+                            {formatCurrency(saleDetail.productionSteps
+                              .filter(s => s.workerPaymentStatus === 'Partial')
                               .reduce((sum, s) => sum + s.workerCost, 0))}
                           </p>
                         </div>
@@ -3421,9 +3433,9 @@ export const StudioSaleDetailNew = () => {
               Cancel
             </AlertDialogCancel>
             <AlertDialogAction
-              onClick={() => {
+              onClick={async () => {
                 if (reopenStepId) {
-                  updateStepStatus(reopenStepId, 'In Progress');
+                  await updateStepStatus(reopenStepId, 'In Progress');
                   setReopenStepId(null);
                 }
               }}

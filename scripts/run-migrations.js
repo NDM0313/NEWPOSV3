@@ -17,6 +17,7 @@ import { fileURLToPath } from 'url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, '..');
 const migrationsDir = path.join(root, 'supabase-extract', 'migrations');
+const rootMigrationsDir = path.join(root, 'migrations');
 
 const SKIP_FILES = new Set([
   '01_full_database_wipe.sql',
@@ -92,35 +93,57 @@ async function run() {
     const { rows: applied } = await client.query('SELECT name FROM schema_migrations');
     const appliedSet = new Set(applied.map((r) => r.name));
 
-    const files = fs.readdirSync(migrationsDir)
-      .filter((f) => f.endsWith('.sql') && !SKIP_FILES.has(f))
-      .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
-
-    let runCount = 0;
-    for (const file of files) {
+    const runMigration = async (dir, file) => {
       const name = file;
       if (appliedSet.has(name)) {
         console.log('[SKIP]', name, '(already applied)');
-        continue;
+        return 0;
       }
-      const filePath = path.join(migrationsDir, file);
+      const filePath = path.join(dir, file);
       const sql = fs.readFileSync(filePath, 'utf8');
       if (!sql.trim()) {
         console.log('[SKIP]', name, '(empty)');
-        continue;
+        return 0;
       }
       console.log('[RUN]', name);
+      await client.query(sql);
+      await client.query('INSERT INTO schema_migrations (name) VALUES ($1)', [name]);
+      appliedSet.add(name);
+      console.log('[OK]', name);
+      return 1;
+    };
+
+    let runCount = 0;
+
+    // 1. supabase-extract/migrations
+    const supabaseFiles = fs.readdirSync(migrationsDir)
+      .filter((f) => f.endsWith('.sql') && !SKIP_FILES.has(f))
+      .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+    for (const file of supabaseFiles) {
       try {
-        await client.query(sql);
-        await client.query('INSERT INTO schema_migrations (name) VALUES ($1)', [name]);
-        appliedSet.add(name);
-        runCount++;
-        console.log('[OK]', name);
+        runCount += await runMigration(migrationsDir, file);
       } catch (err) {
-        console.error('[FAIL]', name, err.message);
+        console.error('[FAIL]', file, err.message);
         if (err.detail) console.error('Detail:', err.detail);
         await client.end();
         process.exit(1);
+      }
+    }
+
+    // 2. migrations/ (root – audit_logs, studio fixes, etc.)
+    if (fs.existsSync(rootMigrationsDir)) {
+      const rootFiles = fs.readdirSync(rootMigrationsDir)
+        .filter((f) => f.endsWith('.sql'))
+        .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+      for (const file of rootFiles) {
+        try {
+          runCount += await runMigration(rootMigrationsDir, file);
+        } catch (err) {
+          console.error('[FAIL]', file, err.message);
+          if (err.detail) console.error('Detail:', err.detail);
+          await client.end();
+          process.exit(1);
+        }
       }
     }
 

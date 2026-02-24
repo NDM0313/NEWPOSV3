@@ -344,6 +344,21 @@ export const testAccountingService = {
       { account_id: params.paymentAccountId, debit: 0, credit: params.amount, description: params.description },
     ];
     const result = await accountingService.createEntry(entry, lines);
+
+    // Sync to worker_ledger_entries so Worker Detail page shows the payment
+    await import('@/app/services/studioProductionService').then(({ studioProductionService }) =>
+      studioProductionService.recordAccountingPaymentToLedger({
+        companyId: params.companyId,
+        workerId: params.workerId,
+        amount: params.amount,
+        paymentReference: entryNo,
+        journalEntryId: result.id,
+        notes: params.description || `Payment to worker ${params.workerName}`,
+      })
+    ).catch((e) => {
+      console.warn('[testAccountingService] Worker ledger sync failed (journal saved):', e);
+    });
+
     return { id: result.id, entry_no: entryNo };
   },
 

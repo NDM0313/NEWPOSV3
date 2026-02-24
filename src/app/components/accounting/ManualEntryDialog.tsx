@@ -43,7 +43,7 @@ export const ManualEntryDialog: React.FC<ManualEntryDialogProps> = ({ isOpen, on
   };
 
   // Handle submit
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!debitAccount || !creditAccount || amount <= 0) {
       toast.error('Please fill all required fields');
       return;
@@ -57,7 +57,7 @@ export const ManualEntryDialog: React.FC<ManualEntryDialogProps> = ({ isOpen, on
     setIsProcessing(true);
 
     try {
-      accounting.addEntry({
+      const success = await accounting.createEntry({
         date: new Date(),
         debitAccount,
         creditAccount,
@@ -69,9 +69,11 @@ export const ManualEntryDialog: React.FC<ManualEntryDialogProps> = ({ isOpen, on
         metadata: {}
       });
 
-      toast.success('Manual entry recorded successfully');
-      resetForm();
-      onClose();
+      if (success) {
+        toast.success('Manual entry recorded successfully');
+        resetForm();
+        onClose();
+      }
     } catch (error) {
       toast.error('Failed to record entry');
     } finally {

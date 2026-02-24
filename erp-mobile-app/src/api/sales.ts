@@ -36,13 +36,14 @@ export interface CreateSaleInput {
 
 /**
  * Get next invoice number from server – ATOMIC, no race conditions.
- * Uses RPC get_next_document_number. Never generate locally.
+ * Uses RPC get_next_document_number. Studio sales use 'studio' (STD-xxx), regular use 'sale' (SL-xxx).
  */
-async function getNextInvoiceNumber(companyId: string, branchId: string): Promise<string> {
+async function getNextInvoiceNumber(companyId: string, branchId: string, isStudio: boolean): Promise<string> {
+  const documentType = isStudio ? 'studio' : 'sale';
   const { data, error } = await supabase.rpc('get_next_document_number', {
     p_company_id: companyId,
     p_branch_id: branchId,
-    p_document_type: 'sale',
+    p_document_type: documentType,
   });
 
   if (error) {
@@ -73,7 +74,7 @@ export async function createSale(input: CreateSaleInput): Promise<{ data: { id: 
 
   let invoiceNo: string;
   try {
-    invoiceNo = await getNextInvoiceNumber(companyId, branchId);
+    invoiceNo = await getNextInvoiceNumber(companyId, branchId, !!isStudio);
   } catch (err) {
     return { data: null, error: (err as Error).message ?? 'Failed to get invoice number' };
   }

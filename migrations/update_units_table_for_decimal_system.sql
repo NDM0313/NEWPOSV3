@@ -32,27 +32,24 @@ END $$;
 -- 2. Create unique constraint: only one default unit per company
 DO $$
 BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_constraint 
-    WHERE conname = 'units_one_default_per_company'
-  ) THEN
-    -- First, ensure no duplicate defaults exist
-    UPDATE units u1
-    SET is_default = false
-    WHERE is_default = true
-    AND EXISTS (
-      SELECT 1 FROM units u2
-      WHERE u2.company_id = u1.company_id
-      AND u2.id != u1.id
-      AND u2.is_default = true
-      AND u2.created_at < u1.created_at
-    );
+  -- First, ensure no duplicate defaults exist
+  UPDATE units u1
+  SET is_default = false
+  WHERE is_default = true
+  AND EXISTS (
+    SELECT 1 FROM units u2
+    WHERE u2.company_id = u1.company_id
+    AND u2.id != u1.id
+    AND u2.is_default = true
+    AND u2.created_at < u1.created_at
+  );
 
-    -- Create unique partial index
-    CREATE UNIQUE INDEX units_one_default_per_company 
-    ON units(company_id) 
-    WHERE is_default = true;
-  END IF;
+  -- Drop if exists (index, not constraint - pg_constraint won't find it)
+  DROP INDEX IF EXISTS units_one_default_per_company;
+  -- Create unique partial index
+  CREATE UNIQUE INDEX units_one_default_per_company
+  ON units(company_id)
+  WHERE is_default = true;
 END $$;
 
 -- 3. Ensure default Piece unit exists for all existing companies

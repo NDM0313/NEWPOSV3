@@ -179,6 +179,9 @@ $COMPOSE_CMD down 2>/dev/null || true
 docker rm -f erp-frontend 2>/dev/null || true
 $COMPOSE_CMD up -d
 
+# Auto-apply migrations (accounts.subtype, journal_entries columns, etc.)
+[ -f deploy/run-migrations-vps.sh ] && bash deploy/run-migrations-vps.sh || true
+
 # Auto-apply expenses columns + storage buckets + RLS + RLS performance + Studio API fix
 apply_expenses_columns
 if [ -f deploy/apply-storage-rls-vps.sh ]; then
