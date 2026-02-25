@@ -51,7 +51,7 @@ export interface StudioProduction {
 }
 
 export type StudioProductionStageType = 'dyer' | 'stitching' | 'handwork';
-export type StudioProductionStageStatus = 'pending' | 'in_progress' | 'completed';
+export type StudioProductionStageStatus = 'pending' | 'assigned' | 'in_progress' | 'completed';
 
 export interface StudioProductionStage {
   id: string;
@@ -204,7 +204,8 @@ export const studioProductionService = {
         .select(`
           *,
           product:products(id, name, sku),
-          worker:workers(id, name)
+          worker:workers(id, name),
+          sale:sales(invoice_no)
         `)
         .eq('company_id', companyId)
         .order('created_at', { ascending: false });
@@ -232,7 +233,8 @@ export const studioProductionService = {
       .select(`
         *,
         product:products(id, name, sku),
-        worker:workers(id, name)
+        worker:workers(id, name),
+        sale:sales(invoice_no)
       `)
       .eq('id', id)
       .single();
@@ -578,7 +580,7 @@ export const studioProductionService = {
     }
   },
 
-  /** Create a stage (process step) for a production. PHASE 1: No auto-assignment – status=pending, cost=0, assigned_worker_id=null. Assignment only via Assign flow. */
+  /** Create a stage (process step) for a production. PHASE 1: No auto-assignment – status=pending, cost=0, assigned_worker_id=null. Assignment ONLY via Assign flow (RPC). */
   async createStage(
     productionId: string,
     input: {
@@ -592,7 +594,10 @@ export const studioProductionService = {
     const production = await this.getProductionById(productionId);
     if (!production) throw new Error('Production not found');
     if (!production.sale_id) throw new Error('Production must be linked to a sale to add a stage.');
-    // PHASE 1: Never auto-assign. New stages are always pending, no worker, zero cost.
+    // GUARD: Never use input.assigned_worker_id on create. Worker assignment only via assignWorkerToStage / RPC.
+    if (input.assigned_worker_id) {
+      console.warn('[studioProductionService] createStage: ignoring assigned_worker_id – assignment only via Assign flow');
+    }
     const insertPayload: Record<string, unknown> = {
       production_id: productionId,
       stage_type: input.stage_type,
@@ -626,41 +631,88 @@ export const studioProductionService = {
     return data as StudioProductionStage;
   },
 
-  /** PHASE 2: Assign worker to stage. Saves assigned_worker_id, assigned_at, expected_cost; status → in_progress. No journal entry. */
-  async assignWorkerToStage(
-    stageId: string,
-    params: { worker_id: string; expected_cost: number; expected_completion_date?: string | null }
-  ): Promise<StudioProductionStage> {
+  /** Delete a stage. Only allowed for pending stages (no worker assigned, not completed). Used when manager removes a task via Customize Tasks. */
+  async deleteStage(stageId: string): Promise<void> {
     const { data: existing } = await supabase
       .from('studio_production_stages')
-      .select('id, status')
+      .select('id, status, assigned_worker_id')
       .eq('id', stageId)
       .single();
     if (!existing) throw new Error('Stage not found');
-    if ((existing as any).status === 'completed') throw new Error('Cannot assign worker to a completed stage.');
-    const updatePayload: Record<string, unknown> = {
-      assigned_worker_id: params.worker_id,
-      assigned_at: new Date().toISOString(),
-      expected_cost: params.expected_cost,
-      cost: 0,
-      status: 'in_progress',
-      ...(params.expected_completion_date != null ? { expected_completion_date: params.expected_completion_date } : {}),
-    };
-    let result = await supabase
-      .from('studio_production_stages')
-      .update(updatePayload)
-      .eq('id', stageId)
-      .select('*')
-      .single();
-    if (result.error && (result.error.message?.includes('expected_cost') || result.error.message?.includes('assigned_at'))) {
-      delete updatePayload.expected_cost;
-      delete updatePayload.assigned_at;
-      result = await supabase.from('studio_production_stages').update(updatePayload).eq('id', stageId).select('*').single();
+    const row = existing as any;
+    if (row.status === 'completed') {
+      throw new Error('Cannot remove a completed stage. Reopen it first if needed.');
     }
-    if (result.error) throw result.error;
-    const row = result.data as any;
-    await resolveStageWorker(row);
-    return row as StudioProductionStage;
+    if (row.assigned_worker_id) {
+      throw new Error('Cannot remove a stage that has a worker assigned. Unassign first.');
+    }
+    const { error } = await supabase.from('studio_production_stages').delete().eq('id', stageId);
+    if (error) throw error;
+  },
+
+  /** PHASE 2: Assign worker to stage. Uses RPC when available (authoritative). Saves assigned_worker_id, assigned_at, expected_cost; status → assigned. No journal entry. */
+  async assignWorkerToStage(
+    stageId: string,
+    params: { worker_id: string; expected_cost: number; expected_completion_date?: string | null; notes?: string | null }
+  ): Promise<StudioProductionStage> {
+    const { data: rpcResult, error: rpcErr } = await supabase.rpc('rpc_assign_worker_to_stage', {
+      p_stage_id: stageId,
+      p_worker_id: params.worker_id,
+      p_expected_cost: params.expected_cost,
+      p_expected_completion_date: params.expected_completion_date ?? null,
+      p_notes: params.notes ?? null,
+    });
+    if (!rpcErr && rpcResult?.ok) {
+      const { data: stageRow } = await supabase.from('studio_production_stages').select('production_id').eq('id', stageId).single();
+      if (stageRow?.production_id) {
+        const stages = await this.getStagesByProductionId((stageRow as any).production_id);
+        const updated = stages.find((s) => s.id === stageId);
+        if (updated) return updated;
+      }
+    }
+    if (rpcErr?.code === '42883' || rpcErr?.message?.includes('function') || rpcErr?.message?.includes('does not exist')) {
+      // RPC not deployed – fallback to direct update (status=assigned or in_progress)
+      const { data: existing } = await supabase
+        .from('studio_production_stages')
+        .select('id, status')
+        .eq('id', stageId)
+        .single();
+      if (!existing) throw new Error('Stage not found');
+      if ((existing as any).status === 'completed') throw new Error('Cannot assign worker to a completed stage.');
+      const updatePayload: Record<string, unknown> = {
+        assigned_worker_id: params.worker_id,
+        assigned_at: new Date().toISOString(),
+        expected_cost: params.expected_cost,
+        cost: 0,
+        status: 'assigned',
+        ...(params.expected_completion_date != null ? { expected_completion_date: params.expected_completion_date } : {}),
+        ...(params.notes != null ? { notes: params.notes } : {}),
+      };
+      let result = await supabase
+        .from('studio_production_stages')
+        .update(updatePayload)
+        .eq('id', stageId)
+        .select('*')
+        .single();
+      if (result.error && (result.error.message?.includes('expected_cost') || result.error.message?.includes('assigned_at') || result.error.message?.includes('assigned'))) {
+        updatePayload.status = 'in_progress';
+        delete (updatePayload as any).expected_cost;
+        delete (updatePayload as any).assigned_at;
+        result = await supabase.from('studio_production_stages').update(updatePayload).eq('id', stageId).select('*').single();
+      }
+      if (result.error) throw result.error;
+      const row = result.data as any;
+      await resolveStageWorker(row);
+      return row as StudioProductionStage;
+    }
+    if (rpcErr) throw new Error(rpcResult?.error ?? rpcErr.message);
+    const { data: stageRow } = await supabase.from('studio_production_stages').select('production_id').eq('id', stageId).single();
+    if (stageRow?.production_id) {
+      const stages = await this.getStagesByProductionId((stageRow as any).production_id);
+      const updated = stages.find((s) => s.id === stageId);
+      if (updated) return updated;
+    }
+    throw new Error('Stage not found after assign');
   },
 
   /** Update stage (worker, cost, status, etc.). Completed stages: only notes allowed (cost lock). */
@@ -843,8 +895,8 @@ export const studioProductionService = {
   },
 
   /**
-   * Receive from worker: mark stage completed with actual cost. PHASE 3: Journal (Dr Expense, Cr Payable) and worker ledger created inside updateStage – transactional.
-   * workerIdFromUI: use when DB stage has no assigned_worker_id but UI has assigned (so we persist it on receive).
+   * Receive from worker: mark stage completed with actual cost. Uses RPC when available (authoritative).
+   * Creates journal (Dr Expense, Cr Payable) and worker ledger. workerIdFromUI: use when DB has no assigned_worker_id.
    * Returns { stage, ledgerEntryId } so UI can show "Pay Now?" and record payment against this entry.
    */
   async receiveStage(
@@ -866,95 +918,129 @@ export const studioProductionService = {
     if (actualCost > 0 && !effectiveWorkerId)
       throw new Error('Assign a worker to this task before receiving (required for accounting).');
 
-    const updated = await this.updateStage(stageId, {
-      status: 'completed',
-      cost: actualCost,
-      completed_at: new Date().toISOString(),
-      notes: notes ?? null,
-      assigned_worker_id: effectiveWorkerId,
+    const { data: rpcResult, error: rpcErr } = await supabase.rpc('rpc_receive_stage_and_finalize', {
+      p_stage_id: stageId,
+      p_final_cost: actualCost,
+      p_notes: notes ?? null,
     });
-
-    let ledgerEntryId: string | null = null;
-    const { data: ledgerRow } = await supabase
-      .from('worker_ledger_entries')
-      .select('id')
-      .eq('reference_type', 'studio_production_stage')
-      .eq('reference_id', stageId)
-      .limit(1)
-      .maybeSingle();
-    if (ledgerRow) ledgerEntryId = (ledgerRow as any).id;
-
-    return { stage: updated, ledgerEntryId };
-  },
-
-  /**
-   * PHASE 4: Reopen a completed stage. Reverses journal entry (Dr Worker Payable, Cr Production Expense),
-   * reverts worker ledger and balance, resets stage to pending. No silent UI-only updates.
-   */
-  async reopenStage(stageId: string, performedBy?: string | null): Promise<StudioProductionStage> {
-    const { data: stageRow, error: stageErr } = await supabase
-      .from('studio_production_stages')
-      .select('id, production_id, status, cost, assigned_worker_id, stage_type, journal_entry_id')
-      .eq('id', stageId)
-      .single();
-    if (stageErr || !stageRow) throw new Error('Stage not found');
-    const stage = stageRow as any;
-    if (stage.status !== 'completed') throw new Error('Only completed stages can be reopened.');
-    const cost = Number(stage.cost) || 0;
-    const workerId = stage.assigned_worker_id || null;
-
-    const { data: prodRow, error: prodErr } = await supabase
-      .from('studio_productions')
-      .select('id, company_id, branch_id, production_no')
-      .eq('id', stage.production_id)
-      .single();
-    if (prodErr || !prodRow) throw new Error('Production not found');
-    const production = prodRow as any;
-
-    if (cost > 0) {
-      await createProductionCostReversalEntry({
-        companyId: production.company_id,
-        branchId: production.branch_id || null,
-        stageId,
-        productionNo: production.production_no,
-        amount: cost,
-        stageType: stage.stage_type || 'stage',
-        performedBy,
+    if (!rpcErr && rpcResult?.ok) {
+      const { data: stageRow2 } = await supabase.from('studio_production_stages').select('production_id').eq('id', stageId).single();
+      if (stageRow2?.production_id) {
+        const stages = await this.getStagesByProductionId((stageRow2 as any).production_id);
+        const updated = stages.find((s) => s.id === stageId);
+        if (updated) {
+          let ledgerEntryId: string | null = null;
+          const { data: ledgerRow } = await supabase
+            .from('worker_ledger_entries')
+            .select('id')
+            .eq('reference_type', 'studio_production_stage')
+            .eq('reference_id', stageId)
+            .limit(1)
+            .maybeSingle();
+          if (ledgerRow) ledgerEntryId = (ledgerRow as any).id;
+          return { stage: updated, ledgerEntryId };
+        }
+      }
+    }
+    if (rpcErr?.code === '42883' || rpcErr?.message?.includes('function') || rpcErr?.message?.includes('does not exist')) {
+      const updated = await this.updateStage(stageId, {
+        status: 'completed',
+        cost: actualCost,
+        completed_at: new Date().toISOString(),
+        notes: notes ?? null,
+        assigned_worker_id: effectiveWorkerId,
       });
+      let ledgerEntryId: string | null = null;
       const { data: ledgerRow } = await supabase
         .from('worker_ledger_entries')
-        .select('id, worker_id, amount, status')
+        .select('id')
         .eq('reference_type', 'studio_production_stage')
         .eq('reference_id', stageId)
         .limit(1)
         .maybeSingle();
-      if (ledgerRow) {
-        const entry = ledgerRow as { id: string; worker_id: string; amount: number; status?: string };
-        await supabase.from('worker_ledger_entries').delete().eq('id', entry.id);
-        if (entry.status !== 'paid' && entry.worker_id) {
-          const { data: wRow } = await supabase.from('workers').select('current_balance').eq('id', entry.worker_id).single();
-          const bal = Number((wRow as any)?.current_balance) || 0;
-          await supabase.from('workers').update({ current_balance: Math.max(0, bal - cost), updated_at: new Date().toISOString() }).eq('id', entry.worker_id);
-        }
+      if (ledgerRow) ledgerEntryId = (ledgerRow as any).id;
+      return { stage: updated, ledgerEntryId };
+    }
+    if (rpcErr) throw new Error(rpcResult?.error ?? rpcErr.message);
+    throw new Error('Stage not found after receive');
+  },
+
+  /**
+   * PHASE 4: Reopen a completed stage. Uses RPC when available (authoritative).
+   * Reverses journal entry, removes worker ledger, resets stage to assigned (keeps worker + expected cost).
+   */
+  async reopenStage(stageId: string, _performedBy?: string | null): Promise<StudioProductionStage> {
+    const { data: rpcResult, error: rpcErr } = await supabase.rpc('rpc_reopen_stage', { p_stage_id: stageId });
+    if (!rpcErr && rpcResult?.ok) {
+      const { data: stageRow } = await supabase.from('studio_production_stages').select('production_id').eq('id', stageId).single();
+      if (stageRow?.production_id) {
+        const stages = await this.getStagesByProductionId((stageRow as any).production_id);
+        const updated = stages.find((s) => s.id === stageId);
+        if (updated) return updated;
       }
     }
-
-    const { data: updated, error: updateErr } = await supabase
-      .from('studio_production_stages')
-      .update({
-        status: 'pending',
-        completed_at: null,
-        cost: 0,
-        journal_entry_id: null,
-        assigned_worker_id: null,
-      })
-      .eq('id', stageId)
-      .select('*')
-      .single();
-    if (updateErr) throw updateErr;
-    const row = updated as any;
-    await resolveStageWorker(row);
-    return row as StudioProductionStage;
+    if (rpcErr?.code === '42883' || rpcErr?.message?.includes('function') || rpcErr?.message?.includes('does not exist')) {
+      const { data: stageRow, error: stageErr } = await supabase
+        .from('studio_production_stages')
+        .select('id, production_id, status, cost, assigned_worker_id, stage_type, journal_entry_id')
+        .eq('id', stageId)
+        .single();
+      if (stageErr || !stageRow) throw new Error('Stage not found');
+      const stage = stageRow as any;
+      if (stage.status !== 'completed') throw new Error('Only completed stages can be reopened.');
+      const cost = Number(stage.cost) || 0;
+      const { data: prodRow } = await supabase
+        .from('studio_productions')
+        .select('id, company_id, branch_id, production_no')
+        .eq('id', stage.production_id)
+        .single();
+      if (!prodRow) throw new Error('Production not found');
+      const production = prodRow as any;
+      if (cost > 0) {
+        await createProductionCostReversalEntry({
+          companyId: production.company_id,
+          branchId: production.branch_id || null,
+          stageId,
+          productionNo: production.production_no,
+          amount: cost,
+          stageType: stage.stage_type || 'stage',
+          performedBy: _performedBy,
+        });
+        const { data: ledgerRow } = await supabase
+          .from('worker_ledger_entries')
+          .select('id, worker_id, amount, status')
+          .eq('reference_type', 'studio_production_stage')
+          .eq('reference_id', stageId)
+          .limit(1)
+          .maybeSingle();
+        if (ledgerRow) {
+          const entry = ledgerRow as { id: string; worker_id: string; amount: number; status?: string };
+          await supabase.from('worker_ledger_entries').delete().eq('id', entry.id);
+          if (entry.status !== 'paid' && entry.worker_id) {
+            const { data: wRow } = await supabase.from('workers').select('current_balance').eq('id', entry.worker_id).single();
+            const bal = Number((wRow as any)?.current_balance) || 0;
+            await supabase.from('workers').update({ current_balance: Math.max(0, bal - cost), updated_at: new Date().toISOString() }).eq('id', entry.worker_id);
+          }
+        }
+      }
+      const { data: updated, error: updateErr } = await supabase
+        .from('studio_production_stages')
+        .update({
+          status: 'assigned',
+          completed_at: null,
+          cost: 0,
+          journal_entry_id: null,
+        })
+        .eq('id', stageId)
+        .select('*')
+        .single();
+      if (updateErr) throw updateErr;
+      const row = updated as any;
+      await resolveStageWorker(row);
+      return row as StudioProductionStage;
+    }
+    if (rpcErr) throw new Error(rpcResult?.error ?? rpcErr.message);
+    throw new Error('Stage not found after reopen');
   },
 
   /**

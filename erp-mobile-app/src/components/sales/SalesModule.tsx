@@ -104,9 +104,14 @@ export function SalesModule({ onBack, user, companyId, branchId, initialSaleType
     setSaveError(null);
     setStep('payment');
   };
-  const handlePaymentComplete = async (result: { paymentMethod: string; paidAmount?: number; dueAmount?: number }) => {
+  const handlePaymentComplete = async (result: { paymentMethod: string; paidAmount?: number; dueAmount?: number; accountId?: string | null; accountName?: string | null }) => {
     if (!companyId || !user?.id) {
       setSaveError('Company or user missing.');
+      return;
+    }
+    const paid = result.paidAmount ?? 0;
+    if (paid > 0 && !result.accountId) {
+      setSaveError('Please select a payment account for accounting.');
       return;
     }
     // When "All Branches" selected, use first branch (RPC requires valid UUID)
@@ -148,6 +153,7 @@ export function SalesModule({ onBack, user, companyId, branchId, initialSaleType
       paymentMethod: result.paymentMethod,
       paidAmount: result.paidAmount,
       dueAmount: result.dueAmount,
+      paymentAccountId: result.accountId ?? undefined,
       notes: saleData.notes || undefined,
       isStudio: saleData.saleType === 'studio',
       userId: user.id,
@@ -214,10 +220,19 @@ export function SalesModule({ onBack, user, companyId, branchId, initialSaleType
           onBack={handleStepBack}
           onSelect={handleCustomerSelect}
           initialSaleType={saleData.saleType}
+          onSaleTypeChange={(st) => setSaleData((prev) => ({ ...prev, saleType: st }))}
         />
       );
     }
-    return <SelectCustomer companyId={companyId} onBack={handleStepBack} onSelect={handleCustomerSelect} />;
+    return (
+      <SelectCustomer
+        companyId={companyId}
+        onBack={handleStepBack}
+        onSelect={handleCustomerSelect}
+        initialSaleType={saleData.saleType}
+        onSaleTypeChange={(st) => setSaleData((prev) => ({ ...prev, saleType: st }))}
+      />
+    );
   }
   if (step === 'products' && saleData.customer)
     return (
@@ -236,6 +251,7 @@ export function SalesModule({ onBack, user, companyId, branchId, initialSaleType
       <PaymentDialog
         onBack={handleStepBack}
         totalAmount={saleData.total}
+        companyId={companyId}
         onComplete={handlePaymentComplete}
         saving={saving}
         saveError={saveError}

@@ -111,8 +111,10 @@ export const StudioProductionListPage = () => {
                       <FileText size={20} className="text-blue-400" />
                     </div>
                     <div className="min-w-0">
-                      <p className="font-semibold text-white truncate">{p.production_no}</p>
-                      <p className="text-sm text-gray-400 truncate">{product?.name ?? p.product_id}</p>
+                      <p className="font-semibold text-white truncate">{(p as any).sale?.invoice_no ?? product?.name ?? p.product_id}</p>
+                      <p className="text-sm text-gray-400 truncate">
+                        {(p as any).sale?.invoice_no ? (product?.name ?? p.product_id) : `${p.quantity} ${p.unit}`}
+                      </p>
                     </div>
                   </div>
                   <div className="flex items-center gap-4 shrink-0">

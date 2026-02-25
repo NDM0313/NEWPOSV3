@@ -22,6 +22,8 @@ Paste and run **`deploy/RLS_FINAL_VALIDATION.sql`** in full.
 | count(*) purchases/rentals/expenses | Only that company's rows |
 | Sample SELECT | Returns rows; company_id matches user's company |
 
+**Quick run:** Sidebar → Test Pages → **RLS Validation**. Click "Run Validation" while logged in.
+
 ---
 
 ## 2. Manual UI Test Checklist

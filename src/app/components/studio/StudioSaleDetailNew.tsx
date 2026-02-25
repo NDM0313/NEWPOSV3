@@ -80,7 +80,7 @@ function safeFormatDate(value: string | null | undefined, fmt: string): string {
 }
 
 type SaleStatus = 'Draft' | 'In Progress' | 'Completed';
-type StepStatus = 'Pending' | 'In Progress' | 'Completed';
+type StepStatus = 'Pending' | 'Assigned' | 'In Progress' | 'Completed';
 
 interface Worker {
   id: string;
@@ -380,7 +380,6 @@ export const StudioSaleDetailNew = () => {
     stages: Array<{ id: string; stage_type: string; assigned_worker_id?: string | null; assigned_at?: string | null; cost?: number; expected_cost?: number | null; status?: string; expected_completion_date?: string | null; completed_at?: string | null; notes?: string | null; worker?: { id: string; name: string } }>,
     ledgerStatusByStageId?: Record<string, 'unpaid' | 'partial' | 'paid'>
   ): ProductionStep[] => {
-    const statusMap: Record<string, StepStatus> = { pending: 'Pending', in_progress: 'In Progress', completed: 'Completed' };
     const stageTypeMap: Record<string, 'dyer' | 'stitching' | 'handwork'> = { dyer: 'dyer', dyeing: 'dyer', stitching: 'stitching', handwork: 'handwork' };
     return stages.map((s, i) => {
       const { name, icon } = stageTypeToStep(s.stage_type, i);
@@ -391,6 +390,18 @@ export const StudioSaleDetailNew = () => {
         ledgerStatus === 'paid' ? 'Paid' : ledgerStatus === 'partial' ? 'Partial' : (s.status === 'completed' ? 'Payable' : 'Pending');
       const isCompleted = (s.status || '').toLowerCase() === 'completed';
       const displayCost = isCompleted ? (s.cost ?? 0) : (s.expected_cost ?? s.cost ?? 0);
+      // CRITICAL: Only show Assigned when worker exists. status=assigned/in_progress + worker null = invalid; force Pending.
+      const rawStatus = (s.status || 'pending').toLowerCase();
+      const hasWorker = !!s.assigned_worker_id;
+      let status: StepStatus;
+      if (isCompleted) status = 'Completed';
+      else if (hasWorker && (rawStatus === 'assigned' || rawStatus === 'in_progress')) status = 'Assigned';
+      else {
+        if ((rawStatus === 'assigned' || rawStatus === 'in_progress') && !hasWorker) {
+          console.warn('[StudioSaleDetail] Invalid state: stage', s.id, 'status=', rawStatus, 'but assigned_worker_id is null. Forcing Pending.');
+        }
+        status = 'Pending';
+      }
       return {
         id: s.id,
         name,
@@ -405,7 +416,7 @@ export const StudioSaleDetailNew = () => {
         actualCompletionDate: s.completed_at || undefined,
         workerCost: displayCost,
         workerPaymentStatus,
-        status: statusMap[s.status || 'pending'] || 'Pending',
+        status,
         notes: s.notes || ''
       };
     });
@@ -504,10 +515,7 @@ export const StudioSaleDetailNew = () => {
                     created_by: user?.id
                   });
                   setProductionId(production.id);
-                  const stageTypes = ['dyer', 'handwork', 'stitching'] as const;
-                  for (const st of stageTypes) {
-                    await studioProductionService.createStage(production.id, { stage_type: st, cost: 0 });
-                  }
+                  // No auto-stages: manager decides via Customize Tasks
                   const stages = await studioProductionService.getStagesByProductionId(production.id);
                   productionSteps = stagesToProductionSteps(stages);
                 }
@@ -625,7 +633,7 @@ export const StudioSaleDetailNew = () => {
       ? 'Draft'
       : allTasksCompleted
         ? 'Completed'
-        : saleDetail.productionSteps.some(s => s.status === 'In Progress' || isStepCompleted(s))
+        : saleDetail.productionSteps.some(s => s.status === 'Assigned' || s.status === 'In Progress' || isStepCompleted(s))
           ? 'In Progress'
           : 'Pending';
 
@@ -665,7 +673,7 @@ export const StudioSaleDetailNew = () => {
     if (!saleDetail) return;
     const step = saleDetail.productionSteps.find((s) => s.id === stepId);
     const isServerUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(stepId);
-    const isReopen = newStatus === 'In Progress' && step?.status === 'Completed';
+    const isReopen = (newStatus === 'Assigned' || newStatus === 'In Progress') && step?.status === 'Completed';
     if (isServerUuid && isReopen) {
       setSavingStage(true);
       try {
@@ -778,10 +786,7 @@ export const StudioSaleDetailNew = () => {
         unit: firstItem.unit || 'piece',
         created_by: user?.id
       });
-      const stageTypes = ['dyer', 'handwork', 'stitching'] as const;
-      for (const st of stageTypes) {
-        await studioProductionService.createStage(production.id, { stage_type: st, cost: 0 });
-      }
+      // No auto-stages: manager decides via Customize Tasks
       return { productionId: production.id };
     } catch (e) {
       console.warn('[StudioSaleDetail] ensureProductionForSale failed:', e);
@@ -815,7 +820,7 @@ export const StudioSaleDetailNew = () => {
     }
     const localSteps = [...(saleDetail.productionSteps || [])].sort((a, b) => a.order - b.order);
     if (localSteps.length === 0) {
-      toast.error('No production stages to save. Add stages first.');
+      toast.info('Add stages via Customize Tasks first.');
       return;
     }
     const validWorkerIds = new Set(workers.map(w => w.id));
@@ -836,20 +841,18 @@ export const StudioSaleDetailNew = () => {
     setSavingStage(true);
     try {
       let serverStages = await studioProductionService.getStagesByProductionId(currentProductionId);
+      if (serverStages.length === 0 && localSteps.length > 0) {
+        // Create stages from manager's choices (localSteps), not default 3
+        for (const step of localSteps) {
+          const st = step.stageType || 'handwork';
+          await studioProductionService.createStage(currentProductionId, { stage_type: st, cost: 0 });
+        }
+        serverStages = await studioProductionService.getStagesByProductionId(currentProductionId);
+      }
       if (serverStages.length === 0) {
-        const production = await studioProductionService.getProductionById(currentProductionId);
-        if (production?.id) {
-          const stageTypes = ['dyer', 'handwork', 'stitching'] as const;
-          for (const st of stageTypes) {
-            await studioProductionService.createStage(currentProductionId, { stage_type: st, cost: 0 });
-          }
-          serverStages = await studioProductionService.getStagesByProductionId(currentProductionId);
-        }
-        if (serverStages.length === 0) {
-          toast.error('No stages found on server. Refresh the page and try again.');
-          setSavingStage(false);
-          return;
-        }
+        toast.error('No stages to sync. Add stages via Customize Tasks first.');
+        setSavingStage(false);
+        return;
       }
       const serverStageById = new Map(serverStages.map((s: any) => [s.id, s]));
       const serverStagesByOrder = [...serverStages].sort((a, b) => (a.created_at || '').localeCompare(b.created_at || ''));
@@ -863,14 +866,14 @@ export const StudioSaleDetailNew = () => {
         const localIsCompleted = step.status === 'Completed';
         if (localIsCompleted && !serverIsCompleted) completedOrdersJustSaved.push(step.order);
         if (serverIsCompleted && localIsCompleted) continue;
-        const backendStatus = step.status === 'Pending' ? 'pending' : step.status === 'In Progress' ? 'in_progress' : 'completed';
+        const backendStatus = step.status === 'Pending' ? 'pending' : step.status === 'Completed' ? 'completed' : 'assigned';
         const workerId = resolveWorkerId(step.workerId || step.assignedWorkers?.[0]?.workerId);
         await studioProductionService.updateStage(stageId, {
           assigned_worker_id: workerId,
           cost: step.workerCost ?? 0,
           expected_completion_date: step.expectedCompletionDate || null,
           notes: step.notes || null,
-          status: backendStatus as 'pending' | 'in_progress' | 'completed',
+          status: backendStatus as 'pending' | 'assigned' | 'in_progress' | 'completed',
           completed_at: step.status === 'Completed' && step.actualCompletionDate
             ? new Date(step.actualCompletionDate).toISOString()
             : step.status === 'Completed'
@@ -938,7 +941,7 @@ export const StudioSaleDetailNew = () => {
 
   const handleDeleteAccessory = (id: string) => {
     const productionStarted = saleDetail.productionSteps.some(
-      step => step.status === 'In Progress' || step.status === 'Completed'
+      step => step.status === 'Assigned' || step.status === 'In Progress' || step.status === 'Completed'
     );
     
     if (productionStarted) {
@@ -1079,8 +1082,9 @@ export const StudioSaleDetailNew = () => {
           worker_id: editingWorkerData.workers[0].workerId,
           expected_cost: totalWorkerCost,
           expected_completion_date: editingWorkerData.expectedCompletionDate?.trim() || null,
+          notes: editingWorkerData.notes?.trim() || null,
         });
-        toast.success('Worker assigned. Task is now In Progress.');
+        toast.success('Worker assigned. Click Receive when job is done.');
         await reloadProductionSteps();
         setShowWorkerEditModal(null);
         window.dispatchEvent(new CustomEvent('studio-production-saved'));
@@ -1106,7 +1110,7 @@ export const StudioSaleDetailNew = () => {
               expectedCompletionDate: editingWorkerData.expectedCompletionDate,
               notes: editingWorkerData.notes,
               assignedDate: step.assignedDate || new Date().toISOString().split('T')[0],
-              ...(setInProgress && step.status !== 'Completed' ? { status: 'In Progress' as StepStatus } : andStart ? { status: 'In Progress' as StepStatus } : {})
+              ...(setInProgress && step.status !== 'Completed' ? { status: 'Assigned' as StepStatus } : andStart ? { status: 'Assigned' as StepStatus } : {})
             }
           : step
       )
@@ -1298,7 +1302,41 @@ export const StudioSaleDetailNew = () => {
           handwork: 'handwork',
           stitching: 'stitching',
         };
-        const existingTypes = new Set((stages as any[]).map((s: any) => s.stage_type));
+        const selectedTypes = new Set(
+          selectedTaskIds
+            .map((tid) => taskIdToStageType[tid])
+            .filter((t): t is 'dyer' | 'handwork' | 'stitching' => !!t)
+        );
+        const stagesArr = stages as any[];
+        const existingTypes = new Set(stagesArr.map((s: any) => s.stage_type));
+        const allPendingAndUnassigned = stagesArr.every((s) => s.status !== 'completed' && !s.assigned_worker_id);
+
+        if (allPendingAndUnassigned && stagesArr.length > 0) {
+          // Delete all and recreate in selected order so backend created_at matches selection order
+          for (const s of stagesArr) {
+            try {
+              await studioProductionService.deleteStage(s.id);
+            } catch {
+              /* skip */
+            }
+          }
+          existingTypes.clear();
+        } else {
+          // Delete only stages that are no longer selected
+          for (const s of stagesArr) {
+            const stageType = s.stage_type;
+            if (!selectedTypes.has(stageType)) {
+              try {
+                await studioProductionService.deleteStage(s.id);
+                existingTypes.delete(stageType);
+              } catch (delErr: any) {
+                toast.warning(delErr?.message || `Could not remove ${stageType}. It may have a worker assigned or be completed.`);
+              }
+            }
+          }
+        }
+
+        // Create stages that are selected but not yet in backend (in selected order)
         for (const taskId of selectedTaskIds) {
           const stageType = taskIdToStageType[taskId];
           if (stageType && !existingTypes.has(stageType)) {
@@ -1306,7 +1344,25 @@ export const StudioSaleDetailNew = () => {
             existingTypes.add(stageType);
           }
         }
-        await reloadProductionSteps();
+
+        // Update local step IDs with server UUIDs so Assign worker works (backend expects real stage ids)
+        const stagesAfterSync = await studioProductionService.getStagesByProductionId(currentProductionId);
+        const stageByType = new Map((stagesAfterSync as any[]).map((s: any) => [s.stage_type, s]));
+        setSaleDetail((prev) => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            productionSteps: prev.productionSteps.map((step) => {
+              const st = step.stageType;
+              if (st && stageByType.has(st)) {
+                const serverStage = stageByType.get(st);
+                return { ...step, id: serverStage.id };
+              }
+              return step;
+            }),
+          };
+        });
+
         toast.success('Configuration saved.');
       }
     } catch (e: any) {
@@ -1359,7 +1415,7 @@ export const StudioSaleDetailNew = () => {
   const canDeleteAccessory = () => {
     if (!saleDetail) return false;
     if (allTasksCompleted) return false;
-    return !saleDetail.productionSteps.some(step => step.status === 'In Progress' || step.status === 'Completed');
+    return !saleDetail.productionSteps.some(step => step.status === 'Assigned' || step.status === 'In Progress' || step.status === 'Completed');
   };
 
   if (loading) {
@@ -1504,7 +1560,7 @@ export const StudioSaleDetailNew = () => {
                         <div className={cn(
                           "h-9 w-9 rounded-lg flex items-center justify-center transition-all",
                           step.status === 'Completed' && "bg-green-500/20 text-green-400",
-                          step.status === 'In Progress' && "bg-blue-500/20 text-blue-400 ring-2 ring-blue-500/40",
+                          (step.status === 'Assigned' || step.status === 'In Progress') && "bg-blue-500/20 text-blue-400 ring-2 ring-blue-500/40",
                           step.status === 'Pending' && "bg-gray-800 text-gray-600"
                         )}>
                           {step.status === 'Completed' ? (
@@ -1517,7 +1573,7 @@ export const StudioSaleDetailNew = () => {
                           <p className={cn(
                             "text-xs font-medium",
                             step.status === 'Completed' && "text-green-400",
-                            step.status === 'In Progress' && "text-blue-400",
+                            (step.status === 'Assigned' || step.status === 'In Progress') && "text-blue-400",
                             step.status === 'Pending' && "text-gray-600"
                           )}>
                             {step.name}
@@ -1650,7 +1706,7 @@ export const StudioSaleDetailNew = () => {
                           className={cn(
                             "bg-gray-900/50 border rounded-lg transition-all",
                             step.status === 'Completed' && "border-green-700/30",
-                            step.status === 'In Progress' && "border-blue-700/50 bg-blue-950/10",
+                            (step.status === 'Assigned' || step.status === 'In Progress') && "border-blue-700/50 bg-blue-950/10",
                             step.status === 'Pending' && "border-gray-800"
                           )}
                         >
@@ -1660,7 +1716,7 @@ export const StudioSaleDetailNew = () => {
                               <div className={cn(
                                 "h-12 w-12 rounded-xl flex items-center justify-center shrink-0",
                                 step.status === 'Completed' && "bg-green-500/20",
-                                step.status === 'In Progress' && "bg-blue-500/20",
+                                (step.status === 'Assigned' || step.status === 'In Progress') && "bg-blue-500/20",
                                 step.status === 'Pending' && stepLocked && "bg-gray-800",
                                 step.status === 'Pending' && !stepLocked && "bg-gray-700/30"
                               )}>
@@ -1669,7 +1725,7 @@ export const StudioSaleDetailNew = () => {
                                 ) : (
                                   <StepIcon size={20} className={cn(
                                     step.status === 'Completed' && "text-green-400",
-                                    step.status === 'In Progress' && "text-blue-400",
+                                    (step.status === 'Assigned' || step.status === 'In Progress') && "text-blue-400",
                                     step.status === 'Pending' && "text-gray-400"
                                   )} />
                                 )}
@@ -1686,7 +1742,7 @@ export const StudioSaleDetailNew = () => {
                                         className={cn(
                                           "text-xs",
                                           step.status === 'Completed' && "bg-green-500/20 text-green-400 border-green-700",
-                                          step.status === 'In Progress' && "bg-blue-500/20 text-blue-400 border-blue-700",
+                                          (step.status === 'Assigned' || step.status === 'In Progress') && "bg-blue-500/20 text-blue-400 border-blue-700",
                                           step.status === 'Pending' && "bg-gray-500/20 text-gray-400 border-gray-700"
                                         )}
                                       >
@@ -1747,8 +1803,8 @@ export const StudioSaleDetailNew = () => {
                                       </Button>
                                     )}
                                     
-                                    {/* In Progress → Receive from Worker: job done? Enter actual cost & confirm to mark complete */}
-                                    {!stepLocked && step.status === 'In Progress' && step.assignedWorker && (
+                                    {/* Assigned → Receive from Worker: job done? Enter actual cost & confirm to mark complete */}
+                                    {!stepLocked && (step.status === 'Assigned' || step.status === 'In Progress') && step.assignedWorker && (
                                       <Button
                                         size="sm"
                                         onClick={() => {

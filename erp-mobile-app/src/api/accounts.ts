@@ -115,7 +115,7 @@ export async function getPaymentAccounts(companyId: string): Promise<{ data: Acc
     .select('id, code, name, type, balance')
     .eq('company_id', companyId)
     .eq('is_active', true)
-    .or('type.eq.cash,type.eq.bank,type.eq.asset,type.eq.mobile_wallet,is_default_cash.eq.true,is_default_bank.eq.true')
+    .in('type', ['cash', 'bank', 'asset', 'mobile_wallet'])
     .order('code');
   const { data, error } = await q;
   if (error) return { data: [], error: error.message };

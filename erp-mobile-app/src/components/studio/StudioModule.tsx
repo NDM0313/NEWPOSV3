@@ -5,6 +5,7 @@ import * as studioApi from '../../api/studio';
 import { StudioDashboard, type StudioOrder, type StudioStage } from './StudioDashboard';
 import { StudioOrderDetail } from './StudioOrderDetail';
 import { StudioStageAssignment } from './StudioStageAssignment';
+import { StudioUpdateStatusView } from './StudioUpdateStatusView';
 
 interface StudioModuleProps {
   onBack: () => void;
@@ -30,7 +31,15 @@ function mapProductionToOrder(
   const sale = prod.sale as { customer_name?: string; total?: number; invoice_no?: string; invoice_date?: string } | undefined;
   const product = prod.product as { name?: string } | undefined;
   const completedCount = stages.filter((s) => s.status === 'completed').length;
-  const inProgress = stages.find((s) => s.status === 'in_progress');
+  // CRITICAL: Only consider assigned when worker exists. status=assigned/in_progress + worker null = invalid; treat as pending.
+  const inProgress = stages.find((s) => {
+    if (s.status !== 'in_progress' && s.status !== 'assigned') return false;
+    if (!s.assigned_worker_id) {
+      console.warn('[StudioModule] Invalid state: stage', s.id, 'status=', s.status, 'but assigned_worker_id is null. Forcing pending.');
+      return false;
+    }
+    return true;
+  });
   const allDone = stages.length > 0 && stages.every((s) => s.status === 'completed');
 
   let status: StudioOrder['status'] = 'pending';
@@ -41,6 +50,13 @@ function mapProductionToOrder(
   const mappedStages: StudioStage[] = stages.map((s) => {
     const worker = s.worker as { id?: string; name?: string } | undefined;
     const cost = Number(s.cost) || 0;
+    // Force pending when status says assigned/in_progress but no worker (invalid state)
+    const effectiveStatus =
+      s.status === 'completed'
+        ? 'completed'
+        : s.assigned_worker_id && (s.status === 'assigned' || s.status === 'in_progress')
+          ? s.status
+          : 'pending';
     return {
       id: s.id,
       name: s.stage_type === 'dyer' ? 'Dyeing' : s.stage_type === 'stitching' ? 'Stitching' : 'Handwork',
@@ -50,15 +66,15 @@ function mapProductionToOrder(
       internalCost: cost,
       customerCharge: cost,
       expectedDate: s.expected_completion_date ?? '',
-      status: s.status,
-      startedDate: s.status !== 'pending' ? s.expected_completion_date ?? undefined : undefined,
+      status: effectiveStatus,
+      startedDate: effectiveStatus !== 'pending' ? s.expected_completion_date ?? undefined : undefined,
       completedDate: s.completed_at ? new Date(s.completed_at).toISOString().slice(0, 10) : undefined,
     };
   });
 
   return {
     id: prod.id,
-    orderNumber: prod.production_no,
+    orderNumber: sale?.invoice_no ?? prod.production_no,
     customerName: sale?.customer_name ?? '—',
     productName: product?.name ?? '—',
     totalAmount: Number(sale?.total ?? prod.product ? 0 : 0) || 0,
@@ -171,6 +187,21 @@ export function StudioModule({ onBack, companyId, branch, onNewStudioSale }: Stu
           setSelectedStage(stage);
           setView('edit-stage');
         }}
+        onDeleteStage={async (stage) => {
+          if (!confirm('Remove this job from the production pipeline?')) return;
+          const { error } = await studioApi.deleteStudioStage(stage.id);
+          if (error) {
+            alert(error);
+            return;
+          }
+          const newStages = selectedOrder.stages.filter((s) => s.id !== stage.id);
+          setSelectedOrder({
+            ...selectedOrder,
+            stages: newStages,
+            totalStages: newStages.length,
+            completedStages: newStages.filter((s) => s.status === 'completed').length,
+          });
+        }}
         onUpdateStatus={(stage) => {
           setSelectedStage(stage);
           setView('update-status');
@@ -190,8 +221,8 @@ export function StudioModule({ onBack, companyId, branch, onNewStudioSale }: Stu
           if (view === 'add-stage') {
             const { data, error: err } = await studioApi.createStudioStage(selectedOrder.id, {
               stage_type: stageData.type ?? 'handwork',
-              assigned_worker_id: stageData.workerId ?? null,
-              cost: stageData.internalCost ?? 0,
+              assigned_worker_id: null,
+              cost: 0,
               expected_completion_date: stageData.expectedDate || null,
             });
             if (err) {
@@ -252,94 +283,23 @@ export function StudioModule({ onBack, companyId, branch, onNewStudioSale }: Stu
   }
 
   if (view === 'update-status' && selectedOrder && selectedStage && companyId) {
-    const handleStatusUpdate = async (newStatus: 'in-progress' | 'completed') => {
-      const statusMap = { 'in-progress': 'in_progress' as const, completed: 'completed' as const };
-      const { error: err } = await studioApi.updateStudioStage(selectedStage.id, {
-        status: statusMap[newStatus],
-        completed_at: newStatus === 'completed' ? new Date().toISOString() : undefined,
-      });
-      if (err) {
-        alert(err);
-        return;
-      }
-      setSelectedOrder({
-        ...selectedOrder,
-        stages: selectedOrder.stages.map((s) =>
-          s.id === selectedStage.id
-            ? {
-                ...s,
-                status: newStatus,
-                startedDate: newStatus === 'in-progress' && !s.startedDate ? new Date().toISOString().slice(0, 10) : s.startedDate,
-                completedDate: newStatus === 'completed' ? new Date().toISOString().slice(0, 10) : undefined,
-              }
-            : s
-        ),
-        completedStages:
-          selectedOrder.completedStages + (newStatus === 'completed' ? 1 : 0),
-        status:
-          selectedOrder.stages.every((s) => (s.id === selectedStage.id ? newStatus === 'completed' : s.status === 'completed'))
-            ? 'ready'
-            : 'in-progress',
-      });
-      setView('order-detail');
-    };
-
     return (
-      <div className="min-h-screen pb-24 bg-[#111827]">
-        <div className="bg-gradient-to-br from-[#8B5CF6] to-[#7C3AED] p-4 sticky top-0 z-10">
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => setView('order-detail')}
-              className="p-2 hover:bg-white/10 rounded-lg transition-colors text-white"
-            >
-              <ArrowLeft className="w-5 h-5" />
-            </button>
-            <div className="flex-1">
-              <h1 className="font-semibold text-white">Update Stage Status</h1>
-              <p className="text-xs text-white/80">{selectedStage.name}</p>
-            </div>
-          </div>
-        </div>
-        <div className="p-4">
-          <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4 mb-6">
-            <h3 className="text-sm font-semibold text-white mb-3">{selectedStage.name}</h3>
-            <div className="space-y-2 text-sm">
-              <div className="flex justify-between">
-                <span className="text-[#9CA3AF]">Assigned to</span>
-                <span className="text-white">{selectedStage.assignedTo}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-[#9CA3AF]">Expected Date</span>
-                <span className="text-white">{selectedStage.expectedDate}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-[#9CA3AF]">Current Status</span>
-                <span className="text-[#F59E0B] capitalize">
-                  {selectedStage.status === 'in_progress' ? 'In Progress' : selectedStage.status.replace('-', ' ')}
-                </span>
-              </div>
-            </div>
-          </div>
-          <div className="space-y-3">
-            {(selectedStage.status === 'pending') && (
-              <button
-                onClick={() => handleStatusUpdate('in-progress')}
-                className="w-full py-4 bg-gradient-to-r from-[#3B82F6] to-[#2563EB] rounded-xl font-semibold text-white"
-              >
-                Start Stage
-              </button>
-            )}
-            {(selectedStage.status === 'in-progress' || selectedStage.status === 'in_progress') && (
-              <button
-                onClick={() => handleStatusUpdate('completed')}
-                className="w-full py-4 bg-gradient-to-r from-[#10B981] to-[#059669] rounded-xl font-semibold text-white"
-              >
-                Mark as Completed
-              </button>
-            )}
-          </div>
-        </div>
-      </div>
+      <StudioUpdateStatusView
+        selectedOrder={selectedOrder}
+        selectedStage={selectedStage}
+        companyId={companyId}
+        onBack={() => setView('order-detail')}
+        onComplete={async () => {
+          await loadOrders();
+          setView('order-detail');
+          setSelectedStage(null);
+          const updated = (await studioApi.getStudioProductions(companyId, effectiveBranchId ?? undefined)).data?.find((p) => p.id === selectedOrder.id);
+          if (updated) {
+            const { data: stages } = await studioApi.getStudioStages(updated.id);
+            setSelectedOrder(mapProductionToOrder(updated, stages || []));
+          }
+        }}
+      />
     );
   }
 

@@ -37,6 +37,13 @@ if (!url || !key) {
   process.exit(0);
 }
 
+// erp.dincouture.pk proxy returns 308/"auth" → "Unexpected token '/', \"/auth\" is not valid JSON"
+// Use supabase.dincouture.pk directly for auth (works reliably)
+if (url.includes('erp.dincouture.pk')) {
+  url = url.replace(/https?:\/\/erp\.dincouture\.pk\/?/i, 'https://supabase.dincouture.pk');
+  console.log('[sync-mobile-env] Replaced erp.dincouture.pk with supabase.dincouture.pk (auth proxy returns invalid JSON)');
+}
+
 const out = `# Auto-synced from project root – same backend as Web ERP (run: npm run sync:mobile-env)
 VITE_SUPABASE_URL=${url}
 VITE_SUPABASE_ANON_KEY=${key}

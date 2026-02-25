@@ -29,6 +29,8 @@ export interface CreateSaleInput {
   /** For split payment: paid = cash + bank, due = credit */
   paidAmount?: number;
   dueAmount?: number;
+  /** Account ID for payment (required when paidAmount > 0, for accounting) */
+  paymentAccountId?: string | null;
   notes?: string;
   isStudio: boolean;
   userId: string;
@@ -63,7 +65,7 @@ export async function createSale(input: CreateSaleInput): Promise<{ data: { id: 
     return { data: null, error: 'App not configured.' };
   }
 
-  const { companyId, branchId, customerId, customerName, contactNumber, items, subtotal, discountAmount, taxAmount, expenses, total, paymentMethod, notes, isStudio, userId, paidAmount, dueAmount } = input;
+  const { companyId, branchId, customerId, customerName, contactNumber, items, subtotal, discountAmount, taxAmount, expenses, total, paymentMethod, notes, isStudio, userId, paidAmount, dueAmount, paymentAccountId } = input;
 
   if (!companyId || !branchId || !userId) {
     return { data: null, error: 'Missing company, branch, or user.' };
@@ -202,11 +204,35 @@ export async function createSale(input: CreateSaleInput): Promise<{ data: { id: 
       amount: paid,
       payment_method: enumMethod,
       payment_date: new Date().toISOString().slice(0, 10),
-      payment_account_id: null,
+      payment_account_id: paymentAccountId || null,
       reference_number: payRef,
       created_by: userId,
     });
     if (payErr) console.warn('[SALES API] Payment record insert failed:', payErr);
+  }
+
+  // Create studio_production(s) for Studio Sales so they appear in Studio dashboard
+  if (isStudio && items.length > 0) {
+    const productionDate = new Date().toISOString().slice(0, 10);
+    const productionRows = items.map((item, i) => {
+      const productionNo = items.length === 1 ? invoiceNo : `${invoiceNo}-${i + 1}`;
+      return {
+        company_id: companyId,
+        branch_id: branchId,
+        sale_id: saleId,
+        production_no: productionNo,
+        production_date: productionDate,
+        product_id: item.productId,
+        variation_id: item.variationId || null,
+        quantity: item.quantity,
+        status: 'draft' as const,
+        created_by: userId,
+      };
+    });
+    const { error: prodErr } = await supabase.from('studio_productions').insert(productionRows);
+    if (prodErr) {
+      console.warn('[SALES API] Studio production(s) insert failed (sale saved):', prodErr);
+    }
   }
 
   return {

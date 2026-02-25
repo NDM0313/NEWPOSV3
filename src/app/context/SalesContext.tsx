@@ -489,6 +489,27 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
           const { supabase: sb } = await import('@/lib/supabase');
           await sb.from('sales').update({ is_studio: true }).eq('id', result.id);
         } catch (_) { /* column may not exist */ }
+        // Create studio_production so Studio Sale appears on Studio Production dashboard (same as StudioSaleDetailNew.ensureProductionForSale)
+        if (supabaseItems?.length > 0 && (saleData.status === 'final' || saleData.type === 'invoice')) {
+          try {
+            const { studioProductionService } = await import('@/app/services/studioProductionService');
+            const firstItem = supabaseItems[0];
+            const production = await studioProductionService.createProductionJob({
+              company_id: companyId,
+              branch_id: effectiveBranchId,
+              sale_id: result.id,
+              production_no: `PRD-${effectiveInvoiceNo}`,
+              production_date: saleData.date || new Date().toISOString().split('T')[0],
+              product_id: firstItem.product_id,
+              quantity: Number(firstItem.quantity) || 1,
+              unit: (firstItem as any).unit || 'piece',
+              created_by: user.id,
+            });
+            // No auto-stages: manager decides via Customize Tasks in Studio Sale Detail
+          } catch (prodErr) {
+            console.warn('[SALES CONTEXT] Studio production create failed (sale saved):', prodErr);
+          }
+        }
       }
       // Only increment when we generated the number (Form did not send invoiceNo); Form already increments when it sends number
       if (weGeneratedNumber) incrementNextNumber(docType);

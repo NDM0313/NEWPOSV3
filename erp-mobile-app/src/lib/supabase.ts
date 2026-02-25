@@ -1,7 +1,11 @@
 import { createClient } from '@supabase/supabase-js';
 import { clearSecure } from './secureStorage';
 
-const supabaseUrl = (import.meta.env.VITE_SUPABASE_URL || '').trim();
+let supabaseUrl = (import.meta.env.VITE_SUPABASE_URL || '').trim();
+// erp.dincouture.pk auth proxy returns 308 redirect → "Unexpected token '/', \"/auth\" is not valid JSON"
+if (supabaseUrl.includes('erp.dincouture.pk')) {
+  supabaseUrl = supabaseUrl.replace(/https?:\/\/erp\.dincouture\.pk\/?/i, 'https://supabase.dincouture.pk');
+}
 const supabaseAnonKey = (import.meta.env.VITE_SUPABASE_ANON_KEY || '').trim();
 
 const hasConfig = Boolean(supabaseUrl && supabaseAnonKey && !supabaseUrl.startsWith('http://placeholder'));

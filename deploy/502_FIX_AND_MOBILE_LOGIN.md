@@ -2,6 +2,7 @@
 
 ## Problem
 - **502 Bad Gateway** on `erp.dincouture.pk/auth/v1/*` and `/rest/v1/*`
+- **"Unexpected token '/', \"/auth\" is not valid JSON"** – erp.dincouture.pk auth proxy returns 308 redirect; Supabase client expects JSON
 - Mobile app (localhost:5174) fails to login when using `VITE_SUPABASE_URL=https://erp.dincouture.pk`
 
 ## Root Cause

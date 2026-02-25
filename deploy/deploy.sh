@@ -131,6 +131,7 @@ EOSQL
 # Fixes-only mode: apply DB/storage fixes and exit (no build, no docker up)
 if [ -n "$DEPLOY_ONLY_FIXES" ]; then
   [ -f deploy/fix-supabase-storage-jwt.sh ] && bash deploy/fix-supabase-storage-jwt.sh || true
+  [ -f deploy/apply-studio-no-auto-assign.sh ] && bash deploy/apply-studio-no-auto-assign.sh || true
   apply_expenses_columns
   [ -f deploy/apply-storage-rls-vps.sh ] && bash deploy/apply-storage-rls-vps.sh || apply_rls
   apply_rls_performance
@@ -181,6 +182,9 @@ $COMPOSE_CMD up -d
 
 # Auto-apply migrations (accounts.subtype, journal_entries columns, etc.)
 [ -f deploy/run-migrations-vps.sh ] && bash deploy/run-migrations-vps.sh || true
+
+# Studio: Assign/Receive workflow RPCs + no-auto-assign guard (run as supabase_admin)
+[ -f deploy/apply-studio-no-auto-assign.sh ] && bash deploy/apply-studio-no-auto-assign.sh || true
 
 # Auto-apply expenses columns + storage buckets + RLS + RLS performance + Studio API fix
 apply_expenses_columns

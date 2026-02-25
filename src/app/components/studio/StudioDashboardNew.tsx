@@ -462,7 +462,16 @@ export const StudioDashboardNew = () => {
       return { currentStage: 'Ready for Production', assignedWorker: 'Unassigned', status: 'Pending', expectedDate: saleDeadline || '—' };
     }
     // Stages already in created_at order (dyer → handwork → stitching)
-    const active = stages.find((s: any) => s.status === 'pending' || s.status === 'in_progress');
+    // Only consider in_progress/assigned as active when worker exists; else treat as pending
+    const active = stages.find((s: any) => {
+      if (s.status === 'pending') return true;
+      if ((s.status === 'in_progress' || s.status === 'assigned') && s.assigned_worker_id) return true;
+      if ((s.status === 'in_progress' || s.status === 'assigned') && !s.assigned_worker_id) {
+        console.warn('[StudioDashboard] Invalid state: stage status=', s.status, 'but assigned_worker_id null');
+        return true; // still show as active so user can Assign
+      }
+      return false;
+    });
     const allCompleted = stages.every((s: any) => s.status === 'completed');
     if (allCompleted) {
       return { currentStage: 'Completed', assignedWorker: '—', status: 'Completed', expectedDate: '—' };
@@ -470,10 +479,16 @@ export const StudioDashboardNew = () => {
     if (active) {
       const workerName = (active as any).worker?.name;
       const expected = active.expected_completion_date || saleDeadline || '—';
-      const status = active.status === 'in_progress' || stages.some((s: any) => s.status === 'completed') ? 'In Progress' : 'Pending';
+      const hasWorker = !!(active as any).assigned_worker_id;
+      const status =
+        hasWorker && ((active as any).status === 'in_progress' || (active as any).status === 'assigned')
+          ? 'In Progress'
+          : stages.some((s: any) => s.status === 'completed')
+            ? 'In Progress'
+            : 'Pending';
       return {
         currentStage: stageTypeToLabel(active.stage_type),
-        assignedWorker: (active.assigned_worker_id && workerName) ? workerName : 'Unassigned',
+        assignedWorker: hasWorker && workerName ? workerName : 'Unassigned',
         status,
         expectedDate: expected,
       };

@@ -35,6 +35,7 @@ export function registerAllSyncHandlers(): void {
       paymentMethod: string;
       paidAmount?: number;
       dueAmount?: number;
+      paymentAccountId?: string | null;
       notes?: string;
       isStudio: boolean;
       userId: string;
@@ -54,6 +55,7 @@ export function registerAllSyncHandlers(): void {
       paymentMethod: p.paymentMethod || 'Cash',
       paidAmount: p.paidAmount,
       dueAmount: p.dueAmount,
+      paymentAccountId: p.paymentAccountId,
       notes: p.notes,
       isStudio: !!p.isStudio,
       userId: p.userId,

@@ -56,9 +56,14 @@ function loadEnvLocal() {
 
 loadEnvLocal();
 
-const connectionString = process.env.DATABASE_POOLER_URL || process.env.DATABASE_URL;
+// Use admin URL when set – required for migrations that replace functions (must be owner).
+// Set DATABASE_ADMIN_URL to direct postgres connection (e.g. postgresql://postgres:pass@host:5432/postgres).
+const connectionString =
+  process.env.DATABASE_ADMIN_URL ||
+  process.env.DATABASE_POOLER_URL ||
+  process.env.DATABASE_URL;
 if (!connectionString) {
-  console.log('[MIGRATE] No DATABASE_POOLER_URL/DATABASE_URL in .env.local — skipping migrations. App will start without applying migrations.');
+  console.log('[MIGRATE] No DATABASE_ADMIN_URL/DATABASE_POOLER_URL/DATABASE_URL in .env.local — skipping migrations. App will start without applying migrations.');
   process.exit(0);
 }
 

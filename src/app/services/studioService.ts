@@ -352,7 +352,7 @@ export const studioService = {
     const workers = await this.getAllWorkers(companyId);
     const list = (workers || []) as (Worker & { current_balance?: number })[];
 
-    let stageCounts: Record<string, { pending: number; in_progress: number; completed: number }> = {};
+    let stageCounts: Record<string, { assigned: number; in_progress: number; completed: number }> = {};
     let totalEarningsByWorker: Record<string, number> = {};
     let dueBalanceByWorker: Record<string, number> = {};
 
@@ -372,9 +372,12 @@ export const studioService = {
         (stageRows || []).forEach((row: { assigned_worker_id?: string | null; status: string }) => {
           const wid = row.assigned_worker_id;
           if (!wid) return;
-          if (!stageCounts[wid]) stageCounts[wid] = { pending: 0, in_progress: 0, completed: 0 };
+          if (!stageCounts[wid]) stageCounts[wid] = { assigned: 0, in_progress: 0, completed: 0 };
           const status = (row.status || '').toLowerCase();
-          if (status === 'pending') stageCounts[wid].pending++;
+          // assigned = worker assigned, waiting to start (pendingJobs in UI)
+          // in_progress = worker actively working (activeJobs in UI)
+          // completed = done
+          if (status === 'assigned' || status === 'pending') stageCounts[wid].assigned++;
           else if (status === 'in_progress') stageCounts[wid].in_progress++;
           else if (status === 'completed') stageCounts[wid].completed++;
         });
@@ -449,13 +452,13 @@ export const studioService = {
 
     return list.map((w) => {
       const id = w.id!;
-      const counts = stageCounts[id] || { pending: 0, in_progress: 0, completed: 0 };
+      const counts = stageCounts[id] || { assigned: 0, in_progress: 0, completed: 0 };
       const pendingAmount = dueBalanceByWorker[id] ?? 0;
       const totalEarnings = totalEarningsByWorker[id] || 0;
       return {
         ...w,
-        activeJobs: counts.in_progress,
-        pendingJobs: counts.pending,
+        activeJobs: counts.assigned + counts.in_progress,
+        pendingJobs: counts.assigned,
         completedJobs: counts.completed,
         pendingAmount,
         totalEarnings,

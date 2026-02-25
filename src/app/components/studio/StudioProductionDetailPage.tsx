@@ -132,7 +132,7 @@ export const StudioProductionDetailPage = () => {
             <ArrowLeft size={20} />
           </Button>
           <div>
-            <h1 className="text-xl font-bold text-white">{production.production_no}</h1>
+            <h1 className="text-xl font-bold text-white">{(production as any).sale?.invoice_no ?? product?.name ?? production.product_id}</h1>
             <p className="text-xs text-gray-500">{product?.name ?? production.product_id}</p>
           </div>
           <Badge className={cn('border', cfg?.className)}>{cfg?.label}</Badge>

@@ -79,7 +79,7 @@ BEGIN
   IF v_branch_id IS NOT NULL THEN
     INSERT INTO inventory_balance (company_id, product_id, branch_id, qty, boxes, pieces, unit, updated_at)
     VALUES (v_company_id, v_product_id, v_branch_id, v_qty_delta, v_box_delta, v_piece_delta, COALESCE(NEW.unit, 'pcs'), now())
-    ON CONFLICT (product_id, branch_id)
+    ON CONFLICT (product_id, branch_id) WHERE (branch_id IS NOT NULL)
     DO UPDATE SET
       qty = inventory_balance.qty + v_qty_delta,
       boxes = inventory_balance.boxes + v_box_delta,
@@ -89,7 +89,7 @@ BEGIN
   ELSE
     INSERT INTO inventory_balance (company_id, product_id, branch_id, qty, boxes, pieces, unit, updated_at)
     VALUES (v_company_id, v_product_id, NULL, v_qty_delta, v_box_delta, v_piece_delta, COALESCE(NEW.unit, 'pcs'), now())
-    ON CONFLICT (product_id)
+    ON CONFLICT (product_id) WHERE (branch_id IS NULL)
     DO UPDATE SET
       qty = inventory_balance.qty + v_qty_delta,
       boxes = inventory_balance.boxes + v_box_delta,

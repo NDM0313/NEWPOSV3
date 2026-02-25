@@ -1,4 +1,4 @@
-import { ArrowLeft, Plus, Edit2, CheckCircle, Clock, Package } from 'lucide-react';
+import { ArrowLeft, Plus, Edit2, Trash2, CheckCircle, Clock, Package } from 'lucide-react';
 import type { StudioOrder, StudioStage } from './StudioDashboard';
 
 interface StudioOrderDetailProps {
@@ -6,6 +6,7 @@ interface StudioOrderDetailProps {
   onBack: () => void;
   onAddStage: () => void;
   onEditStage: (stage: StudioStage) => void;
+  onDeleteStage?: (stage: StudioStage) => void;
   onUpdateStatus: (stage: StudioStage) => void;
   onGenerateInvoice: () => void;
   onShipment: () => void;
@@ -16,6 +17,7 @@ export function StudioOrderDetail({
   onBack,
   onAddStage,
   onEditStage,
+  onDeleteStage,
   onUpdateStatus,
   onGenerateInvoice,
   onShipment,
@@ -24,11 +26,12 @@ export function StudioOrderDetail({
     switch (status) {
       case 'pending':
         return { color: '#F59E0B', bg: 'bg-[#F59E0B]/10', text: 'Pending', icon: Clock };
+      case 'assigned':
       case 'in-progress':
       case 'in_progress':
-        return { color: '#3B82F6', bg: 'bg-[#3B82F6]/10', text: 'In Progress', icon: Package };
+        return { color: '#3B82F6', bg: 'bg-[#3B82F6]/10', text: 'Assigned', icon: Package };
       case 'completed':
-        return { color: '#10B981', bg: 'bg-[#10B981]/10', text: 'Completed', icon: CheckCircle };
+        return { color: '#10B981', bg: 'bg-[#10B981]/10', text: 'Received', icon: CheckCircle };
       default:
         return { color: '#9CA3AF', bg: 'bg-[#374151]', text: 'Pending', icon: Clock };
     }
@@ -152,9 +155,13 @@ export function StudioOrderDetail({
             </div>
           ) : (
             <div className="space-y-3">
-              {order.stages.map((stage) => {
+              {order.stages.map((stage, index) => {
                 const statusConfig = getStageStatusConfig(stage.status);
                 const StatusIcon = statusConfig.icon;
+                const prevStage = order.stages[index - 1];
+                const prevCompleted = !prevStage || prevStage.status === 'completed';
+                const stepLocked = !prevCompleted;
+                const canDelete = stage.status === 'pending' && stage.assignedTo === 'Unassigned';
 
                 return (
                   <div key={stage.id} className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">
@@ -177,12 +184,23 @@ export function StudioOrderDetail({
                           <p className="text-xs text-[#9CA3AF]">Assigned to: {stage.assignedTo}</p>
                         </div>
                       </div>
-                      <button
-                        onClick={() => onEditStage(stage)}
-                        className="p-1.5 hover:bg-[#374151] rounded-lg transition-colors"
-                      >
-                        <Edit2 size={14} className="text-[#9CA3AF]" />
-                      </button>
+                      <div className="flex items-center gap-1">
+                        {canDelete && onDeleteStage && (
+                          <button
+                            onClick={() => onDeleteStage(stage)}
+                            className="p-1.5 hover:bg-red-900/30 rounded-lg transition-colors text-red-400 hover:text-red-300"
+                            title="Delete job"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        )}
+                        <button
+                          onClick={() => onEditStage(stage)}
+                          className="p-1.5 hover:bg-[#374151] rounded-lg transition-colors"
+                        >
+                          <Edit2 size={14} className="text-[#9CA3AF]" />
+                        </button>
+                      </div>
                     </div>
 
                     <div className="grid grid-cols-2 gap-3 mb-3">
@@ -229,10 +247,23 @@ export function StudioOrderDetail({
 
                     {stage.status !== 'completed' && (
                       <button
-                        onClick={() => onUpdateStatus(stage)}
-                        className="w-full py-2 bg-[#374151] hover:bg-[#8B5CF6] rounded-lg text-sm font-medium transition-colors text-white"
+                        onClick={() => !stepLocked && onUpdateStatus(stage)}
+                        disabled={stepLocked}
+                        className={`w-full py-2 rounded-lg text-sm font-medium transition-colors ${
+                          stepLocked
+                            ? 'bg-[#374151]/50 text-[#6B7280] cursor-not-allowed'
+                            : 'bg-[#374151] hover:bg-[#8B5CF6] text-white'
+                        }`}
                       >
-                        {stage.status === 'pending' ? 'Start Stage' : 'Mark as Completed'}
+                        {stepLocked ? 'Complete previous step first' : stage.status === 'pending' ? 'Assign' : 'Receive'}
+                      </button>
+                    )}
+                    {stage.status === 'completed' && (
+                      <button
+                        onClick={() => onUpdateStatus(stage)}
+                        className="w-full py-2 bg-[#F59E0B]/20 hover:bg-[#F59E0B]/30 border border-[#F59E0B]/50 rounded-lg text-sm font-medium transition-colors text-[#F59E0B]"
+                      >
+                        Reopen
                       </button>
                     )}
                   </div>

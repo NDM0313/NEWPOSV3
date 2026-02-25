@@ -7,17 +7,28 @@ interface SelectCustomerProps {
   companyId: string | null;
   onBack: () => void;
   onSelect: (customer: Customer, saleType: 'regular' | 'studio') => void;
+  initialSaleType?: 'regular' | 'studio';
+  onSaleTypeChange?: (saleType: 'regular' | 'studio') => void;
 }
 
 function contactToCustomer(c: contactsApi.Contact): Customer {
   return { id: c.id, name: c.name, phone: c.phone || '—', balance: c.balance };
 }
 
-export function SelectCustomer({ companyId, onBack, onSelect }: SelectCustomerProps) {
+export function SelectCustomer({ companyId, onBack, onSelect, initialSaleType = 'regular', onSaleTypeChange }: SelectCustomerProps) {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(!!companyId);
   const [searchQuery, setSearchQuery] = useState('');
-  const [saleType, setSaleType] = useState<'regular' | 'studio'>('regular');
+  const [saleType, setSaleType] = useState<'regular' | 'studio'>(initialSaleType);
+
+  useEffect(() => {
+    setSaleType(initialSaleType);
+  }, [initialSaleType]);
+
+  const handleSaleTypeChange = (type: 'regular' | 'studio') => {
+    setSaleType(type);
+    onSaleTypeChange?.(type);
+  };
   const [showAdd, setShowAdd] = useState(false);
   const [newName, setNewName] = useState('');
   const [newPhone, setNewPhone] = useState('');
@@ -91,7 +102,7 @@ export function SelectCustomer({ companyId, onBack, onSelect }: SelectCustomerPr
           <label className="block text-xs font-medium text-[#9CA3AF] mb-2">SALE TYPE</label>
           <div className="flex gap-2">
             <button
-              onClick={() => setSaleType('regular')}
+              onClick={() => handleSaleTypeChange('regular')}
               className={`flex-1 h-10 rounded-lg text-sm font-medium transition-all flex items-center justify-center gap-2 ${
                 saleType === 'regular' ? 'bg-[#10B981] text-white shadow-lg shadow-[#10B981]/20' : 'bg-[#111827] text-[#9CA3AF] border border-[#374151] hover:border-[#10B981]/50'
               }`}
@@ -100,7 +111,7 @@ export function SelectCustomer({ companyId, onBack, onSelect }: SelectCustomerPr
               Regular Sale
             </button>
             <button
-              onClick={() => setSaleType('studio')}
+              onClick={() => handleSaleTypeChange('studio')}
               className={`flex-1 h-10 rounded-lg text-sm font-medium transition-all flex items-center justify-center gap-2 ${
                 saleType === 'studio' ? 'bg-[#8B5CF6] text-white shadow-lg shadow-[#8B5CF6]/20' : 'bg-[#111827] text-[#9CA3AF] border border-[#374151] hover:border-[#8B5CF6]/50'
               }`}

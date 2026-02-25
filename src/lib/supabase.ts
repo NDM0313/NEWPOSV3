@@ -13,7 +13,11 @@ import { createClient } from '@supabase/supabase-js';
 // Support both Vite and Next.js variable formats
 // IMPORTANT: Vite inlines these at BUILD time. For production Docker build,
 // pass VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY as build args (see deploy/Dockerfile).
-const supabaseUrl = (import.meta.env.VITE_SUPABASE_URL || import.meta.env.NEXT_PUBLIC_SUPABASE_URL || '').trim();
+let supabaseUrl = (import.meta.env.VITE_SUPABASE_URL || import.meta.env.NEXT_PUBLIC_SUPABASE_URL || '').trim();
+// erp.dincouture.pk auth proxy returns 308 redirect → "Unexpected token '/', \"/auth\" is not valid JSON"
+if (supabaseUrl.includes('erp.dincouture.pk')) {
+  supabaseUrl = supabaseUrl.replace(/https?:\/\/erp\.dincouture\.pk\/?/i, 'https://supabase.dincouture.pk');
+}
 const supabaseAnonKey = (import.meta.env.VITE_SUPABASE_ANON_KEY ||
                         import.meta.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
                         import.meta.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY || '').trim();

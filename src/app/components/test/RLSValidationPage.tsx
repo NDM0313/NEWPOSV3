@@ -82,6 +82,36 @@ export function RLSValidationPage() {
         }
       }
 
+      // Step 2b — Sample latest rows (Part B item 8: verify RLS-filtered data)
+      for (const tbl of tables) {
+        const { data: rows, error } = await supabaseClient
+          .from(tbl)
+          .select('id, company_id')
+          .order('created_at', { ascending: false })
+          .limit(3);
+
+        if (error) {
+          out.push({
+            step: `Step 2b: ${tbl} sample`,
+            ok: false,
+            message: error.message,
+          });
+        } else {
+          const hasRows = rows && rows.length > 0;
+          const allMatchCompany = hasRows && companyId
+            ? rows.every((r: any) => r.company_id === companyId)
+            : true;
+          out.push({
+            step: `Step 2b: ${tbl} sample`,
+            ok: allMatchCompany,
+            message: hasRows
+              ? `${rows.length} row(s); company_id ${allMatchCompany ? 'matches' : 'MISMATCH'}`
+              : 'No rows (empty table)',
+            detail: hasRows && rows[0] ? `Latest id: ${(rows[0] as any).id?.slice(0, 8)}...` : undefined,
+          });
+        }
+      }
+
       // Steps 3–5: INSERT / UPDATE / DELETE policy validation (creates test expense, updates, soft-deletes)
       if (includePolicyTests && companyId) {
         let testExpenseId: string | null = null;
@@ -191,9 +221,9 @@ export function RLSValidationPage() {
       <div className="flex items-center gap-3">
         <Shield className="h-8 w-8 text-emerald-500" />
         <div>
-          <h1 className="text-xl font-semibold text-white">RLS Authenticated Validation</h1>
+          <h1 className="text-xl font-semibold text-white">RLS Validation — Part B</h1>
           <p className="text-sm text-gray-400">
-            Run while logged in. Validates JWT → users mapping and company isolation.
+            Authenticated checks: JWT → users mapping, RLS-filtered counts, sample rows. Completes deploy/RLS_FINAL_VALIDATION_CHECKLIST.md Part B.
           </p>
         </div>
       </div>

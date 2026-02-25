@@ -1,15 +1,20 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { ArrowLeft, Banknote, Building2, Smartphone, CreditCard, AlertCircle, Loader2 } from 'lucide-react';
+import { getPaymentAccounts } from '../../api/accounts';
 
 export interface PaymentResult {
   paymentMethod: string;
   paidAmount?: number;
   dueAmount?: number;
+  /** Database account ID for accounting (required when paidAmount > 0) */
+  accountId?: string | null;
+  accountName?: string | null;
 }
 
 interface PaymentDialogProps {
   onBack: () => void;
   totalAmount: number;
+  companyId: string | null;
   onComplete: (result: PaymentResult) => void | Promise<void>;
   saving?: boolean;
   saveError?: string | null;
@@ -22,45 +27,47 @@ interface Account {
   id: string;
   name: string;
   balance: number;
+  type: string;
 }
 
-const cashAccounts: Account[] = [
-  { id: 'cash1', name: 'Main Cash Counter', balance: 125000 },
-  { id: 'cash2', name: 'Shop Till', balance: 45000 },
-  { id: 'cash3', name: 'Owner Personal Cash', balance: 30000 },
-  { id: 'cash4', name: 'Petty Cash', balance: 5000 },
-];
+/** Map payment method to account type filter */
+const METHOD_TO_TYPE: Record<PaymentMethod, string[]> = {
+  cash: ['cash'],
+  bank: ['bank'],
+  wallet: ['mobile_wallet'],
+  card: ['bank'], // Card terminals typically use bank accounts
+};
 
-const bankAccounts: Account[] = [
-  { id: 'bank1', name: 'Meezan Bank - 1234', balance: 850000 },
-  { id: 'bank2', name: 'HBL - 5678', balance: 320000 },
-  { id: 'bank3', name: 'Allied Bank - 9012', balance: 180000 },
-];
-
-const walletAccounts: Account[] = [
-  { id: 'wallet1', name: 'JazzCash', balance: 15000 },
-  { id: 'wallet2', name: 'Easypaisa', balance: 8000 },
-];
-
-const cardAccounts: Account[] = [
-  { id: 'card1', name: 'Card Terminal - Main', balance: 0 },
-  { id: 'card2', name: 'Card Terminal - Counter 2', balance: 0 },
-];
-
-export function PaymentDialog({ onBack, totalAmount, onComplete, saving, saveError }: PaymentDialogProps) {
+export function PaymentDialog({ onBack, totalAmount, companyId, onComplete, saving, saveError }: PaymentDialogProps) {
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod | null>(null);
   const [selectedAccount, setSelectedAccount] = useState<Account | null>(null);
   const [paymentMode, setPaymentMode] = useState<PaymentMode>('full');
   const [amount, setAmount] = useState(totalAmount.toString());
   const [showAccountError, setShowAccountError] = useState(false);
+  const [allAccounts, setAllAccounts] = useState<Account[]>([]);
+  const [accountsLoading, setAccountsLoading] = useState(true);
+  const [accountsError, setAccountsError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!companyId) {
+      setAllAccounts([]);
+      setAccountsLoading(false);
+      return;
+    }
+    setAccountsLoading(true);
+    setAccountsError(null);
+    getPaymentAccounts(companyId).then(({ data, error }) => {
+      setAccountsLoading(false);
+      if (error) setAccountsError(error);
+      else setAllAccounts((data || []).map((a) => ({ id: a.id, name: a.name, balance: a.balance, type: a.type })));
+    });
+  }, [companyId]);
 
   const getAccounts = (): Account[] => {
-    if (paymentMethod === 'cash') return cashAccounts;
-    if (paymentMethod === 'bank') return bankAccounts;
-    if (paymentMethod === 'wallet') return walletAccounts;
-    if (paymentMethod === 'card') return cardAccounts;
-    return [];
+    if (!paymentMethod) return [];
+    const types = METHOD_TO_TYPE[paymentMethod].map((t) => t.toLowerCase());
+    return allAccounts.filter((a) => types.includes((a.type || '').toLowerCase()));
   };
 
   const handleMethodSelect = (method: PaymentMethod) => {
@@ -117,6 +124,8 @@ export function PaymentDialog({ onBack, totalAmount, onComplete, saving, saveErr
       paymentMethod: paymentMode === 'skip' ? `${getPaymentMethodLabel()} (Due)` : getPaymentMethodLabel(),
       paidAmount: paymentMode === 'skip' ? 0 : paymentAmount,
       dueAmount: paymentMode === 'skip' ? totalAmount : dueAmount,
+      accountId: paymentMode === 'skip' ? null : selectedAccount?.id ?? null,
+      accountName: paymentMode === 'skip' ? null : selectedAccount?.name ?? null,
     };
     await onComplete(result);
   };
@@ -269,6 +278,24 @@ export function PaymentDialog({ onBack, totalAmount, onComplete, saving, saveErr
             </div>
           )}
 
+          {accountsError && (
+            <div className="mb-4 p-4 bg-[#EF4444]/10 border border-[#EF4444]/30 rounded-xl flex items-start gap-3">
+              <AlertCircle className="w-5 h-5 text-[#EF4444] flex-shrink-0 mt-0.5" />
+              <p className="text-sm text-[#EF4444]">{accountsError}</p>
+            </div>
+          )}
+
+          {accountsLoading ? (
+            <div className="flex items-center justify-center py-8 gap-2 text-[#9CA3AF]">
+              <Loader2 className="w-5 h-5 animate-spin" />
+              <span>Loading accounts...</span>
+            </div>
+          ) : getAccounts().length === 0 ? (
+            <div className="py-8 text-center text-[#9CA3AF]">
+              <p className="font-medium">No accounts found</p>
+              <p className="text-sm mt-1">Add {paymentMethod} accounts in the web app Chart of Accounts first.</p>
+            </div>
+          ) : (
           <div className="space-y-2">
             {getAccounts().map((account) => (
               <button
@@ -294,10 +321,11 @@ export function PaymentDialog({ onBack, totalAmount, onComplete, saving, saveErr
               </button>
             ))}
           </div>
+          )}
 
           <button
             onClick={handleProceedToAmount}
-            disabled={!selectedAccount}
+            disabled={!selectedAccount || accountsLoading}
             className="w-full mt-6 h-12 bg-[#3B82F6] hover:bg-[#2563EB] disabled:bg-[#374151] disabled:text-[#6B7280] rounded-lg font-medium transition-colors active:scale-[0.98] text-white"
           >
             Next →

@@ -12,13 +12,25 @@ interface SelectCustomerTabletProps {
   onBack: () => void;
   onSelect: (customer: Customer, saleType: 'regular' | 'studio') => void;
   initialSaleType?: 'regular' | 'studio';
+  /** Sync saleType to parent when user toggles Regular/Studio (ensures Studio Sale saves correctly) */
+  onSaleTypeChange?: (saleType: 'regular' | 'studio') => void;
 }
 
-export function SelectCustomerTablet({ companyId, onBack, onSelect, initialSaleType = 'regular' }: SelectCustomerTabletProps) {
+export function SelectCustomerTablet({ companyId, onBack, onSelect, initialSaleType = 'regular', onSaleTypeChange }: SelectCustomerTabletProps) {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(!!companyId);
   const [searchQuery, setSearchQuery] = useState('');
   const [saleType, setSaleType] = useState<'regular' | 'studio'>(initialSaleType);
+
+  // Sync local saleType when parent's initialSaleType changes (e.g. back from products)
+  useEffect(() => {
+    setSaleType(initialSaleType);
+  }, [initialSaleType]);
+
+  const handleSaleTypeChange = (type: 'regular' | 'studio') => {
+    setSaleType(type);
+    onSaleTypeChange?.(type);
+  };
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [newCustomer, setNewCustomer] = useState({ name: '', phone: '' });
   const [addError, setAddError] = useState('');
@@ -86,7 +98,7 @@ export function SelectCustomerTablet({ companyId, onBack, onSelect, initialSaleT
           </div>
           <div className="flex gap-2 mb-4">
             <button
-              onClick={() => setSaleType('regular')}
+              onClick={() => handleSaleTypeChange('regular')}
               className={`flex-1 h-10 rounded-lg text-sm font-medium flex items-center justify-center gap-2 ${
                 saleType === 'regular' ? 'bg-[#3B82F6] text-white' : 'bg-[#111827] border border-[#374151] text-[#9CA3AF]'
               }`}
@@ -95,7 +107,7 @@ export function SelectCustomerTablet({ companyId, onBack, onSelect, initialSaleT
               Regular Sale
             </button>
             <button
-              onClick={() => setSaleType('studio')}
+              onClick={() => handleSaleTypeChange('studio')}
               className={`flex-1 h-10 rounded-lg text-sm font-medium flex items-center justify-center gap-2 ${
                 saleType === 'studio' ? 'bg-[#EC4899] text-white' : 'bg-[#111827] border border-[#374151] text-[#9CA3AF]'
               }`}
