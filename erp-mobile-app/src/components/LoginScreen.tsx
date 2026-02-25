@@ -192,6 +192,7 @@ export function LoginScreen({ onLogin, pinUnlockUser, pinUnlockCompanyId: _pinUn
   };
 
   const handleMainLogin = () => quickLogin('ndm313@yahoo.com', 'iPhone@14max');
+  const handleInfoLogin = () => quickLogin('info@dincouture.pk', 'InfoDincouture2026');
   const handleAdminLogin = () => quickLogin('admin@dincouture.pk', 'AdminDincouture2026');
   const handleDemoLogin = () => quickLogin('demo@dincollection.com', 'demo123');
 
@@ -381,7 +382,7 @@ export function LoginScreen({ onLogin, pinUnlockUser, pinUnlockCompanyId: _pinUn
         </form>
 
         <p className="mt-4 mb-2 text-xs text-[#6B7280] text-center">
-          Quick login (fills form and signs in):
+          Quick login (auto-fills and signs in):
         </p>
         <button
           type="button"
@@ -395,8 +396,17 @@ export function LoginScreen({ onLogin, pinUnlockUser, pinUnlockCompanyId: _pinUn
         <button
           type="button"
           disabled={loading}
-          onClick={handleAdminLogin}
+          onClick={handleInfoLogin}
           className="mt-2 w-full h-12 bg-[#10B981]/20 border border-[#10B981]/40 text-[#34D399] font-medium rounded-lg flex items-center justify-center gap-2 transition-colors disabled:opacity-70"
+        >
+          <Zap className="w-5 h-5" />
+          Info (info@dincouture.pk)
+        </button>
+        <button
+          type="button"
+          disabled={loading}
+          onClick={handleAdminLogin}
+          className="mt-2 w-full h-12 bg-[#F59E0B]/20 border border-[#F59E0B]/40 text-[#FBBF24] font-medium rounded-lg flex items-center justify-center gap-2 transition-colors disabled:opacity-70"
         >
           <Zap className="w-5 h-5" />
           Admin (admin@dincouture.pk)
@@ -408,7 +418,7 @@ export function LoginScreen({ onLogin, pinUnlockUser, pinUnlockCompanyId: _pinUn
           className="mt-2 w-full h-12 bg-[#8B5CF6]/20 border border-[#8B5CF6]/40 text-[#A78BFA] font-medium rounded-lg flex items-center justify-center gap-2 transition-colors disabled:opacity-70"
         >
           <Zap className="w-5 h-5" />
-          Demo Login
+          Demo (demo@dincollection.com)
         </button>
       </div>
     </div>
