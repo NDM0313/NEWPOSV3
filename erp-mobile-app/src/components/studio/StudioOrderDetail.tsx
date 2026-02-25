@@ -194,12 +194,15 @@ export function StudioOrderDetail({
                             <Trash2 size={14} />
                           </button>
                         )}
-                        <button
-                          onClick={() => onEditStage(stage)}
-                          className="p-1.5 hover:bg-[#374151] rounded-lg transition-colors"
-                        >
-                          <Edit2 size={14} className="text-[#9CA3AF]" />
-                        </button>
+                        {stage.status !== 'completed' && (
+                          <button
+                            onClick={() => onEditStage(stage)}
+                            className="p-1.5 hover:bg-[#374151] rounded-lg transition-colors"
+                            title="Edit stage"
+                          >
+                            <Edit2 size={14} className="text-[#9CA3AF]" />
+                          </button>
+                        )}
                       </div>
                     </div>
 

@@ -9,6 +9,12 @@ import { WorkerPaymentFlow } from './WorkerPaymentFlow';
 import { ExpenseEntryFlow } from './ExpenseEntryFlow';
 import { ChartOfAccountsView } from './ChartOfAccountsView';
 import { AddAccountForm } from './AddAccountForm';
+import { AccountLedgerReport } from './AccountLedgerReport';
+import { DayBookReport } from '../reports/DayBookReport';
+import { CashSummaryReport } from './CashSummaryReport';
+import { BankSummaryReport } from './BankSummaryReport';
+import { PayablesReport } from './PayablesReport';
+import { ReceivablesReport } from './ReceivablesReport';
 
 interface AccountsModuleProps {
   onBack: () => void;
@@ -27,7 +33,13 @@ type View =
   | 'reports'
   | 'chart'
   | 'add-account'
-  | 'entry-detail';
+  | 'entry-detail'
+  | 'account-ledger'
+  | 'daybook'
+  | 'cash-summary'
+  | 'bank-summary'
+  | 'payables'
+  | 'receivables';
 
 export function AccountsModule({ onBack, user, companyId, branch }: AccountsModuleProps) {
   const [view, setView] = useState<View>('dashboard');
@@ -167,15 +179,73 @@ export function AccountsModule({ onBack, user, companyId, branch }: AccountsModu
 
         <div className="p-4">
           <div className="grid grid-cols-2 gap-3">
-            <ReportCard title="Account Ledger" description="View account-wise ledger" icon="📚" onClick={() => alert('Account Ledger - Coming Soon')} />
-            <ReportCard title="Day Book" description="Daily transaction log" icon="📅" onClick={() => alert('Day Book - Coming Soon')} />
-            <ReportCard title="Cash Summary" description="Cash account summary" icon="💵" onClick={() => alert('Cash Summary - Coming Soon')} />
-            <ReportCard title="Bank Summary" description="Bank accounts summary" icon="🏦" onClick={() => alert('Bank Summary - Coming Soon')} />
-            <ReportCard title="Payables" description="Outstanding payables" icon="📤" onClick={() => alert('Payables Report - Coming Soon')} />
-            <ReportCard title="Receivables" description="Outstanding receivables" icon="📥" onClick={() => alert('Receivables Report - Coming Soon')} />
+            <ReportCard title="Account Ledger" description="View account-wise ledger" icon="📚" onClick={() => setView('account-ledger')} />
+            <ReportCard title="Day Book" description="Daily transaction log" icon="📅" onClick={() => setView('daybook')} />
+            <ReportCard title="Cash Summary" description="Cash account summary" icon="💵" onClick={() => setView('cash-summary')} />
+            <ReportCard title="Bank Summary" description="Bank accounts summary" icon="🏦" onClick={() => setView('bank-summary')} />
+            <ReportCard title="Payables" description="Outstanding payables" icon="📤" onClick={() => setView('payables')} />
+            <ReportCard title="Receivables" description="Outstanding receivables" icon="📥" onClick={() => setView('receivables')} />
           </div>
         </div>
       </div>
+    );
+  }
+
+  if (view === 'account-ledger') {
+    return (
+      <AccountLedgerReport
+        onBack={() => setView('reports')}
+        companyId={companyId ?? null}
+        branchId={branch?.id ?? null}
+      />
+    );
+  }
+
+  if (view === 'daybook') {
+    return (
+      <DayBookReport
+        onBack={() => setView('reports')}
+        user={user}
+        companyId={companyId ?? null}
+        branchId={branch?.id ?? null}
+      />
+    );
+  }
+
+  if (view === 'cash-summary') {
+    return (
+      <CashSummaryReport
+        onBack={() => setView('reports')}
+        companyId={companyId ?? null}
+      />
+    );
+  }
+
+  if (view === 'bank-summary') {
+    return (
+      <BankSummaryReport
+        onBack={() => setView('reports')}
+        companyId={companyId ?? null}
+      />
+    );
+  }
+
+  if (view === 'payables') {
+    return (
+      <PayablesReport
+        onBack={() => setView('reports')}
+        companyId={companyId ?? null}
+      />
+    );
+  }
+
+  if (view === 'receivables') {
+    return (
+      <ReceivablesReport
+        onBack={() => setView('reports')}
+        companyId={companyId ?? null}
+        branchId={branch?.id ?? null}
+      />
     );
   }
 

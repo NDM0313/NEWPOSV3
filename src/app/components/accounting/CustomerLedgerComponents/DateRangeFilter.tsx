@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { Calendar } from 'lucide-react';
-import { Input } from '@/app/components/ui/input';
+import { DatePicker } from '@/app/components/ui/DatePicker';
 
 interface DateRangeFilterProps {
   dateFrom: string;
@@ -21,21 +21,19 @@ export const DateRangeFilter: React.FC<DateRangeFilterProps> = ({
     <div className="flex items-center gap-2">
       <div className="flex items-center gap-2">
         <Calendar size={16} className="text-gray-400" />
-        <Input
-          type="date"
+        <DatePicker
           value={dateFrom}
-          onChange={(e) => onDateFromChange(e.target.value)}
-          className="bg-gray-800 border-gray-700 text-white w-40"
+          onChange={onDateFromChange}
           placeholder="From Date"
+          className="w-40"
         />
       </div>
       <span className="text-gray-400">to</span>
-      <Input
-        type="date"
+      <DatePicker
         value={dateTo}
-        onChange={(e) => onDateToChange(e.target.value)}
-        className="bg-gray-800 border-gray-700 text-white w-40"
+        onChange={onDateToChange}
         placeholder="To Date"
+        className="w-40"
       />
     </div>
   );

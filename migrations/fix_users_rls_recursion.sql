@@ -4,15 +4,16 @@
 -- Fix: add policy allowing users to read their own row (id = auth.uid()).
 -- PostgreSQL ORs policies for the same command, so this breaks the recursion.
 
--- Ensure helper functions exist (SECURITY DEFINER bypasses RLS)
+-- Ensure helper functions exist (SECURITY DEFINER bypasses RLS).
+-- get_user_role returns TEXT so we never depend on user_role enum existing (works on all DBs).
 CREATE OR REPLACE FUNCTION get_user_company_id()
 RETURNS UUID AS $$
   SELECT company_id FROM public.users WHERE id = auth.uid();
 $$ LANGUAGE sql SECURITY DEFINER;
 
 CREATE OR REPLACE FUNCTION get_user_role()
-RETURNS public.user_role AS $$
-  SELECT role FROM public.users WHERE id = auth.uid();
+RETURNS TEXT AS $$
+  SELECT COALESCE((SELECT role::text FROM public.users WHERE id = auth.uid()), 'viewer');
 $$ LANGUAGE sql SECURITY DEFINER;
 
 -- Drop the recursive policy on users

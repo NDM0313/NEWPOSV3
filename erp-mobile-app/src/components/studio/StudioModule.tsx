@@ -49,7 +49,7 @@ function mapProductionToOrder(
 
   const mappedStages: StudioStage[] = stages.map((s) => {
     const worker = s.worker as { id?: string; name?: string } | undefined;
-    const cost = Number(s.cost) || 0;
+    const cost = Number(s.expected_cost ?? s.cost) || 0;
     // Force pending when status says assigned/in_progress but no worker (invalid state)
     const effectiveStatus =
       s.status === 'completed'
@@ -249,8 +249,10 @@ export function StudioModule({ onBack, companyId, branch, onNewStudioSale }: Stu
               });
             }
           } else if (view === 'edit-stage' && selectedStage) {
+            const internalCostVal = stageData.internalCost ?? selectedStage.internalCost ?? 0;
             const { error: err } = await studioApi.updateStudioStage(selectedStage.id, {
-              cost: stageData.internalCost ?? selectedStage.internalCost,
+              cost: internalCostVal,
+              expected_cost: internalCostVal,
               assigned_worker_id: stageData.workerId ?? selectedStage.workerId ?? null,
               expected_completion_date: stageData.expectedDate || null,
             });
@@ -261,11 +263,11 @@ export function StudioModule({ onBack, companyId, branch, onNewStudioSale }: Stu
             setSelectedOrder({
               ...selectedOrder,
               stages: selectedOrder.stages.map((s) =>
-                s.id === selectedStage.id
+                    s.id === selectedStage.id
                   ? {
                       ...s,
                       ...stageData,
-                      internalCost: stageData.internalCost ?? s.internalCost,
+                      internalCost: stageData.internalCost ?? selectedStage.internalCost ?? s.internalCost,
                       customerCharge: stageData.customerCharge ?? s.customerCharge,
                       expectedDate: stageData.expectedDate ?? s.expectedDate,
                       assignedTo: stageData.assignedTo ?? s.assignedTo,

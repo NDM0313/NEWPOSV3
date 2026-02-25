@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { format } from 'date-fns';
 import { Calendar, X } from 'lucide-react';
 import { Button } from './button';
 import { cn } from './utils';
@@ -7,6 +8,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from './popover';
+import { DatePicker } from './DatePicker';
 
 interface DateRangePickerProps {
   value?: { from?: Date; to?: Date };
@@ -105,9 +107,10 @@ export const DateRangePicker: React.FC<DateRangePickerProps> = ({
   const [fromDate, setFromDate] = useState(value?.from || null);
   const [toDate, setToDate] = useState(value?.to || null);
 
+  /** DD MMM YYYY – global display format */
   const formatDate = (date: Date | null | undefined) => {
     if (!date) return '';
-    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    return format(date, 'dd MMM yyyy');
   };
 
   const handlePresetClick = (preset: typeof presetRanges[0]) => {
@@ -173,21 +176,21 @@ export const DateRangePicker: React.FC<DateRangePickerProps> = ({
             ))}
           </div>
 
-          {/* Custom Date Inputs */}
+          {/* Custom Date Inputs – shared DatePicker (DD MMM YYYY display, YYYY-MM-DD value) */}
           <div className="p-4 space-y-4">
             <div className="space-y-2">
               <label className="text-xs font-medium text-gray-400 uppercase tracking-wide">
                 From Date
               </label>
-              <input
-                type="date"
-                value={fromDate ? fromDate.toISOString().split('T')[0] : ''}
-                onChange={(e) => {
-                  const date = e.target.value ? new Date(e.target.value) : null;
+              <DatePicker
+                value={fromDate ? format(fromDate, 'yyyy-MM-dd') : ''}
+                onChange={(v) => {
+                  const date = v ? new Date(v) : null;
                   setFromDate(date);
                   onChange?.({ from: date || undefined, to: toDate || undefined });
                 }}
-                className="w-full px-3 py-2 bg-gray-950 border border-gray-800 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                placeholder="From"
+                className="max-w-full"
               />
             </div>
 
@@ -195,16 +198,16 @@ export const DateRangePicker: React.FC<DateRangePickerProps> = ({
               <label className="text-xs font-medium text-gray-400 uppercase tracking-wide">
                 To Date
               </label>
-              <input
-                type="date"
-                value={toDate ? toDate.toISOString().split('T')[0] : ''}
-                onChange={(e) => {
-                  const date = e.target.value ? new Date(e.target.value) : null;
+              <DatePicker
+                value={toDate ? format(toDate, 'yyyy-MM-dd') : ''}
+                onChange={(v) => {
+                  const date = v ? new Date(v) : null;
                   setToDate(date);
                   onChange?.({ from: fromDate || undefined, to: date || undefined });
                 }}
-                min={fromDate ? fromDate.toISOString().split('T')[0] : undefined}
-                className="w-full px-3 py-2 bg-gray-950 border border-gray-800 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                minDate={fromDate || undefined}
+                placeholder="To"
+                className="max-w-full"
               />
             </div>
 

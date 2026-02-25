@@ -9,6 +9,7 @@ import {
 } from '@/app/components/ui/dialog';
 import { Input } from '@/app/components/ui/input';
 import { Label } from '@/app/components/ui/label';
+import { DatePicker } from '@/app/components/ui/DatePicker';
 import { Button } from '@/app/components/ui/button';
 import { Checkbox } from '@/app/components/ui/checkbox';
 import { useSupabase } from '@/app/context/SupabaseContext';
@@ -258,11 +259,11 @@ export const ReturnModal = ({ open, onOpenChange, rental, documentInfo, onConfir
               </div>
               <div className="mt-4">
                 <Label className="text-gray-400 text-sm">Return Date</Label>
-                <Input
-                  type="date"
+                <DatePicker
                   value={returnDate}
-                  onChange={(e) => setReturnDate(e.target.value)}
-                  className="mt-1 bg-gray-800 border-gray-700 text-white"
+                  onChange={(v) => setReturnDate(v)}
+                  placeholder="Return date"
+                  className="mt-1 w-full"
                 />
               </div>
               <div className="mt-3">

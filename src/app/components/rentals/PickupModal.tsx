@@ -9,6 +9,7 @@ import {
 } from '@/app/components/ui/dialog';
 import { Input } from '@/app/components/ui/input';
 import { Label } from '@/app/components/ui/label';
+import { DatePicker } from '@/app/components/ui/DatePicker';
 import { Button } from '@/app/components/ui/button';
 import { Checkbox } from '@/app/components/ui/checkbox';
 import {
@@ -266,11 +267,11 @@ export const PickupModal = ({ open, onOpenChange, rental, onConfirm, onAddPaymen
                 </div>
                 <div>
                   <Label className="text-gray-400 text-sm">Document Expiry (Optional)</Label>
-                  <Input
-                    type="date"
+                  <DatePicker
                     value={documentExpiry}
-                    onChange={(e) => setDocumentExpiry(e.target.value)}
-                    className="mt-1 bg-gray-800 border-gray-700 text-white"
+                    onChange={(v) => setDocumentExpiry(v)}
+                    placeholder="Expiry date"
+                    className="mt-1 w-full"
                   />
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -371,12 +372,12 @@ export const PickupModal = ({ open, onOpenChange, rental, onConfirm, onAddPaymen
               <h4 className="text-sm font-semibold text-gray-400 uppercase tracking-wide">Pickup Details</h4>
               <div>
                 <Label className="text-gray-400 text-sm">Pickup Date</Label>
-                <Input
-                  type="date"
+                <DatePicker
                   value={pickupDate}
-                  onChange={(e) => setPickupDate(e.target.value)}
-                  min={rental?.startDate}
-                  className="mt-1 bg-gray-800 border-gray-700 text-white"
+                  onChange={(v) => setPickupDate(v)}
+                  minDate={rental?.startDate ? new Date(rental.startDate) : undefined}
+                  placeholder="Pickup date"
+                  className="mt-1 w-full"
                 />
               </div>
               <div>

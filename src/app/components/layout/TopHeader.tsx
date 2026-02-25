@@ -35,8 +35,8 @@ import {
 } from "../ui/dropdown-menu";
 import { Button } from "../ui/button";
 import { Badge } from "../ui/badge";
-import { Input } from "../ui/input";
 import { Label } from "../ui/label";
+import { DatePicker } from "../ui/DatePicker";
 import { cn } from "../ui/utils";
 import { toast } from 'sonner';
 import { UserProfilePage } from '../users/UserProfilePage';
@@ -640,34 +640,37 @@ export const TopHeader = () => {
             <div className="space-y-4">
               <div>
                 <Label className="text-gray-300 mb-2 block">Start Date</Label>
-                <Input
-                  type="date"
+                <DatePicker
                   value={dateRange.startDate ? dateRange.startDate.toISOString().split('T')[0] : ''}
-                  onChange={(e) => {
-                    const start = new Date(e.target.value);
+                  onChange={(v) => {
+                    const start = v ? new Date(v) : dateRange.startDate;
+                    if (!start) return;
                     if (dateRange.endDate) {
                       setCustomDateRange(start, dateRange.endDate);
                     } else {
                       setCustomDateRange(start, start);
                     }
                   }}
-                  className="bg-gray-950 border-gray-700 text-white"
+                  placeholder="Start date"
+                  className="w-full"
                 />
               </div>
               <div>
                 <Label className="text-gray-300 mb-2 block">End Date</Label>
-                <Input
-                  type="date"
+                <DatePicker
                   value={dateRange.endDate ? dateRange.endDate.toISOString().split('T')[0] : ''}
-                  onChange={(e) => {
-                    const end = new Date(e.target.value);
+                  onChange={(v) => {
+                    const end = v ? new Date(v) : dateRange.endDate;
+                    if (!end) return;
                     if (dateRange.startDate) {
                       setCustomDateRange(dateRange.startDate, end);
                     } else {
                       setCustomDateRange(end, end);
                     }
                   }}
-                  className="bg-gray-950 border-gray-700 text-white"
+                  minDate={dateRange.startDate || undefined}
+                  placeholder="End date"
+                  className="w-full"
                 />
               </div>
               <div className="flex gap-3 pt-4">

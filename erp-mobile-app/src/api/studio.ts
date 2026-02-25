@@ -348,12 +348,13 @@ export async function deleteStudioStage(stageId: string): Promise<{ error: strin
   }
 }
 
-/** Update stage (status, cost, worker, expected date) */
+/** Update stage (status, cost, expected_cost, worker, expected date) */
 export async function updateStudioStage(
   stageId: string,
   updates: {
     status?: 'pending' | 'in_progress' | 'completed';
     cost?: number;
+    expected_cost?: number;
     assigned_worker_id?: string | null;
     expected_completion_date?: string | null;
     completed_at?: string | null;
@@ -364,16 +365,21 @@ export async function updateStudioStage(
     const payload: Record<string, unknown> = {};
     if (updates.status !== undefined) payload.status = updates.status;
     if (updates.cost !== undefined) payload.cost = updates.cost;
+    if (updates.expected_cost !== undefined) payload.expected_cost = updates.expected_cost;
     if (updates.assigned_worker_id !== undefined) payload.assigned_worker_id = updates.assigned_worker_id;
     if (updates.expected_completion_date !== undefined) payload.expected_completion_date = updates.expected_completion_date;
     if (updates.completed_at !== undefined) payload.completed_at = updates.completed_at;
     if (updates.status === 'completed') {
       payload.completed_at = payload.completed_at ?? new Date().toISOString();
     }
+    // DB constraint: when status is 'pending', assigned_worker_id must be NULL. So when we set a worker, set status to in_progress.
+    if (payload.assigned_worker_id != null && payload.status === undefined) {
+      payload.status = 'in_progress';
+    }
     if (Object.keys(payload).length === 0) {
       const { data } = await supabase
         .from('studio_production_stages')
-        .select('*, worker:workers(id, name)')
+        .select('*')
         .eq('id', stageId)
         .single();
       return { data: data as StudioStageRow, error: null };
@@ -382,7 +388,7 @@ export async function updateStudioStage(
       .from('studio_production_stages')
       .update(payload)
       .eq('id', stageId)
-      .select('*, worker:workers(id, name)')
+      .select('*')
       .single();
     if (error) return { data: null, error: error.message };
     return { data: data as StudioStageRow, error: null };

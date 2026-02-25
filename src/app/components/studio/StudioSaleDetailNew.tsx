@@ -48,6 +48,7 @@ import {
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Badge } from '../ui/badge';
+import { DatePicker } from '../ui/DatePicker';
 import { format } from 'date-fns';
 import { useNavigation } from '@/app/context/NavigationContext';
 import { useSupabase } from '@/app/context/SupabaseContext';
@@ -1476,6 +1477,31 @@ export const StudioSaleDetailNew = () => {
                 Studio Sales
               </Button>
             )}
+            {/* Assign flow: explicit Save/Done in header (top-right) – save only on this button, not on dropdown change */}
+            {showWorkerEditModal && (() => {
+              const currentStep = saleDetail?.productionSteps.find(s => s.id === showWorkerEditModal);
+              const isPending = currentStep?.status === 'Pending';
+              const canSave = editingWorkerData.workers.length > 0 && editingWorkerData.workers[0]?.workerId && !savingStage;
+              return (
+                <Button
+                  size="sm"
+                  disabled={!canSave}
+                  title={!canSave ? 'Select a worker to save assignment' : isPending ? 'Save assignment and start stage' : 'Save and close'}
+                  onClick={() => {
+                    if (!canSave) return;
+                    if (editingWorkerData.workers.length === 0 || !editingWorkerData.workers[0]?.workerId) {
+                      toast.error('Select a worker to assign.');
+                      return;
+                    }
+                    handleSaveWorkerEdit(!!isPending);
+                  }}
+                  className="bg-green-600 hover:bg-green-700 text-white shrink-0"
+                >
+                  {savingStage ? <Loader2 size={16} className="animate-spin mr-2" /> : <Save size={16} className="mr-2" />}
+                  {isPending ? 'Save & Start' : 'Save'}
+                </Button>
+              );
+            })()}
             <Badge 
               variant="outline" 
               title="Status from production stages (reactive)"
@@ -1489,7 +1515,7 @@ export const StudioSaleDetailNew = () => {
             >
               {headerStatus}
             </Badge>
-            {hasUnsavedChanges && (
+            {hasUnsavedChanges && !showWorkerEditModal && (
               <Button
                 size="sm"
                 disabled={savingStage}
@@ -2732,7 +2758,7 @@ export const StudioSaleDetailNew = () => {
                   Assign worker – {currentStep?.name || categoryLabel}
                 </h3>
                 <p className="text-xs text-gray-500 mt-1">
-                  {showAllWorkersInAssignModal ? 'Showing all workers.' : `Only ${categoryLabel} workers shown.`} Click &quot;Save Changes&quot; at the top to persist.
+                  {showAllWorkersInAssignModal ? 'Showing all workers.' : `Only ${categoryLabel} workers shown.`} Click <strong className="text-white">Save</strong> or <strong className="text-white">Done</strong> in the header above to save assignment.
                 </p>
                 {currentStep?.status === 'Pending' && (
                   <p className="text-xs text-gray-500 mt-0.5">Save & Start sets stage to In Progress. Next step unlocks after you Receive from Worker.</p>
@@ -2871,14 +2897,14 @@ export const StudioSaleDetailNew = () => {
                 )}
               </div>
 
-              {/* Expected Completion Date */}
+              {/* Expected Completion Date – DD MMM YYYY display, YYYY-MM-DD value */}
               <div>
                 <label className="text-sm text-gray-400 mb-2 block">Expected Completion Date</label>
-                <Input
-                  type="date"
-                  value={editingWorkerData.expectedCompletionDate}
-                  onChange={(e) => setEditingWorkerData(prev => ({ ...prev, expectedCompletionDate: e.target.value }))}
-                  className="bg-gray-950 border-gray-700 w-[200px] min-w-0"
+                <DatePicker
+                  value={editingWorkerData.expectedCompletionDate || ''}
+                  onChange={(v) => setEditingWorkerData(prev => ({ ...prev, expectedCompletionDate: v }))}
+                  placeholder="Select date"
+                  className="max-w-[200px]"
                 />
               </div>
 

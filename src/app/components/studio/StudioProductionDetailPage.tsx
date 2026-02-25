@@ -17,6 +17,7 @@ import {
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
+import { DatePicker } from '../ui/DatePicker';
 import { Textarea } from '../ui/textarea';
 import { Badge } from '../ui/badge';
 import { useNavigation } from '@/app/context/NavigationContext';
@@ -24,6 +25,7 @@ import { useProduction } from '@/app/context/ProductionContext';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { studioService } from '@/app/services/studioService';
 import { cn } from '../ui/utils';
+import { formatDate } from '@/utils/dateFormat';
 import { toast } from 'sonner';
 import type { StudioProduction, StudioProductionStatus } from '@/app/services/studioProductionService';
 import type { StudioProductionLog } from '@/app/services/studioProductionService';
@@ -163,9 +165,9 @@ export const StudioProductionDetailPage = () => {
             <div>
               <Label className="text-gray-500">Production Date</Label>
               {editMode ? (
-                <Input type="date" value={form.production_date || ''} onChange={(e) => setForm(f => ({ ...f, production_date: e.target.value }))} className="bg-gray-900 border-gray-700 text-white mt-1" />
+                <DatePicker value={form.production_date || ''} onChange={(v) => setForm(f => ({ ...f, production_date: v }))} placeholder="Select date" className="mt-1" />
               ) : (
-                <p className="text-white mt-1">{production.production_date}</p>
+                <p className="text-white mt-1">{production.production_date ? formatDate(new Date(production.production_date)) : '—'}</p>
               )}
             </div>
             <div>

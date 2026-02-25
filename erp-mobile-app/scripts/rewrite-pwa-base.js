@@ -11,7 +11,8 @@ const manifestPath = path.join(dist, 'manifest.webmanifest');
 if (!fs.existsSync(indexPath)) process.exit(0);
 
 let html = fs.readFileSync(indexPath, 'utf8');
-html = html.replace(/(href|src)="\/(?!\/)/g, '$1="/m/');
+// Only add /m/ prefix when the path does not already start with /m/ (avoid /m/m/ when Vite base is already /m/)
+html = html.replace(/(href|src)="(?!\/m\/)(\/)/g, '$1="/m$2');
 fs.writeFileSync(indexPath, html);
 
 if (fs.existsSync(manifestPath)) {

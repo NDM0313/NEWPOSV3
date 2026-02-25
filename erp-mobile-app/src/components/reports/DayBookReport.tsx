@@ -89,6 +89,8 @@ export function DayBookReport({ onBack, user: _user, companyId, branchId }: DayB
           dateFrom={dateFrom}
           dateTo={dateTo}
           onDateChange={handleDateChange}
+          onExportPDF={handleExportPDF}
+          onShare={handleShare}
         />
 
         {loading ? (

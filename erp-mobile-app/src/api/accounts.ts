@@ -177,6 +177,83 @@ export async function getJournalEntries(
   return { data: rows, error: null };
 }
 
+/** Account ledger entry for one account (date, voucher, description, debit, credit, running balance) */
+export interface AccountLedgerLine {
+  id: string;
+  date: string;
+  entry_no: string;
+  description: string;
+  debit: number;
+  credit: number;
+  running_balance: number;
+  reference_type?: string;
+}
+
+/** Get account-wise ledger for date range (journal_entry_lines + journal_entries). */
+export async function getAccountLedger(
+  companyId: string,
+  accountId: string,
+  dateFrom?: string,
+  dateTo?: string
+): Promise<{ data: AccountLedgerLine[]; error: string | null }> {
+  if (!isSupabaseConfigured) return { data: [], error: 'App not configured.' };
+  let q = supabase
+    .from('journal_entry_lines')
+    .select(`
+      id, debit, credit, description,
+      journal_entry:journal_entries(id, entry_no, entry_date, description, reference_type)
+    `)
+    .eq('account_id', accountId)
+    .order('created_at', { ascending: true });
+  const { data: lines, error } = await q;
+  if (error) return { data: [], error: error.message };
+
+  type Je = { id?: string; entry_no?: string; entry_date?: string; description?: string; reference_type?: string };
+  const rows = (lines || []) as Array<{
+    id: string;
+    debit: number;
+    credit: number;
+    description?: string;
+    journal_entry?: Je | Je[] | null;
+  }>;
+  let runningBalance = 0;
+  const result: AccountLedgerLine[] = [];
+  let openingAdded = false;
+  for (const line of rows) {
+    const je = Array.isArray(line.journal_entry) ? line.journal_entry[0] : line.journal_entry;
+    const entryDate = je?.entry_date ? new Date(je.entry_date as string).toISOString().slice(0, 10) : '';
+    if (dateFrom && entryDate < dateFrom) {
+      runningBalance += Number(line.debit ?? 0) - Number(line.credit ?? 0);
+      continue;
+    }
+    if (dateTo && entryDate > dateTo) continue;
+    if (dateFrom && !openingAdded && runningBalance !== 0) {
+      result.push({
+        id: 'opening',
+        date: dateFrom,
+        entry_no: '—',
+        description: 'Opening Balance',
+        debit: 0,
+        credit: 0,
+        running_balance: runningBalance,
+      });
+      openingAdded = true;
+    }
+    runningBalance += Number(line.debit ?? 0) - Number(line.credit ?? 0);
+    result.push({
+      id: String(line.id ?? ''),
+      date: entryDate,
+      entry_no: String(je?.entry_no ?? '—'),
+      description: String(line.description ?? je?.description ?? ''),
+      debit: Number(line.debit ?? 0),
+      credit: Number(line.credit ?? 0),
+      running_balance: runningBalance,
+      reference_type: je?.reference_type ? String(je.reference_type) : undefined,
+    });
+  }
+  return { data: result, error: null };
+}
+
 
 /** Create journal entry (general entry or account transfer). Optional attachments (same as web). */
 export async function createJournalEntry(params: {
@@ -355,24 +432,183 @@ export interface WorkerWithPayable {
   lastPayment?: string;
 }
 
-/** Workers with outstanding (from workers table or worker_ledger) */
+/** Workers with outstanding: list from contacts (type=worker) + workers table; totalPayable from worker_ledger_entries (unpaid only). */
 export async function getWorkersWithPayable(companyId: string): Promise<{ data: WorkerWithPayable[]; error: string | null }> {
   if (!isSupabaseConfigured) return { data: [], error: 'App not configured.' };
-  const { data: workers, error } = await supabase
-    .from('workers')
-    .select('id, name, phone, worker_type, current_balance, payment_rate')
+  try {
+    const workerList: Array<{ id: string; name: string; phone: string; type: string; weeklyRate?: number }> = [];
+    const seenIds = new Set<string>();
+
+    // 1) Workers table
+    const { data: workersRows } = await supabase
+      .from('workers')
+      .select('id, name, phone, worker_type, rate, payment_rate')
+      .eq('company_id', companyId)
+      .eq('is_active', true)
+      .order('name');
+    const workersArr = (workersRows || []) as Record<string, unknown>[];
+    const workersById = new Map(workersArr.map((w) => [String(w.id), w]));
+    for (const w of workersArr) {
+      const id = String(w.id ?? '');
+      if (!id || seenIds.has(id)) continue;
+      seenIds.add(id);
+      workerList.push({
+        id,
+        name: String(w.name ?? '—'),
+        phone: String(w.phone ?? ''),
+        type: String(w.worker_type ?? 'worker'),
+        weeklyRate: Number((w.rate ?? w.payment_rate) ?? 0) || undefined,
+      });
+    }
+
+    // 2) Contacts with type=worker (primary in web ERP; assigned_worker_id often is contact id)
+    let contacts: Record<string, unknown>[] = [];
+    try {
+      const { data: contactWorkers } = await supabase
+        .from('contacts')
+        .select('id, name, phone, mobile, worker_role')
+        .eq('company_id', companyId)
+        .eq('type', 'worker')
+        .order('name');
+      contacts = (contactWorkers || []) as Record<string, unknown>[];
+    } catch (_) {
+      // contacts.type or worker_role may not exist
+    }
+    for (const c of contacts) {
+      const id = String(c.id ?? '');
+      if (!id || seenIds.has(id)) continue;
+      seenIds.add(id);
+      const wr = workersById.get(id) as Record<string, unknown> | undefined;
+      workerList.push({
+        id,
+        name: String(c.name ?? '—'),
+        phone: String(c.phone ?? c.mobile ?? ''),
+        type: String((c.worker_role ?? wr?.worker_type) ?? 'worker'),
+        weeklyRate: wr ? (Number(wr.rate ?? wr.payment_rate) || undefined) : undefined,
+      });
+    }
+
+    // 3) Outstanding from worker_ledger_entries (unpaid entries only – ledger-driven)
+    let ledgerRows: Array<{ worker_id: string; amount: number; status?: string }> = [];
+    const { data: withStatus, error: ledgerErr } = await supabase
+      .from('worker_ledger_entries')
+      .select('worker_id, amount, status')
+      .eq('company_id', companyId);
+    if (ledgerErr && (ledgerErr.code === '42703' || ledgerErr.message?.includes('status'))) {
+      const { data: noStatus } = await supabase
+        .from('worker_ledger_entries')
+        .select('worker_id, amount')
+        .eq('company_id', companyId);
+      ledgerRows = (noStatus || []).map((r: Record<string, unknown>) => ({
+        worker_id: String(r.worker_id),
+        amount: Number(r.amount) || 0,
+        status: 'unpaid',
+      }));
+    } else if (!ledgerErr) {
+      ledgerRows = (withStatus || []).map((r: Record<string, unknown>) => ({
+        worker_id: String(r.worker_id ?? ''),
+        amount: Number(r.amount) || 0,
+        status: String(r.status ?? 'unpaid'),
+      }));
+    }
+
+    const totalPayableByWorker: Record<string, number> = {};
+    for (const row of ledgerRows) {
+      const wid = row.worker_id;
+      if (!wid) continue;
+      const st = (row.status || 'unpaid').toLowerCase();
+      if (st !== 'paid') {
+        totalPayableByWorker[wid] = (totalPayableByWorker[wid] || 0) + row.amount;
+      }
+    }
+
+    // Include any worker_id from ledger not in worker list (e.g. contact id not in workers)
+    for (const wid of Object.keys(totalPayableByWorker)) {
+      if (seenIds.has(wid)) continue;
+      seenIds.add(wid);
+      const fromW = workersById.get(wid) as Record<string, unknown> | undefined;
+      const { data: fromContact } = await supabase
+        .from('contacts')
+        .select('id, name, phone, mobile')
+        .eq('id', wid)
+        .eq('company_id', companyId)
+        .maybeSingle();
+      const c = fromContact as Record<string, unknown> | undefined;
+      workerList.push({
+        id: wid,
+        name: String((fromW?.name ?? c?.name) ?? 'Unknown'),
+        phone: String((fromW?.phone ?? c?.phone ?? c?.mobile) ?? ''),
+        type: String(fromW?.worker_type ?? 'worker'),
+      });
+    }
+
+    workerList.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+
+    const list: WorkerWithPayable[] = workerList.map((w) => ({
+      id: w.id,
+      name: w.name,
+      phone: w.phone,
+      type: w.type,
+      totalPayable: totalPayableByWorker[w.id] ?? 0,
+      weeklyRate: w.weeklyRate,
+      lastPayment: undefined,
+    }));
+
+    return { data: list, error: null };
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : 'Unknown error';
+    return { data: [], error: msg };
+  }
+}
+
+/** Ledger entries for a worker (Payable / Paid) – for worker detail view. */
+export interface WorkerLedgerEntryRow {
+  id: string;
+  amount: number;
+  status: string;
+  reference_type: string;
+  reference_id: string;
+  notes: string | null;
+  created_at: string;
+  paid_at: string | null;
+}
+
+export async function getWorkerLedgerEntries(
+  companyId: string,
+  workerId: string
+): Promise<{ data: WorkerLedgerEntryRow[]; error: string | null }> {
+  if (!isSupabaseConfigured) return { data: [], error: 'App not configured.' };
+  const cols = 'id, amount, reference_type, reference_id, notes, created_at';
+  let data: Record<string, unknown>[] = [];
+  const { data: withStatus, error } = await supabase
+    .from('worker_ledger_entries')
+    .select(`${cols}, status, paid_at`)
     .eq('company_id', companyId)
-    .eq('is_active', true)
-    .order('name');
-  if (error) return { data: [], error: error.message };
-  const list = (workers || []).map((w: Record<string, unknown>) => ({
-    id: String(w.id ?? ''),
-    name: String(w.name ?? '—'),
-    phone: String(w.phone ?? ''),
-    type: String(w.worker_type ?? 'worker'),
-    totalPayable: Number(w.current_balance) || 0,
-    weeklyRate: w.payment_rate ? Number(w.payment_rate) : undefined,
-    lastPayment: undefined,
+    .eq('worker_id', workerId)
+    .order('created_at', { ascending: false });
+  if (error && (error.code === '42703' || error.message?.includes('status') || error.message?.includes('paid_at'))) {
+    const { data: fallback } = await supabase
+      .from('worker_ledger_entries')
+      .select(cols)
+      .eq('company_id', companyId)
+      .eq('worker_id', workerId)
+      .order('created_at', { ascending: false });
+    data = (fallback || []).map((r: Record<string, unknown>) => ({ ...r, status: 'unpaid', paid_at: null }));
+  } else if (error) {
+    if (error.code === 'PGRST116' || error.message?.includes('does not exist')) return { data: [], error: null };
+    return { data: [], error: error.message };
+  } else {
+    data = (withStatus || []) as Record<string, unknown>[];
+  }
+  const list: WorkerLedgerEntryRow[] = data.map((r) => ({
+    id: String(r.id ?? ''),
+    amount: Number(r.amount) || 0,
+    status: String(r.status ?? 'unpaid').toLowerCase(),
+    reference_type: String(r.reference_type ?? ''),
+    reference_id: String(r.reference_id ?? ''),
+    notes: r.notes != null ? String(r.notes) : null,
+    created_at: String(r.created_at ?? ''),
+    paid_at: r.paid_at != null ? String(r.paid_at) : null,
   }));
   return { data: list, error: null };
 }

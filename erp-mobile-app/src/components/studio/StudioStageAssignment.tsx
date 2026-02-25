@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { ArrowLeft, Calendar, DollarSign, User, Tag, Loader2 } from 'lucide-react';
 import * as studioApi from '../../api/studio';
 import type { StudioStage } from './StudioDashboard';
@@ -40,10 +40,24 @@ export function StudioStageAssignment({ companyId, onBack, onComplete, existingS
     })();
     return () => { cancelled = true; };
   }, [companyId]);
-  const [internalCost, setInternalCost] = useState(existingStage?.internalCost.toString() || '');
-  const [customerCharge, setCustomerCharge] = useState(existingStage?.customerCharge.toString() || '');
+  const [internalCost, setInternalCost] = useState(
+    existingStage?.internalCost != null && existingStage.internalCost !== 0 ? String(existingStage.internalCost) : ''
+  );
+  const [customerCharge, setCustomerCharge] = useState(
+    existingStage?.customerCharge != null && existingStage.customerCharge !== 0 ? String(existingStage.customerCharge) : ''
+  );
   const [hasCustomerCharge, setHasCustomerCharge] = useState(existingStage ? existingStage.customerCharge > 0 : false);
   const [expectedDate, setExpectedDate] = useState(existingStage?.expectedDate || '');
+  const dateInputRef = useRef<HTMLInputElement>(null);
+
+  /** Format YYYY-MM-DD → DD MMM YYYY (app standard) */
+  const formatDisplayDate = (iso: string): string => {
+    if (!iso || !iso.trim()) return '';
+    const [y, m, d] = iso.split('-');
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const month = months[parseInt(m || '1', 10) - 1] || m;
+    return `${d} ${month} ${y}`;
+  };
 
   const handleNext = () => {
     if (step < 5) setStep(step + 1);
@@ -266,7 +280,7 @@ export function StudioStageAssignment({ companyId, onBack, onComplete, existingS
                   <button
                     onClick={() => {
                       setHasCustomerCharge(!hasCustomerCharge);
-                      if (hasCustomerCharge) setCustomerCharge('0');
+                      if (hasCustomerCharge) setCustomerCharge('');
                     }}
                     className={`relative w-14 h-7 rounded-full transition-colors duration-300 ${
                       hasCustomerCharge ? 'bg-[#10B981]' : 'bg-[#374151]'
@@ -341,49 +355,66 @@ export function StudioStageAssignment({ companyId, onBack, onComplete, existingS
         )}
 
         {step === 5 && (
-          <div>
+          <div className="w-full max-w-full overflow-hidden">
             <h2 className="text-lg font-semibold text-white mb-2">Expected Completion</h2>
             <p className="text-sm text-[#9CA3AF] mb-6">When should this stage be completed?</p>
-            <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4 mb-6">
-              <div className="space-y-3">
-                <div className="flex justify-between">
-                  <p className="text-xs text-[#9CA3AF]">Stage</p>
-                  <p className="text-sm font-semibold text-white">{stageName}</p>
-                </div>
-                <div className="flex justify-between">
-                  <p className="text-xs text-[#9CA3AF]">Worker</p>
-                  <p className="text-sm text-white">{assignedTo}</p>
-                </div>
-                <div className="flex justify-between">
-                  <p className="text-xs text-[#9CA3AF]">Internal Cost</p>
-                  <p className="text-sm text-[#EF4444]">Rs. {parseFloat(internalCost || '0').toLocaleString()}</p>
-                </div>
-                {hasCustomerCharge && customerCharge && parseFloat(customerCharge) > 0 && (
+            <div className="w-full max-w-full min-w-0 overflow-hidden space-y-4">
+              <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4 w-full max-w-full min-w-0 overflow-hidden">
+                <div className="space-y-3">
                   <div className="flex justify-between">
-                    <p className="text-xs text-[#9CA3AF]">Customer Charge</p>
-                    <p className="text-sm text-[#10B981]">Rs. {parseFloat(customerCharge).toLocaleString()}</p>
+                    <p className="text-xs text-[#9CA3AF]">Stage</p>
+                    <p className="text-sm font-semibold text-white">{stageName}</p>
                   </div>
-                )}
-                {!hasCustomerCharge && (
                   <div className="flex justify-between">
-                    <p className="text-xs text-[#9CA3AF]">Customer Charge</p>
-                    <p className="text-sm text-[#F59E0B]">To be added in final bill</p>
+                    <p className="text-xs text-[#9CA3AF]">Worker</p>
+                    <p className="text-sm text-white">{assignedTo}</p>
                   </div>
-                )}
+                  <div className="flex justify-between">
+                    <p className="text-xs text-[#9CA3AF]">Internal Cost</p>
+                    <p className="text-sm text-[#EF4444]">Rs. {parseFloat(internalCost || '0').toLocaleString()}</p>
+                  </div>
+                  {hasCustomerCharge && customerCharge && parseFloat(customerCharge) > 0 && (
+                    <div className="flex justify-between">
+                      <p className="text-xs text-[#9CA3AF]">Customer Charge</p>
+                      <p className="text-sm text-[#10B981]">Rs. {parseFloat(customerCharge).toLocaleString()}</p>
+                    </div>
+                  )}
+                  {!hasCustomerCharge && (
+                    <div className="flex justify-between">
+                      <p className="text-xs text-[#9CA3AF]">Customer Charge</p>
+                      <p className="text-sm text-[#F59E0B]">To be added in final bill</p>
+                    </div>
+                  )}
+                </div>
               </div>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-white mb-2">
-                <Calendar className="w-4 h-4 inline mr-1" />
-                Expected Completion Date
-              </label>
-              <input
-                type="date"
-                value={expectedDate}
-                onChange={(e) => setExpectedDate(e.target.value)}
-                min={new Date().toISOString().split('T')[0]}
-                className="w-full px-4 py-3 bg-[#1F2937] border border-[#374151] rounded-xl text-white focus:outline-none focus:border-[#8B5CF6]"
-              />
+              <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4 w-full max-w-full min-w-0 overflow-hidden">
+                <label className="block text-sm font-medium text-white mb-2">
+                  <Calendar className="w-4 h-4 inline mr-1" />
+                  Expected Completion Date
+                </label>
+                <div className="relative min-h-[48px]">
+                  <div
+                    className="w-full text-left px-4 py-3 bg-[#111827] border border-[#374151] rounded-xl text-white min-h-[48px] flex items-center gap-2 pointer-events-none"
+                    aria-hidden="true"
+                  >
+                    <Calendar className="w-4 h-4 text-[#9CA3AF] shrink-0" />
+                    <span className={expectedDate ? 'text-white' : 'text-[#6B7280]'}>
+                      {expectedDate ? formatDisplayDate(expectedDate) : 'Select date (DD MMM YYYY)'}
+                    </span>
+                  </div>
+                  <input
+                    ref={dateInputRef}
+                    type="date"
+                    value={expectedDate}
+                    onChange={(e) => setExpectedDate(e.target.value)}
+                    min={new Date().toISOString().split('T')[0]}
+                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                    style={{ fontSize: '16px' }}
+                    aria-label="Expected completion date"
+                    title="Tap to choose date"
+                  />
+                </div>
+              </div>
             </div>
           </div>
         )}

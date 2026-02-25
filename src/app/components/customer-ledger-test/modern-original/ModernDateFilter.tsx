@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { Calendar, ChevronDown, X } from 'lucide-react';
 import { getTodayInAppTimezone, formatDateToYYYYMMDD, getTodayYYYYMMDD, formatLongDate } from '@/app/components/ui/utils';
+import { DatePicker } from '@/app/components/ui/DatePicker';
 
 interface ModernDateFilterProps {
   dateRange: { from: string; to: string };
@@ -211,25 +212,19 @@ export function ModernDateFilter({ dateRange, onApply, defaultPreset = 'last30da
       {selectedPreset === 'custom' && (
         <>
           <div className="flex items-center gap-2">
-            <div className="relative">
-              <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none text-gray-500" />
-              <input
-                type="date"
-                value={from}
-                onChange={(e) => setFrom(e.target.value)}
-                className="pl-10 pr-4 py-3 rounded-lg text-sm focus:outline-none shadow-sm bg-gray-900 border border-gray-700 text-white focus:border-gray-600"
-              />
-            </div>
+            <DatePicker
+              value={from}
+              onChange={(v) => setFrom(v)}
+              placeholder="From"
+              className="min-w-[140px]"
+            />
             <span className="text-gray-500">to</span>
-            <div className="relative">
-              <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none text-gray-500" />
-              <input
-                type="date"
-                value={to}
-                onChange={(e) => setTo(e.target.value)}
-                className="pl-10 pr-4 py-3 rounded-lg text-sm focus:outline-none shadow-sm bg-gray-900 border border-gray-700 text-white focus:border-gray-600"
-              />
-            </div>
+            <DatePicker
+              value={to}
+              onChange={(v) => setTo(v)}
+              placeholder="To"
+              className="min-w-[140px]"
+            />
           </div>
           <button
             onClick={handleApply}

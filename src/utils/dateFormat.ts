@@ -1,17 +1,26 @@
 /**
  * Global Date Formatting Utilities
  * App timezone = Pakistan (Asia/Karachi, UTC+5)
+ *
+ * Standard display format: DD MMM YYYY (e.g. 25 Feb 2026)
+ * Store in DB/API as: YYYY-MM-DD (ISO)
  */
 
 import { format, startOfMonth, endOfMonth, subMonths, startOfDay, endOfDay, subDays } from 'date-fns';
 import { getTodayInAppTimezone } from '@/app/components/ui/utils';
 
+/** Use for all date display across Studio, Sales, Purchases, Accounting, Expense, Dashboard */
+export const DISPLAY_DATE_FORMAT = 'dd MMM yyyy';
+
+/** Use for API/DB value (ISO date only) */
+export const ISO_DATE_FORMAT = 'yyyy-MM-dd';
+
 /**
- * Format a single date as "15 Jan 2024"
+ * Format a single date as "15 Jan 2024" (DD MMM YYYY)
  */
 export const formatDate = (date: Date | null | undefined): string => {
   if (!date) return '';
-  return format(date, 'dd MMM yyyy');
+  return format(date, DISPLAY_DATE_FORMAT);
 };
 
 /**

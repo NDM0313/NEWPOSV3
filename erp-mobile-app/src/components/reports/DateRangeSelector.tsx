@@ -1,15 +1,29 @@
 import { useState } from 'react';
-import { Calendar, X } from 'lucide-react';
+import { Calendar, X, FileDown, Share2 } from 'lucide-react';
 
 interface DateRangeSelectorProps {
   dateFrom: string;
   dateTo: string;
   onDateChange: (from: string, to: string) => void;
+  /** Optional: show Export PDF button (e.g. calls window.print) */
+  onExportPDF?: () => void;
+  /** Optional: show Share button (e.g. share report summary) */
+  onShare?: () => void;
 }
 
 type DatePreset = 'today' | 'yesterday' | 'week' | 'month' | 'year' | 'lastYear' | 'custom';
 
-export function DateRangeSelector({ dateFrom, dateTo, onDateChange }: DateRangeSelectorProps) {
+function toDisplayDate(iso: string): string {
+  if (!iso) return '—';
+  try {
+    const d = new Date(iso);
+    return isNaN(d.getTime()) ? iso : d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+  } catch {
+    return iso;
+  }
+}
+
+export function DateRangeSelector({ dateFrom, dateTo, onDateChange, onExportPDF, onShare }: DateRangeSelectorProps) {
   const [selectedPreset, setSelectedPreset] = useState<DatePreset>('month');
   const [showCustomModal, setShowCustomModal] = useState(false);
   const [customFrom, setCustomFrom] = useState(dateFrom);
@@ -57,11 +71,21 @@ export function DateRangeSelector({ dateFrom, dateTo, onDateChange }: DateRangeS
 
   const handlePresetChange = (preset: DatePreset) => {
     setSelectedPreset(preset);
-    if (preset === 'custom') setShowCustomModal(true);
-    else {
+    if (preset === 'custom') {
+      setCustomFrom(dateFrom);
+      setCustomTo(dateTo);
+      setShowCustomModal(true);
+    } else {
       const { from, to } = getDateRange(preset);
       onDateChange(from, to);
     }
+  };
+
+  const applyCustomRange = () => {
+    if (!customFrom || !customTo) return;
+    setSelectedPreset('custom');
+    onDateChange(customFrom, customTo);
+    setShowCustomModal(false);
   };
 
   const presets: { id: DatePreset; label: string; icon: string }[] = [
@@ -81,22 +105,51 @@ export function DateRangeSelector({ dateFrom, dateTo, onDateChange }: DateRangeS
 
   return (
     <>
-      <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-3">
-        <div className="flex items-center gap-2 mb-2">
-          <Calendar className="w-4 h-4 text-[#3B82F6]" />
-          <span className="text-xs font-medium text-white">{getPresetLabel()}</span>
-          <span className="text-xs text-[#6B7280] ml-auto">{dateFrom} to {dateTo}</span>
+      <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">
+        <div className="flex items-center gap-2 mb-3">
+          <Calendar className="w-5 h-5 text-[#3B82F6] shrink-0" />
+          <div className="min-w-0 flex-1">
+            <span className="text-sm font-medium text-white">{getPresetLabel()}</span>
+            <p className="text-xs text-[#9CA3AF] mt-0.5">
+              {toDisplayDate(dateFrom)} — {toDisplayDate(dateTo)}
+            </p>
+          </div>
+          {(onExportPDF != null || onShare != null) && (
+            <div className="flex items-center gap-1 shrink-0">
+              {onExportPDF != null && (
+                <button
+                  type="button"
+                  onClick={onExportPDF}
+                  className="p-2 rounded-lg bg-[#111827] text-[#9CA3AF] hover:bg-[#374151] hover:text-white transition-colors"
+                  title="Export PDF / Print"
+                >
+                  <FileDown className="w-4 h-4" />
+                </button>
+              )}
+              {onShare != null && (
+                <button
+                  type="button"
+                  onClick={onShare}
+                  className="p-2 rounded-lg bg-[#111827] text-[#9CA3AF] hover:bg-[#374151] hover:text-white transition-colors"
+                  title="Share"
+                >
+                  <Share2 className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+          )}
         </div>
-        <div className="grid grid-cols-3 gap-1.5">
+        <div className="grid grid-cols-4 gap-2">
           {presets.map((preset) => (
             <button
               key={preset.id}
+              type="button"
               onClick={() => handlePresetChange(preset.id)}
-              className={`px-2 py-1.5 rounded-lg text-xs font-medium transition-all ${
-                selectedPreset === preset.id ? 'bg-[#3B82F6] text-white' : 'bg-[#111827] text-[#9CA3AF] hover:bg-[#374151]'
+              className={`px-3 py-2.5 rounded-xl text-xs font-medium transition-all flex items-center justify-center gap-1 ${
+                selectedPreset === preset.id ? 'bg-[#3B82F6] text-white shadow-md' : 'bg-[#111827] text-[#9CA3AF] hover:bg-[#374151] active:scale-[0.98]'
               }`}
             >
-              <span className="mr-1">{preset.icon}</span>
+              <span aria-hidden>{preset.icon}</span>
               {preset.label}
             </button>
           ))}
@@ -116,46 +169,42 @@ export function DateRangeSelector({ dateFrom, dateTo, onDateChange }: DateRangeS
               </button>
             </div>
             <div className="px-6 pt-6 space-y-5">
+              <p className="text-xs text-[#9CA3AF]">Pick start and end date for your report.</p>
               <div>
-                <label className="block text-sm font-medium text-white mb-3 flex items-center gap-2">
-                  <Calendar className="w-4 h-4 text-[#3B82F6]" /> From Date
-                </label>
+                <label className="block text-sm font-medium text-white mb-2">From date</label>
                 <input
                   type="date"
                   value={customFrom}
                   onChange={(e) => setCustomFrom(e.target.value)}
-                  className="w-full h-14 bg-[#111827] border border-[#374151] rounded-xl px-4 text-white focus:outline-none focus:border-[#3B82F6]"
+                  className="w-full h-12 bg-[#111827] border border-[#374151] rounded-xl px-4 text-white focus:outline-none focus:ring-2 focus:ring-[#3B82F6] focus:border-transparent"
                   style={{ colorScheme: 'dark' }}
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-white mb-3 flex items-center gap-2">
-                  <Calendar className="w-4 h-4 text-[#10B981]" /> To Date
-                </label>
+                <label className="block text-sm font-medium text-white mb-2">To date</label>
                 <input
                   type="date"
                   value={customTo}
                   onChange={(e) => setCustomTo(e.target.value)}
-                  className="w-full h-14 bg-[#111827] border border-[#374151] rounded-xl px-4 text-white focus:outline-none focus:border-[#10B981]"
+                  className="w-full h-12 bg-[#111827] border border-[#374151] rounded-xl px-4 text-white focus:outline-none focus:ring-2 focus:ring-[#10B981] focus:border-transparent"
                   style={{ colorScheme: 'dark' }}
                 />
               </div>
               <div className="flex gap-3 pt-2 pb-2">
                 <button
+                  type="button"
                   onClick={() => setShowCustomModal(false)}
-                  className="flex-1 h-14 border border-[#374151] rounded-xl font-medium hover:bg-[#374151] text-white"
+                  className="flex-1 h-12 border border-[#374151] rounded-xl font-medium hover:bg-[#374151] text-white"
                 >
                   Cancel
                 </button>
                 <button
-                  onClick={() => {
-                    onDateChange(customFrom, customTo);
-                    setShowCustomModal(false);
-                  }}
-                  disabled={!customFrom || !customTo}
-                  className="flex-1 h-14 bg-[#3B82F6] hover:bg-[#2563EB] rounded-xl font-medium text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                  type="button"
+                  onClick={applyCustomRange}
+                  disabled={!customFrom || !customTo || customFrom > customTo}
+                  className="flex-1 h-12 bg-[#3B82F6] hover:bg-[#2563EB] rounded-xl font-medium text-white disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  Apply Range
+                  Apply range
                 </button>
               </div>
             </div>

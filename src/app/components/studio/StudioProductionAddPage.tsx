@@ -3,6 +3,7 @@ import { ArrowLeft, Save, Loader2, Package, FileText } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
+import { DatePicker } from '../ui/DatePicker';
 import { Textarea } from '../ui/textarea';
 import { useNavigation } from '@/app/context/NavigationContext';
 import { useProduction } from '@/app/context/ProductionContext';
@@ -159,12 +160,12 @@ export const StudioProductionAddPage = () => {
         <div className="grid grid-cols-2 gap-4">
           <div>
             <Label className="text-gray-400">Production Date *</Label>
-            <Input
-              type="date"
+            <DatePicker
               value={form.production_date}
-              onChange={(e) => setForm(f => ({ ...f, production_date: e.target.value }))}
-              className="bg-gray-900 border-gray-700 text-white mt-1"
+              onChange={(v) => setForm(f => ({ ...f, production_date: v }))}
+              placeholder="Select date"
               required
+              className="mt-1"
             />
           </div>
           <div>
@@ -233,20 +234,20 @@ export const StudioProductionAddPage = () => {
         <div className="grid grid-cols-2 gap-4">
           <div>
             <Label className="text-gray-400">Start Date</Label>
-            <Input
-              type="date"
+            <DatePicker
               value={form.start_date || ''}
-              onChange={(e) => setForm(f => ({ ...f, start_date: e.target.value || null }))}
-              className="bg-gray-900 border-gray-700 text-white mt-1"
+              onChange={(v) => setForm(f => ({ ...f, start_date: v || null }))}
+              placeholder="Select date"
+              className="mt-1"
             />
           </div>
           <div>
             <Label className="text-gray-400">Expected Completion</Label>
-            <Input
-              type="date"
+            <DatePicker
               value={form.expected_date || ''}
-              onChange={(e) => setForm(f => ({ ...f, expected_date: e.target.value || null }))}
-              className="bg-gray-900 border-gray-700 text-white mt-1"
+              onChange={(v) => setForm(f => ({ ...f, expected_date: v || null }))}
+              placeholder="Select date"
+              className="mt-1"
             />
           </div>
         </div>

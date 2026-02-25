@@ -17,6 +17,8 @@ interface CalendarDatePickerProps {
   required?: boolean;
   minDate?: Date;
   maxDate?: Date;
+  /** Display format for the selected date (e.g. DD MMM YYYY). Default: locale short date */
+  displayFormat?: (date: Date) => string;
 }
 
 const DAYS = ['SU', 'MO', 'TU', 'WE', 'TH', 'FR', 'SA'];
@@ -31,6 +33,7 @@ export const CalendarDatePicker: React.FC<CalendarDatePickerProps> = ({
   required = false,
   minDate,
   maxDate,
+  displayFormat,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   // Helper to safely convert value to Date
@@ -81,7 +84,7 @@ export const CalendarDatePicker: React.FC<CalendarDatePickerProps> = ({
 
   const formatDate = (date: Date | null | undefined) => {
     if (!date) return '';
-    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    return displayFormat ? displayFormat(date) : date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
   };
 
   const formatDateTime = (date: Date | null | undefined, time: string) => {

@@ -18,6 +18,7 @@ import { exportToCSV, exportToExcel, exportToPDF, type ExportData } from '@/app/
 import { FullStockLedgerView } from '../products/FullStockLedgerView';
 import { StockAdjustmentDrawer } from './StockAdjustmentDrawer';
 import { ListToolbar } from '../ui/list-toolbar';
+import { DatePicker } from '../ui/DatePicker';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../ui/dialog';
 import { groupStockMovements, ViewMode, GroupedMovementRow } from '../../utils/stockMovementGrouping';
 
@@ -1056,20 +1057,20 @@ PROD-003,20`;
           <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4 flex flex-wrap items-end gap-4">
             <div>
               <label className="text-xs text-gray-400 block mb-1">From Date</label>
-              <Input
-                type="date"
+              <DatePicker
                 value={filters.dateFrom}
-                onChange={(e) => setFilters(f => ({ ...f, dateFrom: e.target.value }))}
-                className="bg-gray-950 border-gray-700 text-white w-40"
+                onChange={(v) => setFilters(f => ({ ...f, dateFrom: v }))}
+                placeholder="From"
+                className="w-40"
               />
             </div>
             <div>
               <label className="text-xs text-gray-400 block mb-1">To Date</label>
-              <Input
-                type="date"
+              <DatePicker
                 value={filters.dateTo}
-                onChange={(e) => setFilters(f => ({ ...f, dateTo: e.target.value }))}
-                className="bg-gray-950 border-gray-700 text-white w-40"
+                onChange={(v) => setFilters(f => ({ ...f, dateTo: v }))}
+                placeholder="To"
+                className="w-40"
               />
             </div>
             <div>

@@ -186,3 +186,46 @@ export async function getReceivables(
   const total = (data || []).reduce((sum, r) => sum + Number(r.due_amount ?? 0), 0);
   return { data: total, error: null };
 }
+
+/** Single receivable (sale invoice with due amount) for receivables report list */
+export interface ReceivableItem {
+  id: string;
+  invoice_no: string;
+  customer_name: string;
+  invoice_date: string;
+  total: number;
+  due_amount: number;
+  payment_status: string;
+}
+
+/** List of sales (invoices) with outstanding receivables – for Receivables report detail. */
+export async function getReceivablesList(
+  companyId: string,
+  branchId: string | null | undefined
+): Promise<{ data: ReceivableItem[]; error: string | null }> {
+  if (!isSupabaseConfigured) return { data: [], error: 'App not configured.' };
+  let query = supabase
+    .from('sales')
+    .select('id, invoice_no, customer_name, invoice_date, total, due_amount, payment_status')
+    .eq('company_id', companyId)
+    .eq('type', 'invoice')
+    .in('payment_status', ['partial', 'unpaid'])
+    .gt('due_amount', 0)
+    .order('invoice_date', { ascending: false })
+    .limit(200);
+  if (branchId && branchId !== 'all') query = query.eq('branch_id', branchId);
+  const { data, error } = await query;
+  if (error) return { data: [], error: error.message };
+  return {
+    data: (data || []).map((r: Record<string, unknown>) => ({
+      id: String(r.id ?? ''),
+      invoice_no: String(r.invoice_no ?? '—'),
+      customer_name: String(r.customer_name ?? '—'),
+      invoice_date: r.invoice_date ? new Date(r.invoice_date as string).toISOString().slice(0, 10) : '—',
+      total: Number(r.total) ?? 0,
+      due_amount: Number(r.due_amount) ?? 0,
+      payment_status: String(r.payment_status ?? 'unpaid'),
+    })),
+    error: null,
+  };
+}

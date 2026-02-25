@@ -42,6 +42,7 @@ import {
 import { toast } from "sonner";
 import { Building2, Zap, Users, ShoppingCart, Briefcase, Utensils, Car, Wallet, Home } from 'lucide-react';
 import { ListToolbar } from '../ui/list-toolbar';
+import { DatePicker } from '../ui/DatePicker';
 import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
 import { exportToCSV, exportToExcel, exportToPDF, type ExportData } from '@/app/utils/exportUtils';
 import { useExpenses } from '../../context/ExpenseContext';
@@ -564,22 +565,22 @@ export const ExpensesDashboard = () => {
                         <label className="text-xs text-gray-400 uppercase font-medium mb-2 block">
                           From Date
                         </label>
-                        <input
-                          type="date"
+                        <DatePicker
                           value={fromDate}
-                          onChange={(e) => setFromDate(e.target.value)}
-                          className="w-full bg-gray-950 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500"
+                          onChange={(v) => setFromDate(v)}
+                          placeholder="From"
+                          className="w-full"
                         />
                       </div>
                       <div>
                         <label className="text-xs text-gray-400 uppercase font-medium mb-2 block">
                           To Date
                         </label>
-                        <input
-                          type="date"
+                        <DatePicker
                           value={toDate}
-                          onChange={(e) => setToDate(e.target.value)}
-                          className="w-full bg-gray-950 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500"
+                          onChange={(v) => setToDate(v)}
+                          placeholder="To"
+                          className="w-full"
                         />
                       </div>
                     </div>
