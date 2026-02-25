@@ -197,13 +197,15 @@ echo "[deploy] Using VITE_SUPABASE_URL=$VITE_SUPABASE_URL"
 # Kong fix BEFORE build so app image gets correct anon key (avoids "Invalid authentication credentials")
 [ -f deploy/fix-supabase-kong-domain.sh ] && bash deploy/fix-supabase-kong-domain.sh || true
 source .env.production
+export CACHEBUST="${CACHEBUST:-$(date +%s)}"
 COMPOSE_CMD="docker compose -f deploy/docker-compose.prod.yml --env-file .env.production"
 # Build only ERP (avoids studio-injector pull of python:3.11-alpine which can TLS timeout on VPS)
+echo "[deploy] Building ERP (CACHEBUST=$CACHEBUST)..."
 $COMPOSE_CMD build --no-cache erp
-# Avoid "container name already in use": tear down then up (no manual steps on VPS)
+# Force new container from new image (no stale mobile build)
 $COMPOSE_CMD down 2>/dev/null || true
 docker rm -f erp-frontend 2>/dev/null || true
-$COMPOSE_CMD up -d
+$COMPOSE_CMD up -d --force-recreate erp
 
 # Auto-apply migrations (accounts.subtype, journal_entries columns, etc.)
 [ -f deploy/run-migrations-vps.sh ] && bash deploy/run-migrations-vps.sh || true

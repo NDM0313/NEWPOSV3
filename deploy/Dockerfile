@@ -19,6 +19,8 @@ FROM node:20-alpine AS mobile-builder
 WORKDIR /app
 COPY erp-mobile-app/package.json erp-mobile-app/package-lock.json* ./
 RUN npm ci
+# CACHEBUST forces fresh copy on every deploy (no stale mobile build)
+ARG CACHEBUST=
 COPY erp-mobile-app/ .
 ARG VITE_SUPABASE_URL
 ARG VITE_SUPABASE_ANON_KEY

@@ -37,6 +37,7 @@ services:
         VITE_SUPABASE_URL: ${VITE_SUPABASE_URL}
         VITE_SUPABASE_ANON_KEY: ${VITE_SUPABASE_ANON_KEY}
         VITE_DISABLE_REALTIME: ${VITE_DISABLE_REALTIME:-true}
+        CACHEBUST: ${CACHEBUST:-0}
     env_file: ../.env.production
     container_name: erp-frontend
     restart: always
