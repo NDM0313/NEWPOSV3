@@ -128,6 +128,29 @@ EOSQL
   echo "[deploy] Expenses columns done."
 }
 
+# Quick-login users: set passwords in auth.users so mobile app Admin/Info/Demo buttons work (auto on every deploy)
+apply_quick_login_auth() {
+  CONTAINER=$(docker ps --format '{{.Names}}' | grep -E '^db$|^supabase-db$|^postgres$|supabase.*db' | head -1)
+  [ -z "$CONTAINER" ] && return 0
+  echo "[deploy] Applying quick-login auth (admin/info/demo) in $CONTAINER..."
+  docker exec -i "$CONTAINER" psql -U postgres -d postgres -v ON_ERROR_STOP=0 <<'EOSQL' || true
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+INSERT INTO auth.users (id, email, encrypted_password, email_confirmed_at, confirmation_sent_at, role, aud, created_at, updated_at)
+SELECT gen_random_uuid(), 'admin@dincouture.pk', crypt('AdminDincouture2026', gen_salt('bf', 10)), now(), now(), 'authenticated', 'authenticated', now(), now()
+WHERE NOT EXISTS (SELECT 1 FROM auth.users WHERE email = 'admin@dincouture.pk');
+INSERT INTO auth.users (id, email, encrypted_password, email_confirmed_at, confirmation_sent_at, role, aud, created_at, updated_at)
+SELECT gen_random_uuid(), 'info@dincouture.pk', crypt('InfoDincouture2026', gen_salt('bf', 10)), now(), now(), 'authenticated', 'authenticated', now(), now()
+WHERE NOT EXISTS (SELECT 1 FROM auth.users WHERE email = 'info@dincouture.pk');
+INSERT INTO auth.users (id, email, encrypted_password, email_confirmed_at, confirmation_sent_at, role, aud, created_at, updated_at)
+SELECT gen_random_uuid(), 'demo@dincollection.com', crypt('demo123', gen_salt('bf', 10)), now(), now(), 'authenticated', 'authenticated', now(), now()
+WHERE NOT EXISTS (SELECT 1 FROM auth.users WHERE email = 'demo@dincollection.com');
+UPDATE auth.users SET encrypted_password = crypt('AdminDincouture2026', gen_salt('bf', 10)), email_confirmed_at = COALESCE(email_confirmed_at, now()) WHERE email = 'admin@dincouture.pk';
+UPDATE auth.users SET encrypted_password = crypt('InfoDincouture2026', gen_salt('bf', 10)), email_confirmed_at = COALESCE(email_confirmed_at, now()) WHERE email = 'info@dincouture.pk';
+UPDATE auth.users SET encrypted_password = crypt('demo123', gen_salt('bf', 10)), email_confirmed_at = COALESCE(email_confirmed_at, now()) WHERE email = 'demo@dincollection.com';
+EOSQL
+  echo "[deploy] Quick-login auth applied."
+}
+
 # Fixes-only mode: apply DB/storage fixes and exit (no build, no docker up)
 if [ -n "$DEPLOY_ONLY_FIXES" ]; then
   [ -f deploy/fix-supabase-storage-jwt.sh ] && bash deploy/fix-supabase-storage-jwt.sh || true
@@ -135,6 +158,7 @@ if [ -n "$DEPLOY_ONLY_FIXES" ]; then
   apply_expenses_columns
   [ -f deploy/apply-storage-rls-vps.sh ] && bash deploy/apply-storage-rls-vps.sh || apply_rls
   apply_rls_performance
+  apply_quick_login_auth
   [ -f deploy/apply-enable-rls-public.sh ] && bash deploy/apply-enable-rls-public.sh || true
   [ -f deploy/fix-supabase-studio-settings-api.sh ] && bash deploy/fix-supabase-studio-settings-api.sh || true
   [ -f deploy/add-kong-backup-route.sh ] && bash deploy/add-kong-backup-route.sh || true
@@ -187,7 +211,7 @@ $COMPOSE_CMD up -d
 # Studio: Assign/Receive workflow RPCs + no-auto-assign guard (run as supabase_admin)
 [ -f deploy/apply-studio-no-auto-assign.sh ] && bash deploy/apply-studio-no-auto-assign.sh || true
 
-# Auto-apply expenses columns + storage buckets + RLS + RLS performance + Studio API fix
+# Auto-apply expenses columns + storage buckets + RLS + RLS performance + Studio API fix + quick-login auth
 apply_expenses_columns
 if [ -f deploy/apply-storage-rls-vps.sh ]; then
   bash deploy/apply-storage-rls-vps.sh || apply_rls
@@ -195,6 +219,7 @@ else
   apply_rls
 fi
 apply_rls_performance
+apply_quick_login_auth
 [ -f deploy/apply-enable-rls-public.sh ] && bash deploy/apply-enable-rls-public.sh || true
 [ -f deploy/fix-supabase-studio-settings-api.sh ] && bash deploy/fix-supabase-studio-settings-api.sh || true
 
