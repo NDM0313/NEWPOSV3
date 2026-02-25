@@ -174,7 +174,8 @@ echo "[deploy] Using VITE_SUPABASE_URL=$VITE_SUPABASE_URL"
 [ -f deploy/fix-supabase-kong-domain.sh ] && bash deploy/fix-supabase-kong-domain.sh || true
 source .env.production
 COMPOSE_CMD="docker compose -f deploy/docker-compose.prod.yml --env-file .env.production"
-$COMPOSE_CMD build --no-cache
+# Build only ERP (avoids studio-injector pull of python:3.11-alpine which can TLS timeout on VPS)
+$COMPOSE_CMD build --no-cache erp
 # Avoid "container name already in use": tear down then up (no manual steps on VPS)
 $COMPOSE_CMD down 2>/dev/null || true
 docker rm -f erp-frontend 2>/dev/null || true
@@ -207,8 +208,8 @@ apply_rls_performance
 [ -d deploy/backup-page ] && chmod -R 755 deploy/backup-page || true
 [ -f deploy/add-kong-backup-route.sh ] && bash deploy/add-kong-backup-route.sh || true
 
-# Studio sidebar: inject "Backups" under Platform (Kong -> studio-injector -> Studio)
-docker compose -f deploy/docker-compose.prod.yml up -d studio-injector --build 2>/dev/null || true
+# Studio sidebar: inject "Backups" under Platform (Kong -> studio-injector -> Studio). Skip build if Docker Hub timeout.
+docker compose -f deploy/docker-compose.prod.yml up -d studio-injector 2>/dev/null || true
 [ -f deploy/point-kong-dashboard-to-injector.sh ] && bash deploy/point-kong-dashboard-to-injector.sh || true
 
 echo "ERP running. Configure Caddy/Nginx for https://erp.dincouture.pk"

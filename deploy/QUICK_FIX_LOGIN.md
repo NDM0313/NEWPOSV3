@@ -1,44 +1,34 @@
-# Fix "Invalid email or password" (400) – Quick login users
+# Fix "Invalid email or password" (400) + Deploy TLS timeout
 
-Supabase Auth must have the same passwords as the app. Run this **on the VPS** (SSH as root).
+## A. Fix login 400 (run first – no Docker build)
 
-## 1. Pull latest code (so the script exists)
+On VPS, update auth passwords so quick login works:
 
 ```bash
 cd ~/NEWPOSV3
 git pull origin main
+bash deploy/run-fix-login-auth.sh
 ```
 
-## 2. Run the auth fix script
+Or if that script is missing: `bash deploy/fix-quick-login-users-vps.sh`
+
+Passwords set: **admin** / **info** / **demo** → `AdminDincouture2026` / `InfoDincouture2026` / `demo123`
+
+## B. Fix deploy (TLS timeout on python:3.11-alpine)
+
+Deploy now builds **only the ERP** image, so Docker Hub timeout on studio-injector does not block.
 
 ```bash
-bash deploy/fix-quick-login-users-vps.sh
+cd ~/NEWPOSV3
+git pull origin main
+bash deploy/deploy.sh
 ```
 
-This updates `auth.users` for:
-- **admin@dincouture.pk** → password `AdminDincouture2026`
-- **info@dincouture.pk** → password `InfoDincouture2026`
-- **demo@dincollection.com** → password `demo123`
+Then test: https://erp.dincouture.pk and https://erp.dincouture.pk/m/
 
-## 3. If script fails (e.g. "container not found")
+## C. If auth script fails (container not found)
 
-Find the Postgres container name:
+Find Postgres: `docker ps --format '{{.Names}}' | grep -E 'db|postgres|supabase'`
 
-```bash
-docker ps --format '{{.Names}}' | grep -E 'db|postgres|supabase'
-```
-
-Then run SQL manually (replace `CONTAINER` with the name, e.g. `supabase-db` or `db`):
-
-```bash
-docker exec -i CONTAINER psql -U postgres -d postgres << 'SQL'
-CREATE EXTENSION IF NOT EXISTS pgcrypto;
-UPDATE auth.users SET encrypted_password = crypt('InfoDincouture2026', gen_salt('bf', 10)), email_confirmed_at = COALESCE(email_confirmed_at, now()) WHERE email = 'info@dincouture.pk';
-UPDATE auth.users SET encrypted_password = crypt('AdminDincouture2026', gen_salt('bf', 10)), email_confirmed_at = COALESCE(email_confirmed_at, now()) WHERE email = 'admin@dincouture.pk';
-UPDATE auth.users SET encrypted_password = crypt('demo123', gen_salt('bf', 10)), email_confirmed_at = COALESCE(email_confirmed_at, now()) WHERE email = 'demo@dincollection.com';
-SQL
-```
-
-## 4. Test
-
-Open the mobile app, use **Info (info@dincouture.pk)** or **Admin** or **Demo** quick login. The 400 should stop after the script runs.
+Then (replace CONTAINER):  
+`docker exec -i CONTAINER psql -U postgres -d postgres -v ON_ERROR_STOP=1 < deploy/fix-login-auth-only.sql`
