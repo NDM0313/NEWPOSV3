@@ -197,10 +197,19 @@ echo "[deploy] Using VITE_SUPABASE_URL=$VITE_SUPABASE_URL"
 # Kong fix BEFORE build so app image gets correct anon key (avoids "Invalid authentication credentials")
 [ -f deploy/fix-supabase-kong-domain.sh ] && bash deploy/fix-supabase-kong-domain.sh || true
 source .env.production
-export CACHEBUST="${CACHEBUST:-$(date +%s)}"
+# Ensure mobile source has latest login UI (4 buttons, "auto-fills"); fail so user runs git pull
+if ! grep -q "auto-fills and signs in" erp-mobile-app/src/components/LoginScreen.tsx 2>/dev/null; then
+  echo "[deploy] ERROR: LoginScreen.tsx is old (no 'auto-fills and signs in'). Run: git pull origin main && bash deploy/deploy.sh"
+  exit 1
+fi
+# Fresh CACHEBUST so Docker never uses cached mobile build (always get latest login UI on /m/)
+CACHEBUST=$(date +%s)
+grep -v '^CACHEBUST=' .env.production > .env.production.tmp 2>/dev/null || true
+echo "CACHEBUST=$CACHEBUST" >> .env.production.tmp
+mv .env.production.tmp .env.production
 COMPOSE_CMD="docker compose -f deploy/docker-compose.prod.yml --env-file .env.production"
 # Build only ERP (avoids studio-injector pull of python:3.11-alpine which can TLS timeout on VPS)
-echo "[deploy] Building ERP (CACHEBUST=$CACHEBUST)..."
+echo "[deploy] Building ERP (CACHEBUST=$CACHEBUST) - fresh mobile /m/ build..."
 $COMPOSE_CMD build --no-cache erp
 # Force new container from new image (no stale mobile build)
 $COMPOSE_CMD down 2>/dev/null || true
