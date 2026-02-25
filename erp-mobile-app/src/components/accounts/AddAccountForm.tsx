@@ -108,6 +108,8 @@ export function AddAccountForm({ onBack, onSuccess, companyId }: AddAccountFormP
           <label className="block text-sm font-medium text-[#9CA3AF] mb-2">Opening balance (optional)</label>
           <input
             type="number"
+            inputMode="decimal"
+            pattern="[0-9.]*"
             step="0.01"
             value={balance}
             onChange={(e) => setBalance(e.target.value)}

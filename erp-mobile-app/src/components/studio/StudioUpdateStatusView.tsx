@@ -148,6 +148,8 @@ export function StudioUpdateStatusView({
               <label className="block text-sm text-[#9CA3AF] mb-2">Expected Cost (Rs)</label>
               <input
                 type="number"
+                inputMode="decimal"
+                pattern="[0-9.]*"
                 value={expectedCost}
                 onChange={(e) => setExpectedCost(e.target.value)}
                 placeholder="500"
@@ -171,6 +173,8 @@ export function StudioUpdateStatusView({
               <label className="block text-sm text-[#9CA3AF] mb-2">Final Cost (Rs)</label>
               <input
                 type="number"
+                inputMode="decimal"
+                pattern="[0-9.]*"
                 value={finalCost}
                 onChange={(e) => setFinalCost(e.target.value)}
                 placeholder={selectedStage.internalCost?.toString() || '500'}

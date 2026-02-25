@@ -14,9 +14,12 @@ import {
   Shield,
   Database,
   Loader2,
+  Printer,
+  Scan,
 } from 'lucide-react';
 import type { User, Branch } from '../../types';
 import * as authApi from '../../api/auth';
+import * as settingsApi from '../../api/settings';
 import { runSync } from '../../lib/syncEngine';
 import { getUnsyncedCount, clearAllPending } from '../../lib/offlineStore';
 import { ChangePinModal } from './ChangePinModal';
@@ -89,6 +92,17 @@ export function SettingsModule({
   const [unsyncedCount, setUnsyncedCount] = useState(0);
   const [clearing, setClearing] = useState(false);
   const [clearConfirm, setClearConfirm] = useState(false);
+  const [lastSyncFromDb, setLastSyncFromDb] = useState<settingsApi.MobileSyncStatus | null>(null);
+  const [printerConfig, setPrinterConfig] = useState<settingsApi.MobilePrinterSettings>({
+    mode: 'a4',
+    paperSize: '80mm',
+    autoPrintReceipt: false,
+  });
+  const [barcodeSettings, setBarcodeSettings] = useState<settingsApi.MobileBarcodeScannerSettings>({
+    method: 'keyboard_wedge',
+  });
+  const [printerSaving, setPrinterSaving] = useState(false);
+  const [barcodeSaving, setBarcodeSaving] = useState(false);
 
   const refreshUnsynced = () => getUnsyncedCount().then(setUnsyncedCount);
 
@@ -102,6 +116,59 @@ export function SettingsModule({
     return () => clearInterval(t);
   }, [syncing, clearing]);
 
+  useEffect(() => {
+    if (!companyId) return;
+    settingsApi.getMobileSyncStatus(companyId).then(({ data }) => {
+      if (data) setLastSyncFromDb(data);
+    });
+  }, [companyId, syncing, clearing]);
+
+  useEffect(() => {
+    if (!companyId) return;
+    settingsApi.getMobilePrinterSettings(companyId).then(({ data }) => setPrinterConfig(data));
+    settingsApi.getMobileBarcodeScannerSettings(companyId).then(({ data }) => setBarcodeSettings(data));
+  }, [companyId]);
+
+  const handlePrinterMode = async (mode: settingsApi.MobilePrinterMode) => {
+    if (printerSaving || !companyId) return;
+    const prev = printerConfig;
+    setPrinterSaving(true);
+    setPrinterConfig((c) => ({ ...c, mode }));
+    const { error } = await settingsApi.setMobilePrinterSettings(companyId, { ...printerConfig, mode });
+    if (error) setPrinterConfig(prev);
+    setPrinterSaving(false);
+  };
+
+  const handlePaperSize = async (paperSize: settingsApi.MobilePrinterPaperSize) => {
+    if (printerSaving || !companyId) return;
+    const prev = printerConfig;
+    setPrinterSaving(true);
+    setPrinterConfig((c) => ({ ...c, paperSize }));
+    const { error } = await settingsApi.setMobilePrinterSettings(companyId, { ...printerConfig, paperSize });
+    if (error) setPrinterConfig(prev);
+    setPrinterSaving(false);
+  };
+
+  const handleAutoPrint = async (enabled: boolean) => {
+    if (printerSaving || !companyId) return;
+    const prev = printerConfig;
+    setPrinterSaving(true);
+    setPrinterConfig((c) => ({ ...c, autoPrintReceipt: enabled }));
+    const { error } = await settingsApi.setMobilePrinterSettings(companyId, { ...printerConfig, autoPrintReceipt: enabled });
+    if (error) setPrinterConfig(prev);
+    setPrinterSaving(false);
+  };
+
+  const handleBarcodeMethod = async (method: settingsApi.BarcodeScannerMethod) => {
+    if (barcodeSaving || !companyId) return;
+    const prev = barcodeSettings;
+    setBarcodeSaving(true);
+    setBarcodeSettings((s) => ({ ...s, method }));
+    const { error } = await settingsApi.setMobileBarcodeScannerSettings(companyId, { ...barcodeSettings, method });
+    if (error) setBarcodeSettings(prev);
+    setBarcodeSaving(false);
+  };
+
   const handleSyncNow = async () => {
     if (syncing) return;
     if (!isOnline) {
@@ -113,13 +180,23 @@ export function SettingsModule({
     try {
       const { synced, errors } = await runSync();
       refreshUnsynced();
-      setSyncResult(
+      const message =
         synced > 0 || errors > 0
           ? `Synced: ${synced}, Errors: ${errors}`
           : unsyncedCount === 0
             ? 'Already up to date'
-            : 'No pending items'
-      );
+            : 'No pending items';
+      setSyncResult(message);
+      await settingsApi.setMobileSyncStatus(companyId, {
+        last_sync_at: new Date().toISOString(),
+        last_synced_count: synced,
+        last_errors_count: errors,
+      });
+      setLastSyncFromDb({
+        last_sync_at: new Date().toISOString(),
+        last_synced_count: synced,
+        last_errors_count: errors,
+      });
       onSyncTriggered?.();
     } catch {
       setSyncResult('Sync failed');
@@ -242,9 +319,154 @@ export function SettingsModule({
           )}
         </div>
 
-        {/* Data & Sync */}
+        {/* Printer & Barcode (standard: thermal/A4 + barcode scanner) */}
         <div className="space-y-2">
-          <p className="text-xs text-[#6B7280] font-medium px-1">Data & Sync</p>
+          <p className="text-xs text-[#6B7280] font-medium px-1">Printer & Barcode</p>
+          <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4 space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-lg flex items-center justify-center bg-[#6B7280]/20">
+                <Printer className="w-5 h-5 text-[#9CA3AF]" />
+              </div>
+              <div className="flex-1">
+                <p className="font-medium text-white">Printer</p>
+                <p className="text-sm text-[#9CA3AF]">Thermal receipt or A4 (normal)</p>
+              </div>
+              {printerSaving && <Loader2 className="w-5 h-5 text-[#3B82F6] animate-spin" />}
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button
+                onClick={() => handlePrinterMode('thermal')}
+                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                  printerConfig.mode === 'thermal'
+                    ? 'bg-[#3B82F6] text-white'
+                    : 'bg-[#374151] text-[#9CA3AF] hover:bg-[#4B5563]'
+                }`}
+              >
+                Thermal
+              </button>
+              <button
+                onClick={() => handlePrinterMode('a4')}
+                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                  printerConfig.mode === 'a4'
+                    ? 'bg-[#3B82F6] text-white'
+                    : 'bg-[#374151] text-[#9CA3AF] hover:bg-[#4B5563]'
+                }`}
+              >
+                A4 (Normal)
+              </button>
+            </div>
+            {printerConfig.mode === 'thermal' && (
+              <div>
+                <p className="text-xs text-[#9CA3AF] mb-1.5">Paper width</p>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => handlePaperSize('58mm')}
+                    className={`px-3 py-1.5 rounded-lg text-sm font-medium ${
+                      printerConfig.paperSize === '58mm' ? 'bg-[#3B82F6] text-white' : 'bg-[#374151] text-[#9CA3AF]'
+                    }`}
+                  >
+                    58mm
+                  </button>
+                  <button
+                    onClick={() => handlePaperSize('80mm')}
+                    className={`px-3 py-1.5 rounded-lg text-sm font-medium ${
+                      printerConfig.paperSize === '80mm' ? 'bg-[#3B82F6] text-white' : 'bg-[#374151] text-[#9CA3AF]'
+                    }`}
+                  >
+                    80mm
+                  </button>
+                </div>
+              </div>
+            )}
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={printerConfig.autoPrintReceipt}
+                onChange={(e) => handleAutoPrint(e.target.checked)}
+                className="rounded border-[#4B5563] bg-[#374151] text-[#3B82F6] focus:ring-[#3B82F6]"
+              />
+              <span className="text-sm text-[#E5E7EB]">Auto-print receipt after sale</span>
+            </label>
+          </div>
+
+          <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4 space-y-3">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-lg flex items-center justify-center bg-[#6B7280]/20">
+                <Scan className="w-5 h-5 text-[#9CA3AF]" />
+              </div>
+              <div className="flex-1">
+                <p className="font-medium text-white">Barcode scanner</p>
+                <p className="text-sm text-[#9CA3AF]">Hardware wedge or camera</p>
+              </div>
+              {barcodeSaving && <Loader2 className="w-5 h-5 text-[#3B82F6] animate-spin" />}
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button
+                onClick={() => handleBarcodeMethod('keyboard_wedge')}
+                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                  barcodeSettings.method === 'keyboard_wedge'
+                    ? 'bg-[#3B82F6] text-white'
+                    : 'bg-[#374151] text-[#9CA3AF] hover:bg-[#4B5563]'
+                }`}
+              >
+                Keyboard wedge
+              </button>
+              <button
+                onClick={() => handleBarcodeMethod('camera')}
+                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                  barcodeSettings.method === 'camera'
+                    ? 'bg-[#3B82F6] text-white'
+                    : 'bg-[#374151] text-[#9CA3AF] hover:bg-[#4B5563]'
+                }`}
+              >
+                Camera
+              </button>
+            </div>
+            <p className="text-xs text-[#6B7280]">
+              {barcodeSettings.method === 'keyboard_wedge'
+                ? 'Scanner types into focused field like a keyboard.'
+                : 'Use device camera to scan barcodes.'}
+            </p>
+          </div>
+        </div>
+
+        {/* Offline / Online mode & Data & Sync */}
+        <div className="space-y-2">
+          <p className="text-xs text-[#6B7280] font-medium px-1">Offline / Online</p>
+          <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div
+                className={`w-10 h-10 rounded-lg flex items-center justify-center ${
+                  isOnline ? 'bg-[#10B981]/20' : 'bg-[#F59E0B]/20'
+                }`}
+              >
+                <span
+                  className={`inline-block w-3 h-3 rounded-full ${isOnline ? 'bg-[#10B981]' : 'bg-[#F59E0B]'}`}
+                  title={isOnline ? 'Online' : 'Offline'}
+                />
+              </div>
+              <div>
+                <p className="font-medium text-white">{isOnline ? 'Online' : 'Offline'}</p>
+                <p className="text-sm text-[#9CA3AF]">
+                  {isOnline
+                    ? unsyncedCount > 0
+                      ? `${unsyncedCount} item(s) pending sync`
+                      : 'All data synced with server'
+                    : 'Connect to internet to sync'}
+                </p>
+                {lastSyncFromDb?.last_sync_at && (
+                  <p className="text-xs text-[#6B7280] mt-0.5">
+                    Last sync: {new Date(lastSyncFromDb.last_sync_at).toLocaleString()}
+                    {lastSyncFromDb.last_synced_count > 0 || lastSyncFromDb.last_errors_count > 0
+                      ? ` (${lastSyncFromDb.last_synced_count} synced, ${lastSyncFromDb.last_errors_count} errors)`
+                      : ''}
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <p className="text-xs text-[#6B7280] font-medium px-1 pt-2">Data & Sync</p>
           <SettingsRow
             icon={RefreshCw}
             iconColor="bg-emerald-500/20"

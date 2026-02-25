@@ -189,10 +189,14 @@ export function ExpenseEntryFlow({ onBack, onComplete, user, companyId, branchId
               <label className="block text-sm font-medium text-[#D1D5DB] mb-2">Expense Amount (Rs.) *</label>
               <input
                 type="number"
+                inputMode="decimal"
+                pattern="[0-9.]*"
+                min="0"
+                step="0.01"
                 value={expenseData.amount || ''}
                 onChange={(e) => setExpenseData({ ...expenseData, amount: parseFloat(e.target.value) || 0 })}
                 placeholder="0.00"
-                className="w-full px-4 py-3 bg-[#374151] border border-[#4B5563] rounded-lg text-white text-lg font-semibold placeholder-[#6B7280] focus:outline-none focus:border-[#EF4444]"
+                className="w-full max-w-full min-w-0 px-4 py-3 bg-[#374151] border border-[#4B5563] rounded-lg text-white text-lg font-semibold placeholder-[#6B7280] focus:outline-none focus:border-[#EF4444] box-border"
               />
             </div>
             <div className="relative">

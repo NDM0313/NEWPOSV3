@@ -5,10 +5,63 @@
 @layer base {
   html {
     -webkit-tap-highlight-color: transparent;
+    overflow-x: hidden;
+    max-width: 100%;
   }
   body {
     @apply antialiased bg-[#111827] text-[#F9FAFB];
+    overflow-x: hidden;
+    max-width: 100vw;
+    width: 100%;
   }
+  /* Prevent horizontal overflow on all inputs/selects/textarea */
+  input, select, textarea {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+  }
+  /* App root: never allow horizontal scroll on mobile */
+  #root {
+    max-width: 100vw;
+    overflow-x: hidden;
+    width: 100%;
+  }
+}
+
+/* Utility: ensure containers never cause horizontal scroll */
+.input-full-width,
+.mobile-no-overflow {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+.mobile-no-overflow {
+  overflow-x: hidden;
+}
+/* Form containers: respect parent padding, no overflow */
+.mobile-form-container {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  padding-left: inherit;
+  padding-right: inherit;
+  box-sizing: border-box;
+}
+
+/* Tables: horizontal scroll contained so viewport never scrolls horizontally */
+.mobile-table-scroll {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.mobile-table-scroll > * {
+  min-width: 0;
+}
+.mobile-table-inner {
+  min-width: 0;
 }
 
 .safe-area-bottom {

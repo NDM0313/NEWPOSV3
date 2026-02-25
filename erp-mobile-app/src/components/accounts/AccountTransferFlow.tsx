@@ -289,10 +289,14 @@ export function AccountTransferFlow({ onBack, onComplete, user, companyId, branc
               <label className="block text-sm font-medium text-[#D1D5DB] mb-2">Transfer Amount (Rs.) *</label>
               <input
                 type="number"
+                inputMode="decimal"
+                pattern="[0-9.]*"
+                min="0"
+                step="0.01"
                 value={transferData.amount || ''}
                 onChange={(e) => setTransferData({ ...transferData, amount: parseFloat(e.target.value) || 0 })}
                 placeholder="0.00"
-                className="w-full px-4 py-3 bg-[#374151] border border-[#4B5563] rounded-lg text-white text-lg font-semibold placeholder-[#6B7280] focus:outline-none focus:border-[#3B82F6]"
+                className="w-full max-w-full min-w-0 px-4 py-3 bg-[#374151] border border-[#4B5563] rounded-lg text-white text-lg font-semibold placeholder-[#6B7280] focus:outline-none focus:border-[#3B82F6] box-border"
               />
               <p className="text-xs text-[#9CA3AF] mt-2">Available: Rs. {getAccount(transferData.fromAccountId)?.balance.toLocaleString()}</p>
             </div>

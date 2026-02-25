@@ -87,6 +87,8 @@ export function SaleSummary({ onBack, saleData, onUpdate, onProceedToPayment }: 
             </button>
             <input
               type="number"
+              inputMode="decimal"
+              pattern="[0-9.]*"
               value={discountValue}
               onChange={(e) => setDiscountValue(e.target.value)}
               onBlur={applyDiscount}
@@ -103,6 +105,8 @@ export function SaleSummary({ onBack, saleData, onUpdate, onProceedToPayment }: 
           <h3 className="text-sm font-medium text-[#9CA3AF] mb-2">Shipping</h3>
           <input
             type="number"
+            inputMode="decimal"
+            pattern="[0-9.]*"
             value={shipping}
             onChange={(e) => setShipping(e.target.value)}
             onBlur={applyShipping}

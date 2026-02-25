@@ -363,7 +363,7 @@ export default function App() {
         )}
         <div className="flex-1 flex flex-col overflow-hidden">
           {syncBar}
-          <div className="flex-1 overflow-y-auto">{content}</div>
+          <div className="flex-1 overflow-y-auto overflow-x-hidden max-w-full min-w-0">{content}</div>
         </div>
       </div>
     );

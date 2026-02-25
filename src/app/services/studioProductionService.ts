@@ -650,16 +650,19 @@ export const studioProductionService = {
     if (error) throw error;
   },
 
-  /** PHASE 2: Assign worker to stage. Uses RPC when available (authoritative). Saves assigned_worker_id, assigned_at, expected_cost; status → assigned. No journal entry. */
+  /** PHASE 2: Assign worker to stage. Uses RPC when available (authoritative). Saves assigned_worker_id, assigned_at, expected_cost; status → assigned. No journal entry. Step B: worker and expected_completion_date are mandatory. */
   async assignWorkerToStage(
     stageId: string,
     params: { worker_id: string; expected_cost: number; expected_completion_date?: string | null; notes?: string | null }
   ): Promise<StudioProductionStage> {
+    if (!params.worker_id?.trim()) throw new Error('Worker is required to assign this step.');
+    const expectedDate = params.expected_completion_date?.trim() || null;
+    if (!expectedDate) throw new Error('Expected completion date is required to assign this step.');
     const { data: rpcResult, error: rpcErr } = await supabase.rpc('rpc_assign_worker_to_stage', {
       p_stage_id: stageId,
       p_worker_id: params.worker_id,
       p_expected_cost: params.expected_cost,
-      p_expected_completion_date: params.expected_completion_date ?? null,
+      p_expected_completion_date: expectedDate,
       p_notes: params.notes ?? null,
     });
     if (!rpcErr && rpcResult?.ok) {
@@ -685,7 +688,7 @@ export const studioProductionService = {
         expected_cost: params.expected_cost,
         cost: 0,
         status: 'assigned',
-        ...(params.expected_completion_date != null ? { expected_completion_date: params.expected_completion_date } : {}),
+        expected_completion_date: expectedDate,
         ...(params.notes != null ? { notes: params.notes } : {}),
       };
       let result = await supabase
@@ -868,6 +871,12 @@ export const studioProductionService = {
       await resolveStageWorker(result);
       if (workerId && cost > 0) await this.ensureWorkerLedgerEntryForStage(stageId, cost, workerId);
       return result;
+    }
+
+    // Step B: When setting status to 'assigned', worker and expected completion date are required.
+    if (updates.status === 'assigned') {
+      if (!(updates.assigned_worker_id?.trim())) throw new Error('Worker is required when assigning this step.');
+      if (!(updates.expected_completion_date?.trim())) throw new Error('Expected completion date is required when assigning this step.');
     }
 
     const payload: Record<string, unknown> = {};

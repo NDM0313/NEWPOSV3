@@ -1,11 +1,13 @@
 import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { ArrowLeft, Search, Plus, Minus, Package, Edit2, Trash2 } from 'lucide-react';
+import { ArrowLeft, Search, Plus, Minus, Package, Edit2, Trash2, Scan } from 'lucide-react';
 import type { Customer, Product } from './SalesModule';
 import type { PackingDetails } from '../transactions/PackingEntryModal';
 import { PackingEntryModal } from '../transactions/PackingEntryModal';
 import * as productsApi from '../../api/products';
+import * as settingsApi from '../../api/settings';
 import type { ProductVariationRow } from '../../api/products';
+import { BarcodeCameraModal } from './BarcodeCameraModal';
 
 interface AddProductsProps {
   companyId: string | null;
@@ -22,11 +24,26 @@ type AvailableProduct = {
   price: number;
   wholesalePrice: number;
   sku?: string;
+  barcode?: string;
   unit: string;
   hasVariations?: boolean;
   variations?: ProductVariationRow[];
   unitAllowDecimal?: boolean;
 };
+
+/** Resolve barcode/sku to a single product (base or first variation match). */
+function findProductByBarcode(available: AvailableProduct[], code: string): AvailableProduct | null {
+  const trimmed = code.trim();
+  if (!trimmed) return null;
+  const lower = trimmed.toLowerCase();
+  for (const p of available) {
+    if (p.barcode?.toLowerCase() === lower || (p.sku && p.sku.toLowerCase() === lower)) return p;
+    for (const v of p.variations ?? []) {
+      if (v.sku?.toLowerCase() === lower) return p;
+    }
+  }
+  return null;
+}
 
 export function AddProducts({
   companyId,
@@ -43,6 +60,8 @@ export function AddProducts({
   const [showModal, setShowModal] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<AvailableProduct | null>(null);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
+  const [barcodeMethod, setBarcodeMethod] = useState<settingsApi.BarcodeScannerMethod>('keyboard_wedge');
+  const [cameraScanOpen, setCameraScanOpen] = useState(false);
 
   useEffect(() => {
     if (!companyId) {
@@ -64,6 +83,7 @@ export function AddProducts({
             price: p.retailPrice,
             wholesalePrice: p.costPrice || p.retailPrice * 0.8,
             sku: p.sku,
+            barcode: p.barcode,
             unit: p.unit || 'Piece',
             hasVariations: p.hasVariations ?? false,
             variations: p.variations,
@@ -76,9 +96,36 @@ export function AddProducts({
     };
   }, [companyId]);
 
-  const filtered = available.filter((a) =>
-    a.name.toLowerCase().includes(search.toLowerCase())
-  );
+  useEffect(() => {
+    if (!companyId) return;
+    settingsApi.getMobileBarcodeScannerSettings(companyId).then(({ data }) => setBarcodeMethod(data.method));
+  }, [companyId]);
+
+  const searchLower = search.toLowerCase().trim();
+  const filtered = available.filter((a) => {
+    if (!searchLower) return true;
+    if (a.name.toLowerCase().includes(searchLower)) return true;
+    if (a.barcode?.toLowerCase() === searchLower || a.sku?.toLowerCase() === searchLower) return true;
+    if (a.variations?.some((v) => v.sku?.toLowerCase() === searchLower)) return true;
+    return false;
+  });
+
+  const handleBarcodeDetected = (code: string) => {
+    const match = findProductByBarcode(available, code);
+    if (match) {
+      setSearch('');
+      openAddModal(match);
+    }
+  };
+
+  const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key !== 'Enter') return;
+    const match = findProductByBarcode(available, search);
+    if (match) {
+      setSearch('');
+      openAddModal(match);
+    }
+  };
   const subtotal = products.reduce((sum, p) => sum + p.total, 0);
 
   const openAddModal = (item: AvailableProduct) => {
@@ -158,18 +205,38 @@ export function AddProducts({
           <p className="text-sm text-[#9CA3AF]">Items: {products.length}</p>
         </div>
 
-        {/* Search */}
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#6B7280]" />
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search products..."
-            className="w-full h-11 bg-[#111827] border border-[#374151] rounded-lg pl-11 pr-4 text-sm text-[#F9FAFB] placeholder-[#6B7280] focus:outline-none focus:border-[#3B82F6]"
-          />
+        {/* Search + Barcode (standard: keyboard wedge or camera) */}
+        <div className="flex gap-2">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#6B7280]" />
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              onKeyDown={handleSearchKeyDown}
+              placeholder={barcodeMethod === 'camera' ? 'Search or type barcode...' : 'Search or scan barcode...'}
+              className="w-full h-11 bg-[#111827] border border-[#374151] rounded-lg pl-11 pr-4 text-sm text-[#F9FAFB] placeholder-[#6B7280] focus:outline-none focus:border-[#3B82F6]"
+            />
+          </div>
+          {barcodeMethod === 'camera' && (
+            <button
+              type="button"
+              onClick={() => setCameraScanOpen(true)}
+              className="h-11 px-4 bg-[#3B82F6] hover:bg-[#2563EB] rounded-lg flex items-center gap-2 text-white font-medium shrink-0"
+              title="Scan barcode"
+            >
+              <Scan className="w-5 h-5" />
+              <span className="hidden sm:inline">Scan</span>
+            </button>
+          )}
         </div>
       </div>
+
+      <BarcodeCameraModal
+        open={cameraScanOpen}
+        onClose={() => setCameraScanOpen(false)}
+        onDetected={handleBarcodeDetected}
+      />
 
       {/* Cart - when has items */}
       {products.length > 0 && (
@@ -459,6 +526,8 @@ function AddToCartModal({
                 </button>
                 <input
                   type="number"
+                  inputMode={allowDecimal ? 'decimal' : 'numeric'}
+                  pattern={allowDecimal ? '[0-9.]*' : '[0-9]*'}
                   min={allowDecimal ? 0 : 1}
                   step={packingDetails && (packingDetails.total_meters ?? 0) > 0 ? 0.1 : allowDecimal ? 0.01 : 1}
                   inputMode={allowDecimal ? 'decimal' : 'numeric'}
@@ -491,6 +560,8 @@ function AddToCartModal({
                 <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[#9CA3AF]">Rs.</span>
                 <input
                   type="number"
+                  inputMode="decimal"
+                  pattern="[0-9.]*"
                   min="0"
                   value={price}
                   onChange={(e) => setPrice(parseFloat(e.target.value) || 0)}

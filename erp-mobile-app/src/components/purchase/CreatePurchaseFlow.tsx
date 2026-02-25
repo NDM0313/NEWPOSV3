@@ -492,6 +492,8 @@ export function CreatePurchaseFlow({ companyId, branchId, userId, onBack, onDone
                 <label className="block text-xs text-[#6B7280] mb-1">Amount Paid (Rs.)</label>
                 <input
                   type="number"
+                  inputMode="decimal"
+                  pattern="[0-9.]*"
                   min="0"
                   max={total}
                   step="0.01"
@@ -560,10 +562,12 @@ export function CreatePurchaseFlow({ companyId, branchId, userId, onBack, onDone
               <span className="text-sm text-[#9CA3AF]">Discount</span>
               <input
                 type="number"
+                inputMode="decimal"
+                pattern="[0-9.]*"
                 value={discount}
                 onChange={(e) => setDiscount(Math.max(0, parseFloat(e.target.value) || 0))}
                 placeholder="0"
-                className="w-32 h-9 bg-[#111827] border border-[#374151] rounded-lg px-3 text-sm text-right text-white"
+                className="w-32 h-9 bg-[#111827] border border-[#374151] rounded-lg px-3 text-sm text-right text-white max-w-full"
               />
             </div>
             <div className="flex justify-between text-lg font-bold pt-2 border-t border-[#374151]">
@@ -704,6 +708,7 @@ function AddToPurchaseModal({ product, onClose, onAdd }: AddToPurchaseModalProps
                 min={allowDecimal ? 0.01 : 1}
                 step={allowDecimal ? 0.01 : 1}
                 inputMode={allowDecimal ? 'decimal' : 'numeric'}
+                pattern={allowDecimal ? '[0-9.]*' : '[0-9]*'}
                 value={quantity}
                 onChange={(e) => handleQtyChange(e.target.value)}
                 className="flex-1 h-12 bg-[#111827] border border-[#374151] rounded-lg text-center text-lg font-semibold text-[#F9FAFB] focus:outline-none focus:border-[#10B981]"
@@ -721,6 +726,8 @@ function AddToPurchaseModal({ product, onClose, onAdd }: AddToPurchaseModalProps
             <label className="block text-sm font-medium text-[#9CA3AF] mb-3">Unit Price (Rs.)</label>
             <input
               type="number"
+              inputMode="decimal"
+              pattern="[0-9.]*"
               min="0"
               value={unitPrice}
               onChange={(e) => setUnitPrice(parseFloat(e.target.value) || 0)}

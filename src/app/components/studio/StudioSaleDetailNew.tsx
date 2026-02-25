@@ -869,6 +869,19 @@ export const StudioSaleDetailNew = () => {
         if (serverIsCompleted && localIsCompleted) continue;
         const backendStatus = step.status === 'Pending' ? 'pending' : step.status === 'Completed' ? 'completed' : 'assigned';
         const workerId = resolveWorkerId(step.workerId || step.assignedWorkers?.[0]?.workerId);
+        // Step B: Assigned steps must have worker and expected completion date
+        if (backendStatus === 'assigned') {
+          if (!workerId) {
+            toast.error(`Step ${step.order} (${step.stageType || 'stage'}): Select a worker before saving.`);
+            setSavingStage(false);
+            return;
+          }
+          if (!step.expectedCompletionDate?.trim()) {
+            toast.error(`Step ${step.order} (${step.stageType || 'stage'}): Expected completion date is required.`);
+            setSavingStage(false);
+            return;
+          }
+        }
         await studioProductionService.updateStage(stageId, {
           assigned_worker_id: workerId,
           cost: step.workerCost ?? 0,
@@ -1481,16 +1494,22 @@ export const StudioSaleDetailNew = () => {
             {showWorkerEditModal && (() => {
               const currentStep = saleDetail?.productionSteps.find(s => s.id === showWorkerEditModal);
               const isPending = currentStep?.status === 'Pending';
-              const canSave = editingWorkerData.workers.length > 0 && editingWorkerData.workers[0]?.workerId && !savingStage;
+              const hasWorker = editingWorkerData.workers.length > 0 && editingWorkerData.workers[0]?.workerId;
+              const hasExpectedDate = !!editingWorkerData.expectedCompletionDate?.trim();
+              const canSave = hasWorker && hasExpectedDate && !savingStage;
               return (
                 <Button
                   size="sm"
                   disabled={!canSave}
-                  title={!canSave ? 'Select a worker to save assignment' : isPending ? 'Save assignment and start stage' : 'Save and close'}
+                  title={!hasWorker ? 'Select a worker to save assignment' : !hasExpectedDate ? 'Select expected completion date' : isPending ? 'Save assignment and start stage' : 'Save and close'}
                   onClick={() => {
                     if (!canSave) return;
                     if (editingWorkerData.workers.length === 0 || !editingWorkerData.workers[0]?.workerId) {
                       toast.error('Select a worker to assign.');
+                      return;
+                    }
+                    if (!editingWorkerData.expectedCompletionDate?.trim()) {
+                      toast.error('Expected completion date is required.');
                       return;
                     }
                     handleSaveWorkerEdit(!!isPending);
@@ -2897,9 +2916,9 @@ export const StudioSaleDetailNew = () => {
                 )}
               </div>
 
-              {/* Expected Completion Date – DD MMM YYYY display, YYYY-MM-DD value */}
+              {/* Expected Completion Date – DD MMM YYYY display, YYYY-MM-DD value (Step B: mandatory) */}
               <div>
-                <label className="text-sm text-gray-400 mb-2 block">Expected Completion Date</label>
+                <label className="text-sm text-gray-400 mb-2 block">Expected Completion Date *</label>
                 <DatePicker
                   value={editingWorkerData.expectedCompletionDate || ''}
                   onChange={(v) => setEditingWorkerData(prev => ({ ...prev, expectedCompletionDate: v }))}

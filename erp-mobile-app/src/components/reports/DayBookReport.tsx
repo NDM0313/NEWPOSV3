@@ -99,8 +99,8 @@ export function DayBookReport({ onBack, user: _user, companyId, branchId }: DayB
           </div>
         ) : (
           <>
-            <div className="overflow-x-auto -mx-4">
-              <div className="min-w-[720px] px-4">
+            <div className="w-full max-w-full overflow-x-auto -mx-4 mobile-table-scroll">
+              <div className="min-w-[720px] px-4 mobile-table-inner">
                 <div className="bg-[#1F2937] border border-[#374151] rounded-t-xl overflow-hidden">
                   <div className="grid grid-cols-[60px_72px_1fr_100px_80px_80px] gap-2 px-3 py-2.5 bg-[#374151]/50 text-[#9CA3AF] text-xs font-medium">
                     <span>Time</span>

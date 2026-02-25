@@ -500,6 +500,8 @@ export function AddProductFlow({ onClose, onSave, product: editProduct, companyI
               <label className="block text-sm text-[#9CA3AF] mb-1.5">Cost Price</label>
               <input
                 type="number"
+                inputMode="decimal"
+                pattern="[0-9.]*"
                 value={formData.costPrice}
                 onChange={(e) => handleInputChange('costPrice', e.target.value)}
                 placeholder="0"
@@ -510,6 +512,8 @@ export function AddProductFlow({ onClose, onSave, product: editProduct, companyI
               <label className="block text-sm text-[#9CA3AF] mb-1.5">Retail Price *</label>
               <input
                 type="number"
+                inputMode="decimal"
+                pattern="[0-9.]*"
                 value={formData.retailPrice}
                 onChange={(e) => handleInputChange('retailPrice', e.target.value)}
                 placeholder="0"
@@ -520,6 +524,8 @@ export function AddProductFlow({ onClose, onSave, product: editProduct, companyI
               <label className="block text-sm text-[#9CA3AF] mb-1.5">Wholesale Price</label>
               <input
                 type="number"
+                inputMode="decimal"
+                pattern="[0-9.]*"
                 value={formData.wholesalePrice}
                 onChange={(e) => handleInputChange('wholesalePrice', e.target.value)}
                 placeholder="0"
@@ -537,6 +543,8 @@ export function AddProductFlow({ onClose, onSave, product: editProduct, companyI
                 <label className="block text-sm text-[#9CA3AF] mb-1.5">Current Stock</label>
                 <input
                   type="number"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
                   value={formData.stock}
                   onChange={(e) => handleInputChange('stock', e.target.value)}
                   placeholder="0"
@@ -547,6 +555,8 @@ export function AddProductFlow({ onClose, onSave, product: editProduct, companyI
                 <label className="block text-sm text-[#9CA3AF] mb-1.5">Min Stock</label>
                 <input
                   type="number"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
                   value={formData.minStock}
                   onChange={(e) => handleInputChange('minStock', e.target.value)}
                   placeholder="0"

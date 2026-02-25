@@ -120,7 +120,7 @@ export function DateTimePicker({ value, onChange, onClose, showTime = false, lab
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
-      <div className="w-[90%] max-w-[360px]">
+      <div className="w-full max-w-full sm:max-w-[360px]">
         <div className="bg-gradient-to-br from-[#8B5CF6] to-[#7C3AED] rounded-t-2xl px-4 py-4 border-b border-[#374151]">
           <p className="text-center text-sm font-bold text-white tracking-wider">{label}</p>
         </div>

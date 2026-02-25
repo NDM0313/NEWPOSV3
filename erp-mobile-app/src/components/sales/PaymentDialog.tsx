@@ -379,10 +379,14 @@ export function PaymentDialog({ onBack, totalAmount, companyId, onComplete, savi
               {paymentMode === 'partial' && (
                 <input
                   type="number"
+                  inputMode="decimal"
+                  pattern="[0-9.]*"
+                  min="0"
+                  step="0.01"
                   value={amount}
                   onChange={(e) => setAmount(e.target.value)}
                   placeholder="Enter amount"
-                  className="w-full mt-3 h-10 bg-[#111827] border border-[#374151] rounded-lg px-3 text-sm focus:outline-none focus:border-[#3B82F6] text-white"
+                  className="w-full max-w-full min-w-0 mt-3 h-10 bg-[#111827] border border-[#374151] rounded-lg px-3 text-sm focus:outline-none focus:border-[#3B82F6] text-white box-border"
                   onClick={(e) => e.stopPropagation()}
                 />
               )}

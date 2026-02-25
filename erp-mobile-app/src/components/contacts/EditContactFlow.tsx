@@ -174,6 +174,8 @@ export function EditContactFlow({ contact, onBack, onSubmit, error }: EditContac
                 <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 text-[#6B7280]" size={18} />
                 <input
                   type="number"
+                  inputMode="decimal"
+                  pattern="[0-9.]*"
                   value={formData.workerRate || ''}
                   onChange={(e) => setFormData({ ...formData, workerRate: parseFloat(e.target.value) || 0 })}
                   placeholder="350"
@@ -219,6 +221,8 @@ export function EditContactFlow({ contact, onBack, onSubmit, error }: EditContac
               <p className="text-xs text-[#9CA3AF] mb-2">Positive = Receivable, Negative = Payable</p>
               <input
                 type="number"
+                inputMode="decimal"
+                pattern="[0-9.]*"
                 value={formData.balance || ''}
                 onChange={(e) => setFormData({ ...formData, balance: parseFloat(e.target.value) || 0 })}
                 placeholder="0"
@@ -230,6 +234,8 @@ export function EditContactFlow({ contact, onBack, onSubmit, error }: EditContac
                 <label className="block text-sm font-medium text-[#D1D5DB] mb-2">Credit Limit</label>
                 <input
                   type="number"
+                  inputMode="decimal"
+                  pattern="[0-9.]*"
                   value={formData.creditLimit || ''}
                   onChange={(e) => setFormData({ ...formData, creditLimit: parseFloat(e.target.value) || 0 })}
                   placeholder="100000"

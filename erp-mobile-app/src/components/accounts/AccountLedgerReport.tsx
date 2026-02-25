@@ -142,8 +142,8 @@ export function AccountLedgerReport({ onBack, companyId, branchId: _branchId }: 
             <Loader2 className="w-8 h-8 text-[#6366F1] animate-spin" />
           </div>
         ) : (
-          <div className="overflow-x-auto -mx-4">
-            <div className="min-w-[640px] px-4">
+          <div className="w-full max-w-full overflow-x-auto -mx-4 mobile-table-scroll">
+            <div className="min-w-[640px] px-4 mobile-table-inner">
               <div className="bg-[#1F2937] border border-[#374151] rounded-xl overflow-hidden">
                 <div className="grid grid-cols-[80px_72px_1fr_80px_80px_100px] gap-2 px-3 py-2.5 bg-[#374151]/50 text-[#9CA3AF] text-xs font-medium">
                   <span>Date</span>

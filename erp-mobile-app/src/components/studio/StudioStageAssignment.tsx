@@ -263,6 +263,8 @@ export function StudioStageAssignment({ companyId, onBack, onComplete, existingS
                   <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[#9CA3AF]">Rs.</span>
                   <input
                     type="number"
+                    inputMode="decimal"
+                    pattern="[0-9.]*"
                     value={internalCost}
                     onChange={(e) => setInternalCost(e.target.value)}
                     placeholder="500"
@@ -303,6 +305,8 @@ export function StudioStageAssignment({ companyId, onBack, onComplete, existingS
                       <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[#9CA3AF]">Rs.</span>
                       <input
                         type="number"
+                        inputMode="decimal"
+                        pattern="[0-9.]*"
                         value={customerCharge}
                         onChange={(e) => setCustomerCharge(e.target.value)}
                         placeholder="800"

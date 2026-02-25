@@ -189,6 +189,6 @@ After Phase 1–2, the flow is strict (sale linked, worker required, next stage 
 - [ ] Final Complete: idempotent worker ledger; safe order or transaction.
 - [ ] UI: Worker mandatory; "Add next process" only when all stages received.
 - [ ] DB: sale_id NOT NULL on studio_productions (after backfill).
-- [ ] Optional: expected_completion_date on stages; cost summary + confirm on Final.
+- [x] Step B done: expected_completion_date required on assign; worker + expected date mandatory in UI and backend (assignWorkerToStage, updateStage when status=assigned); cost summary + confirm on Final optional.
 
 Once this is done, Studio Production is safe and predictable; then it can be promoted from Test Page to main flow.

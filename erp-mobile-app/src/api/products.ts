@@ -125,21 +125,47 @@ export interface RentalProduct {
 
 export async function getRentalProducts(companyId: string): Promise<{ data: RentalProduct[]; error: string | null }> {
   if (!isSupabaseConfigured) return { data: [], error: 'App not configured.' };
+
   const { data, error } = await supabase
     .from('products')
-    .select('id, name, sku, rental_price_daily, is_rentable')
+    .select('id, name, sku, rental_price_daily, is_rentable, retail_price')
     .eq('company_id', companyId)
-    .eq('is_rentable', true)
+    .eq('is_active', true)
     .order('name');
 
-  if (error) return { data: [], error: error.message };
-  return {
-    data: (data || []).map((r: Record<string, unknown>) => ({
+  if (error) {
+    return { data: [], error: error.message };
+  }
+
+  const rows = (data || []) as Array<Record<string, unknown>>;
+  const mapped: RentalProduct[] = rows
+    .map((r) => ({
       id: String(r.id ?? ''),
       name: String(r.name ?? '—'),
       sku: String(r.sku ?? '—'),
       rentPricePerDay: Number(r.rental_price_daily) || 0,
-      isRentable: !!r.is_rentable,
+      isRentable: r.is_rentable === true || (Number(r.rental_price_daily) || 0) > 0,
+    }))
+    .filter((p) => p.isRentable || (p.rentPricePerDay > 0));
+
+  if (mapped.length === 0 && rows.length > 0) {
+    const retailAsRent = rows.map((r) => ({
+      id: String(r.id ?? ''),
+      name: String(r.name ?? '—'),
+      sku: String(r.sku ?? '—'),
+      rentPricePerDay: Number(r.rental_price_daily) || Number(r.retail_price) / 5 || 0,
+      isRentable: true,
+    }));
+    return { data: retailAsRent, error: null };
+  }
+
+  return {
+    data: mapped.length > 0 ? mapped : rows.map((r) => ({
+      id: String(r.id ?? ''),
+      name: String(r.name ?? '—'),
+      sku: String(r.sku ?? '—'),
+      rentPricePerDay: Number(r.rental_price_daily) || Number(r.retail_price) / 5 || 0,
+      isRentable: true,
     })),
     error: null,
   };
