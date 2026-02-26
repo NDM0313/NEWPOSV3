@@ -13,6 +13,7 @@ SSH_HOST="${SSH_HOST:-dincouture-vps}"
 VPS_PROJECT="${VPS_PROJECT:-/root/NEWPOSV3}"
 
 echo "=== 1. Git add + commit + push ==="
+echo "  Branch: $BRANCH"
 git add .
 if git diff --cached --quiet; then
   echo "No changes to commit."
@@ -25,7 +26,7 @@ fi
 echo ""
 echo "=== 2. VPS deploy (SSH) ==="
 for attempt in 1 2 3; do
-  if ssh "$SSH_HOST" "cd $VPS_PROJECT && git fetch origin main 2>/dev/null; git reset --hard origin/main 2>/dev/null; bash deploy/deploy.sh"; then
+  if ssh "$SSH_HOST" "cd $VPS_PROJECT && BRANCH=$BRANCH git fetch origin $BRANCH 2>/dev/null; git reset --hard origin/$BRANCH 2>/dev/null; BRANCH=$BRANCH bash deploy/deploy.sh"; then
     echo "[OK] VPS deploy complete"
     exit 0
   fi

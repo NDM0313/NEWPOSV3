@@ -5,7 +5,7 @@
 | Step | Action |
 |------|--------|
 | 1 | Mac: Push to GitHub |
-| 2 | VPS: Auto pull + build + restart |
+| 2 | VPS: Auto pull + build + restart (GitHub Actions or cron) |
 | 3 | Windows: `git pull` only |
 
 ---
@@ -25,13 +25,15 @@ Or with auto message:
 ./scripts/git-push-and-deploy.sh
 ```
 
+Uses current branch; deploys via SSH to VPS (3 retries).
+
 ### Mac – Manual Steps
 
 ```bash
 git add .
 git commit -m "ERP: your message"
 git push origin before-mobile-replace
-ssh dincouture-vps "cd /root/NEWPOSV3 && BRANCH=before-mobile-replace bash scripts/deploy-erp-vps.sh"
+ssh dincouture-vps "cd /root/NEWPOSV3 && BRANCH=before-mobile-replace bash deploy/deploy.sh"
 ```
 
 ### Windows – Sync Only
@@ -42,9 +44,38 @@ git pull origin before-mobile-replace
 
 ---
 
+## Auto-Deploy Options
+
+### A) GitHub Actions (recommended)
+
+On push to `main` or `before-mobile-replace`, GitHub Actions SSHs to VPS and runs full deploy.
+
+**Setup:** Add secret in repo → Settings → Secrets and variables → Actions:
+- `VPS_SSH_KEY`: Private key for `dincouture-vps` (contents of `~/.ssh/your-ed25519-key`)
+
+Workflow: `.github/workflows/deploy-vps.yml`
+
+### B) VPS Cron (poll GitHub)
+
+On VPS, run every 5 min to auto-pull and deploy when remote changes:
+
+```bash
+chmod +x deploy/vps-auto-pull-cron.sh
+crontab -e
+# Add:
+*/5 * * * * /root/NEWPOSV3/deploy/vps-auto-pull-cron.sh
+```
+
+Set `BRANCH=before-mobile-replace` in crontab if needed:
+```
+*/5 * * * * BRANCH=before-mobile-replace /root/NEWPOSV3/deploy/vps-auto-pull-cron.sh
+```
+
+---
+
 ## VPS Setup (One-Time)
 
-1. **Copy deploy script to VPS**
+1. **Copy deploy script to VPS** (if using legacy deploy.sh at root)
 
 ```bash
 scp deploy/VPS-deploy.sh dincouture-vps:/root/NEWPOSV3/deploy.sh
@@ -54,6 +85,8 @@ ssh dincouture-vps "chmod +x /root/NEWPOSV3/deploy.sh"
 2. **Manual deploy from VPS**
 
 ```bash
+ssh dincouture-vps "cd /root/NEWPOSV3 && bash deploy/deploy.sh"
+# Or if deploy.sh at root:
 ssh dincouture-vps "cd /root/NEWPOSV3 && bash deploy.sh"
 ```
 
@@ -75,7 +108,7 @@ After this, every `git commit` will auto-push. To disable: `rm .git/hooks/post-c
 |----------|---------|-------------|
 | SSH_HOST | dincouture-vps | SSH host for VPS |
 | VPS_PROJECT | /root/NEWPOSV3 | Project path on VPS |
-| BRANCH | before-mobile-replace | Git branch |
+| BRANCH | current branch / before-mobile-replace | Git branch |
 
 ---
 

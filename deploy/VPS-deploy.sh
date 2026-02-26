@@ -19,7 +19,7 @@ git reset --hard "origin/$BRANCH"
 echo "[OK] Git synced"
 
 # 2. Run full deploy (Docker build + up)
-bash scripts/deploy-erp-vps.sh
+bash deploy/deploy.sh
 echo "[OK] Deploy complete"
 
 # 3. Verify

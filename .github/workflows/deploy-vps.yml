@@ -1,0 +1,33 @@
+# Auto-deploy to VPS on push to main or before-mobile-replace
+# Requires GitHub secret: VPS_SSH_KEY (private key for dincouture-vps)
+# VPS: 72.62.254.176, user root (from .cursor/rules/vps-ssh.mdc)
+name: Deploy to VPS
+
+on:
+  push:
+    branches:
+      - main
+      - before-mobile-replace
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy to VPS
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 72.62.254.176
+          username: root
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: 22
+          script: |
+            set -e
+            cd /root/NEWPOSV3
+            BRANCH="${{ github.ref_name }}"
+            echo "=== Auto-deploy $(date) ==="
+            echo "  Branch: $BRANCH"
+            git fetch origin "$BRANCH"
+            git reset --hard "origin/$BRANCH"
+            export BRANCH
+            bash deploy/deploy.sh
+            echo "=== Deploy complete ==="

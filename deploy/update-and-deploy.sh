@@ -3,6 +3,7 @@
 # cd /root/NEWPOSV3 && bash deploy/update-and-deploy.sh
 set -e
 cd "$(dirname "$0")/.."
-git fetch origin main 2>/dev/null || true
-git reset --hard origin/main 2>/dev/null || true
+BRANCH="${BRANCH:-main}"
+git fetch origin "$BRANCH" 2>/dev/null || true
+git reset --hard "origin/$BRANCH" 2>/dev/null || true
 bash deploy/deploy.sh
