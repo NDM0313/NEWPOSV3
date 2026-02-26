@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase';
+import { activityLogService } from '@/app/services/activityLogService';
 
 export interface Purchase {
   id?: string;
@@ -639,7 +640,18 @@ export const purchaseService = {
       .single();
 
     if (error) throw error;
-    
+
+    // Activity log for purchase timeline
+    activityLogService.logActivity({
+      companyId,
+      module: 'purchase',
+      entityId: purchaseId,
+      action: 'payment_added',
+      amount,
+      paymentMethod: paymentMethod as string,
+      description: `Payment of Rs ${Number(amount).toLocaleString()} recorded for purchase`,
+    }).catch((err) => console.warn('[PURCHASE SERVICE] Activity log failed:', err));
+
     // 🔧 FIX 3: PURCHASE PAYMENT JOURNAL ENTRY (MANDATORY)
     // CRITICAL: ALWAYS create journal entry for purchase payment
     // Rule: Accounts Payable Dr, Cash/Bank Cr

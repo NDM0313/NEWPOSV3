@@ -225,6 +225,21 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
     }
   }, []);
 
+  // CRITICAL FIX: Load activity logs (defined before useEffect that uses it)
+  const loadActivityLogs = useCallback(async (purchaseId: string) => {
+    if (!companyId || !purchaseId) return;
+    setLoadingActivityLogs(true);
+    try {
+      const logs = await activityLogService.getEntityActivityLogs(companyId, 'purchase', purchaseId);
+      setActivityLogs(logs);
+    } catch (error) {
+      console.error('[VIEW PURCHASE] Error loading activity logs:', error);
+      setActivityLogs([]);
+    } finally {
+      setLoadingActivityLogs(false);
+    }
+  }, [companyId]);
+
   // Load purchase data from context (TASK 2 & 3 FIX - Real data instead of mock)
   useEffect(() => {
     if (isOpen && purchaseId) {
@@ -273,8 +288,9 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
               setSupplierCode(null);
             }
             
-            // CRITICAL FIX: Load payments breakdown - use database ID
+            // CRITICAL FIX: Load payments breakdown and activity timeline
             await loadPayments(purchaseData.id);
+            loadActivityLogs(purchaseData.id);
           } else {
             // Fallback to context
             console.log('[VIEW PURCHASE] Purchase not found in database, trying context...');
@@ -282,8 +298,8 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
             if (contextPurchase) {
               console.log('[VIEW PURCHASE] Found purchase in context, ID:', contextPurchase.id);
               setPurchase(contextPurchase);
-              // Use context purchase ID (which should be the database UUID)
               await loadPayments(contextPurchase.id);
+              loadActivityLogs(contextPurchase.id);
             } else {
               console.error('[VIEW PURCHASE] Purchase not found in context either, purchaseId:', purchaseId);
             }
@@ -295,8 +311,8 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
           if (contextPurchase) {
             console.log('[VIEW PURCHASE] Fallback: Using context purchase, ID:', contextPurchase.id);
             setPurchase(contextPurchase);
-            // Use context purchase ID (which should be the database UUID)
             await loadPayments(contextPurchase.id);
+            loadActivityLogs(contextPurchase.id);
           } else {
             // If context also doesn't have it, show error
             console.error('[VIEW PURCHASE] Purchase not found in context either');
@@ -312,7 +328,7 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
       // Clear payments when drawer closes
       setPayments([]);
     }
-  }, [isOpen, purchaseId, getPurchaseById, companyId, loadPayments]);
+  }, [isOpen, purchaseId, getPurchaseById, companyId, loadPayments, loadActivityLogs]);
 
   // Load already returned quantities and pieces when purchase is loaded
   useEffect(() => {
@@ -529,21 +545,6 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
     }
   };
 
-  // CRITICAL FIX: Load activity logs
-  const loadActivityLogs = useCallback(async (purchaseId: string) => {
-    if (!companyId) return;
-    setLoadingActivityLogs(true);
-    try {
-      const logs = await activityLogService.getEntityActivityLogs(companyId, 'purchase', purchaseId);
-      setActivityLogs(logs);
-    } catch (error) {
-      console.error('[VIEW PURCHASE] Error loading activity logs:', error);
-      setActivityLogs([]);
-    } finally {
-      setLoadingActivityLogs(false);
-    }
-  }, [companyId]);
-  
   // CRITICAL FIX: Reload purchase data (called after payment is added)
   const reloadPurchaseData = useCallback(async () => {
     if (!purchaseId) return;
@@ -552,13 +553,13 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
       if (purchaseData) {
         const convertedPurchase = convertFromSupabasePurchase(purchaseData);
         setPurchase(convertedPurchase);
-        // Reload payments - use database ID
         await loadPayments(purchaseData.id);
+        await loadActivityLogs(purchaseData.id);
       }
     } catch (error: any) {
       console.error('[VIEW PURCHASE] Error reloading purchase:', error?.message || error);
     }
-  }, [purchaseId, loadPayments]);
+  }, [purchaseId, loadPayments, loadActivityLogs]);
   
   // CRITICAL FIX: Listen for payment added event
   useEffect(() => {
@@ -1757,12 +1758,12 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
               
               await Promise.race([deletePromise, timeoutPromise]);
               
-              // CRITICAL FIX: Log activity
+              // CRITICAL FIX: Log activity (module 'purchase' so it appears in purchase Activity Timeline)
               if (companyId) {
                 try {
                   await activityLogService.logActivity({
                     companyId,
-                    module: 'payment',
+                    module: 'purchase',
                     entityId: purchase.id,
                     entityReference: purchase.purchaseNo,
                     action: 'payment_deleted',
@@ -1771,13 +1772,14 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
                     performedBy: user?.id || undefined,
                     description: `Payment of ${formatCurrency(paymentToDelete.amount)} deleted from purchase ${purchase.purchaseNo}`,
                   });
+                  await loadActivityLogs(purchase.id);
                 } catch (logError) {
                   console.error('[VIEW PURCHASE] Error logging payment deletion:', logError);
                 }
               }
-              
+
               toast.success('Payment deleted successfully. Reverse entry created.');
-              
+
               // Use purchase.id (database UUID) for payment operations
               if (purchase?.id) {
                 await Promise.all([

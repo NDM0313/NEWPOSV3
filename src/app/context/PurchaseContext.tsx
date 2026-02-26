@@ -9,6 +9,7 @@ import { useAccounting } from '@/app/context/AccountingContext';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { purchaseService, Purchase as SupabasePurchase, PurchaseItem as SupabasePurchaseItem } from '@/app/services/purchaseService';
 import { productService } from '@/app/services/productService';
+import { activityLogService } from '@/app/services/activityLogService';
 import { getOrCreateLedger, addLedgerEntry } from '@/app/services/ledgerService';
 import { branchService } from '@/app/services/branchService';
 import { toast } from 'sonner';
@@ -391,6 +392,19 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
       
       // Update local state
       setPurchases(prev => [newPurchase, ...prev]);
+
+      // Activity log for timeline
+      if (companyId && user?.id) {
+        activityLogService.logActivity({
+          companyId,
+          module: 'purchase',
+          entityId: newPurchase.id,
+          entityReference: newPurchase.purchaseNo,
+          action: 'create',
+          performedBy: user.id,
+          description: `Purchase ${newPurchase.purchaseNo} created`,
+        }).catch((err) => console.warn('[PURCHASE CONTEXT] Activity log failed:', err));
+      }
 
       // 🔧 FIX 2: UNPAID PURCHASE JOURNAL ENTRY (MANDATORY)
       // CRITICAL: ALWAYS create journal entry for purchase (paid or unpaid)

@@ -7,6 +7,7 @@ import { contactService } from '@/app/services/contactService';
 import { saleService } from '@/app/services/saleService';
 import { saleReturnService } from '@/app/services/saleReturnService';
 import { activityLogService } from '@/app/services/activityLogService';
+import { studioProductionService } from '@/app/services/studioProductionService';
 import { InvoicePrintLayout } from '../shared/InvoicePrintLayout';
 import { PaymentDeleteConfirmationModal } from '../shared/PaymentDeleteConfirmationModal';
 import { UnifiedPaymentDialog } from '../shared/UnifiedPaymentDialog';
@@ -34,7 +35,10 @@ import {
   Paperclip,
   Image as ImageIcon,
   File,
-  RotateCcw
+  RotateCcw,
+  ChevronDown,
+  ChevronUp,
+  Scissors
 } from 'lucide-react';
 import { Button } from "../ui/button";
 import { Badge } from "../ui/badge";
@@ -58,6 +62,10 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
+  DropdownMenuSub,
+  DropdownMenuSubTrigger,
+  DropdownMenuSubContent,
+  DropdownMenuSeparator,
 } from "../ui/dropdown-menu";
 import {
   Dialog,
@@ -143,6 +151,45 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
   const [activeTab, setActiveTab] = useState<'details' | 'payments' | 'history'>('details');
   const { getSaleById } = useSales();
   const { companyId, user } = useSupabase();
+  const handleShareWhatsApp = useCallback(() => {
+    if (!sale) return;
+    const studioCost = Number(sale.studioCharges ?? 0);
+    const total = (sale.total ?? 0) + studioCost;
+    const paid = payments.length > 0 ? payments.reduce((s, p) => s + (Number(p.amount) || 0), 0) : (sale.paid ?? 0);
+    const due = Math.max(0, total - paid);
+    const baseUrl = typeof window !== 'undefined' ? window.location.origin + (import.meta.env?.BASE_URL || '') : '';
+    const link = `${baseUrl}/sales?invoice=${encodeURIComponent(sale.id)}`;
+    const text = [`Invoice: ${sale.invoiceNo}`, `Customer: ${sale.customerName || 'Walk-in'}`, `Total: Rs. ${total.toLocaleString()}`, `Balance Due: Rs. ${due.toLocaleString()}`, `View: ${link}`].join('\n');
+    saleService.logShare(sale.id, 'whatsapp', user?.id).catch(() => {});
+    saleService.logSaleAction(sale.id, 'share_whatsapp', user?.id).catch(() => {});
+    window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank', 'noopener');
+    toast.success('WhatsApp share opened');
+  }, [sale, payments, user?.id]);
+  const handleSharePdf = useCallback(() => {
+    if (!sale) return;
+    setShowPrintLayout(true);
+    saleService.logShare(sale.id, 'pdf', user?.id).catch(() => {});
+    saleService.logSaleAction(sale.id, 'share_pdf', user?.id).catch(() => {});
+    toast.success('Open Print dialog to save as PDF or share');
+  }, [sale, user?.id]);
+  const handleDownloadPdf = useCallback(() => {
+    if (!sale) return;
+    setShowPrintLayout(true);
+    saleService.logSaleAction(sale.id, 'download_pdf', user?.id).catch(() => {});
+    toast.success('Use browser Print → Save as PDF');
+  }, [sale, user?.id]);
+  const handlePrintA4 = useCallback(() => {
+    if (!sale) return;
+    setShowPrintLayout(true);
+    onPrint?.(sale.id);
+    saleService.logPrint(sale.id, 'A4', user?.id).catch(() => {});
+  }, [sale, user?.id, onPrint]);
+  const handlePrintThermal = useCallback(() => {
+    if (!sale) return;
+    saleService.logPrint(sale.id, 'Thermal', user?.id).catch(() => {});
+    toast.info('Open Print and choose thermal printer (80mm/58mm)');
+    setShowPrintLayout(true);
+  }, [sale, user?.id]);
   const { inventorySettings } = useSettings();
   const { formatCurrency } = useFormatCurrency();
   const enablePacking = inventorySettings.enablePacking;
@@ -163,6 +210,9 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
   const [attachmentsDialogList, setAttachmentsDialogList] = useState<{ url: string; name: string }[] | null>(null);
   const [saleReturns, setSaleReturns] = useState<any[]>([]);
   const [loadingSaleReturns, setLoadingSaleReturns] = useState(false);
+  const [studioSummary, setStudioSummary] = useState<Awaited<ReturnType<typeof studioProductionService.getStudioSummaryBySaleId>> | null>(null);
+  const [loadingStudioSummary, setLoadingStudioSummary] = useState(false);
+  const [showStudioBreakdown, setShowStudioBreakdown] = useState(true);
 
   // Load branches for location display
   useEffect(() => {
@@ -181,6 +231,35 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
       }
     };
     loadBranches();
+  }, [companyId]);
+
+  // CRITICAL FIX: Load payments breakdown (must be defined before useEffect that uses it)
+  const loadPayments = useCallback(async (saleId: string) => {
+    setLoadingPayments(true);
+    try {
+      const fetchedPayments = await saleService.getSalePayments(saleId);
+      setPayments(fetchedPayments);
+    } catch (error) {
+      console.error('[VIEW SALE] Error loading payments:', error);
+      setPayments([]);
+    } finally {
+      setLoadingPayments(false);
+    }
+  }, []);
+
+  // CRITICAL FIX: Load activity logs (must be defined before useEffect that uses it)
+  const loadActivityLogs = useCallback(async (saleId: string) => {
+    if (!companyId) return;
+    setLoadingActivityLogs(true);
+    try {
+      const logs = await activityLogService.getEntityActivityLogs(companyId, 'sale', saleId);
+      setActivityLogs(logs);
+    } catch (error) {
+      console.error('[VIEW SALE] Error loading activity logs:', error);
+      setActivityLogs([]);
+    } finally {
+      setLoadingActivityLogs(false);
+    }
   }, [companyId]);
 
   // Load sale data from context (TASK 2 & 3 FIX - Real data instead of mock)
@@ -243,14 +322,16 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
               setCustomerCode(null);
             }
             
-            // CRITICAL FIX: Load payments breakdown
+            // CRITICAL FIX: Load payments breakdown and activity timeline
             loadPayments(saleId);
+            loadActivityLogs(saleId);
           } else {
             // Fallback to context
             const contextSale = getSaleById(saleId);
             if (contextSale) {
               setSale(contextSale);
               loadPayments(saleId);
+              loadActivityLogs(saleId);
             }
           }
         } catch (error: any) {
@@ -260,6 +341,7 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
           if (contextSale) {
             setSale(contextSale);
             loadPayments(saleId);
+            loadActivityLogs(saleId);
           } else {
             // If context also doesn't have it, show error
             console.error('[VIEW SALE] Sale not found in context either');
@@ -273,37 +355,28 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
     } else {
       setLoading(false);
     }
-  }, [isOpen, saleId, getSaleById, companyId]);
-  
-  // CRITICAL FIX: Load payments breakdown
-  const loadPayments = useCallback(async (saleId: string) => {
-    setLoadingPayments(true);
-    try {
-      const fetchedPayments = await saleService.getSalePayments(saleId);
-      setPayments(fetchedPayments);
-    } catch (error) {
-      console.error('[VIEW SALE] Error loading payments:', error);
-      setPayments([]);
-    } finally {
-      setLoadingPayments(false);
-    }
-  }, []);
+  }, [isOpen, saleId, getSaleById, companyId, loadPayments, loadActivityLogs]);
 
-  // CRITICAL FIX: Load activity logs
-  const loadActivityLogs = useCallback(async (saleId: string) => {
-    if (!companyId) return;
-    setLoadingActivityLogs(true);
-    try {
-      const logs = await activityLogService.getEntityActivityLogs(companyId, 'sale', saleId);
-      setActivityLogs(logs);
-    } catch (error) {
-      console.error('[VIEW SALE] Error loading activity logs:', error);
-      setActivityLogs([]);
-    } finally {
-      setLoadingActivityLogs(false);
+  // Load studio summary for this sale (real-time sync: productions + stages)
+  useEffect(() => {
+    if (!isOpen || !saleId) {
+      setStudioSummary(null);
+      return;
     }
-  }, [companyId]);
-  
+    let cancelled = false;
+    setLoadingStudioSummary(true);
+    studioProductionService.getStudioSummaryBySaleId(saleId).then((summary) => {
+      if (!cancelled) {
+        setStudioSummary(summary);
+      }
+    }).catch(() => {
+      if (!cancelled) setStudioSummary(null);
+    }).finally(() => {
+      if (!cancelled) setLoadingStudioSummary(false);
+    });
+    return () => { cancelled = true; };
+  }, [isOpen, saleId]);
+
   // CRITICAL FIX: Reload sale data (called after payment is added)
   const reloadSaleData = useCallback(async () => {
     if (!saleId) return;
@@ -312,13 +385,13 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
       if (saleData) {
         const convertedSale = convertFromSupabaseSale(saleData);
         setSale(convertedSale);
-        // Reload payments
         await loadPayments(saleId);
+        await loadActivityLogs(saleId);
       }
     } catch (error: any) {
       console.error('[VIEW SALE] Error reloading sale:', error?.message || error);
     }
-  }, [saleId, loadPayments]);
+  }, [saleId, loadPayments, loadActivityLogs]);
   
   // CRITICAL FIX: Listen for payment added event
   useEffect(() => {
@@ -385,7 +458,17 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
   const isPartiallyReturned = effectiveStatus === 'partially_returned';
   const statusBadgeConfig = getSaleStatusBadgeConfig(sale);
   const badge = statusBadgeConfig?.bg != null ? statusBadgeConfig : { bg: 'bg-gray-500/20', text: 'text-gray-400', border: 'border-gray-500/30', label: 'Draft' };
-  const canAddPayment = canAddPaymentToSale(sale, sale.due ?? 0);
+  // Studio cost: from sale (DB) or from studio summary (productions/stages) so total shows correctly even before DB sync
+  const studioCost = Number(sale.studioCharges ?? 0) || Number(studioSummary?.totalStudioCost ?? 0);
+  const grandTotal = (sale.total ?? 0) + studioCost;
+  // Use sum of actual payment records when loaded (single source of truth); fallback to sale.paid from DB.
+  // Fixes desktop drawer showing wrong paid amount (e.g. doubled) when sales.paid_amount is out of sync.
+  const totalPaidDisplay =
+    payments.length > 0
+      ? payments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0)
+      : (sale.paid ?? 0);
+  const dueAmount = Math.max(0, grandTotal - totalPaidDisplay);
+  const canAddPayment = canAddPaymentToSale(sale, dueAmount);
 
   const getStatusColor = (status: string) => {
     const s = (status || '').toLowerCase();
@@ -460,13 +543,10 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
               variant="ghost"
               size="sm"
               className="text-gray-400 hover:text-white hover:bg-gray-800"
-              onClick={() => {
-                setShowPrintLayout(true);
-                onPrint?.(sale.id);
-              }}
+              onClick={handlePrintA4}
             >
               <Printer size={16} className="mr-2" />
-              Print
+              Print A4
             </Button>
 
             <DropdownMenu>
@@ -479,29 +559,40 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
                   <MoreVertical size={16} />
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="bg-gray-900 border-gray-800 text-white">
+              <DropdownMenuContent align="end" className="bg-gray-900 border-gray-800 text-white w-52">
                 {!isCancelled && (
-                  <DropdownMenuItem 
-                    className="hover:bg-gray-800 cursor-pointer"
-                    onClick={() => onEdit?.(sale.id)}
-                  >
+                  <DropdownMenuItem className="hover:bg-gray-800 cursor-pointer" onClick={() => onEdit?.(sale.id)}>
                     <Edit size={14} className="mr-2" />
                     Edit Sale
                   </DropdownMenuItem>
                 )}
-                <DropdownMenuItem className="hover:bg-gray-800 cursor-pointer">
+                <DropdownMenuSub>
+                  <DropdownMenuSubTrigger className="hover:bg-gray-800 cursor-pointer">
+                    <Share2 size={14} className="mr-2" />
+                    Share
+                  </DropdownMenuSubTrigger>
+                  <DropdownMenuSubContent className="bg-gray-900 border-gray-800 text-white">
+                    <DropdownMenuItem className="hover:bg-gray-800 cursor-pointer" onClick={handleShareWhatsApp}>Share via WhatsApp</DropdownMenuItem>
+                    <DropdownMenuItem className="hover:bg-gray-800 cursor-pointer" onClick={handleSharePdf}>Share PDF</DropdownMenuItem>
+                  </DropdownMenuSubContent>
+                </DropdownMenuSub>
+                <DropdownMenuSub>
+                  <DropdownMenuSubTrigger className="hover:bg-gray-800 cursor-pointer">
+                    <Printer size={14} className="mr-2" />
+                    Print
+                  </DropdownMenuSubTrigger>
+                  <DropdownMenuSubContent className="bg-gray-900 border-gray-800 text-white">
+                    <DropdownMenuItem className="hover:bg-gray-800 cursor-pointer" onClick={handlePrintA4}>Print A4 (Regular)</DropdownMenuItem>
+                    <DropdownMenuItem className="hover:bg-gray-800 cursor-pointer" onClick={handlePrintThermal}>Print Thermal (80mm/58mm)</DropdownMenuItem>
+                  </DropdownMenuSubContent>
+                </DropdownMenuSub>
+                <DropdownMenuItem className="hover:bg-gray-800 cursor-pointer" onClick={handleDownloadPdf}>
                   <Download size={14} className="mr-2" />
-                  Export PDF
+                  Download PDF
                 </DropdownMenuItem>
-                <DropdownMenuItem className="hover:bg-gray-800 cursor-pointer">
-                  <Share2 size={14} className="mr-2" />
-                  Share
-                </DropdownMenuItem>
+                <DropdownMenuSeparator className="bg-gray-700" />
                 {!isCancelled && (
-                  <DropdownMenuItem 
-                    className="hover:bg-gray-800 cursor-pointer text-red-400"
-                    onClick={() => onDelete?.(sale.id)}
-                  >
+                  <DropdownMenuItem className="hover:bg-gray-800 cursor-pointer text-red-400" onClick={() => onDelete?.(sale.id)}>
                     <Trash2 size={14} className="mr-2" />
                     Delete
                   </DropdownMenuItem>
@@ -767,6 +858,76 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
                 </div>
               </div>
 
+              {/* Studio Cost Summary – real-time from studio_productions + stages */}
+              {(studioSummary?.hasStudio || (sale as any).studioCharges) && (
+                <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden">
+                  <button
+                    type="button"
+                    onClick={() => setShowStudioBreakdown(!showStudioBreakdown)}
+                    className="w-full px-5 py-3 bg-gray-950/50 border-b border-gray-800 flex items-center justify-between text-left hover:bg-gray-800/30 transition-colors"
+                  >
+                    <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wide flex items-center gap-2">
+                      <Scissors size={16} className="text-amber-400" />
+                      Studio Cost Summary
+                    </h3>
+                    {showStudioBreakdown ? <ChevronUp size={16} className="text-gray-500" /> : <ChevronDown size={16} className="text-gray-500" />}
+                  </button>
+                  {showStudioBreakdown && (
+                    <div className="p-5 space-y-3">
+                      {loadingStudioSummary ? (
+                        <p className="text-sm text-gray-500">Loading studio data...</p>
+                      ) : studioSummary?.hasStudio ? (
+                        <>
+                          <div className="flex justify-between text-sm">
+                            <span className="text-gray-400">Production Status</span>
+                            <span className={studioSummary.productionStatus === 'completed' ? 'text-green-400 font-medium' : 'text-amber-400 font-medium'}>
+                              {studioSummary.productionStatus === 'completed' ? 'Completed' : studioSummary.productionStatus === 'in_progress' ? 'In Progress' : 'Pending'}
+                            </span>
+                          </div>
+                          <div className="flex justify-between text-sm">
+                            <span className="text-gray-400">Total Studio Cost</span>
+                            <span className="text-white font-semibold">{formatCurrency(studioSummary.totalStudioCost)}</span>
+                          </div>
+                          <div className="flex justify-between text-sm">
+                            <span className="text-gray-400">Tasks Completed</span>
+                            <span className="text-white">{studioSummary.tasksCompleted} / {studioSummary.tasksTotal}</span>
+                          </div>
+                          {studioSummary.productionDurationDays != null && (
+                            <div className="flex justify-between text-sm">
+                              <span className="text-gray-400">Production Duration</span>
+                              <span className="text-white">{studioSummary.productionDurationDays} Day{studioSummary.productionDurationDays !== 1 ? 's' : ''}</span>
+                            </div>
+                          )}
+                          {studioSummary.completedAt && (
+                            <div className="flex justify-between text-sm">
+                              <span className="text-gray-400">Completed On</span>
+                              <span className="text-white">{new Date(studioSummary.completedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
+                            </div>
+                          )}
+                          {studioSummary.breakdown.length > 0 && (
+                            <>
+                              <Separator className="bg-gray-800" />
+                              <p className="text-xs text-gray-500 uppercase tracking-wide">Breakdown</p>
+                              {studioSummary.breakdown.map((row) => (
+                                <div key={row.stageType} className="flex justify-between text-sm">
+                                  <span className="text-gray-400">{row.label}</span>
+                                  <span className="text-white">{formatCurrency(row.amount)}</span>
+                                </div>
+                              ))}
+                            </>
+                          )}
+                        </>
+                      ) : (sale as any).studioCharges > 0 ? (
+                        <div className="flex justify-between text-sm">
+                          <span className="text-gray-400">Total Studio Cost</span>
+                          <span className="text-white font-semibold">{formatCurrency((sale as any).studioCharges)}</span>
+                        </div>
+                      ) : null}
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* Payment Summary */}
               <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden">
                 <div className="px-5 py-3 bg-gray-950/50 border-b border-gray-800">
@@ -823,20 +984,37 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
                   
                   <Separator className="bg-gray-800" />
                   
-                  <div className="flex justify-between">
-                    <span className="text-gray-300 font-semibold">Grand Total</span>
-                    <span className="text-white text-xl font-bold">{formatCurrency(sale.total)}</span>
-                  </div>
+                  {studioCost > 0 ? (
+                    <>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-gray-400">Sale Amount</span>
+                        <span className="text-white font-medium">{formatCurrency(sale.total)}</span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-gray-400">+ Studio Cost</span>
+                        <span className="text-amber-400 font-medium">{formatCurrency(studioCost)}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-300 font-semibold">Grand Total</span>
+                        <span className="text-white text-xl font-bold">{formatCurrency(grandTotal)}</span>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="flex justify-between">
+                      <span className="text-gray-300 font-semibold">Grand Total</span>
+                      <span className="text-white text-xl font-bold">{formatCurrency(sale.total)}</span>
+                    </div>
+                  )}
                   
                   <div className="flex justify-between text-sm">
                     <span className="text-gray-400">Total Paid</span>
-                    <span className="text-green-400 font-medium">{formatCurrency(sale.paid)}</span>
+                    <span className="text-green-400 font-medium">{formatCurrency(totalPaidDisplay)}</span>
                   </div>
                   
-                  {sale.due > 0 && (
+                  {dueAmount > 0 && (
                     <div className="flex justify-between">
                       <span className="text-gray-400 font-medium">Amount Due</span>
-                      <span className="text-red-400 text-lg font-bold">{formatCurrency(sale.due)}</span>
+                      <span className="text-red-400 text-lg font-bold">{formatCurrency(dueAmount)}</span>
                     </div>
                   )}
                   
@@ -986,12 +1164,12 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
                     )}
                   </div>
                   
-                  {/* Total Paid Summary */}
+                  {/* Total Paid Summary - use sum of payment records when loaded (matches mobile, avoids DB paid_amount drift) */}
                   <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-5">
                     <div className="flex justify-between items-center mb-4">
                       <div>
                         <p className="text-white font-semibold text-xl">
-{formatCurrency(sale.paid)}
+                          {formatCurrency(totalPaidDisplay)}
                         </p>
                         <p className="text-sm text-gray-400 mt-1">
                           Total Paid Amount
@@ -1007,11 +1185,11 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
                       </Badge>
                     </div>
                     
-{sale.due > 0 && canAddPayment && (
+{dueAmount > 0 && canAddPayment && (
                     <div className="flex justify-between text-sm pt-3 border-t border-gray-800">
                         <span className="text-gray-400">Amount Due:</span>
                         <span className="text-red-400 font-medium">
-{formatCurrency(sale.due)}
+{formatCurrency(dueAmount)}
                         </span>
                       </div>
                     )}
@@ -1160,10 +1338,10 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
                   ))}
                   </div>
                 </div>
-              ) : sale.paid > 0 ? (
+              ) : totalPaidDisplay > 0 ? (
                 <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-5">
                   <p className="text-white font-semibold text-lg">
-{formatCurrency(sale.paid)}
+                    {formatCurrency(totalPaidDisplay)}
                   </p>
                   <p className="text-sm text-gray-400 mt-1">
                     Total paid amount (payment details loading...)
@@ -1278,7 +1456,7 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-gray-400">Amount Due</p>
-                <p className="text-2xl font-bold text-red-400">{formatCurrency(sale.due)}</p>
+                <p className="text-2xl font-bold text-red-400">{formatCurrency(dueAmount)}</p>
               </div>
           <Button
                 onClick={() => onAddPayment?.(sale.id)}
@@ -1324,12 +1502,12 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
               
               await Promise.race([deletePromise, timeoutPromise]);
               
-              // CRITICAL FIX: Log activity
+              // CRITICAL FIX: Log activity (module 'sale' so it appears in sale Activity Timeline)
               if (companyId) {
                 try {
                   await activityLogService.logActivity({
                     companyId,
-                    module: 'payment',
+                    module: 'sale',
                     entityId: sale.id,
                     entityReference: sale.invoiceNo,
                     action: 'payment_deleted',
@@ -1338,6 +1516,7 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
                     performedBy: user?.id || undefined,
                     description: `Payment of ${formatCurrency(paymentToDelete.amount)} deleted from sale ${sale.invoiceNo}`,
                   });
+                  await loadActivityLogs(sale.id);
                 } catch (logError) {
                   console.error('[VIEW SALE] Error logging payment deletion:', logError);
                 }
@@ -1378,9 +1557,9 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
           context="customer"
           entityName={sale.customerName || 'Customer'}
           entityId={sale.customer}
-          outstandingAmount={sale.due}
-          totalAmount={sale.total}
-          paidAmount={sale.paid}
+          outstandingAmount={dueAmount}
+          totalAmount={grandTotal}
+          paidAmount={totalPaidDisplay}
           referenceNo={sale.invoiceNo}
           referenceId={sale.id}
           editMode={true}

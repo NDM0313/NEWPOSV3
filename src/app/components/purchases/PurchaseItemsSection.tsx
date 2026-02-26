@@ -438,7 +438,7 @@ export const PurchaseItemsSection: React.FC<PurchaseItemsSectionProps> = ({
                                             type="number"
                                             step={item.unitAllowDecimal === true ? "0.01" : "1"}
                                             min={0}
-                                            className="h-7 w-full text-center bg-transparent border-transparent hover:border-gray-700 focus:bg-gray-950 focus:border-blue-500 p-0.5 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                            className="h-7 w-full text-center bg-transparent border-transparent hover:border-gray-700 focus:bg-gray-950 focus:border-blue-500 p-0.5 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                                             value={item.qty === 0 ? '' : (item.unitAllowDecimal === true ? item.qty : Math.round(item.qty))}
                                             onChange={(e) => {
                                                 const raw = e.target.value;
@@ -464,7 +464,7 @@ export const PurchaseItemsSection: React.FC<PurchaseItemsSectionProps> = ({
                                         <Input 
                                             ref={(el) => (itemPriceRefs.current[item.id] = el)}
                                             type="number"
-                                            className="h-7 w-full text-right bg-transparent border-transparent hover:border-gray-700 focus:bg-gray-950 focus:border-blue-500 px-2 py-0.5 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                            className="h-7 w-full text-right bg-transparent border-transparent hover:border-gray-700 focus:bg-gray-950 focus:border-blue-500 px-2 py-0.5 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                                             value={item.price === 0 ? '' : item.price}
                                             onChange={(e) => {
                                                 const raw = e.target.value;

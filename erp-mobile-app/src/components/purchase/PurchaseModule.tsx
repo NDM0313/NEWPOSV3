@@ -1,9 +1,11 @@
-import { useState, useEffect } from 'react';
-import { ArrowLeft, ShoppingBag, Plus, Search, Package, Calendar, Loader2, MapPin } from 'lucide-react';
+import { useState, useEffect, useCallback } from 'react';
+import { ArrowLeft, ShoppingBag, Plus, Search, Package, Calendar, Loader2, MapPin, Paperclip } from 'lucide-react';
 import type { User } from '../../types';
 import * as purchasesApi from '../../api/purchases';
 import * as branchesApi from '../../api/branches';
 import { CreatePurchaseFlow } from './CreatePurchaseFlow';
+import { MobilePaySupplier } from './MobilePaySupplier';
+import { AttachmentPreviewModal } from '../sales/AttachmentPreviewModal';
 
 interface PurchaseModuleProps {
   onBack: () => void;
@@ -23,8 +25,25 @@ export function PurchaseModule({ onBack, user, companyId, branchId }: PurchaseMo
   const [branchesLoading, setBranchesLoading] = useState(false);
   const [showBranchPicker, setShowBranchPicker] = useState(false);
   const [createBranchId, setCreateBranchId] = useState<string | null>(null);
+  const [addPaymentOrder, setAddPaymentOrder] = useState<purchasesApi.PurchaseListItem | null>(null);
+  const [paymentHistory, setPaymentHistory] = useState<purchasesApi.PurchasePaymentRow[]>([]);
+  const [attachmentPreviewList, setAttachmentPreviewList] = useState<Array<{ url: string; name: string }> | null>(null);
 
   const effectiveBranchId = branchId && branchId !== 'all' ? branchId : undefined;
+
+  const loadPaymentHistory = useCallback(async (purchaseId: string) => {
+    if (!purchaseId) return;
+    const { data } = await purchasesApi.getPurchasePayments(purchaseId);
+    setPaymentHistory(data || []);
+  }, []);
+
+  useEffect(() => {
+    if (selectedOrder) {
+      loadPaymentHistory(selectedOrder.id);
+    } else {
+      setPaymentHistory([]);
+    }
+  }, [selectedOrder, loadPaymentHistory]);
   const canAddDirect = !!companyId && !!effectiveBranchId;
   const canAddWithPicker = !!companyId && branchId === 'all' && !branchesLoading && branches.length > 0;
 
@@ -224,41 +243,58 @@ export function PurchaseModule({ onBack, user, companyId, branchId }: PurchaseMo
             </div>
           </div>
 
-          <div className="bg-gradient-to-br from-[#10B981]/10 to-[#3B82F6]/10 border border-[#10B981]/30 rounded-xl p-4 space-y-2">
-            <div className="flex justify-between text-sm">
-              <span className="text-[#9CA3AF]">Paid Amount:</span>
-              <span className="text-[#10B981]">Rs. {selectedOrder.paidAmount.toLocaleString()}</span>
+          {['ordered', 'draft', 'sent', 'confirmed'].includes(selectedOrder.status) && (
+            <button
+              onClick={async () => {
+                const { error } = await purchasesApi.updatePurchaseStatus(companyId!, selectedOrder.id, 'final');
+                if (error) return;
+                const { data } = await purchasesApi.getPurchaseById(companyId!, selectedOrder.id);
+                if (data) setSelectedOrder(data);
+                purchasesApi.getPurchases(companyId!, effectiveBranchId ?? null).then(({ data: list }) => {
+                  if (list?.length) setOrders(list);
+                });
+              }}
+              className="w-full py-3 bg-[#10B981] hover:bg-[#059669] text-white rounded-xl font-medium"
+            >
+              Mark as Final
+            </button>
+          )}
+
+          {paymentHistory.length > 0 && (
+            <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">
+              <h3 className="text-sm font-medium text-[#9CA3AF] mb-3">Payment History</h3>
+              <div className="space-y-2">
+                {paymentHistory.map((p) => (
+                  <div key={p.id} className="flex justify-between items-center text-sm py-2 border-b border-[#374151] last:border-0 gap-2">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-white font-medium">Rs. {p.amount.toLocaleString()}</p>
+                      <p className="text-xs text-[#9CA3AF]">{p.method} • {p.date}</p>
+                      {p.referenceNo !== '—' && <p className="text-xs text-[#6B7280]">Ref: {p.referenceNo}</p>}
+                    </div>
+                    {p.attachments && p.attachments.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setAttachmentPreviewList(p.attachments!)}
+                        className="p-2 rounded-lg text-[#3B82F6] hover:bg-[#374151] shrink-0"
+                        aria-label="View attachments"
+                      >
+                        <Paperclip className="w-5 h-5" />
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
             </div>
-            <div className="flex justify-between text-lg font-bold">
-              <span className="text-white">Amount Due:</span>
-              <span className={getPaymentStatusColor(selectedOrder.paymentStatus)}>
-                Rs. {selectedOrder.dueAmount.toLocaleString()}
-              </span>
-            </div>
-            <div className="pt-2 border-t border-[#10B981]/30">
-              <span className={`text-xs font-medium ${getPaymentStatusColor(selectedOrder.paymentStatus)}`}>
-                {selectedOrder.paymentStatus === 'paid' && '✓ Fully Paid'}
-                {selectedOrder.paymentStatus === 'partial' && '⚠ Partially Paid'}
-                {selectedOrder.paymentStatus === 'unpaid' && '✗ Unpaid'}
-              </span>
-            </div>
-            {['ordered', 'draft', 'sent', 'confirmed'].includes(selectedOrder.status) && (
-              <button
-                onClick={async () => {
-                  const { error } = await purchasesApi.updatePurchaseStatus(companyId!, selectedOrder.id, 'final');
-                  if (error) return;
-                  const { data } = await purchasesApi.getPurchaseById(companyId!, selectedOrder.id);
-                  if (data) setSelectedOrder(data);
-                  purchasesApi.getPurchases(companyId!, effectiveBranchId ?? null).then(({ data: list }) => {
-                    if (list?.length) setOrders(list);
-                  });
-                }}
-                className="mt-3 w-full py-3 bg-[#10B981] hover:bg-[#059669] text-white rounded-lg font-medium"
-              >
-                Mark as Final
-              </button>
-            )}
-          </div>
+          )}
+
+          {attachmentPreviewList && attachmentPreviewList.length > 0 && (
+            <AttachmentPreviewModal
+              attachments={attachmentPreviewList}
+              initialIndex={0}
+              isOpen={true}
+              onClose={() => setAttachmentPreviewList(null)}
+            />
+          )}
         </div>
       </div>
     );
@@ -327,45 +363,82 @@ export function PurchaseModule({ onBack, user, companyId, branchId }: PurchaseMo
           </div>
 
           <div className="p-4 space-y-3">
-            {filteredOrders.map((order) => (
-              <button
-                key={order.id}
-                onClick={() => handleOrderClick(order)}
-                className="w-full bg-[#1F2937] border border-[#374151] rounded-xl p-4 hover:border-[#10B981] transition-all text-left"
-              >
-                <div className="flex items-start justify-between mb-3">
-                  <div>
-                    <h3 className="font-medium text-white mb-1">{order.poNo}</h3>
-                    <p className="text-sm text-[#D1D5DB]">{order.vendor}</p>
-                    <p className="text-xs text-[#9CA3AF]">{order.vendorPhone}</p>
+            {filteredOrders.map((order) => {
+              const canAddPayment = (order.status === 'final' || order.status === 'received') && order.dueAmount > 0 && (order.branchId || effectiveBranchId);
+              return (
+              <div key={order.id} className="relative bg-[#1F2937] border border-[#374151] rounded-xl overflow-hidden hover:border-[#10B981]/50 transition-all min-w-0">
+                <button
+                  onClick={() => handleOrderClick(order)}
+                  className="w-full p-4 text-left active:scale-[0.98] min-w-0 pr-12"
+                >
+                  <div className="flex items-start justify-between gap-2 mb-1">
+                    <h3 className="font-medium text-white truncate">{order.poNo}</h3>
+                    <span className="text-sm font-semibold text-[#10B981] shrink-0">Rs. {order.total.toLocaleString()}</span>
                   </div>
-                  <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(order.status)}`}>
+                  <p className="text-sm text-[#D1D5DB] truncate">{order.vendor}</p>
+                  {order.created_by_name && (
+                    <p className="text-xs text-[#9CA3AF] mt-0.5">Created by: {order.created_by_name}</p>
+                  )}
+                  <div className="flex items-center gap-2 mt-1 text-xs text-[#9CA3AF]">
+                    <Package className="w-3.5 h-3.5 shrink-0" />
+                    <span>{order.itemCount} items</span>
+                    <span className="text-[#374151]">•</span>
+                    <Calendar className="w-3.5 h-3.5 shrink-0" />
+                    <span>{order.dateDisplay ?? order.date}</span>
+                  </div>
+                  <span className={`inline-block mt-1.5 px-2 py-0.5 rounded text-xs font-medium ${getStatusColor(order.status)}`}>
                     {order.status}
                   </span>
-                </div>
 
-                <div className="flex items-center gap-2 mb-3 text-xs text-[#9CA3AF]">
-                  <Package className="w-4 h-4" />
-                  <span>{order.itemCount} items</span>
-                  <span className="text-[#374151]">•</span>
-                  <Calendar className="w-4 h-4" />
-                  <span>{order.date}</span>
-                </div>
+                  <div className="border-t border-[#374151] my-3" aria-hidden="true" />
 
-                <div className="flex items-center justify-between text-sm">
-                  <div>
-                    <span className="text-[#9CA3AF]">Total: </span>
-                    <span className="font-semibold text-white">Rs. {order.total.toLocaleString()}</span>
-                  </div>
-                  <div className="text-right">
-                    <div className="text-xs text-[#9CA3AF]">Amount Due</div>
-                    <div className={`font-semibold ${getPaymentStatusColor(order.paymentStatus)}`}>
-                      Rs. {order.dueAmount.toLocaleString()}
+                  <div className="space-y-1 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-[#9CA3AF]">Total:</span>
+                      <span className="font-medium text-white">Rs. {order.total.toLocaleString()}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-[#9CA3AF]">Paid:</span>
+                      <span className="text-[#10B981]">Rs. {order.paidAmount.toLocaleString()}</span>
+                    </div>
+                    <div className="flex justify-between items-center gap-2">
+                      <span className="text-[#9CA3AF]">Amount Due:</span>
+                      <span className={`font-medium shrink-0 ${getPaymentStatusColor(order.paymentStatus)}`}>
+                        Rs. {order.dueAmount.toLocaleString()}
+                      </span>
                     </div>
                   </div>
-                </div>
-              </button>
-            ))}
+
+                  <div className="mt-2 flex items-center gap-2 flex-wrap">
+                    {order.status === 'cancelled' && (
+                      <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-[#EF4444]/20 text-[#EF4444]">Cancelled</span>
+                    )}
+                    {order.status !== 'cancelled' && order.paymentStatus === 'paid' && (
+                      <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-[#10B981]/20 text-[#10B981]">✔ Paid</span>
+                    )}
+                    {order.status !== 'cancelled' && order.paymentStatus === 'partial' && (
+                      <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-[#F59E0B]/20 text-[#F59E0B]">Partially Paid</span>
+                    )}
+                    {order.status !== 'cancelled' && order.paymentStatus === 'unpaid' && order.dueAmount > 0 && (
+                      <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-[#6B7280]/20 text-[#9CA3AF]">Unpaid</span>
+                    )}
+                  </div>
+                </button>
+
+                {canAddPayment && (
+                  <div className="px-4 pb-3 pt-0 flex justify-end">
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); setAddPaymentOrder(order); }}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#10B981]/90 hover:bg-[#059669] text-white text-sm font-medium transition-colors"
+                    >
+                      + Add
+                    </button>
+                  </div>
+                )}
+              </div>
+              );
+            })}
 
             {filteredOrders.length === 0 && (
               <div className="text-center py-12">
@@ -375,6 +448,33 @@ export function PurchaseModule({ onBack, user, companyId, branchId }: PurchaseMo
             )}
           </div>
         </>
+      )}
+
+      {addPaymentOrder && companyId && (addPaymentOrder.branchId || effectiveBranchId) && (
+        <MobilePaySupplier
+          onClose={() => setAddPaymentOrder(null)}
+          onSuccess={() => {
+            const paidPurchaseId = addPaymentOrder.id;
+            setAddPaymentOrder(null);
+            purchasesApi.getPurchases(companyId, effectiveBranchId ?? null).then(({ data }) => {
+              if (data?.length) setOrders(data);
+            });
+            if (selectedOrder?.id === paidPurchaseId) {
+              purchasesApi.getPurchaseById(companyId, paidPurchaseId).then(({ data }) => {
+                if (data) setSelectedOrder(data);
+              });
+            }
+          }}
+          companyId={companyId}
+          branchId={addPaymentOrder.branchId || effectiveBranchId!}
+          userId={user.id}
+          purchaseId={addPaymentOrder.id}
+          poNo={addPaymentOrder.poNo}
+          supplierName={addPaymentOrder.vendor}
+          totalAmount={addPaymentOrder.total}
+          paidAmount={addPaymentOrder.paidAmount}
+          dueAmount={addPaymentOrder.dueAmount}
+        />
       )}
 
       {showBranchPicker && (

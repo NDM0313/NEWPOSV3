@@ -380,7 +380,7 @@ export const studioProductionService = {
 
       const { data: saleRow, error: saleFetchErr } = await supabase
         .from('sales')
-        .select('id, total, company_id')
+        .select('id, total, paid_amount, company_id')
         .eq('id', saleId)
         .single();
       if (saleFetchErr || !saleRow) throw new Error('Linked sale not found. Cannot complete production.');
@@ -451,14 +451,15 @@ export const studioProductionService = {
         }
       }
 
-      // 3. Sale: studio_charges and total
+      // 3. Sale: studio_charges and due_amount (do NOT merge into total; balance_due = total + studio_charges - paid_amount)
       const currentTotal = Number(saleRow.total) || 0;
-      const newTotal = currentTotal + studioCharges;
+      const paidAmount = Number((saleRow as any).paid_amount) || 0;
+      const dueAmount = Math.max(0, currentTotal + studioCharges - paidAmount);
       const { error: saleUpdateErr } = await supabase
         .from('sales')
         .update({
           studio_charges: studioCharges,
-          total: newTotal,
+          due_amount: dueAmount,
           status: 'final',
         })
         .eq('id', saleId);
@@ -1229,5 +1230,111 @@ export const studioProductionService = {
       notes: notes || `Salary payment`,
     });
     if (error) throw new Error(`Worker ledger (salary) failed: ${error.message}`);
+  },
+
+  /**
+   * Studio summary for a sale (Sales Detail page: breakdown, status, duration).
+   * Real-time: reads from studio_productions + studio_production_stages linked to sale_id.
+   */
+  async getStudioSummaryBySaleId(saleId: string): Promise<{
+    hasStudio: boolean;
+    productionStatus: 'in_progress' | 'completed' | 'none';
+    totalStudioCost: number;
+    tasksCompleted: number;
+    tasksTotal: number;
+    productionDurationDays: number | null;
+    completedAt: string | null;
+    breakdown: { stageType: string; amount: number; label: string }[];
+    productions: { id: string; productionNo: string; status: string; completedAt: string | null }[];
+  }> {
+    const empty = {
+      hasStudio: false,
+      productionStatus: 'none' as const,
+      totalStudioCost: 0,
+      tasksCompleted: 0,
+      tasksTotal: 0,
+      productionDurationDays: null,
+      completedAt: null,
+      breakdown: [],
+      productions: [],
+    };
+    try {
+      const productions = await this.getProductionsBySaleId(saleId);
+      if (!productions.length) return empty;
+
+      let totalCost = 0;
+      let tasksCompleted = 0;
+      let tasksTotal = 0;
+      const byType: Record<string, number> = {};
+      let latestCompletedAt: string | null = null;
+      let earliestStart: string | null = null;
+
+      for (const p of productions) {
+        const stages = await this.getStagesByProductionId(p.id);
+        tasksTotal += stages.length;
+        for (const s of stages) {
+          const cost = Number((s as any).cost) || 0;
+          totalCost += cost;
+          if ((s as any).status === 'completed') tasksCompleted++;
+          const t = ((s as any).stage_type || '').toLowerCase();
+          byType[t] = (byType[t] || 0) + cost;
+          const completedAt = (s as any).completed_at;
+          if (completedAt) {
+            if (!latestCompletedAt || completedAt > latestCompletedAt) latestCompletedAt = completedAt;
+          }
+        }
+        if (p.start_date) {
+          if (!earliestStart || p.start_date < earliestStart) earliestStart = p.start_date;
+        }
+        if ((p as any).completed_at && (!latestCompletedAt || (p as any).completed_at > latestCompletedAt)) {
+          latestCompletedAt = (p as any).completed_at;
+        }
+      }
+
+      const stageLabels: Record<string, string> = {
+        dyer: 'Dyeing',
+        dyeing: 'Dyeing',
+        stitching: 'Stitching',
+        handwork: 'Handwork',
+        embroidery: 'Embroidery',
+      };
+      const breakdown = Object.entries(byType)
+        .filter(([, amt]) => amt > 0)
+        .map(([stageType, amount]) => ({
+          stageType,
+          amount,
+          label: stageLabels[stageType] || stageType.charAt(0).toUpperCase() + stageType.slice(1),
+        }))
+        .sort((a, b) => b.amount - a.amount);
+
+      const allCompleted = productions.every((p) => p.status === 'completed');
+      const anyInProgress = productions.some((p) => p.status === 'in_progress');
+      let productionDurationDays: number | null = null;
+      if (earliestStart && latestCompletedAt) {
+        const start = new Date(earliestStart).getTime();
+        const end = new Date(latestCompletedAt).getTime();
+        productionDurationDays = Math.max(0, Math.ceil((end - start) / (24 * 60 * 60 * 1000)));
+      }
+
+      return {
+        hasStudio: true,
+        productionStatus: allCompleted ? 'completed' : anyInProgress ? 'in_progress' : 'none',
+        totalStudioCost: totalCost,
+        tasksCompleted,
+        tasksTotal,
+        productionDurationDays,
+        completedAt: latestCompletedAt,
+        breakdown,
+        productions: productions.map((p) => ({
+          id: p.id,
+          productionNo: p.production_no,
+          status: p.status,
+          completedAt: (p as any).completed_at || null,
+        })),
+      };
+    } catch (e: any) {
+      if (e?.code === 'PGRST116' || e?.message?.includes('does not exist')) return empty;
+      throw e;
+    }
   },
 };

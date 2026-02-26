@@ -23,6 +23,7 @@ export function useCheckPermission() {
     checkPermission,
     canEditSale: checkPermissionUtil(currentUser, 'sales', 'edit'),
     canDeleteSale: checkPermissionUtil(currentUser, 'sales', 'delete'),
+    canCancelSale: checkPermissionUtil(currentUser, 'sales', 'cancel'),
     canDeletePurchase: checkPermissionUtil(currentUser, 'purchases', 'delete'),
     canViewReports: checkPermissionUtil(currentUser, 'reports', 'view'),
     canAccessAccounting: checkPermissionUtil(currentUser, 'accounting', 'view'),

@@ -4,7 +4,7 @@ import {
   MoreVertical, Eye, Edit, Trash2, FileText, Phone, MapPin,
   Package, Truck, CheckCircle, Clock, XCircle, AlertCircle,
   UserCheck, Receipt, Loader2, PackageCheck, PackageX, ChevronDown, ChevronUp,
-  RotateCcw, Paperclip, X, Zap, Store, Printer, Download
+  RotateCcw, Paperclip, X, Zap, Store, Printer, Download, Share2
 } from 'lucide-react';
 import { Button } from "@/app/components/ui/button";
 import { Badge } from "@/app/components/ui/badge";
@@ -19,6 +19,9 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubTrigger,
+  DropdownMenuSubContent,
 } from "@/app/components/ui/dropdown-menu";
 import {
   AlertDialog,
@@ -67,10 +70,10 @@ import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
 
 export const SalesPage = () => {
   const { openDrawer, setCurrentView } = useNavigation();
-  const { canEditSale, canDeleteSale, canCreateSale } = useCheckPermission();
+  const { canEditSale, canDeleteSale, canCancelSale, canCreateSale } = useCheckPermission();
   const { formatCurrency } = useFormatCurrency();
   const { sales, deleteSale, updateSale, recordPayment, updateShippingStatus, refreshSales, loading } = useSales();
-  const { companyId, branchId } = useSupabase();
+  const { companyId, branchId, user } = useSupabase();
   const { startDate, endDate } = useDateRange();
   const [searchTerm, setSearchTerm] = useState('');
   const [filterOpen, setFilterOpen] = useState(false);
@@ -275,9 +278,45 @@ export const SalesPage = () => {
         break;
         
       case 'print_invoice':
-        // Print invoice - opens print layout in ViewSaleDetailsDrawer
+      case 'print_a4':
         setViewDetailsOpen(true);
+        saleService.logPrint(sale.id, 'A4', user?.id).catch(() => {});
         toast.success('Opening invoice for printing');
+        break;
+      case 'print_thermal':
+        setViewDetailsOpen(true);
+        setSelectedSale(sale);
+        saleService.logPrint(sale.id, 'Thermal', user?.id).catch(() => {});
+        toast.success('Open invoice and use Print → Thermal');
+        break;
+      case 'share_whatsapp': {
+        const due = getEffectiveDue(sale);
+        const total = (sale.total ?? 0) + (sale.studioCharges ?? 0);
+        const baseUrl = window.location.origin + (import.meta.env?.BASE_URL || '');
+        const link = `${baseUrl}/sales?invoice=${encodeURIComponent(sale.id)}`;
+        const text = [
+          `Invoice: ${sale.invoiceNo}`,
+          `Customer: ${sale.customerName || 'Walk-in'}`,
+          `Total: Rs. ${total.toLocaleString()}`,
+          `Balance Due: Rs. ${due.toLocaleString()}`,
+          `View: ${link}`,
+        ].join('\n');
+        saleService.logShare(sale.id, 'whatsapp', user?.id).catch(() => {});
+        saleService.logSaleAction(sale.id, 'share_whatsapp', user?.id).catch(() => {});
+        window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank', 'noopener');
+        toast.success('WhatsApp share opened');
+        break;
+      }
+      case 'share_pdf':
+        setViewDetailsOpen(true);
+        saleService.logShare(sale.id, 'pdf', user?.id).catch(() => {});
+        saleService.logSaleAction(sale.id, 'share_pdf', user?.id).catch(() => {});
+        toast.success('Open invoice and use Download PDF or Print');
+        break;
+      case 'download_pdf':
+        setViewDetailsOpen(true);
+        saleService.logSaleAction(sale.id, 'download_pdf', user?.id).catch(() => {});
+        toast.success('Opening invoice — use browser Print → Save as PDF');
         break;
         
       case 'view_payments':
@@ -285,7 +324,7 @@ export const SalesPage = () => {
         break;
         
       case 'receive_payment':
-        if (!canAddPaymentToSale(sale, sale.due ?? 0)) {
+        if (!canAddPaymentToSale(sale, getEffectiveDue(sale))) {
           const effective = getEffectiveSaleStatus(sale);
           if (effective === 'cancelled') toast.error('Cannot add payment to a cancelled invoice.');
           else if (effective === 'returned') toast.error('Invoice is fully returned; no payment allowed.');
@@ -397,6 +436,7 @@ export const SalesPage = () => {
     return: true, // New column for return icon
     shipping: true,
     items: true,
+    createdBy: true, // User who created the sale (audit)
   });
   
   // Bulk selection and actions removed - using single-row actions only
@@ -417,6 +457,7 @@ export const SalesPage = () => {
     'return', // New column for return icon
     'shipping',
     'items',
+    'createdBy', // Created By (user full name)
   ]);
 
   // Columns configuration for Column Manager - ordered based on columnOrder
@@ -437,6 +478,7 @@ export const SalesPage = () => {
       return: 'Return',
       shipping: 'Shipping Status',
       items: 'Items',
+      createdBy: 'Created By',
     };
     return { key, label: labels[key] };
   });
@@ -483,6 +525,7 @@ export const SalesPage = () => {
       return: '80px',
       shipping: '120px',
       items: '80px',
+      createdBy: '120px',
     };
     return widths[key] || '100px';
   };
@@ -504,6 +547,7 @@ export const SalesPage = () => {
     return: 'text-center',
     shipping: 'text-center',
     items: 'text-center',
+    createdBy: 'text-center',
   };
 
   // Build grid template columns string based on column order
@@ -604,7 +648,7 @@ export const SalesPage = () => {
   }, [sales, startDate, endDate, searchTerm, dateFilter, customerFilter, paymentStatusFilter, saleStatusFilter, shippingStatusFilter, branchFilter, paymentMethodFilter]);
 
   // Sort state: default date descending (latest first)
-  type SaleSortKey = 'date' | 'invoiceNo' | 'customer' | 'location' | 'saleStatus' | 'paymentStatus' | 'total' | 'paid' | 'due' | 'returnDue' | 'return' | 'shipping' | 'items';
+  type SaleSortKey = 'date' | 'invoiceNo' | 'customer' | 'location' | 'saleStatus' | 'paymentStatus' | 'total' | 'paid' | 'due' | 'returnDue' | 'return' | 'shipping' | 'items' | 'createdBy';
   const [sortKey, setSortKey] = useState<SaleSortKey>('date');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
 
@@ -613,6 +657,7 @@ export const SalesPage = () => {
     if (key === 'customer') return s.customerName || s.customer || '';
     if (key === 'shipping') return s.shippingStatus || '';
     if (key === 'items') return s.itemsCount ?? s.items?.length ?? 0;
+    if (key === 'createdBy') return s.createdBy ?? '';
     const v = (s as any)[key];
     if (typeof v === 'number') return v;
     return String(v ?? '');
@@ -639,13 +684,17 @@ export const SalesPage = () => {
     setCurrentPage(1);
   };
 
-  // Calculate summary
+  // Effective due = (total + studio cost) - paid (so studio sales show correct balance)
+  const getEffectiveDue = useCallback((s: Sale) =>
+    Math.max(0, (s.total ?? 0) + (s.studioCharges ?? 0) - (s.paid ?? 0)), []);
+
+  // Calculate summary (use effective due for totalDue)
   const summary = useMemo(() => ({
     totalSales: sortedSales.reduce((sum, s) => sum + s.total, 0),
     totalPaid: sortedSales.reduce((sum, s) => sum + s.paid, 0),
-    totalDue: sortedSales.reduce((sum, s) => sum + s.due, 0),
+    totalDue: sortedSales.reduce((sum, s) => sum + getEffectiveDue(s), 0),
     invoiceCount: sortedSales.length,
-  }), [sortedSales]);
+  }), [sortedSales, getEffectiveDue]);
 
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
@@ -659,6 +708,42 @@ export const SalesPage = () => {
   }, [sortedSales, currentPage, pageSize]);
 
   const totalPages = Math.ceil(sortedSales.length / pageSize);
+
+  // Paid amount from payment records (fixes wrong sales.paid_amount in table - same as ViewSaleDetailsDrawer)
+  const [paidBySaleId, setPaidBySaleId] = useState<Map<string, number>>(new Map());
+  useEffect(() => {
+    if (paginatedSales.length === 0) {
+      setPaidBySaleId(new Map());
+      return;
+    }
+    let cancelled = false;
+    const saleIds = paginatedSales.map((s) => s.id);
+    Promise.all(saleIds.map((id) => saleService.getSalePayments(id)))
+      .then((results) => {
+        if (cancelled) return;
+        const map = new Map<string, number>();
+        results.forEach((payments, i) => {
+          const id = saleIds[i];
+          const sum = (payments || []).reduce((s, p) => s + (Number(p.amount) || 0), 0);
+          map.set(id, sum);
+        });
+        setPaidBySaleId(map);
+      })
+      .catch(() => {
+        if (!cancelled) setPaidBySaleId(new Map());
+      });
+    return () => { cancelled = true; };
+  }, [paginatedSales]);
+
+  const getDisplayPaid = useCallback((sale: Sale) => paidBySaleId.get(sale.id) ?? sale.paid ?? 0, [paidBySaleId]);
+  const getEffectiveDueForDisplay = useCallback(
+    (sale: Sale) =>
+      Math.max(
+        0,
+        (sale.total ?? 0) + (sale.studioCharges ?? 0) - (paidBySaleId.get(sale.id) ?? sale.paid ?? 0)
+      ),
+    [paidBySaleId]
+  );
 
   // Reset to page 1 when filters change
   React.useEffect(() => {
@@ -926,13 +1011,14 @@ export const SalesPage = () => {
       case 'paid':
         return (
           <div className="text-sm font-semibold text-green-400 tabular-nums">
-            {formatCurrency(sale.paid)}
+            {formatCurrency(getDisplayPaid(sale))}
           </div>
         );
       
       case 'due': {
+        const effectiveDue = getEffectiveDueForDisplay(sale);
         const paymentClosed = isPaymentClosedForSale(sale);
-        const canPay = canAddPaymentToSale(sale, sale.due ?? 0);
+        const canPay = canAddPaymentToSale(sale, effectiveDue);
         if (paymentClosed) {
           return (
             <span
@@ -943,7 +1029,7 @@ export const SalesPage = () => {
             </span>
           );
         }
-        if (sale.due > 0 && canPay) {
+        if (effectiveDue > 0 && canPay) {
           return (
             <button
               type="button"
@@ -953,13 +1039,13 @@ export const SalesPage = () => {
               }}
               className="text-sm font-semibold text-red-400 tabular-nums hover:text-red-300 hover:underline cursor-pointer text-right w-full"
             >
-              {formatCurrency(sale.due)}
+              {formatCurrency(effectiveDue)}
             </button>
           );
         }
         return (
-          sale.due > 0 ? (
-            <div className="text-sm font-semibold text-red-400 tabular-nums">{formatCurrency(sale.due)}</div>
+          effectiveDue > 0 ? (
+            <div className="text-sm font-semibold text-red-400 tabular-nums">{formatCurrency(effectiveDue)}</div>
           ) : (
             <div className="text-sm text-gray-600">-</div>
           )
@@ -1072,6 +1158,13 @@ export const SalesPage = () => {
             <Package size={12} className="text-gray-500" />
             <span className="text-sm font-medium">{itemsCount}</span>
           </div>
+        );
+      
+      case 'createdBy':
+        return (
+          <span className="text-xs text-gray-400 truncate" title={sale.createdBy || '—'}>
+            {sale.createdBy || '—'}
+          </span>
         );
       
       default:
@@ -1488,9 +1581,10 @@ export const SalesPage = () => {
                         return: 'Return',
                         shipping: 'Shipping',
                         items: 'Items',
+                        createdBy: 'Created By',
                       };
                       
-                      const isSortable = (['date', 'invoiceNo', 'customer', 'location', 'saleStatus', 'paymentStatus', 'total', 'paid', 'due', 'returnDue', 'return', 'shipping', 'items'] as SaleSortKey[]).includes(key as SaleSortKey);
+                      const isSortable = (['date', 'invoiceNo', 'customer', 'location', 'saleStatus', 'paymentStatus', 'total', 'paid', 'due', 'returnDue', 'return', 'shipping', 'items', 'createdBy'] as SaleSortKey[]).includes(key as SaleSortKey);
                       const isActive = sortKey === key;
                       
                       return (
@@ -1777,24 +1871,56 @@ export const SalesPage = () => {
                             )}
                             <DropdownMenuItem 
                               className="hover:bg-gray-800 cursor-pointer"
-                              onClick={() => handleSaleAction('print_invoice', sale)}
-                            >
-                              <FileText size={14} className="mr-2 text-purple-400" />
-                              Print Invoice
-                            </DropdownMenuItem>
-                            <DropdownMenuSeparator className="bg-gray-700" />
-                            
-                            {/* 🎯 VIEW PAYMENTS - View payment history */}
-                            <DropdownMenuItem 
-                              className="hover:bg-gray-800 cursor-pointer"
                               onClick={() => handleSaleAction('view_payments', sale)}
                             >
                               <Receipt size={14} className="mr-2 text-blue-400" />
                               View Payments
                             </DropdownMenuItem>
-                            
-                            {/* 🎯 RECEIVE PAYMENT - Show when payment allowed (final or partially_returned with due) */}
-                            {canAddPaymentToSale(sale, sale.due ?? 0) && (
+                            <DropdownMenuItem 
+                              className="hover:bg-gray-800 cursor-pointer"
+                              onClick={() => handleSaleAction('view_ledger', sale)}
+                            >
+                              <Receipt size={14} className="mr-2 text-blue-400" />
+                              View Ledger
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator className="bg-gray-700" />
+                            {/* Share */}
+                            <DropdownMenuSub>
+                              <DropdownMenuSubTrigger className="hover:bg-gray-800 cursor-pointer text-white">
+                                <Share2 size={14} className="mr-2 text-green-400" />
+                                Share
+                              </DropdownMenuSubTrigger>
+                              <DropdownMenuSubContent className="bg-gray-900 border-gray-700 text-white">
+                                <DropdownMenuItem className="hover:bg-gray-800 cursor-pointer" onClick={() => handleSaleAction('share_whatsapp', sale)}>
+                                  Share via WhatsApp
+                                </DropdownMenuItem>
+                                <DropdownMenuItem className="hover:bg-gray-800 cursor-pointer" onClick={() => handleSaleAction('share_pdf', sale)}>
+                                  Share PDF
+                                </DropdownMenuItem>
+                              </DropdownMenuSubContent>
+                            </DropdownMenuSub>
+                            {/* Print */}
+                            <DropdownMenuSub>
+                              <DropdownMenuSubTrigger className="hover:bg-gray-800 cursor-pointer text-white">
+                                <Printer size={14} className="mr-2 text-purple-400" />
+                                Print
+                              </DropdownMenuSubTrigger>
+                              <DropdownMenuSubContent className="bg-gray-900 border-gray-700 text-white">
+                                <DropdownMenuItem className="hover:bg-gray-800 cursor-pointer" onClick={() => handleSaleAction('print_a4', sale)}>
+                                  Print A4 (Regular)
+                                </DropdownMenuItem>
+                                <DropdownMenuItem className="hover:bg-gray-800 cursor-pointer" onClick={() => handleSaleAction('print_thermal', sale)}>
+                                  Print Thermal (80mm / 58mm)
+                                </DropdownMenuItem>
+                              </DropdownMenuSubContent>
+                            </DropdownMenuSub>
+                            <DropdownMenuItem className="hover:bg-gray-800 cursor-pointer" onClick={() => handleSaleAction('download_pdf', sale)}>
+                              <Download size={14} className="mr-2 text-blue-400" />
+                              Download PDF
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator className="bg-gray-700" />
+                            {/* 🎯 RECEIVE PAYMENT - Show when payment allowed */}
+                            {canAddPaymentToSale(sale, getEffectiveDue(sale)) && (
                               <DropdownMenuItem 
                                 className="hover:bg-gray-800 cursor-pointer"
                                 onClick={() => handleSaleAction('receive_payment', sale)}
@@ -1803,26 +1929,6 @@ export const SalesPage = () => {
                                 Add Payment
                               </DropdownMenuItem>
                             )}
-                            {/* 🎯 CANCEL INVOICE - Only for final; hidden when effective status is cancelled */}
-                            {sale.status === 'final' && getEffectiveSaleStatus(sale) !== 'cancelled' && (
-                              <DropdownMenuItem 
-                                className="hover:bg-gray-800 cursor-pointer text-amber-400"
-                                onClick={() => handleSaleAction('cancel_invoice', sale)}
-                              >
-                                <XCircle size={14} className="mr-2" />
-                                Cancel Invoice
-                              </DropdownMenuItem>
-                            )}
-                            
-                            {/* 🎯 VIEW LEDGER */}
-                            <DropdownMenuItem 
-                              className="hover:bg-gray-800 cursor-pointer"
-                              onClick={() => handleSaleAction('view_ledger', sale)}
-                            >
-                              <Receipt size={14} className="mr-2 text-blue-400" />
-                              View Ledger
-                            </DropdownMenuItem>
-                            
                             <DropdownMenuSeparator className="bg-gray-700" />
                             {/* 🎯 SALE RETURN: Only when final and not cancelled */}
                             {sale.status === 'final' && getEffectiveSaleStatus(sale) !== 'cancelled' && (
@@ -1875,14 +1981,24 @@ export const SalesPage = () => {
                               <Truck size={14} className="mr-2 text-orange-400" />
                               Update Shipping
                             </DropdownMenuItem>
+                            <DropdownMenuSeparator className="bg-gray-700" />
+                            {canCancelSale && sale.status === 'final' && getEffectiveSaleStatus(sale) !== 'cancelled' && (
+                              <DropdownMenuItem 
+                                className="hover:bg-gray-800 cursor-pointer text-amber-400"
+                                onClick={() => handleSaleAction('cancel_invoice', sale)}
+                              >
+                                <XCircle size={14} className="mr-2" />
+                                Cancel Invoice
+                              </DropdownMenuItem>
+                            )}
                             {canDeleteSale && getEffectiveSaleStatus(sale) !== 'cancelled' && (
-                            <DropdownMenuItem 
-                              className="hover:bg-gray-800 cursor-pointer text-red-400"
-                              onClick={() => handleSaleAction('delete', sale)}
-                            >
-                              <Trash2 size={14} className="mr-2" />
-                              Delete
-                            </DropdownMenuItem>
+                              <DropdownMenuItem 
+                                className="hover:bg-gray-800 cursor-pointer text-red-400"
+                                onClick={() => handleSaleAction('delete', sale)}
+                              >
+                                <Trash2 size={14} className="mr-2" />
+                                Delete
+                              </DropdownMenuItem>
                             )}
                           </DropdownMenuContent>
                         </DropdownMenu>
@@ -1922,7 +2038,7 @@ export const SalesPage = () => {
             customerId: selectedSale.customer,
             total: selectedSale.total,
             paid: selectedSale.paid,
-            due: selectedSale.due,
+            due: getEffectiveDue(selectedSale),
             paymentStatus: selectedSale.paymentStatus,
             payments: [], // Will be fetched dynamically in modal
             referenceType: 'sale',
@@ -1984,8 +2100,8 @@ export const SalesPage = () => {
           context="customer"
           entityName={selectedSale.customerName}
           entityId={selectedSale.customer}
-          outstandingAmount={selectedSale.due}
-          totalAmount={selectedSale.total}
+          outstandingAmount={getEffectiveDue(selectedSale)}
+          totalAmount={(selectedSale.total ?? 0) + (selectedSale.studioCharges ?? 0)}
           paidAmount={selectedSale.paid}
           previousPayments={(selectedSale as any).payments || []}
           referenceNo={selectedSale.invoiceNo}

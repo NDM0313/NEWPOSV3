@@ -1,4 +1,20 @@
 import { supabase } from '@/lib/supabase';
+import { activityLogService } from '@/app/services/activityLogService';
+
+/** Enrich sales with creator full_name when created_by is UUID (e.g. after fallback query without join). */
+async function enrichSalesWithCreatorNames(sales: any[]): Promise<void> {
+  const ids = [...new Set((sales || []).map((s: any) => s.created_by).filter(Boolean))] as string[];
+  if (ids.length === 0) return;
+  const { data: users } = await supabase.from('users').select('id, full_name').in('id', ids);
+  const nameById = new Map<string, string>();
+  (users || []).forEach((u: any) => { if (u?.id && u?.full_name) nameById.set(u.id, u.full_name); });
+  sales.forEach((sale: any) => {
+    const uid = sale.created_by;
+    if (uid && typeof uid === 'string') {
+      sale.created_by = { full_name: nameById.get(uid) || null };
+    }
+  });
+}
 
 export interface Sale {
   id?: string;
@@ -202,20 +218,13 @@ export const saleService = {
     return data;
   },
 
-  // Get all sales (with items for list count and edit)
+  // Get all sales (with items for list count and edit).
+  // Avoid created_by:users(full_name) join to prevent 400 on Supabase when FK is missing; we enrich creator names via enrichSalesWithCreatorNames.
   async getAllSales(companyId: string, branchId?: string) {
+    const selectWithoutCreator = `*, customer:contacts(*), branch:branches(id, name, code), items:sales_items(*, product:products(*), variation:product_variations(*))`;
     let query = supabase
       .from('sales')
-      .select(`
-        *,
-        customer:contacts(*),
-        branch:branches(id, name, code),
-        items:sales_items(
-          *,
-          product:products(*),
-          variation:product_variations(*)
-        )
-      `)
+      .select(selectWithoutCreator)
       .eq('company_id', companyId)
       .order('created_at', { ascending: false })
       .order('invoice_date', { ascending: false });
@@ -227,54 +236,42 @@ export const saleService = {
     const { data, error } = await query;
 
     if (error && (error.code === '42P01' || error.message?.includes('sales_items'))) {
-      let retryQuery = supabase
-        .from('sales')
-        .select(`
-          *,
-          customer:contacts(*),
-          branch:branches(id, name, code),
-          items:sale_items(
-            *,
-            product:products(*),
-            variation:product_variations(*)
-          )
-        `)
-        .eq('company_id', companyId)
-        .order('invoice_date', { ascending: false });
-
-      if (branchId) {
-        retryQuery = retryQuery.eq('branch_id', branchId);
-      }
-
+      const altSelect = `*, customer:contacts(*), branch:branches(id, name, code), items:sale_items(*, product:products(*), variation:product_variations(*))`;
+      let retryQuery = supabase.from('sales').select(altSelect).eq('company_id', companyId).order('invoice_date', { ascending: false });
+      if (branchId) retryQuery = retryQuery.eq('branch_id', branchId);
       const { data: retryData, error: retryError } = await retryQuery;
       if (retryError) throw retryError;
-      
-      // 🔒 LOCK CHECK: Add hasReturn and returnCount to each sale
+      await enrichSalesWithCreatorNames(retryData || []);
       if (retryData && retryData.length > 0) {
         const saleIds = retryData.map((s: any) => s.id);
-        const { data: allReturns } = await supabase
-          .from('sale_returns')
-          .select('original_sale_id')
-          .in('original_sale_id', saleIds)
-          .eq('status', 'final');
-        
+        const { data: allReturns } = await supabase.from('sale_returns').select('original_sale_id').in('original_sale_id', saleIds).eq('status', 'final');
         const returnsMap = new Map<string, number>();
-        (allReturns || []).forEach((r: any) => {
-          const count = returnsMap.get(r.original_sale_id) || 0;
-          returnsMap.set(r.original_sale_id, count + 1);
-        });
-        
-        retryData.forEach((sale: any) => {
-          sale.hasReturn = returnsMap.has(sale.id);
-          sale.returnCount = returnsMap.get(sale.id) || 0;
-        });
+        (allReturns || []).forEach((r: any) => { const c = returnsMap.get(r.original_sale_id) || 0; returnsMap.set(r.original_sale_id, c + 1); });
+        retryData.forEach((sale: any) => { sale.hasReturn = returnsMap.has(sale.id); sale.returnCount = returnsMap.get(sale.id) || 0; });
+        try {
+          const { data: studioRows } = await supabase.rpc('get_sale_studio_charges_batch', { p_sale_ids: saleIds });
+          if (studioRows && Array.isArray(studioRows)) {
+            const studioBySale = new Map<string, number>();
+            (studioRows as { sale_id: string; studio_cost: number }[]).forEach((row: any) => {
+              if (row.sale_id) studioBySale.set(row.sale_id, Number(row.studio_cost) || 0);
+            });
+            retryData.forEach((sale: any) => {
+              const cost = studioBySale.get(sale.id);
+              if (cost != null && cost > 0) {
+                sale.studio_charges = cost;
+                sale.due_amount = Math.max(0, (Number(sale.total) || 0) + cost - (Number(sale.paid_amount) || 0));
+              }
+            });
+          }
+        } catch (_) {}
       }
-      
-      return retryData;
+      return retryData || [];
     }
 
     if (error) throw error;
-    
+
+    await enrichSalesWithCreatorNames(data || []);
+
     // 🔒 LOCK CHECK: Add hasReturn and returnCount to each sale
     if (data && data.length > 0) {
       const saleIds = data.map((s: any) => s.id);
@@ -283,20 +280,41 @@ export const saleService = {
         .select('original_sale_id')
         .in('original_sale_id', saleIds)
         .eq('status', 'final');
-      
       const returnsMap = new Map<string, number>();
       (allReturns || []).forEach((r: any) => {
         const count = returnsMap.get(r.original_sale_id) || 0;
         returnsMap.set(r.original_sale_id, count + 1);
       });
-      
       data.forEach((sale: any) => {
         sale.hasReturn = returnsMap.has(sale.id);
         sale.returnCount = returnsMap.get(sale.id) || 0;
       });
+
+      // Enrich studio cost from productions/stages so due balance = (total + studio_charges) - paid
+      try {
+        const { data: studioRows } = await supabase.rpc('get_sale_studio_charges_batch', {
+          p_sale_ids: saleIds,
+        });
+        if (studioRows && Array.isArray(studioRows)) {
+          const studioBySale = new Map<string, number>();
+          (studioRows as { sale_id: string; studio_cost: number }[]).forEach((row: any) => {
+            const id = row.sale_id;
+            if (id) studioBySale.set(id, Number(row.studio_cost) || 0);
+          });
+          data.forEach((sale: any) => {
+            const cost = studioBySale.get(sale.id);
+            if (cost != null && cost > 0) {
+              sale.studio_charges = cost;
+              sale.due_amount = Math.max(0, (Number(sale.total) || 0) + cost - (Number(sale.paid_amount) || 0));
+            }
+          });
+        }
+      } catch (_) {
+        // RPC may not exist yet (migration not run); leave studio_charges/due_amount as from DB
+      }
     }
-    
-    return data;
+
+    return data || [];
   },
 
   /** Get next studio invoice number from DB (max existing STD-* + 1). Use when document_sequences has no studio row. */
@@ -873,6 +891,17 @@ export const saleService = {
       });
       throw result.error;
     }
+    // Activity timeline: log payment_added for sale (non-blocking)
+    activityLogService.logActivity({
+      companyId,
+      module: 'sale',
+      entityId: saleId,
+      action: 'payment_added',
+      amount,
+      paymentMethod: paymentMethod as string,
+      paymentAccountId: accountId,
+      description: `Payment of Rs ${Number(amount).toLocaleString()} via ${paymentMethod} recorded`,
+    }).catch((err) => console.warn('[SALE SERVICE] Activity log payment_added failed:', err));
     return result.data;
   },
 
@@ -1230,6 +1259,48 @@ export const saleService = {
     } catch (error: any) {
       console.error('[SALE SERVICE] Error in direct delete:', error);
       throw error;
+    }
+  },
+
+  /** Log sale action for audit (view_details, share_whatsapp, print_a4, etc.) */
+  async logSaleAction(saleId: string, actionType: string, userId?: string | null, metadata?: Record<string, unknown>): Promise<void> {
+    try {
+      await supabase.rpc('log_sale_action', {
+        p_sale_id: saleId,
+        p_action_type: actionType,
+        p_user_id: userId ?? null,
+        p_metadata: metadata ?? {},
+      });
+    } catch (e) {
+      console.warn('[SALE SERVICE] log_sale_action failed (RPC may not exist):', e);
+    }
+  },
+
+  /** Log share action (whatsapp / pdf / link) */
+  async logShare(saleId: string, shareType: 'whatsapp' | 'pdf' | 'link', userId?: string | null): Promise<void> {
+    try {
+      await supabase.rpc('log_share', {
+        p_sale_id: saleId,
+        p_share_type: shareType,
+        p_user_id: userId ?? null,
+        p_metadata: {},
+      });
+    } catch (e) {
+      console.warn('[SALE SERVICE] log_share failed (RPC may not exist):', e);
+    }
+  },
+
+  /** Log print action (A4 / Thermal) */
+  async logPrint(saleId: string, printType: 'A4' | 'Thermal' | 'thermal_80mm' | 'thermal_58mm', userId?: string | null): Promise<void> {
+    try {
+      await supabase.rpc('log_print', {
+        p_sale_id: saleId,
+        p_print_type: printType,
+        p_user_id: userId ?? null,
+        p_metadata: {},
+      });
+    } catch (e) {
+      console.warn('[SALE SERVICE] log_print failed (RPC may not exist):', e);
     }
   },
 };

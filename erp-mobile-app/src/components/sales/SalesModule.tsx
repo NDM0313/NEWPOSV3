@@ -211,7 +211,7 @@ export function SalesModule({ onBack, user, companyId, branchId, initialSaleType
     onBack();
   };
 
-  if (step === 'home') return <SalesHome onBack={onBack} onNewSale={handleNewSale} companyId={companyId} branchId={branchId} />;
+  if (step === 'home') return <SalesHome onBack={onBack} onNewSale={handleNewSale} companyId={companyId} branchId={branchId} userId={user?.id ?? null} />;
   if (step === 'customer') {
     if (responsive.isTablet) {
       return (

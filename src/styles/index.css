@@ -2,3 +2,13 @@
 @import './tokens.css';
 @import './tailwind.css';
 @import './theme.css';
+
+/* Global: remove number input spinner arrows (all forms: Sales, Purchase, Payment, POS, Rental, Expense, etc.) */
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type="number"] {
+  -moz-appearance: textfield;
+}

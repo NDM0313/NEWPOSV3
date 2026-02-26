@@ -207,7 +207,25 @@ export interface PurchaseListItem {
   status: string;
   paymentStatus: string;
   date: string;
+  /** Friendly date e.g. "Today, 12:30 pm" */
+  dateDisplay?: string;
   itemCount: number;
+  created_by_name?: string;
+  branchId?: string | null;
+}
+
+async function enrichPurchasesWithCreatorNames(rows: Record<string, unknown>[]): Promise<void> {
+  const ids = [...new Set((rows || []).map((r) => r.created_by as string).filter(Boolean))];
+  if (ids.length === 0) return;
+  const { data: users } = await supabase.from('users').select('id, full_name').in('id', ids);
+  const nameById = new Map<string, string>();
+  (users || []).forEach((u: Record<string, unknown>) => {
+    if (u?.id && u?.full_name) nameById.set(u.id as string, u.full_name as string);
+  });
+  rows.forEach((r) => {
+    const uid = r.created_by as string;
+    if (uid) (r as Record<string, unknown>).created_by_name = nameById.get(uid) || null;
+  });
 }
 
 export async function getPurchases(
@@ -217,7 +235,7 @@ export async function getPurchases(
   if (!isSupabaseConfigured) return { data: [], error: 'App not configured.' };
   let query = supabase
     .from('purchases')
-    .select('id, po_no, supplier_name, contact_number, total, subtotal, discount_amount, paid_amount, due_amount, status, payment_status, po_date')
+    .select('id, po_no, supplier_name, contact_number, total, subtotal, discount_amount, paid_amount, due_amount, status, payment_status, po_date, created_by, branch_id')
     .eq('company_id', companyId)
     .is('cancelled_at', null)
     .order('po_date', { ascending: false })
@@ -226,7 +244,10 @@ export async function getPurchases(
   const { data, error } = await query;
   if (error) return { data: [], error: error.message };
 
-  const ids = (data || []).map((r: Record<string, unknown>) => r.id as string);
+  const rows = (data || []) as Record<string, unknown>[];
+  await enrichPurchasesWithCreatorNames(rows);
+
+  const ids = rows.map((r) => r.id as string);
   const itemCountMap: Record<string, number> = {};
   if (ids.length > 0) {
     const { data: itemsData } = await supabase
@@ -239,21 +260,35 @@ export async function getPurchases(
     }
   }
 
-  const list = (data || []).map((r: Record<string, unknown>) => ({
-    id: r.id as string,
-    poNo: (r.po_no as string) || `PUR-${(r.id as string).slice(0, 8)}`,
-    vendor: (r.supplier_name as string) || '—',
-    vendorPhone: (r.contact_number as string) || '—',
-    total: Number(r.total) || 0,
-    subtotal: Number(r.subtotal) || 0,
-    discount: Number(r.discount_amount) || 0,
-    paidAmount: Number(r.paid_amount) || 0,
-    dueAmount: Number(r.due_amount) || 0,
-    status: String(r.status || 'ordered'),
-    paymentStatus: String(r.payment_status || 'unpaid'),
-    date: r.po_date ? new Date(r.po_date as string).toISOString().slice(0, 10) : '—',
-    itemCount: itemCountMap[r.id as string] || 0,
-  }));
+  const list = rows.map((r) => {
+    const poDate = r.po_date as string | undefined;
+    const dateStr = poDate ? new Date(poDate).toISOString().slice(0, 10) : '—';
+    const dateObj = poDate ? new Date(poDate) : new Date();
+    const isToday = dateObj.toDateString() === new Date().toDateString();
+    const isYesterday = dateObj.toDateString() === new Date(Date.now() - 864e5).toDateString();
+    let dateDisplay = dateObj.toLocaleTimeString('en-PK', { hour: '2-digit', minute: '2-digit' });
+    if (isToday) dateDisplay = `Today, ${dateDisplay}`;
+    else if (isYesterday) dateDisplay = `Yesterday, ${dateDisplay}`;
+    else dateDisplay = dateObj.toLocaleDateString('en-PK', { day: 'numeric', month: 'short' });
+    return {
+      id: r.id as string,
+      poNo: (r.po_no as string) || `PUR-${(r.id as string).slice(0, 8)}`,
+      vendor: (r.supplier_name as string) || '—',
+      vendorPhone: (r.contact_number as string) || '—',
+      total: Number(r.total) || 0,
+      subtotal: Number(r.subtotal) || 0,
+      discount: Number(r.discount_amount) || 0,
+      paidAmount: Number(r.paid_amount) || 0,
+      dueAmount: Number(r.due_amount) || 0,
+      status: String(r.status || 'ordered'),
+      paymentStatus: String(r.payment_status || 'unpaid'),
+      date: dateStr,
+      dateDisplay,
+      itemCount: itemCountMap[r.id as string] || 0,
+      created_by_name: (r.created_by_name as string) || undefined,
+      branchId: (r.branch_id as string) ?? null,
+    };
+  });
   return { data: list, error: null };
 }
 
@@ -320,4 +355,47 @@ export async function getPurchaseById(
     },
     error: null,
   };
+}
+
+export type PurchasePaymentRow = {
+  id: string;
+  date: string;
+  amount: number;
+  method: string;
+  referenceNo: string;
+  attachments?: { url: string; name: string }[];
+};
+
+/** Get payment history for a purchase (backend/database linked) */
+export async function getPurchasePayments(purchaseId: string): Promise<{
+  data: PurchasePaymentRow[];
+  error: string | null;
+}> {
+  if (!isSupabaseConfigured) return { data: [], error: 'App not configured.' };
+  const { data, error } = await supabase
+    .from('payments')
+    .select('id, payment_date, reference_number, amount, payment_method, attachments')
+    .eq('reference_type', 'purchase')
+    .eq('reference_id', purchaseId)
+    .order('payment_date', { ascending: false });
+  if (error) return { data: [], error: error.message };
+  const list: PurchasePaymentRow[] = (data || []).map((p: Record<string, unknown>) => {
+    let attachments: { url: string; name: string }[] | undefined;
+    const raw = p.attachments;
+    if (Array.isArray(raw) && raw.length > 0) {
+      attachments = raw.map((a: unknown) => {
+        const o = a as Record<string, unknown>;
+        return { url: String(o?.url ?? ''), name: String(o?.name ?? 'Attachment') };
+      }).filter((a) => a.url);
+    }
+    return {
+      id: String(p.id ?? ''),
+      date: p.payment_date ? new Date(String(p.payment_date)).toLocaleDateString('en-PK') : '—',
+      amount: Number(p.amount ?? 0),
+      method: String(p.payment_method ?? '—'),
+      referenceNo: String(p.reference_number ?? '—'),
+      attachments: attachments?.length ? attachments : undefined,
+    };
+  });
+  return { data: list, error: null };
 }

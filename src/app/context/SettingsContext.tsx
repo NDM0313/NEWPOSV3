@@ -62,6 +62,8 @@ export interface UserPermissions {
   canCreateSale: boolean;
   canEditSale: boolean;
   canDeleteSale: boolean;
+  /** Cancel invoice: Admin + Manager only (Cashier cannot) */
+  canCancelSale?: boolean;
   canViewReports: boolean;
   canManageSettings: boolean;
   canManageUsers: boolean;
@@ -274,7 +276,7 @@ function getDefaultSettingsStub(): SettingsContextType {
     numberingRules: { salePrefix: 'SL-', saleNextNumber: 1, purchasePrefix: 'PUR-', purchaseNextNumber: 1, rentalPrefix: 'RNT-', rentalNextNumber: 1, expensePrefix: 'EXP-', expenseNextNumber: 1, productPrefix: 'PRD-', productNextNumber: 1, studioPrefix: 'STD-', studioNextNumber: 1, posPrefix: 'POS-', posNextNumber: 1, paymentPrefix: 'PAY-', paymentNextNumber: 1, jobPrefix: 'JOB-', jobNextNumber: 1, journalPrefix: 'JV-', journalNextNumber: 1 },
     updateNumberingRules: noopSync,
     getNextNumber: async () => '',
-    currentUser: { role: 'Admin', canCreateSale: true, canEditSale: true, canDeleteSale: true, canViewReports: true, canManageSettings: true, canManageUsers: true, canAccessAccounting: true, canMakePayments: true, canReceivePayments: true, canManageExpenses: true, canManageProducts: true, canManagePurchases: true, canManageRentals: true },
+    currentUser: { role: 'Admin', canCreateSale: true, canEditSale: true, canDeleteSale: true, canCancelSale: true, canViewReports: true, canManageSettings: true, canManageUsers: true, canAccessAccounting: true, canMakePayments: true, canReceivePayments: true, canManageExpenses: true, canManageProducts: true, canManagePurchases: true, canManageRentals: true },
     updatePermissions: noop,
     modules: { rentalModuleEnabled: true, studioModuleEnabled: true, accountingModuleEnabled: true, productionModuleEnabled: true, posModuleEnabled: true, combosEnabled: false },
     updateModules: noop,
@@ -427,6 +429,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
     canCreateSale: false,
     canEditSale: false,
     canDeleteSale: false,
+    canCancelSale: false,
     canViewReports: false,
     canManageSettings: false,
     canManageUsers: false,
@@ -677,6 +680,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
             canCreateSale: p.canCreateSale ?? (role === 'Admin' || role === 'Manager'),
             canEditSale: p.canEditSale ?? (role === 'Admin' || role === 'Manager'),
             canDeleteSale: p.canDeleteSale ?? (role === 'Admin'),
+            canCancelSale: p.canCancelSale ?? (role === 'Admin' || role === 'Manager'),
             canViewReports: p.canViewReports ?? (role === 'Admin' || role === 'Manager'),
             canManageSettings: p.canManageSettings ?? (role === 'Admin'),
             canManageUsers: p.canManageUsers ?? (role === 'Admin'),

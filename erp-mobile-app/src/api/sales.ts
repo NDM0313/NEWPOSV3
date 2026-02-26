@@ -258,7 +258,6 @@ export async function getAllSales(
       items:sales_items(*, product:products(*), variation:product_variations(*))
     `)
     .eq('company_id', companyId)
-    .order('created_at', { ascending: false })
     .order('invoice_date', { ascending: false });
 
   if (branchId && branchId !== 'all') {
@@ -282,12 +281,119 @@ export async function getAllSales(
       const retry = branchId && branchId !== 'all' ? retryQuery.eq('branch_id', branchId) : retryQuery;
       const { data: retryData, error: retryError } = await retry;
       if (retryError) return { data: [], error: retryError.message };
-      return { data: retryData || [], error: null };
+      const retryList = retryData || [];
+      const enrichedRetry = await enrichSalesWithPayments(companyId, branchId, retryList);
+      return { data: enrichedRetry, error: null };
     }
     return { data: [], error: error.message };
   }
 
-  return { data: data || [], error: null };
+  const list = data || [];
+  const enriched = await enrichSalesWithPayments(companyId, branchId, list);
+  return { data: enriched, error: null };
+}
+
+/** Aggregate payments by sale (reference_type='sale'); respect company_id and branch_id. */
+async function enrichSalesWithPayments(
+  companyId: string,
+  branchId: string | null | undefined,
+  sales: Array<Record<string, unknown>>
+): Promise<Array<Record<string, unknown>>> {
+  if (!sales.length) return sales;
+  const saleIds = sales.map((s) => s.id as string).filter(Boolean);
+  let payQuery = supabase
+    .from('payments')
+    .select('reference_id, amount')
+    .eq('reference_type', 'sale')
+    .eq('company_id', companyId)
+    .in('reference_id', saleIds);
+  if (branchId && branchId !== 'all') {
+    payQuery = payQuery.eq('branch_id', branchId);
+  }
+  const { data: payData } = await payQuery;
+  const bySale: Record<string, number> = {};
+  for (const p of payData || []) {
+    const refId = (p as Record<string, unknown>).reference_id as string;
+    if (refId) {
+      bySale[refId] = (bySale[refId] || 0) + Number((p as Record<string, unknown>).amount ?? 0);
+    }
+  }
+  return sales.map((s) => {
+    const saleTotal = Number(s.total ?? 0);
+    const studioCharges = Number(s.studio_charges ?? 0);
+    const grandTotal = saleTotal + studioCharges;
+    const totalReceived = bySale[(s.id as string) || ''] || 0;
+    const overpaid = totalReceived > grandTotal;
+    const balanceDue = overpaid ? 0 : Math.max(0, grandTotal - totalReceived);
+    const creditBalance = overpaid ? totalReceived - grandTotal : 0;
+    return {
+      ...s,
+      total_amount: saleTotal,
+      studio_charges: studioCharges,
+      grand_total: grandTotal,
+      total_received: totalReceived,
+      balance_due: balanceDue,
+      credit_balance: creditBalance,
+    };
+  });
+}
+
+/** Get studio cost summary for a sale (production status, total studio cost, breakdown, workers). */
+export async function getSaleStudioSummary(
+  saleId: string
+): Promise<{
+  data: {
+    has_studio: boolean;
+    production_status: string;
+    total_studio_cost: number;
+    tasks_completed: number;
+    tasks_total: number;
+    production_duration_days: number | null;
+    completed_at: string | null;
+    breakdown: Array<{ task_type: string; cost: number; worker_id?: string }>;
+    tasks_with_workers: Array<{
+      task_type: string;
+      cost: number;
+      worker_id?: string;
+      worker_name?: string;
+      created_by?: string;
+      completed_by?: string;
+    }>;
+  } | null;
+  error: string | null;
+}> {
+  if (!isSupabaseConfigured || !saleId) {
+    return { data: null, error: 'Not configured or missing sale ID.' };
+  }
+  const { data, error } = await supabase.rpc('get_sale_studio_summary', {
+    p_sale_id: saleId,
+  });
+  if (error) return { data: null, error: error.message };
+  const raw = data as Record<string, unknown> | null;
+  if (!raw) return { data: null, error: null };
+  return {
+    data: {
+      has_studio: Boolean(raw.has_studio),
+      production_status: String(raw.production_status ?? 'none'),
+      total_studio_cost: Number(raw.total_studio_cost ?? 0),
+      tasks_completed: Number(raw.tasks_completed ?? 0),
+      tasks_total: Number(raw.tasks_total ?? 0),
+      production_duration_days: raw.production_duration_days != null ? Number(raw.production_duration_days) : null,
+      completed_at: raw.completed_at != null ? String(raw.completed_at) : null,
+      breakdown: Array.isArray(raw.breakdown) ? (raw.breakdown as Array<{ task_type: string; cost: number; worker_id?: string }>) : [],
+      tasks_with_workers: Array.isArray(raw.tasks_with_workers)
+        ? (raw.tasks_with_workers as Array<{
+            task_type: string;
+            cost: number;
+            worker_id?: string;
+            worker_name?: string;
+            created_by?: string;
+            completed_by?: string;
+          }>)
+        : [],
+    },
+    error: null,
+  };
 }
 
 /** Cancel a sale (reverses stock, updates status) */
@@ -344,25 +450,184 @@ export async function cancelSale(saleId: string): Promise<{ error: string | null
   return { error: error?.message ?? null };
 }
 
-/** Get payment history for a sale */
+/** Record a payment against a sale (Dr Cash/Bank, Cr A/R) via RPC. Respects company_id and branch_id. */
+export async function recordSalePayment(params: {
+  companyId: string;
+  branchId: string;
+  saleId: string;
+  amount: number;
+  paymentMethod: string;
+  paymentAccountId: string;
+  paymentDate?: string;
+  referenceNumber?: string;
+  notes?: string;
+  userId?: string | null;
+}): Promise<{ data: { payment_id: string } | null; error: string | null }> {
+  if (!isSupabaseConfigured) return { data: null, error: 'App not configured.' };
+  const {
+    companyId,
+    branchId,
+    saleId,
+    amount,
+    paymentMethod,
+    paymentAccountId,
+    paymentDate,
+    referenceNumber,
+    notes,
+    userId,
+  } = params;
+  if (!companyId || !branchId || !saleId || amount <= 0 || !paymentAccountId) {
+    return { data: null, error: 'Company, branch, sale, amount and payment account are required.' };
+  }
+  const normalized = String(paymentMethod || 'cash').toLowerCase();
+  const methodMap: Record<string, 'cash' | 'bank' | 'card' | 'other'> = {
+    cash: 'cash',
+    bank: 'bank',
+    card: 'card',
+    cheque: 'other',
+    'mobile wallet': 'other',
+    mobile_wallet: 'other',
+    wallet: 'other',
+  };
+  const enumMethod = methodMap[normalized] || 'cash';
+  let refNum: string;
+  try {
+    refNum =
+      referenceNumber ||
+      (await getNextDocumentNumber(companyId, branchId, 'payment'));
+  } catch {
+    refNum = `PMT-${Date.now()}`;
+  }
+  const dateVal = paymentDate || new Date().toISOString().split('T')[0];
+  const { data, error } = await supabase.rpc('record_payment_with_accounting', {
+    p_company_id: companyId,
+    p_branch_id: branchId,
+    p_payment_type: 'received',
+    p_reference_type: 'sale',
+    p_reference_id: saleId,
+    p_amount: amount,
+    p_payment_method: enumMethod,
+    p_payment_date: dateVal,
+    p_payment_account_id: paymentAccountId,
+    p_reference_number: refNum,
+    p_notes: notes ?? null,
+    p_created_by: userId ?? null,
+  });
+  if (error) return { data: null, error: error.message };
+  const res = data as { success?: boolean; payment_id?: string; error?: string } | null;
+  if (res?.success && res.payment_id) return { data: { payment_id: res.payment_id }, error: null };
+  return { data: null, error: res?.error ?? 'Payment failed.' };
+}
+
+/** Record customer payment via RPC (atomic: payment + journal Dr Cash/Bank Cr A/R + update sale). Used by mobile Receive Payment screen. */
+export async function recordCustomerPayment(params: {
+  companyId: string;
+  customerId: string | null;
+  referenceId: string; // sale id
+  amount: number;
+  accountId: string;
+  paymentMethod: string;
+  paymentDate: string; // YYYY-MM-DD
+  notes?: string | null;
+  createdBy?: string | null;
+}): Promise<{ data: { payment_id: string; reference_number?: string } | null; error: string | null }> {
+  if (!isSupabaseConfigured) return { data: null, error: 'App not configured.' };
+  const {
+    companyId,
+    customerId,
+    referenceId,
+    amount,
+    accountId,
+    paymentMethod,
+    paymentDate,
+    notes,
+    createdBy,
+  } = params;
+  if (!companyId || !referenceId || amount <= 0 || !accountId) {
+    return { data: null, error: 'Company, reference (sale), amount and account are required.' };
+  }
+  const dateVal = paymentDate || new Date().toISOString().split('T')[0];
+  const { data, error } = await supabase.rpc('record_customer_payment', {
+    p_company_id: companyId,
+    p_customer_id: customerId || null,
+    p_reference_id: referenceId,
+    p_amount: amount,
+    p_account_id: accountId,
+    p_payment_method: paymentMethod || 'cash',
+    p_payment_date: dateVal,
+    p_notes: notes ?? null,
+    p_created_by: createdBy ?? null,
+  });
+  if (error) return { data: null, error: error.message };
+  const res = data as { success?: boolean; payment_id?: string; reference_number?: string; error?: string } | null;
+  if (res?.success && res.payment_id) {
+    return { data: { payment_id: res.payment_id, reference_number: res.reference_number }, error: null };
+  }
+  return { data: null, error: res?.error ?? 'Payment failed.' };
+}
+
+export type PaymentAttachment = { url: string; name: string };
+
+/** Get payment history for a sale (including attachments for preview) */
 export async function getSalePayments(saleId: string): Promise<{
-  data: Array<{ id: string; date: string; amount: number; method: string; referenceNo: string }>;
+  data: Array<{ id: string; date: string; amount: number; method: string; referenceNo: string; attachments?: PaymentAttachment[] }>;
   error: string | null;
 }> {
   if (!isSupabaseConfigured) return { data: [], error: 'App not configured.' };
   const { data, error } = await supabase
     .from('payments')
-    .select('id, payment_date, reference_number, amount, payment_method')
+    .select('id, payment_date, reference_number, amount, payment_method, attachments')
     .eq('reference_type', 'sale')
     .eq('reference_id', saleId)
     .order('payment_date', { ascending: false });
   if (error) return { data: [], error: error.message };
-  const list = (data || []).map((p: Record<string, unknown>) => ({
-    id: String(p.id ?? ''),
-    date: p.payment_date ? new Date(String(p.payment_date)).toLocaleDateString('en-PK') : '—',
-    amount: Number(p.amount ?? 0),
-    method: String(p.payment_method ?? '—'),
-    referenceNo: String(p.reference_number ?? '—'),
-  }));
+  const list = (data || []).map((p: Record<string, unknown>) => {
+    let attachments: PaymentAttachment[] | undefined;
+    const raw = p.attachments;
+    if (Array.isArray(raw) && raw.length > 0) {
+      attachments = raw.map((a: unknown) => {
+        const o = a as Record<string, unknown>;
+        return { url: String(o?.url ?? ''), name: String(o?.name ?? 'Attachment') };
+      }).filter((a) => a.url);
+    }
+    return {
+      id: String(p.id ?? ''),
+      date: p.payment_date ? new Date(String(p.payment_date)).toLocaleDateString('en-PK') : '—',
+      amount: Number(p.amount ?? 0),
+      method: String(p.payment_method ?? '—'),
+      referenceNo: String(p.reference_number ?? '—'),
+      attachments: attachments?.length ? attachments : undefined,
+    };
+  });
   return { data: list, error: null };
+}
+
+/** Log share action for audit (whatsapp / pdf / link) */
+export async function logShare(saleId: string, shareType: 'whatsapp' | 'pdf' | 'link', userId?: string | null): Promise<void> {
+  if (!isSupabaseConfigured) return;
+  try {
+    await supabase.rpc('log_share', {
+      p_sale_id: saleId,
+      p_share_type: shareType,
+      p_user_id: userId ?? null,
+      p_metadata: {},
+    });
+  } catch {
+    // RPC may not exist
+  }
+}
+
+/** Log print action (A4 / Thermal) */
+export async function logPrint(saleId: string, printType: 'A4' | 'Thermal' | 'thermal_80mm' | 'thermal_58mm', userId?: string | null): Promise<void> {
+  if (!isSupabaseConfigured) return;
+  try {
+    await supabase.rpc('log_print', {
+      p_sale_id: saleId,
+      p_print_type: printType,
+      p_user_id: userId ?? null,
+      p_metadata: {},
+    });
+  } catch {
+    // RPC may not exist
+  }
 }

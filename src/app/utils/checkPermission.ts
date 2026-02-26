@@ -8,13 +8,15 @@
  * UI: Use checkPermission(permissions, module, action) or useCheckPermission() hook.
  */
 
-export type PermissionAction = 'view' | 'create' | 'edit' | 'delete';
+export type PermissionAction = 'view' | 'create' | 'edit' | 'delete' | 'cancel';
 
 export interface UserPermissions {
   role: 'Admin' | 'Manager' | 'Staff';
   canCreateSale: boolean;
   canEditSale: boolean;
   canDeleteSale: boolean;
+  /** Cancel invoice: Admin + Manager only (Cashier cannot cancel) */
+  canCancelSale?: boolean;
   canViewReports: boolean;
   canManageSettings: boolean;
   canManageUsers: boolean;
@@ -58,10 +60,11 @@ export function checkPermission(
 
   switch (module) {
     case 'sales':
-      if (action === 'view') return permissions.canCreateSale || permissions.canEditSale || permissions.canDeleteSale;
+      if (action === 'view') return permissions.canCreateSale || permissions.canEditSale || permissions.canDeleteSale || (permissions.canCancelSale ?? false);
       if (action === 'create') return permissions.canCreateSale;
       if (action === 'edit') return permissions.canEditSale;
       if (action === 'delete') return permissions.canDeleteSale;
+      if (action === 'cancel') return permissions.canCancelSale ?? false;
       return false;
 
     case 'purchases':
@@ -110,6 +113,11 @@ export function canEditSale(p: UserPermissions): boolean {
 /** Convenience: can user delete sales? */
 export function canDeleteSale(p: UserPermissions): boolean {
   return checkPermission(p, 'sales', 'delete');
+}
+
+/** Convenience: can user cancel invoice? (Admin + Manager; Cashier cannot) */
+export function canCancelSale(p: UserPermissions): boolean {
+  return checkPermission(p, 'sales', 'cancel');
 }
 
 /** Convenience: can user delete purchases? (restricted) */

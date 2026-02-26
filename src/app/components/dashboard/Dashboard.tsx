@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts';
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, Cell } from 'recharts';
 import { DollarSign, ShoppingBag, TrendingUp, ArrowDownRight, ArrowUpRight, AlertTriangle, ArrowRight, Scissors, Loader2 } from 'lucide-react';
 import { useNavigation } from '../../context/NavigationContext';
 import { useSales } from '../../context/SalesContext';
@@ -8,7 +8,10 @@ import { useExpenses } from '../../context/ExpenseContext';
 import { useSupabase } from '../../context/SupabaseContext';
 import { useDateRange } from '../../context/DateRangeContext';
 import { productService } from '../../services/productService';
+import { getSalesByCategory } from '../../services/dashboardService';
 import { useFormatCurrency } from '../../hooks/useFormatCurrency';
+
+const CHART_COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#8B5CF6', '#EC4899', '#06B6D4'];
 
 interface Product {
   id: string;
@@ -30,6 +33,8 @@ export const Dashboard = () => {
   const endDate = dateRange.endDate;
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
+  const [salesByCategory, setSalesByCategory] = useState<Array<{ categoryName: string; total: number }>>([]);
+  const [loadingCategory, setLoadingCategory] = useState(true);
 
   // Load products for low stock items
   const loadProducts = useCallback(async () => {
@@ -51,6 +56,24 @@ export const Dashboard = () => {
   useEffect(() => {
     loadProducts();
   }, [loadProducts]);
+
+  // Load sales by category from backend (date range applied)
+  useEffect(() => {
+    if (!companyId) {
+      setLoadingCategory(false);
+      return;
+    }
+    setLoadingCategory(true);
+    const start = startDate ? new Date(startDate).toISOString().split('T')[0] : null;
+    const end = endDate ? new Date(endDate).toISOString().split('T')[0] : null;
+    getSalesByCategory(companyId, start, end)
+      .then(setSalesByCategory)
+      .catch((err) => {
+        console.error('[DASHBOARD] Sales by category error:', err);
+        setSalesByCategory([]);
+      })
+      .finally(() => setLoadingCategory(false));
+  }, [companyId, startDate, endDate]);
 
   // Filter data by date range
   const filterByDateRange = useCallback((dateStr: string | undefined): boolean => {
@@ -131,14 +154,12 @@ export const Dashboard = () => {
       start.setDate(end.getDate() - 6);
     }
     
-    // Generate days array based on date range
-    const days: string[] = [];
     const data: Array<{ name: string; sales: number; profit: number }> = [];
     const currentDate = new Date(start);
     
     while (currentDate <= end) {
-      const dayName = currentDate.toLocaleDateString('en-US', { weekday: 'short' });
       const dateStr = currentDate.toISOString().split('T')[0];
+      const dayLabel = currentDate.toLocaleDateString('en-US', { day: 'numeric', month: 'short' });
       
       // Filter by date range
       const daySales = sales.sales
@@ -158,7 +179,7 @@ export const Dashboard = () => {
       const dayProfit = daySales - dayPurchases;
       
       data.push({
-        name: dayName,
+        name: dayLabel,
         sales: daySales,
         profit: dayProfit,
       });
@@ -263,30 +284,37 @@ export const Dashboard = () => {
         <div className="lg:col-span-2 bg-[#111827]/50 border border-[#374151] p-6 rounded-xl">
           <h3 className="text-lg font-bold text-white mb-6">Revenue & Profit</h3>
           <div className="w-full h-[320px] min-h-[320px]">
-            <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={320}>
-              <AreaChart data={chartData}>
-                <defs>
-                  <linearGradient id="colorSales" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#3B82F6" stopOpacity={0.3}/>
-                    <stop offset="95%" stopColor="#3B82F6" stopOpacity={0}/>
-                  </linearGradient>
-                  <linearGradient id="colorProfit" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#10B981" stopOpacity={0.3}/>
-                    <stop offset="95%" stopColor="#10B981" stopOpacity={0}/>
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="#374151" vertical={false} />
-                <XAxis dataKey="name" stroke="#9CA3AF" />
-                <YAxis stroke="#9CA3AF" />
-                <Tooltip 
-                  contentStyle={{ backgroundColor: '#1F2937', borderColor: '#374151', color: '#F3F4F6' }}
-                  itemStyle={{ color: '#F3F4F6' }}
-                  formatter={(value: number) => formatCurrency(value)}
-                />
-                <Area type="monotone" dataKey="sales" stroke="#3B82F6" fillOpacity={1} fill="url(#colorSales)" />
-                <Area type="monotone" dataKey="profit" stroke="#10B981" fillOpacity={1} fill="url(#colorProfit)" />
-              </AreaChart>
-            </ResponsiveContainer>
+            {chartData.length === 0 ? (
+              <div className="h-full flex items-center justify-center text-[#9CA3AF]">
+                <p className="text-sm">No sales or purchase data in the selected date range</p>
+              </div>
+            ) : (
+              <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={320}>
+                <AreaChart data={chartData}>
+                  <defs>
+                    <linearGradient id="colorSales" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#3B82F6" stopOpacity={0.3}/>
+                      <stop offset="95%" stopColor="#3B82F6" stopOpacity={0}/>
+                    </linearGradient>
+                    <linearGradient id="colorProfit" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#10B981" stopOpacity={0.3}/>
+                      <stop offset="95%" stopColor="#10B981" stopOpacity={0}/>
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#374151" vertical={false} />
+                  <XAxis dataKey="name" stroke="#9CA3AF" tick={{ fontSize: 12 }} />
+                  <YAxis stroke="#9CA3AF" tickFormatter={(v) => (v >= 1000 ? `${(v / 1000).toFixed(0)}k` : String(v))} />
+                  <Tooltip 
+                    contentStyle={{ backgroundColor: '#1F2937', borderColor: '#374151', color: '#F3F4F6' }}
+                    itemStyle={{ color: '#F3F4F6' }}
+                    formatter={(value: number) => formatCurrency(value)}
+                    labelFormatter={(label) => `Date: ${label}`}
+                  />
+                  <Area type="monotone" dataKey="sales" name="Revenue" stroke="#3B82F6" fillOpacity={1} fill="url(#colorSales)" />
+                  <Area type="monotone" dataKey="profit" name="Profit" stroke="#10B981" fillOpacity={1} fill="url(#colorProfit)" />
+                </AreaChart>
+              </ResponsiveContainer>
+            )}
           </div>
         </div>
 
@@ -329,14 +357,35 @@ export const Dashboard = () => {
 
           <div className="bg-[#111827]/50 border border-[#374151] p-6 rounded-xl">
              <h3 className="text-lg font-bold text-white mb-6">Sales by Category</h3>
-             {/* Simple Placeholder for another chart */}
-             <div className="h-40 flex items-center justify-center text-[#9CA3AF]">
-                <div className="flex gap-2">
-                  <div className="w-4 h-4 rounded-full bg-blue-500"></div>
-                  <div className="w-4 h-4 rounded-full bg-green-500"></div>
-                  <div className="w-4 h-4 rounded-full bg-orange-500"></div>
-                </div>
-             </div>
+             {loadingCategory ? (
+               <div className="h-40 flex items-center justify-center">
+                 <Loader2 className="w-8 h-8 animate-spin text-[#3B82F6]" />
+               </div>
+             ) : salesByCategory.length === 0 ? (
+               <div className="h-40 flex items-center justify-center text-[#9CA3AF] text-sm">
+                 No sales by category in the selected date range
+               </div>
+             ) : (
+               <div className="w-full h-48 min-h-[192px]">
+                 <ResponsiveContainer width="100%" height="100%">
+                   <BarChart data={salesByCategory} layout="vertical" margin={{ top: 4, right: 8, left: 8, bottom: 4 }}>
+                     <CartesianGrid strokeDasharray="3 3" stroke="#374151" horizontal={false} />
+                     <XAxis type="number" stroke="#9CA3AF" tickFormatter={(v) => formatCurrency(v)} />
+                     <YAxis type="category" dataKey="categoryName" stroke="#9CA3AF" width={90} tick={{ fontSize: 11 }} />
+                     <Tooltip
+                       contentStyle={{ backgroundColor: '#1F2937', borderColor: '#374151', color: '#F3F4F6' }}
+                       formatter={(value: number) => [formatCurrency(value), 'Sales']}
+                       labelFormatter={(label) => `Category: ${label}`}
+                     />
+                     <Bar dataKey="total" name="Sales" radius={[0, 4, 4, 0]}>
+                       {salesByCategory.map((_, index) => (
+                         <Cell key={index} fill={CHART_COLORS[index % CHART_COLORS.length]} />
+                       ))}
+                     </Bar>
+                   </BarChart>
+                 </ResponsiveContainer>
+               </div>
+             )}
           </div>
         </div>
       </div>

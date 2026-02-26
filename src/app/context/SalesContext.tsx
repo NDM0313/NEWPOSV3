@@ -15,6 +15,7 @@ import { getOrCreateLedger, addLedgerEntry } from '@/app/services/ledgerService'
 import { useSettings } from '@/app/context/SettingsContext';
 import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
 import { toast } from 'sonner';
+import { activityLogService } from '@/app/services/activityLogService';
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 function isValidBranchId(id: string | null): id is string {
@@ -65,6 +66,8 @@ export interface Sale {
   shippingCharges?: number; // For backward compatibility
   otherCharges?: number; // Extra charges beyond shipping
   total: number;
+  /** Studio worker cost (from linked productions). Final bill = total + studioCharges. */
+  studioCharges?: number;
   paid: number;
   due: number;
   returnDue: number;
@@ -76,6 +79,8 @@ export interface Sale {
   createdAt: string;
   updatedAt: string;
   is_studio?: boolean;
+  /** User who created the sale (full name for display) */
+  createdBy?: string;
 }
 
 interface SalesContextType {
@@ -291,6 +296,7 @@ export const convertFromSupabaseSale = (supabaseSale: any): Sale => {
     shippingCharges: supabaseSale.expenses || supabaseSale.shipping_charges || 0, // Map expenses to shippingCharges for UI
     otherCharges: supabaseSale.other_charges || 0, // Extra charges if any
       total: supabaseSale.total || 0,
+      studioCharges: supabaseSale.studio_charges != null ? Number(supabaseSale.studio_charges) : undefined,
       paid: supabaseSale.paid_amount || 0,
       due: supabaseSale.due_amount || 0,
     returnDue: supabaseSale.return_due || 0,
@@ -303,6 +309,7 @@ export const convertFromSupabaseSale = (supabaseSale: any): Sale => {
       createdAt: supabaseSale.created_at || new Date().toISOString(),
       updatedAt: supabaseSale.updated_at || new Date().toISOString(),
     is_studio: !!supabaseSale.is_studio,
+    createdBy: (supabaseSale.created_by?.full_name ?? supabaseSale.created_by_user?.full_name) || undefined,
   };
 };
 
@@ -516,6 +523,19 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
       
       // Convert back to app format
       const newSale = convertFromSupabaseSale(result);
+      
+      // Activity timeline: log sale creation (non-blocking)
+      if (companyId && user?.id) {
+        activityLogService.logActivity({
+          companyId,
+          module: 'sale',
+          entityId: newSale.id,
+          entityReference: newSale.invoiceNo,
+          action: 'create',
+          performedBy: user.id,
+          description: `Sale ${newSale.invoiceNo} created`,
+        }).catch((err) => console.warn('[SALES] Activity log create failed:', err));
+      }
       
       // CRITICAL FIX: Record MULTIPLE payments if partialPayments array exists
       // Each payment method = separate payment record = separate reference number = separate journal entry

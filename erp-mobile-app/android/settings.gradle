@@ -1,5 +1,8 @@
 include ':app'
+// Use stub when capacitor-cordova-android-plugins not yet generated (run "npx cap sync" from erp-mobile-app)
+def capCordovaDir = file('./capacitor-cordova-android-plugins')
+if (!capCordovaDir.exists()) capCordovaDir = file('./capacitor-cordova-android-plugins-stub')
 include ':capacitor-cordova-android-plugins'
-project(':capacitor-cordova-android-plugins').projectDir = new File('./capacitor-cordova-android-plugins/')
+project(':capacitor-cordova-android-plugins').projectDir = capCordovaDir
 
 apply from: 'capacitor.settings.gradle'
