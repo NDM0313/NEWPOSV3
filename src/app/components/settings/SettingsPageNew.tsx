@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { 
   Building2, CreditCard, Hash, ToggleLeft, Save, 
   CheckCircle, Users, Lock, Key, Settings as SettingsIcon, AlertCircle, UserCog,
-  MapPin, Store, ShoppingCart, ShoppingBag, Package, Shirt, Calculator, X, Edit, Download, Server, Copy, Printer, RefreshCw, QrCode
+  MapPin, Store, ShoppingCart, ShoppingBag, Package, Shirt, Calculator, X, Edit, Download, Server, Copy, Printer, RefreshCw, QrCode, FileText
 } from 'lucide-react';
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
@@ -24,6 +24,62 @@ import { AddBranchModal } from '../branches/AddBranchModal';
 import { exportAndDownloadBackup } from '@/app/services/backupService';
 import { InventoryMasters, type InventoryMasterTab } from './inventory/InventoryMasters';
 import { LeadTools } from './LeadTools';
+import { invoiceDocumentService } from '@/app/services/invoiceDocumentService';
+import type { InvoiceTemplate } from '@/app/types/invoiceDocument';
+
+function TemplateFormFields({
+  template,
+  onChange,
+}: {
+  template: Partial<InvoiceTemplate>;
+  onChange: (t: Partial<InvoiceTemplate>) => void;
+}) {
+  const update = (key: keyof InvoiceTemplate, value: boolean | string | null) => {
+    onChange({ ...template, [key]: value });
+  };
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <Label className="text-gray-300">Show SKU</Label>
+        <Switch checked={template.show_sku ?? true} onCheckedChange={(v) => update('show_sku', v)} />
+      </div>
+      <div className="flex items-center justify-between">
+        <Label className="text-gray-300">Show Discount</Label>
+        <Switch checked={template.show_discount ?? true} onCheckedChange={(v) => update('show_discount', v)} />
+      </div>
+      <div className="flex items-center justify-between">
+        <Label className="text-gray-300">Show Tax</Label>
+        <Switch checked={template.show_tax ?? true} onCheckedChange={(v) => update('show_tax', v)} />
+      </div>
+      <div className="flex items-center justify-between">
+        <Label className="text-gray-300">Show Studio Cost</Label>
+        <Switch checked={template.show_studio ?? true} onCheckedChange={(v) => update('show_studio', v)} />
+      </div>
+      <div className="flex items-center justify-between">
+        <Label className="text-gray-300">Show Signature Line</Label>
+        <Switch checked={template.show_signature ?? false} onCheckedChange={(v) => update('show_signature', v)} />
+      </div>
+      <div>
+        <Label className="text-gray-300">Logo URL</Label>
+        <Input
+          className="mt-1 bg-gray-800 border-gray-700 text-white"
+          placeholder="https://..."
+          value={template.logo_url ?? ''}
+          onChange={(e) => update('logo_url', e.target.value || null)}
+        />
+      </div>
+      <div>
+        <Label className="text-gray-300">Footer Note</Label>
+        <Textarea
+          className="mt-1 bg-gray-800 border-gray-700 text-white min-h-[60px]"
+          placeholder="Thank you for your business..."
+          value={template.footer_note ?? ''}
+          onChange={(e) => update('footer_note', e.target.value || null)}
+        />
+      </div>
+    </div>
+  );
+}
 import {
   Dialog,
   DialogContent,
@@ -46,6 +102,7 @@ type SettingsTab =
   | 'accounts' 
   | 'numbering' 
   | 'printer' 
+  | 'invoiceTemplates'
   | 'users' 
   | 'modules'
   | 'leadTools'
@@ -88,6 +145,16 @@ export const SettingsPageNew = () => {
   const [inventorySubTab, setInventorySubTab] = useState<InventoryMasterTab>('general');
   const [units, setUnits] = useState<{ id: string; name: string; short_code?: string }[]>([]);
 
+  // Phase B: Invoice template settings (A4 & Thermal)
+  const [invoiceTemplateA4, setInvoiceTemplateA4] = useState<Partial<InvoiceTemplate>>({
+    show_sku: true, show_discount: true, show_tax: true, show_studio: true, show_signature: false, logo_url: null, footer_note: null,
+  });
+  const [invoiceTemplateThermal, setInvoiceTemplateThermal] = useState<Partial<InvoiceTemplate>>({
+    show_sku: true, show_discount: true, show_tax: true, show_studio: true, show_signature: false, logo_url: null, footer_note: null,
+  });
+  const [loadingInvoiceTemplates, setLoadingInvoiceTemplates] = useState(false);
+  const [savingInvoiceTemplates, setSavingInvoiceTemplates] = useState(false);
+
   // Load users function
   const loadUsers = useCallback(async () => {
     if (!companyId) return;
@@ -101,6 +168,45 @@ export const SettingsPageNew = () => {
       toast.error('Failed to load users');
     } finally {
       setLoadingUsers(false);
+    }
+  }, [companyId]);
+
+  // Phase B: Load invoice templates (A4 & Thermal) when opening the tab
+  const loadInvoiceTemplates = useCallback(async () => {
+    if (!companyId) return;
+    setLoadingInvoiceTemplates(true);
+    try {
+      const [a4Res, thermalRes] = await Promise.all([
+        invoiceDocumentService.getTemplate(companyId, 'A4'),
+        invoiceDocumentService.getTemplate(companyId, 'Thermal'),
+      ]);
+      if (a4Res.data) {
+        setInvoiceTemplateA4({
+          show_sku: a4Res.data.show_sku,
+          show_discount: a4Res.data.show_discount,
+          show_tax: a4Res.data.show_tax,
+          show_studio: a4Res.data.show_studio,
+          show_signature: a4Res.data.show_signature,
+          logo_url: a4Res.data.logo_url,
+          footer_note: a4Res.data.footer_note,
+        });
+      }
+      if (thermalRes.data) {
+        setInvoiceTemplateThermal({
+          show_sku: thermalRes.data.show_sku,
+          show_discount: thermalRes.data.show_discount,
+          show_tax: thermalRes.data.show_tax,
+          show_studio: thermalRes.data.show_studio,
+          show_signature: thermalRes.data.show_signature,
+          logo_url: thermalRes.data.logo_url,
+          footer_note: thermalRes.data.footer_note,
+        });
+      }
+    } catch (e) {
+      console.error('[SETTINGS] Error loading invoice templates:', e);
+      toast.error('Failed to load invoice template settings');
+    } finally {
+      setLoadingInvoiceTemplates(false);
     }
   }, [companyId]);
 
@@ -149,7 +255,10 @@ export const SettingsPageNew = () => {
     if (activeTab === 'users') {
       loadUsers();
     }
-  }, [activeTab, loadUsers]);
+    if (activeTab === 'invoiceTemplates') {
+      loadInvoiceTemplates();
+    }
+  }, [activeTab, loadUsers, loadInvoiceTemplates]);
 
   // Load branches when branches tab is active
   useEffect(() => {
@@ -359,6 +468,7 @@ export const SettingsPageNew = () => {
     { id: 'accounts' as const, label: 'Default Accounts', icon: CreditCard },
     { id: 'numbering' as const, label: 'Numbering Rules', icon: Hash },
     { id: 'printer' as const, label: 'Printer Configuration', icon: Printer },
+    { id: 'invoiceTemplates' as const, label: 'Invoice Templates', icon: FileText },
     { id: 'users' as const, label: 'User Management', icon: UserCog },
     // Permissions tab removed - permissions now managed per-user in User Management modal
     { id: 'modules' as const, label: 'Module Toggles', icon: ToggleLeft },
@@ -1951,6 +2061,95 @@ export const SettingsPageNew = () => {
                     <span className="text-sm text-gray-500">Opens browser print dialog</span>
                   </div>
                 </div>
+              </div>
+            )}
+
+            {/* PHASE B: INVOICE TEMPLATES TAB */}
+            {activeTab === 'invoiceTemplates' && (
+              <div className="space-y-6">
+                <div className="flex items-center justify-between mb-6">
+                  <div className="flex items-center gap-3">
+                    <div className="p-3 bg-slate-500/10 rounded-lg">
+                      <FileText className="text-slate-400" size={24} />
+                    </div>
+                    <div>
+                      <h3 className="text-xl font-bold text-white">Invoice Templates</h3>
+                      <p className="text-sm text-gray-400">Control what appears on A4 and Thermal invoices (Print / PDF / Share)</p>
+                    </div>
+                  </div>
+                  <Button
+                    className="bg-blue-600 hover:bg-blue-500 text-white gap-2"
+                    disabled={savingInvoiceTemplates || loadingInvoiceTemplates}
+                    onClick={async () => {
+                      if (!companyId) return;
+                      setSavingInvoiceTemplates(true);
+                      try {
+                        const a4Payload = {
+                          show_sku: invoiceTemplateA4.show_sku ?? true,
+                          show_discount: invoiceTemplateA4.show_discount ?? true,
+                          show_tax: invoiceTemplateA4.show_tax ?? true,
+                          show_studio: invoiceTemplateA4.show_studio ?? true,
+                          show_signature: invoiceTemplateA4.show_signature ?? false,
+                          logo_url: invoiceTemplateA4.logo_url || null,
+                          footer_note: invoiceTemplateA4.footer_note || null,
+                        };
+                        const thermalPayload = {
+                          show_sku: invoiceTemplateThermal.show_sku ?? true,
+                          show_discount: invoiceTemplateThermal.show_discount ?? true,
+                          show_tax: invoiceTemplateThermal.show_tax ?? true,
+                          show_studio: invoiceTemplateThermal.show_studio ?? true,
+                          show_signature: invoiceTemplateThermal.show_signature ?? false,
+                          logo_url: invoiceTemplateThermal.logo_url || null,
+                          footer_note: invoiceTemplateThermal.footer_note || null,
+                        };
+                        const [a4Err, thermalErr] = await Promise.all([
+                          invoiceDocumentService.upsertTemplate(companyId, 'A4', a4Payload),
+                          invoiceDocumentService.upsertTemplate(companyId, 'Thermal', thermalPayload),
+                        ]);
+                        if (a4Err.error || thermalErr.error) {
+                          toast.error(a4Err.error || thermalErr.error || 'Failed to save');
+                          return;
+                        }
+                        toast.success('Invoice template settings saved');
+                      } catch (e) {
+                        console.error('[SETTINGS] Error saving invoice templates:', e);
+                        toast.error('Failed to save invoice template settings');
+                      } finally {
+                        setSavingInvoiceTemplates(false);
+                      }
+                    }}
+                  >
+                    {savingInvoiceTemplates ? <RefreshCw size={16} className="animate-spin" /> : <Save size={16} />}
+                    Save Invoice Templates
+                  </Button>
+                </div>
+
+                {loadingInvoiceTemplates ? (
+                  <div className="p-8 text-center text-gray-400">Loading template settings...</div>
+                ) : (
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    {/* A4 template */}
+                    <div className="bg-gray-950 border border-gray-800 rounded-lg p-4 space-y-4">
+                      <h4 className="text-white font-semibold flex items-center gap-2">
+                        <FileText size={18} /> A4 Invoice
+                      </h4>
+                      <TemplateFormFields
+                        template={invoiceTemplateA4}
+                        onChange={setInvoiceTemplateA4}
+                      />
+                    </div>
+                    {/* Thermal template */}
+                    <div className="bg-gray-950 border border-gray-800 rounded-lg p-4 space-y-4">
+                      <h4 className="text-white font-semibold flex items-center gap-2">
+                        <Printer size={18} /> Thermal (58mm / 80mm)
+                      </h4>
+                      <TemplateFormFields
+                        template={invoiceTemplateThermal}
+                        onChange={setInvoiceTemplateThermal}
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 

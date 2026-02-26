@@ -54,6 +54,7 @@ import { formatLongDate, formatDateAndTime } from '@/app/components/ui/utils';
 import { UnifiedPaymentDialog } from '@/app/components/shared/UnifiedPaymentDialog';
 import { UnifiedLedgerView } from '@/app/components/shared/UnifiedLedgerView';
 import { ViewSaleDetailsDrawer } from './ViewSaleDetailsDrawer';
+import type { InvoiceTemplateType } from '@/app/types/invoiceDocument';
 import { SaleReturnForm } from './SaleReturnForm';
 import { StandaloneSaleReturnForm } from './StandaloneSaleReturnForm';
 import { ReturnPaymentAdjustment } from './ReturnPaymentAdjustment';
@@ -176,6 +177,7 @@ export const SalesPage = () => {
   const [ledgerOpen, setLedgerOpen] = useState(false);
   const [selectedSale, setSelectedSale] = useState<Sale | null>(null);
   const [viewDetailsOpen, setViewDetailsOpen] = useState(false);
+  const [invoicePrintType, setInvoicePrintType] = useState<InvoiceTemplateType | null>(null);
   
   // 🎯 View Payments Modal state
   const [viewPaymentsOpen, setViewPaymentsOpen] = useState(false);
@@ -279,15 +281,16 @@ export const SalesPage = () => {
         
       case 'print_invoice':
       case 'print_a4':
+        setSelectedSale(sale);
+        setInvoicePrintType('A4');
         setViewDetailsOpen(true);
         saleService.logPrint(sale.id, 'A4', user?.id).catch(() => {});
-        toast.success('Opening invoice for printing');
         break;
       case 'print_thermal':
-        setViewDetailsOpen(true);
         setSelectedSale(sale);
+        setInvoicePrintType('Thermal');
+        setViewDetailsOpen(true);
         saleService.logPrint(sale.id, 'Thermal', user?.id).catch(() => {});
-        toast.success('Open invoice and use Print → Thermal');
         break;
       case 'share_whatsapp': {
         const due = getEffectiveDue(sale);
@@ -308,15 +311,17 @@ export const SalesPage = () => {
         break;
       }
       case 'share_pdf':
+        setSelectedSale(sale);
+        setInvoicePrintType('A4');
         setViewDetailsOpen(true);
         saleService.logShare(sale.id, 'pdf', user?.id).catch(() => {});
         saleService.logSaleAction(sale.id, 'share_pdf', user?.id).catch(() => {});
-        toast.success('Open invoice and use Download PDF or Print');
         break;
       case 'download_pdf':
+        setSelectedSale(sale);
+        setInvoicePrintType('A4');
         setViewDetailsOpen(true);
         saleService.logSaleAction(sale.id, 'download_pdf', user?.id).catch(() => {});
-        toast.success('Opening invoice — use browser Print → Save as PDF');
         break;
         
       case 'view_payments':
@@ -2212,8 +2217,10 @@ export const SalesPage = () => {
           onClose={() => {
             setViewDetailsOpen(false);
             setSelectedSale(null);
+            setInvoicePrintType(null);
           }}
           saleId={selectedSale.id}
+          initialPrintType={invoicePrintType}
           onEdit={() => {
             setViewDetailsOpen(false);
             handleSaleAction('edit', selectedSale);

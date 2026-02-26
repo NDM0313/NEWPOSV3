@@ -8,7 +8,8 @@ import { saleService } from '@/app/services/saleService';
 import { saleReturnService } from '@/app/services/saleReturnService';
 import { activityLogService } from '@/app/services/activityLogService';
 import { studioProductionService } from '@/app/services/studioProductionService';
-import { InvoicePrintLayout } from '../shared/InvoicePrintLayout';
+import { InvoiceDocumentView } from '../shared/invoice/InvoiceDocumentView';
+import type { InvoiceTemplateType } from '@/app/types/invoiceDocument';
 import { PaymentDeleteConfirmationModal } from '../shared/PaymentDeleteConfirmationModal';
 import { UnifiedPaymentDialog } from '../shared/UnifiedPaymentDialog';
 import { 
@@ -132,11 +133,13 @@ interface SaleDetails {
 interface ViewSaleDetailsDrawerProps {
   isOpen: boolean;
   onClose: () => void;
-  saleId: string | null; // Changed to string (UUID)
+  saleId: string | null;
   onEdit?: (id: string) => void;
   onDelete?: (id: string) => void;
   onAddPayment?: (id: string) => void;
   onPrint?: (id: string) => void;
+  /** When set, drawer opens and immediately shows print/PDF view (Phase A document engine). */
+  initialPrintType?: InvoiceTemplateType | null;
 }
 
 export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
@@ -147,55 +150,18 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
   onDelete,
   onAddPayment,
   onPrint,
+  initialPrintType = null,
 }) => {
   const [activeTab, setActiveTab] = useState<'details' | 'payments' | 'history'>('details');
   const { getSaleById } = useSales();
   const { companyId, user } = useSupabase();
-  const handleShareWhatsApp = useCallback(() => {
-    if (!sale) return;
-    const studioCost = Number(sale.studioCharges ?? 0);
-    const total = (sale.total ?? 0) + studioCost;
-    const paid = payments.length > 0 ? payments.reduce((s, p) => s + (Number(p.amount) || 0), 0) : (sale.paid ?? 0);
-    const due = Math.max(0, total - paid);
-    const baseUrl = typeof window !== 'undefined' ? window.location.origin + (import.meta.env?.BASE_URL || '') : '';
-    const link = `${baseUrl}/sales?invoice=${encodeURIComponent(sale.id)}`;
-    const text = [`Invoice: ${sale.invoiceNo}`, `Customer: ${sale.customerName || 'Walk-in'}`, `Total: Rs. ${total.toLocaleString()}`, `Balance Due: Rs. ${due.toLocaleString()}`, `View: ${link}`].join('\n');
-    saleService.logShare(sale.id, 'whatsapp', user?.id).catch(() => {});
-    saleService.logSaleAction(sale.id, 'share_whatsapp', user?.id).catch(() => {});
-    window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank', 'noopener');
-    toast.success('WhatsApp share opened');
-  }, [sale, payments, user?.id]);
-  const handleSharePdf = useCallback(() => {
-    if (!sale) return;
-    setShowPrintLayout(true);
-    saleService.logShare(sale.id, 'pdf', user?.id).catch(() => {});
-    saleService.logSaleAction(sale.id, 'share_pdf', user?.id).catch(() => {});
-    toast.success('Open Print dialog to save as PDF or share');
-  }, [sale, user?.id]);
-  const handleDownloadPdf = useCallback(() => {
-    if (!sale) return;
-    setShowPrintLayout(true);
-    saleService.logSaleAction(sale.id, 'download_pdf', user?.id).catch(() => {});
-    toast.success('Use browser Print → Save as PDF');
-  }, [sale, user?.id]);
-  const handlePrintA4 = useCallback(() => {
-    if (!sale) return;
-    setShowPrintLayout(true);
-    onPrint?.(sale.id);
-    saleService.logPrint(sale.id, 'A4', user?.id).catch(() => {});
-  }, [sale, user?.id, onPrint]);
-  const handlePrintThermal = useCallback(() => {
-    if (!sale) return;
-    saleService.logPrint(sale.id, 'Thermal', user?.id).catch(() => {});
-    toast.info('Open Print and choose thermal printer (80mm/58mm)');
-    setShowPrintLayout(true);
-  }, [sale, user?.id]);
   const { inventorySettings } = useSettings();
   const { formatCurrency } = useFormatCurrency();
   const enablePacking = inventorySettings.enablePacking;
   const [sale, setSale] = useState<Sale | null>(null);
   const [loading, setLoading] = useState(true);
   const [showPrintLayout, setShowPrintLayout] = useState(false);
+  const [printLayoutType, setPrintLayoutType] = useState<InvoiceTemplateType>('A4');
   const [branchMap, setBranchMap] = useState<Map<string, string>>(new Map());
   const [customerCode, setCustomerCode] = useState<string | null>(null);
   const [payments, setPayments] = useState<any[]>([]);
@@ -213,6 +179,57 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
   const [studioSummary, setStudioSummary] = useState<Awaited<ReturnType<typeof studioProductionService.getStudioSummaryBySaleId>> | null>(null);
   const [loadingStudioSummary, setLoadingStudioSummary] = useState(false);
   const [showStudioBreakdown, setShowStudioBreakdown] = useState(true);
+
+  const handleShareWhatsApp = useCallback(() => {
+    if (!sale) return;
+    const studioCost = Number(sale.studioCharges ?? 0);
+    const total = (sale.total ?? 0) + studioCost;
+    const paid = payments.length > 0 ? payments.reduce((s, p) => s + (Number(p.amount) || 0), 0) : (sale.paid ?? 0);
+    const due = Math.max(0, total - paid);
+    const baseUrl = typeof window !== 'undefined' ? window.location.origin + (import.meta.env?.BASE_URL || '') : '';
+    const link = `${baseUrl}/sales?invoice=${encodeURIComponent(sale.id)}`;
+    const text = [`Invoice: ${sale.invoiceNo}`, `Customer: ${sale.customerName || 'Walk-in'}`, `Total: Rs. ${total.toLocaleString()}`, `Balance Due: Rs. ${due.toLocaleString()}`, `View: ${link}`].join('\n');
+    saleService.logShare(sale.id, 'whatsapp', user?.id).catch(() => {});
+    saleService.logSaleAction(sale.id, 'share_whatsapp', user?.id).catch(() => {});
+    window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank', 'noopener');
+    toast.success('WhatsApp share opened');
+  }, [sale, payments, user?.id]);
+  const handleSharePdf = useCallback(() => {
+    if (!sale) return;
+    setPrintLayoutType('A4');
+    setShowPrintLayout(true);
+    saleService.logShare(sale.id, 'pdf', user?.id).catch(() => {});
+    saleService.logSaleAction(sale.id, 'share_pdf', user?.id).catch(() => {});
+    toast.success('Open Print dialog to save as PDF or share');
+  }, [sale, user?.id]);
+  const handleDownloadPdf = useCallback(() => {
+    if (!sale) return;
+    setPrintLayoutType('A4');
+    setShowPrintLayout(true);
+    saleService.logSaleAction(sale.id, 'download_pdf', user?.id).catch(() => {});
+    toast.success('Use browser Print → Save as PDF');
+  }, [sale, user?.id]);
+  const handlePrintA4 = useCallback(() => {
+    if (!sale) return;
+    setPrintLayoutType('A4');
+    setShowPrintLayout(true);
+    onPrint?.(sale.id);
+    saleService.logPrint(sale.id, 'A4', user?.id).catch(() => {});
+  }, [sale, user?.id, onPrint]);
+  const handlePrintThermal = useCallback(() => {
+    if (!sale) return;
+    setPrintLayoutType('Thermal');
+    setShowPrintLayout(true);
+    saleService.logPrint(sale.id, 'Thermal', user?.id).catch(() => {});
+  }, [sale, user?.id]);
+
+  // When opened with initialPrintType (e.g. from SalesPage Print A4/Thermal/Download PDF), show document engine immediately
+  useEffect(() => {
+    if (isOpen && initialPrintType) {
+      setPrintLayoutType(initialPrintType);
+      setShowPrintLayout(true);
+    }
+  }, [isOpen, initialPrintType]);
 
   // Load branches for location display
   useEffect(() => {
@@ -1470,13 +1487,17 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
         )}
       </div>
 
-      {/* Print Layout Modal */}
-      {showPrintLayout && sale && (
+      {/* Print / PDF / Share – single document engine (Phase A) */}
+      {showPrintLayout && sale && companyId && (
         <div className="fixed inset-0 z-[100] bg-black/80 flex items-center justify-center p-4">
           <div className="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-auto">
-            <InvoicePrintLayout 
-              sale={sale} 
+            <InvoiceDocumentView
+              saleId={sale.id}
+              companyId={companyId}
+              templateType={printLayoutType}
               onClose={() => setShowPrintLayout(false)}
+              showPrintAction={true}
+              thermalPaperSize="80mm"
             />
           </div>
         </div>
