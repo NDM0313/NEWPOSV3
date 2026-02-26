@@ -28,38 +28,23 @@ BEGIN
 END $$;
 
 -- STEP 2: Create get_user_branch_id() - returns manager/salesman branch; NULL for admin (all branches)
--- Uses user_branches; falls back to first assigned branch if no default. Returns NULL if table missing or no assignment.
-DO $outer$
-BEGIN
-  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'user_branches') THEN
-    CREATE OR REPLACE FUNCTION public.get_user_branch_id()
-    RETURNS UUID
-    LANGUAGE sql
-    SECURITY DEFINER
-    SET search_path = public
-    AS $fn$
-      SELECT COALESCE(
-        (SELECT ub.branch_id FROM public.user_branches ub
-         JOIN public.users u ON u.id = ub.user_id
-         WHERE (u.id = auth.uid() OR u.auth_user_id = auth.uid()) AND ub.is_default = true
-         LIMIT 1),
-        (SELECT ub.branch_id FROM public.user_branches ub
-         JOIN public.users u ON u.id = ub.user_id
-         WHERE (u.id = auth.uid() OR u.auth_user_id = auth.uid())
-         LIMIT 1)
-      );
-    $fn$;
-  ELSE
-    CREATE OR REPLACE FUNCTION public.get_user_branch_id()
-    RETURNS UUID
-    LANGUAGE sql
-    SECURITY DEFINER
-    SET search_path = public
-    AS $fn$
-      SELECT NULL::uuid;
-    $fn$;
-  END IF;
-END $outer$;
+CREATE OR REPLACE FUNCTION public.get_user_branch_id()
+RETURNS UUID
+LANGUAGE sql
+SECURITY DEFINER
+SET search_path = public
+AS $body$
+  SELECT COALESCE(
+    (SELECT ub.branch_id FROM public.user_branches ub
+     JOIN public.users u ON u.id = ub.user_id
+     WHERE (u.id = auth.uid() OR u.auth_user_id = auth.uid()) AND ub.is_default = true
+     LIMIT 1),
+    (SELECT ub.branch_id FROM public.user_branches ub
+     JOIN public.users u ON u.id = ub.user_id
+     WHERE (u.id = auth.uid() OR u.auth_user_id = auth.uid())
+     LIMIT 1)
+  );
+$body$;
 
 -- STEP 3: Drop existing sales policies
 DROP POLICY IF EXISTS "rls_fix_company" ON public.sales;
