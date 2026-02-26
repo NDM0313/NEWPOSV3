@@ -1,4 +1,18 @@
 import { supabase } from '@/lib/supabase';
+import { FunctionsHttpError } from '@supabase/supabase-js';
+
+/** Extract error message from Edge Function non-2xx response body */
+async function getFunctionErrorMessage(err: unknown): Promise<string | null> {
+  if (err instanceof FunctionsHttpError && err.context) {
+    try {
+      const body = (await err.context.json()) as { error?: string };
+      return body?.error ?? null;
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
 
 export interface User {
   id: string;
@@ -133,7 +147,10 @@ export const userService = {
         Authorization: `Bearer ${session.access_token}`,
       },
     });
-    if (error) throw error;
+    if (error) {
+      const msg = await getFunctionErrorMessage(error);
+      throw new Error(msg || error.message);
+    }
     const result = data as { success?: boolean; error?: string };
     if (!result?.success) throw new Error(result?.error || 'Failed to create user');
     return result;
@@ -225,7 +242,10 @@ export const userService = {
       body: { action: 'send_reset_email', user_id: userId, email: u?.email },
       headers: { Authorization: `Bearer ${session.access_token}` },
     });
-    if (error) throw error;
+    if (error) {
+      const msg = await getFunctionErrorMessage(error);
+      throw new Error(msg || error.message);
+    }
     const r = data as { success?: boolean; error?: string };
     if (!r?.success) throw new Error(r?.error || 'Failed to send reset email');
   },
@@ -238,7 +258,10 @@ export const userService = {
       body: { action: 'reset_password', user_id: userId, new_password: newPassword },
       headers: { Authorization: `Bearer ${session.access_token}` },
     });
-    if (error) throw error;
+    if (error) {
+      const msg = await getFunctionErrorMessage(error);
+      throw new Error(msg || error.message);
+    }
     const r = data as { success?: boolean; error?: string };
     if (!r?.success) throw new Error(r?.error || 'Failed to reset password');
   },

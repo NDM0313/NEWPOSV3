@@ -27,16 +27,15 @@ Deno.serve(async (req) => {
 
   try {
     const authHeader = req.headers.get('Authorization');
-    console.log('[create-erp-user] Authorization:', authHeader ? `${authHeader.slice(0, 30)}...` : 'MISSING');
+    const hasJwt = authHeader?.startsWith('Bearer ');
 
+    // When Bearer JWT present, use it. Otherwise require X-Admin-Secret if ADMIN_SECRET is set.
     const adminSecret = Deno.env.get('ADMIN_SECRET');
-    if (adminSecret && req.headers.get('X-Admin-Secret') !== adminSecret) {
-      return new Response(JSON.stringify({ success: false, error: 'Unauthorized' }), { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
-    }
-
-    if (!authHeader) {
+    const hasValidAdminSecret = !!adminSecret && req.headers.get('X-Admin-Secret') === adminSecret;
+    if (!hasJwt && !hasValidAdminSecret) {
+      const msg = !authHeader ? 'Missing authorization' : 'Invalid or expired token';
       return new Response(
-        JSON.stringify({ success: false, error: 'Missing authorization' }),
+        JSON.stringify({ success: false, error: msg }),
         { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }

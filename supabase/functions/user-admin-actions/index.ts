@@ -12,14 +12,13 @@ Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
 
   try {
-    const adminSecret = Deno.env.get('ADMIN_SECRET');
-    if (adminSecret && req.headers.get('X-Admin-Secret') !== adminSecret) {
-      return new Response(JSON.stringify({ success: false, error: 'Unauthorized' }), { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
-    }
-
     const authHeader = req.headers.get('Authorization');
-    if (!authHeader) {
-      return new Response(JSON.stringify({ success: false, error: 'Missing authorization' }), { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    const hasJwt = authHeader?.startsWith('Bearer ');
+    const adminSecret = Deno.env.get('ADMIN_SECRET');
+    const hasValidAdminSecret = !!adminSecret && req.headers.get('X-Admin-Secret') === adminSecret;
+    if (!hasJwt && !hasValidAdminSecret) {
+      const msg = !authHeader ? 'Missing authorization' : 'Invalid or expired token';
+      return new Response(JSON.stringify({ success: false, error: msg }), { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
