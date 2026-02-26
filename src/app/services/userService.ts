@@ -110,6 +110,7 @@ export const userService = {
   /**
    * Create user with Auth (recommended): Creates Supabase Auth user + ERP profile.
    * Requires Edge Function create-erp-user to be deployed.
+   * Explicitly passes Authorization header from session (required for self-hosted).
    */
   async createUserWithAuth(params: {
     email: string;
@@ -122,7 +123,16 @@ export const userService = {
     temporary_password?: string;
     send_invite_email?: boolean;
   }) {
-    const { data, error } = await supabase.functions.invoke('create-erp-user', { body: params });
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.access_token) {
+      throw new Error('Not authenticated. Please log in to create users.');
+    }
+    const { data, error } = await supabase.functions.invoke('create-erp-user', {
+      body: params,
+      headers: {
+        Authorization: `Bearer ${session.access_token}`,
+      },
+    });
     if (error) throw error;
     const result = data as { success?: boolean; error?: string };
     if (!result?.success) throw new Error(result?.error || 'Failed to create user');
@@ -208,9 +218,12 @@ export const userService = {
 
   /** Admin: Send password reset email to user */
   async sendResetEmail(userId: string) {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.access_token) throw new Error('Not authenticated');
     const u = await this.getUser(userId);
     const { data, error } = await supabase.functions.invoke('user-admin-actions', {
       body: { action: 'send_reset_email', user_id: userId, email: u?.email },
+      headers: { Authorization: `Bearer ${session.access_token}` },
     });
     if (error) throw error;
     const r = data as { success?: boolean; error?: string };
@@ -219,8 +232,11 @@ export const userService = {
 
   /** Admin: Set new password for user */
   async resetPassword(userId: string, newPassword: string) {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.access_token) throw new Error('Not authenticated');
     const { data, error } = await supabase.functions.invoke('user-admin-actions', {
       body: { action: 'reset_password', user_id: userId, new_password: newPassword },
+      headers: { Authorization: `Bearer ${session.access_token}` },
     });
     if (error) throw error;
     const r = data as { success?: boolean; error?: string };

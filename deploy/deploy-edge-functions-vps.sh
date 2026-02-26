@@ -30,6 +30,8 @@ for fn in create-erp-user user-admin-actions; do
 done
 
 if docker ps --format '{{.Names}}' | grep -q "^${EDGE_CONTAINER}$"; then
+  echo "[edge-functions] Verifying env (SUPABASE_URL, SERVICE_ROLE_KEY)..."
+  docker exec "$EDGE_CONTAINER" sh -c 'echo "SUPABASE_URL=${SUPABASE_URL:-MISSING}" && echo "SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY:+SET}"' 2>/dev/null || true
   echo "[edge-functions] Restarting $EDGE_CONTAINER..."
   docker restart "$EDGE_CONTAINER"
   echo "[edge-functions] Done."

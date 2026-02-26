@@ -26,12 +26,14 @@ Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
 
   try {
+    const authHeader = req.headers.get('Authorization');
+    console.log('[create-erp-user] Authorization:', authHeader ? `${authHeader.slice(0, 30)}...` : 'MISSING');
+
     const adminSecret = Deno.env.get('ADMIN_SECRET');
     if (adminSecret && req.headers.get('X-Admin-Secret') !== adminSecret) {
       return new Response(JSON.stringify({ success: false, error: 'Unauthorized' }), { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
-    const authHeader = req.headers.get('Authorization');
     if (!authHeader) {
       return new Response(
         JSON.stringify({ success: false, error: 'Missing authorization' }),
