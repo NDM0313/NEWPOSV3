@@ -219,6 +219,9 @@ $COMPOSE_CMD up -d --force-recreate erp
 # Auto-apply migrations (accounts.subtype, journal_entries columns, etc.)
 [ -f deploy/run-migrations-vps.sh ] && bash deploy/run-migrations-vps.sh || true
 
+# Deploy Edge Functions (create-erp-user, user-admin-actions)
+[ -f deploy/deploy-edge-functions-vps.sh ] && bash deploy/deploy-edge-functions-vps.sh || true
+
 # Studio: Assign/Receive workflow RPCs + no-auto-assign guard (run as supabase_admin)
 [ -f deploy/apply-studio-no-auto-assign.sh ] && bash deploy/apply-studio-no-auto-assign.sh || true
 
