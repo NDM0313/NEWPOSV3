@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { 
   Search, Filter, Download, Upload, Users, DollarSign, TrendingUp, 
   MoreVertical, Eye, Edit, Trash2, FileText, X, Phone, Mail, MapPin,
@@ -101,6 +102,8 @@ export const ContactsPage = () => {
   const [viewProfileOpen, setViewProfileOpen] = useState(false);
   const [importModalOpen, setImportModalOpen] = useState(false);
   const filterRef = useRef<HTMLDivElement>(null);
+  const filterTriggerRef = useRef<HTMLButtonElement>(null);
+  const [filterPosition, setFilterPosition] = useState({ top: 0, left: 0 });
 
   // Convert Supabase contact to app format (receivables = due from customer, payables = due to supplier/worker)
   const convertFromSupabaseContact = useCallback((supabaseContact: any, index: number, sales: any[], purchases: any[]): Contact => {
@@ -237,16 +240,12 @@ export const ContactsPage = () => {
     return () => window.removeEventListener('focus', onFocus);
   }, [companyId, loadContacts]);
 
-  // Close filter when clicking outside (allows Import button to receive clicks)
+  // Position filter dropdown when open (for portal)
   useEffect(() => {
-    if (!filterOpen) return;
-    const handleClickOutside = (e: MouseEvent) => {
-      if (filterRef.current && !filterRef.current.contains(e.target as Node)) {
-        setFilterOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    if (filterOpen && filterTriggerRef.current) {
+      const rect = filterTriggerRef.current.getBoundingClientRect();
+      setFilterPosition({ top: rect.bottom + 4, left: Math.max(8, rect.right - 320) });
+    }
   }, [filterOpen]);
   
   // Filter states
@@ -429,8 +428,10 @@ export const ContactsPage = () => {
 
   return (
     <div className="h-screen flex flex-col bg-[#0B0F19]">
-      {/* Page Header - Fixed */}
-      <div className="shrink-0 px-6 py-4 border-b border-gray-800">
+      {/* Sticky top section: header + summary + toolbar - prevents overlap with content */}
+      <div className="shrink-0 sticky top-0 z-20 bg-[#0B0F19] flex flex-col">
+      {/* Page Header */}
+      <div className="px-6 py-4 border-b border-gray-800">
         <div className="flex items-center justify-between mb-4">
           <div>
             <h1 className="text-2xl font-bold text-white">Contacts</h1>
@@ -469,8 +470,8 @@ export const ContactsPage = () => {
         </div>
       </div>
 
-      {/* Summary Cards - Fixed */}
-      <div className="shrink-0 px-6 py-4 bg-[#0F1419] border-b border-gray-800">
+      {/* Summary Cards */}
+      <div className="px-6 py-4 bg-[#0F1419] border-b border-gray-800">
         <div className="grid grid-cols-3 gap-4">
           {/* Total Receivables */}
           <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
@@ -522,8 +523,8 @@ export const ContactsPage = () => {
         </div>
       </div>
 
-      {/* Search & Actions Bar - Fixed */}
-      <div className="shrink-0 px-6 py-3 bg-[#0B0F19] border-b border-gray-800 relative z-10">
+      {/* Search & Actions Bar */}
+      <div className="px-6 py-3 bg-[#0B0F19] border-b border-gray-800">
         <div className="flex items-center gap-3">
           {/* Search */}
           <div className="flex-1 relative">
@@ -561,6 +562,7 @@ export const ContactsPage = () => {
           {/* Filter Button */}
           <div ref={filterRef} className="relative">
             <Button
+              ref={filterTriggerRef}
               variant="outline"
               onClick={() => setFilterOpen(!filterOpen)}
               className={cn(
@@ -577,16 +579,18 @@ export const ContactsPage = () => {
               )}
             </Button>
 
-            {/* Filter Dropdown */}
-            {filterOpen && (
+            {/* Filter Dropdown - Portal to body to avoid overflow clipping */}
+            {filterOpen && typeof document !== 'undefined' && createPortal(
               <>
-                {/* Backdrop: pointer-events-none so Import button remains clickable */}
-                <div 
-                  className="fixed inset-0 z-40 pointer-events-none" 
+                <div
+                  className="fixed inset-0 z-[9998]"
+                  onClick={() => setFilterOpen(false)}
                   aria-hidden
                 />
-                
-                <div className="absolute right-0 top-12 w-80 bg-gray-900 border border-gray-700 rounded-lg shadow-2xl p-4 z-50">
+                <div
+                  className="fixed w-80 bg-gray-900 border border-gray-700 rounded-lg shadow-2xl p-4 z-[9999]"
+                  style={{ top: filterPosition.top, left: filterPosition.left }}
+                >
                   <div className="flex items-center justify-between mb-4">
                     <h3 className="text-sm font-semibold text-white">Advanced Filters</h3>
                     <button
@@ -735,7 +739,8 @@ export const ContactsPage = () => {
                     </div>
                   </div>
                 </div>
-              </>
+              </>,
+              document.body
             )}
           </div>
 
@@ -778,6 +783,7 @@ export const ContactsPage = () => {
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
+      </div>
       </div>
 
       {/* Contacts Table - Scrollable (min-h-0 lets flex-1 shrink so overflow works) */}

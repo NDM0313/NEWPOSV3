@@ -70,12 +70,15 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     });
 
     // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       setSession(session);
       const newUser = session?.user ?? null;
       setUser(newUser);
       
       if (newUser) {
+        if (event === 'SIGNED_IN') {
+          supabase.from('users').update({ last_login_at: new Date().toISOString() }).or(`id.eq.${newUser.id},auth_user_id.eq.${newUser.id}`).then(() => {});
+        }
         // Clear cache if user changed
         if (lastFetchedUserIdRef.current !== null && lastFetchedUserIdRef.current !== newUser.id) {
           fetchedRef.current.clear();
@@ -124,8 +127,9 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       
       const { data, error } = await supabase
         .from('users')
-        .select('company_id, role, is_active')
-        .eq('id', userId)
+        .select('id, company_id, role, is_active')
+        .or(`id.eq.${userId},auth_user_id.eq.${userId}`)
+        .limit(1)
         .maybeSingle();
 
       if (error) {
@@ -155,19 +159,32 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         return;
       }
 
+      if (data.is_active === false) {
+        if (process.env.NODE_ENV === 'development') {
+          console.warn('[FETCH USER DATA] User account is inactive. Blocking access.');
+        }
+        await supabase.auth.signOut();
+        setCompanyId(null);
+        setUserRole(null);
+        setBranchId(null);
+        setDefaultBranchId(null);
+        return;
+      }
+
       if (import.meta.env?.DEV) console.log('[FETCH USER DATA SUCCESS]', { companyId: data.company_id, role: data.role });
       setCompanyId(data.company_id);
       setUserRole(data.role);
       fetchedRef.current.add(userId);
       lastFetchedUserIdRef.current = userId;
 
+      const erpUserId = data.id;
       if (data.company_id) {
         import('@/app/services/defaultAccountsService').then(({ defaultAccountsService }) => {
           defaultAccountsService.ensureDefaultAccounts(data.company_id).catch((error: any) => {
             console.error('[SUPABASE CONTEXT] Error ensuring default accounts:', error);
           });
         });
-        loadUserBranch(userId, data.company_id, data.role);
+        loadUserBranch(erpUserId, data.company_id, data.role);
       }
     } catch (error) {
       console.error('[FETCH USER DATA EXCEPTION]', error);

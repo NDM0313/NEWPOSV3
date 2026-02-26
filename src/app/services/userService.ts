@@ -10,6 +10,8 @@ export interface User {
   user_code?: string; // Human-readable code: USR-001, USR-002, etc.
   is_active: boolean;
   can_be_assigned_as_salesman?: boolean;
+  auth_user_id?: string | null; // Links to auth.users.id. Null = no login yet.
+  last_login_at?: string | null;
   permissions?: {
     canCreateSale?: boolean;
     canBeAssignedAsSalesman?: boolean;
@@ -105,52 +107,42 @@ export const userService = {
     }
   },
 
-  // Create user
-  async createUser(user: Partial<User>) {
-    console.log('[USER SERVICE] Creating user with payload:', JSON.stringify(user, null, 2));
-    
-    try {
-      // Prepare insert payload - ensure permissions is properly formatted for JSONB
-      const insertPayload: any = { ...user };
-      
-      // Remove id from payload - let database generate it via default
-      delete insertPayload.id;
-      
-      // Auto-generate user_code if not provided
-      if (!insertPayload.user_code && insertPayload.company_id) {
-        insertPayload.user_code = await this.generateUserCode(insertPayload.company_id);
-        console.log('[USER SERVICE] Auto-generated user code:', insertPayload.user_code);
-      }
-      
-      // If permissions is an object, ensure it's properly formatted
-      if (insertPayload.permissions && typeof insertPayload.permissions === 'object') {
-        // Supabase handles JSONB automatically, but we ensure it's a plain object
-        insertPayload.permissions = insertPayload.permissions;
-      }
-      
-      const { data, error } = await supabase
-        .from('users')
-        .insert(insertPayload)
-        .select()
-        .single();
+  /**
+   * Create user with Auth (recommended): Creates Supabase Auth user + ERP profile.
+   * Requires Edge Function create-erp-user to be deployed.
+   */
+  async createUserWithAuth(params: {
+    email: string;
+    full_name: string;
+    role: string;
+    company_id: string;
+    phone?: string;
+    is_salesman?: boolean;
+    is_active?: boolean;
+    temporary_password?: string;
+    send_invite_email?: boolean;
+  }) {
+    const { data, error } = await supabase.functions.invoke('create-erp-user', { body: params });
+    if (error) throw error;
+    const result = data as { success?: boolean; error?: string };
+    if (!result?.success) throw new Error(result?.error || 'Failed to create user');
+    return result;
+  },
 
-      if (error) {
-        console.error('[USER SERVICE] Error creating user:', error);
-        console.error('[USER SERVICE] Error details:', {
-          message: error.message,
-          details: error.details,
-          hint: error.hint,
-          code: error.code
-        });
-        throw error;
-      }
-      
-      console.log('[USER SERVICE] User created successfully:', data);
-      return data;
-    } catch (error: any) {
-      console.error('[USER SERVICE] Exception creating user:', error);
-      throw error;
+  /** Create user (legacy): ERP profile only. Use createUserWithAuth when Edge Function available. */
+  async createUser(user: Partial<User>) {
+    const insertPayload: any = { ...user };
+    const validId = insertPayload.id && typeof insertPayload.id === 'string' && insertPayload.id.length > 0;
+    insertPayload.id = validId ? insertPayload.id : crypto.randomUUID();
+    if (!insertPayload.user_code && insertPayload.company_id) {
+      insertPayload.user_code = await this.generateUserCode(insertPayload.company_id);
     }
+    if (insertPayload.permissions && typeof insertPayload.permissions === 'object') {
+      insertPayload.permissions = insertPayload.permissions;
+    }
+    const { data, error } = await supabase.from('users').insert(insertPayload).select().single();
+    if (error) throw error;
+    return data;
   },
 
   // Update user
@@ -212,6 +204,27 @@ export const userService = {
       includeInactive: false,
       canBeSalesman: true
     });
+  },
+
+  /** Admin: Send password reset email to user */
+  async sendResetEmail(userId: string) {
+    const u = await this.getUser(userId);
+    const { data, error } = await supabase.functions.invoke('user-admin-actions', {
+      body: { action: 'send_reset_email', user_id: userId, email: u?.email },
+    });
+    if (error) throw error;
+    const r = data as { success?: boolean; error?: string };
+    if (!r?.success) throw new Error(r?.error || 'Failed to send reset email');
+  },
+
+  /** Admin: Set new password for user */
+  async resetPassword(userId: string, newPassword: string) {
+    const { data, error } = await supabase.functions.invoke('user-admin-actions', {
+      body: { action: 'reset_password', user_id: userId, new_password: newPassword },
+    });
+    if (error) throw error;
+    const r = data as { success?: boolean; error?: string };
+    if (!r?.success) throw new Error(r?.error || 'Failed to reset password');
   },
 
   /**

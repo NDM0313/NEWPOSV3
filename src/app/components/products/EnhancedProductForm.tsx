@@ -174,8 +174,9 @@ export const EnhancedProductForm = ({
     barcode: string;
   }>>([]);
   const [productsWithVariations, setProductsWithVariations] = useState<Array<{ id: string; name: string; sku: string; variations?: Array<{ attributes?: Record<string, string> }> }>>([]);
+  const [variationsForCopy, setVariationsForCopy] = useState<Array<{ productId: string; variationId: string; product: any; supplierName: string; label: string }>>([]);
   const [loadingProductsWithVariations, setLoadingProductsWithVariations] = useState(false);
-  const [copyFromProductId, setCopyFromProductId] = useState<string>('');
+  const [copyFromVariationId, setCopyFromVariationId] = useState<string>('');
 
   // Combos State
   const [combos, setCombos] = useState<Array<{
@@ -339,7 +340,7 @@ export const EnhancedProductForm = ({
     loadSuppliers();
   }, [companyId]);
 
-  // Load products with variations when Variations tab is active (for "copy from" option)
+  // Load variations for "copy from" – format: Supplier — AttributeName: Value (e.g. variant: Size: L, SUPLIER: Ibrahim)
   useEffect(() => {
     if (!companyId || activeTab !== 'variations' || !enableVariations) return;
     let cancelled = false;
@@ -358,15 +359,36 @@ export const EnhancedProductForm = ({
             variations: p.variations || [],
           }))
         );
+        const flat: Array<{ productId: string; variationId: string; product: any; supplierName: string; label: string }> = [];
+        for (const p of withVars) {
+          const supplierId = (p as any).supplier_id || (p as any).supplier;
+          const supplierName = suppliers.find((s) => s.id === supplierId)?.name ?? '—';
+          (p.variations || []).forEach((v: any, idx: number) => {
+            const attrs = v.attributes && typeof v.attributes === 'object' ? v.attributes : {};
+            for (const [attrName, val] of Object.entries(attrs)) {
+              if (!attrName || val == null) continue;
+              const label = `${attrName}: ${val}`;
+              flat.push({
+                productId: p.id,
+                variationId: `${p.id}-${idx}-${attrName}-${String(val).replace(/\s/g, '_')}`,
+                product: p,
+                supplierName,
+                label,
+              });
+            }
+          });
+        }
+        setVariationsForCopy(flat);
       })
       .catch(() => {
         if (!cancelled) setProductsWithVariations([]);
+        if (!cancelled) setVariationsForCopy([]);
       })
       .finally(() => {
         if (!cancelled) setLoadingProductsWithVariations(false);
       });
     return () => { cancelled = true; };
-  }, [companyId, activeTab, enableVariations]);
+  }, [companyId, activeTab, enableVariations, suppliers]);
 
   const selectedCategoryId = watch('category');
 
@@ -2176,37 +2198,37 @@ export const EnhancedProductForm = ({
               </p>
             </div>
 
-            {/* Copy from existing product */}
-            {productsWithVariations.length > 0 && (
+            {/* Copy from existing variation – format: Supplier — AttributeName: Value (e.g. variant: Size: L, SUPLIER: Ibrahim) */}
+            {variationsForCopy.length > 0 && (
               <div className="bg-gray-800 border border-gray-700 rounded-xl p-4">
-                <Label className="text-gray-200 mb-2 block">Use attributes from existing product</Label>
-                <p className="text-xs text-gray-500 mb-2">Select a product that already has variations to copy its attribute structure (Size, Color, etc.)</p>
+                <Label className="text-gray-200 mb-2 block">Copy from existing variation</Label>
+                <p className="text-xs text-gray-500 mb-2">Select an existing variation to copy its attributes. Shows: Supplier, Attribute: Value (e.g. Size: Large, Color: Red).</p>
                 <Select
-                  value={copyFromProductId}
+                  value={copyFromVariationId}
                   onValueChange={(id) => {
-                    setCopyFromProductId(id);
-                    const p = productsWithVariations.find((x) => x.id === id);
-                    if (p && p.id !== (initialProduct?.uuid || initialProduct?.id)) {
-                      copyAttributesFromProduct(p);
-                      setCopyFromProductId(''); // Reset so user can copy from another if needed
-                    } else if (p) {
+                    setCopyFromVariationId(id);
+                    const entry = variationsForCopy.find((x) => x.variationId === id);
+                    if (entry && entry.productId !== (initialProduct?.uuid || initialProduct?.id)) {
+                      copyAttributesFromProduct(entry.product);
+                      setCopyFromVariationId('');
+                    } else if (entry) {
                       toast.info('This is the current product');
-                      setCopyFromProductId('');
+                      setCopyFromVariationId('');
                     }
                   }}
                 >
                   <SelectTrigger className="bg-gray-900 border-gray-700 text-white">
-                    <SelectValue placeholder="Select product to copy from..." />
+                    <SelectValue placeholder="Select variation to copy from..." />
                   </SelectTrigger>
                   <SelectContent className="bg-gray-900 border-gray-800 text-white">
                     {loadingProductsWithVariations ? (
                       <div className="px-2 py-1.5 text-sm text-gray-400">Loading...</div>
                     ) : (
-                      productsWithVariations
-                        .filter((p) => p.id !== (initialProduct?.uuid || initialProduct?.id))
-                        .map((p) => (
-                          <SelectItem key={p.id} value={p.id}>
-                            {p.name} ({p.variations?.length ?? 0} variations)
+                      variationsForCopy
+                        .filter((e) => e.productId !== (initialProduct?.uuid || initialProduct?.id))
+                        .map((e) => (
+                          <SelectItem key={e.variationId} value={e.variationId}>
+                            {e.supplierName} — {e.label}
                           </SelectItem>
                         ))
                     )}
@@ -2250,9 +2272,6 @@ export const EnhancedProductForm = ({
                       <div className="flex items-center justify-between mb-3">
                         <h4 className="text-md font-semibold text-white flex items-center gap-2">
                           {attr.name}
-                          <span className="text-xs text-gray-400 font-normal">
-                            ({attr.values.length} values)
-                          </span>
                         </h4>
                         <button
                           type="button"

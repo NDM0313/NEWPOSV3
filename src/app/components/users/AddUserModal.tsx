@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { X, Save, User as UserIcon, CheckSquare, Square } from 'lucide-react';
+import { X, Save, User as UserIcon, CheckSquare, Square, Key, Mail, Clock, Shield } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
@@ -39,6 +39,8 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
     role: 'staff' as 'admin' | 'manager' | 'staff' | 'salesman' | 'cashier' | 'inventory',
     is_active: true,
     can_be_assigned_as_salesman: false,
+    passwordOption: 'temp' as 'temp' | 'invite',
+    temporary_password: '',
     permissions: {
       canCreateSale: false,
       canEditSale: false,
@@ -93,6 +95,8 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
           role: 'staff',
           is_active: true,
           can_be_assigned_as_salesman: false,
+          passwordOption: 'temp',
+          temporary_password: '',
           permissions: {
             canCreateSale: false,
             canEditSale: false,
@@ -127,6 +131,11 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
 
     if (!formData.email.trim() || !formData.email.includes('@')) {
       toast.error('Please enter a valid email address');
+      return;
+    }
+
+    if (!editingUser && formData.passwordOption === 'temp' && (!formData.temporary_password || formData.temporary_password.length < 6)) {
+      toast.error('Temporary password must be at least 6 characters');
       return;
     }
 
@@ -166,11 +175,28 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
         console.log('[ADD USER MODAL] Update result:', result);
         toast.success('User updated successfully!');
       } else {
-        // Create new user
-        console.log('[ADD USER MODAL] Creating new user');
-        const result = await userService.createUser(userData);
-        console.log('[ADD USER MODAL] Create result:', result);
-        toast.success('User created successfully!');
+        // Create new user - try Auth flow first (Edge Function)
+        try {
+          await userService.createUserWithAuth({
+            email: formData.email.trim().toLowerCase(),
+            full_name: formData.full_name.trim(),
+            role: formData.role,
+            company_id: companyId,
+            phone: formData.phone || undefined,
+            is_salesman: formData.can_be_assigned_as_salesman,
+            is_active: formData.is_active,
+            temporary_password: formData.passwordOption === 'temp' && formData.temporary_password.length >= 6 ? formData.temporary_password : undefined,
+            send_invite_email: formData.passwordOption === 'invite',
+          });
+          toast.success(formData.passwordOption === 'invite' ? 'Invite sent! User will receive email to set password.' : 'User created! They can login with the temporary password.');
+        } catch (authErr: any) {
+          if (authErr?.message?.includes('Failed to fetch') || authErr?.message?.includes('404') || authErr?.code === 'functions-invoke-error') {
+            const result = await userService.createUser(userData);
+            toast.success('User created. They will need to be invited to set a password.');
+          } else {
+            throw authErr;
+          }
+        }
       }
 
       // Trigger success callback to refresh list
@@ -251,6 +277,44 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
                 className="bg-gray-950 border-gray-700 text-white focus:border-blue-500"
               />
             </div>
+
+            {/* Login credentials (new users only) */}
+            {!editingUser && (
+              <div className="space-y-3 pt-2 border-t border-gray-800">
+                <Label className="text-gray-200">Login Setup</Label>
+                <div className="flex gap-4">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="passwordOption"
+                      checked={formData.passwordOption === 'temp'}
+                      onChange={() => setFormData({ ...formData, passwordOption: 'temp' })}
+                      className="w-4 h-4 bg-gray-950 border-gray-700"
+                    />
+                    <span className="text-sm text-gray-300">Set temporary password</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="passwordOption"
+                      checked={formData.passwordOption === 'invite'}
+                      onChange={() => setFormData({ ...formData, passwordOption: 'invite' })}
+                      className="w-4 h-4 bg-gray-950 border-gray-700"
+                    />
+                    <span className="text-sm text-gray-300">Send invite email</span>
+                  </label>
+                </div>
+                {formData.passwordOption === 'temp' && (
+                  <Input
+                    type="password"
+                    placeholder="Temporary password (min 6 chars)"
+                    value={formData.temporary_password}
+                    onChange={(e) => setFormData({ ...formData, temporary_password: e.target.value })}
+                    className="bg-gray-950 border-gray-700 text-white focus:border-blue-500"
+                  />
+                )}
+              </div>
+            )}
           </div>
 
           {/* Step 2: Role & Permissions */}
@@ -334,6 +398,64 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
                 onCheckedChange={(checked) => setFormData({ ...formData, is_active: checked })}
               />
             </div>
+
+            {/* Auth & Password (edit mode only) */}
+            {editingUser && (
+              <div className="space-y-3 p-4 bg-gray-950 border border-gray-800 rounded-lg">
+                <div className="flex items-center gap-2 pb-2 border-b border-gray-800">
+                  <Shield size={18} className="text-amber-400" />
+                  <h3 className="text-sm font-semibold text-gray-200">Auth & Login</h3>
+                </div>
+                <div className="flex flex-wrap gap-4 text-sm">
+                  <span className="flex items-center gap-2 text-gray-400">
+                    <Shield size={14} />
+                    {editingUser.auth_user_id ? 'Linked' : 'Not linked'}
+                  </span>
+                  {editingUser.last_login_at && (
+                    <span className="flex items-center gap-2 text-gray-400">
+                      <Clock size={14} />
+                      Last login: {new Date(editingUser.last_login_at).toLocaleString()}
+                    </span>
+                  )}
+                </div>
+                {editingUser.auth_user_id && (
+                  <div className="flex gap-2 pt-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-9 gap-2 border-gray-700 text-gray-300 hover:bg-gray-800"
+                      onClick={async () => {
+                        try {
+                          await userService.sendResetEmail(editingUser!.id);
+                          toast.success('Password reset email sent');
+                        } catch (e: any) {
+                          toast.error(e?.message || 'Failed to send');
+                        }
+                      }}
+                    >
+                      <Mail size={14} />
+                      Send Reset Email
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-9 gap-2 border-gray-700 text-gray-300 hover:bg-gray-800"
+                      onClick={() => {
+                        const p = prompt('Enter new temporary password (min 6 chars):');
+                        if (p && p.length >= 6) {
+                          userService.resetPassword(editingUser!.id, p).then(() => toast.success('Password updated')).catch((e: any) => toast.error(e?.message || 'Failed'));
+                        } else if (p !== null) toast.error('Password must be at least 6 characters');
+                      }}
+                    >
+                      <Key size={14} />
+                      Reset Password
+                    </Button>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Can Be Assigned As Salesman */}
             <div className="flex items-center justify-between p-4 bg-gray-950 border border-gray-800 rounded-lg">
