@@ -44,11 +44,12 @@ export async function signIn(email: string, password: string): Promise<{ data: A
   const user = authData.user;
   if (!user?.id) return { data: null, error: { message: 'Login failed.' } };
 
-  // users table has company_id, role. branch_id does not exist; branch lock uses user_branches.
+  // users table: match by id (legacy) OR auth_user_id (links to auth.users.id)
   const { data: row, error: profileError } = await supabase
     .from('users')
     .select('company_id, role')
-    .eq('id', user.id)
+    .or(`id.eq.${user.id},auth_user_id.eq.${user.id}`)
+    .limit(1)
     .maybeSingle();
 
   if (profileError || !row) {
@@ -113,7 +114,8 @@ export async function getProfile(userId: string): Promise<AuthProfile | null> {
   const { data: row, error } = await supabase
     .from('users')
     .select('company_id, role')
-    .eq('id', userId)
+    .or(`id.eq.${userId},auth_user_id.eq.${userId}`)
+    .limit(1)
     .maybeSingle();
   if (error || !row) return null;
   const { data: { user } } = await supabase.auth.getUser();
