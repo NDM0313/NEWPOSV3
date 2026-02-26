@@ -23,6 +23,11 @@ const supabaseAnonKey = (import.meta.env.VITE_SUPABASE_ANON_KEY ||
                         import.meta.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY || '').trim();
 
 const isValidSupabaseUrl = supabaseUrl.startsWith('http://') || supabaseUrl.startsWith('https://');
+// DEBUG: Log Supabase URL at runtime (localhost vs production)
+if (import.meta.env?.DEV) {
+  console.log('[SUPABASE] VITE_SUPABASE_URL at runtime:', import.meta.env.VITE_SUPABASE_URL);
+  console.log('[SUPABASE] Resolved supabaseUrl:', supabaseUrl);
+}
 if (!supabaseUrl || !isValidSupabaseUrl || !supabaseAnonKey) {
   const msg =
     '[Supabase] Missing or invalid config. Set VITE_SUPABASE_URL (full https URL) and VITE_SUPABASE_ANON_KEY. ' +

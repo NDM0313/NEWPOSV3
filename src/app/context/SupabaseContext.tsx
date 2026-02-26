@@ -60,9 +60,18 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   // Initialize user session
   useEffect(() => {
     // Get initial session
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
       setSession(session);
       setUser(session?.user ?? null);
+      if (session?.user && import.meta.env?.DEV) {
+        const { data: authData } = await supabase.auth.getUser();
+        console.log('[AUTH] AUTH USER (after getSession):', {
+          user_id: authData?.user?.id,
+          email: authData?.user?.email,
+          has_session: !!session,
+          auth_uid: authData?.user?.id,
+        });
+      }
       if (session?.user) {
         fetchUserData(session.user.id);
       }
@@ -76,6 +85,9 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       setUser(newUser);
       
       if (newUser) {
+        if (event === 'SIGNED_IN' && import.meta.env?.DEV) {
+          console.log('[AUTH] SIGNED_IN - auth user:', { id: newUser.id, email: newUser.email });
+        }
         if (event === 'SIGNED_IN') {
           supabase.from('users').update({ last_login_at: new Date().toISOString() }).or(`id.eq.${newUser.id},auth_user_id.eq.${newUser.id}`).then(() => {});
         }
@@ -121,16 +133,21 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     try {
       fetchingRef.current.add(userId);
       
-      if (process.env.NODE_ENV === 'development') {
-        console.log('[FETCH USER DATA] Attempting to fetch user data:', { userId });
+      if (import.meta.env?.DEV) {
+        console.log('[FETCH USER DATA] Looking for ERP profile with auth_user_id or id:', userId);
+        console.log('[FETCH USER DATA] Query: users WHERE id.eq.' + userId + ' OR auth_user_id.eq.' + userId);
       }
-      
+
       const { data, error } = await supabase
         .from('users')
         .select('id, company_id, role, is_active')
         .or(`id.eq.${userId},auth_user_id.eq.${userId}`)
         .limit(1)
         .maybeSingle();
+
+      if (import.meta.env?.DEV) {
+        console.log('[FETCH USER DATA] Result:', { data, error: error ? { code: error.code, message: error.message } : null });
+      }
 
       if (error) {
         // RLS or permission errors - treat as "need onboarding"

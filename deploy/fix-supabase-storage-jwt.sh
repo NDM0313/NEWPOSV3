@@ -66,11 +66,11 @@ if [ -f "$ERP_ENV" ]; then
 fi
 
 # Recreate containers that use ANON_KEY (restart does NOT reload .env in Docker)
-# Studio serves the key to the browser; Storage/Kong use it for API. All must get new key from .env.
+# Studio serves the key to the browser; Storage/Kong/Functions use it for API. All must get new key from .env.
 if [ -f "$SUPABASE_DIR/docker-compose.yml" ] || [ -f "$SUPABASE_DIR/docker-compose.yaml" ]; then
-  (cd "$SUPABASE_DIR" && docker compose up -d kong studio storage --force-recreate 2>/dev/null) || true
+  (cd "$SUPABASE_DIR" && docker compose up -d kong studio storage functions --force-recreate 2>/dev/null) || true
   (cd "$SUPABASE_DIR" && docker compose restart auth rest 2>/dev/null) || true
-  echo "[fix-jwt] Recreated Kong, Studio, Storage (new anon key); restarted Auth, Rest."
+  echo "[fix-jwt] Recreated Kong, Studio, Storage, Edge Functions (new anon key); restarted Auth, Rest."
 else
   echo "[fix-jwt] docker-compose not found; recreate Kong, Studio, Storage manually so they pick up new keys."
 fi
