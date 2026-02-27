@@ -25,6 +25,7 @@ export interface Contact {
   is_active?: boolean;
   is_system_generated?: boolean;
   system_type?: string;
+  is_default?: boolean;
   created_by?: string;
 }
 
@@ -142,8 +143,8 @@ export const contactService = {
 
     if (fetchError) throw fetchError;
 
-    // Block name and type changes for system-generated contacts
-    if (contact?.is_system_generated && contact?.system_type === 'walking_customer') {
+    // Block name and type changes for default / system-generated Walk-in Customer
+    if (contact?.is_default === true || (contact?.is_system_generated && contact?.system_type === 'walking_customer')) {
       if (updates.name !== undefined && updates.name !== 'Walking Customer') {
         throw new Error('Cannot rename default Walking Customer. This is a system-generated contact.');
       }
@@ -175,9 +176,9 @@ export const contactService = {
 
     if (fetchError) throw fetchError;
 
-    // Block deletion of system-generated contacts
-    if (contact?.is_system_generated && contact?.system_type === 'walking_customer') {
-      throw new Error('Default Walking Customer cannot be deleted. This is a system-generated contact.');
+    // Block deletion of default or system-generated Walk-in Customer
+    if (contact?.is_default === true || (contact?.is_system_generated && contact?.system_type === 'walking_customer')) {
+      throw new Error('Default Walk-in Customer cannot be deleted.');
     }
 
     const { error } = await supabase
@@ -239,7 +240,29 @@ export const contactService = {
   },
 
   /**
-   * Get walking customer for a branch
+   * Get the mandatory default (Walk-in) customer for the company.
+   * Exactly one per company; used for new sale auto-selection.
+   */
+  async getDefaultCustomer(companyId: string): Promise<Contact | null> {
+    const { data, error } = await supabase
+      .from('contacts')
+      .select('*')
+      .eq('company_id', companyId)
+      .eq('is_default', true)
+      .in('type', ['customer', 'both'])
+      .eq('is_active', true)
+      .limit(1)
+      .maybeSingle();
+
+    if (error) {
+      console.error('[CONTACT SERVICE] Error fetching default customer:', error);
+      return null;
+    }
+    return (data as Contact) || null;
+  },
+
+  /**
+   * Get walking customer for a branch (legacy; prefer getDefaultCustomer for new sales)
    * Used in SaleForm to auto-select customer
    */
   async getWalkingCustomer(companyId: string, branchId?: string): Promise<Contact | null> {

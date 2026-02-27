@@ -859,7 +859,7 @@ export const ContactsPage = () => {
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-2">
                             <div className="text-sm font-medium text-white truncate leading-[1.3]">{contact.name}</div>
-                            {contact.is_system_generated && contact.system_type === 'walking_customer' && (
+                            {(contact.is_default === true || (contact.is_system_generated && contact.system_type === 'walking_customer')) && (
                               <Badge className="bg-gray-700/50 text-gray-300 border-gray-600 text-[10px] px-1.5 py-0 h-4">
                                 System
                               </Badge>
@@ -1026,12 +1026,12 @@ export const ContactsPage = () => {
                                     setSelectedContact(contact);
                                     setDeleteDialogOpen(true);
                                   }}
-                                  disabled={contact.is_system_generated && contact.system_type === 'walking_customer'}
+                                  disabled={(contact.is_default === true || (contact.is_system_generated && contact.system_type === 'walking_customer'))}
                                   className={cn(
                                     "hover:bg-gray-800 cursor-pointer text-red-400",
-                                    contact.is_system_generated && contact.system_type === 'walking_customer' && "opacity-50 cursor-not-allowed"
+                                    (contact.is_default === true || (contact.is_system_generated && contact.system_type === 'walking_customer')) && "opacity-50 cursor-not-allowed"
                                   )}
-                                  title={contact.is_system_generated && contact.system_type === 'walking_customer' ? 'System-generated contacts cannot be deleted' : ''}
+                                  title={(contact.is_default === true || (contact.is_system_generated && contact.system_type === 'walking_customer')) ? 'Default Walk-in Customer cannot be deleted' : ''}
                                 >
                                   <Trash2 size={14} className="mr-2" />
                                   Delete
@@ -1119,12 +1119,12 @@ export const ContactsPage = () => {
                                     setSelectedContact(contact);
                                     setDeleteDialogOpen(true);
                                   }}
-                                  disabled={contact.is_system_generated && contact.system_type === 'walking_customer'}
+                                  disabled={(contact.is_default === true || (contact.is_system_generated && contact.system_type === 'walking_customer'))}
                                   className={cn(
                                     "hover:bg-gray-800 cursor-pointer text-red-400",
-                                    contact.is_system_generated && contact.system_type === 'walking_customer' && "opacity-50 cursor-not-allowed"
+                                    (contact.is_default === true || (contact.is_system_generated && contact.system_type === 'walking_customer')) && "opacity-50 cursor-not-allowed"
                                   )}
-                                  title={contact.is_system_generated && contact.system_type === 'walking_customer' ? 'System-generated contacts cannot be deleted' : ''}
+                                  title={(contact.is_default === true || (contact.is_system_generated && contact.system_type === 'walking_customer')) ? 'Default Walk-in Customer cannot be deleted' : ''}
                                 >
                                   <Trash2 size={14} className="mr-2" />
                                   Delete
@@ -1189,12 +1189,12 @@ export const ContactsPage = () => {
                                     setSelectedContact(contact);
                                     setDeleteDialogOpen(true);
                                   }}
-                                  disabled={contact.is_system_generated && contact.system_type === 'walking_customer'}
+                                  disabled={(contact.is_default === true || (contact.is_system_generated && contact.system_type === 'walking_customer'))}
                                   className={cn(
                                     "hover:bg-gray-800 cursor-pointer text-red-400",
-                                    contact.is_system_generated && contact.system_type === 'walking_customer' && "opacity-50 cursor-not-allowed"
+                                    (contact.is_default === true || (contact.is_system_generated && contact.system_type === 'walking_customer')) && "opacity-50 cursor-not-allowed"
                                   )}
-                                  title={contact.is_system_generated && contact.system_type === 'walking_customer' ? 'System-generated contacts cannot be deleted' : ''}
+                                  title={(contact.is_default === true || (contact.is_system_generated && contact.system_type === 'walking_customer')) ? 'Default Walk-in Customer cannot be deleted' : ''}
                                 >
                                   <Trash2 size={14} className="mr-2" />
                                   Delete

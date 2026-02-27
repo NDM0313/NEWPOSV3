@@ -557,51 +557,49 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                         };
                     });
                 
-                // Get walking customer for auto-selection
-                let walkingCustomerId: string | null = null;
+                // Mandatory default (Walk-in) customer for auto-selection
+                let defaultCustomerId: string | null = null;
                 try {
-                    const walkingCustomer = await contactService.getWalkingCustomer(
-                        companyId,
-                        contextBranchId === 'all' ? undefined : contextBranchId || undefined
-                    );
-                    if (walkingCustomer) {
-                        walkingCustomerId = walkingCustomer.id || null;
-                        console.log('[SALE FORM] Found walking customer:', walkingCustomerId);
+                    const defaultCustomer = await contactService.getDefaultCustomer(companyId);
+                    if (defaultCustomer) {
+                        defaultCustomerId = defaultCustomer.id || null;
+                        console.log('[SALE FORM] Found default customer:', defaultCustomerId);
                     }
                 } catch (error) {
-                    console.warn('[SALE FORM] Could not fetch walking customer:', error);
+                    console.warn('[SALE FORM] Could not fetch default customer:', error);
+                }
+                if (!defaultCustomerId) {
+                    try {
+                        const walkingCustomer = await contactService.getWalkingCustomer(
+                            companyId,
+                            contextBranchId === 'all' ? undefined : contextBranchId || undefined
+                        );
+                        if (walkingCustomer) defaultCustomerId = walkingCustomer.id || null;
+                    } catch (_) {}
                 }
 
-                // Add walk-in customer option (for backward compatibility)
-                // But prefer actual walking customer if it exists
+                // Build list: include walk-in placeholder for backward compat; prefer actual default if exists
                 const customerList = [
                     { id: 'walk-in', name: "Walk-in Customer", dueBalance: 0 },
                     ...customerContacts
                 ];
-
-                // If walking customer exists, add it to the list (or replace walk-in)
-                if (walkingCustomerId) {
-                    const walkingCustomerInList = customerContacts.find(c => c.id === walkingCustomerId);
-                    if (!walkingCustomerInList) {
-                        // Add walking customer to list
-                        customerList.push({
-                            id: walkingCustomerId,
-                            name: "Walking Customer",
-                            dueBalance: 0
-                        });
-                    }
+                if (defaultCustomerId && !customerContacts.some(c => c.id === defaultCustomerId)) {
+                    customerList.push({
+                        id: defaultCustomerId,
+                        name: "Walk-in Customer",
+                        dueBalance: 0
+                    });
                 }
 
                 setCustomers(customerList);
 
-                // Auto-select walking customer if no customer is selected
+                // Auto-select default customer for new sale
                 if (!customerId && !initialSale) {
-                    if (walkingCustomerId) {
-                        console.log('[SALE FORM] Auto-selecting walking customer:', walkingCustomerId);
-                        setCustomerId(walkingCustomerId);
+                    if (defaultCustomerId) {
+                        console.log('[SALE FORM] Auto-selecting default customer:', defaultCustomerId);
+                        setCustomerId(defaultCustomerId);
                     } else {
-                        // Fallback to walk-in customer
-                        console.log('[SALE FORM] Auto-selecting walk-in customer (fallback)');
+                        console.log('[SALE FORM] Auto-selecting walk-in (fallback)');
                         setCustomerId('walk-in');
                     }
                 }
