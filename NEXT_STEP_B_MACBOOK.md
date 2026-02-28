@@ -33,7 +33,7 @@ Ye script:
 - `schema_migrations` check karegi
 - Jo migrations abhi tak apply nahi hui, unhe run karegi (supabase-extract/migrations phir migrations/ folder se)
 - Contacts RLS / default Walk-in wali migration(s) bhi apply ho jayengi (e.g. **contacts_rls_salesman_strict_isolation.sql** ya **customers_sales_rls_controlled_access.sql** — jo pending ho)
-- **Identity model:** `identity_model_auth_user_id.sql`, `rpc_user_branches_accounts_auth_id_only.sql`, `fix_user_account_access_fk_to_auth_users.sql` — user_branches / user_account_access ab `auth.users(id)` use karte hain; Settings → Users mein branch/account access **auth_user_id** se save/load hota hai.
+- **Identity model:** `identity_model_auth_user_id.sql`, `rpc_user_branches_accounts_auth_id_only.sql`, `fix_user_account_access_fk_to_auth_users.sql`, **`identity_model_enforce_fk_clean_orphans.sql`** — user_branches / user_account_access FKs hamesha `auth.users(id)`; orphan rows clean; Settings → Users mein branch/account **auth_user_id** only (unlinked par clear error toast). Verify: `docs/IDENTITY_MODEL_VERIFY_AND_FIX.sql`; audit: `docs/IDENTITY_MODEL_AUDIT.md`.
 
 ## 3. Verify
 

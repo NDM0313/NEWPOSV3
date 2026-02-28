@@ -149,10 +149,16 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
     })();
   }, [open, companyId]);
 
-  // Branch/account access is keyed by auth_user_id (identity). Load by auth_user_id when present.
+  // SAFE ID RULE: Branch/account use auth.users.id ONLY. Never use public.users.id (editingUser.id).
   useEffect(() => {
     if (!open || !editingUser) return;
-    const identityId = editingUser.auth_user_id ?? editingUser.id;
+    const identityId = editingUser.auth_user_id ?? null;
+    if (!identityId) {
+      setSelectedBranchIds([]);
+      setSelectedAccountIds([]);
+      setLoadingAccess(false);
+      return;
+    }
     setLoadingAccess(true);
     (async () => {
       try {
@@ -169,6 +175,7 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
       }
     })();
   }, [open, editingUser?.id, editingUser?.auth_user_id]);
+  // identityId for save: editingUser?.auth_user_id ?? savedAuthUserId — never editingUser.id
 
   const handleSave = async () => {
     if (!companyId) {
@@ -265,12 +272,10 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
         }
       }
 
-      // Save branch/account access by identity only: auth_user_id (user_branches.user_id = auth.users.id).
-      const identityId = editingUser ? editingUser.auth_user_id : savedAuthUserId;
+      // SAFE ID RULE: identityId = editingUser?.auth_user_id ?? savedAuthUserId. Never use editingUser.id.
+      const identityId = editingUser?.auth_user_id ?? savedAuthUserId ?? null;
       if (!identityId && (selectedBranchIds.length > 0 || selectedAccountIds.length > 0)) {
-        if (editingUser) {
-          toast.info('Branch/account access not saved: user must be linked (have auth login) to set access.');
-        }
+        toast.error('User is not linked to authentication. Cannot assign branch/account access.');
       }
       if (identityId) {
         try {
