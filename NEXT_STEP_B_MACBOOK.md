@@ -2,6 +2,16 @@
 
 Contacts RLS (salesman strict isolation) + default Walk-in customer migrations GitHub pe push ho chuki hain. MacBook par ye steps follow karo.
 
+## GitHub pull system (kisi bhi machine par)
+
+```bash
+cd /path/to/NEWPOSV3
+git pull origin main
+node scripts/run-migrations.js
+```
+
+Pull se latest migrations + code aate hain; `run-migrations.js` sirf **pending** migrations run karta hai (already applied skip).
+
 **Done when:** Migrations applied + verify checklist (Section 3) pass.
 
 ## 1. Repo pull karo
