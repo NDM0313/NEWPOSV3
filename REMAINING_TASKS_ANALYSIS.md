@@ -68,7 +68,8 @@ Agar formal go-live karna ho:
 ---
 
 ### 5. Database Security (Supabase Advisor)
-- [ ] RLS enable on remaining tables (products, contacts, sales, etc.)
+- [x] **RLS on products, contacts, sales** ✅ (migrations: `sales_products_rls_role_based.sql`, `contacts_rls_salesman_strict_isolation.sql` / `customers_sales_rls_controlled_access.sql` — apply via `node scripts/run-migrations.js`)
+- [ ] RLS on any other tables (if advised)
 - [ ] Fix ~50 functions: `search_path` mutable warning
 
 **File:** Supabase Dashboard → Advisors
@@ -92,13 +93,16 @@ Agar formal go-live karna ho:
 | 3 | Realtime fix | 15 min | Medium – live updates |
 | 4 | n8n hardening | 5 min | Low – security |
 | 5 | Post-go-live checklist | 30 min | Medium |
-| 6 | RLS on remaining tables | 1–2 hr | Medium |
+| 6 | RLS on remaining tables (products/contacts/sales done) | — | Done |
 
 ---
 
 ## Quick Commands
 
 ```bash
+# MacBook – Next Step B (migrations apply)
+cd ~/NEWPOSV3 && git pull origin main && node scripts/run-migrations.js
+
 # DNS ke baad – domain deploy
 ssh dincouture-vps "cd /root/NEWPOSV3 && git pull && bash deploy-erp-domain.sh"
 

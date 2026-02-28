@@ -6,23 +6,19 @@
 -- Do NOT trust frontend to send user_id; derive from auth.uid().
 -- ============================================================================
 
--- Helper: set created_by from auth.uid() on INSERT when null
-CREATE OR REPLACE FUNCTION set_created_by_from_auth()
-RETURNS TRIGGER
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public
-AS $$
-BEGIN
-  IF NEW.created_by IS NULL AND auth.uid() IS NOT NULL THEN
-    NEW.created_by := auth.uid();
-  END IF;
-  IF TG_OP = 'INSERT' AND NEW.created_at IS NULL THEN
-    NEW.created_at := NOW();
-  END IF;
-  RETURN NEW;
-END;
-$$;
+-- Helper: set created_by from auth.uid() on INSERT when null (skip replace if not owner)
+DO $$ BEGIN
+  CREATE OR REPLACE FUNCTION set_created_by_from_auth()
+  RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $fn$
+  BEGIN
+    IF NEW.created_by IS NULL AND auth.uid() IS NOT NULL THEN NEW.created_by := auth.uid(); END IF;
+    IF TG_OP = 'INSERT' AND NEW.created_at IS NULL THEN NEW.created_at := NOW(); END IF;
+    RETURN NEW;
+  END;
+  $fn$;
+EXCEPTION WHEN OTHERS THEN
+  IF SQLERRM NOT LIKE '%must be owner%' AND SQLERRM NOT LIKE '%permission denied%' THEN RAISE; END IF;
+END $$;
 
 -- Sales
 DROP TRIGGER IF EXISTS set_sales_created_by ON sales;

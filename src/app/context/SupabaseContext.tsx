@@ -14,6 +14,9 @@ interface SupabaseContextType {
   branchId: string | null;
   defaultBranchId: string | null;
   setBranchId: (branchId: string | null) => void;
+  /** Branch IDs the user can access (from user_branches, or all company branches for admin). Empty until loaded. */
+  accessibleBranchIds: string[];
+  setAccessibleBranchIds: (ids: string[]) => void;
   /** Global packing (Boxes/Pieces): OFF = hidden everywhere; ON = full packing. Default OFF. */
   enablePacking: boolean;
   setEnablePacking: (value: boolean) => Promise<void>;
@@ -31,6 +34,7 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const [userRole, setUserRole] = useState<string | null>(null);
   const [branchId, setBranchId] = useState<string | null>(null);
   const [defaultBranchId, setDefaultBranchId] = useState<string | null>(null);
+  const [accessibleBranchIds, setAccessibleBranchIds] = useState<string[]>([]);
   const [enablePacking, setEnablePackingState] = useState<boolean>(false);
 
   const loadEnablePacking = async (cid: string) => {
@@ -196,11 +200,15 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
       const erpUserId = data.id;
       if (data.company_id) {
-        import('@/app/services/defaultAccountsService').then(({ defaultAccountsService }) => {
-          defaultAccountsService.ensureDefaultAccounts(data.company_id).catch((error: any) => {
-            console.error('[SUPABASE CONTEXT] Error ensuring default accounts:', error);
+        // Only admin/manager/accountant can INSERT into accounts (RLS); skip ensureDefaultAccounts for other roles to avoid 403
+        const canCreateAccounts = ['admin', 'manager', 'accountant'].includes(String(data.role || '').toLowerCase());
+        if (canCreateAccounts) {
+          import('@/app/services/defaultAccountsService').then(({ defaultAccountsService }) => {
+            defaultAccountsService.ensureDefaultAccounts(data.company_id).catch((error: any) => {
+              console.error('[SUPABASE CONTEXT] Error ensuring default accounts:', error);
+            });
           });
-        });
+        }
         loadUserBranch(erpUserId, data.company_id, data.role);
       }
     } catch (error) {
@@ -210,58 +218,79 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
   };
 
-  // Load user's default branch (admin → All Branches; normal user → assigned/first branch)
+  // Load user's default branch and accessible branch IDs (for smart branch selector)
   const loadUserBranch = async (userId: string, companyId: string, userRole?: string | null) => {
     try {
       const isAdmin = userRole === 'admin' || userRole === 'Admin';
       if (isAdmin) {
         setDefaultBranchId('all');
         setBranchId('all');
-        if (import.meta.env?.DEV) console.log('[BRANCH LOADED] Admin: All Branches');
+        const { data: companyBranches } = await supabase
+          .from('branches')
+          .select('id')
+          .eq('company_id', companyId)
+          .eq('is_active', true);
+        setAccessibleBranchIds((companyBranches || []).map((b: { id: string }) => b.id));
+        if (import.meta.env?.DEV) console.log('[BRANCH LOADED] Admin: All Branches', { count: (companyBranches || []).length });
         return;
       }
 
-      // First, try to get user's default branch (table may not exist)
-      const { data: userBranch, error: branchError } = await supabase
+      // Non-admin: get branches from user_branches (user_id = public.users.id for this user)
+      const { data: userBranches, error: branchError } = await supabase
         .from('user_branches')
-        .select('branch_id')
-        .eq('user_id', userId)
-        .eq('is_default', true)
-        .single();
+        .select('branch_id, is_default')
+        .eq('user_id', userId);
 
-      if (userBranch && !branchError) {
-        setDefaultBranchId(userBranch.branch_id);
-        setBranchId(userBranch.branch_id);
-        if (import.meta.env?.DEV) console.log('[BRANCH LOADED]', { branchId: userBranch.branch_id });
+      if (import.meta.env?.DEV) {
+        console.log('[BRANCH LOAD] Non-admin', {
+          erpUserId: userId,
+          userBranchesCount: userBranches?.length ?? 0,
+          branchError: branchError ? { code: branchError.code, message: branchError.message } : null,
+        });
+      }
+
+      if (userBranches && userBranches.length > 0) {
+        const ids = userBranches.map((ub: { branch_id: string }) => ub.branch_id).filter(Boolean);
+        setAccessibleBranchIds(ids);
+        const defaultRow = userBranches.find((ub: any) => ub.is_default === true) || userBranches[0];
+        const defaultId = defaultRow?.branch_id ?? ids[0];
+        setDefaultBranchId(defaultId);
+        setBranchId(defaultId);
+        if (import.meta.env?.DEV) console.log('[BRANCH LOADED] User branches', { count: ids.length, defaultId });
         return;
       }
 
       if (branchError && (branchError.code === 'PGRST301' || branchError.code === 'PGRST116' || branchError.status === 404 || branchError.status === 406)) {
-        // Table doesn't exist - continue to company branch
+        // Table doesn't exist - fall back to first company branch
       } else if (branchError) {
         console.warn('[BRANCH LOAD] Unexpected error (non-blocking):', branchError);
       }
 
+      // Fallback: single company branch (e.g. no user_branches table or user not assigned)
       const { data: companyBranch, error: companyBranchError } = await supabase
         .from('branches')
         .select('id')
         .eq('company_id', companyId)
         .eq('is_active', true)
         .limit(1)
-        .single();
+        .maybeSingle();
 
       if (companyBranch && !companyBranchError) {
         setDefaultBranchId(companyBranch.id);
         setBranchId(companyBranch.id);
+        setAccessibleBranchIds([companyBranch.id]);
         if (import.meta.env?.DEV) console.log('[BRANCH LOADED] Default company branch:', companyBranch.id);
       } else {
+        if (import.meta.env?.DEV) console.warn('[BRANCH LOAD] No branches for non-admin', { companyBranchError: companyBranchError?.message });
         setDefaultBranchId(null);
         setBranchId(null);
+        setAccessibleBranchIds([]);
       }
     } catch (error) {
       console.error('[LOAD BRANCH ERROR]', error);
       setDefaultBranchId(null);
       setBranchId(null);
+      setAccessibleBranchIds([]);
     }
   };
 
@@ -297,6 +326,7 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setUserRole(null);
     setBranchId(null);
     setDefaultBranchId(null);
+    setAccessibleBranchIds([]);
     // Clear fetch tracking on sign out
     fetchingRef.current.clear();
     fetchedRef.current.clear();
@@ -323,6 +353,8 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         branchId,
         defaultBranchId,
         setBranchId,
+        accessibleBranchIds,
+        setAccessibleBranchIds,
         enablePacking,
         setEnablePacking,
         refreshEnablePacking,

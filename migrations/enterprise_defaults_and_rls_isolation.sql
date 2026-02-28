@@ -14,72 +14,61 @@
 ALTER TABLE contacts ADD COLUMN IF NOT EXISTS is_default BOOLEAN NOT NULL DEFAULT false;
 
 -- ----------------------------------------------------------------------------
--- HELPERS (support id + auth_user_id; required for RLS)
+-- HELPERS (support id + auth_user_id; skip replace if not owner)
 -- ----------------------------------------------------------------------------
-CREATE OR REPLACE FUNCTION get_user_company_id()
-RETURNS UUID
-LANGUAGE sql SECURITY DEFINER SET search_path = public
-AS $$
-  SELECT COALESCE(
+DO $$ BEGIN
+  CREATE OR REPLACE FUNCTION get_user_company_id()
+  RETURNS UUID LANGUAGE sql SECURITY DEFINER SET search_path = public
+  AS $fn$ SELECT COALESCE(
     (SELECT company_id FROM users WHERE id = auth.uid() LIMIT 1),
     (SELECT company_id FROM users WHERE auth_user_id = auth.uid() LIMIT 1)
-  );
-$$;
+  ); $fn$;
+EXCEPTION WHEN OTHERS THEN
+  IF SQLERRM NOT LIKE '%must be owner%' AND SQLERRM NOT LIKE '%permission denied%' THEN RAISE; END IF;
+END $$;
 
--- get_user_role() not redefined here (return type may be user_role or TEXT; policies depend on it)
-
-CREATE OR REPLACE FUNCTION has_branch_access(branch_uuid UUID)
-RETURNS BOOLEAN LANGUAGE sql SECURITY DEFINER SET search_path = public
-AS $$
-  SELECT EXISTS (
-    SELECT 1 FROM user_branches ub
-    JOIN users u ON u.id = ub.user_id
+DO $$ BEGIN
+  CREATE OR REPLACE FUNCTION has_branch_access(branch_uuid UUID)
+  RETURNS BOOLEAN LANGUAGE sql SECURITY DEFINER SET search_path = public
+  AS $fn$ SELECT EXISTS (
+    SELECT 1 FROM user_branches ub JOIN users u ON u.id = ub.user_id
     WHERE (u.id = auth.uid() OR u.auth_user_id = auth.uid()) AND ub.branch_id = branch_uuid
-  );
-$$;
+  ); $fn$;
+EXCEPTION WHEN OTHERS THEN
+  IF SQLERRM NOT LIKE '%must be owner%' AND SQLERRM NOT LIKE '%permission denied%' THEN RAISE; END IF;
+END $$;
 
-CREATE OR REPLACE FUNCTION get_user_branch_id()
-RETURNS UUID LANGUAGE sql SECURITY DEFINER SET search_path = public
-AS $$
-  SELECT COALESCE(
+DO $$ BEGIN
+  CREATE OR REPLACE FUNCTION get_user_branch_id()
+  RETURNS UUID LANGUAGE sql SECURITY DEFINER SET search_path = public
+  AS $fn$ SELECT COALESCE(
     (SELECT ub.branch_id FROM user_branches ub JOIN users u ON u.id = ub.user_id
      WHERE (u.id = auth.uid() OR u.auth_user_id = auth.uid()) AND ub.is_default = true LIMIT 1),
     (SELECT ub.branch_id FROM user_branches ub JOIN users u ON u.id = ub.user_id
      WHERE (u.id = auth.uid() OR u.auth_user_id = auth.uid()) LIMIT 1)
-  );
-$$;
+  ); $fn$;
+EXCEPTION WHEN OTHERS THEN
+  IF SQLERRM NOT LIKE '%must be owner%' AND SQLERRM NOT LIKE '%permission denied%' THEN RAISE; END IF;
+END $$;
 
 -- ----------------------------------------------------------------------------
--- 1. COMPANY TRIGGER: Walk-in Customer + default Cash + Bank (and Mobile Wallet)
--- Replaces single Walk-in trigger with one that seeds all company defaults.
+-- 1. COMPANY TRIGGER: Walk-in Customer + default Cash + Bank (skip if not owner)
 -- ----------------------------------------------------------------------------
-CREATE OR REPLACE FUNCTION create_company_defaults()
-RETURNS TRIGGER
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public
-AS $$
-BEGIN
-  -- Default Walk-in Customer
-  INSERT INTO contacts (company_id, type, name, is_default, is_system_generated, system_type, is_active, opening_balance, credit_limit, payment_terms)
-  VALUES (NEW.id, 'customer', 'Walk-in Customer', true, true, 'walking_customer', true, 0, 0, 0);
-
-  -- Default Cash (1000), Bank (1010), Mobile Wallet (1020) — omit is_system if column missing
-  INSERT INTO accounts (company_id, code, name, type, is_active)
-  VALUES (NEW.id, '1000', 'Cash', 'cash', true)
-  ON CONFLICT (company_id, code) DO NOTHING;
-
-  INSERT INTO accounts (company_id, code, name, type, is_active)
-  VALUES (NEW.id, '1010', 'Bank', 'bank', true)
-  ON CONFLICT (company_id, code) DO NOTHING;
-
-  INSERT INTO accounts (company_id, code, name, type, is_active)
-  VALUES (NEW.id, '1020', 'Mobile Wallet', 'mobile_wallet', true)
-  ON CONFLICT (company_id, code) DO NOTHING;
-
-  RETURN NEW;
-END;
-$$;
+DO $$ BEGIN
+  CREATE OR REPLACE FUNCTION create_company_defaults()
+  RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $fn$
+  BEGIN
+    INSERT INTO contacts (company_id, type, name, is_default, is_system_generated, system_type, is_active, opening_balance, credit_limit, payment_terms)
+    VALUES (NEW.id, 'customer', 'Walk-in Customer', true, true, 'walking_customer', true, 0, 0, 0);
+    INSERT INTO accounts (company_id, code, name, type, is_active) VALUES (NEW.id, '1000', 'Cash', 'cash', true) ON CONFLICT (company_id, code) DO NOTHING;
+    INSERT INTO accounts (company_id, code, name, type, is_active) VALUES (NEW.id, '1010', 'Bank', 'bank', true) ON CONFLICT (company_id, code) DO NOTHING;
+    INSERT INTO accounts (company_id, code, name, type, is_active) VALUES (NEW.id, '1020', 'Mobile Wallet', 'mobile_wallet', true) ON CONFLICT (company_id, code) DO NOTHING;
+    RETURN NEW;
+  END;
+  $fn$;
+EXCEPTION WHEN OTHERS THEN
+  IF SQLERRM NOT LIKE '%must be owner%' AND SQLERRM NOT LIKE '%permission denied%' THEN RAISE; END IF;
+END $$;
 
 DROP TRIGGER IF EXISTS trg_after_company_insert_create_default_customer ON companies;
 DROP TRIGGER IF EXISTS trg_after_company_insert_defaults ON companies;
@@ -97,6 +86,10 @@ DROP POLICY IF EXISTS "contacts_select_policy" ON contacts;
 DROP POLICY IF EXISTS "contacts_insert_policy" ON contacts;
 DROP POLICY IF EXISTS "contacts_update_policy" ON contacts;
 DROP POLICY IF EXISTS "contacts_delete_policy" ON contacts;
+DROP POLICY IF EXISTS "contacts_select_enterprise" ON contacts;
+DROP POLICY IF EXISTS "contacts_insert_enterprise" ON contacts;
+DROP POLICY IF EXISTS "contacts_update_enterprise" ON contacts;
+DROP POLICY IF EXISTS "contacts_delete_enterprise" ON contacts;
 DROP POLICY IF EXISTS "Users can view company contacts" ON contacts;
 DROP POLICY IF EXISTS "Users can insert contacts" ON contacts;
 DROP POLICY IF EXISTS "Users can update contacts" ON contacts;
@@ -167,6 +160,10 @@ DROP POLICY IF EXISTS "sales_select_role_based" ON sales;
 DROP POLICY IF EXISTS "sales_insert_role_based" ON sales;
 DROP POLICY IF EXISTS "sales_update_role_based" ON sales;
 DROP POLICY IF EXISTS "sales_delete_role_based" ON sales;
+DROP POLICY IF EXISTS "sales_select_enterprise" ON sales;
+DROP POLICY IF EXISTS "sales_insert_enterprise" ON sales;
+DROP POLICY IF EXISTS "sales_update_enterprise" ON sales;
+DROP POLICY IF EXISTS "sales_delete_enterprise" ON sales;
 
 CREATE POLICY "sales_select_enterprise"
   ON sales FOR SELECT TO authenticated
@@ -219,6 +216,10 @@ DROP POLICY IF EXISTS "sale_items_select_policy" ON sale_items;
 DROP POLICY IF EXISTS "sale_items_insert_policy" ON sale_items;
 DROP POLICY IF EXISTS "sale_items_update_policy" ON sale_items;
 DROP POLICY IF EXISTS "sale_items_delete_policy" ON sale_items;
+DROP POLICY IF EXISTS "sale_items_select_enterprise" ON sale_items;
+DROP POLICY IF EXISTS "sale_items_insert_enterprise" ON sale_items;
+DROP POLICY IF EXISTS "sale_items_update_enterprise" ON sale_items;
+DROP POLICY IF EXISTS "sale_items_delete_enterprise" ON sale_items;
 
 CREATE POLICY "sale_items_select_enterprise"
   ON sale_items FOR SELECT TO authenticated
@@ -279,6 +280,10 @@ DROP POLICY IF EXISTS "accounts_select_company" ON accounts;
 DROP POLICY IF EXISTS "accounts_insert_company" ON accounts;
 DROP POLICY IF EXISTS "accounts_update_company" ON accounts;
 DROP POLICY IF EXISTS "accounts_delete_company" ON accounts;
+DROP POLICY IF EXISTS "accounts_select_enterprise" ON accounts;
+DROP POLICY IF EXISTS "accounts_insert_enterprise" ON accounts;
+DROP POLICY IF EXISTS "accounts_update_enterprise" ON accounts;
+DROP POLICY IF EXISTS "accounts_delete_enterprise" ON accounts;
 
 CREATE POLICY "accounts_select_enterprise"
   ON accounts FOR SELECT TO authenticated
@@ -288,7 +293,7 @@ CREATE POLICY "accounts_select_enterprise"
       get_user_role() = 'admin'
       OR get_user_role() = 'manager'
       OR get_user_role() = 'accountant'
-      OR (get_user_role() IN ('salesperson', 'salesman', 'staff', 'cashier') AND code IN ('1000', '1010', '1020'))
+      OR (get_user_role() IN ('salesperson', 'salesman', 'staff', 'cashier', 'inventory', 'operator') AND code IN ('1000', '1010', '1020'))
     )
   );
 
@@ -379,18 +384,21 @@ BEGIN
 END $$;
 
 -- ----------------------------------------------------------------------------
--- 6. ENFORCE created_by = auth.uid() on INSERT (already via set_created_by_from_auth)
---     and immutable on UPDATE: nobody can change created_by after insert
+-- 6. ENFORCE created_by immutable on UPDATE (skip if not owner)
 -- ----------------------------------------------------------------------------
-CREATE OR REPLACE FUNCTION enforce_created_by_immutable()
-RETURNS TRIGGER LANGUAGE plpgsql AS $$
-BEGIN
-  IF TG_OP = 'UPDATE' AND NEW.created_by IS DISTINCT FROM OLD.created_by THEN
-    NEW.created_by := OLD.created_by;
-  END IF;
-  RETURN NEW;
-END;
-$$;
+DO $$ BEGIN
+  CREATE OR REPLACE FUNCTION enforce_created_by_immutable()
+  RETURNS TRIGGER LANGUAGE plpgsql AS $fn$
+  BEGIN
+    IF TG_OP = 'UPDATE' AND NEW.created_by IS DISTINCT FROM OLD.created_by THEN
+      NEW.created_by := OLD.created_by;
+    END IF;
+    RETURN NEW;
+  END;
+  $fn$;
+EXCEPTION WHEN OTHERS THEN
+  IF SQLERRM NOT LIKE '%must be owner%' AND SQLERRM NOT LIKE '%permission denied%' THEN RAISE; END IF;
+END $$;
 
 DROP TRIGGER IF EXISTS enforce_sales_created_by_immutable ON sales;
 CREATE TRIGGER enforce_sales_created_by_immutable
@@ -406,26 +414,30 @@ BEGIN
 END $$;
 
 -- ----------------------------------------------------------------------------
--- BACKFILL: Ensure existing companies have default Cash/Bank if missing
+-- BACKFILL: Ensure existing companies have default Cash/Bank (skip if not owner)
 -- ----------------------------------------------------------------------------
-CREATE OR REPLACE FUNCTION backfill_company_default_accounts()
-RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
-BEGIN
-  INSERT INTO accounts (company_id, code, name, type, is_active)
-  SELECT c.id, '1000', 'Cash', 'cash', true FROM companies c
-  WHERE NOT EXISTS (SELECT 1 FROM accounts a WHERE a.company_id = c.id AND a.code = '1000')
-  ON CONFLICT (company_id, code) DO NOTHING;
-  INSERT INTO accounts (company_id, code, name, type, is_active)
-  SELECT c.id, '1010', 'Bank', 'bank', true FROM companies c
-  WHERE NOT EXISTS (SELECT 1 FROM accounts a WHERE a.company_id = c.id AND a.code = '1010')
-  ON CONFLICT (company_id, code) DO NOTHING;
-  INSERT INTO accounts (company_id, code, name, type, is_active)
-  SELECT c.id, '1020', 'Mobile Wallet', 'mobile_wallet', true FROM companies c
-  WHERE NOT EXISTS (SELECT 1 FROM accounts a WHERE a.company_id = c.id AND a.code = '1020')
-  ON CONFLICT (company_id, code) DO NOTHING;
-END;
-$$;
-SELECT backfill_company_default_accounts();
-DROP FUNCTION backfill_company_default_accounts();
+DO $$ BEGIN
+  CREATE OR REPLACE FUNCTION backfill_company_default_accounts()
+  RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $fn$
+  BEGIN
+    INSERT INTO accounts (company_id, code, name, type, is_active)
+    SELECT c.id, '1000', 'Cash', 'cash', true FROM companies c
+    WHERE NOT EXISTS (SELECT 1 FROM accounts a WHERE a.company_id = c.id AND a.code = '1000')
+    ON CONFLICT (company_id, code) DO NOTHING;
+    INSERT INTO accounts (company_id, code, name, type, is_active)
+    SELECT c.id, '1010', 'Bank', 'bank', true FROM companies c
+    WHERE NOT EXISTS (SELECT 1 FROM accounts a WHERE a.company_id = c.id AND a.code = '1010')
+    ON CONFLICT (company_id, code) DO NOTHING;
+    INSERT INTO accounts (company_id, code, name, type, is_active)
+    SELECT c.id, '1020', 'Mobile Wallet', 'mobile_wallet', true FROM companies c
+    WHERE NOT EXISTS (SELECT 1 FROM accounts a WHERE a.company_id = c.id AND a.code = '1020')
+    ON CONFLICT (company_id, code) DO NOTHING;
+  END;
+  $fn$;
+  PERFORM backfill_company_default_accounts();
+  DROP FUNCTION backfill_company_default_accounts();
+EXCEPTION WHEN OTHERS THEN
+  IF SQLERRM NOT LIKE '%must be owner%' AND SQLERRM NOT LIKE '%permission denied%' THEN RAISE; END IF;
+END $$;
 
 COMMENT ON FUNCTION create_company_defaults() IS 'Enterprise: seed Walk-in Customer + default Cash/Bank/Mobile Wallet on company insert.';

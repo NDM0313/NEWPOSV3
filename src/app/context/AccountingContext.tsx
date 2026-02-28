@@ -250,7 +250,7 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
   const [balances, setBalances] = useState<Map<AccountType, number>>(new Map());
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
-  const { companyId, branchId, user } = useSupabase();
+  const { companyId, branchId, user, userRole } = useSupabase();
   const { startDate, endDate } = useDateRange();
 
   // Current user (from auth context)
@@ -576,12 +576,14 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
           }))
         });
         
-        // CRITICAL FIX: Ensure default accounts exist and reload
+        // CRITICAL FIX: Ensure default accounts exist and reload (only admin/manager/accountant can INSERT per RLS)
         if (companyId) {
           try {
-            const { defaultAccountsService } = await import('@/app/services/defaultAccountsService');
-            await defaultAccountsService.ensureDefaultAccounts(companyId);
-            
+            const canCreateAccounts = ['admin', 'manager', 'accountant'].includes(String(userRole || '').toLowerCase());
+            if (canCreateAccounts) {
+              const { defaultAccountsService } = await import('@/app/services/defaultAccountsService');
+              await defaultAccountsService.ensureDefaultAccounts(companyId);
+            }
             // Reload accounts
             const refreshedData = await accountService.getAllAccounts(companyId, branchId === 'all' ? undefined : branchId || undefined);
             const refreshedAccounts = refreshedData.map((acc: any) => ({

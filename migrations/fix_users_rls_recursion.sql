@@ -4,17 +4,21 @@
 -- Fix: add policy allowing users to read their own row (id = auth.uid()).
 -- PostgreSQL ORs policies for the same command, so this breaks the recursion.
 
--- Ensure helper functions exist (SECURITY DEFINER bypasses RLS).
--- get_user_role returns TEXT so we never depend on user_role enum existing (works on all DBs).
-CREATE OR REPLACE FUNCTION get_user_company_id()
-RETURNS UUID AS $$
-  SELECT company_id FROM public.users WHERE id = auth.uid();
-$$ LANGUAGE sql SECURITY DEFINER;
-
-CREATE OR REPLACE FUNCTION get_user_role()
-RETURNS TEXT AS $$
-  SELECT COALESCE((SELECT role::text FROM public.users WHERE id = auth.uid()), 'viewer');
-$$ LANGUAGE sql SECURITY DEFINER;
+-- Ensure helper functions exist (skip replace if not owner).
+DO $$ BEGIN
+  CREATE OR REPLACE FUNCTION get_user_company_id()
+  RETURNS UUID AS $fn$ SELECT company_id FROM public.users WHERE id = auth.uid(); $fn$
+  LANGUAGE sql SECURITY DEFINER;
+EXCEPTION WHEN OTHERS THEN
+  IF SQLERRM NOT LIKE '%must be owner%' AND SQLERRM NOT LIKE '%permission denied%' THEN RAISE; END IF;
+END $$;
+DO $$ BEGIN
+  CREATE OR REPLACE FUNCTION get_user_role()
+  RETURNS TEXT AS $fn$ SELECT COALESCE((SELECT role::text FROM public.users WHERE id = auth.uid()), 'viewer'); $fn$
+  LANGUAGE sql SECURITY DEFINER;
+EXCEPTION WHEN OTHERS THEN
+  IF SQLERRM NOT LIKE '%must be owner%' AND SQLERRM NOT LIKE '%permission denied%' THEN RAISE; END IF;
+END $$;
 
 -- Drop the recursive policy on users
 DROP POLICY IF EXISTS "rls_fix_company" ON public.users;

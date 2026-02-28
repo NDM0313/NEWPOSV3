@@ -170,7 +170,7 @@ interface SaleFormProps {
 
 export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
     // Supabase & Context
-    const { companyId, branchId: contextBranchId, user, userRole } = useSupabase();
+    const { companyId, branchId: contextBranchId, user, userRole, accessibleBranchIds } = useSupabase();
     const { inventorySettings, loading: settingsLoading, company } = useSettings();
     const enablePacking = inventorySettings.enablePacking;
     const { createSale, updateSale } = useSales();
@@ -683,34 +683,65 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
         loadData();
     }, [companyId]); // Only run on companyId change, but skip if data already loaded
 
+    // Accessible branches: for admin = all company branches; for others = branches user has access to
+    const accessibleBranches = React.useMemo(() => {
+        if (!branches.length) return [];
+        if (isAdmin) return branches;
+        const idSet = new Set(accessibleBranchIds.map((id: string) => String(id)));
+        return branches.filter((b: Branch) => idSet.has(String(b.id)));
+    }, [branches, accessibleBranchIds, isAdmin]);
+
+    const showBranchSelector = accessibleBranches.length > 1;
+    const singleBranchAutoSelected = accessibleBranches.length === 1;
+
     // Load branches
+    const [branchesError, setBranchesError] = useState<unknown>(null);
     useEffect(() => {
         const loadBranches = async () => {
             if (!companyId) return;
             try {
+                setBranchesError(null);
                 const branchesData = await branchService.getAllBranches(companyId);
                 setBranches(branchesData);
-                
-                // Default to Main Branch (is_default = true) or first branch
-                if (!branchId) {
-                    if (contextBranchId) {
-                        setBranchId(contextBranchId);
-                    } else {
-                        // Find main branch (is_default = true) or use first branch
-                        const mainBranch = branchesData.find((b: Branch) => (b as any).is_default === true);
-                        if (mainBranch) {
-                            setBranchId(mainBranch.id);
-                        } else if (branchesData.length > 0) {
-                            setBranchId(branchesData[0].id);
-                        }
-                    }
-                }
             } catch (error) {
                 console.error('[SALE FORM] Error loading branches:', error);
+                setBranchesError(error);
             }
         };
         loadBranches();
-    }, [companyId, branchId, contextBranchId]);
+    }, [companyId]);
+
+    // STEP 0 — Debug log (branch/salesman diagnostics)
+    useEffect(() => {
+        if (!companyId || !import.meta.env?.DEV) return;
+        console.log('[SALE FORM BRANCH DEBUG]', {
+            role: userRole,
+            uid: user?.id,
+            companyId,
+            profileBranchId: contextBranchId,
+            branchesCount: branches?.length ?? 0,
+            accessibleBranchesCount: accessibleBranches?.length ?? 0,
+            accessibleBranchIdsLength: accessibleBranchIds?.length ?? 0,
+            branchesError: branchesError ? String(branchesError) : null,
+        });
+    }, [companyId, userRole, user?.id, contextBranchId, branches?.length, accessibleBranches?.length, accessibleBranchIds?.length, branchesError]);
+
+    // Smart branch auto-selection: when only one accessible branch, set it; sync from context when needed
+    useEffect(() => {
+        if (!branches.length) return;
+        const ids = isAdmin ? branches.map((b: Branch) => String(b.id)) : accessibleBranchIds.map((id: string) => String(id));
+        const filtered = branches.filter((b: Branch) => ids.includes(String(b.id)));
+        setBranchId((prev) => {
+            if (filtered.length === 1) return filtered[0].id;
+            if (contextBranchId && contextBranchId !== 'all' && ids.includes(String(contextBranchId))) return contextBranchId;
+            if (!prev || prev === 'all') {
+                const main = branches.find((b: Branch) => (b as any).is_default === true) || filtered[0];
+                return main ? main.id : prev;
+            }
+            if (ids.length && !ids.includes(String(prev))) return ids[0]; // current selection not in accessible, pick first
+            return prev;
+        });
+    }, [branches, accessibleBranchIds, isAdmin, contextBranchId]);
 
     // Merge live stock from inventory overview (same source as Inventory page) into products for search dropdown
     useEffect(() => {
@@ -1844,13 +1875,24 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                 ? paymentStatus 
                 : 'unpaid';
             
-            // Branch required for save: must be a valid branch (not empty, not "all")
-            const finalBranchId = isAdmin 
-                ? (branchId || contextBranchId || '') 
-                : (contextBranchId || branchId || '');
+            // Branch: only require selection when user has multiple branches; otherwise use single accessible branch
+            const singleBranchId = accessibleBranches.length === 1 ? accessibleBranches[0]?.id : null;
+            const finalBranchId = singleBranchId
+                ? singleBranchId
+                : (isAdmin ? (branchId || contextBranchId || '') : (contextBranchId || branchId || ''));
             const isValidBranch = finalBranchId && finalBranchId !== 'all' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(finalBranchId);
-            if (!isValidBranch) {
+            const branchSelectionRequired = accessibleBranches.length > 1;
+            if (branchSelectionRequired && !isValidBranch) {
                 toast.error('Please select a branch before saving');
+                setSaving(false);
+                return;
+            }
+            if (!branchSelectionRequired && !singleBranchId) {
+                toast.error(
+                    accessibleBranches.length === 0 && !isAdmin
+                        ? 'Your user is not assigned to any branch. Ask admin to assign a branch.'
+                        : 'No branch available. Please contact admin.'
+                );
                 setSaving(false);
                 return;
             }
@@ -2138,25 +2180,21 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                             </PopoverContent>
                         </Popover>
 
-                        {/* Salesman - Chip Style */}
-                        <Popover open={salesmanDropdownOpen} onOpenChange={setSalesmanDropdownOpen}>
-                            <PopoverTrigger asChild>
-                                <button
-                                    type="button"
-                                    disabled={!isAdmin}
-                                    className={cn(
-                                        "flex items-center gap-2 bg-gray-900/50 border border-gray-800 rounded-lg px-2.5 py-1 hover:bg-gray-800 transition-colors cursor-pointer",
-                                        !isAdmin && "opacity-60 cursor-not-allowed"
-                                    )}
-                                >
-                                    <div className="w-5 h-5 rounded-full bg-blue-600 flex items-center justify-center text-white text-[10px] font-semibold">
-                                        {getSalesmanName().charAt(0).toUpperCase()}
-                            </div>
-                                    <span className="text-xs text-white">{getSalesmanName()}</span>
-                                    {isAdmin && <ChevronRight size={12} className="text-gray-500 rotate-90" />}
-                                </button>
-                            </PopoverTrigger>
-                            {isAdmin && (
+                        {/* Salesman: only admin sees selector; salesman sees read-only label */}
+                        {isAdmin ? (
+                            <Popover open={salesmanDropdownOpen} onOpenChange={setSalesmanDropdownOpen}>
+                                <PopoverTrigger asChild>
+                                    <button
+                                        type="button"
+                                        className="flex items-center gap-2 bg-gray-900/50 border border-gray-800 rounded-lg px-2.5 py-1 hover:bg-gray-800 transition-colors cursor-pointer"
+                                    >
+                                        <div className="w-5 h-5 rounded-full bg-blue-600 flex items-center justify-center text-white text-[10px] font-semibold">
+                                            {getSalesmanName().charAt(0).toUpperCase()}
+                                        </div>
+                                        <span className="text-xs text-white">{getSalesmanName()}</span>
+                                        <ChevronRight size={12} className="text-gray-500 rotate-90" />
+                                    </button>
+                                </PopoverTrigger>
                                 <PopoverContent 
                                     className="w-56 bg-gray-900 border-gray-800 text-white p-2"
                                     align="start"
@@ -2182,65 +2220,67 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                                                     salesmanId === s.id.toString() ? "bg-blue-600 text-white" : "bg-gray-700 text-gray-300"
                                                 )}>
                                                     {s.name.charAt(0).toUpperCase()}
-                            </div>
+                                                </div>
                                                 <span>{s.code ? `${s.code} | ${s.name}` : s.name}</span>
-                                            </button>
-                                        ))}
-                                </div>
-                                </PopoverContent>
-                            )}
-                        </Popover>
-
-                        {/* Branch - Chip Style */}
-                        {/* CRITICAL FIX: Normal user = auto-selected & disabled, Admin = mandatory selection */}
-                        <Popover open={branchDropdownOpen} onOpenChange={setBranchDropdownOpen}>
-                            <PopoverTrigger asChild>
-                                <button
-                                    type="button"
-                                    disabled={!isAdmin} // CRITICAL: Disabled for normal users
-                                    className={cn(
-                                        "flex items-center gap-2 bg-gray-900/50 border border-gray-800 rounded-lg px-2.5 py-1 transition-colors",
-                                        isAdmin 
-                                            ? "hover:bg-gray-800 cursor-pointer" 
-                                            : "opacity-60 cursor-not-allowed"
-                                    )}
-                                >
-                                    <Building2 size={14} className="text-gray-500 shrink-0" />
-                                    <span className="text-xs text-white">{getBranchName()}</span>
-                                    {isAdmin && <ChevronRight size={12} className="text-gray-500 rotate-90" />}
-                                </button>
-                            </PopoverTrigger>
-                            {isAdmin && ( // CRITICAL: Only show dropdown for admin
-                                <PopoverContent 
-                                    className="w-56 bg-gray-900 border-gray-800 text-white p-2"
-                                    align="end"
-                                >
-                                    <div className="space-y-1">
-                                        {branches.map((b) => (
-                                            <button
-                                                key={b.id}
-                                                type="button"
-                                                onClick={() => {
-                                                    setBranchId(b.id);
-                                                    setBranchDropdownOpen(false);
-                                                }}
-                                                className={cn(
-                                                    "w-full text-left px-3 py-2 rounded-md text-sm transition-all flex items-center gap-2",
-                                                    branchId === b.id || branchId === b.id.toString()
-                                                        ? "bg-gray-800 text-white"
-                                                        : "text-gray-400 hover:bg-gray-800 hover:text-white"
-                                                )}
-                                            >
-                                                <Building2 size={16} className={cn(
-                                                    branchId === b.id || branchId === b.id.toString() ? "text-blue-400" : "text-gray-500"
-                                                )} />
-                                                <span>{b.name}</span>
                                             </button>
                                         ))}
                                     </div>
                                 </PopoverContent>
-                            )}
+                            </Popover>
+                        ) : (
+                            <div className="flex items-center gap-2 bg-gray-900/50 border border-gray-800 rounded-lg px-2.5 py-1 text-gray-400">
+                                <div className="w-5 h-5 rounded-full bg-blue-600/70 flex items-center justify-center text-white text-[10px] font-semibold">
+                                    {getSalesmanName().charAt(0).toUpperCase()}
+                                </div>
+                                <span className="text-xs">Salesperson: {getSalesmanName()}</span>
+                            </div>
+                        )}
+
+                        {/* Branch - Chip: dropdown only when multiple accessible branches */}
+                        {showBranchSelector ? (
+                        <Popover open={branchDropdownOpen} onOpenChange={setBranchDropdownOpen}>
+                            <PopoverTrigger asChild>
+                                <button
+                                    type="button"
+                                    className="flex items-center gap-2 bg-gray-900/50 border border-gray-800 rounded-lg px-2.5 py-1 hover:bg-gray-800 transition-colors cursor-pointer"
+                                >
+                                    <Building2 size={14} className="text-gray-500 shrink-0" />
+                                    <span className="text-xs text-white">{getBranchName()}</span>
+                                    <ChevronRight size={12} className="text-gray-500 rotate-90" />
+                                </button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-56 bg-gray-900 border-gray-800 text-white p-2" align="end">
+                                <div className="space-y-1">
+                                    {accessibleBranches.map((b) => (
+                                        <button
+                                            key={b.id}
+                                            type="button"
+                                            onClick={() => {
+                                                setBranchId(b.id);
+                                                setBranchDropdownOpen(false);
+                                            }}
+                                            className={cn(
+                                                "w-full text-left px-3 py-2 rounded-md text-sm transition-all flex items-center gap-2",
+                                                branchId === b.id || branchId === b.id.toString()
+                                                    ? "bg-gray-800 text-white"
+                                                    : "text-gray-400 hover:bg-gray-800 hover:text-white"
+                                            )}
+                                        >
+                                            <Building2 size={16} className={cn(
+                                                branchId === b.id || branchId === b.id.toString() ? "text-blue-400" : "text-gray-500"
+                                            )} />
+                                            <span>{b.name}</span>
+                                        </button>
+                                    ))}
+                                </div>
+                            </PopoverContent>
                         </Popover>
+                        ) : (
+                        <div className="flex items-center gap-2 bg-gray-900/50 border border-gray-800 rounded-lg px-2.5 py-1 opacity-90">
+                            <Building2 size={14} className="text-gray-500 shrink-0" />
+                            <span className="text-xs text-white">{getBranchName()}</span>
+                        </div>
+                        )}
                                 </div>
                             </div>
 
@@ -2921,6 +2961,10 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                                     // Save first, then open payment dialog
                                     // Pass shouldOpenPaymentDialog=true so form doesn't close
                                     const result = await proceedWithSave(printFlag, true);
+                                    if (!result) {
+                                        toast.error('Sale save failed. Please try again.');
+                                        return;
+                                    }
                                     if ((result as any)?.studioRedirect) {
                                         toast.success('Sale saved. Add payment from the sale detail if needed.');
                                         return;
@@ -3009,6 +3053,13 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
 
             {/* ============ LAYER 3: FIXED FOOTER ============ */}
             <div className="shrink-0 bg-[#0B1019] border-t border-gray-800">
+                {/* No-branch-assignment warning for non-admin */}
+                {!isAdmin && accessibleBranches.length === 0 && (
+                    <div className="px-6 py-2 bg-red-950/50 border-b border-red-900/50 flex items-center gap-2 text-red-200 text-sm">
+                        <span className="font-medium">Your user is not assigned to any branch.</span>
+                        <span>Ask admin to assign a branch so you can save sales.</span>
+                    </div>
+                )}
                 {/* Totals Summary Row */}
                 <div className="h-10 flex items-center justify-between px-6 border-b border-gray-800/50 bg-gray-950/30">
                     <div className="flex items-center gap-2.5 text-[11px] text-gray-400">

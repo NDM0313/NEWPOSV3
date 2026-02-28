@@ -94,7 +94,7 @@ export const contactService = {
     const optionalColumns = [
       'country', 'contact_person', 'group_id', 'business_name',
       'payable_account_id', 'supplier_opening_balance', 'worker_role',
-      'branch_id', 'current_balance'
+      'branch_id', 'current_balance', 'is_default', 'is_system_generated', 'system_type'
     ];
     const toStrip = optionalColumns.filter(
       (col) => errorMessage.includes(col.replace(/_/g, ' ')) || errorMessage.includes("'" + col + "'")
@@ -114,7 +114,7 @@ export const contactService = {
     const baseColumns = [
       'company_id', 'type', 'name', 'email', 'phone', 'mobile', 'cnic', 'ntn',
       'address', 'city', 'state', 'country', 'postal_code', 'tax_number',
-      'opening_balance', 'credit_limit', 'payment_terms', 'notes', 'is_active', 'created_by', 'branch_id'
+      'opening_balance', 'credit_limit', 'payment_terms', 'notes', 'is_active', 'created_by', 'branch_id', 'is_default'
     ];
     const minimal: Record<string, unknown> = {};
     baseColumns.forEach((k) => {
@@ -167,18 +167,18 @@ export const contactService = {
   // Delete contact (soft delete)
   // PROTECTION: Cannot delete system-generated contacts
   async deleteContact(id: string) {
-    // Check if contact is system-generated
+    // Check if contact is default/system-generated
     const { data: contact, error: fetchError } = await supabase
       .from('contacts')
-      .select('is_system_generated, system_type')
+      .select('is_default, is_system_generated, system_type')
       .eq('id', id)
       .single();
 
     if (fetchError) throw fetchError;
 
     // Block deletion of default or system-generated Walk-in Customer
-    if (contact?.is_default === true || (contact?.is_system_generated && contact?.system_type === 'walking_customer')) {
-      throw new Error('Default Walk-in Customer cannot be deleted.');
+    if (contact?.is_default || (contact?.is_system_generated && contact?.system_type === 'walking_customer')) {
+      throw new Error('Default Walk-in Customer cannot be deleted. This is a system-generated contact.');
     }
 
     const { error } = await supabase
@@ -224,6 +224,7 @@ export const contactService = {
       is_active: true,
       is_system_generated: true,
       system_type: 'walking_customer',
+      is_default: true,
       opening_balance: 0,
       credit_limit: 0,
       payment_terms: 0,

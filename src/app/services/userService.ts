@@ -1,6 +1,12 @@
 import { supabase } from '@/lib/supabase';
 import { FunctionsHttpError } from '@supabase/supabase-js';
 
+/** If true, branch/account assignment uses only RPCs; no direct DML. Set false only for dev if RPCs not deployed. */
+const REQUIRE_RPCS_FOR_ACCESS_SETTINGS = true;
+
+const RPC_MIGRATION_HINT =
+  'Server is missing required RPCs. Apply migration: migrations/rpc_assign_user_branches_fk_fix.sql';
+
 /** Extract error message from Edge Function non-2xx response body */
 async function getFunctionErrorMessage(err: unknown): Promise<string | null> {
   if (err instanceof FunctionsHttpError && err.context) {
@@ -151,7 +157,7 @@ export const userService = {
       const msg = await getFunctionErrorMessage(error);
       throw new Error(msg || error.message);
     }
-    const result = data as { success?: boolean; error?: string };
+    const result = data as { success?: boolean; error?: string; user_id?: string; auth_user_id?: string };
     if (!result?.success) throw new Error(result?.error || 'Failed to create user');
     return result;
   },
@@ -274,5 +280,77 @@ export const userService = {
     const all = await this.getAllUsers(companyId, { includeInactive: false });
     const salaryRoles = ['admin', 'manager', 'staff', 'salesman', 'operator', 'cashier', 'inventory'];
     return (all || []).filter((u) => salaryRoles.includes((u.role || '').toLowerCase()));
-  }
+  },
+
+  /** Get branch IDs assigned to a user (for Edit User → Branch Access). Admin only. */
+  async getUserBranches(userId: string): Promise<string[]> {
+    const { data, error } = await supabase
+      .from('user_branches')
+      .select('branch_id')
+      .eq('user_id', userId);
+    if (error) throw error;
+    return (data || []).map((r: { branch_id: string }) => r.branch_id);
+  },
+
+  /**
+   * Resolve to public.users.id via RPC (DB is source of truth). Used for read paths only.
+   * Branch/account writes must use set_user_branches / set_user_account_access RPCs only.
+   */
+  async resolvePublicUserId(companyId: string | null, maybeId: string): Promise<string> {
+    if (!maybeId) return maybeId;
+    if (companyId) {
+      const { data, error } = await supabase.rpc('get_public_user_id', {
+        p_user_id: maybeId,
+        p_company_id: companyId,
+      });
+      if (!error && data) return data as string;
+    }
+    const { data, error } = await supabase.from('users').select('id').or(`id.eq.${maybeId},auth_user_id.eq.${maybeId}`).limit(1).maybeSingle();
+    if (!error && data?.id) return data.id;
+    return maybeId;
+  },
+
+  /** Set branch access for a user. Admin only. RPC-only (no direct DML). */
+  async setUserBranches(userId: string, branchIds: string[], defaultBranchId?: string, companyId?: string | null): Promise<void> {
+    const ids = Array.from(new Set(branchIds)).filter(Boolean);
+    const defaultId = defaultBranchId || ids[0] || null;
+    const payload = {
+      p_user_id: userId,
+      p_branch_ids: ids,
+      p_default_branch_id: defaultId || null,
+      p_company_id: companyId ?? null,
+    };
+    const { error } = await supabase.rpc('set_user_branches', payload);
+    if (!error) return;
+    if (REQUIRE_RPCS_FOR_ACCESS_SETTINGS && (error.code === '42883' || error.message?.includes('does not exist'))) {
+      throw new Error(RPC_MIGRATION_HINT);
+    }
+    throw error;
+  },
+
+  /** Get account IDs assigned to a user (for Edit User → Account Access). Admin only. */
+  async getUserAccountAccess(userId: string): Promise<string[]> {
+    const { data, error } = await supabase
+      .from('user_account_access')
+      .select('account_id')
+      .eq('user_id', userId);
+    if (error) throw error;
+    return (data || []).map((r: { account_id: string }) => r.account_id);
+  },
+
+  /** Set account access for a user. Admin only. RPC-only (no direct DML). */
+  async setUserAccountAccess(userId: string, accountIds: string[], companyId?: string | null): Promise<void> {
+    const ids = Array.from(new Set(accountIds)).filter(Boolean);
+    const payload = {
+      p_user_id: userId,
+      p_account_ids: ids,
+      p_company_id: companyId ?? null,
+    };
+    const { error } = await supabase.rpc('set_user_account_access', payload);
+    if (!error) return;
+    if (REQUIRE_RPCS_FOR_ACCESS_SETTINGS && (error.code === '42883' || error.message?.includes('does not exist'))) {
+      throw new Error(RPC_MIGRATION_HINT);
+    }
+    throw error;
+  },
 };

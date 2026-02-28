@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { X, Save, User as UserIcon, CheckSquare, Square, Key, Mail, Clock, Shield } from 'lucide-react';
+import { X, Save, User as UserIcon, CheckSquare, Square, Key, Mail, Clock, Shield, Building2, Wallet } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
@@ -15,7 +15,11 @@ import {
 } from '../ui/dialog';
 import { useSupabase } from '../../context/SupabaseContext';
 import { userService, User as UserType } from '../../services/userService';
+import { branchService, Branch } from '../../services/branchService';
+import { accountService, Account } from '../../services/accountService';
 import { toast } from 'sonner';
+
+type UserModalTab = 'general' | 'branches' | 'accounts' | 'permissions';
 
 interface AddUserModalProps {
   open: boolean;
@@ -32,6 +36,12 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
 }) => {
   const { companyId } = useSupabase();
   const [saving, setSaving] = useState(false);
+  const [activeTab, setActiveTab] = useState<UserModalTab>('general');
+  const [branches, setBranches] = useState<Branch[]>([]);
+  const [accounts, setAccounts] = useState<Account[]>([]);
+  const [selectedBranchIds, setSelectedBranchIds] = useState<string[]>([]);
+  const [selectedAccountIds, setSelectedAccountIds] = useState<string[]>([]);
+  const [loadingAccess, setLoadingAccess] = useState(false);
   const [formData, setFormData] = useState({
     full_name: '',
     email: '',
@@ -61,6 +71,11 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
   // Reset form when modal opens/closes or editingUser changes
   useEffect(() => {
     if (open) {
+      setActiveTab('general');
+      if (!editingUser) {
+        setSelectedBranchIds([]);
+        setSelectedAccountIds([]);
+      }
       if (editingUser) {
         // Edit mode - prefill form
         setFormData({
@@ -117,6 +132,42 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
     }
   }, [open, editingUser]);
 
+  // Load branches and accounts when modal opens; load user's access when editing
+  useEffect(() => {
+    if (!open || !companyId) return;
+    (async () => {
+      try {
+        const [branchesData, accountsData] = await Promise.all([
+          branchService.getAllBranches(companyId),
+          accountService.getAllAccounts(companyId),
+        ]);
+        setBranches(branchesData || []);
+        setAccounts((accountsData || []).filter((a: Account) => a.is_active !== false));
+      } catch (e) {
+        console.error('[AddUserModal] Load branches/accounts:', e);
+      }
+    })();
+  }, [open, companyId]);
+
+  useEffect(() => {
+    if (!open || !editingUser) return;
+    setLoadingAccess(true);
+    (async () => {
+      try {
+        const [branchIds, accountIds] = await Promise.all([
+          userService.getUserBranches(editingUser.id),
+          userService.getUserAccountAccess(editingUser.id).catch(() => []),
+        ]);
+        setSelectedBranchIds(branchIds);
+        setSelectedAccountIds(accountIds);
+      } catch (e) {
+        console.error('[AddUserModal] Load user access:', e);
+      } finally {
+        setLoadingAccess(false);
+      }
+    })();
+  }, [open, editingUser?.id]);
+
   const handleSave = async () => {
     if (!companyId) {
       toast.error('Company ID not found');
@@ -168,16 +219,18 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
 
       console.log('[ADD USER MODAL] Saving user with data:', JSON.stringify(userData, null, 2));
 
+      let savedUserId: string | null = null;
+
       if (editingUser) {
         // Update existing user
         console.log('[ADD USER MODAL] Updating user:', editingUser.id);
-        const result = await userService.updateUser(editingUser.id, userData);
-        console.log('[ADD USER MODAL] Update result:', result);
+        await userService.updateUser(editingUser.id, userData);
+        savedUserId = editingUser.id;
         toast.success('User updated successfully!');
       } else {
         // Create new user - try Auth flow first (Edge Function)
         try {
-          await userService.createUserWithAuth({
+          const createResult = await userService.createUserWithAuth({
             email: formData.email.trim().toLowerCase(),
             full_name: formData.full_name.trim(),
             role: formData.role,
@@ -188,13 +241,52 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
             temporary_password: formData.passwordOption === 'temp' && formData.temporary_password.length >= 6 ? formData.temporary_password : undefined,
             send_invite_email: formData.passwordOption === 'invite',
           });
+          // Prefer public.users.id from Edge Function so branch/account RPCs get correct FK
+          savedUserId = (createResult as { user_id?: string })?.user_id ?? null;
+          if (!savedUserId) {
+            const all = await userService.getAllUsers(companyId, { includeInactive: true });
+            const created = all.find((u: UserType) => u.email?.toLowerCase() === formData.email.trim().toLowerCase());
+            savedUserId = created?.id ?? null;
+          }
           toast.success(formData.passwordOption === 'invite' ? 'Invite sent! User will receive email to set password.' : 'User created! They can login with the temporary password.');
         } catch (authErr: any) {
           if (authErr?.message?.includes('Failed to fetch') || authErr?.message?.includes('404') || authErr?.code === 'functions-invoke-error') {
-            const result = await userService.createUser(userData);
+            const created = await userService.createUser(userData);
+            savedUserId = created?.id ?? null;
             toast.success('User created. They will need to be invited to set a password.');
           } else {
             throw authErr;
+          }
+        }
+      }
+
+      // Save branch/account access. Always use public.users.id (FK target) — from list when editing, from create when new.
+      const branchAccountUserId = editingUser ? editingUser.id : savedUserId;
+      if (branchAccountUserId) {
+        try {
+          await userService.setUserBranches(branchAccountUserId, selectedBranchIds, selectedBranchIds[0] || undefined, companyId);
+        } catch (branchErr: any) {
+          const msg = branchErr?.message ?? branchErr?.error?.message ?? String(branchErr);
+          console.warn('[AddUserModal] Branch access save failed:', branchErr);
+          if (msg?.includes('missing required RPCs')) {
+            toast.error(msg);
+          } else {
+            toast.warning(
+              msg?.includes('Only admin') ? msg : `User saved. Branch access failed: ${msg || 'Run migration rpc_assign_user_branches_fk_fix.sql'}`
+            );
+          }
+        }
+        try {
+          await userService.setUserAccountAccess(branchAccountUserId, selectedAccountIds, companyId);
+        } catch (accountErr: any) {
+          const msg = accountErr?.message ?? String(accountErr);
+          console.warn('[AddUserModal] Account access save failed:', accountErr);
+          if (msg?.includes('missing required RPCs')) {
+            toast.error(msg);
+          } else {
+            toast.warning(
+              msg?.includes('Only admin') ? msg : `User saved. Account access failed: ${msg || 'Run migration rpc_assign_user_branches_fk_fix.sql'}`
+            );
           }
         }
       }
@@ -227,7 +319,30 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
           </DialogDescription>
         </DialogHeader>
 
+        {/* Tabs: General | Branch Access | Account Access | Permissions */}
+        <div className="flex gap-1 border-b border-gray-800 pb-2">
+          {(['general', 'branches', 'accounts', 'permissions'] as const).map((tab) => (
+            <button
+              key={tab}
+              type="button"
+              onClick={() => setActiveTab(tab)}
+              className={`px-3 py-2 text-sm font-medium rounded-t transition-colors ${
+                activeTab === tab
+                  ? 'bg-gray-800 text-white border-b-2 border-blue-500 -mb-0.5'
+                  : 'text-gray-400 hover:text-white hover:bg-gray-800/50'
+              }`}
+            >
+              {tab === 'general' && <><UserIcon size={14} className="inline mr-1" /> General</>}
+              {tab === 'branches' && <><Building2 size={14} className="inline mr-1" /> Branch Access</>}
+              {tab === 'accounts' && <><Wallet size={14} className="inline mr-1" /> Account Access</>}
+              {tab === 'permissions' && <><Shield size={14} className="inline mr-1" /> Permissions</>}
+            </button>
+          ))}
+        </div>
+
         <div className="space-y-6 py-4">
+          {activeTab === 'general' && (
+          <>
           {/* Step 1: Basic Information */}
           <div className="space-y-4">
             <div className="flex items-center gap-2 pb-2 border-b border-gray-800">
@@ -456,7 +571,84 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
                 )}
               </div>
             )}
+          </div>
+          </>
+          )}
 
+          {activeTab === 'branches' && (
+            <div className="space-y-4">
+              <div className="flex items-center gap-2 pb-2 border-b border-gray-800">
+                <Building2 size={18} className="text-blue-400" />
+                <h3 className="text-sm font-semibold text-gray-200">Branch Access</h3>
+              </div>
+              <p className="text-xs text-gray-500">Select which branches this user can access. Admin sees all branches.</p>
+              {loadingAccess ? (
+                <p className="text-sm text-gray-400">Loading...</p>
+              ) : (
+                <div className="space-y-2 max-h-64 overflow-y-auto">
+                  {branches.length === 0 ? (
+                    <p className="text-sm text-gray-500">No branches in company. Create branches in Settings → Company.</p>
+                  ) : (
+                    branches.map((b) => (
+                      <div key={b.id} className="flex items-center space-x-2">
+                        <Checkbox
+                          id={`branch-${b.id}`}
+                          checked={selectedBranchIds.includes(b.id)}
+                          onCheckedChange={(checked) => {
+                            setSelectedBranchIds((prev) =>
+                              checked ? [...prev, b.id] : prev.filter((id) => id !== b.id)
+                            );
+                          }}
+                        />
+                        <Label htmlFor={`branch-${b.id}`} className="text-sm text-gray-300 cursor-pointer">
+                          {b.name} {b.code ? `(${b.code})` : ''}
+                        </Label>
+                      </div>
+                    ))
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {activeTab === 'accounts' && (
+            <div className="space-y-4">
+              <div className="flex items-center gap-2 pb-2 border-b border-gray-800">
+                <Wallet size={18} className="text-amber-400" />
+                <h3 className="text-sm font-semibold text-gray-200">Account Access</h3>
+              </div>
+              <p className="text-xs text-gray-500">Select which accounts this user can use (e.g. for receiving payments). Admin sees all accounts.</p>
+              {loadingAccess ? (
+                <p className="text-sm text-gray-400">Loading...</p>
+              ) : (
+                <div className="space-y-2 max-h-64 overflow-y-auto">
+                  {accounts.length === 0 ? (
+                    <p className="text-sm text-gray-500">No accounts. Create accounts in Settings → Accounting.</p>
+                  ) : (
+                    accounts.map((a) => (
+                      <div key={a.id!} className="flex items-center space-x-2">
+                        <Checkbox
+                          id={`account-${a.id}`}
+                          checked={selectedAccountIds.includes(a.id!)}
+                          onCheckedChange={(checked) => {
+                            setSelectedAccountIds((prev) =>
+                              checked ? [...prev, a.id!] : prev.filter((id) => id !== a.id)
+                            );
+                          }}
+                        />
+                        <Label htmlFor={`account-${a.id}`} className="text-sm text-gray-300 cursor-pointer">
+                          {a.code ? `${a.code} – ` : ''}{a.name}
+                        </Label>
+                      </div>
+                    ))
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {activeTab === 'permissions' && (
+          <>
             {/* Can Be Assigned As Salesman */}
             <div className="flex items-center justify-between p-4 bg-gray-950 border border-gray-800 rounded-lg">
               <div>
@@ -731,7 +923,8 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
                 </div>
               </div>
             </div>
-          </div>
+          </>
+          )}
         </div>
 
         {/* Footer Actions */}

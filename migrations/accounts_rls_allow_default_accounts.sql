@@ -4,31 +4,29 @@
 -- when SupabaseContext / defaultAccountsService ensures mandatory accounts.
 -- ============================================================================
 
--- Ensure RLS helpers exist. Must support both id = auth.uid() AND auth_user_id = auth.uid()
--- (public.users can be linked to auth via either column; see auth_user_id_and_user_auth_link.sql)
-CREATE OR REPLACE FUNCTION get_user_company_id()
-RETURNS UUID
-LANGUAGE sql
-SECURITY DEFINER
-SET search_path = public
-AS $$
-  SELECT COALESCE(
-    (SELECT company_id FROM users WHERE id = auth.uid() LIMIT 1),
-    (SELECT company_id FROM users WHERE auth_user_id = auth.uid() LIMIT 1)
-  );
-$$;
-
-CREATE OR REPLACE FUNCTION get_user_role()
-RETURNS user_role
-LANGUAGE sql
-SECURITY DEFINER
-SET search_path = public
-AS $$
-  SELECT COALESCE(
-    (SELECT role FROM users WHERE id = auth.uid() LIMIT 1),
-    (SELECT role FROM users WHERE auth_user_id = auth.uid() LIMIT 1)
-  )::user_role;
-$$;
+-- Ensure RLS helpers exist (skip replace if not owner).
+DO $$ BEGIN
+  CREATE OR REPLACE FUNCTION get_user_company_id()
+  RETURNS UUID LANGUAGE sql SECURITY DEFINER SET search_path = public AS $fn$
+    SELECT COALESCE(
+      (SELECT company_id FROM users WHERE id = auth.uid() LIMIT 1),
+      (SELECT company_id FROM users WHERE auth_user_id = auth.uid() LIMIT 1)
+    );
+  $fn$;
+EXCEPTION WHEN OTHERS THEN
+  IF SQLERRM NOT LIKE '%must be owner%' AND SQLERRM NOT LIKE '%permission denied%' THEN RAISE; END IF;
+END $$;
+DO $$ BEGIN
+  CREATE OR REPLACE FUNCTION get_user_role()
+  RETURNS user_role LANGUAGE sql SECURITY DEFINER SET search_path = public AS $fn$
+    SELECT COALESCE(
+      (SELECT role FROM users WHERE id = auth.uid() LIMIT 1),
+      (SELECT role FROM users WHERE auth_user_id = auth.uid() LIMIT 1)
+    )::user_role;
+  $fn$;
+EXCEPTION WHEN OTHERS THEN
+  IF SQLERRM NOT LIKE '%must be owner%' AND SQLERRM NOT LIKE '%permission denied%' THEN RAISE; END IF;
+END $$;
 
 ALTER TABLE accounts ENABLE ROW LEVEL SECURITY;
 

@@ -137,8 +137,9 @@ Deno.serve(async (req) => {
       );
     }
 
+    const publicUserId = crypto.randomUUID();
     const { error: insertErr } = await supabaseAdmin.from('users').insert({
-      id: crypto.randomUUID(),
+      id: publicUserId,
       auth_user_id: authUserId,
       company_id,
       email: emailTrim,
@@ -157,7 +158,7 @@ Deno.serve(async (req) => {
     }
 
     return new Response(
-      JSON.stringify({ success: true, auth_user_id: authUserId }),
+      JSON.stringify({ success: true, user_id: publicUserId, auth_user_id: authUserId }),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   } catch (err) {

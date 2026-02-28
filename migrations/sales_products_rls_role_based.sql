@@ -27,24 +27,20 @@ BEGIN
   END IF;
 END $$;
 
--- STEP 2: Create get_user_branch_id() - returns manager/salesman branch; NULL for admin (all branches)
-CREATE OR REPLACE FUNCTION public.get_user_branch_id()
-RETURNS UUID
-LANGUAGE sql
-SECURITY DEFINER
-SET search_path = public
-AS $body$
-  SELECT COALESCE(
-    (SELECT ub.branch_id FROM public.user_branches ub
-     JOIN public.users u ON u.id = ub.user_id
-     WHERE (u.id = auth.uid() OR u.auth_user_id = auth.uid()) AND ub.is_default = true
-     LIMIT 1),
-    (SELECT ub.branch_id FROM public.user_branches ub
-     JOIN public.users u ON u.id = ub.user_id
-     WHERE (u.id = auth.uid() OR u.auth_user_id = auth.uid())
-     LIMIT 1)
-  );
-$body$;
+-- STEP 2: Create get_user_branch_id() (skip replace if not owner)
+DO $$ BEGIN
+  CREATE OR REPLACE FUNCTION public.get_user_branch_id()
+  RETURNS UUID LANGUAGE sql SECURITY DEFINER SET search_path = public AS $fn$
+    SELECT COALESCE(
+      (SELECT ub.branch_id FROM public.user_branches ub JOIN public.users u ON u.id = ub.user_id
+       WHERE (u.id = auth.uid() OR u.auth_user_id = auth.uid()) AND ub.is_default = true LIMIT 1),
+      (SELECT ub.branch_id FROM public.user_branches ub JOIN public.users u ON u.id = ub.user_id
+       WHERE (u.id = auth.uid() OR u.auth_user_id = auth.uid()) LIMIT 1)
+    );
+  $fn$;
+EXCEPTION WHEN OTHERS THEN
+  IF SQLERRM NOT LIKE '%must be owner%' AND SQLERRM NOT LIKE '%permission denied%' THEN RAISE; END IF;
+END $$;
 
 -- STEP 3: Drop existing sales policies
 DROP POLICY IF EXISTS "rls_fix_company" ON public.sales;
@@ -56,6 +52,10 @@ DROP POLICY IF EXISTS "sales_select_policy" ON public.sales;
 DROP POLICY IF EXISTS "sales_insert_policy" ON public.sales;
 DROP POLICY IF EXISTS "sales_update_policy" ON public.sales;
 DROP POLICY IF EXISTS "sales_delete_policy" ON public.sales;
+DROP POLICY IF EXISTS "sales_select_role_based" ON public.sales;
+DROP POLICY IF EXISTS "sales_insert_role_based" ON public.sales;
+DROP POLICY IF EXISTS "sales_update_role_based" ON public.sales;
+DROP POLICY IF EXISTS "sales_delete_role_based" ON public.sales;
 
 -- STEP 4: Create sales RLS policies
 -- SELECT: Admin=all company, Manager=branch only, Salesman=own only

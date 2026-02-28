@@ -24,42 +24,28 @@ CREATE UNIQUE INDEX idx_contacts_one_default_per_company
   WHERE is_default = true AND type IN ('customer', 'both');
 
 -- ----------------------------------------------------------------------------
--- STEP 3: Trigger — auto-create Walk-in Customer on company creation
+-- STEP 3: Trigger — auto-create Walk-in Customer on company creation (skip if not owner)
 -- ----------------------------------------------------------------------------
-CREATE OR REPLACE FUNCTION create_default_walkin_customer_for_company()
-RETURNS TRIGGER
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public
-AS $$
+DO $$
 BEGIN
-  INSERT INTO contacts (
-    company_id,
-    type,
-    name,
-    is_default,
-    is_system_generated,
-    system_type,
-    is_active,
-    opening_balance,
-    credit_limit,
-    payment_terms
-  )
-  VALUES (
-    NEW.id,
-    'customer',
-    'Walk-in Customer',
-    true,
-    true,
-    'walking_customer',
-    true,
-    0,
-    0,
-    0
-  );
-  RETURN NEW;
-END;
-$$;
+  CREATE OR REPLACE FUNCTION create_default_walkin_customer_for_company()
+  RETURNS TRIGGER
+  LANGUAGE plpgsql
+  SECURITY DEFINER
+  SET search_path = public
+  AS $fn$
+  BEGIN
+    INSERT INTO contacts (
+      company_id, type, name, is_default, is_system_generated, system_type, is_active,
+      opening_balance, credit_limit, payment_terms
+    )
+    VALUES (NEW.id, 'customer', 'Walk-in Customer', true, true, 'walking_customer', true, 0, 0, 0);
+    RETURN NEW;
+  END;
+  $fn$;
+EXCEPTION WHEN OTHERS THEN
+  IF SQLERRM NOT LIKE '%must be owner%' AND SQLERRM NOT LIKE '%permission denied%' THEN RAISE; END IF;
+END $$;
 
 DROP TRIGGER IF EXISTS trg_after_company_insert_create_default_customer ON companies;
 CREATE TRIGGER trg_after_company_insert_create_default_customer
@@ -68,19 +54,24 @@ CREATE TRIGGER trg_after_company_insert_create_default_customer
   EXECUTE PROCEDURE create_default_walkin_customer_for_company();
 
 -- ----------------------------------------------------------------------------
--- STEP 4: Prevent deletion of default customer
+-- STEP 4: Prevent deletion of default customer (skip if not owner)
 -- ----------------------------------------------------------------------------
-CREATE OR REPLACE FUNCTION prevent_delete_default_customer()
-RETURNS TRIGGER
-LANGUAGE plpgsql
-AS $$
+DO $$
 BEGIN
-  IF OLD.is_default = true THEN
-    RAISE EXCEPTION 'Default Walk-in Customer cannot be deleted.';
-  END IF;
-  RETURN OLD;
-END;
-$$;
+  CREATE OR REPLACE FUNCTION prevent_delete_default_customer()
+  RETURNS TRIGGER
+  LANGUAGE plpgsql
+  AS $fn$
+  BEGIN
+    IF OLD.is_default = true THEN
+      RAISE EXCEPTION 'Default Walk-in Customer cannot be deleted.';
+    END IF;
+    RETURN OLD;
+  END;
+  $fn$;
+EXCEPTION WHEN OTHERS THEN
+  IF SQLERRM NOT LIKE '%must be owner%' AND SQLERRM NOT LIKE '%permission denied%' THEN RAISE; END IF;
+END $$;
 
 DROP TRIGGER IF EXISTS trg_contacts_prevent_delete_default ON contacts;
 CREATE TRIGGER trg_contacts_prevent_delete_default
@@ -90,62 +81,48 @@ CREATE TRIGGER trg_contacts_prevent_delete_default
 
 -- ----------------------------------------------------------------------------
 -- STEP 5: RLS — Admin: all; Manager: branch customers; Salesman: own + default
--- Default customer must be visible to all users in the company.
--- Ensure helpers exist (may not be present if rls-policies.sql was not run).
+-- Helpers: skip replace if not owner (use existing from auth_user_id_functions / rls-policies).
 -- ----------------------------------------------------------------------------
-CREATE OR REPLACE FUNCTION get_user_company_id()
-RETURNS UUID
-LANGUAGE sql
-SECURITY DEFINER
-SET search_path = public
-AS $$
-  SELECT company_id FROM users WHERE id = auth.uid();
-$$;
-
--- get_user_role() left unchanged (policies depend on it; may be TEXT or user_role from auth_user_id_functions)
-
-CREATE OR REPLACE FUNCTION has_module_permission(module_name VARCHAR, permission_type VARCHAR)
-RETURNS BOOLEAN
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public
-AS $$
-DECLARE
-  user_permission RECORD;
-  user_role_val user_role;
+DO $$
 BEGIN
-  SELECT role INTO user_role_val FROM users WHERE id = auth.uid();
-  IF user_role_val = 'admin' THEN
-    RETURN true;
-  END IF;
-  SELECT * INTO user_permission
-  FROM permissions
-  WHERE user_id = auth.uid() AND module = module_name;
-  IF NOT FOUND THEN
-    RETURN false;
-  END IF;
-  CASE permission_type
-    WHEN 'view' THEN RETURN user_permission.can_view;
-    WHEN 'create' THEN RETURN user_permission.can_create;
-    WHEN 'edit' THEN RETURN user_permission.can_edit;
-    WHEN 'delete' THEN RETURN user_permission.can_delete;
-    ELSE RETURN false;
-  END CASE;
-END;
-$$;
+  CREATE OR REPLACE FUNCTION get_user_company_id()
+  RETURNS UUID LANGUAGE sql SECURITY DEFINER SET search_path = public
+  AS $fn$ SELECT company_id FROM users WHERE id = auth.uid(); $fn$;
+EXCEPTION WHEN OTHERS THEN
+  IF SQLERRM NOT LIKE '%must be owner%' AND SQLERRM NOT LIKE '%permission denied%' THEN RAISE; END IF;
+END $$;
 
-CREATE OR REPLACE FUNCTION has_branch_access(branch_uuid UUID)
-RETURNS BOOLEAN
-LANGUAGE sql
-SECURITY DEFINER
-SET search_path = public
-AS $$
-  SELECT EXISTS (
-    SELECT 1 FROM user_branches
-    WHERE user_id = auth.uid()
-      AND branch_id = branch_uuid
-  );
-$$;
+DO $$
+BEGIN
+  CREATE OR REPLACE FUNCTION has_module_permission(module_name VARCHAR, permission_type VARCHAR)
+  RETURNS BOOLEAN LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $fn$
+  DECLARE user_permission RECORD; user_role_val user_role;
+  BEGIN
+    SELECT role INTO user_role_val FROM users WHERE id = auth.uid();
+    IF user_role_val = 'admin' THEN RETURN true; END IF;
+    SELECT * INTO user_permission FROM permissions WHERE user_id = auth.uid() AND module = module_name;
+    IF NOT FOUND THEN RETURN false; END IF;
+    CASE permission_type
+      WHEN 'view' THEN RETURN user_permission.can_view;
+      WHEN 'create' THEN RETURN user_permission.can_create;
+      WHEN 'edit' THEN RETURN user_permission.can_edit;
+      WHEN 'delete' THEN RETURN user_permission.can_delete;
+      ELSE RETURN false;
+    END CASE;
+  END;
+  $fn$;
+EXCEPTION WHEN OTHERS THEN
+  IF SQLERRM NOT LIKE '%must be owner%' AND SQLERRM NOT LIKE '%permission denied%' THEN RAISE; END IF;
+END $$;
+
+DO $$
+BEGIN
+  CREATE OR REPLACE FUNCTION has_branch_access(branch_uuid UUID)
+  RETURNS BOOLEAN LANGUAGE sql SECURITY DEFINER SET search_path = public
+  AS $fn$ SELECT EXISTS (SELECT 1 FROM user_branches WHERE user_id = auth.uid() AND branch_id = branch_uuid); $fn$;
+EXCEPTION WHEN OTHERS THEN
+  IF SQLERRM NOT LIKE '%must be owner%' AND SQLERRM NOT LIKE '%permission denied%' THEN RAISE; END IF;
+END $$;
 
 ALTER TABLE contacts ENABLE ROW LEVEL SECURITY;
 
@@ -216,58 +193,40 @@ CREATE POLICY "contacts_delete_policy"
 COMMENT ON TABLE contacts IS 'Contacts (customers/suppliers/workers). One default Walk-in Customer per company (is_default=true); auto-created on company insert; cannot be deleted.';
 
 -- ----------------------------------------------------------------------------
--- BACKFILL: Ensure every existing company has exactly one default Walk-in Customer
--- 1) Mark existing walking_customer contact as default (one per company) where no default yet.
--- 2) Insert default for companies that still have none.
--- (Runs in SECURITY DEFINER so it works when migrations use a role with RLS.)
+-- BACKFILL: Ensure every existing company has exactly one default Walk-in Customer (skip if not owner)
 -- ----------------------------------------------------------------------------
-CREATE OR REPLACE FUNCTION backfill_default_walkin_customers()
-RETURNS void
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public
-AS $$
-DECLARE
-  r RECORD;
+DO $$
 BEGIN
-  -- 1) For each company that has no default but has a walking_customer, set first such contact as default
-  FOR r IN (
-    SELECT DISTINCT ON (t.company_id) t.id AS contact_id
-    FROM contacts t
-    WHERE t.type IN ('customer', 'both')
-      AND (t.system_type = 'walking_customer' OR (t.is_system_generated = true AND t.name ILIKE '%walk-in%'))
-      AND t.is_default = false
-      AND NOT EXISTS (
-        SELECT 1 FROM contacts t2
-        WHERE t2.company_id = t.company_id AND t2.is_default = true AND t2.type IN ('customer', 'both')
-      )
-    ORDER BY t.company_id, t.created_at
-  )
-  LOOP
-    UPDATE contacts SET is_default = true, is_system_generated = true, system_type = 'walking_customer', name = 'Walk-in Customer'
-    WHERE id = r.contact_id;
-  END LOOP;
-
-  -- 2) Insert default for companies that still have no default
-  INSERT INTO contacts (
-    company_id,
-    type,
-    name,
-    is_default,
-    is_system_generated,
-    system_type,
-    is_active,
-    opening_balance,
-    credit_limit,
-    payment_terms
-  )
-  SELECT c.id, 'customer', 'Walk-in Customer', true, true, 'walking_customer', true, 0, 0, 0
-  FROM companies c
-  WHERE NOT EXISTS (
-    SELECT 1 FROM contacts t
-    WHERE t.company_id = c.id AND t.is_default = true AND t.type IN ('customer', 'both')
-  );
-END;
-$$;
-SELECT backfill_default_walkin_customers();
-DROP FUNCTION backfill_default_walkin_customers();
+  CREATE OR REPLACE FUNCTION backfill_default_walkin_customers()
+  RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $fn$
+  DECLARE r RECORD;
+  BEGIN
+    FOR r IN (
+      SELECT DISTINCT ON (t.company_id) t.id AS contact_id
+      FROM contacts t
+      WHERE t.type IN ('customer', 'both')
+        AND (t.system_type = 'walking_customer' OR (t.is_system_generated = true AND t.name ILIKE '%walk-in%'))
+        AND t.is_default = false
+        AND NOT EXISTS (
+          SELECT 1 FROM contacts t2
+          WHERE t2.company_id = t.company_id AND t2.is_default = true AND t2.type IN ('customer', 'both')
+        )
+      ORDER BY t.company_id, t.created_at
+    )
+    LOOP
+      UPDATE contacts SET is_default = true, is_system_generated = true, system_type = 'walking_customer', name = 'Walk-in Customer'
+      WHERE id = r.contact_id;
+    END LOOP;
+    INSERT INTO contacts (company_id, type, name, is_default, is_system_generated, system_type, is_active, opening_balance, credit_limit, payment_terms)
+    SELECT c.id, 'customer', 'Walk-in Customer', true, true, 'walking_customer', true, 0, 0, 0
+    FROM companies c
+    WHERE NOT EXISTS (
+      SELECT 1 FROM contacts t WHERE t.company_id = c.id AND t.is_default = true AND t.type IN ('customer', 'both')
+    );
+  END;
+  $fn$;
+  PERFORM backfill_default_walkin_customers();
+  DROP FUNCTION backfill_default_walkin_customers();
+EXCEPTION WHEN OTHERS THEN
+  IF SQLERRM NOT LIKE '%must be owner%' AND SQLERRM NOT LIKE '%permission denied%' THEN RAISE; END IF;
+END $$;
