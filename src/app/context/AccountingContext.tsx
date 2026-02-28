@@ -231,6 +231,7 @@ export interface Account {
   accountType: AccountType;
   balance: number;
   branch?: string;
+  branchId?: string; // UUID for branch filter in payment dialog
   isActive: boolean;
   code?: string; // Add code for account lookup
 }
@@ -268,6 +269,7 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
       accountType: accountType, // Use type as accountType (no separate account_type column)
       balance: parseFloat(supabaseAccount.balance || supabaseAccount.current_balance || 0),
       branch: supabaseAccount.branch_name || supabaseAccount.branch_id || '',
+      branchId: supabaseAccount.branch_id || undefined, // For payment dialog branch filter
       isActive: supabaseAccount.is_active !== false,
       code: supabaseAccount.code || undefined, // CRITICAL FIX: Include code for account lookup
     };

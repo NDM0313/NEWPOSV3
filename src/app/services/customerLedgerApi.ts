@@ -27,19 +27,20 @@ export interface AgingReport {
 
 export const customerLedgerAPI = {
   /**
-   * Get all customers
+   * Get all customers for ledger (company_id only).
+   * No is_system_generated or created_by filter — walk-in must be included so ledger shows all walk-in sales.
    */
   async getCustomers(companyId: string): Promise<Customer[]> {
     const { data, error } = await supabase
       .from('contacts')
-      .select('id, name, phone, city, email, address, credit_limit, opening_balance')
+      .select('id, name, code, phone, city, email, address, credit_limit, opening_balance')
       .eq('company_id', companyId)
       .in('type', ['customer', 'both'])
       .order('name');
 
     if (error) throw error;
 
-    // Calculate outstanding balance from sales + rentals
+    // Calculate outstanding balance from sales + rentals (includes walk-in)
     const { data: sales } = await supabase
       .from('sales')
       .select('customer_id, due_amount')
@@ -64,10 +65,9 @@ export const customerLedgerAPI = {
       }
     });
 
-    return (data || []).map((c, index) => ({
+    return (data || []).map((c: any) => ({
       id: c.id,
-      // Generate code from ID or use index as fallback
-      code: `CUS-${String(index + 1).padStart(4, '0')}`,
+      code: c.code != null && String(c.code).trim() !== '' ? String(c.code).trim() : '—',
       name: c.name || '',
       phone: c.phone || '',
       city: c.city || '',
@@ -84,43 +84,31 @@ export const customerLedgerAPI = {
   async getCustomerById(customerId: string): Promise<Customer | null> {
     const { data, error } = await supabase
       .from('contacts')
-      .select('id, name, phone, city, email, address, credit_limit, opening_balance')
+      .select('id, name, code, phone, city, email, address, credit_limit, opening_balance')
       .eq('id', customerId)
-      .eq('type', 'customer')
+      .in('type', ['customer', 'both'])
       .single();
 
     if (error) throw error;
     if (!data) return null;
 
-    // Calculate outstanding balance from sales + rentals
-    const { data: sales } = await supabase
-      .from('sales')
-      .select('due_amount')
-      .eq('customer_id', customerId)
-      .gt('due_amount', 0);
-
-    const { data: rentals } = await supabase
-      .from('rentals')
-      .select('due_amount')
-      .eq('customer_id', customerId)
-      .gt('due_amount', 0);
-
-    const salesDue = (sales || []).reduce((sum, s: any) => sum + (s.due_amount || 0), 0);
-    const rentalsDue = (rentals || []).reduce((sum, r: any) => sum + (r.due_amount || 0), 0);
-    const outstandingBalance = salesDue + rentalsDue || data.opening_balance || 0;
-
-    // Generate a short code from the ID
-    const shortId = data.id.substring(0, 8).toUpperCase();
+    const salesDue = (await supabase.from('sales').select('due_amount').eq('customer_id', customerId).gt('due_amount', 0)).data || [];
+    const rentalsDue = (await supabase.from('rentals').select('due_amount').eq('customer_id', customerId).gt('due_amount', 0)).data || [];
+    const outstandingBalance =
+      (salesDue as any[]).reduce((sum, s: any) => sum + (s.due_amount || 0), 0) +
+      (rentalsDue as any[]).reduce((sum, r: any) => sum + (r.due_amount || 0), 0) ||
+      (data as any).opening_balance ||
+      0;
 
     return {
-      id: data.id,
-      code: `CUS-${shortId}`,
-      name: data.name || '',
-      phone: data.phone || '',
-      city: data.city || '',
-      email: data.email || '',
-      address: data.address || '',
-      creditLimit: data.credit_limit || 0,
+      id: (data as any).id,
+      code: (data as any).code != null && String((data as any).code).trim() !== '' ? String((data as any).code).trim() : '—',
+      name: (data as any).name || '',
+      phone: (data as any).phone || '',
+      city: (data as any).city || '',
+      email: (data as any).email || '',
+      address: (data as any).address || '',
+      creditLimit: (data as any).credit_limit || 0,
       outstandingBalance,
     };
   },

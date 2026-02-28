@@ -1,6 +1,31 @@
 import { supabase } from '@/lib/supabase';
 import { activityLogService } from '@/app/services/activityLogService';
 
+/** Enrich purchases with creator full_name. purchases.created_by = auth.users.id; resolve via users.auth_user_id. */
+async function enrichPurchasesWithCreatorNames(purchases: any[]): Promise<void> {
+  const ids = [...new Set((purchases || []).map((p: any) => p.created_by).filter(Boolean))] as string[];
+  if (ids.length === 0) return;
+  const nameByCreatedBy = new Map<string, string>();
+  const { data: usersByAuth } = await supabase.from('users').select('auth_user_id, full_name, email').in('auth_user_id', ids);
+  (usersByAuth || []).forEach((u: any) => {
+    if (u?.auth_user_id) nameByCreatedBy.set(u.auth_user_id, u.full_name || u.email || '');
+  });
+  const missing = ids.filter((id) => !nameByCreatedBy.has(id));
+  if (missing.length > 0) {
+    const { data: usersById } = await supabase.from('users').select('id, full_name, email').in('id', missing);
+    (usersById || []).forEach((u: any) => {
+      if (u?.id) nameByCreatedBy.set(u.id, u.full_name || u.email || '');
+    });
+  }
+  purchases.forEach((p: any) => {
+    const uid = p.created_by;
+    if (uid && typeof uid === 'string') {
+      const name = nameByCreatedBy.get(uid) || null;
+      p.created_by_user = { full_name: name, email: null };
+    }
+  });
+}
+
 export interface Purchase {
   id?: string;
   company_id: string;
@@ -119,6 +144,7 @@ export const purchaseService = {
       }
       
       const { data: retryData, error: retryError } = await retryQuery;
+      if (!retryError && retryData?.length) await enrichPurchasesWithCreatorNames(retryData);
       if (retryError) {
         // If created_at also doesn't exist, try without ordering
         const finalQuery = supabase
@@ -139,6 +165,7 @@ export const purchaseService = {
         
         const { data: finalData, error: finalError } = await finalQuery;
         if (finalError) throw finalError;
+        if (finalData?.length) await enrichPurchasesWithCreatorNames(finalData);
         return finalData;
       }
       return retryData;
@@ -174,15 +201,19 @@ export const purchaseService = {
         
         const { data: noOrderData, error: noOrderError } = await noOrderQuery;
         if (noOrderError) throw noOrderError;
+        if (noOrderData?.length) await enrichPurchasesWithCreatorNames(noOrderData);
         return noOrderData;
       }
       
       if (simpleError) throw simpleError;
+      if (simpleData?.length) await enrichPurchasesWithCreatorNames(simpleData);
       return simpleData;
     }
     
     if (error) throw error;
-    
+
+    await enrichPurchasesWithCreatorNames(data || []);
+
     // 🔒 LOCK CHECK: Add hasReturn and returnCount to each purchase
     if (data && data.length > 0) {
       const purchaseIds = data.map((p: any) => p.id);

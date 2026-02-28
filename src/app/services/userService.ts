@@ -27,7 +27,8 @@ export interface User {
   full_name: string;
   role: string;
   phone?: string;
-  user_code?: string; // Human-readable code: USR-001, USR-002, etc.
+  code?: string; // Auto-generated USR-XXX (trigger). Shown in User Management.
+  user_code?: string; // Same as code; kept for compatibility.
   is_active: boolean;
   can_be_assigned_as_salesman?: boolean;
   auth_user_id?: string | null; // Links to auth.users.id. Null = no login yet.
@@ -128,9 +129,8 @@ export const userService = {
   },
 
   /**
-   * Create user with Auth (recommended): Creates Supabase Auth user + ERP profile.
-   * Requires Edge Function create-erp-user to be deployed.
-   * Explicitly passes Authorization header from session (required for self-hosted).
+   * Create user with Auth + assign branch/account access in one call (no manual SQL for admin).
+   * Edge Function create-erp-user: auth user + profile + user_branches + user_account_access (auth_user_id only).
    */
   async createUserWithAuth(params: {
     email: string;
@@ -142,6 +142,9 @@ export const userService = {
     is_active?: boolean;
     temporary_password?: string;
     send_invite_email?: boolean;
+    branch_ids?: string[];
+    account_ids?: string[];
+    default_branch_id?: string;
   }) {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session?.access_token) {
@@ -157,7 +160,15 @@ export const userService = {
       const msg = await getFunctionErrorMessage(error);
       throw new Error(msg || error.message);
     }
-    const result = data as { success?: boolean; error?: string; user_id?: string; auth_user_id?: string };
+    const result = data as {
+      success?: boolean;
+      error?: string;
+      user_id?: string;
+      auth_user_id?: string;
+      created?: boolean;
+      assignedBranchesCount?: number;
+      assignedAccountsCount?: number;
+    };
     if (!result?.success) throw new Error(result?.error || 'Failed to create user');
     return result;
   },

@@ -2214,7 +2214,7 @@ export const SettingsPageNew = () => {
                             {/* User Code */}
                             <td className="px-4 py-4">
                               <Badge className="bg-purple-500/20 text-purple-400 border-purple-500/30 font-mono text-xs">
-                                {user.user_code || '—'}
+                                {user.code || user.user_code || '—'}
                               </Badge>
                             </td>
                             <td className="px-4 py-4">

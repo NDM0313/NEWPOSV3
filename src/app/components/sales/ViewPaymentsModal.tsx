@@ -60,6 +60,8 @@ export interface Payment {
   accountName?: string;
   notes?: string;
   createdAt?: string;
+  /** User who received/recorded the payment (auth.users.id → users.full_name). */
+  receivedBy?: string | null;
 }
 
 export interface InvoiceDetails {
@@ -478,6 +480,9 @@ export const ViewPaymentsModal: React.FC<ViewPaymentsModalProps> = ({
                         </div>
                         <div className="col-span-2">
                           <p className="text-xs text-gray-400 truncate">{payment.accountName || '—'}</p>
+                          {payment.receivedBy != null && payment.receivedBy !== '' && (
+                            <p className="text-xs text-gray-500 mt-0.5">Received by: {payment.receivedBy}</p>
+                          )}
                         </div>
                         <div className="col-span-2 flex items-center justify-center gap-1">
                           {onEditPayment && (

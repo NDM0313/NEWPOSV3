@@ -140,11 +140,10 @@ export const ContactsPage = () => {
       payables = purchasePayables + openingPayables;
     }
 
-    // Generate code if missing
-    const code = supabaseContact.code || 
-      (contactType === 'supplier' ? `SUP-${String(index + 1).padStart(3, '0')}` :
-       contactType === 'customer' ? `CUS-${String(index + 1).padStart(3, '0')}` :
-       `WRK-${String(index + 1).padStart(3, '0')}`);
+    // Use DB code only (global sequence); no frontend-generated CUS-001
+    const code = supabaseContact.code != null && String(supabaseContact.code).trim() !== ''
+      ? String(supabaseContact.code).trim()
+      : '—';
 
     // Map status
     let status: 'active' | 'inactive' | 'onhold' = 'active';
@@ -193,7 +192,7 @@ export const ContactsPage = () => {
       setLoading(true);
 
       const loadPromise = (async () => {
-        await contactService.ensureDefaultWalkingCustomerForCompany(companyId, branchId ?? undefined);
+        await contactService.ensureDefaultWalkingCustomerForCompany(companyId);
         const contactsData = await contactService.getAllContacts(companyId);
         const [salesData, purchasesData] = await Promise.all([
           saleService.getAllSales(companyId, branchId === 'all' ? undefined : branchId || undefined).catch(() => []),

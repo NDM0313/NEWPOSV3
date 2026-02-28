@@ -16,10 +16,14 @@ interface CreateErpUserRequest {
   is_salesman?: boolean;
   is_active?: boolean;
   company_id: string;
-  /** Temporary password. If omitted, sends invite email instead. */
   temporary_password?: string;
-  /** If true, send invite email instead of using temporary_password */
   send_invite_email?: boolean;
+  /** Assign branch access (auth_user_id only). Validated against company_id. */
+  branch_ids?: string[];
+  /** Assign account access (auth_user_id only). Validated against company_id. */
+  account_ids?: string[];
+  /** Default branch for user_branches.is_default */
+  default_branch_id?: string;
 }
 
 Deno.serve(async (req) => {
@@ -78,7 +82,7 @@ Deno.serve(async (req) => {
     }
 
     const body: CreateErpUserRequest = await req.json();
-    const { email, full_name, role: newRole, phone, is_salesman, is_active, company_id, temporary_password, send_invite_email } = body;
+    const { email, full_name, role: newRole, phone, is_salesman, is_active, company_id, temporary_password, send_invite_email, branch_ids, account_ids, default_branch_id } = body;
 
     if (!email?.trim() || !full_name?.trim() || !company_id) {
       return new Response(
@@ -157,8 +161,58 @@ Deno.serve(async (req) => {
       );
     }
 
+    let assignedBranchesCount = 0;
+    let assignedAccountsCount = 0;
+
+    if (authUserId && (branch_ids?.length || account_ids?.length)) {
+      const branchIds = Array.isArray(branch_ids) ? branch_ids.filter(Boolean) : [];
+      const accountIds = Array.isArray(account_ids) ? account_ids.filter(Boolean) : [];
+      const defaultBranch = default_branch_id || branchIds[0];
+
+      if (branchIds.length > 0) {
+        const { data: validBranches } = await supabaseAdmin
+          .from('branches')
+          .select('id')
+          .eq('company_id', company_id)
+          .in('id', branchIds);
+        const ids = (validBranches || []).map((b: { id: string }) => b.id);
+        await supabaseAdmin.from('user_branches').delete().eq('user_id', authUserId);
+        if (ids.length > 0) {
+          const rows = ids.map((bid: string) => ({
+            user_id: authUserId,
+            branch_id: bid,
+            is_default: bid === defaultBranch,
+          }));
+          const { error: eb } = await supabaseAdmin.from('user_branches').insert(rows);
+          if (!eb) assignedBranchesCount = ids.length;
+        }
+      }
+
+      if (accountIds.length > 0) {
+        const { data: validAccounts } = await supabaseAdmin
+          .from('accounts')
+          .select('id')
+          .eq('company_id', company_id)
+          .in('id', accountIds);
+        const ids = (validAccounts || []).map((a: { id: string }) => a.id);
+        await supabaseAdmin.from('user_account_access').delete().eq('user_id', authUserId);
+        if (ids.length > 0) {
+          const rows = ids.map((aid: string) => ({ user_id: authUserId, account_id: aid }));
+          const { error: ea } = await supabaseAdmin.from('user_account_access').insert(rows);
+          if (!ea) assignedAccountsCount = ids.length;
+        }
+      }
+    }
+
     return new Response(
-      JSON.stringify({ success: true, user_id: publicUserId, auth_user_id: authUserId }),
+      JSON.stringify({
+        success: true,
+        user_id: publicUserId,
+        auth_user_id: authUserId,
+        created: true,
+        assignedBranchesCount,
+        assignedAccountsCount,
+      }),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   } catch (err) {

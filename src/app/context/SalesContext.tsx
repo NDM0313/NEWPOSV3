@@ -16,6 +16,7 @@ import { useSettings } from '@/app/context/SettingsContext';
 import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
 import { toast } from 'sonner';
 import { activityLogService } from '@/app/services/activityLogService';
+import { documentNumberService } from '@/app/services/documentNumberService';
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 function isValidBranchId(id: string | null): id is string {
@@ -316,7 +317,7 @@ export const convertFromSupabaseSale = (supabaseSale: any): Sale => {
 export const SalesProvider = ({ children }: { children: ReactNode }) => {
   const [sales, setSales] = useState<Sale[]>([]);
   const [loading, setLoading] = useState(true);
-  const { generateDocumentNumber, incrementNextNumber } = useDocumentNumbering();
+  const { generateDocumentNumber, incrementNextNumber, getNumberingConfig } = useDocumentNumbering();
   const accounting = useAccounting();
   const { companyId, branchId, user } = useSupabase();
   const { modules, inventorySettings } = useSettings();
@@ -387,19 +388,27 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
       } else if (saleData.type === 'invoice' || saleData.status === 'final') {
         docType = 'invoice';
       }
-      // Use form-provided invoice number when present (Form already generated STD-XXXX / DRAFT-XXXX etc.) to avoid double-increment
-      const formInvoiceNo = (saleData as any).invoiceNo as string | undefined;
-      const invoiceNo = (typeof formInvoiceNo === 'string' && formInvoiceNo && !formInvoiceNo.includes('undefined'))
-        ? formInvoiceNo
-        : generateDocumentNumber(docType);
-      const weGeneratedNumber = !formInvoiceNo;
+      // Global document number from DB: separate sequence per type (DRAFT, QT, SO, SL)
+      const sequenceType = docType === 'draft' ? 'DRAFT' : docType === 'quotation' ? 'QT' : docType === 'order' ? 'SO' : docType === 'studio' ? 'STD' : 'SL';
+      let invoiceNo: string;
+      try {
+        invoiceNo = await documentNumberService.getNextDocumentNumberGlobal(companyId, sequenceType);
+      } catch (e) {
+        // Fallback to form number only if RPC missing (e.g. migration not run)
+        const formInvoiceNo = (saleData as any).invoiceNo as string | undefined;
+        invoiceNo = (typeof formInvoiceNo === 'string' && formInvoiceNo && !formInvoiceNo.includes('undefined'))
+          ? formInvoiceNo
+          : generateDocumentNumber(docType);
+      }
+      const weGeneratedNumber = true;
       if (!invoiceNo || invoiceNo.includes('undefined') || invoiceNo.includes('NaN')) {
         throw new Error(`Invalid invoice number generated: ${invoiceNo}. Check document numbering settings.`);
       }
 
-      // Negative stock enforcement: when negativeStockAllowed=false, block sale if any item would go negative
+      // Negative stock enforcement: use current DB setting (not context) so Settings change is respected immediately
       const isFinal = saleData.status === 'final' || saleData.type === 'invoice';
-      if (isFinal && !inventorySettings.negativeStockAllowed && saleData.items?.length > 0) {
+      const allowNegative = await import('@/app/services/settingsService').then(m => m.settingsService.getAllowNegativeStock(companyId));
+      if (isFinal && !allowNegative && saleData.items?.length > 0) {
         const { supabase } = await import('@/lib/supabase');
         const productIds = [...new Set(saleData.items.map((i) => i.productId))];
         const { data: prods } = await supabase.from('products').select('id, current_stock, has_variations').in('id', productIds);
@@ -423,6 +432,10 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
         }
       }
 
+      // Identity: created_by must be auth.uid() (never public.users.id)
+      const { data: { user: authUser } } = await import('@/lib/supabase').then(m => m.supabase.auth.getUser());
+      const createdByAuthId = authUser?.id ?? user?.auth_user_id ?? user?.id;
+
       // Convert to Supabase format (use effectiveBranchId – valid UUID for DB)
       const supabaseSale: SupabaseSale = {
         company_id: companyId,
@@ -444,7 +457,7 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
         due_amount: saleData.due || 0,
         return_due: saleData.returnDue || 0,
         notes: saleData.notes,
-        created_by: user.id,
+        created_by: createdByAuthId,
         // Do not send is_studio in insert – column may not exist yet; set via update after create
       };
 
@@ -480,7 +493,10 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
         const msg = insertError?.message || '';
         const isDuplicateInvoice = insertError?.code === '23505' || (msg && String(msg).includes('sales_company_branch_invoice_unique'));
         if (isDuplicateInvoice) {
-          effectiveInvoiceNo = generateDocumentNumber(docType);
+          // Use next number explicitly (generateDocumentNumber returns same until state updates)
+          const config = getNumberingConfig(docType);
+          const nextNum = (config.nextNumber || 1) + 1;
+          effectiveInvoiceNo = `${config.prefix}${String(nextNum).padStart(config.padding, '0')}`;
           incrementNextNumber(docType);
           supabaseSale.invoice_no = effectiveInvoiceNo;
           result = await saleService.createSale(supabaseSale, supabaseItems);
@@ -510,7 +526,7 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
               product_id: firstItem.product_id,
               quantity: Number(firstItem.quantity) || 1,
               unit: (firstItem as any).unit || 'piece',
-              created_by: user.id,
+              created_by: createdByAuthId,
             });
             // No auto-stages: manager decides via Customize Tasks in Studio Sale Detail
           } catch (prodErr) {
@@ -518,8 +534,7 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
           }
         }
       }
-      // Only increment when we generated the number (Form did not send invoiceNo); Form already increments when it sends number
-      if (weGeneratedNumber) incrementNextNumber(docType);
+      // Document number comes from DB (get_next_document_number_global); do not increment frontend counter
       
       // Convert back to app format
       const newSale = convertFromSupabaseSale(result);
@@ -725,7 +740,7 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
                       reference_type: 'sale',
                       reference_id: newSale.id,
                       notes: `Combo sale ${newSale.invoiceNo}: ${combo.combo_name} - Component: ${comboItem.product_id}${comboItem.variation_id ? ' (Variation)' : ''}`,
-                      created_by: user?.id,
+                      created_by: createdByAuthId,
                     });
                     
                     if (!movement || !movement.id) {
@@ -793,7 +808,7 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
                 reference_type: 'sale',
                 reference_id: newSale.id,
                 notes: `Sale ${newSale.invoiceNo} - ${item.productName}${item.variationId ? ' (Variation)' : ''}`,
-                created_by: user?.id,
+                created_by: createdByAuthId,
                 box_change: -boxOut,
                 piece_change: -pieceOut,
               });
@@ -1026,7 +1041,7 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
               description: `Sale ${newSale.invoiceNo} to ${newSale.customerName}`,
               reference_type: 'sale',
               reference_id: newSale.id,
-              created_by: user?.id,
+              created_by: createdByAuthId,
             })
             .select()
             .single();
@@ -1269,9 +1284,12 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
         }
       }
 
-      // Negative stock enforcement: when negativeStockAllowed=false, block if any delta would cause negative stock
+      // Negative stock enforcement: use current DB setting so Settings change is respected immediately
       const reducingDeltas = stockMovementDeltas.filter((d) => d.deltaQty < 0);
-      if (!inventorySettings.negativeStockAllowed && reducingDeltas.length > 0 && companyId) {
+      const allowNegativeUpdate = companyId
+        ? await import('@/app/services/settingsService').then(m => m.settingsService.getAllowNegativeStock(companyId))
+        : true;
+      if (!allowNegativeUpdate && reducingDeltas.length > 0 && companyId) {
         const { supabase } = await import('@/lib/supabase');
         const productIds = [...new Set(reducingDeltas.map((d) => d.productId))];
         const { data: prods } = await supabase.from('products').select('id, current_stock, has_variations').in('id', productIds);
@@ -1368,6 +1386,10 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
       // GOLDEN RULE: Only create movements for the delta, not for all items
       if (stockMovementDeltas.length > 0 && companyId) {
         try {
+          const { supabase: sb } = await import('@/lib/supabase');
+          const { data: { user: authUser } } = await sb.auth.getUser();
+          const updateCreatedByAuthId = authUser?.id ?? (user as any)?.auth_user_id ?? user?.id;
+
           console.log('[SALES CONTEXT] 🔄 Creating stock movements for deltas:', stockMovementDeltas.length);
           
           // Get branch ID
@@ -1409,7 +1431,7 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
                 reference_type: 'sale',
                 reference_id: id,
                 notes: `Sale Edit ${saleInvoiceNo} - ${delta.name}${delta.variationId ? ' (Variation)' : ''} - Delta: ${delta.deltaQty > 0 ? 'Restore' : 'Reduce'}`,
-                created_by: user?.id,
+                created_by: updateCreatedByAuthId,
               });
               
               if (!movement || !movement.id) {
