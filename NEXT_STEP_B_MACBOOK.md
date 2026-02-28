@@ -33,6 +33,7 @@ Ye script:
 - `schema_migrations` check karegi
 - Jo migrations abhi tak apply nahi hui, unhe run karegi (supabase-extract/migrations phir migrations/ folder se)
 - Contacts RLS / default Walk-in wali migration(s) bhi apply ho jayengi (e.g. **contacts_rls_salesman_strict_isolation.sql** ya **customers_sales_rls_controlled_access.sql** — jo pending ho)
+- **Identity model:** `identity_model_auth_user_id.sql`, `rpc_user_branches_accounts_auth_id_only.sql`, `fix_user_account_access_fk_to_auth_users.sql` — user_branches / user_account_access ab `auth.users(id)` use karte hain; Settings → Users mein branch/account access **auth_user_id** se save/load hota hai.
 
 ## 3. Verify
 
@@ -40,6 +41,7 @@ Ye script:
 - [ ] **Admin login** → Contacts: sab contacts dikhne chahiye.
 - [ ] **Salesman** → Sales form: Salesman dropdown disabled (sirf admin change kar sakta hai); created_by session se set ho.
 - [ ] **Default customer** → Walk-in Customer delete/deactivate nahi ho sakta (UI + DB dono block).
+- [ ] **Settings → Users** → Edit User → Branch/Account access save: linked user (auth_user_id) ke liye save hona chahiye; unlinked user par "must be linked" message.
 
 ---
 
