@@ -110,15 +110,14 @@ export const branchService = {
         }
       }
 
-      // CRITICAL: Create default "Walking Customer" for new branch
-      if (data && data.company_id && data.id) {
+      // Ensure company has one Walk-in Customer (company-level only; no branch)
+      if (data && data.company_id) {
         try {
           const { contactService } = await import('@/app/services/contactService');
-          await contactService.createDefaultWalkingCustomer(data.company_id, data.id);
-          console.log('[BRANCH SERVICE] ✅ Default walking customer created for branch:', data.id);
+          await contactService.createDefaultWalkingCustomer(data.company_id);
+          console.log('[BRANCH SERVICE] ✅ Walk-in customer ensured for company:', data.company_id);
         } catch (customerError) {
-          console.warn('[BRANCH SERVICE] Warning: Could not create default walking customer:', customerError);
-          // Don't block branch creation if customer creation fails
+          console.warn('[BRANCH SERVICE] Warning: Could not ensure walk-in customer:', customerError);
         }
       }
       

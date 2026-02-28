@@ -135,13 +135,15 @@ export const activityLogService = {
       let userName: string | undefined;
       let userEmail: string | undefined;
 
-      if (params.performedBy || user?.id) {
-        const userId = params.performedBy || user?.id;
+      // Identity: performed_by must be auth.users.id. Resolve name via users.auth_user_id (or users.id for legacy).
+      const authUserId = params.performedBy || user?.id || null;
+      if (authUserId) {
         const { data: userData } = await supabase
           .from('users')
           .select('full_name, email')
-          .eq('id', userId)
-          .single();
+          .or(`auth_user_id.eq.${authUserId},id.eq.${authUserId}`)
+          .limit(1)
+          .maybeSingle();
 
         if (userData) {
           userName = userData.full_name;
@@ -163,7 +165,7 @@ export const activityLogService = {
           amount: params.amount || null,
           payment_method: params.paymentMethod || null,
           payment_account_id: params.paymentAccountId || null,
-          performed_by: params.performedBy || user?.id || null,
+          performed_by: authUserId,
           performed_by_name: userName || null,
           performed_by_email: userEmail || null,
           description: params.description || null,

@@ -5,7 +5,7 @@ import { FunctionsHttpError } from '@supabase/supabase-js';
 const REQUIRE_RPCS_FOR_ACCESS_SETTINGS = true;
 
 const RPC_MIGRATION_HINT =
-  'Server is missing required RPCs. Apply migration: migrations/rpc_assign_user_branches_fk_fix.sql';
+  'Server is missing required RPCs. Apply migrations: identity_model_auth_user_id.sql then rpc_user_branches_accounts_auth_id_only.sql';
 
 /** Extract error message from Edge Function non-2xx response body */
 async function getFunctionErrorMessage(err: unknown): Promise<string | null> {
@@ -27,7 +27,8 @@ export interface User {
   full_name: string;
   role: string;
   phone?: string;
-  user_code?: string; // Human-readable code: USR-001, USR-002, etc.
+  code?: string; // Auto-generated USR-XXX (trigger). Shown in User Management.
+  user_code?: string; // Same as code; kept for compatibility.
   is_active: boolean;
   can_be_assigned_as_salesman?: boolean;
   auth_user_id?: string | null; // Links to auth.users.id. Null = no login yet.
@@ -128,9 +129,8 @@ export const userService = {
   },
 
   /**
-   * Create user with Auth (recommended): Creates Supabase Auth user + ERP profile.
-   * Requires Edge Function create-erp-user to be deployed.
-   * Explicitly passes Authorization header from session (required for self-hosted).
+   * Create user with Auth + assign branch/account access in one call (no manual SQL for admin).
+   * Edge Function create-erp-user: auth user + profile + user_branches + user_account_access (auth_user_id only).
    */
   async createUserWithAuth(params: {
     email: string;
@@ -142,6 +142,9 @@ export const userService = {
     is_active?: boolean;
     temporary_password?: string;
     send_invite_email?: boolean;
+    branch_ids?: string[];
+    account_ids?: string[];
+    default_branch_id?: string;
   }) {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session?.access_token) {
@@ -157,7 +160,15 @@ export const userService = {
       const msg = await getFunctionErrorMessage(error);
       throw new Error(msg || error.message);
     }
-    const result = data as { success?: boolean; error?: string; user_id?: string; auth_user_id?: string };
+    const result = data as {
+      success?: boolean;
+      error?: string;
+      user_id?: string;
+      auth_user_id?: string;
+      created?: boolean;
+      assignedBranchesCount?: number;
+      assignedAccountsCount?: number;
+    };
     if (!result?.success) throw new Error(result?.error || 'Failed to create user');
     return result;
   },
@@ -282,7 +293,7 @@ export const userService = {
     return (all || []).filter((u) => salaryRoles.includes((u.role || '').toLowerCase()));
   },
 
-  /** Get branch IDs assigned to a user (for Edit User → Branch Access). Admin only. */
+  /** Get branch IDs assigned to a user (for Edit User → Branch Access). userId = auth_user_id (identity). */
   async getUserBranches(userId: string): Promise<string[]> {
     const { data, error } = await supabase
       .from('user_branches')
@@ -293,8 +304,8 @@ export const userService = {
   },
 
   /**
-   * Resolve to public.users.id via RPC (DB is source of truth). Used for read paths only.
-   * Branch/account writes must use set_user_branches / set_user_account_access RPCs only.
+   * Resolve to public.users.id via RPC. Not used for branch/account — those use auth_user_id only.
+   * Kept for any path that still needs public profile id from auth id.
    */
   async resolvePublicUserId(companyId: string | null, maybeId: string): Promise<string> {
     if (!maybeId) return maybeId;
@@ -310,7 +321,7 @@ export const userService = {
     return maybeId;
   },
 
-  /** Set branch access for a user. Admin only. RPC-only (no direct DML). */
+  /** Set branch access for a user. Admin only. userId must be auth_user_id (auth.users.id). RPC-only. */
   async setUserBranches(userId: string, branchIds: string[], defaultBranchId?: string, companyId?: string | null): Promise<void> {
     const ids = Array.from(new Set(branchIds)).filter(Boolean);
     const defaultId = defaultBranchId || ids[0] || null;
@@ -328,7 +339,7 @@ export const userService = {
     throw error;
   },
 
-  /** Get account IDs assigned to a user (for Edit User → Account Access). Admin only. */
+  /** Get account IDs assigned to a user (for Edit User → Account Access). userId = auth_user_id. */
   async getUserAccountAccess(userId: string): Promise<string[]> {
     const { data, error } = await supabase
       .from('user_account_access')
@@ -338,7 +349,7 @@ export const userService = {
     return (data || []).map((r: { account_id: string }) => r.account_id);
   },
 
-  /** Set account access for a user. Admin only. RPC-only (no direct DML). */
+  /** Set account access for a user. Admin only. userId must be auth_user_id. RPC-only. */
   async setUserAccountAccess(userId: string, accountIds: string[], companyId?: string | null): Promise<void> {
     const ids = Array.from(new Set(accountIds)).filter(Boolean);
     const payload = {

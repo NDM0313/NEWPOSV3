@@ -973,9 +973,12 @@ export const SalesPage = () => {
         );
       
       case 'paymentStatus': {
-        // When cancelled or payment closed, show badge as disabled (no click, greyed out)
+        const effectiveStatus = getEffectiveSaleStatus(sale);
+        if (effectiveStatus === 'draft' || effectiveStatus === 'quotation' || effectiveStatus === 'order') {
+          return <span className="text-xs text-gray-500">—</span>;
+        }
         const paymentClosed = isPaymentClosedForSale(sale);
-        const isCancelled = getEffectiveSaleStatus(sale) === 'cancelled';
+        const isCancelled = effectiveStatus === 'cancelled';
         if (paymentClosed || isCancelled) {
           return (
             <span
@@ -1013,14 +1016,23 @@ export const SalesPage = () => {
           </div>
         );
       
-      case 'paid':
+      case 'paid': {
+        const effectiveStatusPaid = getEffectiveSaleStatus(sale);
+        if (effectiveStatusPaid === 'draft' || effectiveStatusPaid === 'quotation' || effectiveStatusPaid === 'order') {
+          return <span className="text-sm text-gray-500">—</span>;
+        }
         return (
           <div className="text-sm font-semibold text-green-400 tabular-nums">
             {formatCurrency(getDisplayPaid(sale))}
           </div>
         );
+      }
       
       case 'due': {
+        const effectiveStatusDue = getEffectiveSaleStatus(sale);
+        if (effectiveStatusDue === 'draft' || effectiveStatusDue === 'quotation' || effectiveStatusDue === 'order') {
+          return <span className="text-sm text-gray-500">—</span>;
+        }
         const effectiveDue = getEffectiveDueForDisplay(sale);
         const paymentClosed = isPaymentClosedForSale(sale);
         const canPay = canAddPaymentToSale(sale, effectiveDue);
@@ -1028,7 +1040,7 @@ export const SalesPage = () => {
           return (
             <span
               className="text-sm text-gray-500 tabular-nums cursor-default"
-              title={getEffectiveSaleStatus(sale) === 'cancelled' ? 'Invoice is cancelled' : 'Closed'}
+              title={effectiveStatusDue === 'cancelled' ? 'Invoice is cancelled' : 'Closed'}
             >
               Closed
             </span>

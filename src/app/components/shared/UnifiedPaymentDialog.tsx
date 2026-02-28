@@ -110,7 +110,7 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
   const settings = useSettings();
   const { formatCurrency } = useFormatCurrency();
   const { branchId, companyId, user } = useSupabase();
-  const { generateDocumentNumber, incrementNextNumber } = useDocumentNumbering();
+  const { generateDocumentNumber, incrementNextNumber, getNumberingConfig } = useDocumentNumbering();
   const [amount, setAmount] = useState<number>(0);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('Cash');
   const [selectedAccount, setSelectedAccount] = useState<string>('');
@@ -197,11 +197,18 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
     }
   }, [isOpen, editMode, paymentToEdit, initialAttachmentFiles]);
 
+  // Refresh accounts when dialog opens so user-assigned accounts (user_account_access) are visible after RLS
+  React.useEffect(() => {
+    if (isOpen && companyId) {
+      accounting.refreshEntries().catch(() => {});
+    }
+  }, [isOpen, companyId]);
+
   // Normalize payment method for matching DB types (cash, bank, mobile_wallet)
   const normalizePaymentType = (t: string) => String(t || '').toLowerCase().trim().replace(/\s+/g, '_');
 
   // 🎯 Filter accounts based on payment method AND branch
-  // Match UI (Cash/Bank/Mobile Wallet) and DB (cash/bank/mobile_wallet) and by code (1000/1010/1020)
+  // Match UI (Cash/Bank/Mobile Wallet) and DB (cash/bank/mobile_wallet); include 10xx/102x sub-accounts (e.g. 1011-NDM for Bank)
   const getFilteredAccounts = (): Account[] => {
     const methodNorm = normalizePaymentType(paymentMethod);
     const isCash = methodNorm === 'cash';
@@ -212,23 +219,24 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
       if (account.isActive === false) return false;
 
       const accType = normalizePaymentType(String((account as any).type ?? account.accountType ?? ''));
-      const accCode = (account as any).code ?? '';
+      const accCode = String((account as any).code ?? '');
       const accName = (account.name || '').toLowerCase();
 
       const typeMatches =
         accType === methodNorm ||
         (isCash && (accType === 'cash' || accCode === '1000' || accName.includes('cash'))) ||
-        (isBank && (accType === 'bank' || accCode === '1010' || accName.includes('bank'))) ||
-        (isWallet && (accType === 'mobile_wallet' || accType === 'wallet' || accCode === '1020' || accName.includes('wallet')));
+        (isBank && (accType === 'bank' || accCode === '1010' || accName.includes('bank') || accCode.startsWith('101'))) ||
+        (isWallet && (accType === 'mobile_wallet' || accType === 'wallet' || accCode === '1020' || accName.includes('wallet') || accCode.startsWith('102')));
 
       if (!typeMatches) return false;
 
-      // Include if: no branch restriction (global) OR matches current branch
+      // Include if: no branch restriction (global) OR matches current branch (compare by ID when available) OR branch is "all"
       const accountBranch = (account as any).branchId || account.branch || '';
       const isGlobal = !accountBranch || accountBranch === 'global' || accountBranch === '';
-      const isBranchSpecific = accountBranch === branchId;
+      const isBranchSpecific = branchId && branchId !== 'all' && (accountBranch === branchId || accountBranch === String(branchId));
+      const showAllBranches = !branchId || branchId === 'all';
 
-      return isGlobal || isBranchSpecific;
+      return isGlobal || isBranchSpecific || showAllBranches;
     });
   };
 
@@ -617,18 +625,44 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
               }
             }
             const { saleService } = await import('@/app/services/saleService');
-            await saleService.recordPayment(
-              referenceId,
-              amount,
-              paymentMethod,
-              selectedAccount,
-              companyId,
-              branchId,
-              paymentDateTime.split('T')[0],
-              paymentRef,
-              { notes: notes.trim() || undefined, attachments: attachmentPayload.length ? attachmentPayload : undefined }
-            );
-            incrementNextNumber('payment');
+            let effectivePaymentRef = paymentRef;
+            let didIncrementForRetry = false;
+            try {
+              await saleService.recordPayment(
+                referenceId,
+                amount,
+                paymentMethod,
+                selectedAccount,
+                companyId,
+                branchId,
+                paymentDateTime.split('T')[0],
+                effectivePaymentRef,
+                { notes: notes.trim() || undefined, attachments: attachmentPayload.length ? attachmentPayload : undefined }
+              );
+            } catch (insertErr: any) {
+              const isDuplicateRef = insertErr?.code === '23505' && String(insertErr?.message || '').includes('payments_reference_number_unique');
+              if (isDuplicateRef) {
+                const config = getNumberingConfig('payment');
+                const nextNum = (config.nextNumber ?? 1) + 1;
+                effectivePaymentRef = `${config.prefix}${String(nextNum).padStart(config.padding, '0')}`;
+                incrementNextNumber('payment');
+                didIncrementForRetry = true;
+                await saleService.recordPayment(
+                  referenceId,
+                  amount,
+                  paymentMethod,
+                  selectedAccount,
+                  companyId,
+                  branchId,
+                  paymentDateTime.split('T')[0],
+                  effectivePaymentRef,
+                  { notes: notes.trim() || undefined, attachments: attachmentPayload.length ? attachmentPayload : undefined }
+                );
+              } else {
+                throw insertErr;
+              }
+            }
+            if (!didIncrementForRetry) incrementNextNumber('payment');
             success = await accounting.recordSalePayment({
               saleId: referenceId,
               invoiceNo: referenceNo || `INV-${Date.now()}`,
@@ -961,7 +995,13 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
                     </select>
                     <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={18} />
                   </div>
-                  {selectedAccount === '' && (
+                  {getFilteredAccounts().length === 0 && (
+                    <p className="text-xs text-amber-500/90 mt-1.5 flex items-center gap-1">
+                      <AlertCircle size={11} />
+                      No accounts available. Ensure account access is assigned in User Management → Edit User → Account Access, and that your admin has applied the accounts RLS migration on the server.
+                    </p>
+                  )}
+                  {selectedAccount === '' && getFilteredAccounts().length > 0 && (
                     <p className="text-xs text-gray-500 mt-1.5 flex items-center gap-1">
                       <AlertCircle size={11} />
                       Please select an account to proceed

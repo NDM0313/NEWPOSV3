@@ -570,10 +570,7 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                 }
                 if (!defaultCustomerId) {
                     try {
-                        const walkingCustomer = await contactService.getWalkingCustomer(
-                            companyId,
-                            contextBranchId === 'all' ? undefined : contextBranchId || undefined
-                        );
+                        const walkingCustomer = await contactService.getWalkingCustomer(companyId);
                         if (walkingCustomer) defaultCustomerId = walkingCustomer.id || null;
                     } catch (_) {}
                 }
@@ -1718,7 +1715,13 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
             
             const selectedCustomer = customers.find(c => c.id.toString() === customerId);
             const customerName = selectedCustomer?.name || 'Walk-in Customer';
-            const customerUuid = customerId === 'walk-in' ? undefined : customerId.toString();
+            let customerUuid: string | undefined;
+            if (customerId === 'walk-in') {
+                const walkIn = await contactService.getWalkingCustomer(companyId);
+                customerUuid = walkIn?.id ?? undefined;
+            } else {
+                customerUuid = customerId.toString();
+            }
             
             // CRITICAL FIX: Convert items to SaleItem format with variationId
             // Need to find variation_id from size/color if product has variations
@@ -2036,7 +2039,7 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
         } catch (error: any) {
             console.error('[SALE FORM] Error saving sale:', error);
             toast.error(`Failed to save sale: ${error.message || 'Unknown error'}`);
-            return { saleId: null, invoiceNo: null };
+            return null;
         } finally {
             setSaving(false);
         }

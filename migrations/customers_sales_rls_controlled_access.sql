@@ -15,12 +15,17 @@
 ALTER TABLE public.contacts ADD COLUMN IF NOT EXISTS is_default BOOLEAN DEFAULT FALSE;
 COMMENT ON COLUMN public.contacts.is_default IS 'True for Walk-in Customer; cannot be deleted';
 
--- Backfill: set is_default for existing walking customers
-UPDATE public.contacts
+-- Backfill: set is_default for ONE walking customer per company (unique index allows only one default per company)
+UPDATE public.contacts c
 SET is_default = true
-WHERE (system_type = 'walking_customer' OR (is_system_generated = true AND name ILIKE '%walk-in%'))
-  AND type = 'customer'
-  AND (is_default IS NULL OR is_default = false);
+FROM (
+  SELECT DISTINCT ON (company_id) id
+  FROM public.contacts
+  WHERE (system_type = 'walking_customer' OR (is_system_generated = true AND name ILIKE '%walk-in%'))
+    AND type = 'customer'
+  ORDER BY company_id, id
+) sub
+WHERE c.id = sub.id AND (c.is_default IS NOT TRUE);
 
 -- ----------------------------------------------------------------------------
 -- STEP 2: Helper - resolve public user id for current auth user
@@ -217,10 +222,10 @@ BEGIN
   SET search_path = public
   AS $fn$
   BEGIN
+    -- Only one default per company (unique index idx_contacts_one_default_per_company)
     IF NOT EXISTS (
       SELECT 1 FROM public.contacts
-      WHERE company_id = NEW.company_id AND branch_id = NEW.id AND type = 'customer'
-        AND (system_type = 'walking_customer' OR is_default = true)
+      WHERE company_id = NEW.company_id AND type = 'customer' AND is_default = true
     ) THEN
       INSERT INTO public.contacts (
         company_id, branch_id, type, name, is_active, is_system_generated, system_type, is_default,
@@ -246,27 +251,24 @@ CREATE TRIGGER trigger_create_default_walking_customer
   FOR EACH ROW
   EXECUTE FUNCTION public.create_default_walking_customer_for_branch();
 
--- Backfill: ensure existing branches have default walking customer (idempotent)
+-- Backfill: one default walking customer per company only (idx_contacts_one_default_per_company is unique on company_id)
 DO $$
 DECLARE
   r RECORD;
 BEGIN
   FOR r IN
-    SELECT b.id, b.company_id
-    FROM public.branches b
+    SELECT c.id AS company_id
+    FROM public.companies c
     WHERE NOT EXISTS (
-      SELECT 1 FROM public.contacts c
-      WHERE c.company_id = b.company_id
-        AND c.branch_id = b.id
-        AND c.type = 'customer'
-        AND (c.system_type = 'walking_customer' OR c.is_default = true)
+      SELECT 1 FROM public.contacts ct
+      WHERE ct.company_id = c.id AND ct.type = 'customer' AND ct.is_default = true
     )
   LOOP
     INSERT INTO public.contacts (
       company_id, branch_id, type, name, is_active, is_system_generated, system_type, is_default,
       opening_balance, credit_limit, payment_terms
     ) VALUES (
-      r.company_id, r.id, 'customer', 'Walk-in Customer', true, true, 'walking_customer', true,
+      r.company_id, NULL, 'customer', 'Walk-in Customer', true, true, 'walking_customer', true,
       0, 0, 0
     );
   END LOOP;

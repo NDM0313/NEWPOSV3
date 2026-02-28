@@ -100,18 +100,21 @@ export const ListToolbar: React.FC<ListToolbarProps> = ({
   const [columnVisibilityOpen, setColumnVisibilityOpen] = useState(false);
   const filterRef = useRef<HTMLDivElement>(null);
   const columnsRef = useRef<HTMLDivElement>(null);
+  const filterOnToggleRef = useRef(filter?.onToggle);
+  filterOnToggleRef.current = filter?.onToggle;
 
   // Close filter when clicking outside (allows Import/Export buttons to receive clicks)
+  // Use ref for onToggle so effect deps don't change every parent render (avoids max update depth)
   useEffect(() => {
     if (!filter?.isOpen) return;
     const handleClickOutside = (e: MouseEvent) => {
       if (filterRef.current && !filterRef.current.contains(e.target as Node)) {
-        filter.onToggle();
+        filterOnToggleRef.current?.();
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [filter?.isOpen, filter?.onToggle]);
+  }, [filter?.isOpen]);
 
   // Close columns dropdown when clicking outside
   useEffect(() => {

@@ -140,4 +140,27 @@ export const documentNumberService = {
       return 0;
     }
   },
+
+  /**
+   * Get next global document number from database (company-level, atomic).
+   * Sales: SL (invoice), DRAFT (draft), QT (quotation), SO (order), STD (studio).
+   * Other: PUR, PAY, RNT. Frontend must NOT generate numbers manually.
+   */
+  async getNextDocumentNumberGlobal(
+    companyId: string,
+    type: 'SL' | 'DRAFT' | 'QT' | 'SO' | 'CUS' | 'PUR' | 'PAY' | 'RNT' | 'STD'
+  ): Promise<string> {
+    const { data, error } = await supabase.rpc('get_next_document_number_global', {
+      p_company_id: companyId,
+      p_type: type,
+    });
+    if (error) {
+      console.error('[DOCUMENT NUMBER] get_next_document_number_global error:', error);
+      throw new Error(error.message || 'Failed to get next document number');
+    }
+    if (typeof data !== 'string' || !data) {
+      throw new Error('Invalid document number returned from database');
+    }
+    return data;
+  },
 };

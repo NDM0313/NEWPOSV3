@@ -149,14 +149,22 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
     })();
   }, [open, companyId]);
 
+  // SAFE ID RULE: Branch/account use auth.users.id ONLY. Never use public.users.id (editingUser.id).
   useEffect(() => {
     if (!open || !editingUser) return;
+    const identityId = editingUser.auth_user_id ?? null;
+    if (!identityId) {
+      setSelectedBranchIds([]);
+      setSelectedAccountIds([]);
+      setLoadingAccess(false);
+      return;
+    }
     setLoadingAccess(true);
     (async () => {
       try {
         const [branchIds, accountIds] = await Promise.all([
-          userService.getUserBranches(editingUser.id),
-          userService.getUserAccountAccess(editingUser.id).catch(() => []),
+          userService.getUserBranches(identityId),
+          userService.getUserAccountAccess(identityId).catch(() => []),
         ]);
         setSelectedBranchIds(branchIds);
         setSelectedAccountIds(accountIds);
@@ -166,7 +174,8 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
         setLoadingAccess(false);
       }
     })();
-  }, [open, editingUser?.id]);
+  }, [open, editingUser?.id, editingUser?.auth_user_id]);
+  // identityId for save: editingUser?.auth_user_id ?? savedAuthUserId — never editingUser.id
 
   const handleSave = async () => {
     if (!companyId) {
@@ -220,6 +229,7 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
       console.log('[ADD USER MODAL] Saving user with data:', JSON.stringify(userData, null, 2));
 
       let savedUserId: string | null = null;
+      let savedAuthUserId: string | null = null;
 
       if (editingUser) {
         // Update existing user
@@ -228,7 +238,7 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
         savedUserId = editingUser.id;
         toast.success('User updated successfully!');
       } else {
-        // Create new user - try Auth flow first (Edge Function)
+        // Create new user: one-call auth + profile + branch/account access (no manual SQL)
         try {
           const createResult = await userService.createUserWithAuth({
             email: formData.email.trim().toLowerCase(),
@@ -240,15 +250,23 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
             is_active: formData.is_active,
             temporary_password: formData.passwordOption === 'temp' && formData.temporary_password.length >= 6 ? formData.temporary_password : undefined,
             send_invite_email: formData.passwordOption === 'invite',
+            branch_ids: selectedBranchIds.length > 0 ? selectedBranchIds : undefined,
+            account_ids: selectedAccountIds.length > 0 ? selectedAccountIds : undefined,
+            default_branch_id: selectedBranchIds[0] || undefined,
           });
-          // Prefer public.users.id from Edge Function so branch/account RPCs get correct FK
-          savedUserId = (createResult as { user_id?: string })?.user_id ?? null;
+          const result = createResult as { user_id?: string; auth_user_id?: string; assignedBranchesCount?: number; assignedAccountsCount?: number };
+          savedUserId = result?.user_id ?? null;
+          savedAuthUserId = result?.auth_user_id ?? null;
           if (!savedUserId) {
             const all = await userService.getAllUsers(companyId, { includeInactive: true });
             const created = all.find((u: UserType) => u.email?.toLowerCase() === formData.email.trim().toLowerCase());
             savedUserId = created?.id ?? null;
+            if (created?.auth_user_id) savedAuthUserId = created.auth_user_id;
           }
-          toast.success(formData.passwordOption === 'invite' ? 'Invite sent! User will receive email to set password.' : 'User created! They can login with the temporary password.');
+          const branchCount = result?.assignedBranchesCount ?? 0;
+          const accountCount = result?.assignedAccountsCount ?? 0;
+          const accessMsg = branchCount || accountCount ? ` Access assigned: ${branchCount} branch(es), ${accountCount} account(s).` : '';
+          toast.success((formData.passwordOption === 'invite' ? 'Invite sent! User will receive email to set password.' : 'User created! They can login with the temporary password.') + accessMsg);
         } catch (authErr: any) {
           if (authErr?.message?.includes('Failed to fetch') || authErr?.message?.includes('404') || authErr?.code === 'functions-invoke-error') {
             const created = await userService.createUser(userData);
@@ -260,34 +278,36 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
         }
       }
 
-      // Save branch/account access. Always use public.users.id (FK target) — from list when editing, from create when new.
-      const branchAccountUserId = editingUser ? editingUser.id : savedUserId;
-      if (branchAccountUserId) {
+      // Branch/account: new user already assigned in Edge Function. Existing user: only if linked and not admin (admin has full access).
+      // NEVER use public.users.id for access tables — only auth.users.id (auth_user_id).
+      let identityId: string | null = editingUser?.auth_user_id ?? savedAuthUserId ?? null;
+      if (identityId && editingUser?.id && identityId === editingUser.id) {
+        identityId = null; // Defensive: do not pass profile id; would violate user_branches FK to auth.users
+      }
+      const isNewUserJustCreated = !editingUser && !!savedAuthUserId;
+      const isAdmin = editingUser?.role === 'admin';
+      if (!isNewUserJustCreated && !identityId && (selectedBranchIds.length > 0 || selectedAccountIds.length > 0)) {
+        toast.error('User is not linked to authentication. Cannot assign branch/account access. Use Invite first.');
+      }
+      if (identityId && !isAdmin && !isNewUserJustCreated) {
+        console.log('[AddUserModal] Branch/account save: identityId (auth.users.id)', identityId);
         try {
-          await userService.setUserBranches(branchAccountUserId, selectedBranchIds, selectedBranchIds[0] || undefined, companyId);
+          await userService.setUserBranches(identityId, selectedBranchIds, selectedBranchIds[0] || undefined, companyId);
         } catch (branchErr: any) {
           const msg = branchErr?.message ?? branchErr?.error?.message ?? String(branchErr);
           console.warn('[AddUserModal] Branch access save failed:', branchErr);
-          if (msg?.includes('missing required RPCs')) {
-            toast.error(msg);
-          } else {
-            toast.warning(
-              msg?.includes('Only admin') ? msg : `User saved. Branch access failed: ${msg || 'Run migration rpc_assign_user_branches_fk_fix.sql'}`
-            );
-          }
+          if (msg?.includes('missing required RPCs')) toast.error(msg);
+          else if (msg?.includes('USER_NOT_LINKED') || msg?.includes('not an auth user id')) toast.warning('User is not linked to authentication. Use Invite first, then assign branches.');
+          else toast.warning(msg?.includes('Only admin') ? msg : `User saved. Branch access failed: ${msg}`);
         }
         try {
-          await userService.setUserAccountAccess(branchAccountUserId, selectedAccountIds, companyId);
+          await userService.setUserAccountAccess(identityId, selectedAccountIds, companyId);
         } catch (accountErr: any) {
           const msg = accountErr?.message ?? String(accountErr);
           console.warn('[AddUserModal] Account access save failed:', accountErr);
-          if (msg?.includes('missing required RPCs')) {
-            toast.error(msg);
-          } else {
-            toast.warning(
-              msg?.includes('Only admin') ? msg : `User saved. Account access failed: ${msg || 'Run migration rpc_assign_user_branches_fk_fix.sql'}`
-            );
-          }
+          if (msg?.includes('missing required RPCs')) toast.error(msg);
+          else if (msg?.includes('USER_NOT_LINKED') || msg?.includes('not an auth user id')) toast.warning('User is not linked to authentication. Use Invite first, then assign accounts.');
+          else toast.warning(msg?.includes('Only admin') ? msg : `User saved. Account access failed: ${msg}`);
         }
       }
 
@@ -582,6 +602,7 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
                 <h3 className="text-sm font-semibold text-gray-200">Branch Access</h3>
               </div>
               <p className="text-xs text-gray-500">Select which branches this user can access. Admin sees all branches.</p>
+              {editingUser?.role === 'admin' && <p className="text-xs text-amber-400">Admin has full access; branch/account assignment is not saved for admin.</p>}
               {loadingAccess ? (
                 <p className="text-sm text-gray-400">Loading...</p>
               ) : (
@@ -618,6 +639,7 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
                 <h3 className="text-sm font-semibold text-gray-200">Account Access</h3>
               </div>
               <p className="text-xs text-gray-500">Select which accounts this user can use (e.g. for receiving payments). Admin sees all accounts.</p>
+              {editingUser?.role === 'admin' && <p className="text-xs text-amber-400">Admin has full access.</p>}
               {loadingAccess ? (
                 <p className="text-sm text-gray-400">Loading...</p>
               ) : (

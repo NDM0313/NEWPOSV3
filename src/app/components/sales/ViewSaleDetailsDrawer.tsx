@@ -715,6 +715,15 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
                       <span className="text-xs text-gray-500">Created At</span>
                       <span className="text-white">{new Date(sale.createdAt).toLocaleString()}</span>
                     </div>
+                    {sale.createdBy && (
+                      <div className="flex justify-between">
+                        <span className="text-xs text-gray-500">Created By</span>
+                        <span className="text-white flex items-center gap-2">
+                          <User size={14} className="text-gray-500" />
+                          {sale.createdBy}
+                        </span>
+                      </div>
+                    )}
                     {sale.updatedAt && (
                       <div className="flex justify-between">
                         <span className="text-xs text-gray-500">Last Updated</span>

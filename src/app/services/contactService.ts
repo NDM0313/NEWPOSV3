@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase';
+import { documentNumberService } from '@/app/services/documentNumberService';
 
 export interface Contact {
   id?: string;
@@ -6,6 +7,7 @@ export interface Contact {
   branch_id?: string;
   type: 'customer' | 'supplier' | 'both';
   name: string;
+  code?: string;
   email?: string;
   phone?: string;
   mobile?: string;
@@ -72,10 +74,24 @@ export const contactService = {
       }
       return out;
     };
-    const payload = clean(contact as Record<string, unknown>);
+    let payload = clean(contact as Record<string, unknown>);
     // Ensure required fields exist
     if (!payload.company_id || !payload.type || !payload.name) {
       throw new Error('company_id, type, and name are required');
+    }
+
+    // Customer code: DB-only global sequence (never frontend). Skip for walk-in (code already set).
+    const isCustomer = payload.type === 'customer' || payload.type === 'both';
+    if (isCustomer && !payload.code && !payload.is_system_generated) {
+      try {
+        const code = await documentNumberService.getNextDocumentNumberGlobal(
+          String(payload.company_id),
+          'CUS'
+        );
+        payload = { ...payload, code };
+      } catch (e) {
+        console.warn('[CONTACT SERVICE] get_next_document_number_global for CUS failed:', e);
+      }
     }
 
     const { data, error } = await supabase
@@ -92,7 +108,7 @@ export const contactService = {
     const errorMessage = (error.message || '').toLowerCase();
     // Columns that may not exist until migration is run
     const optionalColumns = [
-      'country', 'contact_person', 'group_id', 'business_name',
+      'country', 'contact_person', 'group_id', 'business_name', 'code',
       'payable_account_id', 'supplier_opening_balance', 'worker_role',
       'branch_id', 'current_balance', 'is_default', 'is_system_generated', 'system_type'
     ];
@@ -112,7 +128,7 @@ export const contactService = {
 
     // Retry with only base schema columns (no optional/extended columns)
     const baseColumns = [
-      'company_id', 'type', 'name', 'email', 'phone', 'mobile', 'cnic', 'ntn',
+      'company_id', 'type', 'name', 'code', 'email', 'phone', 'mobile', 'cnic', 'ntn',
       'address', 'city', 'state', 'country', 'postal_code', 'tax_number',
       'opening_balance', 'credit_limit', 'payment_terms', 'notes', 'is_active', 'created_by', 'branch_id', 'is_default'
     ];
@@ -194,33 +210,19 @@ export const contactService = {
   // ============================================================================
 
   /**
-   * Create default "Walking Customer" for a branch
-   * This is auto-created when a new branch is created
+   * Create default "Walk-in Customer" for the company (one per company only; no branch).
+   * Code = CUS-0000 (reserved). Used when no walk-in exists yet.
+   * DB enforces single walk-in per company via unique_walkin_per_company_strict.
    */
-  async createDefaultWalkingCustomer(companyId: string, branchId: string): Promise<Contact> {
-    console.log('[CONTACT SERVICE] Creating default walking customer:', { companyId, branchId });
+  async createDefaultWalkingCustomer(companyId: string): Promise<Contact> {
+    const existing = await this.getDefaultCustomer(companyId);
+    if (existing) return existing;
 
-    // Check if walking customer already exists for this branch
-    const { data: existing } = await supabase
-      .from('contacts')
-      .select('*')
-      .eq('company_id', companyId)
-      .eq('branch_id', branchId)
-      .eq('system_type', 'walking_customer')
-      .eq('is_active', true)
-      .maybeSingle();
-
-    if (existing) {
-      console.log('[CONTACT SERVICE] Walking customer already exists:', existing.id);
-      return existing as Contact;
-    }
-
-    // Create walking customer (display name matches UI "Walk-in Customer")
     const walkingCustomer: Partial<Contact> = {
       company_id: companyId,
-      branch_id: branchId,
       type: 'customer',
       name: 'Walk-in Customer',
+      code: 'CUS-0000',
       is_active: true,
       is_system_generated: true,
       system_type: 'walking_customer',
@@ -232,7 +234,7 @@ export const contactService = {
 
     try {
       const created = await this.createContact(walkingCustomer);
-      console.log('[CONTACT SERVICE] ✅ Default walking customer created:', created.id);
+      console.log('[CONTACT SERVICE] ✅ Walk-in customer created (one per company):', created.id);
       return created as Contact;
     } catch (error: any) {
       console.error('[CONTACT SERVICE] ❌ Failed to create walking customer:', error);
@@ -242,16 +244,17 @@ export const contactService = {
 
   /**
    * Get the mandatory default (Walk-in) customer for the company.
-   * Exactly one per company; used for new sale auto-selection.
+   * Exactly one per company (company_id only; no branch_id or created_by).
+   * Used for new sale auto-selection and for resolving walk-in customer_id on save.
    */
   async getDefaultCustomer(companyId: string): Promise<Contact | null> {
+    // Strict: walk-in by company_id only (system_type = 'walking_customer')
     const { data, error } = await supabase
       .from('contacts')
       .select('*')
       .eq('company_id', companyId)
-      .eq('is_default', true)
+      .eq('system_type', 'walking_customer')
       .in('type', ['customer', 'both'])
-      .eq('is_active', true)
       .limit(1)
       .maybeSingle();
 
@@ -259,62 +262,34 @@ export const contactService = {
       console.error('[CONTACT SERVICE] Error fetching default customer:', error);
       return null;
     }
-    return (data as Contact) || null;
-  },
-
-  /**
-   * Get walking customer for a branch (legacy; prefer getDefaultCustomer for new sales)
-   * Used in SaleForm to auto-select customer
-   */
-  async getWalkingCustomer(companyId: string, branchId?: string): Promise<Contact | null> {
-    let query = supabase
+    if (data) return data as Contact;
+    // Fallback for legacy: is_default before strict enforcement migration
+    const { data: legacy } = await supabase
       .from('contacts')
       .select('*')
       .eq('company_id', companyId)
-      .eq('system_type', 'walking_customer')
-      .eq('is_active', true)
-      .eq('is_system_generated', true);
-
-    // If branchId provided, filter by branch
-    if (branchId) {
-      query = query.eq('branch_id', branchId);
-    } else {
-      // If no branchId, get first available (for backward compatibility)
-      query = query.is('branch_id', null);
-    }
-
-    const { data, error } = await query.limit(1).maybeSingle();
-
-    if (error && error.code !== 'PGRST116') {
-      // PGRST116 = no rows returned (acceptable)
-      console.error('[CONTACT SERVICE] Error fetching walking customer:', error);
-      return null;
-    }
-
-    return (data as Contact) || null;
+      .eq('is_default', true)
+      .in('type', ['customer', 'both'])
+      .limit(1)
+      .maybeSingle();
+    return (legacy as Contact) || null;
   },
 
   /**
-   * Ensure default Walk-in Customer exists for the company (e.g. when business is created or first opening Contacts).
-   * Uses current branch or first branch if branchId is 'all' / null.
+   * Get walk-in customer for the company (company_id only; no branch/user).
+   * Used in SaleForm for auto-select and for resolving customer_id when saving "walk-in".
+   * Lookup: WHERE company_id = ? AND system_type = 'walking_customer' (or is_default) LIMIT 1.
    */
-  async ensureDefaultWalkingCustomerForCompany(companyId: string, branchId?: string | null): Promise<void> {
-    let targetBranchId: string | null = null;
-    if (branchId && branchId !== 'all') {
-      targetBranchId = branchId;
-    } else {
-      const { data: branches } = await supabase
-        .from('branches')
-        .select('id')
-        .eq('company_id', companyId)
-        .eq('is_active', true)
-        .order('name')
-        .limit(1);
-      if (branches?.[0]?.id) targetBranchId = branches[0].id;
-    }
-    if (!targetBranchId) return;
+  async getWalkingCustomer(companyId: string): Promise<Contact | null> {
+    return this.getDefaultCustomer(companyId);
+  },
+
+  /**
+   * Ensure default Walk-in Customer exists for the company (one per company only).
+   */
+  async ensureDefaultWalkingCustomerForCompany(companyId: string): Promise<void> {
     try {
-      await this.createDefaultWalkingCustomer(companyId, targetBranchId);
+      await this.createDefaultWalkingCustomer(companyId);
     } catch (_) {
       // Already exists or other error – ignore so load can continue
     }

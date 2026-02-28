@@ -145,6 +145,15 @@ export const settingsService = {
     );
   },
 
+  /** Allow negative stock (inventory_settings.negativeStockAllowed or key allow_negative_stock). Used for sale validation. */
+  async getAllowNegativeStock(companyId: string): Promise<boolean> {
+    const invRecord = await this.getSetting(companyId, 'inventory_settings');
+    const invVal = invRecord?.value as { negativeStockAllowed?: boolean } | undefined;
+    if (typeof invVal?.negativeStockAllowed === 'boolean') return invVal.negativeStockAllowed;
+    const legacy = await this.getSetting(companyId, 'allow_negative_stock');
+    return legacy?.value === true || legacy?.value === 'true';
+  },
+
   // ============================================
   // MODULE CONFIG (Module Toggles)
   // ============================================
