@@ -38,6 +38,9 @@ Thumbs.db
 # Build artifacts
 *.tsbuildinfo
 
+# Migration backups (pg_dump; do not commit)
+backups/
+
 # Temporary files
 *.tmp
 *.temp

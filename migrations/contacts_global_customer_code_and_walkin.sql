@@ -29,48 +29,58 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_contacts_company_code_unique
 
 -- ----------------------------------------------------------------------------
 -- 2. Add CUS to document_sequences_global (function prefix)
+-- If not DB owner, skip replace so dev/pooler runs don't block.
 -- ----------------------------------------------------------------------------
-CREATE OR REPLACE FUNCTION public.get_next_document_number_global(
-  p_company_id UUID,
-  p_type TEXT
-)
-RETURNS TEXT
-LANGUAGE plpgsql
-SECURITY DEFINER
-AS $$
-DECLARE
-  v_next BIGINT;
-  v_prefix TEXT;
+DO $$
 BEGIN
-  v_prefix := CASE UPPER(TRIM(p_type))
-    WHEN 'SL' THEN 'SL-'
-    WHEN 'DRAFT' THEN 'DRAFT-'
-    WHEN 'QT' THEN 'QT-'
-    WHEN 'SO' THEN 'SO-'
-    WHEN 'CUS' THEN 'CUS-'
-    WHEN 'PUR' THEN 'PUR-'
-    WHEN 'PAY' THEN 'PAY-'
-    WHEN 'RNT' THEN 'RNT-'
-    WHEN 'STD' THEN 'STD-'
-    ELSE UPPER(TRIM(p_type)) || '-'
-  END;
+  EXECUTE $exec$
+    CREATE OR REPLACE FUNCTION public.get_next_document_number_global(
+      p_company_id UUID,
+      p_type TEXT
+    )
+    RETURNS TEXT
+    LANGUAGE plpgsql
+    SECURITY DEFINER
+    SET search_path = public
+    AS $body$
+    DECLARE
+      v_next BIGINT;
+      v_prefix TEXT;
+    BEGIN
+      v_prefix := CASE UPPER(TRIM(p_type))
+        WHEN 'SL' THEN 'SL-'
+        WHEN 'DRAFT' THEN 'DRAFT-'
+        WHEN 'QT' THEN 'QT-'
+        WHEN 'SO' THEN 'SO-'
+        WHEN 'CUS' THEN 'CUS-'
+        WHEN 'PUR' THEN 'PUR-'
+        WHEN 'PAY' THEN 'PAY-'
+        WHEN 'RNT' THEN 'RNT-'
+        WHEN 'STD' THEN 'STD-'
+        ELSE UPPER(TRIM(p_type)) || '-'
+      END;
 
-  UPDATE public.document_sequences_global
-  SET current_number = current_number + 1,
-      updated_at = NOW()
-  WHERE company_id = p_company_id
-    AND document_type = UPPER(TRIM(p_type))
-  RETURNING current_number INTO v_next;
+      UPDATE public.document_sequences_global
+      SET current_number = current_number + 1,
+          updated_at = NOW()
+      WHERE company_id = p_company_id
+        AND document_type = UPPER(TRIM(p_type))
+      RETURNING current_number INTO v_next;
 
-  IF v_next IS NULL THEN
-    INSERT INTO public.document_sequences_global (company_id, document_type, current_number)
-    VALUES (p_company_id, UPPER(TRIM(p_type)), 1)
-    RETURNING current_number INTO v_next;
-  END IF;
+      IF v_next IS NULL THEN
+        INSERT INTO public.document_sequences_global (company_id, document_type, current_number)
+        VALUES (p_company_id, UPPER(TRIM(p_type)), 1)
+        RETURNING current_number INTO v_next;
+      END IF;
 
-  RETURN v_prefix || LPAD(v_next::TEXT, 4, '0');
-END;
-$$;
+      RETURN v_prefix || LPAD(v_next::TEXT, 4, '0');
+    END;
+    $body$;
+  $exec$;
+EXCEPTION
+  WHEN insufficient_privilege THEN
+    RAISE NOTICE 'Skipping get_next_document_number_global replace (not owner). Set DATABASE_ADMIN_URL for full migration.';
+END $$;
 
 -- ----------------------------------------------------------------------------
 -- 3. One walk-in per company (by company only; code CUS-0000)
@@ -109,12 +119,16 @@ WHERE s.customer_id IS NULL
 -- ----------------------------------------------------------------------------
 DROP POLICY IF EXISTS "contacts_select_role_based" ON public.contacts;
 DROP POLICY IF EXISTS "contacts_select_enterprise" ON public.contacts;
+DROP POLICY IF EXISTS "contacts_select_policy" ON public.contacts;
 DROP POLICY IF EXISTS "contacts_insert_role_based" ON public.contacts;
 DROP POLICY IF EXISTS "contacts_insert_enterprise" ON public.contacts;
+DROP POLICY IF EXISTS "contacts_insert_policy" ON public.contacts;
 DROP POLICY IF EXISTS "contacts_update_role_based" ON public.contacts;
 DROP POLICY IF EXISTS "contacts_update_enterprise" ON public.contacts;
+DROP POLICY IF EXISTS "contacts_update_policy" ON public.contacts;
 DROP POLICY IF EXISTS "contacts_delete_role_based" ON public.contacts;
 DROP POLICY IF EXISTS "contacts_delete_enterprise" ON public.contacts;
+DROP POLICY IF EXISTS "contacts_delete_policy" ON public.contacts;
 
 -- SELECT: admin all; non-admin own (created_by = auth.uid()) or system (is_system_generated)
 CREATE POLICY "contacts_select_policy"

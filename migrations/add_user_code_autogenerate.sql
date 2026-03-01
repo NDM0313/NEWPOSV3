@@ -18,63 +18,82 @@ END $$;
 UPDATE public.users SET code = user_code WHERE code IS NULL AND user_code IS NOT NULL;
 
 -- 3. Function: generate next user code for a company (format USR-XXX)
-CREATE OR REPLACE FUNCTION public.generate_user_code(p_company_id UUID)
-RETURNS TEXT
-LANGUAGE plpgsql
-STABLE
-SECURITY DEFINER
-SET search_path = public
-AS $$
-DECLARE
-  v_max_num INT := 0;
-  v_code TEXT;
-  v_match TEXT;
+-- If not DB owner, CREATE OR REPLACE fails; skip so dev/pooler runs don't block.
+DO $$
 BEGIN
-  SELECT COALESCE(MAX(
-    CASE
-      WHEN code ~ '^USR-[0-9]+$' THEN NULLIF(SUBSTRING(code FROM 5)::INT, 0)
-      WHEN user_code ~ '^USR-[0-9]+$' THEN NULLIF(SUBSTRING(user_code FROM 5)::INT, 0)
-      ELSE NULL
-    END
-  ), 0)
-  INTO v_max_num
-  FROM public.users
-  WHERE company_id = p_company_id;
+  EXECUTE $exec$
+    CREATE OR REPLACE FUNCTION public.generate_user_code(p_company_id UUID)
+    RETURNS TEXT
+    LANGUAGE plpgsql
+    STABLE
+    SECURITY DEFINER
+    SET search_path = public
+    AS $body$
+    DECLARE
+      v_max_num INT := 0;
+      v_code TEXT;
+    BEGIN
+      SELECT COALESCE(MAX(
+        CASE
+          WHEN code ~ '^USR-[0-9]+$' THEN NULLIF(SUBSTRING(code FROM 5)::INT, 0)
+          WHEN user_code ~ '^USR-[0-9]+$' THEN NULLIF(SUBSTRING(user_code FROM 5)::INT, 0)
+          ELSE NULL
+        END
+      ), 0)
+      INTO v_max_num
+      FROM public.users
+      WHERE company_id = p_company_id;
 
-  v_max_num := v_max_num + 1;
-  v_code := 'USR-' || LPAD(v_max_num::TEXT, 3, '0');
+      v_max_num := v_max_num + 1;
+      v_code := 'USR-' || LPAD(v_max_num::TEXT, 3, '0');
+      RETURN v_code;
+    END;
+    $body$;
+  $exec$;
+EXCEPTION
+  WHEN insufficient_privilege THEN
+    RAISE NOTICE 'Skipping generate_user_code replace (not owner). Set DATABASE_ADMIN_URL for full migration.';
+END $$;
 
-  RETURN v_code;
-END;
-$$;
-
-COMMENT ON FUNCTION public.generate_user_code(UUID) IS 'Returns next USR-XXX code for the given company_id.';
+DO $$
+BEGIN
+  EXECUTE 'COMMENT ON FUNCTION public.generate_user_code(UUID) IS ''Returns next USR-XXX code for the given company_id.''';
+EXCEPTION WHEN insufficient_privilege THEN NULL;
+END $$;
 
 -- 4. Trigger function: set code and user_code on INSERT when NULL
-CREATE OR REPLACE FUNCTION public.set_user_code_on_insert()
-RETURNS TRIGGER
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public
-AS $$
-DECLARE
-  v_code TEXT;
+DO $$
 BEGIN
-  IF NEW.company_id IS NULL THEN
-    RETURN NEW;
-  END IF;
-  v_code := COALESCE(NULLIF(TRIM(NEW.code), ''), NULLIF(TRIM(NEW.user_code), ''));
-  IF v_code IS NULL OR v_code = '' THEN
-    v_code := public.generate_user_code(NEW.company_id);
-    NEW.code := v_code;
-    NEW.user_code := v_code;
-  ELSE
-    IF (NEW.code IS NULL OR TRIM(NEW.code) = '') THEN NEW.code := v_code; END IF;
-    IF (NEW.user_code IS NULL OR TRIM(NEW.user_code) = '') THEN NEW.user_code := v_code; END IF;
-  END IF;
-  RETURN NEW;
-END;
-$$;
+  EXECUTE $exec$
+    CREATE OR REPLACE FUNCTION public.set_user_code_on_insert()
+    RETURNS TRIGGER
+    LANGUAGE plpgsql
+    SECURITY DEFINER
+    SET search_path = public
+    AS $body$
+    DECLARE
+      v_code TEXT;
+    BEGIN
+      IF NEW.company_id IS NULL THEN
+        RETURN NEW;
+      END IF;
+      v_code := COALESCE(NULLIF(TRIM(NEW.code), ''), NULLIF(TRIM(NEW.user_code), ''));
+      IF v_code IS NULL OR v_code = '' THEN
+        v_code := public.generate_user_code(NEW.company_id);
+        NEW.code := v_code;
+        NEW.user_code := v_code;
+      ELSE
+        IF (NEW.code IS NULL OR TRIM(NEW.code) = '') THEN NEW.code := v_code; END IF;
+        IF (NEW.user_code IS NULL OR TRIM(NEW.user_code) = '') THEN NEW.user_code := v_code; END IF;
+      END IF;
+      RETURN NEW;
+    END;
+    $body$;
+  $exec$;
+EXCEPTION
+  WHEN insufficient_privilege THEN
+    RAISE NOTICE 'Skipping set_user_code_on_insert replace (not owner). Set DATABASE_ADMIN_URL for full migration.';
+END $$;
 
 DROP TRIGGER IF EXISTS trigger_set_user_code_on_insert ON public.users;
 CREATE TRIGGER trigger_set_user_code_on_insert

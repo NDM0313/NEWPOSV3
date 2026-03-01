@@ -11,15 +11,32 @@ EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
 
 -- Helper: true if current user is admin or owner (full company access)
-CREATE OR REPLACE FUNCTION public.is_admin_or_owner()
-RETURNS boolean
-LANGUAGE sql
-SECURITY DEFINER
-STABLE
-SET search_path = public
-AS $$
-  SELECT COALESCE(get_user_role()::text, '') IN ('admin', 'owner');
-$$;
+-- Create only if function does not exist (avoids "must be owner" when run as pooler).
+DO $outer$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM pg_proc p
+    JOIN pg_namespace n ON n.oid = p.pronamespace AND n.nspname = 'public'
+    WHERE p.proname = 'is_admin_or_owner'
+  ) THEN
+    RAISE NOTICE 'is_admin_or_owner already exists, skipping create.';
+    RETURN;
+  END IF;
+  EXECUTE $exec$
+    CREATE FUNCTION public.is_admin_or_owner()
+    RETURNS boolean
+    LANGUAGE sql
+    SECURITY DEFINER
+    STABLE
+    SET search_path = public
+    AS $body$
+      SELECT COALESCE(get_user_role()::text, '') IN ('admin', 'owner');
+    $body$;
+  $exec$;
+EXCEPTION
+  WHEN OTHERS THEN
+    RAISE NOTICE 'Skipping is_admin_or_owner create (may need DATABASE_ADMIN_URL).';
+END $outer$;
 
 -- ----------------------------------------------------------------------------
 -- SALES: Admin/Owner = company_id only; User = company_id + branch in user_branches
@@ -391,4 +408,7 @@ BEGIN
   END IF;
 END $$;
 
-COMMENT ON FUNCTION public.is_admin_or_owner() IS 'True if current user has admin or owner role (full company visibility). Used by RLS.';
+DO $$ BEGIN
+  EXECUTE 'COMMENT ON FUNCTION public.is_admin_or_owner() IS ''True if current user has admin or owner role (full company visibility). Used by RLS.''';
+EXCEPTION WHEN OTHERS THEN NULL;
+END $$;

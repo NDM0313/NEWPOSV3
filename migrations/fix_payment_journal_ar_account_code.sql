@@ -98,7 +98,7 @@ BEGIN
 
   RETURN v_journal_entry_id;
 END;
-$$ LANGUAGE plpgsql;
+$$;
 
 COMMENT ON FUNCTION create_payment_journal_entry(UUID,UUID,UUID,UUID,NUMERIC,UUID,VARCHAR) IS
   'Creates Dr Cash/Bank, Cr Accounts Receivable journal entry for a sale payment. Resolves A/R by code 1100 or legacy 2000 (name Receivable).';

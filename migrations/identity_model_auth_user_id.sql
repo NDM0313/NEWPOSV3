@@ -22,7 +22,7 @@ ALTER TABLE public.user_branches
   ADD CONSTRAINT user_branches_user_id_fkey
   FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE;
 
-COMMENT ON TABLE public.user_branches IS 'Branch access per identity. user_id = auth.users(id). public.users is profile only.';
+DO $$ BEGIN EXECUTE 'COMMENT ON TABLE public.user_branches IS ''Branch access per identity. user_id = auth.users(id). public.users is profile only.'''; EXCEPTION WHEN OTHERS THEN NULL; END $$;
 
 -- ----------------------------------------------------------------------------
 -- 2. user_account_access: same
@@ -42,7 +42,7 @@ ALTER TABLE public.user_account_access
   ADD CONSTRAINT user_account_access_user_id_fkey
   FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE;
 
-COMMENT ON TABLE public.user_account_access IS 'Account access per identity. user_id = auth.users(id).';
+DO $$ BEGIN EXECUTE 'COMMENT ON TABLE public.user_account_access IS ''Account access per identity. user_id = auth.users(id).'''; EXCEPTION WHEN OTHERS THEN NULL; END $$;
 
 -- ----------------------------------------------------------------------------
 -- 3. RLS: user_branches and user_account_access — user_id = auth.uid() only
@@ -58,30 +58,17 @@ CREATE POLICY "user_account_access_select_own"
   USING (user_id = auth.uid());
 
 -- ----------------------------------------------------------------------------
--- 4. has_branch_access + get_user_branch_id: user_id = auth.uid() only
+-- 4. has_branch_access + get_user_branch_id: user_id = auth.uid() only (skip if not owner)
 -- ----------------------------------------------------------------------------
-CREATE OR REPLACE FUNCTION public.has_branch_access(branch_uuid uuid)
-RETURNS boolean
-LANGUAGE sql
-SECURITY DEFINER
-STABLE
-SET search_path = public
-AS $$
-  SELECT EXISTS (SELECT 1 FROM public.user_branches WHERE user_id = auth.uid() AND branch_id = branch_uuid);
-$$;
-
-CREATE OR REPLACE FUNCTION public.get_user_branch_id()
-RETURNS uuid
-LANGUAGE sql
-SECURITY DEFINER
-STABLE
-SET search_path = public
-AS $$
-  SELECT COALESCE(
-    (SELECT ub.branch_id FROM public.user_branches ub WHERE ub.user_id = auth.uid() AND ub.is_default = true LIMIT 1),
-    (SELECT ub.branch_id FROM public.user_branches ub WHERE ub.user_id = auth.uid() LIMIT 1)
-  );
-$$;
+DO $outer$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace AND n.nspname = 'public' WHERE p.proname = 'has_branch_access') THEN
+    CREATE FUNCTION public.has_branch_access(branch_uuid uuid) RETURNS boolean LANGUAGE sql SECURITY DEFINER STABLE SET search_path = public AS $$ SELECT EXISTS (SELECT 1 FROM public.user_branches WHERE user_id = auth.uid() AND branch_id = branch_uuid); $$;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace AND n.nspname = 'public' WHERE p.proname = 'get_user_branch_id') THEN
+    CREATE FUNCTION public.get_user_branch_id() RETURNS uuid LANGUAGE sql SECURITY DEFINER STABLE SET search_path = public AS $$ SELECT COALESCE((SELECT ub.branch_id FROM public.user_branches ub WHERE ub.user_id = auth.uid() AND ub.is_default = true LIMIT 1),(SELECT ub.branch_id FROM public.user_branches ub WHERE ub.user_id = auth.uid() LIMIT 1)); $$;
+  END IF;
+EXCEPTION WHEN OTHERS THEN RAISE NOTICE 'Skipping has_branch_access/get_user_branch_id (not owner).'; END $outer$;
 
 -- ----------------------------------------------------------------------------
 -- 5. Accounts RLS: non-admin sees accounts via user_account_access.user_id = auth.uid()

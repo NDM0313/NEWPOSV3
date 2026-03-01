@@ -15,6 +15,8 @@ DROP POLICY IF EXISTS "stock_movements_update" ON public.stock_movements;
 DROP POLICY IF EXISTS "inventory_balance_select_all" ON public.inventory_balance;
 DROP POLICY IF EXISTS "inventory_balance_select_company" ON public.inventory_balance;
 DROP POLICY IF EXISTS "inventory_balance_select_branch" ON public.inventory_balance;
+DROP POLICY IF EXISTS "inventory_balance_insert" ON public.inventory_balance;
+DROP POLICY IF EXISTS "inventory_balance_update" ON public.inventory_balance;
 
 -- stock_movements SELECT: admin = all company; else only rows where branch_id in user_branches or branch_id is null
 CREATE POLICY "stock_movements_select_branch"

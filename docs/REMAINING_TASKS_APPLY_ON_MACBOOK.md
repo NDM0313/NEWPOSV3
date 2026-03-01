@@ -28,6 +28,8 @@ Phir **Canonical Migration Execution Order** wala section follow karo: order 1 s
 - ⚠ **Do not skip steps.**
 - ⚠ **Always run in sequence.**
 
+**Bootstrap (run first):** `migration_history_table.sql`, `erp_production_mode_table.sql` — then order 1–97 below.
+
 Order: **Identity** → **Global identity/document** → **Contacts/Walk-in** → **Accounts/Payments** → **RLS (branches, sales, stock)** → **Audit/fix** → **RPC** → **Global permission** → **Feature/schema (rest).**
 
 | # | Migration | Short description |
@@ -205,7 +207,85 @@ Script **PASS** ya **FAIL** print karega: FK targets, RLS policies, walk-in uniq
 
 ---
 
-## 6. Migrations run karne ke 3 tareeke
+## 6. 🔐 Immutable Migration Mode
+
+**Goal:** Freeze migration system — no accidental re-run, no partial drift, no order mismatch, no silent schema change.
+
+### Migration history tracking
+
+Table: `public.migration_history` (created by `migrations/migration_history_table.sql`).
+
+- **Columns:** `id`, `filename` (UNIQUE), `applied_at`.
+- **Process:** Before running each migration:
+  1. `SELECT 1 FROM public.migration_history WHERE filename = '<migration_file>';`
+  2. If row **exists** → **SKIP** (already applied).
+  3. If **not exists** → run the migration file.
+  4. After **success** → `INSERT INTO public.migration_history(filename) VALUES ('<migration_file>');`
+
+Yeh process **scripts/run-migrations-immutable.sh** follow karta hai: canonical order mein har file ke liye check → run → insert. Duplicate migration kabhi run nahi hoti.
+
+### Validation enforcement
+
+Run ke **end** par script **scripts/validate-migration-state.sql** chalati hai.
+
+- **PASS** → deployment OK.
+- **FAIL** → **abort deployment** (script exit 1). Output mein reason dikhega; fix karke phir run karo.
+
+### Production guard (optional)
+
+Table: `public.erp_production_mode` (created by `migrations/erp_production_mode_table.sql`).
+
+- Agar is table mein row hai (`enabled = true`): environment **production** maana jata hai.
+- **Rules:** No destructive migration allowed: no **DROP TABLE**, no **ALTER TYPE** (enum/type change). Risky migrations pehle check karo; production par manual override ke bina mat chalao.
+- Production mode off karne ke liye: `DELETE FROM public.erp_production_mode WHERE enabled = true;` (sirf authorized).
+
+### No manual schema edits
+
+- Schema changes **sirf** migration files se: canonical order follow karke, history mein record ho.
+- Direct SQL Editor se table/column add/remove **na** karo (drift ho jata hai). Naya change = naya migration file, doc order update, phir immutable runner se run.
+
+**Summary:** migration_history = audit trail, no duplicate run; validation = hard gate (FAIL → abort); production guard = no destructive change when enabled; manual schema edits not allowed.
+
+---
+
+## 7. 🔁 Rollback & Backup Strategy
+
+**Goal:** Before every migration run — auto backup, timestamped dump, rollback if validation FAIL.
+
+### Backup before run
+
+**scripts/run-migrations-immutable.sh** runs a **pre-run backup** before applying any migration:
+
+- **Command:** `pg_dump "$DATABASE_URL" --format=custom --file=backups/erp_backup_<timestamp>.dump`
+- **Location:** `backups/erp_backup_YYYYMMDD_HHMMSS.dump` (repo root `backups/` folder; create ho jata hai agar nahi hai).
+- Backup **har run se pehle** liya jata hai; purane backups delete nahi kiye jate (manual cleanup agar chahiye).
+
+### Validation gate
+
+Migrations run hone ke **baad** script **scripts/validate-migration-state.sql** chalati hai.
+
+- **PASS** → deployment OK.
+- **FAIL** → script **abort** (exit 1). Message: **"Migration failed. Restore from last backup."** Backup **delete nahi** hota — restore ke liye use karo.
+
+### Restore method
+
+Agar validation FAIL ho ya migration ke baad DB theek nahi lage, last backup se restore karo:
+
+```bash
+pg_restore --clean --if-exists \
+  -d "$DATABASE_URL" \
+  backups/<filename>.dump
+```
+
+- `<filename>` = woh dump file jo run se pehle bani thi, e.g. `erp_backup_20260226_143022.dump`.
+- `--clean --if-exists` = existing objects drop karke restore (conflicts kam).
+- Restore ke baad phir se validation chala lo; fix karke migration dobara run karna ho to backup pehle hi bann chuka hoga.
+
+**Summary:** Pre-run backup → migrations → validation; FAIL → restore from last backup; backups retain for rollback.
+
+---
+
+## 8. Migrations run karne ke 3 tareeke
 
 ### A) Supabase SQL Editor
 
@@ -214,8 +294,9 @@ Script **PASS** ya **FAIL** print karega: FK targets, RLS policies, walk-in uniq
 
 ### B) Migration script (repo)
 
-- **Local:** `node scripts/run-migrations.js` (agar configured ho) — script ke andar file list **isi doc ke Canonical order** jaisi honi chahiye.
-- **VPS:** `ssh dincouture-vps "cd /root/NEWPOSV3 && bash deploy/run-migrations-vps.sh"` — order ke liye script mein same list use karo.
+- **Immutable (recommended):** `./scripts/run-migrations-immutable.sh` — migration_history check karta hai, duplicate skip, run ke baad validation; FAIL par abort. `DATABASE_URL` set karke chalao.
+- **Legacy:** `node scripts/run-migrations.js` (agar configured ho) — script ke andar file list **isi doc ke Canonical order** jaisi honi chahiye.
+- **VPS:** `ssh dincouture-vps "cd /root/NEWPOSV3 && bash deploy/run-migrations-vps.sh"` — order ke liye script mein same list use karo. Immutable mode ke liye `scripts/run-migrations-immutable.sh` use kar sakte ho (VPS par DATABASE_URL set karke).
 
 ### C) VPS / psql (direct)
 
@@ -229,7 +310,7 @@ Poori list ke liye **Canonical Migration Execution Order** table se filenames (`
 
 ---
 
-## 7. Post-migration checks
+## 9. Post-migration checks
 
 | Check | Kaise verify |
 |-------|----------------|
@@ -242,7 +323,7 @@ Validation script bhi chala lo: `scripts/validate-migration-state.sql` → **PAS
 
 ---
 
-## 8. Docs reference
+## 10. Docs reference
 
 - **User / Branch access:** `docs/USER_ACCESS_MANAGEMENT_RBAC.md`, `docs/USER_ACCESS_SETTINGS_FULL_REPORT.md`
 - **MacBook setup + tasks:** `docs/MACBOOK_SETUP_AND_REMAINING_TASKS.md`
@@ -251,7 +332,7 @@ Validation script bhi chala lo: `scripts/validate-migration-state.sql` → **PAS
 
 ---
 
-## 9. Checklist (MacBook)
+## 11. Checklist (MacBook)
 
 - [ ] `cd /path/to/NEWPOSV3`
 - [ ] `git pull origin main`
