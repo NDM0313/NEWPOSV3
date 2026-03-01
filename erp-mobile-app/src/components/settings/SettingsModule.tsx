@@ -16,6 +16,7 @@ import {
   Loader2,
   Printer,
   Scan,
+  UserCog,
 } from 'lucide-react';
 import type { User, Branch } from '../../types';
 import * as authApi from '../../api/auth';
@@ -25,6 +26,7 @@ import { getUnsyncedCount, clearAllPending } from '../../lib/offlineStore';
 import { ChangePinModal } from './ChangePinModal';
 import { SetPinModal } from './SetPinModal';
 import { ConnectionDebug } from '../dev/ConnectionDebug';
+import { UserPermissionsScreen } from './UserPermissionsScreen';
 
 interface SettingsModuleProps {
   onBack: () => void;
@@ -103,8 +105,19 @@ export function SettingsModule({
   });
   const [printerSaving, setPrinterSaving] = useState(false);
   const [barcodeSaving, setBarcodeSaving] = useState(false);
+  const [showUserPermissions, setShowUserPermissions] = useState(false);
 
   const refreshUnsynced = () => getUnsyncedCount().then(setUnsyncedCount);
+
+  if (showUserPermissions) {
+    return (
+      <UserPermissionsScreen
+        onBack={() => setShowUserPermissions(false)}
+        user={user}
+        companyId={companyId}
+      />
+    );
+  }
 
   useEffect(() => {
     authApi.hasPinSet().then(setHasPin);
@@ -286,6 +299,18 @@ export function SettingsModule({
             <ChevronRight className="w-5 h-5 text-[#6B7280]" />
           </button>
         )}
+
+        {/* User Permissions */}
+        <div className="space-y-2">
+          <p className="text-xs text-[#6B7280] font-medium px-1">Permissions</p>
+          <SettingsRow
+            icon={UserCog}
+            iconColor="bg-[#8B5CF6]/20"
+            title="User Permissions"
+            subtitle="Role, branch access & permission matrix"
+            onClick={() => setShowUserPermissions(true)}
+          />
+        </div>
 
         {/* Security */}
         <div className="space-y-2">

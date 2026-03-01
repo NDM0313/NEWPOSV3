@@ -313,6 +313,20 @@ Helper: `is_admin_or_owner()` returns true when `get_user_role()::text IN ('admi
 
 ---
 
+## ERP Health Dashboard
+
+Real-time health dashboard for admins/owners. **Access:** only users with role `admin` or `owner` can see data.
+
+- **Migration:** `migrations/create_erp_health_dashboard_view.sql`
+  - Defines **view** `public.erp_health_dashboard` (SELECT from function).
+  - Defines **function** `public.get_erp_health_dashboard()` (SECURITY DEFINER, returns `component`, `status`, `details`). Checks `get_user_role() IN ('admin','owner')`; others get no rows.
+  - No DO blocks, no temporary tables. Defensive: uses `information_schema` before querying tables so missing tables do not crash.
+- **Components:** Walk-in Integrity (1 per company), Orphan Users, Orphan Sales, Negative Stock, Document Sequence Validity, Sales created_by integrity, Payments received_by integrity.
+- **Frontend:** Settings → **System Health** tab (tab visible only to admin/owner). Table shows Component | Status | Details; OVERALL = FAIL if any component is FAIL, else PASS. Color coding: green (OK), red (FAIL), gray (SKIP).
+- **Backend:** `healthService.getHealthDashboard()` calls RPC `get_erp_health_dashboard()`, returns `{ rows, overall, error? }`. Never throws.
+
+---
+
 ## Notes
 
 - **Identity model:** Only **auth.users(id)** is stored in `user_branches.user_id` and `user_account_access.user_id`. Never use `public.users.id` for access.

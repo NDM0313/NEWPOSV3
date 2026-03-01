@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { 
   Building2, CreditCard, Hash, ToggleLeft, Save, 
   CheckCircle, Users, Lock, Key, Settings as SettingsIcon, AlertCircle, UserCog,
-  MapPin, Store, ShoppingCart, ShoppingBag, Package, Shirt, Calculator, X, Edit, Download, Server, Copy, Printer, RefreshCw, QrCode, FileText
+  MapPin, Store, ShoppingCart, ShoppingBag, Package, Shirt, Calculator, X, Edit, Download, Server, Copy, Printer, RefreshCw, QrCode, FileText, Activity, Shield
 } from 'lucide-react';
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
@@ -26,6 +26,10 @@ import { InventoryMasters, type InventoryMasterTab } from './inventory/Inventory
 import { LeadTools } from './LeadTools';
 import { invoiceDocumentService } from '@/app/services/invoiceDocumentService';
 import type { InvoiceTemplate } from '@/app/types/invoiceDocument';
+import { getHealthDashboard, type ErpHealthRow } from '@/app/services/healthService';
+import { PermissionManagementPanel } from './PermissionManagementPanel';
+import { UserPermissionsTab } from './UserPermissionsTab';
+import { useFeatureFlagOptional } from '@/app/context/FeatureFlagContext';
 
 function TemplateFormFields({
   template,
@@ -90,28 +94,154 @@ import {
 } from "../ui/dialog";
 import { Textarea } from "../ui/textarea";
 
-type SettingsTab = 
-  | 'company' 
-  | 'branches' 
-  | 'pos' 
-  | 'sales' 
-  | 'purchase' 
-  | 'inventory' 
-  | 'rental' 
+function SystemHealthPanel() {
+  const [rows, setRows] = useState<ErpHealthRow[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const result = await getHealthDashboard();
+      setRows(result.rows);
+      if (result.error) setError(result.error);
+    } catch {
+      setError('Failed to load health data');
+      setRows([]);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const statusColor = (status: string) => {
+    if (status === 'OK') return 'text-green-400 bg-green-500/10';
+    if (status === 'FAIL') return 'text-red-400 bg-red-500/10';
+    return 'text-gray-400 bg-gray-500/10';
+  };
+
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center gap-3 mb-6">
+          <div className="p-3 bg-emerald-500/10 rounded-lg">
+            <Activity className="text-emerald-500" size={24} />
+          </div>
+          <div>
+            <h3 className="text-xl font-bold text-white">System Health</h3>
+            <p className="text-sm text-gray-400">Loading…</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (error && rows.length === 0) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center gap-3 mb-6">
+          <div className="p-3 bg-emerald-500/10 rounded-lg">
+            <Activity className="text-emerald-500" size={24} />
+          </div>
+          <div>
+            <h3 className="text-xl font-bold text-white">System Health</h3>
+            <p className="text-sm text-red-400">{error}</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const displayRows = [...rows];
+  const overallStatus = rows.some((r) => r.status === 'FAIL') ? 'FAIL' : 'PASS';
+  if (!rows.some((r) => r.component === 'OVERALL')) {
+    displayRows.push({ component: 'OVERALL', status: overallStatus === 'PASS' ? 'OK' : 'FAIL', details: null });
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center gap-3 mb-6">
+        <div className="p-3 bg-emerald-500/10 rounded-lg">
+          <Activity className="text-emerald-500" size={24} />
+        </div>
+        <div>
+          <h3 className="text-xl font-bold text-white">System Health</h3>
+          <p className="text-sm text-gray-400">ERP integrity checks (admin/owner only)</p>
+        </div>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full border border-gray-700 rounded-lg border-collapse">
+          <thead>
+            <tr className="bg-gray-800">
+              <th className="text-left text-gray-300 font-medium p-3 border-b border-gray-700">Component</th>
+              <th className="text-left text-gray-300 font-medium p-3 border-b border-gray-700">Status</th>
+              <th className="text-left text-gray-300 font-medium p-3 border-b border-gray-700">Details</th>
+            </tr>
+          </thead>
+          <tbody>
+            {displayRows.map((r, i) => (
+              <tr key={i} className="border-b border-gray-800">
+                <td className="p-3 text-white">{r.component}</td>
+                <td className="p-3">
+                  <span className={cn('inline-block px-2 py-0.5 rounded text-sm font-medium', statusColor(r.status))}>
+                    {r.status}
+                  </span>
+                </td>
+                <td className="p-3 text-gray-400">{r.details ?? '—'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {error && <p className="text-amber-400 text-sm">{error}</p>}
+      <Button
+        type="button"
+        variant="outline"
+        onClick={load}
+        className="border-gray-600 text-gray-300 hover:bg-gray-800 gap-2"
+      >
+        <RefreshCw size={16} />
+        Refresh
+      </Button>
+    </div>
+  );
+}
+
+type SettingsTab =
+  | 'company'
+  | 'branches'
+  | 'pos'
+  | 'sales'
+  | 'purchase'
+  | 'inventory'
+  | 'rental'
   | 'accounting'
-  | 'accounts' 
-  | 'numbering' 
-  | 'printer' 
+  | 'accounts'
+  | 'numbering'
+  | 'printer'
   | 'invoiceTemplates'
-  | 'users' 
+  | 'users'
   | 'modules'
   | 'leadTools'
+  | 'permissions'
+  | 'userPermissions'
+  | 'systemHealth'
   | 'data';
 
 export const SettingsPageNew = () => {
   const settings = useSettings();
   const printer = usePrinterConfig();
-  const { companyId, refreshEnablePacking } = useSupabase();
+  const { permissionV2 } = useFeatureFlagOptional();
+  const { companyId, refreshEnablePacking, userRole } = useSupabase();
+  const isAdminOrOwner = (() => {
+    if (!userRole) return false;
+    const r = userRole.toLowerCase().trim();
+    return r === 'admin' || r === 'owner' || r === 'super admin' || r === 'superadmin';
+  })();
   const accounting = useAccounting();
   const [activeTab, setActiveTab] = useState<SettingsTab>('company');
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
@@ -266,6 +396,13 @@ export const SettingsPageNew = () => {
       loadBranches();
     }
   }, [activeTab, loadBranches]);
+
+  // When Permission V2 is turned off and we're on User Permissions tab, switch to Permission Management
+  useEffect(() => {
+    if (!permissionV2 && activeTab === 'userPermissions') {
+      setActiveTab('permissions');
+    }
+  }, [permissionV2, activeTab]);
 
   // Load units when inventory tab is active (for Default Unit dropdown)
   useEffect(() => {
@@ -470,9 +607,11 @@ export const SettingsPageNew = () => {
     { id: 'printer' as const, label: 'Printer Configuration', icon: Printer },
     { id: 'invoiceTemplates' as const, label: 'Invoice Templates', icon: FileText },
     { id: 'users' as const, label: 'User Management', icon: UserCog },
-    // Permissions tab removed - permissions now managed per-user in User Management modal
+    ...(isAdminOrOwner ? [{ id: 'permissions' as const, label: 'Permission Management', icon: Shield }] : []),
+    ...(permissionV2 ? [{ id: 'userPermissions' as const, label: 'User Permissions', icon: Users }] : []),
     { id: 'modules' as const, label: 'Module Toggles', icon: ToggleLeft },
     { id: 'leadTools' as const, label: 'Lead Tools', icon: QrCode },
+    ...(isAdminOrOwner ? [{ id: 'systemHealth' as const, label: 'System Health', icon: Activity }] : []),
     { id: 'data' as const, label: 'Data & Backup', icon: Download },
   ];
 
@@ -2309,6 +2448,16 @@ export const SettingsPageNew = () => {
             )}
 
 
+            {/* PERMISSION MANAGEMENT TAB (Admin/Owner only) */}
+            {activeTab === 'permissions' && (
+              <PermissionManagementPanel />
+            )}
+
+            {/* USER PERMISSIONS TAB (V2 – roles, matrix, branch access) */}
+            {activeTab === 'userPermissions' && (
+              <UserPermissionsTab />
+            )}
+
             {/* MODULE TOGGLES TAB */}
             {activeTab === 'modules' && (
               <div className="space-y-6">
@@ -2414,6 +2563,11 @@ export const SettingsPageNew = () => {
                 </div>
                 <LeadTools />
               </div>
+            )}
+
+            {/* SYSTEM HEALTH TAB (Admin/Owner only) */}
+            {activeTab === 'systemHealth' && (
+              <SystemHealthPanel />
             )}
 
             {/* DATA & BACKUP TAB */}

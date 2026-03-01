@@ -2,6 +2,8 @@ import React, { createContext, useContext, useState, useEffect, useCallback, Rea
 import { useSupabase } from './SupabaseContext';
 import { settingsService } from '@/app/services/settingsService';
 import { branchService } from '@/app/services/branchService';
+import { permissionService } from '@/app/services/permissionService';
+import type { EngineRole } from '@/app/services/permissionService';
 import { accountService } from '@/app/services/accountService';
 import { saleService } from '@/app/services/saleService';
 import { supabase } from '@/lib/supabase';
@@ -673,8 +675,32 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
         if (userData) {
           const r = (userData.role || 'staff').toLowerCase();
           const role: 'Admin' | 'Manager' | 'Staff' =
-            r === 'admin' ? 'Admin' : r === 'manager' ? 'Manager' : 'Staff';
+            r === 'owner' || r === 'admin' || r === 'super admin' || r === 'superadmin' ? 'Admin'
+              : r === 'manager' || r === 'accountant' ? 'Manager'
+              : 'Staff';
           const p = (userData.permissions as Record<string, boolean | undefined>) || {};
+          const engineRole: EngineRole =
+            r === 'owner' ? 'owner'
+              : r === 'admin' || r === 'super admin' || r === 'superadmin' ? 'admin'
+              : r === 'manager' || r === 'accountant' ? 'manager'
+              : 'user';
+          let canManagePurchases = p.canManagePurchases ?? (role === 'Admin' || role === 'Manager');
+          let canUsePos = p.canUsePos;
+          let canAccessStudio = p.canAccessStudio;
+          let canManageRentals = p.canManageRentals ?? (role === 'Admin' || role === 'Manager');
+          try {
+            const rolePerms = await permissionService.getRolePermissions(engineRole);
+            const hasPurchase = rolePerms.some(x => x.module === 'purchase' && (x.action === 'view' || x.action === 'create') && x.allowed);
+            const hasPos = rolePerms.some(x => x.module === 'pos' && (x.action === 'use' || x.action === 'view') && x.allowed);
+            const hasStudio = rolePerms.some(x => x.module === 'studio' && (x.action === 'view' || x.action === 'create') && x.allowed);
+            const hasRentals = rolePerms.some(x => x.module === 'rentals' && (x.action === 'view' || x.action === 'create') && x.allowed);
+            canManagePurchases = hasPurchase;
+            canUsePos = hasPos;
+            canAccessStudio = hasStudio;
+            canManageRentals = hasRentals;
+          } catch {
+            // Keep defaults from p / role when role_permissions unavailable
+          }
           setCurrentUser({
             role,
             canCreateSale: p.canCreateSale ?? (role === 'Admin' || role === 'Manager'),
@@ -689,10 +715,12 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
             canReceivePayments: p.canReceivePayments ?? (role === 'Admin' || role === 'Manager'),
             canManageExpenses: p.canManageExpenses ?? (role === 'Admin' || role === 'Manager'),
             canManageProducts: p.canManageProducts ?? (role === 'Admin' || role === 'Manager'),
-            canManagePurchases: p.canManagePurchases ?? (role === 'Admin' || role === 'Manager'),
-            canManageRentals: p.canManageRentals ?? (role === 'Admin' || role === 'Manager'),
+            canManagePurchases,
+            canManageRentals,
             canEditPurchase: p.canEditPurchase ?? (role === 'Admin' || role === 'Manager'),
             canDeletePurchase: p.canDeletePurchase ?? (role === 'Admin'),
+            canUsePos: canUsePos ?? (role === 'Admin' || role === 'Manager'),
+            canAccessStudio: canAccessStudio ?? (role === 'Admin' || role === 'Manager'),
           });
         }
       }

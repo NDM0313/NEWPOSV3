@@ -33,7 +33,7 @@ type NavItem = {
 export const MobileNavDrawer = () => {
   const { currentView, setCurrentView, mobileNavOpen, setMobileNavOpen } = useNavigation();
   const { modules: settingsModules } = useSettings();
-  const { canViewReports, canAccessAccounting, canManageSettings } = useCheckPermission();
+  const { canViewReports, canAccessAccounting, canManageSettings, canAccessPurchases, canUsePos, canViewSales, canAccessStudio, canManageRentals } = useCheckPermission();
   const [expandedItems, setExpandedItems] = useState<string[]>([]);
 
   const toggleExpand = (id: string) => {
@@ -47,15 +47,15 @@ export const MobileNavDrawer = () => {
     { id: 'contacts', label: 'Contacts', icon: Users },
     { id: 'products', label: 'Products', icon: Package },
     { id: 'inventory', label: 'Inventory', icon: Warehouse },
-    { id: 'purchases', label: 'Purchases', icon: ShoppingBag },
-    { id: 'sales', label: 'Sales', icon: ShoppingCart },
-    { id: 'rentals', label: 'Rentals', icon: Shirt, isHidden: !settingsModules.rentalModuleEnabled },
-    { id: 'pos', label: 'POS System', icon: Store, isHidden: !settingsModules.posModuleEnabled },
+    { id: 'purchases', label: 'Purchases', icon: ShoppingBag, isHidden: !canAccessPurchases },
+    { id: 'sales', label: 'Sales', icon: ShoppingCart, isHidden: !canViewSales },
+    { id: 'rentals', label: 'Rentals', icon: Shirt, isHidden: !settingsModules.rentalModuleEnabled || !canManageRentals },
+    { id: 'pos', label: 'POS System', icon: Store, isHidden: !settingsModules.posModuleEnabled || !canUsePos },
     {
       id: 'studio-group',
       label: 'Studio Production',
       icon: Factory,
-      isHidden: !settingsModules.studioModuleEnabled,
+      isHidden: !settingsModules.studioModuleEnabled || !canAccessStudio,
       children: [
         { id: 'studio-dashboard-new', label: 'Dashboard' },
         { id: 'studio', label: 'Studio Sales' },

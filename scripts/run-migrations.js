@@ -1,13 +1,11 @@
 /**
  * Auto-apply SQL migrations using DATABASE_POOLER_URL or DATABASE_URL (PSQL access).
- * Usage: node scripts/run-migrations.js
+ * Usage: node scripts/run-migrations.js [--allow-fail]
+ * --allow-fail: on migration failure, exit 0 so npm run dev still starts Vite (Windows/Mac friendly).
+ * Creates schema_migrations table; runs pending migrations from supabase-extract/migrations and migrations/.
  * Env: .env.local (or set DATABASE_POOLER_URL / DATABASE_URL).
- *
- * Creates schema_migrations table to track applied migrations; runs pending
- * migrations from supabase-extract/migrations in filename order.
- * Skips: 01_full_database_wipe, 14_demo_dummy_data, 15_demo_reset_script,
- *        cleanup_demo_data, controlled_demo_seed (dangerous / demo-only).
  */
+const ALLOW_FAIL = process.argv.includes('--allow-fail');
 
 import pg from 'pg';
 import fs from 'fs';
@@ -131,6 +129,10 @@ async function run() {
         console.error('[FAIL]', file, err.message);
         if (err.detail) console.error('Detail:', err.detail);
         await client.end();
+        if (ALLOW_FAIL) {
+          console.warn('[MIGRATE] --allow-fail: continuing so app can start. Fix the migration and run again.');
+          process.exit(0);
+        }
         process.exit(1);
       }
     }
@@ -147,6 +149,10 @@ async function run() {
           console.error('[FAIL]', file, err.message);
           if (err.detail) console.error('Detail:', err.detail);
           await client.end();
+          if (ALLOW_FAIL) {
+            console.warn('[MIGRATE] --allow-fail: continuing so app can start. Fix the migration and run again.');
+            process.exit(0);
+          }
           process.exit(1);
         }
       }
@@ -156,6 +162,10 @@ async function run() {
     console.log('Migrations complete. Applied', runCount, 'new migration(s).');
   } catch (err) {
     console.error('Error:', err.message);
+    if (ALLOW_FAIL) {
+      console.warn('[MIGRATE] --allow-fail: continuing so app can start.');
+      process.exit(0);
+    }
     process.exit(1);
   } finally {
     await client.end();

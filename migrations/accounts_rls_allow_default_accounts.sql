@@ -20,8 +20,9 @@ DO $$ BEGIN
   CREATE OR REPLACE FUNCTION get_user_role()
   RETURNS user_role LANGUAGE sql SECURITY DEFINER SET search_path = public AS $fn$
     SELECT COALESCE(
-      (SELECT role FROM users WHERE id = auth.uid() LIMIT 1),
-      (SELECT role FROM users WHERE auth_user_id = auth.uid() LIMIT 1)
+      NULLIF(TRIM((SELECT role::text FROM users WHERE id = auth.uid() LIMIT 1)), ''),
+      NULLIF(TRIM((SELECT role::text FROM users WHERE auth_user_id = auth.uid() LIMIT 1)), ''),
+      'viewer'
     )::user_role;
   $fn$;
 EXCEPTION WHEN OTHERS THEN

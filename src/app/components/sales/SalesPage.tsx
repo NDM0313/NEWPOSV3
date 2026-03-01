@@ -693,13 +693,17 @@ export const SalesPage = () => {
   const getEffectiveDue = useCallback((s: Sale) =>
     Math.max(0, (s.total ?? 0) + (s.studioCharges ?? 0) - (s.paid ?? 0)), []);
 
-  // Calculate summary (use effective due for totalDue)
+  // ERP golden rule: only FINAL (posted) sales affect totals
+  const finalSalesForSummary = useMemo(
+    () => sortedSales.filter((s) => (s as any).status === 'final'),
+    [sortedSales]
+  );
   const summary = useMemo(() => ({
-    totalSales: sortedSales.reduce((sum, s) => sum + s.total, 0),
-    totalPaid: sortedSales.reduce((sum, s) => sum + s.paid, 0),
-    totalDue: sortedSales.reduce((sum, s) => sum + getEffectiveDue(s), 0),
-    invoiceCount: sortedSales.length,
-  }), [sortedSales, getEffectiveDue]);
+    totalSales: finalSalesForSummary.reduce((sum, s) => sum + s.total, 0),
+    totalPaid: finalSalesForSummary.reduce((sum, s) => sum + s.paid, 0),
+    totalDue: finalSalesForSummary.reduce((sum, s) => sum + getEffectiveDue(s), 0),
+    invoiceCount: finalSalesForSummary.length,
+  }), [finalSalesForSummary, getEffectiveDue]);
 
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);

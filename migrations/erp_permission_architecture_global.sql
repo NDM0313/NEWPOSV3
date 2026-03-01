@@ -39,7 +39,7 @@ EXCEPTION
 END $outer$;
 
 -- ----------------------------------------------------------------------------
--- SALES: Admin/Owner = company_id only; User = company_id + branch in user_branches
+-- SALES: Admin/Owner = all; Manager = branch; Salesman = own sales only (created_by = auth.uid()) in assigned branch
 -- ----------------------------------------------------------------------------
 ALTER TABLE public.sales ENABLE ROW LEVEL SECURITY;
 
@@ -63,7 +63,8 @@ CREATE POLICY "sales_select_policy"
     company_id = get_user_company_id()
     AND (
       is_admin_or_owner()
-      OR (branch_id IS NULL OR EXISTS (SELECT 1 FROM public.user_branches ub WHERE ub.user_id = auth.uid() AND ub.branch_id = sales.branch_id))
+      OR (COALESCE(get_user_role()::text, '') IN ('manager', 'accountant') AND (branch_id IS NULL OR EXISTS (SELECT 1 FROM public.user_branches ub WHERE ub.user_id = auth.uid() AND ub.branch_id = sales.branch_id)))
+      OR (created_by = auth.uid() AND (branch_id IS NULL OR EXISTS (SELECT 1 FROM public.user_branches ub WHERE ub.user_id = auth.uid() AND ub.branch_id = sales.branch_id)))
     )
   );
 
@@ -73,7 +74,8 @@ CREATE POLICY "sales_insert_policy"
     company_id = get_user_company_id()
     AND (
       is_admin_or_owner()
-      OR (branch_id IS NULL OR EXISTS (SELECT 1 FROM public.user_branches ub WHERE ub.user_id = auth.uid() AND ub.branch_id = branch_id))
+      OR (COALESCE(get_user_role()::text, '') IN ('manager', 'accountant') AND (branch_id IS NULL OR EXISTS (SELECT 1 FROM public.user_branches ub WHERE ub.user_id = auth.uid() AND ub.branch_id = branch_id)))
+      OR ((created_by IS NULL OR created_by = auth.uid()) AND (branch_id IS NULL OR EXISTS (SELECT 1 FROM public.user_branches ub WHERE ub.user_id = auth.uid() AND ub.branch_id = branch_id)))
     )
   );
 
@@ -83,7 +85,8 @@ CREATE POLICY "sales_update_policy"
     company_id = get_user_company_id()
     AND (
       is_admin_or_owner()
-      OR (branch_id IS NULL OR EXISTS (SELECT 1 FROM public.user_branches ub WHERE ub.user_id = auth.uid() AND ub.branch_id = sales.branch_id))
+      OR (COALESCE(get_user_role()::text, '') IN ('manager', 'accountant') AND (branch_id IS NULL OR EXISTS (SELECT 1 FROM public.user_branches ub WHERE ub.user_id = auth.uid() AND ub.branch_id = sales.branch_id)))
+      OR (created_by = auth.uid() AND (branch_id IS NULL OR EXISTS (SELECT 1 FROM public.user_branches ub WHERE ub.user_id = auth.uid() AND ub.branch_id = sales.branch_id)))
     )
   )
   WITH CHECK (company_id = get_user_company_id());
@@ -94,7 +97,8 @@ CREATE POLICY "sales_delete_policy"
     company_id = get_user_company_id()
     AND (
       is_admin_or_owner()
-      OR (branch_id IS NULL OR EXISTS (SELECT 1 FROM public.user_branches ub WHERE ub.user_id = auth.uid() AND ub.branch_id = sales.branch_id))
+      OR (COALESCE(get_user_role()::text, '') IN ('manager', 'accountant') AND (branch_id IS NULL OR EXISTS (SELECT 1 FROM public.user_branches ub WHERE ub.user_id = auth.uid() AND ub.branch_id = sales.branch_id)))
+      OR (created_by = auth.uid() AND (branch_id IS NULL OR EXISTS (SELECT 1 FROM public.user_branches ub WHERE ub.user_id = auth.uid() AND ub.branch_id = sales.branch_id)))
     )
   );
 

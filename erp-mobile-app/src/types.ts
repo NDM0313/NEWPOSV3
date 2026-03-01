@@ -21,6 +21,8 @@ export interface User {
   name: string;
   email: string;
   role: 'admin' | 'manager' | 'staff' | 'viewer';
+  /** Public users.id for user_branches lookup. */
+  profileId?: string;
   /** When set, user is locked to this branch (no branch selector). */
   branchId?: string;
   branchLocked?: boolean;

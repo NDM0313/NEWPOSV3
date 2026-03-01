@@ -228,21 +228,16 @@ export const ReportsDashboard = () => {
   // Calculate real metrics (filtered by date range)
   const metrics = useMemo(() => {
     const filteredSales = sales.sales.filter(sale => filterByDateRange(sale.date));
+    const finalSales = filteredSales.filter(s => (s as any).status === 'final');
     const filteredPurchases = purchases.purchases.filter(purchase => filterByDateRange(purchase.poDate));
+    const finalPurchases = filteredPurchases.filter(p => (p as any).status === 'final' || (p as any).status === 'received');
     const filteredExpenses = expenses.expenses.filter(expense => filterByDateRange(expense.expenseDate));
 
-    const totalSales = filteredSales.reduce((sum, sale) => 
-      sale.type === 'invoice' ? sum + sale.total : sum, 0
-    );
-    
-    const totalPurchases = filteredPurchases.reduce((sum, purchase) => 
-      sum + purchase.total, 0
-    );
-    
+    const totalSales = finalSales.reduce((sum, sale) => sum + (sale.total ?? 0), 0);
+    const totalPurchases = finalPurchases.reduce((sum, purchase) => sum + (purchase.total ?? 0), 0);
     const totalExpenses = filteredExpenses
       .filter(e => e.status === 'paid')
       .reduce((sum, expense) => sum + expense.amount, 0);
-    
     const netProfit = totalSales - totalPurchases - totalExpenses;
     const expenseRatio = totalSales > 0 ? (totalExpenses / totalSales) * 100 : 0;
 
@@ -252,7 +247,7 @@ export const ReportsDashboard = () => {
       totalExpenses,
       netProfit,
       expenseRatio,
-      salesCount: filteredSales.filter(s => s.type === 'invoice').length
+      salesCount: finalSales.length
     };
   }, [sales.sales, purchases.purchases, expenses.expenses, filterByDateRange]);
 

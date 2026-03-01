@@ -8,7 +8,7 @@
  * UI: Use checkPermission(permissions, module, action) or useCheckPermission() hook.
  */
 
-export type PermissionAction = 'view' | 'create' | 'edit' | 'delete' | 'cancel';
+export type PermissionAction = 'view' | 'create' | 'edit' | 'delete' | 'cancel' | 'use';
 
 export interface UserPermissions {
   role: 'Admin' | 'Manager' | 'Staff';
@@ -29,20 +29,26 @@ export interface UserPermissions {
   canManageRentals: boolean;
   canEditPurchase?: boolean;
   canDeletePurchase?: boolean;
+  /** POS access from role_permissions (pos.use / pos.view) */
+  canUsePos?: boolean;
+  /** Studio Production access from role_permissions (studio.view / create / edit / delete) */
+  canAccessStudio?: boolean;
 }
 
 /** Module names for permission checks */
 export type PermissionModule =
   | 'sales'
   | 'purchases'
+  | 'pos'
+  | 'studio'
+  | 'rentals'
   | 'reports'
   | 'settings'
   | 'users'
   | 'accounting'
   | 'payments'
   | 'expenses'
-  | 'products'
-  | 'rentals';
+  | 'products';
 
 /**
  * Check if user has permission for given module + action.
@@ -73,6 +79,15 @@ export function checkPermission(
       if (action === 'edit') return permissions.canEditPurchase ?? permissions.canManagePurchases === true;
       if (action === 'delete') return permissions.canDeletePurchase ?? false; // Delete restricted by default
       return false;
+
+    case 'pos':
+      return (action === 'view' || action === 'use') && permissions.canUsePos === true;
+
+    case 'studio':
+      return (action === 'view' || action === 'create' || action === 'edit' || action === 'delete') && permissions.canAccessStudio === true;
+
+    case 'rentals':
+      return (action === 'view' || action === 'create' || action === 'edit' || action === 'delete') && permissions.canManageRentals === true;
 
     case 'reports':
       return action === 'view' && permissions.canViewReports === true;

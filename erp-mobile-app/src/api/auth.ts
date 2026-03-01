@@ -17,6 +17,8 @@ export interface AuthProfile {
   role: UserRole;
   companyId: string | null;
   userId: string;
+  /** Public users.id (for user_branches.user_id). When present, use for branch access. */
+  profileId?: string;
   /** Set when admin assigned user to a branch; then branch selector is hidden and locked */
   branchId: string | null;
   branchLocked: boolean;
@@ -47,7 +49,7 @@ export async function signIn(email: string, password: string): Promise<{ data: A
   // users table: match by id (legacy) OR auth_user_id (links to auth.users.id)
   const { data: row, error: profileError } = await supabase
     .from('users')
-    .select('company_id, role')
+    .select('id, company_id, role')
     .or(`id.eq.${user.id},auth_user_id.eq.${user.id}`)
     .limit(1)
     .maybeSingle();
@@ -73,6 +75,7 @@ export async function signIn(email: string, password: string): Promise<{ data: A
       role: finalRole,
       companyId: row.company_id || null,
       userId: user.id,
+      profileId: (row as { id?: string }).id ?? undefined,
       branchId,
       branchLocked,
     },
@@ -113,7 +116,7 @@ export async function refreshSessionFromRefreshToken(refreshToken: string): Prom
 export async function getProfile(userId: string): Promise<AuthProfile | null> {
   const { data: row, error } = await supabase
     .from('users')
-    .select('company_id, role')
+    .select('id, company_id, role')
     .or(`id.eq.${userId},auth_user_id.eq.${userId}`)
     .limit(1)
     .maybeSingle();
@@ -130,6 +133,7 @@ export async function getProfile(userId: string): Promise<AuthProfile | null> {
     role: validRoles.includes(role) ? role : 'staff',
     companyId: row.company_id || null,
     userId: user.id,
+    profileId: (row as { id?: string }).id ?? undefined,
     branchId,
     branchLocked,
   };

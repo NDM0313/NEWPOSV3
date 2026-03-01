@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useSettings } from '@/app/context/SettingsContext';
+import { useSupabase } from '@/app/context/SupabaseContext';
 import { toast } from 'sonner';
 import { 
   Settings as SettingsIcon,
@@ -35,8 +36,10 @@ import {
   BarChart3,
   AlertCircle,
   Layers,
-  ToggleLeft
+  ToggleLeft,
+  Activity
 } from 'lucide-react';
+import { getHealthDashboard, type ErpHealthRow } from '@/app/services/healthService';
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
@@ -55,6 +58,7 @@ type SettingsTab =
   | 'reports'
   | 'notifications'
   | 'security'
+  | 'systemHealth'
   | 'advanced';
 
 interface Settings {
@@ -216,9 +220,117 @@ interface Settings {
   cacheDuration: number;
 }
 
+function SystemHealthTab() {
+  const [rows, setRows] = useState<ErpHealthRow[]>([]);
+  const [overall, setOverall] = useState<'PASS' | 'FAIL'>('PASS');
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  const load = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const result = await getHealthDashboard();
+      setRows(result.rows);
+      setOverall(result.overall);
+      if (result.error) setError(result.error);
+    } catch {
+      setError('Failed to load health data');
+      setRows([]);
+      setOverall('FAIL');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    load();
+  }, []);
+
+  const statusColor = (status: string) => {
+    if (status === 'OK') return 'text-green-400 bg-green-500/10';
+    if (status === 'FAIL') return 'text-red-400 bg-red-500/10';
+    return 'text-gray-400 bg-gray-500/10';
+  };
+
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center gap-3 mb-6">
+          <Activity className="text-emerald-400" size={24} />
+          <h2 className="text-xl font-bold text-white">System Health</h2>
+        </div>
+        <p className="text-gray-400">Loading…</p>
+      </div>
+    );
+  }
+
+  if (error && rows.length === 0) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center gap-3 mb-6">
+          <Activity className="text-emerald-400" size={24} />
+          <h2 className="text-xl font-bold text-white">System Health</h2>
+        </div>
+        <p className="text-red-400">{error}</p>
+      </div>
+    );
+  }
+
+  const displayRows = [...rows];
+  const overallStatus = rows.some((r) => r.status === 'FAIL') ? 'FAIL' : 'PASS';
+  if (!rows.some((r) => r.component === 'OVERALL')) {
+    displayRows.push({ component: 'OVERALL', status: overallStatus === 'PASS' ? 'OK' : 'FAIL', details: null });
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center gap-3 mb-6">
+        <Activity className="text-emerald-400" size={24} />
+        <h2 className="text-xl font-bold text-white">System Health</h2>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full border border-gray-700 rounded-lg border-collapse">
+          <thead>
+            <tr className="bg-gray-800">
+              <th className="text-left text-gray-300 font-medium p-3 border-b border-gray-700">Component</th>
+              <th className="text-left text-gray-300 font-medium p-3 border-b border-gray-700">Status</th>
+              <th className="text-left text-gray-300 font-medium p-3 border-b border-gray-700">Details</th>
+            </tr>
+          </thead>
+          <tbody>
+            {displayRows.map((r, i) => (
+              <tr key={i} className="border-b border-gray-800">
+                <td className="p-3 text-white">{r.component}</td>
+                <td className="p-3">
+                  <span className={`inline-block px-2 py-0.5 rounded text-sm font-medium ${statusColor(r.status)}`}>
+                    {r.status}
+                  </span>
+                </td>
+                <td className="p-3 text-gray-400">{r.details ?? '—'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {error && <p className="text-amber-400 text-sm">{error}</p>}
+      <Button
+        type="button"
+        variant="outline"
+        onClick={load}
+        className="bg-gray-800 border-gray-700 text-gray-300 hover:bg-gray-700"
+      >
+        Refresh
+      </Button>
+    </div>
+  );
+}
+
 export const SettingsPage = () => {
   const settingsContext = useSettings();
   const [activeTab, setActiveTab] = useState<SettingsTab>('general');
+  const { userRole } = useSupabase();
+  const isAdminOrOwner = userRole === 'admin' || userRole === 'owner' || userRole === 'Admin' || userRole === 'Owner';
   const [settings, setSettings] = useState<Settings>({
     // General
     businessName: 'Din Collection',
@@ -434,6 +546,7 @@ export const SettingsPage = () => {
     { id: 'reports', label: 'Reports Settings', icon: PieChart, color: 'yellow' },
     { id: 'notifications', label: 'Notifications', icon: Bell, color: 'red' },
     { id: 'security', label: 'Security', icon: Shield, color: 'cyan' },
+    ...(isAdminOrOwner ? [{ id: 'systemHealth' as const, label: 'System Health', icon: Activity, color: 'emerald' as const }] : []),
     { id: 'advanced', label: 'Advanced', icon: Database, color: 'gray' }
   ];
 
@@ -2218,6 +2331,11 @@ export const SettingsPage = () => {
                     </label>
                   </div>
                 </div>
+              )}
+
+              {/* System Health (Admin/Owner only) */}
+              {activeTab === 'systemHealth' && (
+                <SystemHealthTab />
               )}
 
               {/* Advanced Settings */}

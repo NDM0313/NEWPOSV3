@@ -3,6 +3,9 @@ import {
   CreditCard, Users, Home, LogOut, ChevronRight, TrendingUp, Settings, Calculator,
 } from 'lucide-react';
 import type { User, Branch, Screen } from '../types';
+import { FEATURE_MOBILE_PERMISSION_V2 } from '../config/featureFlags';
+import { usePermissions } from '../context/PermissionContext';
+import { getPermissionModuleForScreen } from '../utils/permissionModules';
 
 interface TabletSidebarProps {
   user: User;
@@ -21,6 +24,7 @@ interface ModuleItem {
 }
 
 export function TabletSidebar({ user, branch, currentScreen, onNavigate, onLogout }: TabletSidebarProps) {
+  const { hasPermission } = usePermissions();
   const modules: ModuleItem[] = [
     { id: 'dashboard', title: 'Dashboard', icon: <Home size={20} />, color: '#8B5CF6', enabled: true },
     { id: 'sales', title: 'Sales', icon: <ShoppingCart size={20} />, color: '#3B82F6', enabled: true },
@@ -37,7 +41,12 @@ export function TabletSidebar({ user, branch, currentScreen, onNavigate, onLogou
     { id: 'settings', title: 'Settings', icon: <Settings size={20} />, color: '#6B7280', enabled: true },
   ];
 
-  const enabled = modules.filter((m) => m.enabled);
+  const enabled = FEATURE_MOBILE_PERMISSION_V2
+    ? modules.filter((m) => {
+        const code = getPermissionModuleForScreen(m.id);
+        return m.enabled && (code == null || hasPermission(code, 'view'));
+      })
+    : modules.filter((m) => m.enabled);
 
   return (
     <div className="w-72 h-screen bg-[#1F2937] border-r border-[#374151] flex flex-col">

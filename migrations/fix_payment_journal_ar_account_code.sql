@@ -104,9 +104,8 @@ COMMENT ON FUNCTION create_payment_journal_entry(UUID,UUID,UUID,UUID,NUMERIC,UUI
   'Creates Dr Cash/Bank, Cr Accounts Receivable journal entry for a sale payment. Resolves A/R by code 1100 or legacy 2000 (name Receivable).';
 
 -- Ensure Accounts Receivable (1100) exists for each company that has default Cash (1000)
-INSERT INTO public.accounts (company_id, code, name, type, is_active, balance)
-SELECT c.id, '1100', 'Accounts Receivable', 'asset', true, 0
+INSERT INTO public.accounts (company_id, code, name, type, is_active)
+SELECT c.id, '1100', 'Accounts Receivable', 'asset', true
 FROM public.companies c
 WHERE EXISTS (SELECT 1 FROM public.accounts a WHERE a.company_id = c.id AND a.code = '1000')
-  AND NOT EXISTS (SELECT 1 FROM public.accounts a WHERE a.company_id = c.id AND a.code = '1100')
-ON CONFLICT (company_id, code) DO NOTHING;
+  AND NOT EXISTS (SELECT 1 FROM public.accounts a WHERE a.company_id = c.id AND a.code = '1100');

@@ -2,6 +2,10 @@ import { useState, useEffect } from 'react';
 import { initInputKeyboard } from './utils/inputKeyboard';
 import type { Screen, User, Branch, BottomNavTab } from './types';
 import * as authApi from './api/auth';
+import { usePermissions } from './context/PermissionContext';
+import { FEATURE_MOBILE_PERMISSION_V2 } from './config/featureFlags';
+import { getPermissionModuleForScreen } from './utils/permissionModules';
+import { AccessDenied } from './components/AccessDenied';
 
 const BRANCH_STORAGE_KEY = 'erp_mobile_branch';
 import { useResponsive } from './hooks/useResponsive';
@@ -51,6 +55,7 @@ const MODULE_TITLES: Record<Screen, string> = {
 export default function App() {
   const responsive = useResponsive();
   const { online, status, setStatus } = useNetworkStatus();
+  const { hasPermission, hasBranchAccess, reload } = usePermissions();
   const [authLoading, setAuthLoading] = useState(true);
   const [currentScreen, setCurrentScreen] = useState<Screen>('login');
   const [user, setUser] = useState<User | null>(null);
@@ -96,6 +101,10 @@ export default function App() {
   }, [online, user?.id, setStatus]);
 
   useEffect(() => {
+    if (user?.id && user?.role) reload(user.id, user.role, user.profileId);
+  }, [user?.id, user?.role, user?.profileId, reload]);
+
+  useEffect(() => {
     let cancelled = false;
     const run = async () => {
       const [session, pinSet] = await Promise.all([authApi.getSession(), authApi.hasPinSet()]);
@@ -121,6 +130,7 @@ export default function App() {
           name: profile.name,
           email: profile.email,
           role: profile.role,
+          profileId: profile.profileId,
           branchId: profile.branchId ?? undefined,
           branchLocked: profile.branchLocked,
         };
@@ -230,6 +240,15 @@ export default function App() {
     else if (tab === 'more') setShowModuleGrid(true);
   };
 
+  const canAccessScreen = (screen: Screen, branchId: string | null | undefined): boolean => {
+    if (!FEATURE_MOBILE_PERMISSION_V2) return true;
+    const module = getPermissionModuleForScreen(screen);
+    if (!module) return true;
+    if (!hasPermission(module, 'view')) return false;
+    if (branchId && branchId !== 'all' && !hasBranchAccess(branchId)) return false;
+    return true;
+  };
+
   // Only show BottomNav on home so modules (Sales, Purchase, Expense, Settings, etc.) are full screen
   const showBottomNav = currentScreen === 'home' && user && selectedBranch;
   const showSidebar = (currentScreen !== 'login' && currentScreen !== 'branch-selection' && user && selectedBranch) && responsive.isTablet;
@@ -268,74 +287,100 @@ export default function App() {
         <HomeScreen user={user} branch={selectedBranch} companyId={companyId} onNavigate={navigateToModule} onLogout={handleLogout} />
       )}
       {currentScreen === 'sales' && user && (
-        <SalesModule
-          onBack={() => { setSalesInitialType(null); navigateHome(); }}
-          user={user}
-          companyId={companyId}
-          branchId={selectedBranch?.id ?? null}
-          initialSaleType={salesInitialType ?? undefined}
-        />
+        !canAccessScreen('sales', selectedBranch?.id)
+          ? <AccessDenied onBack={navigateHome} />
+          : <SalesModule
+              onBack={() => { setSalesInitialType(null); navigateHome(); }}
+              user={user}
+              companyId={companyId}
+              branchId={selectedBranch?.id ?? null}
+              initialSaleType={salesInitialType ?? undefined}
+            />
       )}
       {currentScreen === 'pos' && user && (
-        <POSModule onBack={navigateHome} user={user} companyId={companyId} branchId={selectedBranch?.id ?? null} />
+        !canAccessScreen('pos', selectedBranch?.id)
+          ? <AccessDenied onBack={navigateHome} />
+          : <POSModule onBack={navigateHome} user={user} companyId={companyId} branchId={selectedBranch?.id ?? null} />
       )}
       {currentScreen === 'contacts' && user && (
-        <ContactsModule onBack={navigateHome} user={user} companyId={companyId} />
+        !canAccessScreen('contacts', selectedBranch?.id)
+          ? <AccessDenied onBack={navigateHome} />
+          : <ContactsModule onBack={navigateHome} user={user} companyId={companyId} />
       )}
       {currentScreen === 'settings' && user && selectedBranch && (
-        <SettingsModule
-          onBack={navigateHome}
-          user={user}
-          branch={selectedBranch}
-          companyId={companyId}
-          isOnline={online}
-          onChangeBranch={() => setCurrentScreen('branch-selection')}
-          onLogout={handleLogout}
-          onSyncTriggered={() => {
-            setStatus('syncing');
-            runSync().then(({ errors }) => setStatus(errors > 0 ? 'sync_error' : 'online')).catch(() => setStatus('sync_error'));
-          }}
-        />
+        !canAccessScreen('settings', selectedBranch?.id)
+          ? <AccessDenied onBack={navigateHome} />
+          : <SettingsModule
+              onBack={navigateHome}
+              user={user}
+              branch={selectedBranch}
+              companyId={companyId}
+              isOnline={online}
+              onChangeBranch={() => setCurrentScreen('branch-selection')}
+              onLogout={handleLogout}
+              onSyncTriggered={() => {
+                setStatus('syncing');
+                runSync().then(({ errors }) => setStatus(errors > 0 ? 'sync_error' : 'online')).catch(() => setStatus('sync_error'));
+              }}
+            />
       )}
       {currentScreen === 'products' && user && (
-        <ProductsModule onBack={navigateHome} user={user} companyId={companyId} branchId={selectedBranch?.id ?? null} />
+        !canAccessScreen('products', selectedBranch?.id)
+          ? <AccessDenied onBack={navigateHome} />
+          : <ProductsModule onBack={navigateHome} user={user} companyId={companyId} branchId={selectedBranch?.id ?? null} />
       )}
       {currentScreen === 'purchase' && user && (
-        <PurchaseModule onBack={navigateHome} user={user} companyId={companyId} branchId={selectedBranch?.id ?? null} />
+        !canAccessScreen('purchase', selectedBranch?.id)
+          ? <AccessDenied onBack={navigateHome} />
+          : <PurchaseModule onBack={navigateHome} user={user} companyId={companyId} branchId={selectedBranch?.id ?? null} />
       )}
       {currentScreen === 'reports' && user && (
-        <ReportsModule onBack={navigateHome} user={user} companyId={companyId} branchId={selectedBranch?.id ?? null} />
+        !canAccessScreen('reports', selectedBranch?.id)
+          ? <AccessDenied onBack={navigateHome} />
+          : <ReportsModule onBack={navigateHome} user={user} companyId={companyId} branchId={selectedBranch?.id ?? null} />
       )}
       {currentScreen === 'rental' && user && (
-        <RentalModule onBack={navigateHome} user={user} companyId={companyId} branch={selectedBranch} />
+        !canAccessScreen('rental', selectedBranch?.id)
+          ? <AccessDenied onBack={navigateHome} />
+          : <RentalModule onBack={navigateHome} user={user} companyId={companyId} branch={selectedBranch} />
       )}
       {currentScreen === 'studio' && user && (
-        <StudioModule
-          onBack={navigateHome}
-          user={user}
-          companyId={companyId}
-          branch={selectedBranch}
-          onNewStudioSale={() => navigateToModule('sales', { studioSale: true })}
-        />
+        !canAccessScreen('studio', selectedBranch?.id)
+          ? <AccessDenied onBack={navigateHome} />
+          : <StudioModule
+              onBack={navigateHome}
+              user={user}
+              companyId={companyId}
+              branch={selectedBranch}
+              onNewStudioSale={() => navigateToModule('sales', { studioSale: true })}
+            />
       )}
       {currentScreen === 'accounts' && user && (
-        <AccountsModule onBack={navigateHome} user={user} companyId={companyId} branch={selectedBranch} />
+        !canAccessScreen('accounts', selectedBranch?.id)
+          ? <AccessDenied onBack={navigateHome} />
+          : <AccountsModule onBack={navigateHome} user={user} companyId={companyId} branch={selectedBranch} />
       )}
       {currentScreen === 'expense' && user && (
-        <ExpenseModule onBack={navigateHome} user={user} companyId={companyId} branch={selectedBranch} />
+        !canAccessScreen('expense', selectedBranch?.id)
+          ? <AccessDenied onBack={navigateHome} />
+          : <ExpenseModule onBack={navigateHome} user={user} companyId={companyId} branch={selectedBranch} />
       )}
       {currentScreen === 'inventory' && user && (
-        <InventoryModule onBack={navigateHome} user={user} companyId={companyId} branch={selectedBranch} />
+        !canAccessScreen('inventory', selectedBranch?.id)
+          ? <AccessDenied onBack={navigateHome} />
+          : <InventoryModule onBack={navigateHome} user={user} companyId={companyId} branch={selectedBranch} />
       )}
       {currentScreen === 'dashboard' && user && (
-        <DashboardModule
-          onBack={navigateHome}
-          user={user}
-          companyId={companyId}
-          branchId={selectedBranch?.id ?? null}
-          onNewSale={() => navigateToModule('sales')}
-          onNewPurchase={() => navigateToModule('purchase')}
-        />
+        !canAccessScreen('dashboard', selectedBranch?.id)
+          ? <AccessDenied onBack={navigateHome} />
+          : <DashboardModule
+              onBack={navigateHome}
+              user={user}
+              companyId={companyId}
+              branchId={selectedBranch?.id ?? null}
+              onNewSale={() => navigateToModule('sales')}
+              onNewPurchase={() => navigateToModule('purchase')}
+            />
       )}
       {currentScreen !== 'home' && currentScreen !== 'dashboard' && currentScreen !== 'sales' && currentScreen !== 'pos' && currentScreen !== 'contacts' && currentScreen !== 'settings' && currentScreen !== 'products' && currentScreen !== 'purchase' && currentScreen !== 'reports' && currentScreen !== 'rental' && currentScreen !== 'studio' && currentScreen !== 'accounts' && currentScreen !== 'expense' && currentScreen !== 'inventory' && user && (
         <PlaceholderModule title={MODULE_TITLES[currentScreen] || currentScreen} onBack={navigateHome} />

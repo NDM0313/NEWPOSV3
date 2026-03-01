@@ -52,6 +52,7 @@ export function LoginScreen({ onLogin, pinUnlockUser, pinUnlockCompanyId: _pinUn
           name: data.name,
           email: data.email,
           role: data.role,
+          profileId: data.profileId,
           branchId: data.branchId ?? undefined,
           branchLocked: data.branchLocked,
         };
@@ -141,6 +142,7 @@ export function LoginScreen({ onLogin, pinUnlockUser, pinUnlockCompanyId: _pinUn
           name: profile.name,
           email: profile.email,
           role: profile.role,
+          profileId: profile.profileId,
           branchId: profile.branchId ?? undefined,
           branchLocked: profile.branchLocked,
         };
@@ -178,6 +180,7 @@ export function LoginScreen({ onLogin, pinUnlockUser, pinUnlockCompanyId: _pinUn
           name: data.name,
           email: data.email,
           role: data.role,
+          profileId: data.profileId,
           branchId: data.branchId ?? undefined,
           branchLocked: data.branchLocked,
         };

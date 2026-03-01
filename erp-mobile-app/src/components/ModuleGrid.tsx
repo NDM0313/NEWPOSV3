@@ -1,5 +1,8 @@
 import { X, Package, BarChart3, ShoppingBag, Shirt, Camera, Receipt, DollarSign, Settings, CreditCard, Users, LayoutGrid, TrendingUp } from 'lucide-react';
 import type { Screen } from '../types';
+import { FEATURE_MOBILE_PERMISSION_V2 } from '../config/featureFlags';
+import { usePermissions } from '../context/PermissionContext';
+import { getPermissionModuleForScreen } from '../utils/permissionModules';
 
 interface ModuleGridProps {
   onClose: () => void;
@@ -16,6 +19,7 @@ interface Module {
 }
 
 export function ModuleGrid({ onClose, onModuleSelect, userRole }: ModuleGridProps) {
+  const { hasPermission } = usePermissions();
   const modules: Module[] = [
     { id: 'products', name: 'Products', icon: <Package className="w-6 h-6" />, color: '#3B82F6', enabled: true },
     { id: 'inventory', name: 'Inventory', icon: <BarChart3 className="w-6 h-6" />, color: '#10B981', enabled: true },
@@ -32,7 +36,12 @@ export function ModuleGrid({ onClose, onModuleSelect, userRole }: ModuleGridProp
     { id: 'home', name: 'Home', icon: <LayoutGrid className="w-6 h-6" />, color: '#6B7280', enabled: true },
   ];
 
-  const enabled = modules.filter((m) => m.enabled);
+  const enabled = FEATURE_MOBILE_PERMISSION_V2
+    ? modules.filter((m) => {
+        const code = getPermissionModuleForScreen(m.id);
+        return m.enabled && (code == null || hasPermission(code, 'view'));
+      })
+    : modules.filter((m) => m.enabled);
 
   return (
     <>

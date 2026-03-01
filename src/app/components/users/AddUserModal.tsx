@@ -46,7 +46,7 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
     full_name: '',
     email: '',
     phone: '',
-    role: 'staff' as 'admin' | 'manager' | 'staff' | 'salesman' | 'cashier' | 'inventory',
+    role: 'staff' as 'owner' | 'admin' | 'manager' | 'staff' | 'salesman' | 'cashier' | 'inventory',
     is_active: true,
     can_be_assigned_as_salesman: false,
     passwordOption: 'temp' as 'temp' | 'invite',
@@ -285,11 +285,11 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
         identityId = null; // Defensive: do not pass profile id; would violate user_branches FK to auth.users
       }
       const isNewUserJustCreated = !editingUser && !!savedAuthUserId;
-      const isAdmin = editingUser?.role === 'admin';
+      const isAdminOrOwner = editingUser?.role === 'admin' || editingUser?.role === 'owner';
       if (!isNewUserJustCreated && !identityId && (selectedBranchIds.length > 0 || selectedAccountIds.length > 0)) {
         toast.error('User is not linked to authentication. Cannot assign branch/account access. Use Invite first.');
       }
-      if (identityId && !isAdmin && !isNewUserJustCreated) {
+      if (identityId && !isAdminOrOwner && !isNewUserJustCreated) {
         console.log('[AddUserModal] Branch/account save: identityId (auth.users.id)', identityId);
         try {
           await userService.setUserBranches(identityId, selectedBranchIds, selectedBranchIds[0] || undefined, companyId);
@@ -468,6 +468,13 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
                   setFormData({ ...formData, role: value });
                   // Apply role preset
                   const presets: Record<string, Partial<typeof formData.permissions>> = {
+                    owner: {
+                      canCreateSale: true, canEditSale: true, canDeleteSale: true,
+                      canViewReports: true, canManageSettings: true, canManageUsers: true,
+                      canAccessAccounting: true, canMakePayments: true, canReceivePayments: true,
+                      canManageExpenses: true, canManageProducts: true, canManagePurchases: true,
+                      canManageRentals: true,
+                    },
                     admin: {
                       canCreateSale: true, canEditSale: true, canDeleteSale: true,
                       canViewReports: true, canManageSettings: true, canManageUsers: true,
@@ -510,8 +517,9 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
                   <SelectValue placeholder="Select role" />
                 </SelectTrigger>
                 <SelectContent className="bg-gray-900 border-gray-800 text-white">
+                  <SelectItem value="owner">Owner (Unrestricted)</SelectItem>
                   <SelectItem value="admin">Administrator (All Permissions)</SelectItem>
-                  <SelectItem value="manager">Manager (Limited Admin)</SelectItem>
+                  <SelectItem value="manager">Manager (Branch / Limited)</SelectItem>
                   <SelectItem value="staff">Staff (Restricted)</SelectItem>
                   <SelectItem value="salesman">Salesman (Sales Only)</SelectItem>
                   <SelectItem value="cashier">Cashier</SelectItem>
@@ -602,7 +610,7 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
                 <h3 className="text-sm font-semibold text-gray-200">Branch Access</h3>
               </div>
               <p className="text-xs text-gray-500">Select which branches this user can access. Admin sees all branches.</p>
-              {editingUser?.role === 'admin' && <p className="text-xs text-amber-400">Admin has full access; branch/account assignment is not saved for admin.</p>}
+              {(editingUser?.role === 'admin' || editingUser?.role === 'owner') && <p className="text-xs text-amber-400">Admin/Owner have full access; branch/account assignment is not saved.</p>}
               {loadingAccess ? (
                 <p className="text-sm text-gray-400">Loading...</p>
               ) : (
@@ -639,7 +647,7 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
                 <h3 className="text-sm font-semibold text-gray-200">Account Access</h3>
               </div>
               <p className="text-xs text-gray-500">Select which accounts this user can use (e.g. for receiving payments). Admin sees all accounts.</p>
-              {editingUser?.role === 'admin' && <p className="text-xs text-amber-400">Admin has full access.</p>}
+              {(editingUser?.role === 'admin' || editingUser?.role === 'owner') && <p className="text-xs text-amber-400">Admin/Owner have full access.</p>}
               {loadingAccess ? (
                 <p className="text-sm text-gray-400">Loading...</p>
               ) : (

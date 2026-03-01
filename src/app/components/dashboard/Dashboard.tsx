@@ -89,28 +89,20 @@ export const Dashboard = () => {
   // Calculate metrics from real data (filtered by date range)
   const metrics = useMemo(() => {
     const filteredSales = sales.sales.filter(sale => filterByDateRange(sale.date));
+    const finalSales = filteredSales.filter(s => (s as any).status === 'final');
     const filteredPurchases = purchases.purchases.filter(purchase => filterByDateRange(purchase.poDate));
+    const finalPurchases = filteredPurchases.filter(p => (p as any).status === 'final' || (p as any).status === 'received');
     const filteredExpenses = expenses.expenses.filter(expense => filterByDateRange(expense.expenseDate));
 
-    const totalSales = filteredSales.reduce((sum, sale) => 
-      sale.type === 'invoice' ? sum + sale.total : sum, 0
-    );
-    
-    const totalPurchases = filteredPurchases.reduce((sum, purchase) => 
-      sum + purchase.total, 0
-    );
+    const totalSales = finalSales.reduce((sum, sale) => sum + (sale.total ?? 0), 0);
+    const totalPurchases = finalPurchases.reduce((sum, purchase) => sum + (purchase.total ?? 0), 0);
     
     const totalExpenses = filteredExpenses
       .filter(e => e.status === 'paid')
       .reduce((sum, expense) => sum + expense.amount, 0);
     
-    const totalReceivables = sales.sales.reduce((sum, sale) => 
-      sale.type === 'invoice' ? sum + sale.due : sum, 0
-    );
-    
-    const totalPayables = purchases.purchases.reduce((sum, purchase) => 
-      sum + purchase.due, 0
-    );
+    const totalReceivables = finalSales.reduce((sum, sale) => sum + (sale.due ?? 0), 0);
+    const totalPayables = finalPurchases.reduce((sum, purchase) => sum + (purchase.due ?? 0), 0);
     
     const netProfit = totalSales - totalPurchases - totalExpenses;
 

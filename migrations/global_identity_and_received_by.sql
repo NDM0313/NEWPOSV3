@@ -32,14 +32,6 @@ BEGIN
   ALTER TABLE public.activity_logs DROP CONSTRAINT IF EXISTS activity_logs_performed_by_fkey;
 EXCEPTION WHEN OTHERS THEN NULL;
 END $$;
-DO $$
-BEGIN
-  ALTER TABLE public.activity_logs
-    ADD CONSTRAINT activity_logs_performed_by_fkey
-    FOREIGN KEY (performed_by) REFERENCES auth.users(id) ON DELETE SET NULL;
-EXCEPTION WHEN OTHERS THEN
-  IF SQLERRM NOT LIKE '%already exists%' THEN RAISE; END IF;
-END $$;
 
 COMMENT ON COLUMN public.activity_logs.performed_by IS 'Identity: auth.users(id). Set to auth.uid() when logging.';
 
@@ -48,6 +40,22 @@ UPDATE public.activity_logs al
 SET performed_by = u.auth_user_id
 FROM public.users u
 WHERE al.performed_by = u.id AND u.auth_user_id IS NOT NULL AND al.performed_by IS DISTINCT FROM u.auth_user_id;
+
+-- Null out performed_by that are not in auth.users (so FK add succeeds)
+UPDATE public.activity_logs al
+SET performed_by = NULL
+WHERE al.performed_by IS NOT NULL
+  AND NOT EXISTS (SELECT 1 FROM auth.users au WHERE au.id = al.performed_by);
+
+-- Now add FK to auth.users(id)
+DO $$
+BEGIN
+  ALTER TABLE public.activity_logs
+    ADD CONSTRAINT activity_logs_performed_by_fkey
+    FOREIGN KEY (performed_by) REFERENCES auth.users(id) ON DELETE SET NULL;
+EXCEPTION WHEN OTHERS THEN
+  IF SQLERRM NOT LIKE '%already exists%' THEN RAISE; END IF;
+END $$;
 
 -- ----------------------------------------------------------------------------
 -- 3. log_activity RPC: resolve user name by auth_user_id (performed_by = auth.uid())

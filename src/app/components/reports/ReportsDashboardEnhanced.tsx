@@ -95,21 +95,19 @@ export const ReportsDashboardEnhanced = () => {
   );
 
   // ============================================
-  // METRICS (from filtered data)
+  // METRICS (from filtered data) – ERP golden rule: only FINAL/posted
   // ============================================
+  const finalSales = useMemo(() => filteredSales.filter((s) => (s as any).status === 'final'), [filteredSales]);
+  const finalPurchases = useMemo(() => filteredPurchases.filter((p) => (p as any).status === 'final' || (p as any).status === 'received'), [filteredPurchases]);
 
   const metrics = useMemo(() => {
-    const totalSales = filteredSales.reduce((sum, sale) => 
-      sale.type === 'invoice' ? sum + sale.total : sum, 0
-    );
-    const totalPurchases = filteredPurchases.reduce((sum, p) => sum + p.total, 0);
+    const totalSales = finalSales.reduce((sum, sale) => sum + (sale.total ?? 0), 0);
+    const totalPurchases = finalPurchases.reduce((sum, p) => sum + (p.total ?? 0), 0);
     const totalExpenses = filteredExpenses
       .filter((e) => e.status === 'paid')
       .reduce((sum, e) => sum + e.amount, 0);
-    const totalReceivables = filteredSales.reduce((sum, s) => 
-      s.type === 'invoice' ? sum + s.due : sum, 0
-    );
-    const totalPayables = filteredPurchases.reduce((sum, p) => sum + p.due, 0);
+    const totalReceivables = finalSales.reduce((sum, s) => sum + (s.due ?? 0), 0);
+    const totalPayables = finalPurchases.reduce((sum, p) => sum + (p.due ?? 0), 0);
     const profit = totalSales - totalPurchases - totalExpenses;
     const profitMargin = totalSales > 0 ? (profit / totalSales) * 100 : 0;
 
@@ -121,22 +119,22 @@ export const ReportsDashboardEnhanced = () => {
       totalPayables,
       profit,
       profitMargin,
-      salesCount: filteredSales.filter((s) => s.type === 'invoice').length,
-      purchasesCount: filteredPurchases.length,
+      salesCount: finalSales.length,
+      purchasesCount: finalPurchases.length,
       expensesCount: filteredExpenses.filter((e) => e.status === 'paid').length,
     };
-  }, [filteredSales, filteredPurchases, filteredExpenses]);
+  }, [finalSales, finalPurchases, filteredExpenses]);
 
   const salesByStatus = useMemo(() => {
-    const paid = filteredSales.filter((s) => s.paymentStatus === 'paid').length;
-    const partial = filteredSales.filter((s) => s.paymentStatus === 'partial').length;
-    const unpaid = filteredSales.filter((s) => s.paymentStatus === 'unpaid').length;
+    const paid = finalSales.filter((s) => s.paymentStatus === 'paid').length;
+    const partial = finalSales.filter((s) => s.paymentStatus === 'partial').length;
+    const unpaid = finalSales.filter((s) => s.paymentStatus === 'unpaid').length;
     return [
       { name: 'Paid', value: paid, color: '#10B981' },
       { name: 'Partial', value: partial, color: '#F59E0B' },
       { name: 'Unpaid', value: unpaid, color: '#EF4444' },
     ];
-  }, [filteredSales]);
+  }, [finalSales]);
 
   const expensesByCategory = useMemo(() => {
     const paidExpenses = filteredExpenses.filter((e) => e.status === 'paid');

@@ -73,4 +73,22 @@ for f in $(ls -1 migrations/*.sql 2>/dev/null | xargs -I{} basename {} | sort -V
   run_one "migrations" "$f" || exit 1
 done
 
+# role_permissions table (replica in subfolder; not in migrations/*.sql)
+REPLICA_NAME="erp_replica_role_permissions.sql"
+REPLICA_PATH="migrations/erp_permission_architecture_replica/01_role_permissions_table_and_seed.sql"
+if [ -f "$ROOT/$REPLICA_PATH" ]; then
+  if echo "$APPLIED" | grep -qF "|$REPLICA_NAME|"; then
+    echo "[SKIP] $REPLICA_NAME (already applied)"
+  else
+    echo "[RUN] $REPLICA_NAME"
+    if docker exec -i "$CONTAINER" psql -U postgres -d postgres -v ON_ERROR_STOP=1 < "$ROOT/$REPLICA_PATH" 2>&1; then
+      docker exec "$CONTAINER" psql -U postgres -d postgres -c "INSERT INTO schema_migrations (name) VALUES ('$REPLICA_NAME') ON CONFLICT (name) DO NOTHING" 2>/dev/null || true
+      echo "[OK] $REPLICA_NAME"
+    else
+      echo "[FAIL] $REPLICA_NAME"
+      exit 1
+    fi
+  fi
+fi
+
 echo "[migrate] Done."

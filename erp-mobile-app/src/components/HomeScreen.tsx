@@ -7,6 +7,9 @@ import type { User, Branch, Screen } from '../types';
 import { useResponsive } from '../hooks/useResponsive';
 import { FeaturesShowcase } from './FeaturesShowcase';
 import * as reportsApi from '../api/reports';
+import { FEATURE_MOBILE_PERMISSION_V2 } from '../config/featureFlags';
+import { usePermissions } from '../context/PermissionContext';
+import { getPermissionModuleForScreen } from '../utils/permissionModules';
 
 interface HomeScreenProps {
   user: User;
@@ -41,9 +44,17 @@ const MODULES: ModuleCard[] = [
 
 export function HomeScreen({ user, branch, companyId, onNavigate, onLogout }: HomeScreenProps) {
   const responsive = useResponsive();
+  const { hasPermission } = usePermissions();
   const [showFeatures, setShowFeatures] = useState(false);
   const [todaySales, setTodaySales] = useState<number>(0);
   const [pendingAmount, setPendingAmount] = useState<number>(0);
+
+  const enabled = FEATURE_MOBILE_PERMISSION_V2
+    ? MODULES.filter((m) => {
+        const code = getPermissionModuleForScreen(m.id);
+        return m.enabled && (code == null || hasPermission(code, 'view'));
+      })
+    : MODULES.filter((m) => m.enabled);
 
   useEffect(() => {
     if (!companyId || !branch?.id) return;
@@ -63,8 +74,6 @@ export function HomeScreen({ user, branch, companyId, onNavigate, onLogout }: Ho
   if (showFeatures) {
     return <FeaturesShowcase onClose={() => setShowFeatures(false)} />;
   }
-
-  const enabled = MODULES.filter((m) => m.enabled);
 
   return (
     <div className="min-h-screen pb-24">

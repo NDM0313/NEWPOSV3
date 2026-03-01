@@ -24,7 +24,8 @@ import {
   Sparkles,
   Factory,
   FlaskConical,
-  Plus
+  Plus,
+  Shield
 } from 'lucide-react';
 import { useNavigation } from '../../context/NavigationContext';
 import { useModules } from '../../context/ModuleContext';
@@ -45,7 +46,7 @@ export const Sidebar = () => {
   const { currentView, setCurrentView, isSidebarOpen, toggleSidebar, openDrawer } = useNavigation();
   const { modules: moduleContextModules } = useModules();
   const { modules: settingsModules } = useSettings();
-  const { canViewReports, canAccessAccounting, canManageSettings, canManageUsers } = useCheckPermission();
+  const { canViewReports, canAccessAccounting, canManageSettings, canManageUsers, canAccessPurchases, canUsePos, canViewSales, canAccessStudio, canManageRentals } = useCheckPermission();
   const [expandedItems, setExpandedItems] = useState<string[]>([]);
 
   const toggleExpand = (id: string) => {
@@ -59,15 +60,15 @@ export const Sidebar = () => {
     { id: 'contacts', label: 'Contacts', icon: Users },
     { id: 'products', label: 'Products', icon: Package },
     { id: 'inventory', label: 'Inventory', icon: Warehouse },
-    { id: 'purchases', label: 'Purchases', icon: ShoppingBag },
-    { id: 'sales', label: 'Sales', icon: ShoppingCart },
-    { id: 'rentals', label: 'Rentals', icon: Shirt, isHidden: !settingsModules.rentalModuleEnabled },
-    { id: 'pos', label: 'POS System', icon: Store, isHidden: !settingsModules.posModuleEnabled },
+    { id: 'purchases', label: 'Purchases', icon: ShoppingBag, isHidden: !canAccessPurchases },
+    { id: 'sales', label: 'Sales', icon: ShoppingCart, isHidden: !canViewSales },
+    { id: 'rentals', label: 'Rentals', icon: Shirt, isHidden: !settingsModules.rentalModuleEnabled || !canManageRentals },
+    { id: 'pos', label: 'POS System', icon: Store, isHidden: !settingsModules.posModuleEnabled || !canUsePos },
     { 
       id: 'studio-group', 
       label: 'Studio Production', 
       icon: Factory,
-      isHidden: !settingsModules.studioModuleEnabled,
+      isHidden: !settingsModules.studioModuleEnabled || !canAccessStudio,
       children: [
         { id: 'studio-dashboard-new', label: 'Dashboard' },
         { id: 'studio', label: 'Studio Sales' },
@@ -78,6 +79,7 @@ export const Sidebar = () => {
     { id: 'expenses', label: 'Expenses', icon: Receipt },
     { id: 'accounting', label: 'Accounting', icon: Calculator, isHidden: !canAccessAccounting },
     { id: 'reports', label: 'Reports', icon: PieChart, isHidden: !canViewReports },
+    { id: 'erp-permissions', label: 'ERP Permissions', icon: Shield, isHidden: !canManageSettings },
     { id: 'settings', label: 'Settings', icon: Settings, isHidden: !canManageSettings },
     { 
       id: 'test-pages-group', 

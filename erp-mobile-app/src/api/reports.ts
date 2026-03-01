@@ -19,6 +19,7 @@ export async function getSalesSummary(
     .from('sales')
     .select('total, invoice_date')
     .eq('company_id', companyId)
+    .eq('status', 'final')
     .gte('invoice_date', fromStr)
     .in('payment_status', ['paid', 'partial']);
   if (branchId && branchId !== 'all') query = query.eq('branch_id', branchId);
@@ -179,6 +180,7 @@ export async function getReceivables(
     .select('due_amount')
     .eq('company_id', companyId)
     .eq('type', 'invoice')
+    .eq('status', 'final')
     .in('payment_status', ['partial', 'unpaid']);
   if (branchId && branchId !== 'all') query = query.eq('branch_id', branchId);
   const { data, error } = await query;
@@ -209,6 +211,7 @@ export async function getReceivablesList(
     .select('id, invoice_no, customer_name, invoice_date, total, due_amount, payment_status')
     .eq('company_id', companyId)
     .eq('type', 'invoice')
+    .eq('status', 'final')
     .in('payment_status', ['partial', 'unpaid'])
     .gt('due_amount', 0)
     .order('invoice_date', { ascending: false })

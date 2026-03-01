@@ -23,7 +23,7 @@ export async function getSalesByCategory(
     .from('sales')
     .select('id')
     .eq('company_id', companyId)
-    .in('status', ['final', 'quotation', 'order']);
+    .eq('status', 'final');
 
   if (startDate) query = query.gte('invoice_date', startDate);
   if (endDate) query = query.lte('invoice_date', endDate);

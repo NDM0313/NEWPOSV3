@@ -3,6 +3,8 @@
 **Last updated:** Feb 2026  
 **Purpose:** GitHub se clone ke baad Windows par remaining tasks complete karne ka guide.
 
+**MacBook / VPS:** Agar aap Mac ya Linux par migrations/apply kar rahe ho to **`docs/REMAINING_TASKS_APPLY_ON_MACBOOK.md`** use karein (migration order + immutable runner).
+
 ---
 
 ## 1. Clone & setup (Windows)

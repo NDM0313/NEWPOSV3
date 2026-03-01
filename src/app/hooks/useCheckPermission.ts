@@ -29,5 +29,10 @@ export function useCheckPermission() {
     canAccessAccounting: checkPermissionUtil(currentUser, 'accounting', 'view'),
     canManageSettings: checkPermissionUtil(currentUser, 'settings', 'view'),
     canManageUsers: checkPermissionUtil(currentUser, 'users', 'view'),
+    canAccessPurchases: checkPermissionUtil(currentUser, 'purchases', 'view'),
+    canUsePos: checkPermissionUtil(currentUser, 'pos', 'use'),
+    canViewSales: checkPermissionUtil(currentUser, 'sales', 'view'),
+    canAccessStudio: checkPermissionUtil(currentUser, 'studio', 'view'),
+    canManageRentals: checkPermissionUtil(currentUser, 'rentals', 'view'),
   };
 }

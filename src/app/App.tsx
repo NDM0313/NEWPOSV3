@@ -1,4 +1,5 @@
-import React, { lazy, Suspense } from 'react';
+import React, { lazy, Suspense, useEffect } from 'react';
+import { FeatureFlagProvider, useFeatureFlag } from './context/FeatureFlagContext';
 import { NavigationProvider, useNavigation } from './context/NavigationContext';
 import { Layout } from './components/layout/Layout';
 import { Dashboard } from './components/dashboard/Dashboard';
@@ -47,6 +48,7 @@ const InventoryAnalyticsTestPage = lazy(() => import('./components/inventory/Inv
 const StudioDashboardNew = lazy(() => import('./components/studio/StudioDashboardNew').then(m => ({ default: m.StudioDashboardNew })));
 import { SettingsPage } from './components/settings/SettingsPage';
 const SettingsPageNew = lazy(() => import('./components/settings/SettingsPageNew').then(m => ({ default: m.SettingsPageNew })));
+const ErpPermissionArchitecturePage = lazy(() => import('./components/erp-permissions/ErpPermissionArchitecturePage').then(m => ({ default: m.ErpPermissionArchitecturePage })));
 import { SettingsPageComplete } from './components/settings/SettingsPageComplete';
 import { SettingsPageClean } from './components/settings/SettingsPageClean';
 import { StudioWorkflowPage } from './components/studio/StudioWorkflowPage';
@@ -229,6 +231,11 @@ const AppContent = () => {
           <SettingsPageNew />
         </Suspense>
       )}
+      {currentView === 'erp-permissions' && (
+        <Suspense fallback={<div className="flex items-center justify-center p-12"><div className="animate-pulse text-gray-500">Loading...</div></div>}>
+          <ErpPermissionArchitecturePage />
+        </Suspense>
+      )}
       {currentView === 'user-profile' && <UserProfilePage />}
       {currentView === 'contact-profile' && <ViewContactProfile />}
       {currentView === 'item-report' && <ItemLifecycleReport />}
@@ -280,6 +287,19 @@ const AppContent = () => {
   );
 };
 
+function PermissionV2ThemeSync({ children }: { children: React.ReactNode }) {
+  const { permissionV2 } = useFeatureFlag();
+  useEffect(() => {
+    if (permissionV2) {
+      document.body.setAttribute('data-theme', 'enterprise-v2');
+    } else {
+      document.body.removeAttribute('data-theme');
+    }
+    return () => document.body.removeAttribute('data-theme');
+  }, [permissionV2]);
+  return <>{children}</>;
+}
+
 export default function App() {
   const pathname = typeof window !== 'undefined' ? window.location.pathname : '';
 
@@ -305,8 +325,10 @@ export default function App() {
         }
       }}>
       <ThemeProvider attribute="class" defaultTheme="dark" enableSystem={false}>
-        <SupabaseProvider>
-          <ProtectedRoute>
+        <FeatureFlagProvider>
+          <PermissionV2ThemeSync>
+            <SupabaseProvider>
+              <ProtectedRoute>
             <DateRangeProvider>
               <ModuleProvider>
                 <AccountingProvider>
@@ -330,8 +352,10 @@ export default function App() {
                 </AccountingProvider>
               </ModuleProvider>
             </DateRangeProvider>
-          </ProtectedRoute>
-        </SupabaseProvider>
+              </ProtectedRoute>
+            </SupabaseProvider>
+          </PermissionV2ThemeSync>
+        </FeatureFlagProvider>
       </ThemeProvider>
     </ErrorBoundary>
   );

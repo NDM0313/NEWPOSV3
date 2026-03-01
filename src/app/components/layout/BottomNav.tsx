@@ -7,10 +7,12 @@ import {
   Package
 } from 'lucide-react';
 import { useNavigation } from '../../context/NavigationContext';
+import { useCheckPermission } from '../../hooks/useCheckPermission';
 import { clsx } from 'clsx';
 
 export const BottomNav = () => {
   const { currentView, setCurrentView, setMobileNavOpen } = useNavigation();
+  const { canUsePos } = useCheckPermission();
 
   return (
     <div 
@@ -24,21 +26,25 @@ export const BottomNav = () => {
           icon={LayoutDashboard}
           label="Home"
         />
-        <NavButton 
-          active={currentView === 'pos'} 
-          onClick={() => setCurrentView('pos')}
-          icon={Store}
-          label="POS"
-        />
-        {/* Center FAB - Mobile-style scan action */}
-        <div className="relative -top-6 flex justify-center">
-          <button 
-            onClick={() => setCurrentView('pos')}
-            className="w-14 h-14 bg-[#3B82F6] hover:bg-[#2563EB] rounded-2xl flex items-center justify-center shadow-lg text-white active:scale-95 transition-transform touch-manipulation border-2 border-[#374151]"
-          >
-            <ScanLine size={24} strokeWidth={2.5} />
-          </button>
-        </div>
+        {canUsePos && (
+          <>
+            <NavButton 
+              active={currentView === 'pos'} 
+              onClick={() => setCurrentView('pos')}
+              icon={Store}
+              label="POS"
+            />
+            {/* Center FAB - Mobile-style scan action */}
+            <div className="relative -top-6 flex justify-center">
+              <button 
+                onClick={() => setCurrentView('pos')}
+                className="w-14 h-14 bg-[#3B82F6] hover:bg-[#2563EB] rounded-2xl flex items-center justify-center shadow-lg text-white active:scale-95 transition-transform touch-manipulation border-2 border-[#374151]"
+              >
+                <ScanLine size={24} strokeWidth={2.5} />
+              </button>
+            </div>
+          </>
+        )}
         <NavButton 
           active={currentView === 'products'} 
           onClick={() => setCurrentView('products')}
