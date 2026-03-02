@@ -41,6 +41,7 @@ export async function getRolePermissionsByEngineRole(
     .eq('role', engineRole)
     .order('module')
     .order('action');
+  
   if (error) return [];
   return (data ?? []) as RolePermissionRow[];
 }
@@ -72,10 +73,10 @@ export function hasModuleAction(
 
 /** Convenience: can user view this module? */
 export function canViewModule(perms: RolePermissionRow[], module: string): boolean {
-  if (perms.length === 0) return true; // no permissions loaded → allow (fallback)
+  if (perms.length === 0) return false; // empty permissions = no access (v2 requirement)
   const viewActions: Record<string, string[]> = {
     sales: ['view_own', 'view_branch', 'view_company', 'view'],
-    purchase: ['view'],
+    purchases: ['view'],
     pos: ['view', 'use'],
     studio: ['view'],
     rentals: ['view'],
@@ -84,7 +85,7 @@ export function canViewModule(perms: RolePermissionRow[], module: string): boole
     products: ['view'],
     contacts: ['view'],
     accounts: ['view_full_accounting', 'view_customer', 'view_supplier'],
-    expense: ['view'],
+    expenses: ['view'],
     settings: ['modify'],
   };
   const actions = viewActions[module] ?? ['view'];

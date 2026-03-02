@@ -1,10 +1,16 @@
 /* Minimal service worker: cache app shell, API calls not cached. Works at / or /m/ */
-const CACHE = 'erp-mobile-v1';
+const CACHE = 'erp-mobile-v2';
 const BASE = self.location.pathname.replace(/\/sw\.js$/, '').replace(/\/?$/, '') || '';
 
 self.addEventListener('install', (e) => {
-  const urls = [BASE + '/index.html', BASE + '/manifest.webmanifest'];
-  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(urls)).then(() => self.skipWaiting()));
+  const urls = [...new Set([BASE + '/index.html', BASE + '/manifest.webmanifest'])];
+  e.waitUntil(
+    caches.open(CACHE).then((c) => 
+      Promise.all(urls.map(url => 
+        c.add(url).catch(err => console.warn(`[SW] Skip caching ${url}:`, err))
+      ))
+    ).then(() => self.skipWaiting())
+  );
 });
 
 self.addEventListener('activate', (e) => {

@@ -19,7 +19,12 @@ interface Module {
 }
 
 export function ModuleGrid({ onClose, onModuleSelect, userRole }: ModuleGridProps) {
-  const { hasPermission } = usePermissions();
+  const { hasPermission, isPermissionLoaded } = usePermissions();
+
+  if (FEATURE_MOBILE_PERMISSION_V2 && !isPermissionLoaded) {
+    return null; // Or show a small loader in the grid
+  }
+
   const modules: Module[] = [
     { id: 'products', name: 'Products', icon: <Package className="w-6 h-6" />, color: '#3B82F6', enabled: true },
     { id: 'inventory', name: 'Inventory', icon: <BarChart3 className="w-6 h-6" />, color: '#10B981', enabled: true },
@@ -39,7 +44,7 @@ export function ModuleGrid({ onClose, onModuleSelect, userRole }: ModuleGridProp
   const enabled = FEATURE_MOBILE_PERMISSION_V2
     ? modules.filter((m) => {
         const code = getPermissionModuleForScreen(m.id);
-        return m.enabled && (code == null || hasPermission(code, 'view'));
+        return m.enabled && code != null && hasPermission(code, 'view');
       })
     : modules.filter((m) => m.enabled);
 

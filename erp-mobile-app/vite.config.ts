@@ -13,6 +13,10 @@ export default defineConfig({
     port: 5174,
     host: '0.0.0.0', // Network access for mobile devices (http://YOUR_IP:5174)
     open: true,
+    hmr: true,      // Explicitly enable Hot Module Replacement
   },
-  build: { outDir: 'dist' },
+  build: { 
+    outDir: 'dist',
+    sourcemap: true, // Enable source maps for debugging
+  },
 });

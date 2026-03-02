@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase';
+import { employeeService } from './employeeService';
 import { activityLogService } from '@/app/services/activityLogService';
 import { settingsService } from '@/app/services/settingsService';
 import { productService } from '@/app/services/productService';
@@ -599,6 +600,22 @@ export const saleService = {
       .single();
 
     if (error) throw error;
+
+    // Integration: Commission Calculation
+    if (status === 'final' && data.salesman_id) {
+      employeeService.getEmployeeByUser(data.salesman_id).then(emp => {
+        if (emp && emp.commission_rate > 0) {
+          const commissionAmount = (Number(data.total) * Number(emp.commission_rate)) / 100;
+          if (commissionAmount > 0) {
+            employeeService.addLedgerEntry(
+              emp.id, 'commission', commissionAmount, 
+              `Commission for Invoice ${data.invoice_no}`, data.id
+            );
+          }
+        }
+      });
+    }
+
     return data;
   },
 

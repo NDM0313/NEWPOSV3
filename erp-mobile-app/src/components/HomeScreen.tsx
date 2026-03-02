@@ -44,15 +44,26 @@ const MODULES: ModuleCard[] = [
 
 export function HomeScreen({ user, branch, companyId, onNavigate, onLogout }: HomeScreenProps) {
   const responsive = useResponsive();
-  const { hasPermission } = usePermissions();
+  const { hasPermission, isPermissionLoaded } = usePermissions();
   const [showFeatures, setShowFeatures] = useState(false);
   const [todaySales, setTodaySales] = useState<number>(0);
   const [pendingAmount, setPendingAmount] = useState<number>(0);
 
+  if (FEATURE_MOBILE_PERMISSION_V2 && !isPermissionLoaded) {
+    return (
+      <div className="min-h-screen bg-[#111827] flex items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-10 h-10 border-4 border-[#3B82F6] border-t-transparent rounded-full animate-spin" />
+          <p className="text-[#9CA3AF] animate-pulse">Loading permissions...</p>
+        </div>
+      </div>
+    );
+  }
+
   const enabled = FEATURE_MOBILE_PERMISSION_V2
     ? MODULES.filter((m) => {
         const code = getPermissionModuleForScreen(m.id);
-        return m.enabled && (code == null || hasPermission(code, 'view'));
+        return m.enabled && code != null && hasPermission(code, 'view');
       })
     : MODULES.filter((m) => m.enabled);
 

@@ -6,12 +6,12 @@ import type { Screen } from '../types';
 
 const SCREEN_TO_MODULE: Record<string, string> = {
   sales: 'sales',
-  purchase: 'purchase',
-  pos: 'pos',
+  purchase: 'purchases',
+  pos: 'sales',
   rental: 'rentals',
   studio: 'studio',
   accounts: 'accounts',
-  expense: 'expense',
+  expense: 'expenses',
   products: 'products',
   inventory: 'inventory',
   contacts: 'contacts',

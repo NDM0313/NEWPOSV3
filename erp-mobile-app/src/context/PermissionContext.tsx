@@ -6,8 +6,9 @@ import type { RolePermissionRow } from '../api/permissions';
 interface PermissionState {
   permissions: RolePermissionRow[];
   branchIds: string[];
-  loaded: boolean;
+  isPermissionLoaded: boolean;
   isAdminOrOwner: boolean;
+  isOwner: boolean;
 }
 
 interface PermissionContextValue extends PermissionState {
@@ -19,14 +20,15 @@ interface PermissionContextValue extends PermissionState {
 const defaultState: PermissionState = {
   permissions: [],
   branchIds: [],
-  loaded: false,
+  isPermissionLoaded: false,
   isAdminOrOwner: false,
+  isOwner: false,
 };
 
 const PermissionContext = createContext<PermissionContextValue>({
   ...defaultState,
-  hasPermission: () => true,
-  hasBranchAccess: () => true,
+  hasPermission: () => false,
+  hasBranchAccess: () => false,
   reload: async () => {},
 });
 
@@ -35,7 +37,7 @@ export function PermissionProvider({ children }: { children: React.ReactNode }) 
 
   const reload = useCallback(async (userId: string, appRole: string, profileId?: string) => {
     if (!FEATURE_MOBILE_PERMISSION_V2) {
-      setState({ permissions: [], branchIds: [], loaded: true, isAdminOrOwner: true });
+      setState({ permissions: [], branchIds: [], isPermissionLoaded: true, isAdminOrOwner: true, isOwner: true });
       return;
     }
     const branchUserId = profileId ?? userId;
@@ -46,37 +48,41 @@ export function PermissionProvider({ children }: { children: React.ReactNode }) 
       ]);
       const r = (appRole || '').toLowerCase();
       const isAdminOrOwner = ['owner', 'admin', 'super admin', 'superadmin'].includes(r);
+      const isOwner = r === 'owner';
+      
       setState({
         permissions: perms,
         branchIds,
-        loaded: true,
+        isPermissionLoaded: true,
         isAdminOrOwner,
+        isOwner,
       });
-    } catch {
-      setState({ permissions: [], branchIds: [], loaded: true, isAdminOrOwner: false });
+    } catch (err) {
+      setState({ permissions: [], branchIds: [], isPermissionLoaded: true, isAdminOrOwner: false, isOwner: false });
     }
   }, []);
 
   const hasPermission = useCallback(
     (module: string, action: string = 'view'): boolean => {
       if (!FEATURE_MOBILE_PERMISSION_V2) return true;
-      if (!state.loaded) return true;
-      if (state.isAdminOrOwner) return true;
+      if (!state.isPermissionLoaded) return false;
+      if (state.isOwner) return true;
+      
       return permissionsApi.hasModuleAction(state.permissions, module, action) ||
         permissionsApi.canViewModule(state.permissions, module);
     },
-    [state.loaded, state.permissions, state.isAdminOrOwner]
+    [state.isPermissionLoaded, state.permissions, state.isOwner]
   );
 
   const hasBranchAccess = useCallback(
     (branchId: string): boolean => {
       if (!FEATURE_MOBILE_PERMISSION_V2) return true;
-      if (!state.loaded) return true;
+      if (!state.isPermissionLoaded) return false;
       if (state.isAdminOrOwner) return true;
       if (state.branchIds.length === 0) return false;
       return state.branchIds.includes(branchId);
     },
-    [state.loaded, state.branchIds, state.isAdminOrOwner]
+    [state.isPermissionLoaded, state.branchIds, state.isAdminOrOwner]
   );
 
   return (

@@ -112,9 +112,6 @@ export function checkPermission(
     case 'products':
       return permissions.canManageProducts === true;
 
-    case 'rentals':
-      return permissions.canManageRentals === true;
-
     default:
       return false;
   }

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { X, Save, User as UserIcon, CheckSquare, Square, Key, Mail, Clock, Shield, Building2, Wallet } from 'lucide-react';
+import { X, Save, User as UserIcon, CheckSquare, Square, Key, Mail, Clock, Shield, Building2, Wallet, DollarSign, TrendingUp } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
@@ -13,8 +13,10 @@ import {
   DialogHeader,
   DialogTitle,
 } from '../ui/dialog';
+import { supabase } from '@/lib/supabase';
 import { useSupabase } from '../../context/SupabaseContext';
 import { userService, User as UserType } from '../../services/userService';
+import { employeeService } from '../../services/employeeService';
 import { branchService, Branch } from '../../services/branchService';
 import { accountService, Account } from '../../services/accountService';
 import { toast } from 'sonner';
@@ -47,6 +49,8 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
     email: '',
     phone: '',
     role: 'staff' as 'owner' | 'admin' | 'manager' | 'staff' | 'salesman' | 'cashier' | 'inventory',
+    basic_salary: 0,
+    commission_rate: 0,
     is_active: true,
     can_be_assigned_as_salesman: false,
     passwordOption: 'temp' as 'temp' | 'invite',
@@ -83,6 +87,8 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
           email: editingUser.email || '',
           phone: editingUser.phone || '',
           role: (editingUser.role as any) || 'staff',
+          basic_salary: 0,
+          commission_rate: 0,
           is_active: editingUser.is_active ?? true,
           can_be_assigned_as_salesman: editingUser.can_be_assigned_as_salesman ?? false,
           permissions: {
@@ -108,6 +114,8 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
           email: '',
           phone: '',
           role: 'staff',
+          basic_salary: 0,
+          commission_rate: 0,
           is_active: true,
           can_be_assigned_as_salesman: false,
           passwordOption: 'temp',
@@ -176,6 +184,21 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
     })();
   }, [open, editingUser?.id, editingUser?.auth_user_id]);
   // identityId for save: editingUser?.auth_user_id ?? savedAuthUserId — never editingUser.id
+
+  // Load employee data if editing
+  useEffect(() => {
+    if (open && editingUser && editingUser.id) {
+      employeeService.getEmployeeByUser(editingUser.id).then(emp => {
+        if (emp) {
+          setFormData(prev => ({
+            ...prev,
+            basic_salary: Number(emp.basic_salary) || 0,
+            commission_rate: Number(emp.commission_rate) || 0,
+          }));
+        }
+      });
+    }
+  }, [open, editingUser?.id]);
 
   const handleSave = async () => {
     if (!companyId) {
@@ -308,6 +331,33 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
           if (msg?.includes('missing required RPCs')) toast.error(msg);
           else if (msg?.includes('USER_NOT_LINKED') || msg?.includes('not an auth user id')) toast.warning('User is not linked to authentication. Use Invite first, then assign accounts.');
           else toast.warning(msg?.includes('Only admin') ? msg : `User saved. Account access failed: ${msg}`);
+        }
+      }
+
+      // Sync Employee Data (if not owner)
+      if (savedUserId && formData.role !== 'owner') {
+        try {
+          const existingEmp = await employeeService.getEmployeeByUser(savedUserId);
+          if (!existingEmp) {
+            await employeeService.createEmployee(
+              savedUserId,
+              formData.basic_salary,
+              formData.commission_rate
+            );
+          } else if (editingUser) {
+            // Update existing employee record if basic_salary or commission_rate changed
+            if (Number(existingEmp.basic_salary) !== formData.basic_salary || Number(existingEmp.commission_rate) !== formData.commission_rate) {
+              await supabase
+                .from('employees')
+                .update({
+                  basic_salary: formData.basic_salary,
+                  commission_rate: formData.commission_rate
+                })
+                .eq('id', existingEmp.id);
+            }
+          }
+        } catch (empErr) {
+          console.error('[AddUserModal] Employee sync failed (silent):', empErr);
         }
       }
 
@@ -528,6 +578,39 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
               </Select>
               <p className="text-xs text-gray-500">Selecting a role will auto-apply permission presets</p>
             </div>
+
+            {/* Salary & Commission - ONLY for non-owners */}
+            {formData.role !== 'owner' && (
+              <div className="grid grid-cols-2 gap-4 p-4 bg-gray-950 border border-gray-800 rounded-lg">
+                <div className="space-y-2">
+                  <Label htmlFor="basic_salary" className="text-gray-200">Basic Salary</Label>
+                  <div className="relative">
+                    <DollarSign className="absolute left-3 top-2.5 h-4 w-4 text-gray-500" />
+                    <Input
+                      id="basic_salary"
+                      type="number"
+                      className="pl-9 bg-gray-900 border-gray-700 text-white"
+                      value={formData.basic_salary}
+                      onChange={(e) => setFormData({ ...formData, basic_salary: Number(e.target.value) })}
+                    />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="commission_rate" className="text-gray-200">Commission Rate (%)</Label>
+                  <div className="relative">
+                    <TrendingUp className="absolute left-3 top-2.5 h-4 w-4 text-gray-500" />
+                    <Input
+                      id="commission_rate"
+                      type="number"
+                      step="0.1"
+                      className="pl-9 bg-gray-900 border-gray-700 text-white"
+                      value={formData.commission_rate}
+                      onChange={(e) => setFormData({ ...formData, commission_rate: Number(e.target.value) })}
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Active Status */}
             <div className="flex items-center justify-between p-4 bg-gray-950 border border-gray-800 rounded-lg">

@@ -55,7 +55,7 @@ const MODULE_TITLES: Record<Screen, string> = {
 export default function App() {
   const responsive = useResponsive();
   const { online, status, setStatus } = useNetworkStatus();
-  const { hasPermission, hasBranchAccess, reload } = usePermissions();
+  const { hasPermission, hasBranchAccess, reload, isPermissionLoaded } = usePermissions();
   const [authLoading, setAuthLoading] = useState(true);
   const [currentScreen, setCurrentScreen] = useState<Screen>('login');
   const [user, setUser] = useState<User | null>(null);
@@ -243,7 +243,9 @@ export default function App() {
   const canAccessScreen = (screen: Screen, branchId: string | null | undefined): boolean => {
     if (!FEATURE_MOBILE_PERMISSION_V2) return true;
     const module = getPermissionModuleForScreen(screen);
-    if (!module) return true;
+    // login and branch-selection don't have permission modules, but are always accessible.
+    // others MUST have a mapping and permission to be accessible when V2 is on.
+    if (!module) return screen === 'login' || screen === 'branch-selection';
     if (!hasPermission(module, 'view')) return false;
     if (branchId && branchId !== 'all' && !hasBranchAccess(branchId)) return false;
     return true;
@@ -253,10 +255,13 @@ export default function App() {
   const showBottomNav = currentScreen === 'home' && user && selectedBranch;
   const showSidebar = (currentScreen !== 'login' && currentScreen !== 'branch-selection' && user && selectedBranch) && responsive.isTablet;
 
-  if (authLoading) {
+  if (authLoading || (user && FEATURE_MOBILE_PERMISSION_V2 && !isPermissionLoaded)) {
     return (
       <div className="min-h-screen bg-[#111827] text-[#F9FAFB] flex items-center justify-center">
-        <div className="text-[#9CA3AF]">Loading...</div>
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-12 h-12 border-4 border-[#3B82F6] border-t-transparent rounded-full animate-spin" />
+          <div className="text-[#9CA3AF] animate-pulse">Loading permissions...</div>
+        </div>
       </div>
     );
   }

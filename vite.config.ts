@@ -7,6 +7,10 @@ import { applyStorageRlsPlugin } from './vite-plugin-apply-storage-rls'
 export default defineConfig({
   server: {
     host: true, // Expose on 0.0.0.0 for mobile/network access
+    hmr: true,  // Explicitly enable Hot Module Replacement
+  },
+  build: {
+    sourcemap: true, // Enable source maps for debugging
   },
   plugins: [
     react(),

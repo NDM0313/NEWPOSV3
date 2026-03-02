@@ -8,9 +8,9 @@ export const FEATURE_MOBILE_PERMISSION_V2 =
     ? (() => {
         try {
           const v = localStorage.getItem(KEY);
-          return v === 'true'; // false when unset → old behavior
+          return v !== 'false'; // true by default (v2 always on unless explicitly disabled)
         } catch {
-          return false;
+          return true;
         }
       })()
     : false;

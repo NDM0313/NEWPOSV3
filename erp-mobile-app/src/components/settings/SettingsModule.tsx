@@ -17,6 +17,7 @@ import {
   Printer,
   Scan,
   UserCog,
+  Briefcase,
 } from 'lucide-react';
 import type { User, Branch } from '../../types';
 import * as authApi from '../../api/auth';
@@ -27,6 +28,7 @@ import { ChangePinModal } from './ChangePinModal';
 import { SetPinModal } from './SetPinModal';
 import { ConnectionDebug } from '../dev/ConnectionDebug';
 import { UserPermissionsScreen } from './UserPermissionsScreen';
+import { EmployeesSection } from './EmployeesSection';
 
 interface SettingsModuleProps {
   onBack: () => void;
@@ -106,18 +108,11 @@ export function SettingsModule({
   const [printerSaving, setPrinterSaving] = useState(false);
   const [barcodeSaving, setBarcodeSaving] = useState(false);
   const [showUserPermissions, setShowUserPermissions] = useState(false);
+  const [showEmployees, setShowEmployees] = useState(false);
+
+  const isAdminOrOwner = user.role === 'admin' || (user.role as string) === 'owner';
 
   const refreshUnsynced = () => getUnsyncedCount().then(setUnsyncedCount);
-
-  if (showUserPermissions) {
-    return (
-      <UserPermissionsScreen
-        onBack={() => setShowUserPermissions(false)}
-        user={user}
-        companyId={companyId}
-      />
-    );
-  }
 
   useEffect(() => {
     authApi.hasPinSet().then(setHasPin);
@@ -141,6 +136,16 @@ export function SettingsModule({
     settingsApi.getMobilePrinterSettings(companyId).then(({ data }) => setPrinterConfig(data));
     settingsApi.getMobileBarcodeScannerSettings(companyId).then(({ data }) => setBarcodeSettings(data));
   }, [companyId]);
+
+  if (showUserPermissions) {
+    return (
+      <UserPermissionsScreen
+        onBack={() => setShowUserPermissions(false)}
+        user={user}
+        companyId={companyId}
+      />
+    );
+  }
 
   const handlePrinterMode = async (mode: settingsApi.MobilePrinterMode) => {
     if (printerSaving || !companyId) return;
@@ -244,6 +249,17 @@ export function SettingsModule({
     onLogout();
   };
 
+  if (showEmployees && companyId) {
+    return (
+      <EmployeesSection
+        onBack={() => setShowEmployees(false)}
+        companyId={companyId}
+        isAdminOrOwner={isAdminOrOwner}
+        userId={user.id}
+      />
+    );
+  }
+
   return (
     <div className="min-h-screen bg-[#111827] pb-24">
       <div className="bg-[#1F2937] border-b border-[#374151] sticky top-0 z-40">
@@ -309,6 +325,14 @@ export function SettingsModule({
             title="User Permissions"
             subtitle="Role, branch access & permission matrix"
             onClick={() => setShowUserPermissions(true)}
+          />
+
+          <SettingsRow
+            icon={Briefcase}
+            iconColor="bg-blue-500/20"
+            title="Employees"
+            subtitle="Payroll, commissions & ledger"
+            onClick={() => setShowEmployees(true)}
           />
         </div>
 

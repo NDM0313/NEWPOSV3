@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { 
   Building2, CreditCard, Hash, ToggleLeft, Save, 
   CheckCircle, Users, Lock, Key, Settings as SettingsIcon, AlertCircle, UserCog,
+  Briefcase,
   MapPin, Store, ShoppingCart, ShoppingBag, Package, Shirt, Calculator, X, Edit, Download, Server, Copy, Printer, RefreshCw, QrCode, FileText, Activity, Shield
 } from 'lucide-react';
 import { Button } from "../ui/button";
@@ -30,6 +31,7 @@ import { getHealthDashboard, type ErpHealthRow } from '@/app/services/healthServ
 import { PermissionManagementPanel } from './PermissionManagementPanel';
 import { UserPermissionsTab } from './UserPermissionsTab';
 import { useFeatureFlagOptional } from '@/app/context/FeatureFlagContext';
+import { EmployeesTab } from './EmployeesTab';
 
 function TemplateFormFields({
   template,
@@ -229,6 +231,7 @@ type SettingsTab =
   | 'leadTools'
   | 'permissions'
   | 'userPermissions'
+  | 'employees'
   | 'systemHealth'
   | 'data';
 
@@ -608,7 +611,8 @@ export const SettingsPageNew = () => {
     { id: 'invoiceTemplates' as const, label: 'Invoice Templates', icon: FileText },
     { id: 'users' as const, label: 'User Management', icon: UserCog },
     ...(isAdminOrOwner ? [{ id: 'permissions' as const, label: 'Permission Management', icon: Shield }] : []),
-    ...(permissionV2 ? [{ id: 'userPermissions' as const, label: 'User Permissions', icon: Users }] : []),
+    { id: 'userPermissions' as const, label: 'User Permissions', icon: Users },
+    { id: 'employees' as const, label: 'Employees', icon: Briefcase },
     { id: 'modules' as const, label: 'Module Toggles', icon: ToggleLeft },
     { id: 'leadTools' as const, label: 'Lead Tools', icon: QrCode },
     ...(isAdminOrOwner ? [{ id: 'systemHealth' as const, label: 'System Health', icon: Activity }] : []),
@@ -2566,6 +2570,21 @@ export const SettingsPageNew = () => {
             )}
 
             {/* SYSTEM HEALTH TAB (Admin/Owner only) */}
+            {activeTab === 'employees' && (
+              <div className="space-y-6">
+                <div className="flex items-center gap-3 mb-6">
+                  <div className="p-3 bg-blue-500/10 rounded-lg">
+                    <Briefcase className="text-blue-500" size={24} />
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-bold text-white">Employee Payroll & Ledger</h3>
+                    <p className="text-sm text-gray-400">Manage employees, salaries, and commissions</p>
+                  </div>
+                </div>
+                <EmployeesTab />
+              </div>
+            )}
+
             {activeTab === 'systemHealth' && (
               <SystemHealthPanel />
             )}

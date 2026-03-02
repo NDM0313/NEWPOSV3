@@ -21,7 +21,7 @@ interface UserPermissionsScreenProps {
 }
 
 export function UserPermissionsScreen({ onBack, user, companyId }: UserPermissionsScreenProps) {
-  const { permissions, branchIds, loaded, isAdminOrOwner, reload } = usePermissions();
+  const { permissions, branchIds, isPermissionLoaded, isAdminOrOwner, reload } = usePermissions();
   const [branchList, setBranchList] = useState<{ id: string; name: string }[]>([]);
   const [saving, setSaving] = useState<string | null>(null);
   const [editRole, setEditRole] = useState<permissionsApi.EngineRole | null>(null);
@@ -95,7 +95,7 @@ export function UserPermissionsScreen({ onBack, user, companyId }: UserPermissio
       </div>
 
       <div className="p-4 space-y-4">
-        {!loaded ? (
+        {!isPermissionLoaded ? (
           <div className="flex items-center justify-center py-8">
             <Loader2 className="w-8 h-8 text-[#3B82F6] animate-spin" />
           </div>
