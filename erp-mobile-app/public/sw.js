@@ -1,15 +1,23 @@
 /* Minimal service worker: cache app shell, API calls not cached. Works at / or /m/ */
-const CACHE = 'erp-mobile-v2';
+const CACHE = 'erp-mobile-v3'; // Incremented cache version
 const BASE = self.location.pathname.replace(/\/sw\.js$/, '').replace(/\/?$/, '') || '';
 
+const APP_SHELL = [
+  BASE + '/',
+  BASE + '/index.html',
+  BASE + '/manifest.webmanifest',
+  BASE + '/icons/icon-192.png',
+  BASE + '/icons/icon-512.png'
+];
+
 self.addEventListener('install', (e) => {
-  const urls = [...new Set([BASE + '/index.html', BASE + '/manifest.webmanifest'])];
+  self.skipWaiting();
   e.waitUntil(
     caches.open(CACHE).then((c) => 
-      Promise.all(urls.map(url => 
-        c.add(url).catch(err => console.warn(`[SW] Skip caching ${url}:`, err))
+      Promise.all(APP_SHELL.map(url => 
+        c.add(url).catch(err => console.warn(`[SW] Initial cache skip ${url}:`, err))
       ))
-    ).then(() => self.skipWaiting())
+    )
   );
 });
 
@@ -22,22 +30,38 @@ self.addEventListener('activate', (e) => {
 });
 
 self.addEventListener('fetch', (e) => {
+  if (e.request.method !== 'GET') return;
+
   const u = new URL(e.request.url);
-  if (u.pathname.startsWith('/auth/') || u.pathname.startsWith('/rest/') ||
-      u.pathname.startsWith('/realtime/') || u.pathname.startsWith('/storage/') ||
-      u.origin.includes('supabase.dincouture.pk')) {
+  // Do not cache API, Auth, Storage, or Realtime calls
+  const isInternal = u.origin === self.location.origin;
+  const isExternalApi = u.origin.includes('supabase.dincouture.pk');
+  
+  if (isExternalApi || u.pathname.includes('/auth/') || u.pathname.includes('/rest/') || 
+      u.pathname.includes('/storage/') || u.pathname.includes('/realtime/')) {
     return;
   }
-  const fallback = BASE + '/index.html';
+
+  // Cache-First strategy for App Shell, Network-First (with cache fallback) for others
+  const isAppShell = APP_SHELL.some(path => u.pathname.endsWith(path));
+
   e.respondWith(
-    fetch(e.request).then((r) => {
-      if (r.ok && e.request.method === 'GET' && !u.pathname.startsWith('/auth') && !u.pathname.startsWith('/rest')) {
-        const clone = r.clone();
-        caches.open(CACHE).then((c) => c.put(e.request, clone));
+    caches.match(e.request).then((cachedResponse) => {
+      if (cachedResponse && isAppShell) {
+        return cachedResponse;
       }
-      return r;
-    }).catch(() =>
-      caches.match(e.request).then((r) => r || caches.match(fallback))
-    )
+
+      return fetch(e.request).then((networkResponse) => {
+        if (networkResponse && networkResponse.ok && networkResponse.status === 200) {
+          const clone = networkResponse.clone();
+          caches.open(CACHE).then((c) => {
+             c.put(e.request, clone).catch(() => {});
+          });
+        }
+        return networkResponse;
+      }).catch(() => {
+        return cachedResponse || (isInternal ? caches.match(BASE + '/index.html') : null);
+      });
+    })
   );
 });
