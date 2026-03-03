@@ -53,7 +53,7 @@ export function TabletSidebar({ user, branch, currentScreen, onNavigate, onLogou
   const enabled = FEATURE_MOBILE_PERMISSION_V2
     ? modules.filter((m) => {
         const code = getPermissionModuleForScreen(m.id);
-        return m.enabled && code != null && hasPermission(code, 'view');
+        return m.enabled && code != null && hasPermission(`${code}.view`);
       })
     : modules.filter((m) => m.enabled);
 

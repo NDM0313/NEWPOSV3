@@ -32,7 +32,7 @@ export function ModuleGrid({ onClose, onModuleSelect, userRole }: ModuleGridProp
     { id: 'rental', name: 'Rentals', icon: <Shirt className="w-6 h-6" />, color: '#8B5CF6', enabled: true },
     { id: 'studio', name: 'Studio', icon: <Camera className="w-6 h-6" />, color: '#EC4899', enabled: true },
     { id: 'expense', name: 'Expenses', icon: <Receipt className="w-6 h-6" />, color: '#F97316', enabled: true },
-    { id: 'accounts', name: 'Accounts', icon: <DollarSign className="w-6 h-6" />, color: '#F59E0B', enabled: userRole === 'admin' || userRole === 'manager' },
+    { id: 'accounts', name: 'Accounts', icon: <DollarSign className="w-6 h-6" />, color: '#F59E0B', enabled: true },
     { id: 'pos', name: 'POS', icon: <CreditCard className="w-6 h-6" />, color: '#10B981', enabled: true },
     { id: 'contacts', name: 'Contacts', icon: <Users className="w-6 h-6" />, color: '#6366F1', enabled: true },
     { id: 'reports', name: 'Reports', icon: <TrendingUp className="w-6 h-6" />, color: '#8B5CF6', enabled: true },
@@ -44,7 +44,7 @@ export function ModuleGrid({ onClose, onModuleSelect, userRole }: ModuleGridProp
   const enabled = FEATURE_MOBILE_PERMISSION_V2
     ? modules.filter((m) => {
         const code = getPermissionModuleForScreen(m.id);
-        return m.enabled && code != null && hasPermission(code, 'view');
+        return m.enabled && code != null && hasPermission(`${code}.view`);
       })
     : modules.filter((m) => m.enabled);
 

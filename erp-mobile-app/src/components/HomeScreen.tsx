@@ -63,7 +63,7 @@ export function HomeScreen({ user, branch, companyId, onNavigate, onLogout }: Ho
   const enabled = FEATURE_MOBILE_PERMISSION_V2
     ? MODULES.filter((m) => {
         const code = getPermissionModuleForScreen(m.id);
-        return m.enabled && code != null && hasPermission(code, 'view');
+        return m.enabled && code != null && hasPermission(`${code}.view`);
       })
     : MODULES.filter((m) => m.enabled);
 

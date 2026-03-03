@@ -76,20 +76,20 @@ export function canViewModule(perms: RolePermissionRow[], module: string): boole
   if (perms.length === 0) return false; // empty permissions = no access (v2 requirement)
   const viewActions: Record<string, string[]> = {
     sales: ['view_own', 'view_branch', 'view_company', 'view'],
-    purchases: ['view'],
+    purchase: ['view'],
     pos: ['view', 'use'],
     studio: ['view'],
     rentals: ['view'],
     reports: ['view'],
     inventory: ['view'],
-    products: ['view'],
+    ledger: ['view_full_accounting', 'view_customer', 'view_supplier'],
     contacts: ['view'],
-    accounts: ['view_full_accounting', 'view_customer', 'view_supplier'],
-    expenses: ['view'],
-    settings: ['modify'],
+    payments: ['receive', 'view'],
+    settings: ['modify', 'view'],
+    users: ['view', 'assign_permissions'],
   };
   const actions = viewActions[module] ?? ['view'];
-  return actions.some((a) => hasModuleAction(perms, module, a));
+  return actions.some((a) => perms.some(p => p.module === module && p.action === a && p.allowed));
 }
 
 /** Set one role permission (admin/owner only by RLS). */

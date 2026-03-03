@@ -246,7 +246,7 @@ export default function App() {
     // login and branch-selection don't have permission modules, but are always accessible.
     // others MUST have a mapping and permission to be accessible when V2 is on.
     if (!module) return screen === 'login' || screen === 'branch-selection';
-    if (!hasPermission(module, 'view')) return false;
+    if (!hasPermission(`${module}.view`)) return false;
     if (branchId && branchId !== 'all' && !hasBranchAccess(branchId)) return false;
     return true;
   };

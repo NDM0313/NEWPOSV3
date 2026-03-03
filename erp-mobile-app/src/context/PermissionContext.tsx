@@ -50,6 +50,10 @@ export function PermissionProvider({ children }: { children: React.ReactNode }) 
       const isAdminOrOwner = ['owner', 'admin', 'super admin', 'superadmin'].includes(r);
       const isOwner = r === 'owner';
       
+      console.log("[PermissionContext] Loaded permissions:", perms);
+      console.log("[PermissionContext] Loaded branches:", branchIds);
+      console.log("[PermissionContext] User Role:", r, "isAdminOrOwner:", isAdminOrOwner);
+
       setState({
         permissions: perms,
         branchIds,
@@ -58,18 +62,24 @@ export function PermissionProvider({ children }: { children: React.ReactNode }) 
         isOwner,
       });
     } catch (err) {
+      console.error("[PermissionContext] Error loading permissions:", err);
       setState({ permissions: [], branchIds: [], isPermissionLoaded: true, isAdminOrOwner: false, isOwner: false });
     }
   }, []);
 
   const hasPermission = useCallback(
-    (module: string, action: string = 'view'): boolean => {
+    (code: string): boolean => {
       if (!FEATURE_MOBILE_PERMISSION_V2) return true;
       if (!state.isPermissionLoaded) return false;
       if (state.isOwner) return true;
       
-      return permissionsApi.hasModuleAction(state.permissions, module, action) ||
-        permissionsApi.canViewModule(state.permissions, module);
+      const [module, action = 'view'] = code.split('.');
+      
+      const result = permissionsApi.hasModuleAction(state.permissions, module, action) ||
+        (action === 'view' && permissionsApi.canViewModule(state.permissions, module));
+        
+      console.log(`[PermissionContext] hasPermission('${code}') = ${result}`);
+      return result;
     },
     [state.isPermissionLoaded, state.permissions, state.isOwner]
   );
@@ -79,8 +89,11 @@ export function PermissionProvider({ children }: { children: React.ReactNode }) 
       if (!FEATURE_MOBILE_PERMISSION_V2) return true;
       if (!state.isPermissionLoaded) return false;
       if (state.isAdminOrOwner) return true;
-      if (state.branchIds.length === 0) return false;
-      return state.branchIds.includes(branchId);
+      if (!branchId) return false;
+      
+      const result = state.branchIds.includes(branchId);
+      console.log(`[PermissionContext] hasBranchAccess('${branchId}') = ${result} (User has: ${JSON.stringify(state.branchIds)})`);
+      return result;
     },
     [state.isPermissionLoaded, state.branchIds, state.isAdminOrOwner]
   );
