@@ -472,9 +472,7 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
         quantity: item.quantity,
         unit: (item as any).unit && String((item as any).unit).trim() ? (item as any).unit : ((item as any).packingDetails?.unit || 'pcs'),
         unit_price: unitPrice, // POS sends unitPrice; SaleForm sends price – ensure never null for DB NOT NULL
-        discount_percentage: (item as any).discountPercentage || 0,
         discount_amount: (item as any).discount || 0,
-        tax_percentage: (item as any).taxPercentage || 0,
         tax_amount: (item as any).tax || 0,
         total: lineTotal,
         // Include packing data
@@ -1338,9 +1336,7 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
           quantity: item.quantity,
           unit: item.unit || 'pcs',
           unit_price: unitPrice,
-          discount_percentage: item.discountPercentage || 0,
           discount_amount: item.discount || 0,
-          tax_percentage: item.taxPercentage || 0,
           tax_amount: item.tax || 0,
           total: lineTotal,
           packing_type: item.packingDetails?.packing_type || null,

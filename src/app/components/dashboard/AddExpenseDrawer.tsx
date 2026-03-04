@@ -60,7 +60,7 @@ const FALLBACK_CATEGORIES: { id: ExpenseCategory; name: string; slug: string; ic
 
 export const AddExpenseDrawer = ({ isOpen, onClose, onSuccess, expenseToEdit }: AddExpenseDrawerProps) => {
   const { formatCurrency } = useFormatCurrency();
-  const { companyId, branchId: contextBranchId } = useSupabase();
+  const { companyId, branchId: contextBranchId, requiresBranchSelection } = useSupabase();
   const { createExpense, updateExpense, refreshExpenses } = useExpenses();
   const { accounts: accountingAccounts } = useAccounting();
 
@@ -222,7 +222,7 @@ export const AddExpenseDrawer = ({ isOpen, onClose, onSuccess, expenseToEdit }: 
     const effectiveBranchId = selectedBranchId || contextBranchId;
     const selectedSalaryUser = isSalaryCategory ? salaryUsers.find((u) => u.id === paidToUserId) : null;
     if (!effectiveBranchId || effectiveBranchId === 'all') {
-      toast.error("Please select a branch");
+      toast.error(requiresBranchSelection ? "Please select a branch" : "No branch available. Please try again.");
       return;
     }
     setSaving(true);

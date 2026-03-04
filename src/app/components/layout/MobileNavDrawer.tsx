@@ -32,8 +32,8 @@ type NavItem = {
 
 export const MobileNavDrawer = () => {
   const { currentView, setCurrentView, mobileNavOpen, setMobileNavOpen } = useNavigation();
-  const { modules: settingsModules } = useSettings();
-  const { canViewReports, canAccessAccounting, canManageSettings, canAccessPurchases, canUsePos, canViewSales, canAccessStudio, canManageRentals } = useCheckPermission();
+  const { modules: settingsModules, isPermissionLoaded } = useSettings();
+  const { canViewReports, canAccessAccounting, canManageSettings, canAccessPurchases, canUsePos, canViewSales, canAccessStudio, canManageRentals, canViewContacts, canManageProducts, canManageExpenses } = useCheckPermission();
   const [expandedItems, setExpandedItems] = useState<string[]>([]);
 
   const toggleExpand = (id: string) => {
@@ -44,9 +44,9 @@ export const MobileNavDrawer = () => {
 
   const navItems: NavItem[] = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-    { id: 'contacts', label: 'Contacts', icon: Users },
-    { id: 'products', label: 'Products', icon: Package },
-    { id: 'inventory', label: 'Inventory', icon: Warehouse },
+    { id: 'contacts', label: 'Contacts', icon: Users, isHidden: !canViewContacts },
+    { id: 'products', label: 'Products', icon: Package, isHidden: !canManageProducts },
+    { id: 'inventory', label: 'Inventory', icon: Warehouse, isHidden: !canManageProducts },
     { id: 'purchases', label: 'Purchases', icon: ShoppingBag, isHidden: !canAccessPurchases },
     { id: 'sales', label: 'Sales', icon: ShoppingCart, isHidden: !canViewSales },
     { id: 'rentals', label: 'Rentals', icon: Shirt, isHidden: !settingsModules.rentalModuleEnabled || !canManageRentals },
@@ -63,13 +63,13 @@ export const MobileNavDrawer = () => {
         { id: 'studio-workflow', label: 'Workers' },
       ],
     },
-    { id: 'expenses', label: 'Expenses', icon: Receipt },
+    { id: 'expenses', label: 'Expenses', icon: Receipt, isHidden: !canManageExpenses },
     { id: 'accounting', label: 'Accounting', icon: Calculator, isHidden: !canAccessAccounting },
     { id: 'reports', label: 'Reports', icon: PieChart, isHidden: !canViewReports },
     { id: 'settings', label: 'Settings', icon: Settings, isHidden: !canManageSettings },
   ];
 
-  const visibleItems = navItems.filter((item) => !item.isHidden);
+  const visibleItems = navItems.filter((item) => (isPermissionLoaded ? !item.isHidden : item.id === 'dashboard'));
 
   const handleNavClick = (id: string) => {
     setCurrentView(id as any);

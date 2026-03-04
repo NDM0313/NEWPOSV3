@@ -164,22 +164,39 @@ Deno.serve(async (req) => {
     let assignedBranchesCount = 0;
     let assignedAccountsCount = 0;
 
-    if (authUserId && (branch_ids?.length || account_ids?.length)) {
-      const branchIds = Array.isArray(branch_ids) ? branch_ids.filter(Boolean) : [];
-      const accountIds = Array.isArray(account_ids) ? account_ids.filter(Boolean) : [];
-      const defaultBranch = default_branch_id || branchIds[0];
+    // Branch access: use same id as frontend expects (auth_user_id or public user id per project FK)
+    const branchUserId = authUserId;
+    const branchIds = Array.isArray(branch_ids) ? branch_ids.filter(Boolean) : [];
+    let effectiveBranchIds = branchIds;
+    if (authUserId && branchIds.length === 0) {
+      const { data: defaultBranch } = await supabaseAdmin
+        .from('branches')
+        .select('id')
+        .eq('company_id', company_id)
+        .eq('is_active', true)
+        .order('created_at', { ascending: true })
+        .limit(1)
+        .maybeSingle();
+      if (defaultBranch?.id) {
+        effectiveBranchIds = [defaultBranch.id];
+      }
+    }
 
-      if (branchIds.length > 0) {
+    if (authUserId && (effectiveBranchIds.length > 0 || (account_ids?.length ?? 0) > 0)) {
+      const accountIds = Array.isArray(account_ids) ? account_ids.filter(Boolean) : [];
+      const defaultBranch = default_branch_id || effectiveBranchIds[0];
+
+      if (effectiveBranchIds.length > 0) {
         const { data: validBranches } = await supabaseAdmin
           .from('branches')
           .select('id')
           .eq('company_id', company_id)
-          .in('id', branchIds);
+          .in('id', effectiveBranchIds);
         const ids = (validBranches || []).map((b: { id: string }) => b.id);
-        await supabaseAdmin.from('user_branches').delete().eq('user_id', authUserId);
+        await supabaseAdmin.from('user_branches').delete().eq('user_id', branchUserId);
         if (ids.length > 0) {
           const rows = ids.map((bid: string) => ({
-            user_id: authUserId,
+            user_id: branchUserId,
             branch_id: bid,
             is_default: bid === defaultBranch,
           }));

@@ -56,9 +56,8 @@ export interface PurchaseItem {
   quantity: number;
   unit?: string;
   unit_price: number;
-  discount_percentage?: number;
+  /** Only discount_amount is stored in DB; percentage is UI-only. */
   discount_amount?: number;
-  tax_percentage?: number;
   tax_amount?: number;
   total: number;
   // Packing fields
@@ -69,12 +68,73 @@ export interface PurchaseItem {
   notes?: string;
 }
 
+/** One row per charge (freight, loading, discount, etc.) for audit-ready ledger. */
+export interface PurchaseChargeInsert {
+  charge_type: string;
+  amount: number;
+  ledger_account_id?: string | null;
+}
+
+/** Build purchase row for insert: only columns that exist in DB (no discount_percentage). */
+function buildPurchaseInsertRow(purchase: Purchase): Record<string, unknown> {
+  const row: Record<string, unknown> = {
+    company_id: purchase.company_id,
+    branch_id: purchase.branch_id,
+    po_no: purchase.po_no,
+    po_date: purchase.po_date,
+    supplier_id: purchase.supplier_id ?? null,
+    supplier_name: purchase.supplier_name,
+    status: purchase.status,
+    payment_status: purchase.payment_status,
+    subtotal: purchase.subtotal ?? 0,
+    discount_amount: purchase.discount_amount ?? 0,
+    tax_amount: purchase.tax_amount ?? 0,
+    shipping_cost: purchase.shipping_cost ?? 0,
+    total: purchase.total ?? 0,
+    paid_amount: purchase.paid_amount ?? 0,
+    due_amount: purchase.due_amount ?? 0,
+    notes: purchase.notes ?? null,
+    attachments: purchase.attachments ?? null,
+    created_by: purchase.created_by,
+  };
+  return row;
+}
+
+/** Build purchase_items row. Uses discount_amount/tax_amount (no discount_percentage) for schema compatibility. */
+function buildPurchaseItemInsertRow(item: PurchaseItem, purchaseId: string): Record<string, unknown> {
+  const discountVal = Number(item.discount_amount ?? (item as any).discount ?? 0);
+  const taxVal = Number(item.tax_amount ?? (item as any).tax ?? 0);
+  return {
+    purchase_id: purchaseId,
+    product_id: item.product_id,
+    variation_id: item.variation_id ?? null,
+    product_name: item.product_name,
+    sku: item.sku ?? 'N/A',
+    quantity: item.quantity,
+    unit: item.unit ?? 'pcs',
+    unit_price: item.unit_price,
+    discount_amount: discountVal,
+    tax_amount: taxVal,
+    total: item.total,
+    packing_type: item.packing_type ?? null,
+    packing_quantity: item.packing_quantity ?? null,
+    packing_unit: item.packing_unit ?? null,
+    packing_details: item.packing_details ?? null,
+    notes: item.notes ?? null,
+  };
+}
+
 export const purchaseService = {
-  // Create purchase with items
-  async createPurchase(purchase: Purchase, items: PurchaseItem[]) {
+  // Create purchase with items and optional per-line charges (for line-by-line ledger)
+  async createPurchase(purchase: Purchase, items: PurchaseItem[], charges?: PurchaseChargeInsert[]) {
+    const purchaseRow = buildPurchaseInsertRow(purchase) as Record<string, unknown>;
+    // DB has discount_amount only; never send discount_percentage/tax_percentage
+    delete (purchaseRow as any).discount_percentage;
+    delete (purchaseRow as any).tax_percentage;
+
     const { data: purchaseData, error: purchaseError } = await supabase
       .from('purchases')
-      .insert(purchase)
+      .insert(purchaseRow)
       .select('*')
       .single();
 
@@ -83,20 +143,40 @@ export const purchaseService = {
       throw purchaseError;
     }
 
-    // Insert items
-    const itemsWithPurchaseId = items.map(item => ({
-      ...item,
-      purchase_id: purchaseData.id,
-    }));
+    const itemsWithPurchaseId = items.map(item => {
+      const row = buildPurchaseItemInsertRow(item, purchaseData.id) as Record<string, unknown>;
+      delete (row as any).discount_percentage;
+      delete (row as any).tax_percentage;
+      return row;
+    });
 
     const { error: itemsError } = await supabase
       .from('purchase_items')
       .insert(itemsWithPurchaseId);
 
     if (itemsError) {
-      // Rollback: Delete purchase
       await supabase.from('purchases').delete().eq('id', purchaseData.id);
       throw itemsError;
+    }
+
+    // Insert purchase_charges (one row per extra expense / discount) for line-by-line accounting
+    if (charges && charges.length > 0) {
+      const chargeRows = charges
+        .filter((c) => c.amount > 0)
+        .map((c) => ({
+          purchase_id: purchaseData.id,
+          charge_type: c.charge_type,
+          ledger_account_id: c.ledger_account_id ?? null,
+          amount: Number(c.amount),
+          created_by: purchase.created_by ?? null,
+        }));
+      if (chargeRows.length > 0) {
+        const { error: chargesError } = await supabase.from('purchase_charges').insert(chargeRows);
+        if (chargesError) {
+          console.warn('[PURCHASE SERVICE] purchase_charges insert failed (table may not exist):', chargesError);
+          // Do not rollback purchase; header/items are saved. Accounting can use header totals as fallback.
+        }
+      }
     }
 
     return purchaseData;
@@ -337,7 +417,7 @@ export const purchaseService = {
     return data;
   },
 
-  // Update purchase
+  // Update purchase (only DB-existing columns; discount_percentage/tax_percentage never sent)
   async updatePurchase(id: string, updates: Partial<Purchase>) {
     // 🔒 CANCELLED: No updates allowed on cancelled purchases
     const { data: existingPurchase } = await supabase.from('purchases').select('status').eq('id', id).single();
@@ -356,9 +436,13 @@ export const purchaseService = {
       throw new Error('Cannot edit purchase: This purchase has a return and is locked. Returns cannot be edited or deleted.');
     }
 
+    const sanitized = { ...updates } as Record<string, unknown>;
+    delete sanitized.discount_percentage;
+    delete sanitized.tax_percentage;
+
     const { data, error } = await supabase
       .from('purchases')
-      .update(updates)
+      .update(sanitized)
       .eq('id', id)
       .select()
       .single();

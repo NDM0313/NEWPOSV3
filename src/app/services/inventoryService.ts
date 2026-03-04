@@ -14,6 +14,9 @@
 
 import { supabase } from '@/lib/supabase';
 
+// Dedupe negative-stock warnings per product so console isn't flooded when multiple forms call getInventoryOverview
+const negativeStockWarnedIds = new Set<string>();
+
 export interface InventoryOverviewRow {
   id: string;
   productId: string;
@@ -244,43 +247,30 @@ export const inventoryService = {
         totalPieces = productPieceMap[p.id] || 0;
       }
       
-      // 🔒 SAFETY: Check for negative stock and log warning with diagnostic info
-      // Negative stock indicates data issue (e.g., more sales than purchases)
-      // Allow negative to show in UI for visibility (helps identify data issues)
+      // 🔒 SAFETY: Check for negative stock and log warning with diagnostic info (once per product per session to reduce console noise)
+      // Negative stock indicates data issue (e.g., more sales than purchases). UI still shows it for visibility.
       if (totalStock < 0) {
-        // 🔒 DIAGNOSTIC: Fetch detailed movements for this product to help diagnose
-        const productMovements = movements?.filter((m: any) => 
-          m.product_id === p.id && (!m.variation_id || !hasVariations)
-        ) || [];
-        
-        const movementSummary = {
-          purchases: productMovements.filter((m: any) => m.movement_type === 'purchase').reduce((sum: number, m: any) => sum + (Number(m.quantity) || 0), 0),
-          sales: productMovements.filter((m: any) => m.movement_type === 'sale').reduce((sum: number, m: any) => sum + (Number(m.quantity) || 0), 0),
-          adjustments: productMovements.filter((m: any) => m.movement_type === 'adjustment').reduce((sum: number, m: any) => sum + (Number(m.quantity) || 0), 0),
-          totalMovements: productMovements.length
-        };
-        
-        console.warn('[INVENTORY SERVICE] ⚠️ Negative stock calculated:', {
-          productId: p.id,
-          productName: p.name,
-          sku: p.sku,
-          calculatedStock: totalStock,
-          hasVariations,
-          productLevelStock: productStockMap[p.id],
-          variationStocks: hasVariations ? (variationMap[p.id] || []).map((v: any) => ({
-            variationId: v.id,
-            stock: variationStockMap[v.id] || 0
-          })) : [],
-          movementSummary,
-          recentMovements: productMovements.slice(-5).map((m: any) => ({
-            type: m.movement_type,
-            quantity: m.quantity,
-            reference: m.reference_type,
-            referenceId: m.reference_id,
-            notes: m.notes,
-            createdAt: m.created_at
-          }))
-        });
+        const alreadyWarned = negativeStockWarnedIds.has(p.id);
+        if (!alreadyWarned) {
+          negativeStockWarnedIds.add(p.id);
+          const productMovements = movements?.filter((m: any) =>
+            m.product_id === p.id && (!m.variation_id || !hasVariations)
+          ) || [];
+          const movementSummary = {
+            purchases: productMovements.filter((m: any) => m.movement_type === 'purchase').reduce((sum: number, m: any) => sum + (Number(m.quantity) || 0), 0),
+            sales: productMovements.filter((m: any) => m.movement_type === 'sale').reduce((sum: number, m: any) => sum + (Number(m.quantity) || 0), 0),
+            adjustments: productMovements.filter((m: any) => m.movement_type === 'adjustment').reduce((sum: number, m: any) => sum + (Number(m.quantity) || 0), 0),
+            totalMovements: productMovements.length
+          };
+          console.warn('[INVENTORY SERVICE] ⚠️ Negative stock calculated:', {
+            productId: p.id,
+            productName: p.name,
+            sku: p.sku,
+            calculatedStock: totalStock,
+            hasVariations,
+            movementSummary
+          });
+        }
       }
 
       const minStock = Number(p.min_stock) ?? 0;

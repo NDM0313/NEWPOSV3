@@ -159,7 +159,7 @@ export const useRentals = () => {
 export const RentalProvider = ({ children }: { children: ReactNode }) => {
   const [rentals, setRentals] = useState<RentalUI[]>([]);
   const [loading, setLoading] = useState(true);
-  const { companyId, branchId, user } = useSupabase();
+  const { companyId, branchId, user, requiresBranchSelection } = useSupabase();
   const accounting = useAccounting();
 
   const loadRentals = useCallback(async () => {
@@ -222,7 +222,10 @@ export const RentalProvider = ({ children }: { children: ReactNode }) => {
     data: Omit<RentalUI, 'id' | 'rentalNo' | 'itemsCount'> & { items: RentalItemUI[] }
   ): Promise<RentalUI> => {
     if (!companyId || !user) throw new Error('Company and user required');
-    if (!data.branchId) throw new Error('Branch is required');
+    if (!data.branchId) {
+      if (requiresBranchSelection) throw new Error('Branch is required');
+      throw new Error('No branch available. Please try again.');
+    }
     if (!data.items?.length) throw new Error('At least one item required');
     const total = data.items.reduce((s, i) => s + i.total, 0);
     const paid = data.paidAmount ?? 0;

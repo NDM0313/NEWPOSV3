@@ -45,9 +45,10 @@ type NavItem = {
 export const Sidebar = () => {
   const { currentView, setCurrentView, isSidebarOpen, toggleSidebar, openDrawer } = useNavigation();
   const { modules: moduleContextModules } = useModules();
-  const { modules: settingsModules } = useSettings();
-  const { canViewReports, canAccessAccounting, canManageSettings, canManageUsers, canAccessPurchases, canUsePos, canViewSales, canAccessStudio, canManageRentals } = useCheckPermission();
+  const { modules: settingsModules, isPermissionLoaded } = useSettings();
+  const { canViewReports, canAccessAccounting, canManageSettings, canManageUsers, canAccessPurchases, canUsePos, canViewSales, canAccessStudio, canManageRentals, canViewContacts, canManageProducts, canManageExpenses } = useCheckPermission();
   const [expandedItems, setExpandedItems] = useState<string[]>([]);
+  const pathname = typeof window !== 'undefined' ? window.location.pathname : '';
 
   const toggleExpand = (id: string) => {
     setExpandedItems(prev => 
@@ -57,9 +58,9 @@ export const Sidebar = () => {
 
   const navItems: NavItem[] = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-    { id: 'contacts', label: 'Contacts', icon: Users },
-    { id: 'products', label: 'Products', icon: Package },
-    { id: 'inventory', label: 'Inventory', icon: Warehouse },
+    { id: 'contacts', label: 'Contacts', icon: Users, isHidden: !canViewContacts },
+    { id: 'products', label: 'Products', icon: Package, isHidden: !canManageProducts },
+    { id: 'inventory', label: 'Inventory', icon: Warehouse, isHidden: !canManageProducts },
     { id: 'purchases', label: 'Purchases', icon: ShoppingBag, isHidden: !canAccessPurchases },
     { id: 'sales', label: 'Sales', icon: ShoppingCart, isHidden: !canViewSales },
     { id: 'rentals', label: 'Rentals', icon: Shirt, isHidden: !settingsModules.rentalModuleEnabled || !canManageRentals },
@@ -76,10 +77,11 @@ export const Sidebar = () => {
         { id: 'studio-workflow', label: 'Workers' },
       ]
     },
-    { id: 'expenses', label: 'Expenses', icon: Receipt },
+    { id: 'expenses', label: 'Expenses', icon: Receipt, isHidden: !canManageExpenses },
     { id: 'accounting', label: 'Accounting', icon: Calculator, isHidden: !canAccessAccounting },
     { id: 'reports', label: 'Reports', icon: PieChart, isHidden: !canViewReports },
     { id: 'erp-permissions', label: 'ERP Permissions', icon: Shield, isHidden: !canManageSettings },
+    { id: 'permission-inspector', label: 'Permission Inspector', icon: Shield, isHidden: !canManageSettings },
     { id: 'settings', label: 'Settings', icon: Settings, isHidden: !canManageSettings },
     { 
       id: 'test-pages-group', 
@@ -109,7 +111,7 @@ export const Sidebar = () => {
     },
   ];
 
-  const visibleNavItems = navItems.filter(item => !item.isHidden);
+  const visibleNavItems = navItems.filter(item => (isPermissionLoaded ? !item.isHidden : item.id === 'dashboard'));
 
   const handleItemClick = (item: NavItem) => {
     if (item.children) {
@@ -117,6 +119,13 @@ export const Sidebar = () => {
       toggleExpand(item.id);
     } else {
       setCurrentView(item.id as any);
+      if (typeof window !== 'undefined') {
+        if (item.id === 'permission-inspector') {
+          window.history.pushState({}, '', '/admin/permission-inspector');
+        } else if (pathname === '/admin/permission-inspector') {
+          window.history.pushState({}, '', '/');
+        }
+      }
     }
   };
 
@@ -152,7 +161,7 @@ export const Sidebar = () => {
       <nav className="flex-1 py-6 px-3 space-y-1 overflow-y-auto">
         {visibleNavItems.map((item) => {
           const isExpanded = expandedItems.includes(item.id);
-          const isActive = currentView === item.id || item.children?.some(c => c.id === currentView);
+          const isActive = currentView === item.id || item.children?.some(c => c.id === currentView) || (item.id === 'permission-inspector' && pathname === '/admin/permission-inspector');
           
           return (
             <div key={item.id}>

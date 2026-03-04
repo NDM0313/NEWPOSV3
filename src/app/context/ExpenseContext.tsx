@@ -102,7 +102,7 @@ export const ExpenseProvider = ({ children }: { children: ReactNode }) => {
   const [loading, setLoading] = useState(true);
   const { generateDocumentNumber, incrementNextNumber } = useDocumentNumbering();
   const accounting = useAccounting();
-  const { companyId, branchId, user } = useSupabase();
+  const { companyId, branchId, user, requiresBranchSelection } = useSupabase();
 
   // Map category from app format to Supabase format (accepts slug string from expense_categories)
   const mapCategoryToSupabase = (category: ExpenseCategory | string): string => {
@@ -200,8 +200,10 @@ export const ExpenseProvider = ({ children }: { children: ReactNode }) => {
     options?: { branchId?: string; payment_account_id?: string }
   ): Promise<Expense> => {
     const effectiveBranchId = options?.branchId ?? branchId;
-    if (!companyId || !effectiveBranchId || !user) {
-      throw new Error('Company ID, Branch ID, and User are required');
+    if (!companyId || !user) throw new Error('Company and user are required');
+    if (!effectiveBranchId || effectiveBranchId === 'all') {
+      if (requiresBranchSelection) throw new Error('Branch is required');
+      throw new Error('No branch available. Please try again.');
     }
 
     try {

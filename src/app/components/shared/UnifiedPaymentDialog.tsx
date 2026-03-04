@@ -581,7 +581,6 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
           }
           
           try {
-            const paymentRef = generateDocumentNumber('payment');
             let attachmentPayload: { url: string; name: string }[] = [];
             if (attachments.length > 0 && companyId) {
               let anyUploadFailed = false;
@@ -625,44 +624,18 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
               }
             }
             const { saleService } = await import('@/app/services/saleService');
-            let effectivePaymentRef = paymentRef;
-            let didIncrementForRetry = false;
-            try {
-              await saleService.recordPayment(
-                referenceId,
-                amount,
-                paymentMethod,
-                selectedAccount,
-                companyId,
-                branchId,
-                paymentDateTime.split('T')[0],
-                effectivePaymentRef,
-                { notes: notes.trim() || undefined, attachments: attachmentPayload.length ? attachmentPayload : undefined }
-              );
-            } catch (insertErr: any) {
-              const isDuplicateRef = insertErr?.code === '23505' && String(insertErr?.message || '').includes('payments_reference_number_unique');
-              if (isDuplicateRef) {
-                const config = getNumberingConfig('payment');
-                const nextNum = (config.nextNumber ?? 1) + 1;
-                effectivePaymentRef = `${config.prefix}${String(nextNum).padStart(config.padding, '0')}`;
-                incrementNextNumber('payment');
-                didIncrementForRetry = true;
-                await saleService.recordPayment(
-                  referenceId,
-                  amount,
-                  paymentMethod,
-                  selectedAccount,
-                  companyId,
-                  branchId,
-                  paymentDateTime.split('T')[0],
-                  effectivePaymentRef,
-                  { notes: notes.trim() || undefined, attachments: attachmentPayload.length ? attachmentPayload : undefined }
-                );
-              } else {
-                throw insertErr;
-              }
-            }
-            if (!didIncrementForRetry) incrementNextNumber('payment');
+            // Let saleService get reference_number from DB (get_next_document_number_global) to avoid duplicate key
+            await saleService.recordPayment(
+              referenceId,
+              amount,
+              paymentMethod,
+              selectedAccount,
+              companyId,
+              branchId,
+              paymentDateTime.split('T')[0],
+              undefined,
+              { notes: notes.trim() || undefined, attachments: attachmentPayload.length ? attachmentPayload : undefined }
+            );
             success = await accounting.recordSalePayment({
               saleId: referenceId,
               invoiceNo: referenceNo || `INV-${Date.now()}`,

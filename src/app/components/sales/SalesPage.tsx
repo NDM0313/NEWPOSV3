@@ -1880,11 +1880,16 @@ export const SalesPage = () => {
                               <Eye size={14} className="mr-2 text-blue-400" />
                               View Details
                             </DropdownMenuItem>
-                            {/* 🔒 LOCK: Hide Edit if sale has returns; permission-based */}
+                            {/* Edit: requires canEditSale (role_permissions sales.edit) and no return lock. RLS allows UPDATE only when created_by = auth.uid() for salesman. */}
                             {canEditSale && !(sale.hasReturn || salesWithReturns.has(sale.id)) && (
                               <DropdownMenuItem 
                                 className="hover:bg-gray-800 cursor-pointer"
-                                onClick={() => handleSaleAction('edit', sale)}
+                                onClick={() => {
+                                  if (import.meta.env?.DEV) {
+                                    console.log('[SalesPage] Edit clicked:', { canEditSale, saleId: sale.id, createdBy: (sale as any).created_by, note: 'RLS allows update only when sales.created_by = auth.uid() for salesman' });
+                                  }
+                                  handleSaleAction('edit', sale);
+                                }}
                               >
                                 <Edit size={14} className="mr-2 text-green-400" />
                                 Edit Sale

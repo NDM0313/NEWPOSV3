@@ -17,6 +17,10 @@ interface SupabaseContextType {
   /** Branch IDs the user can access (from user_branches, or all company branches for admin). Empty until loaded. */
   accessibleBranchIds: string[];
   setAccessibleBranchIds: (ids: string[]) => void;
+  /** Company branch count (1 = single-branch, no assignment needed). */
+  branchCount: number;
+  /** True only when branch_count > 1 AND user has no branch mapping. Use to show "Branch is required" only then. */
+  requiresBranchSelection: boolean;
   /** Global packing (Boxes/Pieces): OFF = hidden everywhere; ON = full packing. Default OFF. */
   enablePacking: boolean;
   setEnablePacking: (value: boolean) => Promise<void>;
@@ -35,6 +39,8 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const [branchId, setBranchId] = useState<string | null>(null);
   const [defaultBranchId, setDefaultBranchId] = useState<string | null>(null);
   const [accessibleBranchIds, setAccessibleBranchIds] = useState<string[]>([]);
+  const [branchCount, setBranchCount] = useState<number>(0);
+  const [requiresBranchSelection, setRequiresBranchSelection] = useState<boolean>(false);
   const [enablePacking, setEnablePackingState] = useState<boolean>(false);
 
   const loadEnablePacking = async (cid: string) => {
@@ -144,7 +150,7 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
       const { data, error } = await supabase
         .from('users')
-        .select('id, company_id, role, is_active')
+        .select('id, auth_user_id, company_id, role, is_active')
         .or(`id.eq.${userId},auth_user_id.eq.${userId}`)
         .limit(1)
         .maybeSingle();
@@ -209,7 +215,11 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             });
           });
         }
-        loadUserBranch(erpUserId, data.company_id, data.role);
+        loadUserBranch(
+          { erpUserId, authUserId: (data as { auth_user_id?: string }).auth_user_id ?? null },
+          data.company_id,
+          data.role
+        );
       }
     } catch (error) {
       console.error('[FETCH USER DATA EXCEPTION]', error);
@@ -218,79 +228,120 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
   };
 
-  // Load user's default branch and accessible branch IDs (for smart branch selector)
-  const loadUserBranch = async (userId: string, companyId: string, userRole?: string | null) => {
+  // Load user's default branch and accessible branch IDs (single vs multi-branch: uses get_effective_user_branch when available)
+  const loadUserBranch = async (
+    userIds: { erpUserId: string; authUserId: string | null } | string,
+    companyId: string,
+    userRole?: string | null
+  ) => {
+    const erpId = typeof userIds === 'string' ? userIds : userIds.erpUserId;
+    const authId = typeof userIds === 'string' ? null : userIds.authUserId;
+    const lookupId = authId ?? erpId;
     try {
       const isAdmin = userRole === 'admin' || userRole === 'Admin';
       if (isAdmin) {
         setDefaultBranchId('all');
         setBranchId('all');
+        setRequiresBranchSelection(false);
         const { data: companyBranches } = await supabase
           .from('branches')
           .select('id')
           .eq('company_id', companyId)
           .eq('is_active', true);
-        setAccessibleBranchIds((companyBranches || []).map((b: { id: string }) => b.id));
-        if (import.meta.env?.DEV) console.log('[BRANCH LOADED] Admin: All Branches', { count: (companyBranches || []).length });
+        const ids = (companyBranches || []).map((b: { id: string }) => b.id);
+        setAccessibleBranchIds(ids);
+        setBranchCount(ids.length);
+        if (import.meta.env?.DEV) console.log('[BRANCH LOADED] Admin: All Branches', { count: ids.length });
         return;
       }
 
-      // Non-admin: get branches from user_branches (user_id = public.users.id for this user)
-      const { data: userBranches, error: branchError } = await supabase
-        .from('user_branches')
-        .select('branch_id, is_default')
-        .eq('user_id', userId);
+      // Non-admin: use get_effective_user_branch (single-branch => auto that branch; multi => user_branches or null)
+      const { data: rpcData, error: rpcError } = await supabase.rpc('get_effective_user_branch', { p_user_id: lookupId });
+      const payload = rpcData as {
+        effective_branch_id?: string | null;
+        branch_count?: number;
+        accessible_branch_ids?: string[] | { [key: string]: unknown }[];
+        requires_branch_selection?: boolean;
+      } | null;
 
-      if (import.meta.env?.DEV) {
-        console.log('[BRANCH LOAD] Non-admin', {
-          erpUserId: userId,
-          userBranchesCount: userBranches?.length ?? 0,
-          branchError: branchError ? { code: branchError.code, message: branchError.message } : null,
-        });
+      if (!rpcError && payload && typeof payload.branch_count === 'number') {
+        const count = payload.branch_count;
+        setBranchCount(count);
+        const accessible = Array.isArray(payload.accessible_branch_ids)
+          ? payload.accessible_branch_ids.map((x: unknown) => (typeof x === 'string' ? x : (x as { id?: string })?.id ?? String(x))).filter(Boolean)
+          : [];
+        setAccessibleBranchIds(accessible);
+        setRequiresBranchSelection(Boolean(payload.requires_branch_selection));
+        const effectiveId = payload.effective_branch_id ?? null;
+        setDefaultBranchId(effectiveId);
+        setBranchId(effectiveId);
+        if (import.meta.env?.DEV) console.log('[BRANCH LOADED] get_effective_user_branch', { count, effectiveId, requiresBranchSelection: payload.requires_branch_selection });
+        return;
       }
+
+      if (rpcError && import.meta.env?.DEV) console.warn('[BRANCH LOAD] get_effective_user_branch failed, using fallback:', rpcError.message);
+
+      // Fallback: manual user_branches + company branch (same as before)
+      let query = supabase.from('user_branches').select('branch_id, is_default');
+      if (authId && authId !== erpId) {
+        query = query.or(`user_id.eq.${erpId},user_id.eq.${authId}`);
+      } else {
+        query = query.eq('user_id', erpId);
+      }
+      const { data: userBranches, error: branchError } = await query;
 
       if (userBranches && userBranches.length > 0) {
         const ids = userBranches.map((ub: { branch_id: string }) => ub.branch_id).filter(Boolean);
         setAccessibleBranchIds(ids);
+        setBranchCount(ids.length);
+        setRequiresBranchSelection(false);
         const defaultRow = userBranches.find((ub: any) => ub.is_default === true) || userBranches[0];
         const defaultId = defaultRow?.branch_id ?? ids[0];
         setDefaultBranchId(defaultId);
         setBranchId(defaultId);
-        if (import.meta.env?.DEV) console.log('[BRANCH LOADED] User branches', { count: ids.length, defaultId });
+        if (import.meta.env?.DEV) console.log('[BRANCH LOADED] User branches (fallback)', { count: ids.length, defaultId });
         return;
       }
 
-      if (branchError && (branchError.code === 'PGRST301' || branchError.code === 'PGRST116' || branchError.status === 404 || branchError.status === 406)) {
-        // Table doesn't exist - fall back to first company branch
-      } else if (branchError) {
-        console.warn('[BRANCH LOAD] Unexpected error (non-blocking):', branchError);
-      }
-
-      // Fallback: single company branch (e.g. no user_branches table or user not assigned)
-      const { data: companyBranch, error: companyBranchError } = await supabase
+      const { data: companyBranchList, error: companyBranchError } = await supabase
         .from('branches')
         .select('id')
         .eq('company_id', companyId)
-        .eq('is_active', true)
-        .limit(1)
-        .maybeSingle();
+        .eq('is_active', true);
 
-      if (companyBranch && !companyBranchError) {
-        setDefaultBranchId(companyBranch.id);
-        setBranchId(companyBranch.id);
-        setAccessibleBranchIds([companyBranch.id]);
-        if (import.meta.env?.DEV) console.log('[BRANCH LOADED] Default company branch:', companyBranch.id);
+      const branchList = Array.isArray(companyBranchList) ? companyBranchList : companyBranchList ? [companyBranchList] : [];
+      const singleBranch = branchList.length === 1 ? branchList[0] : null;
+      const multiBranchFirst = branchList.length > 1 ? branchList[0] : null;
+
+      setBranchCount(branchList.length);
+      if (singleBranch && (singleBranch as { id?: string }).id) {
+        const id = (singleBranch as { id: string }).id;
+        setDefaultBranchId(id);
+        setBranchId(id);
+        setAccessibleBranchIds([id]);
+        setRequiresBranchSelection(false);
+        if (import.meta.env?.DEV) console.log('[BRANCH LOADED] Single company branch (fallback):', id);
+        return;
+      }
+      if (branchList.length > 1) {
+        setAccessibleBranchIds(branchList.map((b: { id: string }) => b.id));
+        setRequiresBranchSelection(true);
+        setDefaultBranchId(null);
+        setBranchId(null);
       } else {
-        if (import.meta.env?.DEV) console.warn('[BRANCH LOAD] No branches for non-admin', { companyBranchError: companyBranchError?.message });
+        setRequiresBranchSelection(false);
         setDefaultBranchId(null);
         setBranchId(null);
         setAccessibleBranchIds([]);
       }
+      if (import.meta.env?.DEV) console.warn('[BRANCH LOAD] No branches or multi-branch no mapping', { companyBranchError: companyBranchError?.message });
     } catch (error) {
       console.error('[LOAD BRANCH ERROR]', error);
       setDefaultBranchId(null);
       setBranchId(null);
       setAccessibleBranchIds([]);
+      setBranchCount(0);
+      setRequiresBranchSelection(false);
     }
   };
 
@@ -355,6 +406,8 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         setBranchId,
         accessibleBranchIds,
         setAccessibleBranchIds,
+        branchCount,
+        requiresBranchSelection,
         enablePacking,
         setEnablePacking,
         refreshEnablePacking,
@@ -366,10 +419,35 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   );
 };
 
-export const useSupabase = () => {
+/** Safe default when outside provider (e.g. ErrorBoundary re-mount or Strict Mode). Avoids crash; consumer sees loading/no-user. */
+const defaultSupabaseContext: SupabaseContextType = {
+  user: null,
+  session: null,
+  loading: true,
+  signIn: async () => {},
+  signOut: async () => {},
+  companyId: null,
+  userRole: null,
+  branchId: null,
+  defaultBranchId: null,
+  setBranchId: () => {},
+  accessibleBranchIds: [],
+  setAccessibleBranchIds: () => {},
+  branchCount: 0,
+  requiresBranchSelection: false,
+  enablePacking: false,
+  setEnablePacking: async () => {},
+  refreshEnablePacking: async () => {},
+  supabaseClient: supabase,
+};
+
+export const useSupabase = (): SupabaseContextType => {
   const context = useContext(SupabaseContext);
   if (!context) {
-    throw new Error('useSupabase must be used within SupabaseProvider');
+    if (import.meta.env?.DEV) {
+      console.warn('[useSupabase] Called outside SupabaseProvider; using safe default (loading=true).');
+    }
+    return defaultSupabaseContext;
   }
   return context;
 };

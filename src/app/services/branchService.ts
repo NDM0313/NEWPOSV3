@@ -21,7 +21,21 @@ export interface Branch {
   updated_at?: string;
 }
 
+/** Branch access mode: AUTO = single-branch company (auto-assign); RESTRICTED = multi-branch (user must be assigned). */
+export type BranchAccessMode = 'AUTO' | 'RESTRICTED';
+
 export const branchService = {
+  /** Get count of active branches for a company. Used for Branch Access Mode (1 = AUTO, >1 = RESTRICTED). */
+  async getCompanyBranchCount(companyId: string): Promise<number> {
+    const { count, error } = await supabase
+      .from('branches')
+      .select('*', { count: 'exact', head: true })
+      .eq('company_id', companyId)
+      .or('is_active.is.null,is_active.eq.true');
+    if (error) throw error;
+    return count ?? 0;
+  },
+
   // Get all branches for a company
   async getAllBranches(companyId: string) {
     const { data, error } = await supabase

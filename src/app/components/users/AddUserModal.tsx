@@ -42,6 +42,7 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
   const [branches, setBranches] = useState<Branch[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [selectedBranchIds, setSelectedBranchIds] = useState<string[]>([]);
+  const [defaultBranchId, setDefaultBranchId] = useState<string>('');
   const [selectedAccountIds, setSelectedAccountIds] = useState<string[]>([]);
   const [loadingAccess, setLoadingAccess] = useState(false);
   const [formData, setFormData] = useState({
@@ -78,6 +79,7 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
       setActiveTab('general');
       if (!editingUser) {
         setSelectedBranchIds([]);
+        setDefaultBranchId('');
         setSelectedAccountIds([]);
       }
       if (editingUser) {
@@ -175,6 +177,7 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
           userService.getUserAccountAccess(identityId).catch(() => []),
         ]);
         setSelectedBranchIds(branchIds);
+        setDefaultBranchId(branchIds[0] || '');
         setSelectedAccountIds(accountIds);
       } catch (e) {
         console.error('[AddUserModal] Load user access:', e);
@@ -183,6 +186,19 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
       }
     })();
   }, [open, editingUser?.id, editingUser?.auth_user_id]);
+
+  // Single-branch: ensure default is the only branch when branches.length === 1
+  const branchCount = branches.length;
+  const isSingleBranch = branchCount === 1;
+  const effectiveBranchIds = isSingleBranch ? (branches[0] ? [branches[0].id] : []) : selectedBranchIds;
+  const effectiveDefaultBranchId = isSingleBranch ? (branches[0]?.id || '') : (defaultBranchId || selectedBranchIds[0] || '');
+  // Keep defaultBranchId in sync when selection changes (multi-branch)
+  useEffect(() => {
+    if (branchCount <= 1) return;
+    if (selectedBranchIds.length > 0 && !selectedBranchIds.includes(defaultBranchId)) {
+      setDefaultBranchId(selectedBranchIds[0]);
+    }
+  }, [branchCount, selectedBranchIds, defaultBranchId]);
   // identityId for save: editingUser?.auth_user_id ?? savedAuthUserId — never editingUser.id
 
   // Load employee data if editing
@@ -214,6 +230,12 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
 
     if (!formData.email.trim() || !formData.email.includes('@')) {
       toast.error('Please enter a valid email address');
+      return;
+    }
+
+    const isAdminOrOwnerRole = formData.role === 'admin' || formData.role === 'owner';
+    if (!isAdminOrOwnerRole && branches.length > 1 && selectedBranchIds.length === 0) {
+      toast.error('Please select at least one branch for this user.');
       return;
     }
 
@@ -273,9 +295,9 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
             is_active: formData.is_active,
             temporary_password: formData.passwordOption === 'temp' && formData.temporary_password.length >= 6 ? formData.temporary_password : undefined,
             send_invite_email: formData.passwordOption === 'invite',
-            branch_ids: selectedBranchIds.length > 0 ? selectedBranchIds : undefined,
+            branch_ids: effectiveBranchIds.length > 0 ? effectiveBranchIds : undefined,
             account_ids: selectedAccountIds.length > 0 ? selectedAccountIds : undefined,
-            default_branch_id: selectedBranchIds[0] || undefined,
+            default_branch_id: effectiveDefaultBranchId || undefined,
           });
           const result = createResult as { user_id?: string; auth_user_id?: string; assignedBranchesCount?: number; assignedAccountsCount?: number };
           savedUserId = result?.user_id ?? null;
@@ -309,13 +331,13 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
       }
       const isNewUserJustCreated = !editingUser && !!savedAuthUserId;
       const isAdminOrOwner = editingUser?.role === 'admin' || editingUser?.role === 'owner';
-      if (!isNewUserJustCreated && !identityId && (selectedBranchIds.length > 0 || selectedAccountIds.length > 0)) {
+      if (!isNewUserJustCreated && !identityId && (effectiveBranchIds.length > 0 || selectedAccountIds.length > 0)) {
         toast.error('User is not linked to authentication. Cannot assign branch/account access. Use Invite first.');
       }
       if (identityId && !isAdminOrOwner && !isNewUserJustCreated) {
         console.log('[AddUserModal] Branch/account save: identityId (auth.users.id)', identityId);
         try {
-          await userService.setUserBranches(identityId, selectedBranchIds, selectedBranchIds[0] || undefined, companyId);
+          await userService.setUserBranches(identityId, effectiveBranchIds, effectiveDefaultBranchId || undefined, companyId);
         } catch (branchErr: any) {
           const msg = branchErr?.message ?? branchErr?.error?.message ?? String(branchErr);
           console.warn('[AddUserModal] Branch access save failed:', branchErr);
@@ -692,33 +714,81 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
                 <Building2 size={18} className="text-blue-400" />
                 <h3 className="text-sm font-semibold text-gray-200">Branch Access</h3>
               </div>
-              <p className="text-xs text-gray-500">Select which branches this user can access. Admin sees all branches.</p>
-              {(editingUser?.role === 'admin' || editingUser?.role === 'owner') && <p className="text-xs text-amber-400">Admin/Owner have full access; branch/account assignment is not saved.</p>}
-              {loadingAccess ? (
-                <p className="text-sm text-gray-400">Loading...</p>
-              ) : (
-                <div className="space-y-2 max-h-64 overflow-y-auto">
-                  {branches.length === 0 ? (
-                    <p className="text-sm text-gray-500">No branches in company. Create branches in Settings → Company.</p>
-                  ) : (
-                    branches.map((b) => (
-                      <div key={b.id} className="flex items-center space-x-2">
-                        <Checkbox
-                          id={`branch-${b.id}`}
-                          checked={selectedBranchIds.includes(b.id)}
-                          onCheckedChange={(checked) => {
-                            setSelectedBranchIds((prev) =>
-                              checked ? [...prev, b.id] : prev.filter((id) => id !== b.id)
-                            );
-                          }}
-                        />
-                        <Label htmlFor={`branch-${b.id}`} className="text-sm text-gray-300 cursor-pointer">
-                          {b.name} {b.code ? `(${b.code})` : ''}
-                        </Label>
+              {(editingUser?.role === 'admin' || editingUser?.role === 'owner') && (
+                <p className="text-xs text-amber-400">Admin/Owner have full access; branch assignment is not saved.</p>
+              )}
+              {(!editingUser || (editingUser.role !== 'admin' && editingUser.role !== 'owner')) && (
+                <>
+                  {/* Branch Access Mode: Auto (single) / Restricted (multi) */}
+                  <div className="rounded-lg border border-gray-700 bg-gray-900/50 p-3 space-y-2">
+                    <p className="text-xs font-medium text-gray-300">Branch Access Mode</p>
+                    {branches.length === 0 ? (
+                      <p className="text-sm text-gray-500">No branches in company. Create branches in Settings → Company.</p>
+                    ) : branches.length === 1 ? (
+                      <div className="flex items-center gap-2 text-sm text-gray-200">
+                        <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500/20 text-emerald-400 text-xs font-bold">A</span>
+                        <span><strong>Auto (Single Branch Company)</strong> — This branch is automatically assigned.</span>
                       </div>
-                    ))
+                    ) : (
+                      <div className="flex items-center gap-2 text-sm text-gray-200">
+                        <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-amber-500/20 text-amber-400 text-xs font-bold">R</span>
+                        <span><strong>Restricted (Multi Branch Company)</strong> — Select branches below. At least one required.</span>
+                      </div>
+                    )}
+                  </div>
+                  {loadingAccess ? (
+                    <p className="text-sm text-gray-400">Loading...</p>
+                  ) : (
+                    <>
+                      {branches.length === 1 && branches[0] && (
+                        <p className="text-sm text-gray-400">Branch: <span className="text-gray-200">{branches[0].name} {branches[0].code ? `(${branches[0].code})` : ''}</span></p>
+                      )}
+                      {branches.length > 1 && (
+                        <div className="space-y-3">
+                          <p className="text-xs text-gray-500">Select which branches this user can access.</p>
+                          <div className="space-y-2 max-h-48 overflow-y-auto">
+                            {branches.map((b) => (
+                              <div key={b.id} className="flex items-center space-x-2">
+                                <Checkbox
+                                  id={`branch-${b.id}`}
+                                  checked={selectedBranchIds.includes(b.id)}
+                                  onCheckedChange={(checked) => {
+                                    setSelectedBranchIds((prev) =>
+                                      checked ? [...prev, b.id] : prev.filter((id) => id !== b.id)
+                                    );
+                                  }}
+                                />
+                                <Label htmlFor={`branch-${b.id}`} className="text-sm text-gray-300 cursor-pointer">
+                                  {b.name} {b.code ? `(${b.code})` : ''}
+                                </Label>
+                              </div>
+                            ))}
+                          </div>
+                          {selectedBranchIds.length > 0 && (
+                            <div className="space-y-1.5">
+                              <Label className="text-xs text-gray-400">Default Branch</Label>
+                              <Select value={effectiveDefaultBranchId} onValueChange={setDefaultBranchId}>
+                                <SelectTrigger className="w-full bg-gray-800 border-gray-700 text-gray-200">
+                                  <SelectValue placeholder="Select default branch" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {selectedBranchIds.map((id) => {
+                                    const b = branches.find((x) => x.id === id);
+                                    return b ? (
+                                      <SelectItem key={b.id} value={b.id} className="text-gray-200">
+                                        {b.name} {b.code ? `(${b.code})` : ''}
+                                      </SelectItem>
+                                    ) : null;
+                                  })}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </>
                   )}
-                </div>
+                </>
               )}
             </div>
           )}

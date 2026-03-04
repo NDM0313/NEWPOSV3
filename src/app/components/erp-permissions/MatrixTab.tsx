@@ -1,8 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { Crown, Shield, Briefcase, ShoppingCart, Check, X, Info } from 'lucide-react';
+import { Crown, Shield, Briefcase, ShoppingCart, Info, ChevronDown, ChevronRight, Building2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { permissionService, PERMISSION_MODULES, getActionsForModule, type EngineRole } from '@/app/services/permissionService';
+import { branchService, type BranchAccessMode } from '@/app/services/branchService';
+import { useSupabase } from '@/app/context/SupabaseContext';
 import { cn } from '../ui/utils';
+import { Switch } from '../ui/switch';
+import { Checkbox } from '../ui/checkbox';
+import { Label } from '../ui/label';
 
 const ENGINE_ROLES: { id: EngineRole; label: string; icon: typeof Crown }[] = [
   { id: 'owner', label: 'OWNER', icon: Crown },
@@ -11,26 +16,71 @@ const ENGINE_ROLES: { id: EngineRole; label: string; icon: typeof Crown }[] = [
   { id: 'user', label: 'SALESMAN', icon: ShoppingCart },
 ];
 
+const MODULE_ORDER: string[] = [
+  'sales', 'pos', 'purchase', 'studio', 'rentals', 'payments',
+  'ledger', 'inventory', 'contacts', 'reports', 'users', 'settings',
+];
+
 const MODULE_LABELS: Record<string, string> = {
-  sales: 'SALES',
+  sales: 'Sales',
   pos: 'POS',
-  purchase: 'PURCHASE',
-  studio: 'STUDIO',
-  rentals: 'RENTALS',
-  payments: 'PAYMENTS',
-  ledger: 'LEDGER',
-  inventory: 'INVENTORY',
-  contacts: 'CONTACTS',
-  reports: 'REPORTS',
-  users: 'USERS',
-  settings: 'SETTINGS',
+  purchase: 'Purchase',
+  studio: 'Studio',
+  rentals: 'Rentals',
+  payments: 'Payments',
+  ledger: 'Accounting',
+  inventory: 'Inventory',
+  contacts: 'Contacts',
+  reports: 'Reports',
+  users: 'Users',
+  settings: 'Settings',
 };
 
+const ACTION_LABELS: Record<string, string> = {
+  view_own: 'View own records only',
+  view_branch: 'View branch records',
+  view_company: 'View company-wide',
+  view: 'View',
+  create: 'Create',
+  edit: 'Edit',
+  delete: 'Delete',
+  use: 'Use',
+  receive: 'Receive payments',
+  view_customer: 'View Customer Ledger',
+  view_supplier: 'View Supplier Ledger',
+  view_full_accounting: 'View Full Accounting',
+  adjust: 'Adjust stock',
+  transfer: 'Transfer stock',
+  modify: 'Modify settings',
+  assign_permissions: 'Assign permissions',
+};
+
+const SALES_VIEW_SCOPES = ['view_own', 'view_branch', 'view_company'] as const;
+const SALES_ACTIONS = ['create', 'edit', 'delete'] as const;
+
+const SALES_SCOPE_CARDS: { value: (typeof SALES_VIEW_SCOPES)[number]; title: string; description: string }[] = [
+  { value: 'view_own', title: 'My sales only', description: 'Only records created by this user' },
+  { value: 'view_branch', title: 'Branch sales', description: 'All records inside assigned branch' },
+  { value: 'view_company', title: 'Company-wide', description: 'Full company sales access' },
+];
+
 export function MatrixTab() {
+  const { companyId } = useSupabase();
   const [selectedRole, setSelectedRole] = useState<EngineRole>('user');
   const [perms, setPerms] = useState<{ module: string; action: string; allowed: boolean }[]>([]);
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [openModules, setOpenModules] = useState<string[]>([]);
+  const [branchCount, setBranchCount] = useState<number>(0);
+  const [branchMode, setBranchMode] = useState<BranchAccessMode | null>(null);
+
+  useEffect(() => {
+    if (!companyId) return;
+    branchService.getCompanyBranchCount(companyId).then((count) => {
+      setBranchCount(count);
+      setBranchMode(count <= 1 ? 'AUTO' : 'RESTRICTED');
+    }).catch(() => { setBranchCount(0); setBranchMode(null); });
+  }, [companyId]);
 
   const load = async (role: EngineRole) => {
     setLoading(true);
@@ -49,6 +99,14 @@ export function MatrixTab() {
     load(selectedRole);
   }, [selectedRole]);
 
+  useEffect(() => {
+    if (loading) return;
+    const enabled = MODULE_ORDER.filter((m) =>
+      getActionsForModule(m).some((a) => perms.some((p) => p.module === m && p.action === a && p.allowed))
+    );
+    setOpenModules(enabled);
+  }, [loading, perms]);
+
   const getAllowed = (module: string, action: string) =>
     perms.some((p) => p.module === module && p.action === action && p.allowed);
 
@@ -61,16 +119,79 @@ export function MatrixTab() {
         const rest = prev.filter((p) => !(p.module === module && p.action === action));
         return [...rest, { module, action, allowed }];
       });
-      toast.success(allowed ? `${MODULE_LABELS[module] ?? module}: ${action.replace(/_/g, ' ')} allowed` : `${MODULE_LABELS[module] ?? module}: ${action.replace(/_/g, ' ')} denied`);
+      toast.success(allowed ? 'Permission allowed' : 'Permission denied');
     } catch (e) {
       setPerms((prev) => {
         const rest = prev.filter((p) => !(p.module === module && p.action === action));
         return [...rest, { module, action, allowed: prevAllowed }];
       });
-      toast.error(e instanceof Error ? e.message : 'Failed to save permission');
+      toast.error(e instanceof Error ? e.message : 'Failed to save');
     } finally {
       setSaving(false);
     }
+  };
+
+  const isModuleEnabled = (module: string) => {
+    const actions = getActionsForModule(module);
+    return actions.some((a) => getAllowed(module, a));
+  };
+
+  const setModuleEnabled = async (module: string, enabled: boolean) => {
+    const actions = getActionsForModule(module);
+    setSaving(true);
+    try {
+      if (enabled) {
+        const defaultAction = module === 'sales' ? 'view_own' : module === 'ledger' ? 'view_customer' : actions[0];
+        await permissionService.setRolePermission(selectedRole, module, defaultAction, true);
+        setPerms((prev) => {
+          const rest = prev.filter((p) => !(p.module === module && p.action === defaultAction));
+          return [...rest, { module, action: defaultAction, allowed: true }];
+        });
+        setOpenModules((o) => (o.includes(module) ? o : [...o, module]));
+      } else {
+        for (const action of actions) {
+          await permissionService.setRolePermission(selectedRole, module, action, false);
+        }
+        setPerms((prev) => {
+          const rest = prev.filter((p) => p.module !== module);
+          return [...rest, ...actions.map((a) => ({ module, action: a, allowed: false }))];
+        });
+        setOpenModules((o) => o.filter((m) => m !== module));
+      }
+      toast.success(enabled ? `${MODULE_LABELS[module]} enabled` : `${MODULE_LABELS[module]} disabled`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Failed to save');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const setSalesViewScope = async (scope: string) => {
+    setSaving(true);
+    try {
+      for (const a of SALES_VIEW_SCOPES) {
+        await permissionService.setRolePermission(selectedRole, 'sales', a, a === scope);
+      }
+      setPerms((prev) => {
+        const rest = prev.filter((p) => !(p.module === 'sales' && SALES_VIEW_SCOPES.includes(p.action as (typeof SALES_VIEW_SCOPES)[number])));
+        const newScopes = SALES_VIEW_SCOPES.map((a) => ({ module: 'sales', action: a, allowed: a === scope }));
+        return [...rest, ...newScopes];
+      });
+      toast.success('View scope updated');
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Failed to save');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const currentSalesViewScope = () => {
+    for (const s of SALES_VIEW_SCOPES) if (getAllowed('sales', s)) return s;
+    return 'view_own';
+  };
+
+  const toggleOpen = (module: string) => {
+    setOpenModules((o) => (o.includes(module) ? o.filter((m) => m !== module) : [...o, module]));
   };
 
   const totalAllowed = perms.filter((p) => p.allowed).length;
@@ -86,17 +207,25 @@ export function MatrixTab() {
           ? 'Specific branches, view all sales, view ledger'
           : 'Only assigned branches, configurable sales view, can receive payments';
 
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        <h2 className="text-xl font-bold text-white">Permissions</h2>
+        <div className="p-8 text-center text-gray-400">Loading permissions…</div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-xl font-bold text-white">Permissions Matrix</h2>
-        <p className="text-gray-400 text-sm mt-1">Toggle permissions for each role and module</p>
+        <h2 className="text-xl font-bold text-white">Permissions by module</h2>
+        <p className="text-gray-400 text-sm mt-1">Enable modules and set actions per role. No database structure change.</p>
       </div>
 
-      {/* Select Role to Edit */}
       <div>
-        <p className="text-sm text-gray-400 mb-2">Select Role to Edit</p>
-        <div className="flex gap-2">
+        <p className="text-sm text-gray-400 mb-2">Select role to edit</p>
+        <div className="flex flex-wrap gap-2">
           {ENGINE_ROLES.map((r) => (
             <button
               key={r.id}
@@ -115,82 +244,225 @@ export function MatrixTab() {
         </div>
       </div>
 
-      {/* Selected role description */}
       <div className="bg-gray-900/60 border border-gray-800 rounded-lg p-4 flex items-center gap-3">
-        {selectedMeta && <selectedMeta.icon className="text-amber-500" size={24} />}
+        {selectedMeta && <selectedMeta.icon className="text-amber-500 shrink-0" size={24} />}
         <div>
           <p className="font-semibold text-white">{selectedMeta?.label}</p>
           <p className="text-sm text-gray-400">{desc}</p>
         </div>
       </div>
 
-      {/* Matrix table */}
-      <div className="bg-gray-900/60 border border-gray-800 rounded-lg overflow-hidden">
-        {loading ? (
-          <div className="p-6 text-center text-gray-400">Loading permissions…</div>
-        ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-gray-700 bg-gray-800/50">
-                <th className="text-left text-gray-400 font-medium p-3 w-28">Module</th>
-                {Array.from(new Set(PERMISSION_MODULES.flatMap((m) => getActionsForModule(m)))).map((a) => (
-                  <th key={a} className="text-center text-gray-400 font-medium p-2 min-w-[4rem]">{a.replace(/_/g, ' ').toUpperCase()}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {PERMISSION_MODULES.map((module) => {
-                const actions = getActionsForModule(module);
-                const allActions = Array.from(new Set(PERMISSION_MODULES.flatMap((m) => getActionsForModule(m))));
-                return (
-                  <tr key={module} className="border-b border-gray-800">
-                    <td className="p-3 text-gray-300 font-medium">{MODULE_LABELS[module] ?? module.toUpperCase()}</td>
-                    {allActions.map((action) => {
-                      if (!actions.includes(action)) return <td key={action} className="p-2" />;
-                      return (
-                        <td key={action} className="p-2 text-center">
-                          <button type="button" onClick={() => setAllowed(module, action, !getAllowed(module, action))} disabled={saving} className={cn('w-8 h-8 rounded flex items-center justify-center transition-colors mx-auto', getAllowed(module, action) ? 'bg-green-500/20 text-green-500' : 'bg-gray-800 text-gray-500')}>
-                            {getAllowed(module, action) ? <Check size={16} /> : <X size={14} />}
-                          </button>
-                        </td>
-                      );
-                    })}
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-        )}
+      {/* Module accordion */}
+      <div className="space-y-2">
+        {MODULE_ORDER.map((module) => {
+          const actions = getActionsForModule(module);
+          const enabled = isModuleEnabled(module);
+          const open = openModules.includes(module);
+
+          return (
+            <React.Fragment key={module}>
+            <div
+              className={cn(
+                'rounded-lg border transition-colors',
+                enabled ? 'border-gray-600 bg-gray-800/40' : 'border-gray-800 bg-gray-900/40'
+              )}
+            >
+              <div className="flex items-center gap-3 p-4">
+                <button
+                  type="button"
+                  onClick={() => toggleOpen(module)}
+                  className="p-1 rounded text-gray-400 hover:text-white shrink-0"
+                  aria-expanded={open}
+                >
+                  {open ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
+                </button>
+                <div className="flex-1 min-w-0">
+                  <p className="font-medium text-white">{MODULE_LABELS[module] ?? module}</p>
+                  <p className="text-xs text-gray-500">
+                    {enabled ? `${actions.filter((a) => getAllowed(module, a)).length} of ${actions.length} actions allowed` : 'Module disabled'}
+                  </p>
+                </div>
+                <Switch
+                  checked={enabled}
+                  onCheckedChange={(checked) => setModuleEnabled(module, checked)}
+                  disabled={saving}
+                  className="shrink-0"
+                />
+              </div>
+
+              {open && (
+                <div className="border-t border-gray-800 px-4 pb-4 pt-3">
+                  {module === 'sales' && (
+                    <div className="space-y-4">
+                      <div>
+                        <Label className="text-gray-300 text-sm font-medium mb-2 block">Sales access level</Label>
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-2">
+                          {SALES_SCOPE_CARDS.map((card) => {
+                            const selected = currentSalesViewScope() === card.value;
+                            return (
+                              <button
+                                key={card.value}
+                                type="button"
+                                onClick={() => !saving && setSalesViewScope(card.value)}
+                                disabled={saving}
+                                className={cn(
+                                  'rounded-lg border p-3 text-left transition-all',
+                                  selected
+                                    ? 'border-blue-500 bg-blue-500/10 ring-1 ring-blue-500/30 shadow shadow-blue-500/10'
+                                    : 'border-gray-700 bg-gray-800/50 hover:border-gray-600 text-gray-300'
+                                )}
+                              >
+                                <p className={cn('font-medium text-sm', selected ? 'text-blue-300' : 'text-white')}>
+                                  {card.title}
+                                </p>
+                                <p className="text-xs mt-1 text-gray-500">{card.description}</p>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                      <div>
+                        <Label className="text-gray-300 text-sm font-medium">Actions</Label>
+                        <div className="mt-2 flex flex-wrap gap-6">
+                          {SALES_ACTIONS.map((action) => (
+                            <div key={action} className="flex items-center gap-2">
+                              <Checkbox
+                                id={`sales-${action}`}
+                                checked={getAllowed('sales', action)}
+                                onCheckedChange={(c) => setAllowed('sales', action, c === true)}
+                                disabled={saving}
+                              />
+                              <Label htmlFor={`sales-${action}`} className="text-gray-300 text-sm font-normal cursor-pointer capitalize">
+                                {action}
+                              </Label>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {module === 'ledger' && (
+                    <div className="space-y-2">
+                      <Label className="text-gray-300 text-sm font-medium">Accounting access</Label>
+                      <div className="mt-2 flex flex-wrap gap-6">
+                        {['view_customer', 'view_supplier', 'view_full_accounting'].map((action) => (
+                          <div key={action} className="flex items-center gap-2">
+                            <Checkbox
+                              id={`ledger-${action}`}
+                              checked={getAllowed('ledger', action)}
+                              onCheckedChange={(c) => setAllowed('ledger', action, c === true)}
+                              disabled={saving}
+                            />
+                            <Label htmlFor={`ledger-${action}`} className="text-gray-300 text-sm font-normal cursor-pointer">
+                              {ACTION_LABELS[action] ?? action.replace(/_/g, ' ')}
+                            </Label>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {module === 'inventory' && (
+                    <div className="space-y-2">
+                      <Label className="text-gray-300 text-sm font-medium">Inventory access</Label>
+                      <div className="mt-2 flex flex-wrap gap-6">
+                        {['view', 'adjust', 'transfer'].map((action) => (
+                          <div key={action} className="flex items-center gap-2">
+                            <Checkbox
+                              id={`inventory-${action}`}
+                              checked={getAllowed('inventory', action)}
+                              onCheckedChange={(c) => setAllowed('inventory', action, c === true)}
+                              disabled={saving}
+                            />
+                            <Label htmlFor={`inventory-${action}`} className="text-gray-300 text-sm font-normal cursor-pointer">
+                              {ACTION_LABELS[action] ?? action}
+                            </Label>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {module !== 'sales' && module !== 'ledger' && module !== 'inventory' && (
+                    <div className="space-y-2">
+                      <Label className="text-gray-300 text-sm font-medium">Actions</Label>
+                      <div className="mt-2 flex flex-wrap gap-6">
+                        {actions.map((action) => (
+                          <div key={action} className="flex items-center gap-2">
+                            <Checkbox
+                              id={`${module}-${action}`}
+                              checked={getAllowed(module, action)}
+                              onCheckedChange={(c) => setAllowed(module, action, c === true)}
+                              disabled={saving}
+                            />
+                            <Label htmlFor={`${module}-${action}`} className="text-gray-300 text-sm font-normal cursor-pointer">
+                              {ACTION_LABELS[action] ?? action.replace(/_/g, ' ')}
+                            </Label>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+            {/* Branch Access Section (below Sales) */}
+            {module === 'sales' && (
+              <div className="rounded-lg border border-gray-700 bg-gray-800/40 p-4">
+                <div className="flex items-center gap-2 pb-2 border-b border-gray-700">
+                  <Building2 size={18} className="text-blue-400 shrink-0" />
+                  <h3 className="text-sm font-semibold text-gray-200">Branch Access</h3>
+                </div>
+                <div className="pt-3 space-y-2">
+                  <p className="text-xs text-gray-500">Branch selection depends on company branch count. Per-user assignment in <strong>Users</strong> tab.</p>
+                  {branchMode === 'AUTO' && (
+                    <div className="flex items-center gap-2 text-sm text-gray-300">
+                      <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-emerald-500/20 text-emerald-400 text-xs font-bold">AUTO</span>
+                      <span><strong>Auto (Single Branch Company)</strong> — One branch; automatically assigned. user_branches not required.</span>
+                    </div>
+                  )}
+                  {branchMode === 'RESTRICTED' && (
+                    <div className="flex items-center gap-2 text-sm text-gray-300">
+                      <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-amber-500/20 text-amber-400 text-xs font-bold">R</span>
+                      <span><strong>Restricted (Multi Branch Company)</strong> — {branchCount} branches; assign per user in Users tab. user_branches required.</span>
+                    </div>
+                  )}
+                  {branchMode === null && branchCount === 0 && (
+                    <p className="text-sm text-gray-500">Company branch count: 0 (create branches in Settings).</p>
+                  )}
+                </div>
+              </div>
+            )}
+            </React.Fragment>
+          );
+        })}
       </div>
 
-      {/* Summary */}
-      <div className="flex gap-4">
+      <div className="flex flex-wrap gap-4">
         <div className="bg-green-500/10 border border-green-500/30 rounded-lg px-4 py-2">
-          <p className="text-xs text-gray-400">Total Allowed</p>
+          <p className="text-xs text-gray-400">Allowed</p>
           <p className="text-xl font-bold text-green-500">{totalAllowed}</p>
         </div>
         <div className="bg-red-500/10 border border-red-500/30 rounded-lg px-4 py-2">
-          <p className="text-xs text-gray-400">Total Denied</p>
+          <p className="text-xs text-gray-400">Denied</p>
           <p className="text-xl font-bold text-red-500">{totalDenied}</p>
         </div>
         <div className="bg-purple-500/10 border border-purple-500/30 rounded-lg px-4 py-2">
-          <p className="text-xs text-gray-400">Permission Ratio</p>
+          <p className="text-xs text-gray-400">Ratio</p>
           <p className="text-xl font-bold text-purple-500">{ratio}%</p>
         </div>
       </div>
 
-      {/* How to give someone more access */}
       <div className="border border-blue-500/30 bg-blue-500/5 rounded-lg p-4 max-w-2xl">
         <h3 className="font-semibold text-white flex items-center gap-2 mb-2">
-          <Info className="text-blue-400" size={18} /> Kisi ko zyada access dene ke liye
+          <Info className="text-blue-400 shrink-0" size={18} /> How to change access
         </h3>
         <ul className="text-sm text-gray-300 space-y-1 list-disc list-inside">
-          <li><strong>Role change:</strong> <span className="text-gray-400">Users tab mein jao → us user ko Edit karo → Role (e.g. SALESMAN → MANAGER ya ADMIN) change karo. Us role ke mutabiq permissions auto lagenge.</span></li>
-          <li><strong>Isi role mein extra actions:</strong> <span className="text-gray-400">Yahan Matrix mein upar role select karo (e.g. SALESMAN) → jis module/action ko allow karna hai us cell par click karo (✓ green = allowed). Save automatic hota hai.</span></li>
+          <li>Select a role above, then turn <strong>Enable Module</strong> on for each module this role may use.</li>
+          <li>Expand a module to set view scope (Sales) or individual actions (Accounting, Inventory, etc.).</li>
+          <li>Changes save immediately. Owner/Admin get full access regardless of this matrix.</li>
         </ul>
-        <p className="text-xs text-gray-500 mt-2">Owner/Admin ko app full access deta hai; Matrix sirf role-based fine control ke liye hai.</p>
       </div>
     </div>
   );

@@ -69,9 +69,9 @@ export interface SaleItem {
   quantity: number;
   unit?: string;
   unit_price: number;
-  discount_percentage?: number;
+  /** Only discount_amount is stored in DB; percentage is UI-only. */
   discount_amount?: number;
-  tax_percentage?: number;
+  /** Only tax_amount is stored in DB; percentage is UI-only. */
   tax_amount?: number;
   total: number;
   // Packing fields
@@ -118,11 +118,14 @@ export const saleService = {
 
     if (saleError) throw saleError;
 
-    // Insert items
-    const itemsWithSaleId = items.map(item => ({
-      ...item,
-      sale_id: saleData.id,
-    }));
+    // Insert items: only send columns that exist in DB (no discount_percentage / tax_percentage)
+    const sanitizeItem = (item: SaleItem) => {
+      const row: Record<string, unknown> = { ...item, sale_id: saleData.id };
+      delete row.discount_percentage;
+      delete row.tax_percentage;
+      return row;
+    };
+    const itemsWithSaleId = items.map(sanitizeItem);
 
     // CRITICAL FIX: Use sales_items table (created via migration)
     // Try sales_items first, fallback to sale_items for backward compatibility
@@ -638,9 +641,13 @@ export const saleService = {
       throw new Error('Cannot edit sale: This sale has a return and is locked. Returns cannot be edited or deleted.');
     }
 
+    const sanitized = { ...updates };
+    delete (sanitized as any).discount_percentage;
+    delete (sanitized as any).tax_percentage;
+
     const { data, error } = await supabase
       .from('sales')
-      .update(updates)
+      .update(sanitized)
       .eq('id', id)
       .select()
       .single();
@@ -875,14 +882,18 @@ export const saleService = {
       throw new Error('Company and branch are required for payment.');
     }
     
-    // Global payment number from DB (no frontend-generated PAY-0001)
+    // Prefer DB-generated reference (atomic, no duplicate). Only use caller value when explicitly provided (e.g. edit).
     let paymentRef: string | null = referenceNumber && String(referenceNumber).trim() ? String(referenceNumber).trim() : null;
     if (!paymentRef) {
       try {
         paymentRef = await documentNumberService.getNextDocumentNumberGlobal(companyId, 'PAY');
-      } catch (_) {
-        paymentRef = null; // DB trigger may still set a value
+      } catch (e) {
+        console.error('[SALE SERVICE] getNextDocumentNumberGlobal(PAY) failed:', e);
+        throw new Error('Could not generate payment reference. Ensure document_sequences_global has PAY type for this company.');
       }
+    }
+    if (import.meta.env?.DEV) {
+      console.log('[SALE SERVICE] Payment insert reference_number =', paymentRef);
     }
     
     // Use provided date or current date
@@ -945,11 +956,28 @@ export const saleService = {
       }
     }
 
-    let result = await supabase.from('payments').insert(paymentData).select().single();
+    const doInsert = (data: typeof paymentData) => supabase.from('payments').insert(data).select().single();
+    let result = await doInsert(paymentData);
 
     if (result.error && result.error.code === 'PGRST204' && result.error.message?.includes('attachments')) {
       delete paymentData.attachments;
-      result = await supabase.from('payments').insert(paymentData).select().single();
+      result = await doInsert(paymentData);
+    }
+    // On duplicate reference_number: one retry with a fresh DB-generated ref (only when we generated ref, not caller-provided)
+    const isDuplicateRef = result.error?.code === '23505' && String(result.error?.message || '').includes('payments_reference_number_unique');
+    if (result.error && isDuplicateRef && !(referenceNumber && String(referenceNumber).trim())) {
+      try {
+        const freshRef = await documentNumberService.getNextDocumentNumberGlobal(companyId, 'PAY');
+        paymentData.reference_number = freshRef;
+        if (import.meta.env?.DEV) console.log('[SALE SERVICE] Duplicate ref retry with', freshRef);
+        result = await doInsert(paymentData);
+        if (result.error && result.error.code === 'PGRST204' && result.error.message?.includes('attachments')) {
+          delete paymentData.attachments;
+          result = await doInsert(paymentData);
+        }
+      } catch (_) {
+        // fall through to throw original
+      }
     }
     if (result.error) {
       console.error('[SALE SERVICE] Payment insert error:', {

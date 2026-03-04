@@ -338,9 +338,7 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
           quantity: item.quantity,
           unit: (item as any).unit && (item as any).unit.trim() !== '' ? (item as any).unit : 'pcs',
           unit_price: item.price || 0,
-          discount_percentage: (item as any).discountPercentage || 0,
           discount_amount: item.discount || 0,
-          tax_percentage: (item as any).taxPercentage || 0,
           tax_amount: item.tax || 0,
           total: item.total || 0,
           // Include packing data
@@ -351,14 +349,27 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
         };
       });
 
-      // Save to Supabase
+      // Build charges for line-by-line accounting (purchase_charges): extra expenses + discount
+      const charges: { charge_type: string; amount: number }[] = [];
+      const expensesList = purchaseData.expenses || [];
+      if (Array.isArray(expensesList)) {
+        expensesList.forEach((e: { type?: string; amount?: number }) => {
+          const amt = Number(e?.amount ?? 0);
+          if (amt > 0) charges.push({ charge_type: (e?.type ?? 'other') as string, amount: amt });
+        });
+      }
+      const discountAmt = Number(purchaseData.discount ?? 0);
+      if (discountAmt > 0) charges.push({ charge_type: 'discount', amount: discountAmt });
+
+      // Save to Supabase (purchase + items + purchase_charges)
       console.log('[PURCHASE CONTEXT] Creating purchase with data:', {
         purchase: supabasePurchase,
         itemsCount: supabaseItems.length,
+        chargesCount: charges.length,
         firstItem: supabaseItems[0]
       });
       
-      const result = await purchaseService.createPurchase(supabasePurchase, supabaseItems);
+      const result = await purchaseService.createPurchase(supabasePurchase, supabaseItems, charges);
       
       // Increment document number
       incrementNextNumber('purchase');
@@ -445,13 +456,24 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
           
           const apAccountId = apAccounts?.[0]?.id;
           
+          // Discount Received (or Operating Expense) for credit side of discount
+          let discountAccountId: string | null = null;
+          const { data: discountAccounts } = await supabase
+            .from('accounts')
+            .select('id')
+            .eq('company_id', companyId)
+            .or('name.ilike.Discount Received,name.ilike.Purchase Discount,name.ilike.Operating Expense')
+            .limit(1);
+          discountAccountId = discountAccounts?.[0]?.id ?? null;
+          
           if (!inventoryAccountId || !apAccountId) {
             const errorMsg = `Missing required accounts for purchase journal entry. Inventory: ${inventoryAccountId ? 'OK' : 'MISSING'}, AP: ${apAccountId ? 'OK' : 'MISSING'}`;
             console.error('[PURCHASE CONTEXT] ❌ CRITICAL:', errorMsg);
             throw new Error(errorMsg);
           }
           
-          // Create main journal entry for purchase (ALWAYS, paid or unpaid)
+          // Single journal entry built from detail: items subtotal + charges (line-by-line, no aggregate)
+          const itemsSubtotal = Number(newPurchase.subtotal ?? 0) || Number(newPurchase.total ?? 0);
           const { data: mainJournalEntry, error: journalError } = await supabase
             .from('journal_entries')
             .insert({
@@ -471,39 +493,66 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
             throw new Error(`Failed to create purchase journal entry: ${journalError?.message || 'Unknown error'}`);
           }
           
-          // Debit: Inventory (stock increase)
-          const { error: debitError } = await supabase
-            .from('journal_entry_lines')
-            .insert({
-              journal_entry_id: mainJournalEntry.id,
+          const jid = mainJournalEntry.id;
+          
+          // 1) Items: Dr Inventory, Cr AP (subtotal only)
+          if (itemsSubtotal > 0) {
+            const { error: debitError } = await supabase.from('journal_entry_lines').insert({
+              journal_entry_id: jid,
               account_id: inventoryAccountId,
-              debit: newPurchase.subtotal || newPurchase.total,
+              debit: itemsSubtotal,
               credit: 0,
               description: `Inventory purchase ${newPurchase.purchaseNo}`,
             });
-          
-          if (debitError) {
-            console.error('[PURCHASE CONTEXT] ❌ CRITICAL: Failed to create inventory debit line:', debitError);
-            throw debitError;
-          }
-          
-          // Credit: Accounts Payable (we owe supplier)
-          const { error: creditError } = await supabase
-            .from('journal_entry_lines')
-            .insert({
-              journal_entry_id: mainJournalEntry.id,
+            if (debitError) throw debitError;
+            const { error: creditError } = await supabase.from('journal_entry_lines').insert({
+              journal_entry_id: jid,
               account_id: apAccountId,
               debit: 0,
-              credit: newPurchase.subtotal || newPurchase.total,
+              credit: itemsSubtotal,
               description: `Payable to ${newPurchase.supplierName}`,
             });
-          
-          if (creditError) {
-            console.error('[PURCHASE CONTEXT] ❌ CRITICAL: Failed to create AP credit line:', creditError);
-            throw creditError;
+            if (creditError) throw creditError;
           }
           
-          console.log('[PURCHASE CONTEXT] ✅ Created main accounting entry for purchase (paid or unpaid):', mainJournalEntry.id);
+          // 2) Each charge line: expense → Dr Inventory Cr AP; discount → Dr AP Cr Discount Received
+          for (const c of charges) {
+            if (c.amount <= 0) continue;
+            if (c.charge_type === 'discount') {
+              if (!discountAccountId) continue;
+              await supabase.from('journal_entry_lines').insert({
+                journal_entry_id: jid,
+                account_id: apAccountId,
+                debit: c.amount,
+                credit: 0,
+                description: 'Purchase discount',
+              });
+              await supabase.from('journal_entry_lines').insert({
+                journal_entry_id: jid,
+                account_id: discountAccountId,
+                debit: 0,
+                credit: c.amount,
+                description: 'Discount received',
+              });
+            } else {
+              await supabase.from('journal_entry_lines').insert({
+                journal_entry_id: jid,
+                account_id: inventoryAccountId,
+                debit: c.amount,
+                credit: 0,
+                description: `${c.charge_type} (purchase)`,
+              });
+              await supabase.from('journal_entry_lines').insert({
+                journal_entry_id: jid,
+                account_id: apAccountId,
+                debit: 0,
+                credit: c.amount,
+                description: `Payable - ${c.charge_type}`,
+              });
+            }
+          }
+          
+          console.log('[PURCHASE CONTEXT] ✅ Created line-by-line accounting entry for purchase (items + charges):', mainJournalEntry.id);
         } catch (accountingError: any) {
           console.error('[PURCHASE CONTEXT] ❌ CRITICAL: Purchase accounting entry failed:', accountingError);
           // CRITICAL: Throw error to prevent purchase creation without accounting
@@ -650,154 +699,26 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
         console.log('[PURCHASE CONTEXT] ✅ All stock movements created successfully for purchase:', newPurchase.id);
       }
       
-      // CRITICAL: Create accounting entries for extra expenses (shipping/cargo) and discount
-      if ((newPurchase.status === 'received' || newPurchase.status === 'final') && companyId) {
+      // Extra expenses and discount are now in the single line-by-line journal above (from purchase_charges).
+      // Supplier ledger: still post discount as debit to reduce payable
+      if ((newPurchase.status === 'received' || newPurchase.status === 'final') && companyId && newPurchase.discount > 0) {
         try {
-          // Get or create expense account for shipping/cargo
-          const { data: expenseAccounts } = await supabase
-            .from('accounts')
-            .select('id')
-            .eq('company_id', companyId)
-            .eq('name', 'Operating Expense')
-            .limit(1);
-          
-          const expenseAccountId = expenseAccounts?.[0]?.id;
-          
-          // Handle shipping/cargo expenses
-          if (newPurchase.shippingCost && newPurchase.shippingCost > 0 && expenseAccountId) {
-            // Get cash/bank account for payment
-            const { data: cashAccounts } = await supabase
-              .from('accounts')
-              .select('id')
-              .eq('company_id', companyId)
-              .eq('name', 'Cash')
-              .limit(1);
-            
-            const cashAccountId = cashAccounts?.[0]?.id;
-            
-            if (cashAccountId) {
-              // Create journal entry for shipping expense
-              const { data: journalEntry } = await supabase
-                .from('journal_entries')
-                .insert({
-                  company_id: companyId,
-                  branch_id: finalBranchId,
-                  entry_date: newPurchase.date,
-                  description: `Shipping/Cargo expense for ${newPurchase.purchaseNo}`,
-                  reference_type: 'purchase',
-                  reference_id: newPurchase.id,
-                  created_by: user?.id,
-                })
-                .select()
-                .single();
-              
-              if (journalEntry) {
-                // Debit: Operating Expense
-                await supabase
-                  .from('journal_entry_lines')
-                  .insert({
-                    journal_entry_id: journalEntry.id,
-                    account_id: expenseAccountId,
-                    debit: newPurchase.shippingCost,
-                    credit: 0,
-                    description: 'Shipping/Cargo expense',
-                  });
-                
-                // Credit: Cash/Bank
-                await supabase
-                  .from('journal_entry_lines')
-                  .insert({
-                    journal_entry_id: journalEntry.id,
-                    account_id: cashAccountId,
-                    debit: 0,
-                    credit: newPurchase.shippingCost,
-                    description: 'Payment for shipping',
-                  });
-                
-                console.log('[PURCHASE CONTEXT] ✅ Created accounting entry for shipping expense:', newPurchase.shippingCost);
-              }
-            }
+          const ledger = await getOrCreateLedger(companyId, 'supplier', newPurchase.supplier, newPurchase.supplierName);
+          if (ledger) {
+            await addLedgerEntry({
+              companyId,
+              ledgerId: ledger.id,
+              entryDate: newPurchase.date,
+              debit: newPurchase.discount,
+              credit: 0,
+              source: 'purchase',
+              referenceNo: newPurchase.purchaseNo,
+              referenceId: newPurchase.id,
+              remarks: `Discount for ${newPurchase.purchaseNo}`,
+            });
           }
-          
-          // Handle discount (reduces purchase cost) - Create separate journal entry
-          if (newPurchase.discount && newPurchase.discount > 0) {
-            // Get supplier ledger for discount entry
-            const ledger = await getOrCreateLedger(companyId, 'supplier', newPurchase.supplier, newPurchase.supplierName);
-            
-            if (ledger) {
-              // Add discount entry to supplier ledger (reduces payable)
-              await addLedgerEntry({
-                companyId,
-                ledgerId: ledger.id,
-                entryDate: newPurchase.date,
-                debit: newPurchase.discount, // Debit supplier (reduces what we owe)
-                credit: 0,
-                source: 'purchase',
-                referenceNo: newPurchase.purchaseNo,
-                referenceId: newPurchase.id,
-                remarks: `Discount for ${newPurchase.purchaseNo}`,
-              });
-              
-              // Create journal entry for discount
-              const { data: discountJournalEntry } = await supabase
-                .from('journal_entries')
-                .insert({
-                  company_id: companyId,
-                  branch_id: finalBranchId,
-                  entry_date: newPurchase.date,
-                  description: `Purchase discount for ${newPurchase.purchaseNo}`,
-                  reference_type: 'purchase',
-                  reference_id: newPurchase.id,
-                  created_by: user?.id,
-                })
-                .select()
-                .single();
-              
-              if (discountJournalEntry) {
-                // Get Accounts Payable account
-                const { data: apAccounts } = await supabase
-                  .from('accounts')
-                  .select('id')
-                  .eq('company_id', companyId)
-                  .eq('name', 'Accounts Payable')
-                  .limit(1);
-                
-                const apAccountId = apAccounts?.[0]?.id;
-                
-                // Get Purchase Discount account (or create/use Operating Expense)
-                const discountAccountId = expenseAccountId; // Use same expense account for discount
-                
-                if (apAccountId && discountAccountId) {
-                  // Debit: Accounts Payable (reduces what we owe)
-                  await supabase
-                    .from('journal_entry_lines')
-                    .insert({
-                      journal_entry_id: discountJournalEntry.id,
-                      account_id: apAccountId,
-                      debit: newPurchase.discount,
-                      credit: 0,
-                      description: 'Purchase discount',
-                    });
-                  
-                  // Credit: Purchase Discount (income/expense reduction)
-                  await supabase
-                    .from('journal_entry_lines')
-                    .insert({
-                      journal_entry_id: discountJournalEntry.id,
-                      account_id: discountAccountId,
-                      debit: 0,
-                      credit: newPurchase.discount,
-                      description: 'Purchase discount income',
-                    });
-                  
-                  console.log('[PURCHASE CONTEXT] ✅ Created accounting entry for discount:', newPurchase.discount);
-                }
-              }
-            }
-          }
-        } catch (accountingError) {
-          console.warn('[PURCHASE CONTEXT] Extra expenses accounting warning (non-blocking):', accountingError);
-          // Don't block purchase creation if accounting entry creation fails
+        } catch (e) {
+          console.warn('[PURCHASE CONTEXT] Supplier ledger discount entry failed:', e);
         }
       }
       
@@ -1078,9 +999,7 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
             quantity: quantity,
             unit: item.unit || 'pcs',
             unit_price: unitPrice,
-            discount_percentage: item.discountPercentage || 0,
             discount_amount: item.discount || 0,
-            tax_percentage: item.taxPercentage || 0,
             tax_amount: item.tax || 0,
             total: lineTotal,
             packing_type: item.packingDetails?.packing_type || null,

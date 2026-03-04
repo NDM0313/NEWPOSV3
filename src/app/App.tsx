@@ -92,15 +92,27 @@ import { PublicContactForm } from './components/public/PublicContactForm';
 import { ErrorBoundary } from './components/shared/ErrorBoundary';
 import { useSettings } from './context/SettingsContext';
 import { DateRangeProvider } from './context/DateRangeContext';
+import { PermissionInspectorPage } from './components/admin/PermissionInspectorPage';
 
 // v1.0.1 - Enhanced Product Form with SKU auto-generation and global access
 
 const AppContent = () => {
   const { currentView } = useNavigation();
   const { modules } = useSettings();
-  
+  const pathname = typeof window !== 'undefined' ? window.location.pathname : '';
+
   // 🎯 Enable global keyboard shortcuts
   useKeyboardShortcuts();
+
+  // Admin-only Permission Inspector (route: /admin/permission-inspector)
+  if (pathname === '/admin/permission-inspector' || currentView === 'permission-inspector') {
+    return (
+      <Layout>
+        <PermissionInspectorPage />
+        <GlobalDrawer />
+      </Layout>
+    );
+  }
 
   // Route protection based on module toggles
   if (currentView === 'pos' && !modules.posModuleEnabled) {

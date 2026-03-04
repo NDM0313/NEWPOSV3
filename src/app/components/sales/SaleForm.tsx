@@ -170,7 +170,7 @@ interface SaleFormProps {
 
 export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
     // Supabase & Context
-    const { companyId, branchId: contextBranchId, user, userRole, accessibleBranchIds } = useSupabase();
+    const { companyId, branchId: contextBranchId, user, userRole, accessibleBranchIds, requiresBranchSelection } = useSupabase();
     const { inventorySettings, loading: settingsLoading, company } = useSettings();
     const enablePacking = inventorySettings.enablePacking;
     const { createSale, updateSale } = useSales();
@@ -1878,7 +1878,7 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                 ? paymentStatus 
                 : 'unpaid';
             
-            // Branch: only require selection when user has multiple branches; otherwise use single accessible branch
+            // Branch: require selection only when multi-branch AND user has no branch mapping (requiresBranchSelection)
             const singleBranchId = accessibleBranches.length === 1 ? accessibleBranches[0]?.id : null;
             const finalBranchId = singleBranchId
                 ? singleBranchId
@@ -1890,9 +1890,10 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                 setSaving(false);
                 return;
             }
-            if (!branchSelectionRequired && !singleBranchId) {
+            // Only show "no branch" error when we truly have no valid branch (e.g. single-branch context may have set contextBranchId before branches list loaded)
+            if (!isValidBranch && (requiresBranchSelection || (accessibleBranches.length === 0 && !isAdmin))) {
                 toast.error(
-                    accessibleBranches.length === 0 && !isAdmin
+                    requiresBranchSelection
                         ? 'Your user is not assigned to any branch. Ask admin to assign a branch.'
                         : 'No branch available. Please contact admin.'
                 );
@@ -2965,7 +2966,7 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                                     // Pass shouldOpenPaymentDialog=true so form doesn't close
                                     const result = await proceedWithSave(printFlag, true);
                                     if (!result) {
-                                        toast.error('Sale save failed. Please try again.');
+                                        // proceedWithSave already showed the real error in its catch
                                         return;
                                     }
                                     if ((result as any)?.studioRedirect) {
@@ -3056,8 +3057,8 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
 
             {/* ============ LAYER 3: FIXED FOOTER ============ */}
             <div className="shrink-0 bg-[#0B1019] border-t border-gray-800">
-                {/* No-branch-assignment warning for non-admin */}
-                {!isAdmin && accessibleBranches.length === 0 && (
+                {/* No-branch-assignment warning: only when multi-branch and user has no mapping */}
+                {!isAdmin && requiresBranchSelection && (
                     <div className="px-6 py-2 bg-red-950/50 border-b border-red-900/50 flex items-center gap-2 text-red-200 text-sm">
                         <span className="font-medium">Your user is not assigned to any branch.</span>
                         <span>Ask admin to assign a branch so you can save sales.</span>

@@ -58,7 +58,8 @@ type View =
   | 'cutover-prep'
   | 'responsive-test'
   | 'test-account-entry'
-  | 'erp-permissions';
+  | 'erp-permissions'
+  | 'permission-inspector';
 
 type DrawerType = 'none' | 'addUser' | 'addProduct' | 'edit-product' | 'addSale' | 'edit-sale' | 'addPurchase' | 'edit-purchase' | 'addContact';
 

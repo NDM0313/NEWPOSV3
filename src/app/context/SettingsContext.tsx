@@ -189,6 +189,8 @@ export interface ModuleToggles {
 interface SettingsContextType {
   // Loading state
   loading: boolean;
+  /** True after role_permissions and user permissions have been loaded (use for RULE 5: no module render before permission load) */
+  isPermissionLoaded: boolean;
   
   // Company Info
   company: CompanySettings;
@@ -256,6 +258,7 @@ const noopSync = () => {};
 function getDefaultSettingsStub(): SettingsContextType {
   return {
     loading: false,
+    isPermissionLoaded: true,
     company: { businessName: '', businessAddress: '', businessPhone: '', businessEmail: '', taxId: '', currency: 'PKR', decimalPrecision: 2, logoUrl: undefined, dateFormat: 'DD/MM/YYYY', timeFormat: '12h', timezone: 'Asia/Karachi' },
     updateCompanySettings: noop,
     branches: [],
@@ -278,7 +281,7 @@ function getDefaultSettingsStub(): SettingsContextType {
     numberingRules: { salePrefix: 'SL-', saleNextNumber: 1, purchasePrefix: 'PUR-', purchaseNextNumber: 1, rentalPrefix: 'RNT-', rentalNextNumber: 1, expensePrefix: 'EXP-', expenseNextNumber: 1, productPrefix: 'PRD-', productNextNumber: 1, studioPrefix: 'STD-', studioNextNumber: 1, posPrefix: 'POS-', posNextNumber: 1, paymentPrefix: 'PAY-', paymentNextNumber: 1, jobPrefix: 'JOB-', jobNextNumber: 1, journalPrefix: 'JV-', journalNextNumber: 1 },
     updateNumberingRules: noopSync,
     getNextNumber: async () => '',
-    currentUser: { role: 'Admin', canCreateSale: true, canEditSale: true, canDeleteSale: true, canCancelSale: true, canViewReports: true, canManageSettings: true, canManageUsers: true, canAccessAccounting: true, canMakePayments: true, canReceivePayments: true, canManageExpenses: true, canManageProducts: true, canManagePurchases: true, canManageRentals: true },
+    currentUser: { role: 'Admin', canCreateSale: true, canEditSale: true, canDeleteSale: true, canCancelSale: true, canViewSale: true, canViewContacts: true, canViewReports: true, canManageSettings: true, canManageUsers: true, canAccessAccounting: true, canMakePayments: true, canReceivePayments: true, canManageExpenses: true, canManageProducts: true, canManagePurchases: true, canManageRentals: true },
     updatePermissions: noop,
     modules: { rentalModuleEnabled: true, studioModuleEnabled: true, accountingModuleEnabled: true, productionModuleEnabled: true, posModuleEnabled: true, combosEnabled: false },
     updateModules: noop,
@@ -432,6 +435,8 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
     canEditSale: false,
     canDeleteSale: false,
     canCancelSale: false,
+    canViewSale: false,
+    canViewContacts: false,
     canViewReports: false,
     canManageSettings: false,
     canManageUsers: false,
@@ -459,6 +464,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
   // ============================================
 
   const loadAllSettings = useCallback(async () => {
+    console.log('[PERM_DEBUG] loadAllSettings started; loading=true → isPermissionLoaded=false');
     if (!companyId) {
       setLoading(false);
       return;
@@ -664,11 +670,12 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
       });
 
       // Load current user permissions from users table (role-based + granular)
+      // user.id = auth UUID; users table has id (ERP PK) and auth_user_id — match either
       if (user?.id && companyId) {
         const { data: userData } = await supabase
           .from('users')
           .select('role, permissions')
-          .eq('id', user.id)
+          .or(`id.eq.${user.id},auth_user_id.eq.${user.id}`)
           .eq('company_id', companyId)
           .maybeSingle();
 
@@ -688,37 +695,115 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
           let canUsePos = p.canUsePos;
           let canAccessStudio = p.canAccessStudio;
           let canManageRentals = p.canManageRentals ?? (role === 'Admin' || role === 'Manager');
+          let canCreateSale = p.canCreateSale ?? (role === 'Admin' || role === 'Manager');
+          let canEditSale = p.canEditSale ?? (role === 'Admin' || role === 'Manager');
+          let canDeleteSale = p.canDeleteSale ?? (role === 'Admin');
+          let canViewReports = p.canViewReports ?? (role === 'Admin' || role === 'Manager');
+          let canViewSale = false;
+          let canViewContacts = p.canViewContacts ?? (role === 'Admin' || role === 'Manager');
+          let canManageSettings = p.canManageSettings ?? (role === 'Admin');
+          let canManageUsers = p.canManageUsers ?? (role === 'Admin');
+          let canAccessAccounting = p.canAccessAccounting ?? (role === 'Admin' || role === 'Manager');
+          let canMakePayments = p.canMakePayments ?? (role === 'Admin' || role === 'Manager');
+          let canReceivePayments = p.canReceivePayments ?? (role === 'Admin' || role === 'Manager');
+          let canManageExpenses = p.canManageExpenses ?? (role === 'Admin' || role === 'Manager');
+          let canManageProducts = p.canManageProducts ?? (role === 'Admin' || role === 'Manager');
+          let canEditPurchase = p.canEditPurchase ?? (role === 'Admin' || role === 'Manager');
+          let canDeletePurchase = p.canDeletePurchase ?? (role === 'Admin');
           try {
             const rolePerms = await permissionService.getRolePermissions(engineRole);
+            // ---------- [PERM_DEBUG] 4 LINES — Instant diagnosis (filter console by PERM_DEBUG) ----------
+            const permCount = rolePerms?.length ?? 0;
+            const isEmpty = permCount === 0;
+            const { data: allRoleRows } = await supabase.from('role_permissions').select('role');
+            const distinctRoles = [...new Set((allRoleRows || []).map((r: { role: string }) => r.role))];
+            console.log('[PERM_DEBUG] engineRole =', engineRole);
+            console.log('[PERM_DEBUG] role_permissions count =', permCount);
+            console.log('[PERM_DEBUG] role_permissions returning empty array? =', isEmpty);
+            console.log('[PERM_DEBUG] DB: SELECT DISTINCT role FROM role_permissions =', distinctRoles);
+            if (isEmpty && distinctRoles.length > 0) {
+              console.warn('[PERM_DEBUG] ⚠️ role "' + engineRole + '" not in DB. Maujood roles:', distinctRoles);
+            }
+            // ---------- end [PERM_DEBUG] ----------
             const hasPurchase = rolePerms.some(x => x.module === 'purchase' && (x.action === 'view' || x.action === 'create') && x.allowed);
             const hasPos = rolePerms.some(x => x.module === 'pos' && (x.action === 'use' || x.action === 'view') && x.allowed);
-            const hasStudio = rolePerms.some(x => x.module === 'studio' && (x.action === 'view' || x.action === 'create') && x.allowed);
+            const hasStudio = rolePerms.some(x => x.module === 'studio' && ['view', 'create', 'edit', 'delete'].includes(x.action) && x.allowed);
             const hasRentals = rolePerms.some(x => x.module === 'rentals' && (x.action === 'view' || x.action === 'create') && x.allowed);
+            const hasSalesView = rolePerms.some(x => x.module === 'sales' && ['view_own', 'view_branch', 'view_company'].includes(x.action) && x.allowed);
+            const hasSalesCreate = rolePerms.some(x => x.module === 'sales' && x.action === 'create' && x.allowed);
+            const hasSalesEdit = rolePerms.some(x => x.module === 'sales' && x.action === 'edit' && x.allowed);
+            const hasSalesDelete = rolePerms.some(x => x.module === 'sales' && x.action === 'delete' && x.allowed);
+            const hasReportsView = rolePerms.some(x => x.module === 'reports' && x.action === 'view' && x.allowed);
+            // Accounting (UI) = ledger in DB. Show full Accounting only for view_full_accounting or view_supplier; view_customer alone = customer ledger only, not full module.
+            const hasAccountingVisibility = rolePerms.some(x => x.module === 'ledger' && (x.action === 'view_full_accounting' || x.action === 'view_supplier') && x.allowed);
+            const hasInventory = rolePerms.some(x => x.module === 'inventory' && x.action === 'view' && x.allowed);
+            const hasContacts = rolePerms.some(x => x.module === 'contacts' && x.action === 'view' && x.allowed);
+            const hasUsers = rolePerms.some(x => x.module === 'users' && (x.action === 'create' || x.action === 'edit' || x.action === 'delete' || x.action === 'assign_permissions') && x.allowed);
+            const hasSettings = rolePerms.some(x => x.module === 'settings' && x.action === 'modify' && x.allowed);
+            const hasPaymentsReceive = rolePerms.some(x => x.module === 'payments' && x.action === 'receive' && x.allowed);
+            const hasPaymentsEdit = rolePerms.some(x => x.module === 'payments' && x.action === 'edit' && x.allowed);
+            const hasPurchaseEdit = rolePerms.some(x => x.module === 'purchase' && x.action === 'edit' && x.allowed);
+            const hasPurchaseDelete = rolePerms.some(x => x.module === 'purchase' && x.action === 'delete' && x.allowed);
             canManagePurchases = hasPurchase;
             canUsePos = hasPos;
             canAccessStudio = hasStudio;
             canManageRentals = hasRentals;
-          } catch {
+            canViewSale = hasSalesView;
+            canViewReports = hasReportsView;
+            canAccessAccounting = hasAccountingVisibility;
+            canManageProducts = hasInventory;
+            canViewContacts = hasContacts;
+            canManageUsers = hasUsers;
+            canManageSettings = hasSettings;
+            canReceivePayments = hasPaymentsReceive;
+            canMakePayments = hasPaymentsEdit || hasPaymentsReceive;
+            canManageExpenses = hasPaymentsReceive;
+            if (hasPurchase) {
+              canEditPurchase = hasPurchaseEdit;
+              canDeletePurchase = hasPurchaseDelete;
+            }
+            if (hasSalesView || hasSalesCreate || hasSalesEdit || hasSalesDelete) {
+              canCreateSale = hasSalesCreate;
+              canEditSale = hasSalesEdit;
+              canDeleteSale = hasSalesDelete;
+            }
+          } catch (err) {
             // Keep defaults from p / role when role_permissions unavailable
+            console.log('[PERM_DEBUG] getRolePermissions threw:', err);
           }
+          // ---------- [PERM_DEBUG] 3. Derived flags (POS, Studio, Accounting, Sales for visibility) ----------
+          console.log('[PERM_DEBUG] 3. Derived flags:', {
+            canViewSale,
+            canCreateSale,
+            canEditSale,
+            canViewReports,
+            canManageProducts,
+            canViewContacts,
+            canAccessAccounting,
+            canUsePos,
+            canAccessStudio,
+          });
+          // ---------- end [PERM_DEBUG] ----------
           setCurrentUser({
             role,
-            canCreateSale: p.canCreateSale ?? (role === 'Admin' || role === 'Manager'),
-            canEditSale: p.canEditSale ?? (role === 'Admin' || role === 'Manager'),
-            canDeleteSale: p.canDeleteSale ?? (role === 'Admin'),
+            canCreateSale,
+            canEditSale,
+            canDeleteSale,
             canCancelSale: p.canCancelSale ?? (role === 'Admin' || role === 'Manager'),
-            canViewReports: p.canViewReports ?? (role === 'Admin' || role === 'Manager'),
-            canManageSettings: p.canManageSettings ?? (role === 'Admin'),
-            canManageUsers: p.canManageUsers ?? (role === 'Admin'),
-            canAccessAccounting: p.canAccessAccounting ?? (role === 'Admin' || role === 'Manager'),
-            canMakePayments: p.canMakePayments ?? (role === 'Admin' || role === 'Manager'),
-            canReceivePayments: p.canReceivePayments ?? (role === 'Admin' || role === 'Manager'),
-            canManageExpenses: p.canManageExpenses ?? (role === 'Admin' || role === 'Manager'),
-            canManageProducts: p.canManageProducts ?? (role === 'Admin' || role === 'Manager'),
+            canViewReports,
+            canViewSale,
+            canViewContacts,
+            canManageSettings,
+            canManageUsers,
+            canAccessAccounting,
+            canMakePayments,
+            canReceivePayments,
+            canManageExpenses,
+            canManageProducts,
             canManagePurchases,
             canManageRentals,
-            canEditPurchase: p.canEditPurchase ?? (role === 'Admin' || role === 'Manager'),
-            canDeletePurchase: p.canDeletePurchase ?? (role === 'Admin'),
+            canEditPurchase,
+            canDeletePurchase,
             canUsePos: canUsePos ?? (role === 'Admin' || role === 'Manager'),
             canAccessStudio: canAccessStudio ?? (role === 'Admin' || role === 'Manager'),
           });
@@ -731,6 +816,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
       toast.error('Failed to load settings');
     } finally {
       setLoading(false);
+      console.log('[PERM_DEBUG] loadAllSettings finished; loading=false → isPermissionLoaded=true');
     }
   }, [companyId, branchId, user?.id]);
 
@@ -1028,6 +1114,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
 
   const value: SettingsContextType = {
     loading,
+    isPermissionLoaded: !loading,
     company,
     updateCompanySettings,
     branches,

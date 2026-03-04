@@ -146,7 +146,7 @@ interface PurchaseFormProps {
 
 export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFormProps) => {
     // Supabase & Context
-    const { companyId, branchId: contextBranchId, userRole, supabaseClient } = useSupabase();
+    const { companyId, branchId: contextBranchId, userRole, supabaseClient, requiresBranchSelection } = useSupabase();
     const { inventorySettings, company } = useSettings();
     const enablePacking = inventorySettings.enablePacking;
     // CRITICAL FIX: Check if user is admin
@@ -1439,9 +1439,13 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
             return;
         }
         
-        // RULE 3 FIX: Branch validation for all users (backend requirement)
+        // Block save when no valid branch; message depends on single vs multi-branch
         if (!branchId || branchId === '' || branchId === 'all') {
-            toast.error('Branch is required. Please select a branch.');
+            toast.error(
+                requiresBranchSelection
+                    ? 'Branch is required. Please select a branch.'
+                    : 'No branch available. Please try again or contact admin.'
+            );
             return;
         }
         
@@ -1547,6 +1551,7 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                 discount: discountAmount,
                 tax: 0, // Can be enhanced later
                 shippingCost: expensesTotal,
+                expenses: extraExpenses,
                 total: totalAmount,
                 paid: paidToUse,
                 due: dueToUse,
@@ -1888,22 +1893,22 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                         
                         {/* LEFT PANEL - Items Entry (Independent Scroll) */}
                         <div className="flex flex-col h-full overflow-hidden">
-                            {/* Branch Validation Warning */}
-                            {(!branchId || branchId === 'all' || branchId.trim() === '') && (
+                            {/* Branch Validation Warning: admin must select; non-admin only when multi-branch and no mapping */}
+                            {(isAdmin && (!branchId || branchId === 'all' || branchId.trim() === '')) || (!isAdmin && requiresBranchSelection) ? (
                                 <div className="mb-3 p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-lg flex items-center gap-2">
                                     <AlertCircle size={16} className="text-yellow-400 flex-shrink-0" />
                                     <p className="text-xs text-yellow-400">
-                                        {isAdmin 
+                                        {isAdmin
                                             ? 'Please select a branch before adding items. Branch is mandatory for purchases.'
-                                            : 'Branch is required. Please contact admin if branch is not auto-selected.'}
+                                            : 'Your user is not assigned to any branch. Ask admin to assign a branch.'}
                                     </p>
                                 </div>
-                            )}
+                            ) : null}
                             
-                            {/* Items Table Section - Disabled until branch selected */}
+                            {/* Items Table Section - Disabled when branch required but not selected */}
                             <div className={cn(
                                 "flex flex-col h-full overflow-hidden",
-                                (!branchId || branchId === 'all' || branchId.trim() === '') && "opacity-50 pointer-events-none"
+                                (isAdmin && (!branchId || branchId === 'all' || branchId.trim() === '')) || (!isAdmin && requiresBranchSelection) ? "opacity-50 pointer-events-none" : ""
                             )}>
                             <PurchaseItemsSection
                                 items={items}

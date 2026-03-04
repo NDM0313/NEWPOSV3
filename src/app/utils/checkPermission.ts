@@ -33,9 +33,13 @@ export interface UserPermissions {
   canUsePos?: boolean;
   /** Studio Production access from role_permissions (studio.view / create / edit / delete) */
   canAccessStudio?: boolean;
+  /** Sales view-only from role_permissions (view_own / view_branch / view_company) */
+  canViewSale?: boolean;
+  /** Contacts view from role_permissions (contacts.view) */
+  canViewContacts?: boolean;
 }
 
-/** Module names for permission checks */
+/** Module names for permission checks (must align with role_permissions.module where applicable) */
 export type PermissionModule =
   | 'sales'
   | 'purchases'
@@ -45,10 +49,12 @@ export type PermissionModule =
   | 'reports'
   | 'settings'
   | 'users'
-  | 'accounting'
+  | 'accounting'   // role_permissions: ledger
   | 'payments'
-  | 'expenses'
-  | 'products';
+  | 'expenses'     // role_permissions: payments (receive)
+  | 'products'    // role_permissions: inventory
+  | 'contacts'
+  | 'inventory';
 
 /**
  * Check if user has permission for given module + action.
@@ -66,7 +72,7 @@ export function checkPermission(
 
   switch (module) {
     case 'sales':
-      if (action === 'view') return permissions.canCreateSale || permissions.canEditSale || permissions.canDeleteSale || (permissions.canCancelSale ?? false);
+      if (action === 'view') return (permissions.canViewSale ?? false) || permissions.canCreateSale || permissions.canEditSale || permissions.canDeleteSale || (permissions.canCancelSale ?? false);
       if (action === 'create') return permissions.canCreateSale;
       if (action === 'edit') return permissions.canEditSale;
       if (action === 'delete') return permissions.canDeleteSale;
@@ -111,6 +117,12 @@ export function checkPermission(
 
     case 'products':
       return permissions.canManageProducts === true;
+
+    case 'contacts':
+      return (action === 'view' || action === 'edit') && (permissions.canViewContacts === true);
+
+    case 'inventory':
+      return action === 'view' && permissions.canManageProducts === true;
 
     default:
       return false;
