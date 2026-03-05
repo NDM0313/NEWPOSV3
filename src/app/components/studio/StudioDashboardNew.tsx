@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { studioService } from '@/app/services/studioService';
 import { saleService } from '@/app/services/saleService';
-import { studioProductionService } from '@/app/services/studioProductionService';
+import { studioProductionService, ensureStudioProductionsForCompany } from '@/app/services/studioProductionService';
 import { toast } from 'sonner';
 import { 
   Palette, 
@@ -535,6 +535,7 @@ export const StudioDashboardNew = () => {
     if (!companyId) return;
     setLoading(true);
     try {
+      await ensureStudioProductionsForCompany(companyId);
       const [studioOrdersData, studioSalesData] = await Promise.all([
         studioService.getAllStudioOrders(companyId, branchId === 'all' ? undefined : branchId || undefined).catch(() => []),
         saleService.getStudioSales(companyId, branchId === 'all' ? undefined : branchId || undefined).catch(() => []),

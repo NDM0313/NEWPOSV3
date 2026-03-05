@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
 import * as permissionsApi from '../api/permissions';
+import { getBranches } from '../api/branches';
 import { FEATURE_MOBILE_PERMISSION_V2 } from '../config/featureFlags';
 import type { RolePermissionRow } from '../api/permissions';
 
@@ -14,7 +15,8 @@ interface PermissionState {
 interface PermissionContextValue extends PermissionState {
   hasPermission: (module: string, action?: string) => boolean;
   hasBranchAccess: (branchId: string) => boolean;
-  reload: (userId: string, appRole: string, profileId?: string) => Promise<void>;
+  /** profileId = public users.id for user_branches; companyId = fallback when user has no assigned branches (single-branch company). */
+  reload: (userId: string, appRole: string, profileId?: string, companyId?: string) => Promise<void>;
 }
 
 const defaultState: PermissionState = {
@@ -35,25 +37,28 @@ const PermissionContext = createContext<PermissionContextValue>({
 export function PermissionProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = useState<PermissionState>(defaultState);
 
-  const reload = useCallback(async (userId: string, appRole: string, profileId?: string) => {
+  const reload = useCallback(async (userId: string, appRole: string, profileId?: string, companyId?: string) => {
     if (!FEATURE_MOBILE_PERMISSION_V2) {
       setState({ permissions: [], branchIds: [], isPermissionLoaded: true, isAdminOrOwner: true, isOwner: true });
       return;
     }
     const branchUserId = profileId ?? userId;
     try {
-      const [perms, branchIds] = await Promise.all([
+      const [perms, userBranchIds] = await Promise.all([
         permissionsApi.getRolePermissions(appRole),
         permissionsApi.getUserBranchIds(branchUserId),
       ]);
+      let branchIds = userBranchIds;
+      if (branchIds.length === 0 && companyId) {
+        const { data: companyBranches } = await getBranches(companyId);
+        if (companyBranches?.length === 1) {
+          branchIds = [companyBranches[0].id];
+        }
+      }
       const r = (appRole || '').toLowerCase();
       const isAdminOrOwner = ['owner', 'admin', 'super admin', 'superadmin'].includes(r);
       const isOwner = r === 'owner';
       
-      console.log("[PermissionContext] Loaded permissions:", perms);
-      console.log("[PermissionContext] Loaded branches:", branchIds);
-      console.log("[PermissionContext] User Role:", r, "isAdminOrOwner:", isAdminOrOwner);
-
       setState({
         permissions: perms,
         branchIds,
@@ -75,11 +80,8 @@ export function PermissionProvider({ children }: { children: React.ReactNode }) 
       
       const [module, action = 'view'] = code.split('.');
       
-      const result = permissionsApi.hasModuleAction(state.permissions, module, action) ||
+      return permissionsApi.hasModuleAction(state.permissions, module, action) ||
         (action === 'view' && permissionsApi.canViewModule(state.permissions, module));
-        
-      console.log(`[PermissionContext] hasPermission('${code}') = ${result}`);
-      return result;
     },
     [state.isPermissionLoaded, state.permissions, state.isOwner]
   );
@@ -91,9 +93,7 @@ export function PermissionProvider({ children }: { children: React.ReactNode }) 
       if (state.isAdminOrOwner) return true;
       if (!branchId) return false;
       
-      const result = state.branchIds.includes(branchId);
-      console.log(`[PermissionContext] hasBranchAccess('${branchId}') = ${result} (User has: ${JSON.stringify(state.branchIds)})`);
-      return result;
+      return state.branchIds.includes(branchId);
     },
     [state.isPermissionLoaded, state.branchIds, state.isAdminOrOwner]
   );

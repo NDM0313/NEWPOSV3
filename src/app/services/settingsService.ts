@@ -327,11 +327,11 @@ export const settingsService = {
       throw new Error(`Document sequence not found for ${documentType}`);
     }
 
-    // Increment
+    // Increment: next number to use and to persist
     const nextNumber = sequence.current_number + 1;
     const padding = sequence.padding || 4;
     
-    // Update
+    // Update DB so next call gets nextNumber+1
     await this.setDocumentSequence(
       companyId,
       branchId,
@@ -341,7 +341,7 @@ export const settingsService = {
       padding
     );
 
-    // Return formatted number
-    return `${sequence.prefix}${String(sequence.current_number).padStart(padding, '0')}`;
+    // Return the new number (nextNumber), not the old current_number
+    return `${sequence.prefix}${String(nextNumber).padStart(padding, '0')}`;
   },
 };

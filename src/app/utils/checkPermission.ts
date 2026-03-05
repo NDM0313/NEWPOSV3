@@ -35,8 +35,10 @@ export interface UserPermissions {
   canAccessStudio?: boolean;
   /** Sales view-only from role_permissions (view_own / view_branch / view_company) */
   canViewSale?: boolean;
-  /** Contacts view from role_permissions (contacts.view) */
+  /** Contacts from role_permissions (contacts.view, create, edit, delete) */
   canViewContacts?: boolean;
+  canCreateContact?: boolean;
+  canDeleteContact?: boolean;
 }
 
 /** Module names for permission checks (must align with role_permissions.module where applicable) */
@@ -119,7 +121,10 @@ export function checkPermission(
       return permissions.canManageProducts === true;
 
     case 'contacts':
-      return (action === 'view' || action === 'edit') && (permissions.canViewContacts === true);
+      if (action === 'view' || action === 'edit') return permissions.canViewContacts === true;
+      if (action === 'create') return (permissions.canCreateContact ?? permissions.canViewContacts) === true;
+      if (action === 'delete') return permissions.canDeleteContact === true;
+      return false;
 
     case 'inventory':
       return action === 'view' && permissions.canManageProducts === true;

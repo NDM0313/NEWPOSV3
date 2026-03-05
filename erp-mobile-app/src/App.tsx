@@ -105,8 +105,8 @@ export default function App() {
   }, [online, user?.id, setStatus]);
 
   useEffect(() => {
-    if (user?.id && user?.role) reload(user.id, user.role, user.profileId);
-  }, [user?.id, user?.role, user?.profileId, reload]);
+    if (user?.id && user?.role) reload(user.id, user.role, user.profileId, companyId ?? undefined);
+  }, [user?.id, user?.role, user?.profileId, companyId, reload]);
 
   useEffect(() => {
     let cancelled = false;

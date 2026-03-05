@@ -237,7 +237,7 @@ export async function getRentalById(rentalId: string): Promise<{ data: RentalDet
 
   const { data: items, error: iErr } = await supabase
     .from('rental_items')
-    .select('id, product_id, product_name, sku, quantity, rate_per_day, rate, total, unit')
+    .select('id, product_id, product_name, quantity, rate_per_day, duration_days, total')
     .eq('rental_id', rentalId)
     .order('id');
   if (iErr) return { data: null, error: iErr.message };

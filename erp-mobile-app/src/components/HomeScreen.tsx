@@ -1,6 +1,6 @@
 import {
   ShoppingCart, ShoppingBag, Shirt, Camera, DollarSign, Receipt, Package, User as UserIcon,
-  LogOut, TrendingUp, Settings as SettingsIcon, Sparkles,
+  LogOut, TrendingUp, Settings as SettingsIcon, Sparkles, Store,
 } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import type { User, Branch, Screen } from '../types';
@@ -37,6 +37,7 @@ const MODULES: ModuleCard[] = [
   { id: 'expense', title: 'Expense', icon: <Receipt className="w-8 h-8" />, color: '#EF4444', bgColor: 'bg-[#EF4444]/10', enabled: true },
   { id: 'products', title: 'Products', icon: <Package className="w-8 h-8" />, color: '#3B82F6', bgColor: 'bg-[#3B82F6]/10', enabled: true },
   { id: 'inventory', title: 'Inventory', icon: <Package className="w-8 h-8" />, color: '#10B981', bgColor: 'bg-[#10B981]/10', enabled: true },
+  { id: 'pos', title: 'Point of Sale', icon: <Store className="w-8 h-8" />, color: '#059669', bgColor: 'bg-[#059669]/10', enabled: true },
   { id: 'contacts', title: 'Contacts', icon: <UserIcon className="w-8 h-8" />, color: '#6366F1', bgColor: 'bg-[#6366F1]/10', enabled: true },
   { id: 'reports', title: 'Reports', icon: <TrendingUp className="w-8 h-8" />, color: '#8B5CF6', bgColor: 'bg-[#8B5CF6]/10', enabled: true },
   { id: 'settings', title: 'Settings', icon: <SettingsIcon className="w-8 h-8" />, color: '#6B7280', bgColor: 'bg-[#6B7280]/10', enabled: true },

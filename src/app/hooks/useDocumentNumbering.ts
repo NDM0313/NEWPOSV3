@@ -216,6 +216,15 @@ export const useDocumentNumbering = () => {
       return generateDocumentNumber(type);
     }
 
+    // Product SKU: use atomic RPC so sequence stays correct and no duplicates
+    if (type === 'production') {
+      try {
+        return await documentNumberService.getNextProductSKU(companyId, undefined);
+      } catch (e) {
+        console.warn('[DOCUMENT NUMBERING] getNextProductSKU failed, using fallback:', e);
+      }
+    }
+
     const config = getNumberingConfig(type);
     const prefix = config.prefix || 'DOC';
     let attemptNumber = config.nextNumber;

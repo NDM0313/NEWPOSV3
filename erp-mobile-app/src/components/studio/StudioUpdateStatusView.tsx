@@ -24,7 +24,9 @@ export function StudioUpdateStatusView({
   const [expectedCost, setExpectedCost] = useState(selectedStage.internalCost?.toString() ?? '');
   const [finalCost, setFinalCost] = useState(selectedStage.internalCost?.toString() ?? '');
   const isPending = selectedStage.status === 'pending';
-  const isAssigned = selectedStage.status === 'assigned' || selectedStage.status === 'in_progress' || selectedStage.status === 'in-progress';
+  const isAssigned = selectedStage.status === 'assigned';
+  const isSentToWorker = selectedStage.status === 'sent_to_worker' || selectedStage.status === 'in_progress' || selectedStage.status === 'in-progress';
+  const isReceived = selectedStage.status === 'received';
   const isCompleted = selectedStage.status === 'completed';
 
   const handleAssign = async () => {
@@ -39,7 +41,7 @@ export function StudioUpdateStatusView({
       return;
     }
     setLoading(true);
-    const { data, error } = await studioApi.assignWorkerToStep(selectedStage.id, {
+    const { error } = await studioApi.assignWorkerToStep(selectedStage.id, {
       worker_id: wid,
       expected_cost: cost,
       expected_completion_date: selectedStage.expectedDate || null,
@@ -53,17 +55,58 @@ export function StudioUpdateStatusView({
     onComplete();
   };
 
-  const handleReceive = async () => {
+  const handleSendToWorker = async () => {
+    setLoading(true);
+    const { error } = await studioApi.sendToWorker(selectedStage.id);
+    setLoading(false);
+    if (error) {
+      alert(error);
+      return;
+    }
+    onComplete();
+  };
+
+  const handleReceiveWork = async () => {
+    setLoading(true);
+    const { error } = await studioApi.receiveWork(selectedStage.id);
+    setLoading(false);
+    if (error) {
+      alert(error);
+      return;
+    }
+    onComplete();
+  };
+
+  const handleConfirmPayment = async (payNow: boolean) => {
     const cost = parseFloat(finalCost) || 0;
     if (cost <= 0) {
       alert('Enter final cost');
       return;
     }
     setLoading(true);
-    const { data, error } = await studioApi.receiveStepAndFinalizeCost(selectedStage.id, {
-      final_cost: cost,
-      notes: null,
-    });
+    const { error } = await studioApi.confirmStagePayment(selectedStage.id, { final_cost: cost, pay_now: payNow });
+    setLoading(false);
+    if (error) {
+      alert(error);
+      return;
+    }
+    onComplete();
+  };
+
+  const handleCompleteStage = async () => {
+    setLoading(true);
+    const { error } = await studioApi.completeStage(selectedStage.id);
+    setLoading(false);
+    if (error) {
+      alert(error);
+      return;
+    }
+    onComplete();
+  };
+
+  const handleReopen = async () => {
+    setLoading(true);
+    const { error } = await studioApi.reopenStep(selectedStage.id);
     setLoading(false);
     if (error) {
       alert(error);
@@ -82,16 +125,8 @@ export function StudioUpdateStatusView({
     return () => { cancelled = true; };
   }, [companyId, isPending]);
 
-  const handleReopen = async () => {
-    setLoading(true);
-    const { error } = await studioApi.reopenStep(selectedStage.id);
-    setLoading(false);
-    if (error) {
-      alert(error);
-      return;
-    }
-    onComplete();
-  };
+  const statusLabel = isPending ? 'Pending' : isAssigned ? 'Assigned' : isSentToWorker ? 'In Progress' : isReceived ? 'Received' : 'Completed';
+  const title = isPending ? 'Assign Worker' : isAssigned ? 'Send To Worker' : isSentToWorker ? 'Receive Work' : isReceived ? 'Confirm Payment' : 'Reopen Stage';
 
   return (
     <div className="min-h-screen pb-24 bg-[#111827]">
@@ -101,9 +136,7 @@ export function StudioUpdateStatusView({
             <ArrowLeft className="w-5 h-5" />
           </button>
           <div className="flex-1">
-            <h1 className="font-semibold text-white">
-              {isPending ? 'Assign Worker' : isAssigned ? 'Receive from Worker' : 'Reopen Stage'}
-            </h1>
+            <h1 className="font-semibold text-white">{title}</h1>
             <p className="text-xs text-white/80">{selectedStage.name}</p>
           </div>
         </div>
@@ -118,13 +151,19 @@ export function StudioUpdateStatusView({
             </div>
             <div className="flex justify-between">
               <span className="text-[#9CA3AF]">Expected Date</span>
-              <span className="text-white">{selectedStage.expectedDate}</span>
+              <span className="text-white">{selectedStage.expectedDate || '—'}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-[#9CA3AF]">Sent</span>
+              <span className="text-white">{selectedStage.sentDate ?? '—'}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-[#9CA3AF]">Received</span>
+              <span className="text-white">{selectedStage.receivedDate ?? '—'}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-[#9CA3AF]">Status</span>
-              <span className="text-[#F59E0B] capitalize">
-                {isCompleted ? 'Received' : isAssigned ? 'Assigned' : 'Pending'}
-              </span>
+              <span className="text-[#F59E0B] capitalize">{statusLabel}</span>
             </div>
           </div>
         </div>
@@ -169,26 +208,78 @@ export function StudioUpdateStatusView({
 
         {isAssigned && (
           <div className="space-y-4">
-            <div>
-              <label className="block text-sm text-[#9CA3AF] mb-2">Final Cost (Rs)</label>
-              <input
-                type="number"
-                inputMode="decimal"
-                pattern="[0-9.]*"
-                value={finalCost}
-                onChange={(e) => setFinalCost(e.target.value)}
-                placeholder={selectedStage.internalCost?.toString() || '500'}
-                className="w-full bg-[#1F2937] border border-[#374151] rounded-lg px-4 py-3 text-white"
-              />
-            </div>
+            <p className="text-sm text-[#9CA3AF]">Mark that the item has been sent to the worker.</p>
             <button
-              onClick={handleReceive}
+              onClick={handleSendToWorker}
+              disabled={loading}
+              className="w-full py-4 bg-gradient-to-r from-[#3B82F6] to-[#2563EB] rounded-xl font-semibold text-white disabled:opacity-50 flex items-center justify-center gap-2"
+            >
+              {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : null}
+              Send To Worker
+            </button>
+          </div>
+        )}
+
+        {isSentToWorker && (
+          <div className="space-y-4">
+            <p className="text-sm text-[#9CA3AF]">Mark that work has been received back from the worker.</p>
+            <button
+              onClick={handleReceiveWork}
               disabled={loading}
               className="w-full py-4 bg-gradient-to-r from-[#10B981] to-[#059669] rounded-xl font-semibold text-white disabled:opacity-50 flex items-center justify-center gap-2"
             >
               {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : null}
-              Receive & Finalize
+              Receive Work
             </button>
+          </div>
+        )}
+
+        {isReceived && (
+          <div className="space-y-4">
+            {(selectedStage.internalCost ?? 0) <= 0 ? (
+              <>
+                <div>
+                  <label className="block text-sm text-[#9CA3AF] mb-2">Final Cost (Rs)</label>
+                  <input
+                    type="number"
+                    inputMode="decimal"
+                    pattern="[0-9.]*"
+                    value={finalCost}
+                    onChange={(e) => setFinalCost(e.target.value)}
+                    placeholder={selectedStage.internalCost?.toString() || '500'}
+                    className="w-full bg-[#1F2937] border border-[#374151] rounded-lg px-4 py-3 text-white"
+                  />
+                </div>
+                <button
+                  onClick={() => handleConfirmPayment(true)}
+                  disabled={loading}
+                  className="w-full py-3 bg-[#10B981] hover:bg-[#059669] rounded-xl font-semibold text-white disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : null}
+                  Pay Now
+                </button>
+                <button
+                  onClick={() => handleConfirmPayment(false)}
+                  disabled={loading}
+                  className="w-full py-3 bg-[#3B82F6] hover:bg-[#2563EB] rounded-xl font-semibold text-white disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : null}
+                  Pay Later
+                </button>
+              </>
+            ) : (
+              <>
+                <p className="text-sm text-[#9CA3AF]">Payment confirmed. Complete this stage.</p>
+                <button
+                  onClick={handleCompleteStage}
+                  disabled={loading}
+                  className="w-full py-4 bg-gradient-to-r from-[#10B981] to-[#059669] rounded-xl font-semibold text-white disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : null}
+                  Complete Stage
+                </button>
+              </>
+            )}
           </div>
         )}
 

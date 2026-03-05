@@ -1,5 +1,6 @@
 /**
  * Hook for permission checks. Uses SettingsContext currentUser.
+ * Unified API: use hasPermission('module.action') so Web and Mobile share the same check.
  */
 import { useCallback } from 'react';
 import { useSettings } from '@/app/context/SettingsContext';
@@ -19,8 +20,19 @@ export function useCheckPermission() {
     [currentUser]
   );
 
+  /** Unified: hasPermission('studio.view'), hasPermission('pos.view') — same as Mobile. */
+  const hasPermission = useCallback(
+    (code: string): boolean => {
+      const [module, action] = code.split('.');
+      const act = (action || 'view') as PermissionAction;
+      return checkPermissionUtil(currentUser, module as PermissionModule, act);
+    },
+    [currentUser]
+  );
+
   return {
     checkPermission,
+    hasPermission,
     canEditSale: checkPermissionUtil(currentUser, 'sales', 'edit'),
     canDeleteSale: checkPermissionUtil(currentUser, 'sales', 'delete'),
     canCancelSale: checkPermissionUtil(currentUser, 'sales', 'cancel'),

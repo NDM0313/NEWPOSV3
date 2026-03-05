@@ -18,7 +18,7 @@ const MODULES_ACTIONS: Record<string, string[]> = {
   payments: ['receive', 'edit', 'delete'],
   ledger: ['view_customer', 'view_supplier', 'view_full_accounting'],
   inventory: ['view', 'adjust', 'transfer'],
-  contacts: ['view', 'edit'],
+  contacts: ['view', 'create', 'edit', 'delete'],
   reports: ['view'],
   users: ['create', 'edit', 'delete', 'assign_permissions'],
   settings: ['modify'],

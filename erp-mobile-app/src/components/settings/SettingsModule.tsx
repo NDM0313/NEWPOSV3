@@ -29,6 +29,8 @@ import { SetPinModal } from './SetPinModal';
 import { ConnectionDebug } from '../dev/ConnectionDebug';
 import { UserPermissionsScreen } from './UserPermissionsScreen';
 import { EmployeesSection } from './EmployeesSection';
+import { usePermissions } from '../../context/PermissionContext';
+import { FEATURE_MOBILE_PERMISSION_V2 } from '../../config/featureFlags';
 
 interface SettingsModuleProps {
   onBack: () => void;
@@ -111,6 +113,8 @@ export function SettingsModule({
   const [showEmployees, setShowEmployees] = useState(false);
 
   const isAdminOrOwner = user.role === 'admin' || (user.role as string) === 'owner';
+  const { hasPermission } = usePermissions();
+  const canManageSettings = isAdminOrOwner || (FEATURE_MOBILE_PERMISSION_V2 && (hasPermission('settings.modify') || hasPermission('settings.view')));
 
   const refreshUnsynced = () => getUnsyncedCount().then(setUnsyncedCount);
 
@@ -316,16 +320,18 @@ export function SettingsModule({
           </button>
         )}
 
-        {/* User Permissions */}
+        {/* User Permissions — same as Web ERP Permissions: only for users with settings.modify (or admin when V2 off) */}
         <div className="space-y-2">
           <p className="text-xs text-[#6B7280] font-medium px-1">Permissions</p>
-          <SettingsRow
-            icon={UserCog}
-            iconColor="bg-[#8B5CF6]/20"
-            title="User Permissions"
-            subtitle="Role, branch access & permission matrix"
-            onClick={() => setShowUserPermissions(true)}
-          />
+          {canManageSettings && (
+            <SettingsRow
+              icon={UserCog}
+              iconColor="bg-[#8B5CF6]/20"
+              title="User Permissions"
+              subtitle="Role, branch access & permission matrix"
+              onClick={() => setShowUserPermissions(true)}
+            />
+          )}
 
           <SettingsRow
             icon={Briefcase}

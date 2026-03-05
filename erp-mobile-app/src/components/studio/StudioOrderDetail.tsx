@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { ArrowLeft, Plus, Edit2, Trash2, CheckCircle, Clock, Package } from 'lucide-react';
 import type { StudioOrder, StudioStage } from './StudioDashboard';
 
@@ -8,6 +9,11 @@ interface StudioOrderDetailProps {
   onEditStage: (stage: StudioStage) => void;
   onDeleteStage?: (stage: StudioStage) => void;
   onUpdateStatus: (stage: StudioStage) => void;
+  onSendToWorker?: (stage: StudioStage) => void;
+  onReceiveWork?: (stage: StudioStage) => void;
+  onConfirmPayment?: (stage: StudioStage, params: { final_cost: number; pay_now: boolean }) => void;
+  onCompleteStage?: (stage: StudioStage) => void;
+  onReopen?: (stage: StudioStage) => void;
   onGenerateInvoice: () => void;
   onShipment: () => void;
 }
@@ -19,19 +25,32 @@ export function StudioOrderDetail({
   onEditStage,
   onDeleteStage,
   onUpdateStatus,
+  onSendToWorker,
+  onReceiveWork,
+  onConfirmPayment,
+  onCompleteStage,
+  onReopen,
   onGenerateInvoice,
   onShipment,
 }: StudioOrderDetailProps) {
+  const [paymentDialogStage, setPaymentDialogStage] = useState<StudioStage | null>(null);
+  const [paymentFinalCost, setPaymentFinalCost] = useState('');
+  const [paymentSubmitting, setPaymentSubmitting] = useState(false);
+
   const getStageStatusConfig = (status: string) => {
     switch (status) {
       case 'pending':
         return { color: '#F59E0B', bg: 'bg-[#F59E0B]/10', text: 'Pending', icon: Clock };
       case 'assigned':
+        return { color: '#3B82F6', bg: 'bg-[#3B82F6]/10', text: 'Assigned', icon: Package };
       case 'in-progress':
       case 'in_progress':
-        return { color: '#3B82F6', bg: 'bg-[#3B82F6]/10', text: 'Assigned', icon: Package };
-      case 'completed':
+      case 'sent_to_worker':
+        return { color: '#3B82F6', bg: 'bg-[#3B82F6]/10', text: 'In Progress', icon: Package };
+      case 'received':
         return { color: '#10B981', bg: 'bg-[#10B981]/10', text: 'Received', icon: CheckCircle };
+      case 'completed':
+        return { color: '#10B981', bg: 'bg-[#10B981]/10', text: 'Completed', icon: CheckCircle };
       default:
         return { color: '#9CA3AF', bg: 'bg-[#374151]', text: 'Pending', icon: Clock };
     }
@@ -229,28 +248,52 @@ export function StudioOrderDetail({
                       </div>
                     </div>
 
-                    {(stage.startedDate || stage.completedDate) && (
-                      <div className="bg-[#374151] rounded-lg p-2 mb-3">
-                        <div className="flex items-center justify-between text-xs">
-                          {stage.startedDate && (
-                            <div>
-                              <p className="text-[#9CA3AF]">Started</p>
-                              <p className="text-white">{stage.startedDate}</p>
-                            </div>
-                          )}
-                          {stage.completedDate && (
-                            <div>
-                              <p className="text-[#9CA3AF]">Completed</p>
-                              <p className="text-[#10B981]">{stage.completedDate}</p>
-                            </div>
-                          )}
+                    <div className="bg-[#374151] rounded-lg p-2 mb-3">
+                      <div className="grid grid-cols-3 gap-2 text-xs">
+                        <div>
+                          <p className="text-[#9CA3AF]">Sent</p>
+                          <p className="text-white">{stage.sentDate ?? '—'}</p>
+                        </div>
+                        <div>
+                          <p className="text-[#9CA3AF]">Received</p>
+                          <p className="text-white">{stage.receivedDate ?? '—'}</p>
+                        </div>
+                        <div>
+                          <p className="text-[#9CA3AF]">Completed</p>
+                          <p className="text-white">{stage.completedDate ?? '—'}</p>
                         </div>
                       </div>
-                    )}
+                    </div>
 
                     {stage.status !== 'completed' && (
                       <button
-                        onClick={() => !stepLocked && onUpdateStatus(stage)}
+                        onClick={() => {
+                          if (stepLocked) return;
+                          if (!stage.workerId) {
+                            onUpdateStatus(stage);
+                            return;
+                          }
+                          if (stage.status === 'assigned' && onSendToWorker) {
+                            onSendToWorker(stage);
+                            return;
+                          }
+                          if ((stage.status === 'sent_to_worker' || stage.status === 'in_progress' || stage.status === 'in-progress') && onReceiveWork) {
+                            onReceiveWork(stage);
+                            return;
+                          }
+                          if (stage.status === 'received') {
+                            if ((stage.internalCost ?? 0) <= 0 && onConfirmPayment) {
+                              setPaymentFinalCost(String(stage.internalCost || stage.customerCharge || ''));
+                              setPaymentDialogStage(stage);
+                              return;
+                            }
+                            if (onCompleteStage) {
+                              onCompleteStage(stage);
+                              return;
+                            }
+                          }
+                          onUpdateStatus(stage);
+                        }}
                         disabled={stepLocked}
                         className={`w-full py-2 rounded-lg text-sm font-medium transition-colors ${
                           stepLocked
@@ -258,10 +301,30 @@ export function StudioOrderDetail({
                             : 'bg-[#374151] hover:bg-[#8B5CF6] text-white'
                         }`}
                       >
-                        {stepLocked ? 'Complete previous step first' : stage.status === 'pending' ? 'Assign' : 'Receive'}
+                        {stepLocked
+                          ? 'Complete previous step first'
+                          : !stage.workerId
+                            ? 'Assign Worker'
+                            : stage.status === 'assigned'
+                              ? 'Send To Worker'
+                              : stage.status === 'sent_to_worker' || stage.status === 'in_progress' || stage.status === 'in-progress'
+                                ? 'Receive Work'
+                                : stage.status === 'received'
+                                  ? (stage.internalCost ?? 0) <= 0
+                                    ? 'Confirm Payment'
+                                    : 'Complete Stage'
+                                  : 'Update'}
                       </button>
                     )}
-                    {stage.status === 'completed' && (
+                    {stage.status === 'completed' && onReopen && (
+                      <button
+                        onClick={() => onReopen(stage)}
+                        className="w-full py-2 bg-[#F59E0B]/20 hover:bg-[#F59E0B]/30 border border-[#F59E0B]/50 rounded-lg text-sm font-medium transition-colors text-[#F59E0B]"
+                      >
+                        Reopen
+                      </button>
+                    )}
+                    {stage.status === 'completed' && !onReopen && (
                       <button
                         onClick={() => onUpdateStatus(stage)}
                         className="w-full py-2 bg-[#F59E0B]/20 hover:bg-[#F59E0B]/30 border border-[#F59E0B]/50 rounded-lg text-sm font-medium transition-colors text-[#F59E0B]"
@@ -296,6 +359,72 @@ export function StudioOrderDetail({
           </button>
         )}
       </div>
+
+      {paymentDialogStage && onConfirmPayment && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+          <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4 w-full max-w-sm">
+            <h3 className="text-lg font-semibold text-white mb-3">Confirm Payment</h3>
+            <p className="text-sm text-[#9CA3AF] mb-2">{paymentDialogStage.name} – Worker: {paymentDialogStage.assignedTo}</p>
+            <label className="block text-sm text-[#9CA3AF] mb-1">Final Cost (Rs)</label>
+            <input
+              type="number"
+              inputMode="decimal"
+              value={paymentFinalCost}
+              onChange={(e) => setPaymentFinalCost(e.target.value)}
+              placeholder={String(paymentDialogStage.internalCost || '')}
+              className="w-full bg-[#374151] border border-[#4B5563] rounded-lg px-3 py-2 text-white mb-4"
+            />
+            <div className="flex gap-2">
+              <button
+                onClick={async () => {
+                  const cost = parseFloat(paymentFinalCost) || paymentDialogStage.internalCost || 0;
+                  if (cost <= 0) {
+                    alert('Enter final cost');
+                    return;
+                  }
+                  setPaymentSubmitting(true);
+                  try {
+                    await Promise.resolve(onConfirmPayment(paymentDialogStage, { final_cost: cost, pay_now: true }));
+                    setPaymentDialogStage(null);
+                  } finally {
+                    setPaymentSubmitting(false);
+                  }
+                }}
+                disabled={paymentSubmitting}
+                className="flex-1 py-2 rounded-lg text-sm font-medium bg-[#10B981] hover:bg-[#059669] text-white"
+              >
+                Pay Now
+              </button>
+              <button
+                onClick={async () => {
+                  const cost = parseFloat(paymentFinalCost) || paymentDialogStage.internalCost || 0;
+                  if (cost <= 0) {
+                    alert('Enter final cost');
+                    return;
+                  }
+                  setPaymentSubmitting(true);
+                  try {
+                    await Promise.resolve(onConfirmPayment(paymentDialogStage, { final_cost: cost, pay_now: false }));
+                    setPaymentDialogStage(null);
+                  } finally {
+                    setPaymentSubmitting(false);
+                  }
+                }}
+                disabled={paymentSubmitting}
+                className="flex-1 py-2 rounded-lg text-sm font-medium bg-[#3B82F6] hover:bg-[#2563EB] text-white"
+              >
+                Pay Later
+              </button>
+            </div>
+            <button
+              onClick={() => setPaymentDialogStage(null)}
+              className="w-full mt-2 py-2 rounded-lg text-sm text-[#9CA3AF] hover:bg-[#374151]"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

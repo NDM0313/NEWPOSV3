@@ -40,6 +40,8 @@ import { saleService } from '../../services/saleService';
 import { useSales } from '../../context/SalesContext';
 import { useSettings } from '../../context/SettingsContext';
 import { useFormatCurrency } from '../../hooks/useFormatCurrency';
+import { calculateStockFromMovements } from '../../utils/stockCalculation';
+import { supabase } from '@/lib/supabase';
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Badge } from "../ui/badge";
@@ -49,7 +51,17 @@ import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 import { Check, ChevronsUpDown } from "lucide-react";
 import { Label } from "../ui/label";
 import { toast } from 'sonner';
+import { UnifiedPaymentDialog } from '../shared/UnifiedPaymentDialog';
 import type { Sale, SaleItem } from '@/app/context/SalesContext';
+
+interface POSVariation {
+  id: string;
+  name?: string;
+  sku?: string;
+  current_stock?: number;
+  retail_price?: number;
+  wholesale_price?: number;
+}
 
 interface POSProduct {
   id: string;
@@ -59,6 +71,7 @@ interface POSProduct {
   category: string;
   stock: number;
   color: string;
+  variations?: POSVariation[];
 }
 
 interface POSCustomer {
@@ -126,10 +139,17 @@ export const POS = () => {
   const [editPaymentMethod, setEditPaymentMethod] = useState<'Cash' | 'Card'>('Cash');
   // After checkout, select the new sale once list has refreshed
   const [pendingSelectSaleId, setPendingSelectSaleId] = useState<string | null>(null);
+  // Proceed to Payment flow: create sale first, then open payment dialog (same as Sales)
+  const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
+  const [paymentDialogSaleId, setPaymentDialogSaleId] = useState<string | null>(null);
+  const [paymentDialogInvoiceNo, setPaymentDialogInvoiceNo] = useState<string | null>(null);
+  const [paymentDialogTotal, setPaymentDialogTotal] = useState(0);
 
-  // Clear mode: view = read-only (saved sale), edit = inline edit. Next/Previous → view.
-  const isViewMode = selectedSaleIndex >= 0 && !editMode; // viewing a saved sale, read-only
-  const isEditable = editMode || selectedSaleIndex === -1;  // can add/edit products only in edit or new order
+  const isViewMode = selectedSaleIndex >= 0 && !editMode;
+  const isEditable = editMode || selectedSaleIndex === -1;
+
+  // Variation selection modal: when product has variations, pick one before adding to cart
+  const [variationModalProduct, setVariationModalProduct] = useState<POSProduct | null>(null);
 
   // Sync invoice number display with selected sale
   useEffect(() => {
@@ -227,8 +247,8 @@ export const POS = () => {
   }, [discountValue, discountType, subtotal]);
 
   const afterDiscount = subtotal - discountAmount;
-  const tax = afterDiscount * 0.10;
-  const total = afterDiscount + tax;
+  const tax = 0;
+  const total = afterDiscount;
 
   const selectedCustomerData = customers.find(c => c.id === selectedCustomer);
 
@@ -239,6 +259,7 @@ export const POS = () => {
       const saleItems = cart.map(item => ({
         id: '',
         productId: item.productId,
+        variationId: item.variationId,
         productName: item.name,
         sku: 'N/A',
         quantity: item.qty,
@@ -278,27 +299,76 @@ export const POS = () => {
     }
   }, [editMode, selectedSaleId, viewingSale, cart, subtotal, discountAmount, tax, total, editPaidAmount, editPaymentMethod, selectedCustomer, selectedCustomerData, updateSale, refreshSales]);
 
-  // Load products and customers from Supabase
+  // Load products and customers from Supabase; when branchId set, overlay branch-scoped stock from stock_movements
   const loadData = useCallback(async () => {
     if (!companyId) return;
     
     try {
       setLoading(true);
       
-      // Load products
       const productsData = await productService.getAllProducts(companyId);
       const convertedProducts: POSProduct[] = productsData
-        .filter((p: any) => p.is_sellable && p.is_active)
-        .map((p: any) => ({
-          id: p.id,
-          name: p.name || '',
-          retailPrice: p.retail_price || 0,
-          wholesalePrice: p.wholesale_price || p.retail_price || 0,
-          category: p.category?.name || 'Uncategorized',
-          stock: p.current_stock || 0,
-          color: 'from-blue-600/20 to-blue-900/20', // Default color
-        }));
+        .filter((p: any) => p.is_sellable !== false && p.is_active !== false)
+        .map((p: any) => {
+          const variations = (p.variations || []).filter((v: any) => v && v.id);
+          const hasVariations = variations.length > 0;
+          const baseStock = p.current_stock || 0;
+          return {
+            id: p.id,
+            name: p.name || '',
+            retailPrice: p.retail_price || 0,
+            wholesalePrice: p.wholesale_price || p.retail_price || 0,
+            category: p.category?.name || 'Uncategorized',
+            stock: hasVariations ? 0 : baseStock,
+            color: 'from-blue-600/20 to-blue-900/20',
+            variations: hasVariations ? variations.map((v: any) => ({
+              id: v.id,
+              name: v.name || v.sku,
+              sku: v.sku,
+              current_stock: v.current_stock ?? 0,
+              retail_price: v.retail_price ?? v.price ?? p.retail_price ?? 0,
+              wholesale_price: v.wholesale_price ?? v.retail_price ?? p.wholesale_price ?? 0,
+            })) : undefined,
+          };
+        });
       setProducts(convertedProducts);
+
+      if (branchId && branchId !== 'all') {
+        try {
+          const { data: movements } = await supabase
+            .from('stock_movements')
+            .select('product_id, variation_id, quantity, movement_type')
+            .eq('company_id', companyId)
+            .eq('branch_id', branchId);
+          if (movements && movements.length > 0) {
+            const byKey = new Map<string, { quantity: number; movement_type: string }[]>();
+            movements.forEach((m: any) => {
+              const key = m.variation_id ? `${m.product_id}_${m.variation_id}` : m.product_id;
+              if (!byKey.has(key)) byKey.set(key, []);
+              byKey.get(key)!.push({ quantity: m.quantity ?? 0, movement_type: m.movement_type || '' });
+            });
+            const balanceByKey = new Map<string, number>();
+            byKey.forEach((arr, key) => {
+              const result = calculateStockFromMovements(arr.map(a => ({ movement_type: a.movement_type, quantity: a.quantity })));
+              balanceByKey.set(key, result.currentBalance);
+            });
+            setProducts(prev => prev.map(p => {
+              if (p.variations?.length) {
+                return {
+                  ...p,
+                  variations: p.variations.map(v => ({
+                    ...v,
+                    current_stock: balanceByKey.get(`${p.id}_${v.id}`) ?? v.current_stock ?? 0,
+                  })),
+                };
+              }
+              return { ...p, stock: balanceByKey.get(p.id) ?? p.stock };
+            }));
+          }
+        } catch (e) {
+          console.warn('[POS] Branch stock overlay failed, using product stock:', e);
+        }
+      }
       
       // Load customers
       const contactsData = await contactService.getAllContacts(companyId);
@@ -318,7 +388,7 @@ export const POS = () => {
     } finally {
       setLoading(false);
     }
-  }, [companyId]);
+  }, [companyId, branchId]);
 
   useEffect(() => {
     if (companyId) {
@@ -363,18 +433,36 @@ export const POS = () => {
     ];
   }, [products]);
 
-  const addToCart = (product: POSProduct) => {
+  const addToCart = (product: POSProduct, variation?: POSVariation) => {
+    const effectiveId = variation ? `${product.id}_${variation.id}` : product.id;
+    const effectiveName = variation ? `${product.name} (${variation.name || variation.sku || 'Variation'})` : product.name;
+    const effectiveRetail = variation ? (variation.retail_price ?? product.retailPrice) : product.retailPrice;
+    const effectiveWholesale = variation ? (variation.wholesale_price ?? product.wholesalePrice) : product.wholesalePrice;
     setCart(prev => {
-      const existing = prev.find(p => p.id === product.id);
+      const existing = prev.find(p => p.id === effectiveId);
       if (existing) {
-        return prev.map(p => p.id === product.id ? { ...p, qty: p.qty + 1 } : p);
+        return prev.map(p => p.id === effectiveId ? { ...p, qty: p.qty + 1 } : p);
       }
-      return [...prev, { 
-        ...product, 
+      return [...prev, {
+        id: effectiveId,
+        name: effectiveName,
+        retailPrice: effectiveRetail,
+        wholesalePrice: effectiveWholesale,
         qty: 1,
         productId: product.id,
+        variationId: variation?.id,
       }];
     });
+    setVariationModalProduct(null);
+  };
+
+  const onProductClick = (product: POSProduct) => {
+    if (isViewMode) return;
+    if (product.variations && product.variations.length > 0) {
+      setVariationModalProduct(product);
+    } else {
+      addToCart(product);
+    }
   };
 
   const updateQty = (id: string, delta: number) => {
@@ -419,80 +507,104 @@ export const POS = () => {
   const currentDate = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
   const currentTime = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
 
-  // Handle checkout
-  const handleCheckout = async (paymentMethod: 'cash' | 'card', totalAmount: number) => {
+  // Proceed to Payment: create sale (unpaid), then open payment dialog (same flow as Sales)
+  const handleProceedToPayment = async () => {
     if (!companyId || !user || cart.length === 0) {
       toast.error('Missing required information');
       return;
     }
+    if (!branchId || branchId === 'all') {
+      toast.error('Please select a branch. POS requires a specific branch.');
+      return;
+    }
 
-    // Stock validation: when negativeStockAllowed=false, block if qty exceeds stock
     if (!posSettings.negativeStockAllowed) {
-      const qtyByProduct = cart.reduce<Record<string, number>>((acc, item) => {
-        acc[item.productId] = (acc[item.productId] ?? 0) + item.qty;
+      const key = (pid: string, vid?: string) => vid ? `${pid}_${vid}` : pid;
+      const qtyByKey = cart.reduce<Record<string, number>>((acc, item) => {
+        const k = key(item.productId, item.variationId);
+        acc[k] = (acc[k] ?? 0) + item.qty;
         return acc;
       }, {});
-      for (const [pid, totalQty] of Object.entries(qtyByProduct)) {
+      for (const [k, totalQty] of Object.entries(qtyByKey)) {
+        const idx = k.indexOf('_');
+        const pid = idx >= 0 ? k.slice(0, idx) : k;
+        const vid = idx >= 0 ? k.slice(idx + 1) : undefined;
         const product = products.find(p => p.id === pid);
-        if (product && totalQty > product.stock) {
-          toast.error(`${product.name}: total quantity (${totalQty}) exceeds available stock (${product.stock})`);
+        if (!product) continue;
+        let stock: number;
+        if (vid && product.variations?.length) {
+          const v = product.variations.find((vr: POSVariation) => vr.id === vid);
+          stock = v?.current_stock ?? 0;
+        } else {
+          stock = product.stock;
+        }
+        if (totalQty > stock) {
+          toast.error(`${product.name}: total quantity (${totalQty}) exceeds available stock (${stock})`);
           return;
         }
       }
     }
 
     try {
-      // Get customer ID (or null for walk-in)
       const customerId = selectedCustomer === 'walk-in' ? null : selectedCustomer;
       const customerName = selectedCustomerData?.name || 'Walk-in Customer';
-
-      // Convert cart items to sale items
       const saleItems = cart.map(item => ({
         productId: item.productId,
+        variationId: item.variationId,
         productName: item.name,
         quantity: item.qty,
         unitPrice: item.customPrice !== undefined ? item.customPrice : getPrice(item),
         total: (item.customPrice !== undefined ? item.customPrice : getPrice(item)) * item.qty,
       }));
 
-      // Create sale – POS uses POS-0001 numbering; paymentMethod stored for payments
       const saleData = {
         isPOS: true as const,
         customer: customerId ?? '',
         customerName,
         contactNumber: '',
         date: new Date().toISOString().split('T')[0],
-        location: '',
+        location: branchId,
         type: 'invoice' as const,
         status: 'final' as const,
-        paymentStatus: 'paid' as const,
-        paymentMethod: paymentMethod === 'cash' ? 'Cash' : 'Card',
+        paymentStatus: 'unpaid' as const,
+        paymentMethod: 'Cash',
         shippingStatus: 'delivered' as const,
         itemsCount: saleItems.length,
         subtotal,
         discount: discountAmount,
-        tax: tax,
+        tax: 0,
         expenses: 0,
-        total: totalAmount,
-        paid: totalAmount,
-        due: 0,
+        total,
+        paid: 0,
+        due: total,
         returnDue: 0,
         items: saleItems,
       };
 
       const newSale = await createSale(saleData);
-      
-      toast.success(`Sale completed! Invoice: ${newSale.invoiceNo}`);
-      clearCart();
-      setInvoiceNumber(newSale.invoiceNo);
-      setPendingSelectSaleId(newSale.id);
-      refreshSales();
-      loadTodayStats(); // Refresh today's stats from DB
+      setPaymentDialogSaleId(newSale.id);
+      setPaymentDialogInvoiceNo(newSale.invoiceNo);
+      setPaymentDialogTotal(total);
+      setPaymentDialogOpen(true);
     } catch (error: any) {
-      console.error('[POS] Error processing checkout:', error);
-      toast.error('Failed to process payment: ' + (error.message || 'Unknown error'));
+      console.error('[POS] Error creating sale for payment:', error);
+      toast.error('Failed to create sale: ' + (error.message || 'Unknown error'));
     }
   };
+
+  const onPaymentSuccess = useCallback(() => {
+    const saleId = paymentDialogSaleId;
+    const invoiceNo = paymentDialogInvoiceNo;
+    clearCart();
+    if (saleId) setPendingSelectSaleId(saleId);
+    refreshSales();
+    loadTodayStats();
+    setPaymentDialogOpen(false);
+    setPaymentDialogSaleId(null);
+    setPaymentDialogInvoiceNo(null);
+    setPaymentDialogTotal(0);
+    toast.success(`Payment recorded. Invoice: ${invoiceNo || '—'}`);
+  }, [paymentDialogSaleId, paymentDialogInvoiceNo]);
 
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-[#111827] text-white">
@@ -701,7 +813,7 @@ export const POS = () => {
                   exit={{ opacity: 0, scale: 0.9 }}
                   whileHover={isViewMode ? undefined : { scale: 1.02, y: -4 }}
                   whileTap={isViewMode ? undefined : { scale: 0.98 }}
-                  onClick={() => !isViewMode && addToCart(product)}
+                  onClick={() => onProductClick(product)}
                   disabled={isViewMode}
                   className={cn(
                     "relative aspect-square p-4 rounded-xl flex flex-col justify-between items-start text-left transition-all border border-gray-700/50 bg-gradient-to-br group overflow-hidden",
@@ -709,13 +821,17 @@ export const POS = () => {
                     product.color || 'from-gray-800 to-gray-900'
                   )}
                 >
-                  {/* Stock Badge */}
-                  <Badge 
-                    variant="secondary" 
-                    className="absolute top-2 right-2 bg-black/40 text-white text-[10px] px-1.5 py-0.5 border-0 backdrop-blur-sm"
-                  >
-                    {product.stock} left
-                  </Badge>
+                  {/* Stock Badge (for products without variations; with variations show in modal) */}
+                  {!product.variations?.length && (
+                    <Badge variant="secondary" className="absolute top-2 right-2 bg-black/40 text-white text-[10px] px-1.5 py-0.5 border-0 backdrop-blur-sm">
+                      {product.stock} left
+                    </Badge>
+                  )}
+                  {product.variations?.length ? (
+                    <Badge variant="secondary" className="absolute top-2 right-2 bg-purple-900/50 text-purple-200 text-[10px] px-1.5 py-0.5 border-0">
+                      {product.variations.length} options
+                    </Badge>
+                  ) : null}
 
                   {/* Product Name */}
                   <div className="z-10">
@@ -892,7 +1008,6 @@ export const POS = () => {
               <div className="pt-3 border-t border-gray-700 space-y-1 text-sm">
                 <div className="flex justify-between text-gray-400"><span>Subtotal</span><span>{formatCurrency(viewingSale.subtotal || 0)}</span></div>
                 {(viewingSale.discount || 0) > 0 && <div className="flex justify-between text-green-400"><span>Discount</span><span>-{formatCurrency(viewingSale.discount || 0)}</span></div>}
-                <div className="flex justify-between text-gray-400"><span>Tax</span><span>{formatCurrency(viewingSale.tax || 0)}</span></div>
                 <div className="flex justify-between font-bold text-white pt-2"><span>Total</span><span>{formatCurrency(viewingSale.total || 0)}</span></div>
                 <div className="flex justify-between text-green-400"><span>Paid</span><span>{formatCurrency(viewingSalePayments.length > 0 ? viewingSalePayments.reduce((s, p) => s + (p.amount || 0), 0) : (viewingSale.paid || 0))}</span></div>
               </div>
@@ -1021,11 +1136,10 @@ export const POS = () => {
               )}
             </div>
 
-            {/* Totals */}
+            {/* Totals (no automatic tax; same as standard Sale module) */}
             <div className="px-5 py-4 space-y-2 border-b border-gray-800">
               <div className="flex justify-between text-sm"><span className="text-gray-400">Subtotal</span><span className="text-white font-medium">{formatCurrency(subtotal)}</span></div>
               {discountAmount > 0 && <div className="flex justify-between text-sm"><span className="text-gray-400">Discount</span><span className="text-green-400 font-medium">-{formatCurrency(discountAmount)}</span></div>}
-              <div className="flex justify-between text-sm"><span className="text-gray-400">Tax (10%)</span><span className="text-white font-medium">{formatCurrency(tax)}</span></div>
               <div className="flex justify-between items-center pt-2 border-t border-gray-700">
                 <span className="text-base font-semibold text-white">Total</span>
                 <span className="text-2xl font-bold text-blue-400">{formatCurrency(total)}</span>
@@ -1091,7 +1205,7 @@ export const POS = () => {
               </div>
             )}
 
-            {/* Buttons: Edit mode = Save + Cancel; New order = Cash + Card */}
+            {/* Buttons: Edit mode = Save + Cancel; New order = Proceed to Payment (same flow as Sales) */}
             <div className="px-5 py-4 grid grid-cols-2 gap-3">
               {editMode ? (
                 <>
@@ -1110,29 +1224,80 @@ export const POS = () => {
                   </Button>
                 </>
               ) : (
-                <>
-              <Button 
-                className="bg-green-600 hover:bg-green-500 text-white font-semibold h-12 rounded-xl shadow-lg shadow-green-900/30"
-                    onClick={async () => { await handleCheckout('cash', total); }}
-                disabled={loading || !companyId || !user}
-              >
-                <Banknote size={18} className="mr-2" />
-                Cash Payment
-              </Button>
-              <Button 
-                className="bg-blue-600 hover:bg-blue-500 text-white font-semibold h-12 rounded-xl shadow-lg shadow-blue-900/30"
-                    onClick={async () => { await handleCheckout('card', total); }}
-                disabled={loading || !companyId || !user}
-              >
-                <CreditCard size={18} className="mr-2" />
-                Card Payment
-              </Button>
-                </>
+                <Button
+                  className="col-span-2 bg-blue-600 hover:bg-blue-500 text-white font-semibold h-12 rounded-xl shadow-lg shadow-blue-900/30"
+                  onClick={handleProceedToPayment}
+                  disabled={loading || !companyId || !user || !branchId || branchId === 'all'}
+                >
+                  <CreditCard size={18} className="mr-2" />
+                  Proceed to Payment
+                </Button>
               )}
             </div>
           </div>
         ) : null}
       </div>
+
+      {/* Variation selection modal */}
+      {variationModalProduct && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setVariationModalProduct(null)}>
+          <div className="bg-gray-900 border border-gray-700 rounded-xl shadow-xl max-w-md w-full mx-4 max-h-[80vh] overflow-hidden flex flex-col" onClick={e => e.stopPropagation()}>
+            <div className="px-5 py-4 border-b border-gray-700">
+              <h3 className="font-bold text-white">Select variation</h3>
+              <p className="text-sm text-gray-400 mt-0.5">{variationModalProduct.name}</p>
+            </div>
+            <div className="overflow-y-auto p-4 space-y-2">
+              {variationModalProduct.variations?.map((v) => {
+                const stock = v.current_stock ?? 0;
+                const disabled = !posSettings.negativeStockAllowed && stock <= 0;
+                return (
+                  <button
+                    key={v.id}
+                    type="button"
+                    disabled={disabled}
+                    onClick={() => addToCart(variationModalProduct, v)}
+                    className={cn(
+                      "w-full flex items-center justify-between p-3 rounded-xl border text-left transition-all",
+                      disabled ? "opacity-50 cursor-not-allowed border-gray-700 bg-gray-800/50" : "border-gray-700 hover:border-blue-500 bg-gray-800/50 hover:bg-gray-800"
+                    )}
+                  >
+                    <div>
+                      <span className="font-medium text-white">{v.name || v.sku || 'Variation'}</span>
+                      {v.sku && <span className="text-xs text-gray-500 ml-2">{v.sku}</span>}
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <span className="text-xs text-gray-400">Stock: {stock}</span>
+                      <span className="font-semibold text-blue-400">{formatCurrency(isWholesale ? (v.wholesale_price ?? 0) : (v.retail_price ?? 0))}</span>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+            <div className="px-5 py-3 border-t border-gray-700">
+              <Button variant="outline" className="w-full border-gray-600" onClick={() => setVariationModalProduct(null)}>Cancel</Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <UnifiedPaymentDialog
+        isOpen={paymentDialogOpen && !!paymentDialogSaleId}
+        onClose={() => {
+          setPaymentDialogOpen(false);
+          setPaymentDialogSaleId(null);
+          setPaymentDialogInvoiceNo(null);
+          setPaymentDialogTotal(0);
+        }}
+        context="customer"
+        entityName={selectedCustomerData?.name || 'Walk-in Customer'}
+        entityId={selectedCustomer === 'walk-in' ? undefined : selectedCustomer}
+        outstandingAmount={paymentDialogTotal}
+        totalAmount={paymentDialogTotal}
+        paidAmount={0}
+        referenceNo={paymentDialogInvoiceNo || undefined}
+        referenceId={paymentDialogSaleId || undefined}
+        onSuccess={onPaymentSuccess}
+      />
     </div>
   );
 };

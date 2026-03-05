@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { ArrowLeft, Plus, Loader2, MoreVertical, Printer, RotateCcw, Ban, History, Search, ShoppingCart, Calendar, Paperclip, ChevronDown, ChevronUp, Briefcase, Share2, Download, FileText } from 'lucide-react';
 import * as salesApi from '../../api/sales';
+import * as studioApi from '../../api/studio';
 import * as reportsApi from '../../api/reports';
 import { MobileReceivePayment } from './MobileReceivePayment';
 import { AttachmentPreviewModal } from './AttachmentPreviewModal';
@@ -47,10 +48,11 @@ export function SalesHome({ onBack, onNewSale, companyId, branchId, userId }: Sa
     tasks_total: number;
     production_duration_days: number | null;
     completed_at: string | null;
-    breakdown: Array<{ task_type: string; cost: number; worker_id?: string }>;
-    tasks_with_workers: Array<{ task_type: string; cost: number; worker_id?: string; worker_name?: string; created_by?: string; completed_by?: string }>;
+    breakdown: Array<{ task_type: string; cost: number; worker_id?: string; worker_name?: string; completed_at?: string | null }>;
+    tasks_with_workers: Array<{ task_type: string; cost: number; worker_id?: string; worker_name?: string; created_by?: string; completed_by?: string; completed_at?: string | null }>;
   } | null>(null);
   const [showStudioBreakdown, setShowStudioBreakdown] = useState(false);
+  const [studioBreakdownFallback, setStudioBreakdownFallback] = useState<Array<{ task_type: string; cost: number; worker_name?: string; completed_at?: string | null }>>([]);
 
   const filteredSales = recentSales.filter(
     (sale) =>
@@ -143,22 +145,37 @@ export function SalesHome({ onBack, onNewSale, companyId, branchId, userId }: Sa
     if (!selectedSale) {
       setStudioSummary(null);
       setShowStudioBreakdown(false);
+      setStudioBreakdownFallback([]);
       return;
     }
     const saleId = selectedSale.raw.id as string;
     if (!saleId) {
       setStudioSummary(null);
+      setStudioBreakdownFallback([]);
       return;
     }
     let cancelled = false;
+    const isStudioSale = (selectedSale.studio_charges ?? 0) > 0 || selectedSale.raw.is_studio === true || String(selectedSale.id || '').startsWith('STD-');
     salesApi.getSaleStudioSummary(saleId).then(({ data, error }) => {
       if (cancelled) return;
       if (error) {
         setStudioSummary(null);
+        if (!isStudioSale) setStudioBreakdownFallback([]);
         return;
       }
       setStudioSummary(data ?? null);
+      const hasBreakdown = (data?.tasks_with_workers?.length ?? 0) > 0 || (data?.breakdown?.length ?? 0) > 0;
+      if (isStudioSale && !hasBreakdown) {
+        setStudioBreakdownFallback([]);
+      } else if (!isStudioSale) {
+        setStudioBreakdownFallback([]);
+      }
     });
+    if (isStudioSale) {
+      studioApi.getStudioStagesBySaleId(saleId).then(({ data: stages }) => {
+        if (!cancelled) setStudioBreakdownFallback(stages ?? []);
+      });
+    }
     return () => { cancelled = true; };
   }, [selectedSale]);
 
@@ -447,7 +464,15 @@ export function SalesHome({ onBack, onNewSale, companyId, branchId, userId }: Sa
             </div>
           </div>
 
-          {hasStudio && (
+          {hasStudio && (() => {
+            const stageList = (studioSummary?.tasks_with_workers?.length ? studioSummary.tasks_with_workers : studioSummary?.breakdown?.length ? studioSummary.breakdown : studioBreakdownFallback) as Array<{ task_type: string; cost: number; worker_name?: string; completed_at?: string | null }>;
+            const stageLabel = (t: string) => t === 'dyer' ? 'Dyeing' : t === 'stitching' ? 'Stitching' : t === 'handwork' ? 'Handwork' : String(t).replace(/_/g, ' ');
+            const stagesSum = stageList.length ? stageList.reduce((a, t) => a + Number(t.cost), 0) : 0;
+            const totalStudioCostDisplay = Math.max(studioCost, studioSummary?.total_studio_cost ?? 0, stagesSum);
+            const productionStatusDisplay = studioSummary?.production_status != null && studioSummary.production_status !== ''
+              ? (String(studioSummary.production_status).toLowerCase() === 'completed' ? 'Complete' : 'Pending')
+              : (studioCost > 0 ? 'Pending' : '—');
+            return (
             <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">
               <h3 className="text-sm font-medium text-white mb-3 flex items-center gap-2">
                 <Briefcase className="w-4 h-4 text-[#3B82F6]" />
@@ -456,11 +481,11 @@ export function SalesHome({ onBack, onNewSale, companyId, branchId, userId }: Sa
               <div className="space-y-2 text-sm">
                 <div className="flex justify-between">
                   <span className="text-[#9CA3AF]">Production Status:</span>
-                  <span className="text-white capitalize">{studioSummary?.production_status ?? (studioCost > 0 ? 'In Progress' : '—')}</span>
+                  <span className="text-white capitalize">{productionStatusDisplay}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-[#9CA3AF]">Total Studio Cost:</span>
-                  <span className="text-[#F59E0B] font-medium">Rs. {(studioSummary?.total_studio_cost ?? studioCost).toLocaleString()}</span>
+                  <span className="text-[#F59E0B] font-medium">Rs. {totalStudioCostDisplay.toLocaleString()}</span>
                 </div>
                 {(studioSummary?.tasks_total ?? 0) > 0 && (
                   <div className="flex justify-between">
@@ -481,37 +506,28 @@ export function SalesHome({ onBack, onNewSale, companyId, branchId, userId }: Sa
                   </div>
                 )}
               </div>
-              <button
-                type="button"
-                onClick={() => setShowStudioBreakdown((b) => !b)}
-                className="mt-3 w-full flex items-center justify-center gap-2 py-2 text-sm text-[#3B82F6] hover:bg-[#374151] rounded-lg"
-              >
-                {showStudioBreakdown ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                View Studio Breakdown
-              </button>
-              {showStudioBreakdown && (studioSummary?.tasks_with_workers?.length ? (
-                <div className="mt-3 pt-3 border-t border-[#374151] space-y-2">
-                  {studioSummary.tasks_with_workers.map((t, i) => (
-                    <div key={i} className="flex justify-between text-sm">
-                      <span className="text-[#9CA3AF] capitalize">{t.task_type.replace(/_/g, ' ')}:</span>
-                      <span className="text-white">Rs. {Number(t.cost).toLocaleString()}{t.worker_name ? ` (${t.worker_name})` : ''}</span>
+              {stageList.length > 0 ? (
+                <div className="mt-3 pt-3 border-t border-[#374151] space-y-3">
+                  <p className="text-xs font-medium text-[#9CA3AF] uppercase tracking-wide">Stages · Worker · Cost · Completed</p>
+                  {stageList.map((t, i) => (
+                    <div key={i} className="bg-[#374151]/50 rounded-lg p-3 space-y-1.5 text-sm">
+                      <div className="flex justify-between items-start gap-2">
+                        <span className="text-white font-medium">{stageLabel(t.task_type)}</span>
+                        <span className="text-[#10B981] shrink-0">Rs. {Number(t.cost).toLocaleString()}</span>
+                      </div>
+                      <div className="flex justify-between text-xs text-[#9CA3AF]">
+                        <span>{t.worker_name || '—'}</span>
+                        <span>{t.completed_at ? new Date(t.completed_at).toLocaleDateString('en-PK', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}</span>
+                      </div>
                     </div>
                   ))}
                 </div>
-              ) : showStudioBreakdown && (studioSummary?.breakdown?.length ? (
-                <div className="mt-3 pt-3 border-t border-[#374151] space-y-2">
-                  {studioSummary.breakdown.map((t, i) => (
-                    <div key={i} className="flex justify-between text-sm">
-                      <span className="text-[#9CA3AF] capitalize">{t.task_type.replace(/_/g, ' ')}:</span>
-                      <span className="text-white">Rs. {Number(t.cost).toLocaleString()}</span>
-                    </div>
-                  ))}
-                </div>
-              ) : showStudioBreakdown ? (
-                <p className="mt-3 pt-3 border-t border-[#374151] text-xs text-[#9CA3AF]">No task breakdown available.</p>
-              ) : null) )}
+              ) : (
+                <p className="mt-3 pt-3 border-t border-[#374151] text-xs text-[#9CA3AF]">No stage details yet. Stages will appear when production is linked.</p>
+              )}
             </div>
-          )}
+            );
+          })()}
 
           <div className="bg-gradient-to-br from-[#3B82F6]/10 to-[#10B981]/10 border border-[#3B82F6]/30 rounded-xl p-4 space-y-2">
             <h3 className="text-sm font-medium text-white mb-1">Final Bill</h3>
@@ -652,10 +668,12 @@ export function SalesHome({ onBack, onNewSale, companyId, branchId, userId }: Sa
                   onClick={() => setSelectedSale(sale)}
                   className="w-full p-4 text-left active:scale-[0.98] min-w-0 pr-12"
                 >
-                  {/* Row 1: Invoice No. | Amount (right) */}
+                  {/* Row 1: Invoice No. | Amount (right; grand total when studio cost present) */}
                   <div className="flex items-start justify-between gap-2 mb-1">
                     <h3 className="font-medium text-white truncate">{sale.id}</h3>
-                    <span className="text-sm font-semibold text-[#10B981] shrink-0">Rs. {sale.amount.toLocaleString()}</span>
+                    <span className="text-sm font-semibold text-[#10B981] shrink-0">
+                      Rs. {(sale.grand_total ?? sale.amount + (sale.studio_charges ?? 0)).toLocaleString()}
+                    </span>
                   </div>
                   <p className="text-sm text-[#D1D5DB] truncate">{sale.customer}</p>
                   {sale.created_by_name && (
@@ -673,6 +691,12 @@ export function SalesHome({ onBack, onNewSale, companyId, branchId, userId }: Sa
                       <span className="text-[#9CA3AF]">Total:</span>
                       <span className="font-medium text-white">Rs. {sale.amount.toLocaleString()}</span>
                     </div>
+                    {(sale.studio_charges ?? 0) > 0 && (
+                      <div className="flex justify-between">
+                        <span className="text-[#9CA3AF]">Studio Cost:</span>
+                        <span className="font-medium text-[#F59E0B]">Rs. {(sale.studio_charges ?? 0).toLocaleString()}</span>
+                      </div>
+                    )}
                     <div className="flex justify-between">
                       <span className="text-[#9CA3AF]">Received:</span>
                       <span className="text-[#10B981]">Rs. {sale.total_received.toLocaleString()}</span>

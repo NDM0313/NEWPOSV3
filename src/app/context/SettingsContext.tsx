@@ -79,6 +79,12 @@ export interface UserPermissions {
   /** Purchase delete restricted - default false for non-Admin */
   canEditPurchase?: boolean;
   canDeletePurchase?: boolean;
+  canUsePos?: boolean;
+  canAccessStudio?: boolean;
+  canViewSale?: boolean;
+  canViewContacts?: boolean;
+  canCreateContact?: boolean;
+  canDeleteContact?: boolean;
 }
 
 export interface CompanySettings {
@@ -701,6 +707,8 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
           let canViewReports = p.canViewReports ?? (role === 'Admin' || role === 'Manager');
           let canViewSale = false;
           let canViewContacts = p.canViewContacts ?? (role === 'Admin' || role === 'Manager');
+          let canCreateContact = p.canCreateContact ?? (role === 'Admin' || role === 'Manager');
+          let canDeleteContact = p.canDeleteContact ?? (role === 'Admin');
           let canManageSettings = p.canManageSettings ?? (role === 'Admin');
           let canManageUsers = p.canManageUsers ?? (role === 'Admin');
           let canAccessAccounting = p.canAccessAccounting ?? (role === 'Admin' || role === 'Manager');
@@ -738,6 +746,8 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
             const hasAccountingVisibility = rolePerms.some(x => x.module === 'ledger' && (x.action === 'view_full_accounting' || x.action === 'view_supplier') && x.allowed);
             const hasInventory = rolePerms.some(x => x.module === 'inventory' && x.action === 'view' && x.allowed);
             const hasContacts = rolePerms.some(x => x.module === 'contacts' && x.action === 'view' && x.allowed);
+            const hasContactsCreate = rolePerms.some(x => x.module === 'contacts' && x.action === 'create' && x.allowed);
+            const hasContactsDelete = rolePerms.some(x => x.module === 'contacts' && x.action === 'delete' && x.allowed);
             const hasUsers = rolePerms.some(x => x.module === 'users' && (x.action === 'create' || x.action === 'edit' || x.action === 'delete' || x.action === 'assign_permissions') && x.allowed);
             const hasSettings = rolePerms.some(x => x.module === 'settings' && x.action === 'modify' && x.allowed);
             const hasPaymentsReceive = rolePerms.some(x => x.module === 'payments' && x.action === 'receive' && x.allowed);
@@ -753,6 +763,8 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
             canAccessAccounting = hasAccountingVisibility;
             canManageProducts = hasInventory;
             canViewContacts = hasContacts;
+            canCreateContact = hasContactsCreate;
+            canDeleteContact = hasContactsDelete;
             canManageUsers = hasUsers;
             canManageSettings = hasSettings;
             canReceivePayments = hasPaymentsReceive;
@@ -793,6 +805,8 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
             canViewReports,
             canViewSale,
             canViewContacts,
+            canCreateContact: canCreateContact ?? hasContacts,
+            canDeleteContact: canDeleteContact ?? false,
             canManageSettings,
             canManageUsers,
             canAccessAccounting,

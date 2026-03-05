@@ -142,6 +142,26 @@ export const documentNumberService = {
   },
 
   /**
+   * Get next product SKU from database (atomic, PRD-0001, PRD-0002, ...).
+   * Uses get_next_document_number RPC. branchId can be null for company-level sequence.
+   */
+  async getNextProductSKU(companyId: string, branchId?: string | null): Promise<string> {
+    const { data, error } = await supabase.rpc('get_next_document_number', {
+      p_company_id: companyId,
+      p_branch_id: branchId ?? null,
+      p_document_type: 'product',
+    });
+    if (error) {
+      console.error('[DOCUMENT NUMBER] get_next_document_number(product) error:', error);
+      throw new Error(error.message || 'Failed to get next product SKU');
+    }
+    if (typeof data !== 'string' || !data) {
+      throw new Error('Invalid product SKU returned from database');
+    }
+    return data;
+  },
+
+  /**
    * Get next global document number from database (company-level, atomic).
    * Sales: SL (invoice), DRAFT (draft), QT (quotation), SO (order), STD (studio).
    * Other: PUR, PAY, RNT. Frontend must NOT generate numbers manually.

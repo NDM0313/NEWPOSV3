@@ -46,7 +46,7 @@ export const Sidebar = () => {
   const { currentView, setCurrentView, isSidebarOpen, toggleSidebar, openDrawer } = useNavigation();
   const { modules: moduleContextModules } = useModules();
   const { modules: settingsModules, isPermissionLoaded } = useSettings();
-  const { canViewReports, canAccessAccounting, canManageSettings, canManageUsers, canAccessPurchases, canUsePos, canViewSales, canAccessStudio, canManageRentals, canViewContacts, canManageProducts, canManageExpenses } = useCheckPermission();
+  const { hasPermission } = useCheckPermission();
   const [expandedItems, setExpandedItems] = useState<string[]>([]);
   const pathname = typeof window !== 'undefined' ? window.location.pathname : '';
 
@@ -58,18 +58,18 @@ export const Sidebar = () => {
 
   const navItems: NavItem[] = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-    { id: 'contacts', label: 'Contacts', icon: Users, isHidden: !canViewContacts },
-    { id: 'products', label: 'Products', icon: Package, isHidden: !canManageProducts },
-    { id: 'inventory', label: 'Inventory', icon: Warehouse, isHidden: !canManageProducts },
-    { id: 'purchases', label: 'Purchases', icon: ShoppingBag, isHidden: !canAccessPurchases },
-    { id: 'sales', label: 'Sales', icon: ShoppingCart, isHidden: !canViewSales },
-    { id: 'rentals', label: 'Rentals', icon: Shirt, isHidden: !settingsModules.rentalModuleEnabled || !canManageRentals },
-    { id: 'pos', label: 'POS System', icon: Store, isHidden: !settingsModules.posModuleEnabled || !canUsePos },
+    { id: 'contacts', label: 'Contacts', icon: Users, isHidden: !hasPermission('contacts.view') },
+    { id: 'products', label: 'Products', icon: Package, isHidden: !hasPermission('products.view') },
+    { id: 'inventory', label: 'Inventory', icon: Warehouse, isHidden: !hasPermission('inventory.view') },
+    { id: 'purchases', label: 'Purchases', icon: ShoppingBag, isHidden: !hasPermission('purchases.view') },
+    { id: 'sales', label: 'Sales', icon: ShoppingCart, isHidden: !hasPermission('sales.view') },
+    { id: 'rentals', label: 'Rentals', icon: Shirt, isHidden: !settingsModules.rentalModuleEnabled || !hasPermission('rentals.view') },
+    { id: 'pos', label: 'POS System', icon: Store, isHidden: !settingsModules.posModuleEnabled || !hasPermission('pos.view') },
     { 
       id: 'studio-group', 
       label: 'Studio Production', 
       icon: Factory,
-      isHidden: !settingsModules.studioModuleEnabled || !canAccessStudio,
+      isHidden: !settingsModules.studioModuleEnabled || !hasPermission('studio.view'),
       children: [
         { id: 'studio-dashboard-new', label: 'Dashboard' },
         { id: 'studio', label: 'Studio Sales' },
@@ -77,12 +77,12 @@ export const Sidebar = () => {
         { id: 'studio-workflow', label: 'Workers' },
       ]
     },
-    { id: 'expenses', label: 'Expenses', icon: Receipt, isHidden: !canManageExpenses },
-    { id: 'accounting', label: 'Accounting', icon: Calculator, isHidden: !canAccessAccounting },
-    { id: 'reports', label: 'Reports', icon: PieChart, isHidden: !canViewReports },
-    { id: 'erp-permissions', label: 'ERP Permissions', icon: Shield, isHidden: !canManageSettings },
-    { id: 'permission-inspector', label: 'Permission Inspector', icon: Shield, isHidden: !canManageSettings },
-    { id: 'settings', label: 'Settings', icon: Settings, isHidden: !canManageSettings },
+    { id: 'expenses', label: 'Expenses', icon: Receipt, isHidden: !hasPermission('expenses.view') },
+    { id: 'accounting', label: 'Accounting', icon: Calculator, isHidden: !hasPermission('accounting.view') },
+    { id: 'reports', label: 'Reports', icon: PieChart, isHidden: !hasPermission('reports.view') },
+    { id: 'erp-permissions', label: 'ERP Permissions', icon: Shield, isHidden: !hasPermission('settings.view') },
+    { id: 'permission-inspector', label: 'Permission Inspector', icon: Shield, isHidden: !hasPermission('settings.view') },
+    { id: 'settings', label: 'Settings', icon: Settings, isHidden: !hasPermission('settings.view') },
     { 
       id: 'test-pages-group', 
       label: 'Test Pages', 

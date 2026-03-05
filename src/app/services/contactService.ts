@@ -5,7 +5,7 @@ export interface Contact {
   id?: string;
   company_id: string;
   branch_id?: string;
-  type: 'customer' | 'supplier' | 'both';
+  type: 'customer' | 'supplier' | 'both' | 'worker';
   name: string;
   code?: string;
   email?: string;

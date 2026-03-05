@@ -1,12 +1,14 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, Cell } from 'recharts';
-import { DollarSign, ShoppingBag, TrendingUp, ArrowDownRight, ArrowUpRight, AlertTriangle, ArrowRight, Scissors, Loader2 } from 'lucide-react';
+import { DollarSign, ShoppingBag, TrendingUp, ArrowDownRight, ArrowUpRight, AlertTriangle, ArrowRight, Loader2, Store, ShoppingCart, Package, Warehouse } from 'lucide-react';
 import { useNavigation } from '../../context/NavigationContext';
 import { useSales } from '../../context/SalesContext';
 import { usePurchases } from '../../context/PurchaseContext';
 import { useExpenses } from '../../context/ExpenseContext';
 import { useSupabase } from '../../context/SupabaseContext';
 import { useDateRange } from '../../context/DateRangeContext';
+import { useSettings } from '../../context/SettingsContext';
+import { useCheckPermission } from '../../hooks/useCheckPermission';
 import { productService } from '../../services/productService';
 import { getSalesByCategory } from '../../services/dashboardService';
 import { useFormatCurrency } from '../../hooks/useFormatCurrency';
@@ -27,6 +29,8 @@ export const Dashboard = () => {
   const purchases = usePurchases();
   const expenses = useExpenses();
   const { companyId, signOut } = useSupabase();
+  const { modules: settingsModules } = useSettings();
+  const { hasPermission } = useCheckPermission();
   const { formatCurrency } = useFormatCurrency();
   const { dateRange } = useDateRange();
   const startDate = dateRange.startDate;
@@ -237,6 +241,28 @@ export const Dashboard = () => {
         </div>
       )}
 
+      {/* Quick access: module cards (same visibility as sidebar, including POS) */}
+      <div className="bg-[#111827]/50 border border-[#374151] p-6 rounded-xl">
+        <h3 className="text-lg font-bold text-white mb-4">Quick access</h3>
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+          {hasPermission('sales.view') && (
+            <ModuleCard icon={ShoppingCart} label="Sales" onClick={() => setCurrentView('sales')} />
+          )}
+          {hasPermission('purchases.view') && (
+            <ModuleCard icon={ShoppingBag} label="Purchases" onClick={() => setCurrentView('purchases')} />
+          )}
+          {hasPermission('products.view') && (
+            <ModuleCard icon={Package} label="Products" onClick={() => setCurrentView('products')} />
+          )}
+          {hasPermission('products.view') && (
+            <ModuleCard icon={Warehouse} label="Inventory" onClick={() => setCurrentView('inventory')} />
+          )}
+          {settingsModules.posModuleEnabled && hasPermission('pos.view') && (
+            <ModuleCard icon={Store} label="Point of Sale" onClick={() => setCurrentView('pos')} />
+          )}
+        </div>
+      </div>
+
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
         <StatCard 
           title="Total Due (Receivables)" 
@@ -384,6 +410,19 @@ export const Dashboard = () => {
     </div>
   );
 };
+
+const ModuleCard = ({ icon: Icon, label, onClick }: { icon: any; label: string; onClick: () => void }) => (
+  <button
+    type="button"
+    onClick={onClick}
+    className="flex items-center gap-3 p-4 rounded-xl border border-[#374151] bg-[#1F2937]/50 hover:border-[#3B82F6]/50 hover:bg-[#1F2937] transition-all text-left"
+  >
+    <div className="p-2 rounded-lg bg-[#3B82F6]/20 text-[#60A5FA]">
+      <Icon size={20} />
+    </div>
+    <span className="font-medium text-white">{label}</span>
+  </button>
+);
 
 const StatCard = ({ title, value, change, icon: Icon, trend, iconColor }: any) => (
   <div className="bg-[#111827]/50 border border-[#374151] rounded-xl p-4 md:p-6 relative overflow-hidden group hover:border-[#3B82F6]/50 transition-all duration-300">

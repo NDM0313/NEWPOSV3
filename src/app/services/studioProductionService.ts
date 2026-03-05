@@ -196,9 +196,100 @@ async function createProductionCostReversalEntry(params: {
   return (result as any)?.id ?? null;
 }
 
+/** Backfill: create studio_production + stages for studio sales that don't have one (so they show on Studio dashboard). Exported for call from StudioDashboardNew. */
+export async function ensureStudioProductionsForCompany(companyId: string): Promise<void> {
+  try {
+    const { data: sales, error: salesErr } = await supabase
+      .from('sales')
+      .select('id, company_id, branch_id, invoice_no, invoice_date, created_by')
+      .eq('company_id', companyId)
+      .eq('is_studio', true)
+      .neq('status', 'cancelled');
+    if (salesErr || !sales?.length) return;
+
+    const { data: prods } = await supabase
+      .from('studio_productions')
+      .select('sale_id')
+      .eq('company_id', companyId);
+    const hasProduction = new Set((prods || []).map((p: { sale_id: string }) => p.sale_id));
+    const missing = (sales as { id: string; company_id: string; branch_id: string; invoice_no: string; invoice_date: string; created_by: string | null }[]).filter((s) => !hasProduction.has(s.id));
+    if (missing.length === 0) return;
+
+    let items: { sale_id: string; product_id: string; variation_id: string | null; quantity: number }[] = [];
+    const { data: itemsSales } = await supabase
+      .from('sales_items')
+      .select('sale_id, product_id, variation_id, quantity')
+      .in('sale_id', missing.map((s) => s.id));
+    if (itemsSales?.length) {
+      items = (itemsSales as { sale_id: string; product_id: string; variation_id: string | null; quantity: number }[]).map((r) => ({
+        sale_id: r.sale_id,
+        product_id: r.product_id,
+        variation_id: r.variation_id ?? null,
+        quantity: Math.max(0.01, Number(r.quantity) || 1),
+      }));
+    } else {
+      const { data: itemsLegacy } = await supabase
+        .from('sale_items')
+        .select('sale_id, product_id, variation_id, quantity')
+        .in('sale_id', missing.map((s) => s.id));
+      if (itemsLegacy?.length) {
+        items = (itemsLegacy as { sale_id: string; product_id: string; variation_id: string | null; quantity: number }[]).map((r) => ({
+          sale_id: r.sale_id,
+          product_id: r.product_id,
+          variation_id: r.variation_id ?? null,
+          quantity: Math.max(0.01, Number(r.quantity) || 1),
+        }));
+      }
+    }
+    const firstItemBySale = new Map<string, { product_id: string; variation_id: string | null; quantity: number }>();
+    for (const it of items) {
+      if (!firstItemBySale.has(it.sale_id)) firstItemBySale.set(it.sale_id, { product_id: it.product_id, variation_id: it.variation_id, quantity: it.quantity });
+    }
+
+    for (const sale of missing) {
+      const first = firstItemBySale.get(sale.id);
+      if (!first?.product_id) continue;
+      const productionNo = `PRD-${sale.invoice_no || sale.id}`;
+      const productionDate = sale.invoice_date ? new Date(sale.invoice_date).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10);
+      const { data: inserted, error: insErr } = await supabase
+        .from('studio_productions')
+        .insert({
+          company_id: sale.company_id,
+          branch_id: sale.branch_id,
+          sale_id: sale.id,
+          production_no: productionNo,
+          production_date: productionDate,
+          product_id: first.product_id,
+          variation_id: first.variation_id,
+          quantity: first.quantity,
+          status: 'draft',
+          created_by: sale.created_by ?? null,
+        })
+        .select('id')
+        .single();
+      if (insErr) {
+        if (insErr.code === '23505') continue;
+        console.warn('[studioProductionService] ensureStudioProductions backfill insert failed:', insErr);
+        continue;
+      }
+      const prodId = (inserted as { id: string })?.id;
+      if (prodId) {
+        await supabase.from('studio_production_stages').insert([
+          { production_id: prodId, stage_type: 'dyer', cost: 0, status: 'pending' },
+          { production_id: prodId, stage_type: 'handwork', cost: 0, status: 'pending' },
+          { production_id: prodId, stage_type: 'stitching', cost: 0, status: 'pending' },
+        ]);
+      }
+    }
+  } catch (e) {
+    console.warn('[studioProductionService] ensureStudioProductionsForCompany failed:', e);
+  }
+}
+
 export const studioProductionService = {
   async getProductions(companyId: string, branchId?: string | null): Promise<StudioProduction[]> {
     try {
+      await ensureStudioProductionsForCompany(companyId);
       let query = supabase
         .from('studio_productions')
         .select(`

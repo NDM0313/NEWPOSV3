@@ -384,7 +384,7 @@ export async function getSaleStudioSummary(
     tasks_total: number;
     production_duration_days: number | null;
     completed_at: string | null;
-    breakdown: Array<{ task_type: string; cost: number; worker_id?: string }>;
+    breakdown: Array<{ task_type: string; cost: number; worker_id?: string; worker_name?: string; completed_at?: string | null }>;
     tasks_with_workers: Array<{
       task_type: string;
       cost: number;
@@ -392,6 +392,7 @@ export async function getSaleStudioSummary(
       worker_name?: string;
       created_by?: string;
       completed_by?: string;
+      completed_at?: string | null;
     }>;
   } | null;
   error: string | null;
@@ -414,7 +415,7 @@ export async function getSaleStudioSummary(
       tasks_total: Number(raw.tasks_total ?? 0),
       production_duration_days: raw.production_duration_days != null ? Number(raw.production_duration_days) : null,
       completed_at: raw.completed_at != null ? String(raw.completed_at) : null,
-      breakdown: Array.isArray(raw.breakdown) ? (raw.breakdown as Array<{ task_type: string; cost: number; worker_id?: string }>) : [],
+      breakdown: Array.isArray(raw.breakdown) ? (raw.breakdown as Array<{ task_type: string; cost: number; worker_id?: string; worker_name?: string; completed_at?: string | null }>) : [],
       tasks_with_workers: Array.isArray(raw.tasks_with_workers)
         ? (raw.tasks_with_workers as Array<{
             task_type: string;
@@ -423,6 +424,7 @@ export async function getSaleStudioSummary(
             worker_name?: string;
             created_by?: string;
             completed_by?: string;
+            completed_at?: string | null;
           }>)
         : [],
     },

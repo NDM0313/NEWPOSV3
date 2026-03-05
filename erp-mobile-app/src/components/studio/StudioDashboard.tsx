@@ -25,9 +25,11 @@ export interface StudioStage {
   internalCost: number;
   customerCharge: number;
   expectedDate: string;
-  status: 'pending' | 'in-progress' | 'completed';
+  status: 'pending' | 'assigned' | 'in-progress' | 'sent_to_worker' | 'received' | 'completed';
   startedDate?: string;
   completedDate?: string;
+  sentDate?: string;
+  receivedDate?: string;
 }
 
 interface StudioDashboardProps {
@@ -194,7 +196,7 @@ export function StudioDashboard({ orders, onOrderClick }: StudioDashboardProps) 
                           className={`flex items-center gap-1 px-2 py-1 rounded-lg text-xs ${
                             stage.status === 'completed'
                               ? 'bg-[#10B981]/10 text-[#10B981]'
-                              : stage.status === 'in-progress'
+                              : stage.status === 'in-progress' || stage.status === 'assigned' || stage.status === 'sent_to_worker' || stage.status === 'received'
                               ? 'bg-[#3B82F6]/10 text-[#3B82F6]'
                               : 'bg-[#374151] text-[#6B7280]'
                           }`}
@@ -202,7 +204,7 @@ export function StudioDashboard({ orders, onOrderClick }: StudioDashboardProps) 
                           <span>{getStageIcon(stage.type)}</span>
                           <span>{stage.name}</span>
                           {stage.status === 'completed' && <CheckCircle size={12} />}
-                          {stage.status === 'in-progress' && <Clock size={12} />}
+                          {(stage.status === 'in-progress' || stage.status === 'assigned' || stage.status === 'sent_to_worker' || stage.status === 'received') && <Clock size={12} />}
                         </div>
                       ))}
                     </div>

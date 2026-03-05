@@ -1,8 +1,11 @@
-import { useState, useEffect } from 'react';
-import { ArrowLeft, CreditCard, Plus, Minus, Trash2, Search, User as UserIcon, Loader2, CheckCircle2 } from 'lucide-react';
+import { useState, useEffect, useCallback } from 'react';
+import { ArrowLeft, CreditCard, Plus, Minus, Trash2, Search, User as UserIcon, Loader2, CheckCircle2, X } from 'lucide-react';
 import type { User } from '../../types';
 import * as productsApi from '../../api/products';
 import * as salesApi from '../../api/sales';
+import { supabase } from '../../lib/supabase';
+import { balanceFromMovements } from '../../utils/stockBalance';
+import { PaymentDialog, type PaymentResult } from '../sales/PaymentDialog';
 
 interface POSModuleProps {
   onBack: () => void;
@@ -11,16 +14,27 @@ interface POSModuleProps {
   branchId: string | null;
 }
 
+/** Product as shown in POS grid: base + optional variations with stock */
 interface POSProduct {
   id: string;
   name: string;
   price: number;
   sku: string;
+  stock: number;
+  variations?: { id: string; sku: string; attributes: Record<string, string>; price: number; stock: number }[];
 }
 
-interface CartItem extends POSProduct {
+/** Cart line id = productId or productId_variationId for uniqueness */
+interface CartItem {
+  id: string;
+  productId: string;
+  name: string;
+  sku: string;
+  price: number;
   quantity: number;
   total: number;
+  variationId?: string;
+  variationName?: string;
 }
 
 export function POSModule({ onBack, user, companyId, branchId }: POSModuleProps) {
@@ -33,6 +47,68 @@ export function POSModule({ onBack, user, companyId, branchId }: POSModuleProps)
   const [checkoutLoading, setCheckoutLoading] = useState(false);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
   const [lastInvoiceNo, setLastInvoiceNo] = useState<string | null>(null);
+  const [variationModalProduct, setVariationModalProduct] = useState<POSProduct | null>(null);
+  const [showPaymentStep, setShowPaymentStep] = useState(false);
+
+  const loadProducts = useCallback(async () => {
+    if (!companyId) return;
+    setLoading(true);
+    const { data, error } = await productsApi.getProducts(companyId);
+    if (error) {
+      setProducts([]);
+      setLoading(false);
+      return;
+    }
+    const mapped: POSProduct[] = (data || []).map((p) => ({
+      id: p.id,
+      name: p.name,
+      price: p.retailPrice ?? 0,
+      sku: p.sku ?? '—',
+      stock: p.stock ?? 0,
+      variations: p.variations?.length
+        ? p.variations.map((v) => ({
+            id: v.id,
+            sku: v.sku,
+            attributes: v.attributes ?? {},
+            price: v.price ?? p.retailPrice ?? 0,
+            stock: v.stock ?? 0,
+          }))
+        : undefined,
+    }));
+    setProducts(mapped);
+
+    if (branchId && branchId !== 'all') {
+      try {
+        const { data: movements } = await supabase
+          .from('stock_movements')
+          .select('product_id, variation_id, quantity')
+          .eq('company_id', companyId)
+          .eq('branch_id', branchId);
+        if (movements?.length) {
+          const balanceByKey = balanceFromMovements(
+            movements as { product_id: string; variation_id: string | null; quantity: number }[]
+          );
+          setProducts((prev) =>
+            prev.map((p) => {
+              if (p.variations?.length) {
+                return {
+                  ...p,
+                  variations: p.variations.map((v) => ({
+                    ...v,
+                    stock: balanceByKey.get(`${p.id}_${v.id}`) ?? v.stock ?? 0,
+                  })),
+                };
+              }
+              return { ...p, stock: balanceByKey.get(p.id) ?? p.stock ?? 0 };
+            })
+          );
+        }
+      } catch (e) {
+        console.warn('[POS] Branch stock overlay failed:', e);
+      }
+    }
+    setLoading(false);
+  }, [companyId, branchId]);
 
   useEffect(() => {
     if (!companyId) {
@@ -40,15 +116,8 @@ export function POSModule({ onBack, user, companyId, branchId }: POSModuleProps)
       setLoading(false);
       return;
     }
-    let cancelled = false;
-    setLoading(true);
-    productsApi.getProducts(companyId).then(({ data, error }) => {
-      if (cancelled) return;
-      setLoading(false);
-      setProducts(error ? [] : data.map((p) => ({ id: p.id, name: p.name, price: p.retailPrice, sku: p.sku })));
-    });
-    return () => { cancelled = true; };
-  }, [companyId]);
+    loadProducts();
+  }, [companyId, loadProducts]);
 
   const list = products;
   const filtered = list.filter(
@@ -57,18 +126,47 @@ export function POSModule({ onBack, user, companyId, branchId }: POSModuleProps)
       p.sku.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  const addToCart = (product: POSProduct) => {
-    const existing = cart.find((item) => item.id === product.id);
+  const addToCart = (product: POSProduct, variation?: { id: string; sku: string; attributes: Record<string, string>; price: number; stock: number }) => {
+    const cartId = variation ? `${product.id}_${variation.id}` : product.id;
+    const price = variation ? variation.price : product.price;
+    const variationName = variation
+      ? Object.entries(variation.attributes || {})
+          .map(([k, v]) => `${k}: ${v}`)
+          .join(', ') || variation.sku
+      : undefined;
+    const existing = cart.find((item) => item.id === cartId);
     if (existing) {
       setCart(
         cart.map((item) =>
-          item.id === product.id
-            ? { ...item, quantity: item.quantity + 1, total: (item.quantity + 1) * item.price }
+          item.id === cartId
+            ? { ...item, quantity: item.quantity + 1, total: (item.quantity + 1) * price }
             : item
         )
       );
     } else {
-      setCart([...cart, { ...product, quantity: 1, total: product.price }]);
+      setCart([
+        ...cart,
+        {
+          id: cartId,
+          productId: product.id,
+          name: product.name,
+          sku: variation ? variation.sku : product.sku,
+          price,
+          quantity: 1,
+          total: price,
+          variationId: variation?.id,
+          variationName: variationName || undefined,
+        },
+      ]);
+    }
+    setVariationModalProduct(null);
+  };
+
+  const onProductClick = (product: POSProduct) => {
+    if (product.variations && product.variations.length > 0) {
+      setVariationModalProduct(product);
+    } else {
+      addToCart(product);
     }
   };
 
@@ -88,19 +186,41 @@ export function POSModule({ onBack, user, companyId, branchId }: POSModuleProps)
   const remove = (id: string) => setCart(cart.filter((item) => item.id !== id));
 
   const subtotal = cart.reduce((sum, item) => sum + item.total, 0);
-  const tax = Math.round(subtotal * 0.16);
-  const total = subtotal + tax;
+  const tax = 0;
+  const total = subtotal;
 
-  const handleCheckout = async (): Promise<boolean> => {
-    if (cart.length === 0) return false;
-    if (!companyId || !branchId || branchId === 'all' || !user?.id) {
-      setCheckoutError('Select a specific branch to checkout.');
-      return false;
+  const openPaymentStep = () => {
+    setCheckoutError(null);
+    setShowCart(false);
+    setShowPaymentStep(true);
+  };
+
+  /** Map PaymentDialog label to createSale paymentMethod (API accepts Cash, Bank, Card, etc.) */
+  const mapPaymentMethodForApi = (label: string): string => {
+    const s = (label || '').toLowerCase();
+    if (s.includes('bank')) return 'Bank';
+    if (s.includes('card')) return 'Card';
+    if (s.includes('wallet')) return 'Mobile Wallet';
+    if (s.includes('due') || s.includes('credit')) return 'Credit';
+    return 'Cash';
+  };
+
+  const handlePaymentComplete = async (result: PaymentResult): Promise<void> => {
+    if (cart.length === 0 || !companyId || !branchId || branchId === 'all' || !user?.id) {
+      setCheckoutError('Select a specific branch.');
+      return;
+    }
+    const paid = result.paidAmount ?? 0;
+    const due = result.dueAmount ?? total - paid;
+    if (paid > 0 && !result.accountId) {
+      setCheckoutError('Please select a payment account for accounting.');
+      return;
     }
     setCheckoutLoading(true);
     setCheckoutError(null);
     const items = cart.map((item) => ({
-      productId: item.id,
+      productId: item.productId,
+      variationId: item.variationId,
       productName: item.name,
       sku: item.sku,
       quantity: item.quantity,
@@ -115,22 +235,24 @@ export function POSModule({ onBack, user, companyId, branchId }: POSModuleProps)
       items,
       subtotal,
       discountAmount: 0,
-      taxAmount: tax,
+      taxAmount: 0,
       expenses: 0,
       total,
-      paymentMethod: 'Cash',
+      paymentMethod: mapPaymentMethodForApi(result.paymentMethod),
+      paidAmount: paid,
+      dueAmount: due,
+      paymentAccountId: result.accountId ?? null,
       isStudio: false,
       userId: user.id,
     });
     setCheckoutLoading(false);
     if (error) {
       setCheckoutError(error);
-      return false;
+      return;
     }
     setLastInvoiceNo(data?.invoiceNo ?? null);
     setCart([]);
-    setShowCart(false);
-    return true;
+    setShowPaymentStep(false);
   };
 
   return (
@@ -183,20 +305,35 @@ export function POSModule({ onBack, user, companyId, branchId }: POSModuleProps)
         </div>
 
         <div className="grid grid-cols-2 gap-3">
-          {filtered.map((product) => (
-            <button
-              key={product.id}
-              onClick={() => addToCart(product)}
-              className="bg-[#1F2937] border border-[#374151] rounded-xl p-4 hover:border-[#3B82F6] active:scale-95 transition-all text-left"
-            >
-              <div className="w-full h-20 bg-[#111827] rounded-lg mb-3 flex items-center justify-center text-3xl">
-                📦
-              </div>
-              <h3 className="text-white font-medium text-sm mb-1 line-clamp-2">{product.name}</h3>
-              <p className="text-[#6B7280] text-xs mb-2">{product.sku}</p>
-              <p className="text-[#10B981] font-semibold">Rs. {product.price.toLocaleString()}</p>
-            </button>
-          ))}
+          {filtered.map((product) => {
+            const hasVariations = product.variations && product.variations.length > 0;
+            const totalStock = hasVariations
+              ? (product.variations?.reduce((s, v) => s + (v.stock ?? 0), 0) ?? 0)
+              : (product.stock ?? 0);
+            const outOfStock = totalStock <= 0;
+            return (
+              <button
+                key={product.id}
+                onClick={() => !outOfStock && onProductClick(product)}
+                disabled={outOfStock}
+                className="bg-[#1F2937] border border-[#374151] rounded-xl p-4 hover:border-[#3B82F6] active:scale-95 transition-all text-left disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                <div className="w-full h-20 bg-[#111827] rounded-lg mb-3 flex items-center justify-center text-3xl">
+                  📦
+                </div>
+                <h3 className="text-white font-medium text-sm mb-1 line-clamp-2">{product.name}</h3>
+                <p className="text-[#6B7280] text-xs mb-2">{product.sku}</p>
+                <p className="text-[#10B981] font-semibold">Rs. {product.price.toLocaleString()}</p>
+                {outOfStock ? (
+                  <p className="text-xs text-[#EF4444] mt-1">Out of stock</p>
+                ) : hasVariations ? (
+                  <p className="text-xs text-[#9CA3AF] mt-1">Stock: {totalStock} (options)</p>
+                ) : (
+                  <p className="text-xs text-[#9CA3AF] mt-1">Stock: {totalStock}</p>
+                )}
+              </button>
+            );
+          })}
         </div>
         </>
         )}
@@ -216,7 +353,6 @@ export function POSModule({ onBack, user, companyId, branchId }: POSModuleProps)
           </div>
           <div className="text-right">
             <p className="text-lg font-bold text-[#10B981]">Rs. {total.toLocaleString()}</p>
-            <p className="text-xs text-[#9CA3AF]">incl. tax</p>
           </div>
         </button>
         <button
@@ -248,6 +384,9 @@ export function POSModule({ onBack, user, companyId, branchId }: POSModuleProps)
                     <div className="flex items-start justify-between mb-2">
                       <div className="flex-1">
                         <h4 className="text-white font-medium text-sm">{item.name}</h4>
+                        {item.variationName ? (
+                          <p className="text-[#A78BFA] text-xs mt-0.5">{item.variationName}</p>
+                        ) : null}
                         <p className="text-[#6B7280] text-xs">Rs. {item.price.toLocaleString()} each</p>
                       </div>
                       <button onClick={() => remove(item.id)} className="p-1 text-[#EF4444] hover:bg-[#1F2937] rounded">
@@ -285,24 +424,72 @@ export function POSModule({ onBack, user, companyId, branchId }: POSModuleProps)
                   <span className="text-[#9CA3AF]">Subtotal</span>
                   <span className="text-white">Rs. {subtotal.toLocaleString()}</span>
                 </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-[#9CA3AF]">Tax (16%)</span>
-                  <span className="text-white">Rs. {tax.toLocaleString()}</span>
-                </div>
                 <div className="flex justify-between text-lg font-semibold pt-2 border-t border-[#374151]">
                   <span className="text-white">Total</span>
                   <span className="text-[#10B981]">Rs. {total.toLocaleString()}</span>
                 </div>
                 <button
-                  onClick={async () => { await handleCheckout(); }}
-                  disabled={checkoutLoading}
-                  className="w-full h-12 bg-[#10B981] hover:bg-[#059669] disabled:opacity-50 text-white rounded-lg font-semibold mt-2 flex items-center justify-center gap-2"
+                  onClick={openPaymentStep}
+                  className="w-full h-12 bg-[#10B981] hover:bg-[#059669] text-white rounded-lg font-semibold mt-2"
                 >
-                  {checkoutLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : null}
-                  {checkoutLoading ? 'Processing...' : 'Complete Checkout'}
+                  Proceed to Payment
                 </button>
               </div>
             )}
+          </div>
+        </>
+      )}
+
+      {/* Payment: same flow as Sales — PaymentDialog (method → account → amount → post) */}
+      {showPaymentStep && (
+        <div className="fixed inset-0 z-[60] bg-[#111827]">
+          <PaymentDialog
+            onBack={() => { setShowPaymentStep(false); setShowCart(true); }}
+            totalAmount={total}
+            companyId={companyId}
+            onComplete={handlePaymentComplete}
+            saving={checkoutLoading}
+            saveError={checkoutError}
+          />
+        </div>
+      )}
+
+      {/* Variation selection modal */}
+      {variationModalProduct && (
+        <>
+          <div className="fixed inset-0 bg-black/60 z-[60]" onClick={() => setVariationModalProduct(null)} aria-hidden />
+          <div className="fixed inset-x-4 top-1/2 -translate-y-1/2 bg-[#1F2937] border border-[#374151] rounded-2xl z-[70] max-h-[70vh] overflow-hidden flex flex-col shadow-xl">
+            <div className="p-4 border-b border-[#374151] flex items-center justify-between">
+              <h2 className="text-lg font-semibold text-white">Select variation</h2>
+              <button onClick={() => setVariationModalProduct(null)} className="p-2 hover:bg-[#374151] rounded-lg text-white">
+                <X size={20} />
+              </button>
+            </div>
+            <p className="px-4 pt-2 text-[#9CA3AF] text-sm">{variationModalProduct.name}</p>
+            <div className="flex-1 overflow-y-auto p-4 space-y-2">
+              {variationModalProduct.variations?.map((v) => {
+                const outOfStock = (v.stock ?? 0) <= 0;
+                const label = Object.keys(v.attributes || {}).length
+                  ? Object.entries(v.attributes).map(([k, val]) => `${k}: ${val}`).join(', ')
+                  : v.sku;
+                return (
+                  <button
+                    key={v.id}
+                    onClick={() => !outOfStock && addToCart(variationModalProduct, v)}
+                    disabled={outOfStock}
+                    className="w-full text-left bg-[#111827] border border-[#374151] rounded-xl p-3 hover:border-[#3B82F6] disabled:opacity-60 disabled:cursor-not-allowed"
+                  >
+                    <div className="flex justify-between items-center">
+                      <span className="text-white font-medium text-sm">{label}</span>
+                      <span className="text-[#10B981] font-semibold">Rs. {v.price.toLocaleString()}</span>
+                    </div>
+                    <p className="text-xs text-[#9CA3AF] mt-1">
+                      {outOfStock ? 'Out of stock' : `Stock: ${v.stock ?? 0}`}
+                    </p>
+                  </button>
+                );
+              })}
+            </div>
           </div>
         </>
       )}

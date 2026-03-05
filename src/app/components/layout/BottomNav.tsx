@@ -12,7 +12,7 @@ import { clsx } from 'clsx';
 
 export const BottomNav = () => {
   const { currentView, setCurrentView, setMobileNavOpen } = useNavigation();
-  const { canUsePos } = useCheckPermission();
+  const { hasPermission } = useCheckPermission();
 
   return (
     <div 
@@ -26,7 +26,7 @@ export const BottomNav = () => {
           icon={LayoutDashboard}
           label="Home"
         />
-        {canUsePos && (
+        {hasPermission('pos.view') && (
           <>
             <NavButton 
               active={currentView === 'pos'} 
