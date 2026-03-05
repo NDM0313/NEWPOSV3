@@ -475,8 +475,10 @@ BEGIN
       'Sale revenue'
     );
 
-    -- Update sale with journal reference
-    UPDATE sales SET journal_entry_id = v_journal_id WHERE id = NEW.id;
+    -- Update sale with journal reference (only if column exists)
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'sales' AND column_name = 'journal_entry_id') THEN
+      UPDATE sales SET journal_entry_id = v_journal_id WHERE id = NEW.id;
+    END IF;
   END IF;
 
   RETURN NEW;

@@ -1330,8 +1330,18 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                 }]);
             }
             
-            // Pre-fill expenses (from purchase_expenses or extra_expenses)
-            if (purchaseData.expenses && purchaseData.expenses.length > 0) {
+            // Pre-fill expenses from purchase_charges (line-level, source of truth). Exclude 'discount' (handled by discount field).
+            const charges = purchaseData.charges ?? purchaseData.purchase_charges ?? [];
+            const expenseRows = Array.isArray(charges) ? charges.filter((c: any) => (c.charge_type || c.chargeType) !== 'discount') : [];
+            if (expenseRows.length > 0) {
+                const expenses = expenseRows.map((c: any, index: number) => ({
+                    id: c.id?.toString() || (index + 1).toString(),
+                    type: c.charge_type || c.chargeType || 'other',
+                    amount: Number(c.amount) || 0,
+                    notes: c.notes || ''
+                }));
+                setExtraExpenses(expenses);
+            } else if (purchaseData.expenses && purchaseData.expenses.length > 0) {
                 const expenses = purchaseData.expenses.map((expense: any, index: number) => ({
                     id: expense.id?.toString() || (index + 1).toString(),
                     type: expense.type || expense.expense_type || 'other',
@@ -1340,7 +1350,6 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                 }));
                 setExtraExpenses(expenses);
             } else if (purchaseData.shippingCost > 0 || purchaseData.shipping_cost > 0) {
-                // Fallback to single expense if expenses array not available
                 const shippingAmount = purchaseData.shippingCost || purchaseData.shipping_cost || 0;
                 setExtraExpenses([{
                     id: '1',
@@ -1575,6 +1584,9 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                     date: formatDateWithTimezone(purchaseDate),
                     // 🔒 CRITICAL: Pass items array to updatePurchase (like SaleForm does)
                     items: purchaseItems,
+                    // Line-level extra expenses: so purchase_charges are replaced on edit
+                    expenses: extraExpenses,
+                    discount: discountAmount,
                 });
                 if (purchaseAttachmentFiles.length > 0 && companyId) {
                     try {

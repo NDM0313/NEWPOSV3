@@ -36,15 +36,26 @@ export interface CreateSaleInput {
   userId: string;
 }
 
+/** When branchId is 'default' (no branches), use first branch for RPC. No auto-create (POST branches can 403). */
+async function resolveBranchId(companyId: string, branchId: string): Promise<string> {
+  if (branchId && branchId !== 'default') return branchId;
+  const { data } = await supabase.from('branches').select('id').eq('company_id', companyId).limit(1).maybeSingle();
+  const first = data?.id ?? null;
+  if (!first) throw new Error('No branch set up. Add a branch on the Branch screen or in Settings to create sales.');
+  return first;
+}
+
 /**
  * Get next invoice number from server – ATOMIC, no race conditions.
  * Uses RPC get_next_document_number. Studio sales use 'studio' (STD-xxx), regular use 'sale' (SL-xxx).
+ * When branchId is 'default', uses first branch of company (RPC requires UUID).
  */
 async function getNextInvoiceNumber(companyId: string, branchId: string, isStudio: boolean): Promise<string> {
+  const effectiveBranchId = await resolveBranchId(companyId, branchId);
   const documentType = isStudio ? 'studio' : 'sale';
   const { data, error } = await supabase.rpc('get_next_document_number', {
     p_company_id: companyId,
-    p_branch_id: branchId,
+    p_branch_id: effectiveBranchId,
     p_document_type: documentType,
   });
 
@@ -74,9 +85,16 @@ export async function createSale(input: CreateSaleInput): Promise<{ data: { id: 
     return { data: null, error: 'No items in sale.' };
   }
 
+  let effectiveBranchId: string;
+  try {
+    effectiveBranchId = await resolveBranchId(companyId, branchId);
+  } catch (err) {
+    return { data: null, error: (err as Error).message ?? 'Failed to resolve branch.' };
+  }
+
   let invoiceNo: string;
   try {
-    invoiceNo = await getNextInvoiceNumber(companyId, branchId, !!isStudio);
+    invoiceNo = await getNextInvoiceNumber(companyId, effectiveBranchId, !!isStudio);
   } catch (err) {
     return { data: null, error: (err as Error).message ?? 'Failed to get invoice number' };
   }
@@ -86,10 +104,12 @@ export async function createSale(input: CreateSaleInput): Promise<{ data: { id: 
   const isSplit = paidAmount != null && dueAmount != null;
   const paid = isSplit ? Number(paidAmount) : (isCredit ? 0 : totalNum);
   const due = isSplit ? Number(dueAmount) : (isCredit ? totalNum : 0);
-  const saleRow = {
+  const isDuplicateInvoiceError = (err: { code?: string; message?: string } | null) =>
+    err?.code === '23505' || (err?.message != null && String(err.message).includes('sales_company_branch_invoice_unique'));
+
+  const saleRowBase = {
     company_id: companyId,
-    branch_id: branchId,
-    invoice_no: invoiceNo,
+    branch_id: effectiveBranchId,
     invoice_date: new Date().toISOString(),
     customer_id: customerId || null,
     customer_name: customerName || 'Walk-in',
@@ -110,14 +130,29 @@ export async function createSale(input: CreateSaleInput): Promise<{ data: { id: 
     notes: notes || null,
   };
 
-  const { data: saleData, error: saleError } = await supabase
-    .from('sales')
-    .insert(saleRow)
-    .select('id')
-    .single();
+  let saleRow: Record<string, unknown> = { ...saleRowBase, invoice_no: invoiceNo };
+  let saleData: { id: string } | null = null;
+  let saleError: { code?: string; message?: string } | null = null;
 
-  if (saleError) {
-    return { data: null, error: saleError.message };
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const result = await supabase.from('sales').insert(saleRow).select('id').single();
+    saleData = result.data as { id: string } | null;
+    saleError = result.error;
+    if (!saleError) break;
+    if (attempt === 0 && isDuplicateInvoiceError(saleError)) {
+      try {
+        invoiceNo = await getNextInvoiceNumber(companyId, effectiveBranchId, !!isStudio);
+        saleRow = { ...saleRowBase, invoice_no: invoiceNo };
+      } catch {
+        break;
+      }
+    } else {
+      break;
+    }
+  }
+
+  if (saleError || !saleData) {
+    return { data: null, error: saleError?.message ?? 'Failed to create sale.' };
   }
 
   const saleId = saleData.id;
@@ -165,7 +200,7 @@ export async function createSale(input: CreateSaleInput): Promise<{ data: { id: 
       const pieceOut = packing?.total_pieces != null ? Math.round(Number(packing.total_pieces)) : 0;
       return {
         company_id: companyId,
-        branch_id: branchId,
+        branch_id: effectiveBranchId,
         product_id: item.productId,
         variation_id: item.variationId || null,
         movement_type: 'sale' as const,
@@ -188,16 +223,15 @@ export async function createSale(input: CreateSaleInput): Promise<{ data: { id: 
     }
   }
 
-  // Create payment record when paid > 0 (for payment history)
+  // Create payment record when paid > 0 (for payment history). Let DB trigger set reference_number to avoid duplicate key.
   if (paid > 0) {
     const payMethod = (paymentMethod || 'Cash').toLowerCase();
     let enumMethod: 'cash' | 'bank' | 'card' | 'other' = 'cash';
     if (payMethod.includes('bank') || payMethod.includes('transfer')) enumMethod = 'bank';
     else if (payMethod.includes('credit') || payMethod.includes('card')) enumMethod = 'card';
-    const payRef = await getNextDocumentNumber(companyId, branchId, 'payment');
     const { error: payErr } = await supabase.from('payments').insert({
       company_id: companyId,
-      branch_id: branchId,
+      branch_id: effectiveBranchId,
       payment_type: 'received',
       reference_type: 'sale',
       reference_id: saleId,
@@ -205,7 +239,6 @@ export async function createSale(input: CreateSaleInput): Promise<{ data: { id: 
       payment_method: enumMethod,
       payment_date: new Date().toISOString().slice(0, 10),
       payment_account_id: paymentAccountId || null,
-      reference_number: payRef,
       created_by: userId,
     });
     if (payErr) console.warn('[SALES API] Payment record insert failed:', payErr);
@@ -218,7 +251,7 @@ export async function createSale(input: CreateSaleInput): Promise<{ data: { id: 
       const productionNo = items.length === 1 ? invoiceNo : `${invoiceNo}-${i + 1}`;
       return {
         company_id: companyId,
-        branch_id: branchId,
+        branch_id: effectiveBranchId,
         sale_id: saleId,
         production_no: productionNo,
         production_date: productionDate,
@@ -235,8 +268,9 @@ export async function createSale(input: CreateSaleInput): Promise<{ data: { id: 
     }
   }
 
+  const insertedInvoiceNo = (saleRow.invoice_no as string) ?? invoiceNo;
   return {
-    data: { id: saleId, invoiceNo },
+    data: { id: saleId, invoiceNo: insertedInvoiceNo },
     error: null,
   };
 }
@@ -260,7 +294,7 @@ export async function getAllSales(
     .eq('company_id', companyId)
     .order('invoice_date', { ascending: false });
 
-  if (branchId && branchId !== 'all') {
+  if (branchId && branchId !== 'all' && branchId !== 'default') {
     query = query.eq('branch_id', branchId);
   }
 
@@ -278,7 +312,7 @@ export async function getAllSales(
         `)
         .eq('company_id', companyId)
         .order('invoice_date', { ascending: false });
-      const retry = branchId && branchId !== 'all' ? retryQuery.eq('branch_id', branchId) : retryQuery;
+      const retry = branchId && branchId !== 'all' && branchId !== 'default' ? retryQuery.eq('branch_id', branchId) : retryQuery;
       const { data: retryData, error: retryError } = await retry;
       if (retryError) return { data: [], error: retryError.message };
       const retryList = retryData || [];
@@ -307,7 +341,7 @@ async function enrichSalesWithPayments(
     .eq('reference_type', 'sale')
     .eq('company_id', companyId)
     .in('reference_id', saleIds);
-  if (branchId && branchId !== 'all') {
+  if (branchId && branchId !== 'all' && branchId !== 'default') {
     payQuery = payQuery.eq('branch_id', branchId);
   }
   const { data: payData } = await payQuery;

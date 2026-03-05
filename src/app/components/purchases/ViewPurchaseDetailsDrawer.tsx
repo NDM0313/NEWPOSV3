@@ -1266,29 +1266,61 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
                 <div className="p-5 space-y-3">
                   <div className="flex justify-between text-sm">
                     <span className="text-gray-400">Subtotal</span>
-                    <span className="text-white font-medium">{formatCurrency(purchase.subtotal)}</span>
+                    <span className="text-white font-medium">{formatCurrency(purchase.subtotal ?? 0)}</span>
                   </div>
                   
-                  {purchase.discount && purchase.discount > 0 && (
+                  {(purchase.discount ?? 0) > 0 && (
                     <div className="flex justify-between text-sm">
                       <span className="text-gray-400">Discount</span>
                       <span className="text-red-400 font-medium">- {formatCurrency(purchase.discount)}</span>
                     </div>
                   )}
                   
-                  {purchase.tax && purchase.tax > 0 && (
+                  {(purchase.tax ?? 0) > 0 && (
                     <div className="flex justify-between text-sm">
                       <span className="text-gray-400">Tax</span>
                       <span className="text-white font-medium">{formatCurrency(purchase.tax)}</span>
                     </div>
                   )}
                   
-                  {purchase.shippingCost && purchase.shippingCost > 0 && (
-                    <div className="flex justify-between text-sm">
-                      <span className="text-gray-400">Shipping Charges</span>
-                      <span className="text-white font-medium">{formatCurrency(purchase.shippingCost)}</span>
-                    </div>
-                  )}
+                  {/* Shipping + Extra: line-level from purchase_charges when available */}
+                  {(() => {
+                    const charges = (purchase as any).charges ?? [];
+                    const chargeList = Array.isArray(charges) ? charges : [];
+                    const shippingRows = chargeList.filter((c: any) => (c.charge_type || c.chargeType) === 'shipping');
+                    const extraRows = chargeList.filter((c: any) => (c.charge_type || c.chargeType) !== 'discount' && (c.charge_type || c.chargeType) !== 'shipping');
+                    const shippingTotal = shippingRows.reduce((s: number, c: any) => s + (Number(c.amount) || 0), 0);
+                    const extraTotal = extraRows.reduce((s: number, c: any) => s + (Number(c.amount) || 0), 0);
+                    const hasShipping = shippingTotal > 0;
+                    const hasExtra = extraRows.length > 0;
+                    if (!hasShipping && !hasExtra) {
+                      if ((purchase.shippingCost ?? 0) > 0) {
+                        return (
+                          <div className="flex justify-between text-sm">
+                            <span className="text-gray-400">Shipping / Extra charges</span>
+                            <span className="text-white font-medium">{formatCurrency(purchase.shippingCost)}</span>
+                          </div>
+                        );
+                      }
+                      return null;
+                    }
+                    return (
+                      <>
+                        {hasShipping && (
+                          <div className="flex justify-between text-sm">
+                            <span className="text-gray-400">Shipping</span>
+                            <span className="text-white font-medium">{formatCurrency(shippingTotal)}</span>
+                          </div>
+                        )}
+                        {extraRows.map((c: any, idx: number) => (
+                          <div key={c.id || idx} className="flex justify-between text-sm">
+                            <span className="text-gray-400">{c.charge_type || c.chargeType || 'Other'}</span>
+                            <span className="text-white font-medium">{formatCurrency(Number(c.amount) || 0)}</span>
+                          </div>
+                        ))}
+                      </>
+                    );
+                  })()}
                   
                   <Separator className="bg-gray-800" />
                   

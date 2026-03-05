@@ -259,10 +259,39 @@ export const saleService = {
     data.hasReturn = (returns && returns.length > 0) || false;
     data.returnCount = returns?.length || 0;
 
+    // Line-level charges for edit form (sale_charges table)
+    const { data: chargeRows } = await supabase.from('sale_charges').select('*').eq('sale_id', saleId);
+    data.charges = Array.isArray(chargeRows) ? chargeRows : [];
+
     // Enrich creator name for sale details (created_by = auth.users.id → resolve via users.auth_user_id)
     await enrichSalesWithCreatorNames([data]);
 
     return data;
+  },
+
+  /** One row per charge for audit-ready ledger. */
+  replaceSaleCharges(saleId: string, charges: { charge_type: string; amount: number; ledger_account_id?: string | null }[], createdBy?: string | null) {
+    return (async () => {
+      const { error: delError } = await supabase.from('sale_charges').delete().eq('sale_id', saleId);
+      if (delError) {
+        console.warn('[SALE SERVICE] replaceSaleCharges delete failed:', delError);
+        throw delError;
+      }
+      const chargeRows = (charges || []).filter((c) => c.amount > 0).map((c) => ({
+        sale_id: saleId,
+        charge_type: c.charge_type,
+        ledger_account_id: c.ledger_account_id ?? null,
+        amount: Number(c.amount),
+        created_by: createdBy ?? null,
+      }));
+      if (chargeRows.length > 0) {
+        const { error: insError } = await supabase.from('sale_charges').insert(chargeRows);
+        if (insError) {
+          console.warn('[SALE SERVICE] replaceSaleCharges insert failed:', insError);
+          throw insError;
+        }
+      }
+    })();
   },
 
   // Get all sales (with items for list count and edit).
@@ -505,7 +534,7 @@ export const saleService = {
     return data;
   },
 
-  // Get single sale (journal_entries join can cause 400 if relation not defined - use base select)
+  // Get single sale (include sale_charges for line-level extra expenses on edit)
   async getSale(id: string) {
     const baseSelect = `
       *,
@@ -514,7 +543,8 @@ export const saleService = {
         *,
         product:products(*),
         variation:product_variations(*)
-      )
+      ),
+      sale_charges(*)
     `;
     const { data, error } = await supabase
       .from('sales')
@@ -536,6 +566,7 @@ export const saleService = {
     if (saleData) {
       saleData.hasReturn = (returns && returns.length > 0) || false;
       saleData.returnCount = returns?.length || 0;
+      saleData.charges = Array.isArray((saleData as any).sale_charges) ? (saleData as any).sale_charges : [];
     }
 
     return saleData;
@@ -882,20 +913,10 @@ export const saleService = {
       throw new Error('Company and branch are required for payment.');
     }
     
-    // Prefer DB-generated reference (atomic, no duplicate). Only use caller value when explicitly provided (e.g. edit).
-    let paymentRef: string | null = referenceNumber && String(referenceNumber).trim() ? String(referenceNumber).trim() : null;
-    if (!paymentRef) {
-      try {
-        paymentRef = await documentNumberService.getNextDocumentNumberGlobal(companyId, 'PAY');
-      } catch (e) {
-        console.error('[SALE SERVICE] getNextDocumentNumberGlobal(PAY) failed:', e);
-        throw new Error('Could not generate payment reference. Ensure document_sequences_global has PAY type for this company.');
-      }
-    }
-    if (import.meta.env?.DEV) {
-      console.log('[SALE SERVICE] Payment insert reference_number =', paymentRef);
-    }
-    
+    // Let DB trigger set reference_number to avoid duplicate key (payments_reference_number_unique).
+    // Do not send reference_number on insert unless caller explicitly provided one (e.g. edit flow).
+    const callerRef = referenceNumber && String(referenceNumber).trim() ? String(referenceNumber).trim() : null;
+
     // Use provided date or current date
     const paymentDateValue = paymentDate || new Date().toISOString().split('T')[0];
     
@@ -931,7 +952,8 @@ export const saleService = {
     const { data: { user: authUser } } = await supabase.auth.getUser();
     const authUserId = authUser?.id ?? null;
 
-    // Build payment data - use actual schema columns; include received_by (auth.users.id)
+    // Build payment data - use actual schema columns; include received_by (auth.users.id).
+    // Omit reference_number so DB trigger sets it (avoids duplicate key).
     const paymentData: any = {
       company_id: companyId,
       branch_id: branchId,
@@ -942,10 +964,10 @@ export const saleService = {
       payment_method: enumPaymentMethod,
       payment_date: paymentDateValue,
       payment_account_id: accountId,
-      reference_number: paymentRef,
       received_by: authUserId,
       created_by: authUserId,
     };
+    if (callerRef) paymentData.reference_number = callerRef;
     if (options?.notes !== undefined && options.notes !== '') {
       paymentData.notes = options.notes;
     }
@@ -962,22 +984,6 @@ export const saleService = {
     if (result.error && result.error.code === 'PGRST204' && result.error.message?.includes('attachments')) {
       delete paymentData.attachments;
       result = await doInsert(paymentData);
-    }
-    // On duplicate reference_number: one retry with a fresh DB-generated ref (only when we generated ref, not caller-provided)
-    const isDuplicateRef = result.error?.code === '23505' && String(result.error?.message || '').includes('payments_reference_number_unique');
-    if (result.error && isDuplicateRef && !(referenceNumber && String(referenceNumber).trim())) {
-      try {
-        const freshRef = await documentNumberService.getNextDocumentNumberGlobal(companyId, 'PAY');
-        paymentData.reference_number = freshRef;
-        if (import.meta.env?.DEV) console.log('[SALE SERVICE] Duplicate ref retry with', freshRef);
-        result = await doInsert(paymentData);
-        if (result.error && result.error.code === 'PGRST204' && result.error.message?.includes('attachments')) {
-          delete paymentData.attachments;
-          result = await doInsert(paymentData);
-        }
-      } catch (_) {
-        // fall through to throw original
-      }
     }
     if (result.error) {
       console.error('[SALE SERVICE] Payment insert error:', {

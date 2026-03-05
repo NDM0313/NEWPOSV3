@@ -67,21 +67,48 @@ export async function getProducts(companyId: string): Promise<{ data: Product[];
   const varProductIds = withVariations.map((r: { id: string }) => r.id);
   let varMap: Record<string, ProductVariationRow[]> = {};
   if (varProductIds.length > 0) {
+    // Fetch variations without stock first so we never fail on column name (stock vs current_stock)
     const { data: varData } = await supabase
       .from('product_variations')
-      .select('id, product_id, sku, attributes, price, stock')
+      .select('id, product_id, sku, attributes, price')
       .in('product_id', varProductIds)
       .eq('is_active', true);
     for (const v of varData || []) {
-      const pv = v as { product_id: string } & { id: string; sku: string; attributes: Record<string, string>; price: number; stock: number };
+      const pv = v as { product_id: string } & { id: string; sku: string; attributes: Record<string, string>; price: number };
       if (!varMap[pv.product_id]) varMap[pv.product_id] = [];
       varMap[pv.product_id].push({
         id: pv.id,
         sku: pv.sku,
         attributes: pv.attributes || {},
         price: Number(pv.price) || 0,
-        stock: Number(pv.stock) ?? 0,
+        stock: 0,
       });
+    }
+    // Best-effort: fetch variation stock (DB may have 'current_stock' or 'stock')
+    const varIds = (varData || []).map((x: { id: string }) => x.id);
+    if (varIds.length > 0) {
+      const { data: stockData, error: stockErr } = await supabase
+        .from('product_variations')
+        .select('id, current_stock')
+        .in('id', varIds);
+      const mergeStock = (rows: { id: string; qty: number }[]) => {
+        const byId: Record<string, number> = {};
+        for (const s of rows) byId[s.id] = s.qty;
+        for (const pid of Object.keys(varMap)) {
+          varMap[pid] = varMap[pid].map((vr) => ({ ...vr, stock: byId[vr.id] ?? vr.stock }));
+        }
+      };
+      if (!stockErr && stockData?.length) {
+        mergeStock((stockData as { id: string; current_stock?: number }[]).map((s) => ({ id: s.id, qty: Number(s.current_stock) ?? 0 })));
+      } else {
+        const { data: stockData2 } = await supabase
+          .from('product_variations')
+          .select('id, stock')
+          .in('id', varIds);
+        if (stockData2?.length) {
+          mergeStock((stockData2 as { id: string; stock?: number }[]).map((s) => ({ id: s.id, qty: Number(s.stock) ?? 0 })));
+        }
+      }
     }
   }
   const list: Product[] = [];

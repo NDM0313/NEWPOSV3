@@ -14,7 +14,7 @@ export interface RecordCustomerPaymentParams {
 }
 
 export interface UseRecordCustomerPaymentResult {
-  submit: (params: RecordCustomerPaymentParams) => Promise<{ success: boolean; error?: string; paymentId?: string }>;
+  submit: (params: RecordCustomerPaymentParams) => Promise<{ success: boolean; error?: string; paymentId?: string; referenceNumber?: string }>;
   isSubmitting: boolean;
 }
 
@@ -25,7 +25,7 @@ export interface UseRecordCustomerPaymentResult {
 export function useRecordCustomerPayment(): UseRecordCustomerPaymentResult {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const submit = useCallback(async (params: RecordCustomerPaymentParams): Promise<{ success: boolean; error?: string; paymentId?: string }> => {
+  const submit = useCallback(async (params: RecordCustomerPaymentParams): Promise<{ success: boolean; error?: string; paymentId?: string; referenceNumber?: string }> => {
     if (isSubmitting) return { success: false, error: 'Please wait.' };
     if (!params.companyId || !params.referenceId || params.amount <= 0 || !params.accountId) {
       return { success: false, error: 'Missing required fields.' };
@@ -45,7 +45,9 @@ export function useRecordCustomerPayment(): UseRecordCustomerPaymentResult {
         createdBy: params.createdBy,
       });
       if (error) return { success: false, error };
-      if (data?.payment_id) return { success: true, paymentId: data.payment_id };
+      if (data?.payment_id) {
+        return { success: true, paymentId: data.payment_id, referenceNumber: data.reference_number };
+      }
       return { success: false, error: 'Payment failed.' };
     } catch (e) {
       const message = e instanceof Error ? e.message : 'Payment failed.';

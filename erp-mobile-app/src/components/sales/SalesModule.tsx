@@ -12,6 +12,7 @@ import { AddProducts } from './AddProducts';
 import { SaleSummary } from './SaleSummary';
 import { PaymentDialog } from './PaymentDialog';
 import { SaleConfirmation } from './SaleConfirmation';
+import { TransactionSuccessModal, type TransactionSuccessData } from '../shared/TransactionSuccessModal';
 
 export type SalesStep = 'home' | 'customer' | 'products' | 'summary' | 'payment' | 'confirmation';
 
@@ -52,6 +53,7 @@ interface SalesModuleProps {
   onBack: () => void;
   user: User;
   companyId: string | null;
+  /** From App branch context only; do not compute inside Payment. */
   branchId: string | null;
   initialSaleType?: 'regular' | 'studio';
 }
@@ -62,6 +64,8 @@ export function SalesModule({ onBack, user, companyId, branchId, initialSaleType
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [createdInvoiceNo, setCreatedInvoiceNo] = useState<string | null>(null);
+  const [createdSaleId, setCreatedSaleId] = useState<string | null>(null);
+  const [confirmationData, setConfirmationData] = useState<TransactionSuccessData | null>(null);
   const [saleData, setSaleData] = useState<SaleData>({
     customer: null,
     products: [],
@@ -178,7 +182,22 @@ export function SalesModule({ onBack, user, companyId, branchId, initialSaleType
       return;
     }
     setCreatedInvoiceNo(data?.invoiceNo ?? null);
-    setStep('confirmation');
+    setCreatedSaleId(data?.id ?? null);
+    let branchName: string | null = null;
+    if (companyId) {
+      const { data: branches } = await getBranches(companyId);
+      branchName = branches?.find((b) => b.id === effectiveBranchId)?.name ?? null;
+    }
+    setConfirmationData({
+      type: 'sale',
+      title: 'Sale Saved Successfully',
+      transactionNo: data?.invoiceNo ?? null,
+      amount: saleData.total,
+      partyName: saleData.customer?.name ?? 'Walk-in',
+      date: new Date().toISOString(),
+      branch: branchName ?? undefined,
+      entityId: data?.id ?? null,
+    });
   };
   const handleNewSaleFromConfirmation = () => {
     setCreatedInvoiceNo(null);
@@ -197,6 +216,8 @@ export function SalesModule({ onBack, user, companyId, branchId, initialSaleType
   };
   const handleBackToHome = () => {
     setCreatedInvoiceNo(null);
+    setCreatedSaleId(null);
+    setConfirmationData(null);
     setSaleData({
       customer: null,
       products: [],
@@ -211,10 +232,46 @@ export function SalesModule({ onBack, user, companyId, branchId, initialSaleType
     onBack();
   };
 
-  if (step === 'home') return <SalesHome onBack={onBack} onNewSale={handleNewSale} companyId={companyId} branchId={branchId} userId={user?.id ?? null} />;
-  if (step === 'customer') {
-    if (responsive.isTablet) {
-      return (
+  const closeSuccessModal = () => {
+    setConfirmationData(null);
+    setCreatedSaleId(null);
+    setCreatedInvoiceNo(null);
+    setSaleData({
+      customer: null,
+      products: [],
+      subtotal: 0,
+      discount: 0,
+      shipping: 0,
+      tax: 0,
+      total: 0,
+      notes: '',
+      saleType: 'regular',
+    });
+    setStep('home');
+  };
+
+  const handleSuccessNewSale = () => {
+    setConfirmationData(null);
+    setCreatedSaleId(null);
+    setCreatedInvoiceNo(null);
+    setSaleData({
+      customer: null,
+      products: [],
+      subtotal: 0,
+      discount: 0,
+      shipping: 0,
+      tax: 0,
+      total: 0,
+      notes: '',
+      saleType: 'regular',
+    });
+    setStep('customer');
+  };
+
+  return (
+    <>
+      {step === 'home' && <SalesHome onBack={onBack} onNewSale={handleNewSale} companyId={companyId} branchId={branchId} userId={user?.id ?? null} />}
+      {step === 'customer' && (responsive.isTablet ? (
         <SelectCustomerTablet
           companyId={companyId}
           onBack={handleStepBack}
@@ -222,49 +279,63 @@ export function SalesModule({ onBack, user, companyId, branchId, initialSaleType
           initialSaleType={saleData.saleType}
           onSaleTypeChange={(st) => setSaleData((prev) => ({ ...prev, saleType: st }))}
         />
-      );
-    }
-    return (
-      <SelectCustomer
-        companyId={companyId}
-        onBack={handleStepBack}
-        onSelect={handleCustomerSelect}
-        initialSaleType={saleData.saleType}
-        onSaleTypeChange={(st) => setSaleData((prev) => ({ ...prev, saleType: st }))}
+      ) : (
+        <SelectCustomer
+          companyId={companyId}
+          onBack={handleStepBack}
+          onSelect={handleCustomerSelect}
+          initialSaleType={saleData.saleType}
+          onSaleTypeChange={(st) => setSaleData((prev) => ({ ...prev, saleType: st }))}
+        />
+      ))}
+      {step === 'products' && saleData.customer && (
+        <AddProducts
+          companyId={companyId}
+          onBack={handleStepBack}
+          customer={saleData.customer}
+          initialProducts={saleData.products}
+          onProductsUpdate={handleProductsUpdate}
+          onNext={handleNextToSummary}
+        />
+      )}
+      {step === 'summary' && <SaleSummary onBack={handleStepBack} saleData={saleData} onUpdate={handleSummaryUpdate} onProceedToPayment={handleProceedToPayment} />}
+      {step === 'payment' && (
+        !branchId
+          ? (
+            <div className="min-h-[50vh] flex flex-col items-center justify-center p-6">
+              <p className="text-[#EF4444] text-center font-medium mb-4">No branch assigned. Contact admin.</p>
+              <button type="button" onClick={handleStepBack} className="px-4 py-2 bg-[#3B82F6] text-white rounded-lg font-medium">Go back</button>
+            </div>
+            )
+          : (
+            <PaymentDialog
+              onBack={handleStepBack}
+              totalAmount={saleData.total}
+              companyId={companyId}
+              onComplete={handlePaymentComplete}
+              saving={saving}
+              saveError={saveError}
+            />
+            )
+      )}
+      {step === 'confirmation' && (
+        <SaleConfirmation
+          saleData={saleData}
+          invoiceNo={createdInvoiceNo}
+          onNewSale={handleNewSaleFromConfirmation}
+          onBackToHome={handleBackToHome}
+        />
+      )}
+
+      <TransactionSuccessModal
+        isOpen={confirmationData != null}
+        data={confirmationData}
+        onClose={closeSuccessModal}
+        onShareSlip={closeSuccessModal}
+        onViewInvoice={closeSuccessModal}
+        onNewSale={handleSuccessNewSale}
+        onHome={handleBackToHome}
       />
-    );
-  }
-  if (step === 'products' && saleData.customer)
-    return (
-      <AddProducts
-        companyId={companyId}
-        onBack={handleStepBack}
-        customer={saleData.customer}
-        initialProducts={saleData.products}
-        onProductsUpdate={handleProductsUpdate}
-        onNext={handleNextToSummary}
-      />
-    );
-  if (step === 'summary') return <SaleSummary onBack={handleStepBack} saleData={saleData} onUpdate={handleSummaryUpdate} onProceedToPayment={handleProceedToPayment} />;
-  if (step === 'payment')
-    return (
-      <PaymentDialog
-        onBack={handleStepBack}
-        totalAmount={saleData.total}
-        companyId={companyId}
-        onComplete={handlePaymentComplete}
-        saving={saving}
-        saveError={saveError}
-      />
-    );
-  if (step === 'confirmation')
-    return (
-      <SaleConfirmation
-        saleData={saleData}
-        invoiceNo={createdInvoiceNo}
-        onNewSale={handleNewSaleFromConfirmation}
-        onBackToHome={handleBackToHome}
-      />
-    );
-  return null;
+    </>
+  );
 }

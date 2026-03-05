@@ -38,7 +38,7 @@ Confirm:
 Run:
 
 git add .
-git commit -m ""
+git commit -m "mobile erp permision error fix"
 git push origin main
 
 Examples:

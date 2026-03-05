@@ -35,3 +35,29 @@ export async function getBranches(companyId: string): Promise<{ data: Branch[]; 
   }));
   return { data: list, error: null };
 }
+
+/** Create a branch (e.g. when company has none, to allow first sale). Requires company_id. */
+export async function createBranch(companyId: string, name: string = 'Main', code?: string): Promise<{ data: Branch | null; error: string | null }> {
+  if (!isSupabaseConfigured) return { data: null, error: 'App not configured.' };
+  const { data, error } = await supabase
+    .from('branches')
+    .insert({
+      company_id: companyId,
+      name: name.trim() || 'Main',
+      code: code?.trim() || 'BR-001',
+      is_active: true,
+    })
+    .select('id, name, code, address, city')
+    .single();
+
+  if (error) return { data: null, error: error.message };
+  const row = data as BranchRow;
+  return {
+    data: {
+      id: row.id,
+      name: row.name,
+      location: [row.address, row.city].filter(Boolean).join(', ') || row.code || '—',
+    },
+    error: null,
+  };
+}

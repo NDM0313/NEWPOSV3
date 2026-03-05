@@ -7,6 +7,7 @@ import * as productsApi from '../../api/products';
 import * as rentalsApi from '../../api/rentals';
 import * as branchesApi from '../../api/branches';
 import * as accountsApi from '../../api/accounts';
+import { TransactionSuccessModal, type TransactionSuccessData } from '../shared/TransactionSuccessModal';
 
 interface CreateRentalFlowProps {
   companyId: string | null;
@@ -39,6 +40,7 @@ export function CreateRentalFlow({ companyId, branchId, userId, onBack, onSucces
   const [error, setError] = useState('');
   const [branches, setBranches] = useState<{ id: string; name: string }[]>([]);
   const [selectedBranchId, setSelectedBranchId] = useState<string | null>(null);
+  const [confirmationData, setConfirmationData] = useState<TransactionSuccessData | null>(null);
   const today = new Date().toISOString().slice(0, 10);
 
   const needsBranchSelection = !branchId || branchId === 'all';
@@ -162,7 +164,7 @@ export function CreateRentalFlow({ companyId, branchId, userId, onBack, onSucces
       total: i === n - 1 ? remainder : base,
     }));
 
-    const { error: err } = await rentalsApi.createBooking({
+    const { data: createResult, error: err } = await rentalsApi.createBooking({
       companyId,
       branchId: effectiveBranchId,
       userId,
@@ -183,13 +185,47 @@ export function CreateRentalFlow({ companyId, branchId, userId, onBack, onSucces
       setError(err);
       return;
     }
-    onSuccess();
+    let branchName: string | null = branches.find((b) => b.id === effectiveBranchId)?.name ?? null;
+    if (!branchName && companyId) {
+      const { data: branchList } = await branchesApi.getBranches(companyId);
+      branchName = branchList?.find((b) => b.id === effectiveBranchId)?.name ?? null;
+    }
+    setConfirmationData({
+      type: 'rental',
+      title: 'Booking Saved Successfully',
+      transactionNo: createResult?.booking_no ?? null,
+      amount: rentAmount,
+      partyName: selectedCustomer.name,
+      date: new Date().toISOString(),
+      branch: branchName ?? undefined,
+      entityId: createResult?.id ?? null,
+    });
   };
 
   const goNextFromAdvance = () => {
     if (paidAmount > 0) setStep('payment_confirm');
     else setStep('confirm');
   };
+
+  const closeRentalSuccessModal = () => {
+    setConfirmationData(null);
+    onSuccess();
+  };
+
+  if (confirmationData) {
+    return (
+      <>
+        <div className="fixed inset-0 bg-[#111827]" />
+        <TransactionSuccessModal
+          isOpen={true}
+          data={confirmationData}
+          onClose={closeRentalSuccessModal}
+          onViewPurchase={closeRentalSuccessModal}
+          onBack={closeRentalSuccessModal}
+        />
+      </>
+    );
+  }
 
   // ─── Step: Customer ─────────────────────────────────────────────────────
   if (step === 'customer') {

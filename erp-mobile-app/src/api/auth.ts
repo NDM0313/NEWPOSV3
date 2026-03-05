@@ -113,6 +113,7 @@ export async function refreshSessionFromRefreshToken(refreshToken: string): Prom
   return { ok: true };
 }
 
+/** user_branches.user_id = public users.id (profileId). */
 export async function getProfile(userId: string): Promise<AuthProfile | null> {
   const { data: row, error } = await supabase
     .from('users')
@@ -125,15 +126,29 @@ export async function getProfile(userId: string): Promise<AuthProfile | null> {
   if (!user) return null;
   const role = (row.role?.toLowerCase() || 'staff') as UserRole;
   const validRoles: UserRole[] = ['admin', 'manager', 'staff', 'viewer'];
-  const branchId: string | null = null;
-  const branchLocked = false;
+  const profileId = (row as { id?: string }).id ?? undefined;
+
+  let branchId: string | null = null;
+  let branchLocked = false;
+  if (profileId && isSupabaseConfigured) {
+    const { data: ubRows } = await supabase
+      .from('user_branches')
+      .select('branch_id')
+      .eq('user_id', profileId);
+    const branchIds = (ubRows ?? []).map((r: { branch_id: string }) => r.branch_id);
+    if (branchIds.length === 1) {
+      branchId = branchIds[0];
+      branchLocked = true;
+    }
+  }
+
   return {
     name: user.user_metadata?.name || user.email?.split('@')[0] || 'User',
     email: user.email || '',
     role: validRoles.includes(role) ? role : 'staff',
     companyId: row.company_id || null,
     userId: user.id,
-    profileId: (row as { id?: string }).id ?? undefined,
+    profileId,
     branchId,
     branchLocked,
   };

@@ -22,7 +22,7 @@ export async function getSalesSummary(
     .eq('status', 'final')
     .gte('invoice_date', fromStr)
     .in('payment_status', ['paid', 'partial']);
-  if (branchId && branchId !== 'all') query = query.eq('branch_id', branchId);
+  if (branchId && branchId !== 'all' && branchId !== 'default') query = query.eq('branch_id', branchId);
   const { data, error } = await query;
   if (error) return { data: null, error: error.message };
   const totalSales = (data || []).reduce((sum, r) => sum + Number(r.total || 0), 0);
@@ -48,7 +48,7 @@ export async function getPurchasesSummary(
     .eq('company_id', companyId)
     .gte('po_date', fromStr)
     .is('cancelled_at', null);
-  if (branchId && branchId !== 'all') query = query.eq('branch_id', branchId);
+  if (branchId && branchId !== 'all' && branchId !== 'default') query = query.eq('branch_id', branchId);
   const { data, error } = await query;
   if (error) return { data: null, error: error.message };
   const totalPurchases = (data || []).reduce((sum, r) => sum + Number(r.total || 0), 0);
@@ -75,7 +75,7 @@ export async function getPurchasesForReport(
     .is('cancelled_at', null)
     .order('po_date', { ascending: false })
     .limit(100);
-  if (branchId && branchId !== 'all') query = query.eq('branch_id', branchId);
+  if (branchId && branchId !== 'all' && branchId !== 'default') query = query.eq('branch_id', branchId);
   const { data, error } = await query;
   if (error) return { data: [], error: error.message };
   return {
@@ -182,7 +182,7 @@ export async function getReceivables(
     .eq('type', 'invoice')
     .eq('status', 'final')
     .in('payment_status', ['partial', 'unpaid']);
-  if (branchId && branchId !== 'all') query = query.eq('branch_id', branchId);
+  if (branchId && branchId !== 'all' && branchId !== 'default') query = query.eq('branch_id', branchId);
   const { data, error } = await query;
   if (error) return { data: 0, error: error.message };
   const total = (data || []).reduce((sum, r) => sum + Number(r.due_amount ?? 0), 0);
@@ -216,7 +216,7 @@ export async function getReceivablesList(
     .gt('due_amount', 0)
     .order('invoice_date', { ascending: false })
     .limit(200);
-  if (branchId && branchId !== 'all') query = query.eq('branch_id', branchId);
+  if (branchId && branchId !== 'all' && branchId !== 'default') query = query.eq('branch_id', branchId);
   const { data, error } = await query;
   if (error) return { data: [], error: error.message };
   return {

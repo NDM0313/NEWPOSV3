@@ -1177,6 +1177,25 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                                 mapItemsToForm(initialSale.items);
                             }
                         }
+                        // Pre-fill from sale_charges: shipping → Shipping section; others → Extra Expenses
+                        const charges = (full as any).charges ?? (full as any).sale_charges ?? [];
+                        const chargeList = Array.isArray(charges) ? charges : [];
+                        const shippingRows = chargeList.filter((c: any) => (c.charge_type || c.chargeType) === 'shipping');
+                        const expenseRows = chargeList.filter((c: any) => (c.charge_type || c.chargeType) !== 'discount' && (c.charge_type || c.chargeType) !== 'shipping');
+                        const shippingTotal = shippingRows.reduce((s: number, c: any) => s + (Number(c.amount) || 0), 0);
+                        if (shippingTotal > 0) {
+                            setShippingCharges(shippingTotal);
+                            setShippingEnabled(true);
+                        }
+                        if (expenseRows.length > 0) {
+                            const expenses = expenseRows.map((c: any, index: number) => ({
+                                id: c.id?.toString() || String(index + 1),
+                                type: c.charge_type || c.chargeType || 'other',
+                                amount: Number(c.amount) || 0,
+                                notes: (c as any).notes || ''
+                            }));
+                            setExtraExpenses(expenses);
+                        }
                     })
                     .catch((err: any) => {
                         console.warn('[SaleForm] Could not load sale items for edit:', err);
@@ -1236,8 +1255,25 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                 loadExistingPayments();
             }
             
-            // Pre-fill expenses
-            if (initialSale.expenses > 0) {
+            // Pre-fill from sale_charges: shipping → Shipping section; others → Extra Expenses. Exclude 'discount'.
+            const charges = (initialSale as any).charges ?? (initialSale as any).sale_charges ?? [];
+            const chargeList = Array.isArray(charges) ? charges : [];
+            const shippingRows = chargeList.filter((c: any) => (c.charge_type || c.chargeType) === 'shipping');
+            const expenseRows = chargeList.filter((c: any) => (c.charge_type || c.chargeType) !== 'discount' && (c.charge_type || c.chargeType) !== 'shipping');
+            const shippingTotal = shippingRows.reduce((s: number, c: any) => s + (Number(c.amount) || 0), 0);
+            if (shippingTotal > 0) {
+                setShippingCharges(shippingTotal);
+                setShippingEnabled(true);
+            }
+            if (expenseRows.length > 0) {
+                const expenses = expenseRows.map((c: any, index: number) => ({
+                    id: c.id?.toString() || String(index + 1),
+                    type: c.charge_type || c.chargeType || 'other',
+                    amount: Number(c.amount) || 0,
+                    notes: (c as any).notes || ''
+                }));
+                setExtraExpenses(expenses);
+            } else if (initialSale.expenses > 0) {
                 setExtraExpenses([{
                     id: '1',
                     type: 'other',
@@ -1925,8 +1961,9 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                 paymentMethod: (saleStatus === 'final' && partialPayments.length > 0) ? partialPayments[0].method : 'cash',
                 shippingStatus: shippingEnabled ? 'pending' as const : 'pending' as const,
                 notes: saleNotes || studioNotes || refNumber || undefined, // CRITICAL: Use saleNotes (saves to database)
-                // CRITICAL: Include extra expenses, commission for accounting
+                // CRITICAL: Include extra expenses + standalone shipping so backend saves both to DB/sale_charges
                 extraExpenses: extraExpenses,
+                shippingCharges: finalShippingCharges,
                 commissionAmount: commissionAmount,
                 salesmanId: (salesmanId && salesmanId !== "1" && salesmanId !== "none") ? salesmanId : null,
                 // CRITICAL FIX: Pass partialPayments array for splitting into separate payment records

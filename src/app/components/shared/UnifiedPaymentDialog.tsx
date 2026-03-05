@@ -489,8 +489,8 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
           
           // CRITICAL FIX: branchId can be "all" from context, but purchaseService will get actual branch_id from purchase record
           // So we pass it as optional - purchaseService will use purchase's branch_id instead
+          // Let DB generate reference_number to avoid duplicate key (payments_reference_number_unique)
           try {
-            const paymentRef = generateDocumentNumber('payment');
             let attachmentPayload: { url: string; name: string }[] = [];
             if (attachments.length > 0 && companyId) {
               let anyUploadFailed = false;
@@ -534,24 +534,24 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
               }
             }
             const { purchaseService } = await import('@/app/services/purchaseService');
-            await purchaseService.recordPayment(
+            const recordedPayment = await purchaseService.recordPayment(
               referenceId,
               amount,
               paymentMethod,
               selectedAccount,
               companyId,
               branchId && branchId !== 'all' ? branchId : undefined,
-              paymentRef,
+              undefined,
               { notes: notes.trim() || undefined, attachments: attachmentPayload.length ? attachmentPayload : undefined }
             );
-            incrementNextNumber('payment');
+            const paymentRefNo = (recordedPayment as any)?.reference_number || referenceNo || `PUR-${Date.now()}`;
             success = await accounting.recordSupplierPayment({
               purchaseId: referenceId,
               supplierName: entityName,
               supplierId: entityId,
               amount,
               paymentMethod,
-              referenceNo: paymentRef || referenceNo || `PUR-${Date.now()}`
+              referenceNo: paymentRefNo
             });
           } catch (paymentError: any) {
             console.error('[UNIFIED PAYMENT] Error recording purchase payment:', paymentError);

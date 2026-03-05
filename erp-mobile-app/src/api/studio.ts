@@ -68,7 +68,7 @@ export async function getStudioSales(companyId: string, branchId?: string | null
     .eq('is_studio', true)
     .order('invoice_date', { ascending: false })
     .limit(50);
-  if (branchId && branchId !== 'all') q = q.eq('branch_id', branchId);
+  if (branchId && branchId !== 'all' && branchId !== 'default') q = q.eq('branch_id', branchId);
   const { data, error } = await q;
   if (error) return { data: [], error: error.message };
   return {
@@ -99,7 +99,7 @@ export async function getStudioProductions(
       .eq('company_id', companyId)
       .order('created_at', { ascending: false })
       .limit(100);
-    if (branchId && branchId !== 'all') q = q.eq('branch_id', branchId);
+    if (branchId && branchId !== 'all' && branchId !== 'default') q = q.eq('branch_id', branchId);
     const { data, error } = await q;
     if (error) return { data: [], error: error.message };
     return { data: (data || []) as StudioProductionRow[], error: null };

@@ -4,6 +4,7 @@ import type { User } from '../../types';
 import * as productsApi from '../../api/products';
 import type { ProductVariationRow } from '../../api/products';
 import { AddProductFlow, type AddProductFlowSavePayload } from './AddProductFlow';
+import { TransactionSuccessModal, type TransactionSuccessData } from '../shared/TransactionSuccessModal';
 
 /** Total stock: sum of variation stocks when hasVariations, else product stock */
 function getDisplayStock(p: productsApi.Product): number {
@@ -46,6 +47,7 @@ export function ProductsModule({ onBack, user: _user, companyId, branchId }: Pro
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [saveError, setSaveError] = useState('');
   const [saving, setSaving] = useState(false);
+  const [confirmationData, setConfirmationData] = useState<TransactionSuccessData | null>(null);
 
   useEffect(() => {
     if (!companyId) {
@@ -126,7 +128,20 @@ export function ProductsModule({ onBack, user: _user, companyId, branchId }: Pro
         setSaveError(error);
         return;
       }
-      if (data) setProducts([data, ...products]);
+      if (data) {
+        setProducts([data, ...products]);
+        setConfirmationData({
+          type: 'product',
+          title: 'Product Added Successfully',
+          transactionNo: null,
+          amount: null,
+          partyName: null,
+          date: new Date().toISOString(),
+          branch: undefined,
+          entityId: data.id,
+        });
+        return;
+      }
     }
     setView('list');
     setEditingProduct(null);
@@ -134,15 +149,33 @@ export function ProductsModule({ onBack, user: _user, companyId, branchId }: Pro
 
   if (view === 'add') {
     return (
-      <AddProductFlow
-        companyId={companyId}
-        branchId={branchId ?? null}
-        onClose={() => setView('list')}
-        onSave={handleAddEditSave}
-        product={editingProduct}
-        saving={saving}
-        error={saveError}
-      />
+      <>
+        <AddProductFlow
+          companyId={companyId}
+          branchId={branchId ?? null}
+          onClose={() => setView('list')}
+          onSave={handleAddEditSave}
+          product={editingProduct}
+          saving={saving}
+          error={saveError}
+        />
+        {confirmationData && (
+          <TransactionSuccessModal
+            isOpen={!!confirmationData}
+            data={confirmationData}
+            onClose={() => {
+              setConfirmationData(null);
+              setView('list');
+              setEditingProduct(null);
+            }}
+            onOk={() => {
+              setConfirmationData(null);
+              setView('list');
+              setEditingProduct(null);
+            }}
+          />
+        )}
+      </>
     );
   }
 

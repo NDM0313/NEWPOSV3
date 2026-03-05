@@ -965,48 +965,56 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
                 <div className="p-5 space-y-3">
                   <div className="flex justify-between text-sm">
                     <span className="text-gray-400">Subtotal</span>
-                    <span className="text-white font-medium">{formatCurrency(sale.subtotal)}</span>
+                    <span className="text-white font-medium">{formatCurrency(sale.subtotal ?? 0)}</span>
                   </div>
                   
-                  {sale.discount && sale.discount > 0 && (
+                  {(sale.discount ?? 0) > 0 && (
                     <div className="flex justify-between text-sm">
                       <span className="text-gray-400">Discount</span>
                       <span className="text-red-400 font-medium">- {formatCurrency(sale.discount)}</span>
                     </div>
                   )}
                   
-                  {sale.tax && sale.tax > 0 && (
+                  {(sale.tax ?? 0) > 0 && (
                     <div className="flex justify-between text-sm">
                       <span className="text-gray-400">Tax</span>
                       <span className="text-white font-medium">{formatCurrency(sale.tax)}</span>
                     </div>
                   )}
                   
-                  {/* CRITICAL FIX: Show shipping charges clearly */}
-                  {(sale.shippingCharges && sale.shippingCharges > 0) || (sale.expenses && sale.expenses > 0) ? (
-                    <div className="flex justify-between text-sm">
-                      <span className="text-gray-400">Shipping Charges</span>
-                      <span className="text-white font-medium">
-{formatCurrency(sale.shippingCharges || sale.expenses || 0)}
-                      </span>
-                    </div>
-                  ) : null}
+                  {/* Extra expenses: use line-level charges (sale_charges) when available, else DB totals */}
+                  {(() => {
+                    const charges = (sale as any).charges ?? [];
+                    const expenseRows = Array.isArray(charges) ? charges.filter((c: any) => (c.charge_type || c.chargeType) !== 'discount') : [];
+                    const expensesTotalFromCharges = expenseRows.length > 0
+                      ? expenseRows.reduce((sum: number, c: any) => sum + (Number(c.amount) || 0), 0)
+                      : (sale.expenses ?? sale.shippingCharges ?? 0);
+                    if (expensesTotalFromCharges <= 0) return null;
+                    return (
+                      <>
+                        {expenseRows.length > 0 ? (
+                          expenseRows.map((c: any, idx: number) => (
+                            <div key={c.id || idx} className="flex justify-between text-sm">
+                              <span className="text-gray-400">{c.charge_type || c.chargeType || 'Other'}</span>
+                              <span className="text-white font-medium">{formatCurrency(Number(c.amount) || 0)}</span>
+                            </div>
+                          ))
+                        ) : (
+                          <div className="flex justify-between text-sm">
+                            <span className="text-gray-400">Shipping / Extra expenses</span>
+                            <span className="text-white font-medium">{formatCurrency(expensesTotalFromCharges)}</span>
+                          </div>
+                        )}
+                      </>
+                    );
+                  })()}
                   
-                  {/* CRITICAL FIX: Show extra/other charges clearly */}
-                  {sale.otherCharges && sale.otherCharges > 0 ? (
+                  {(sale as any).otherCharges > 0 && (
                     <div className="flex justify-between text-sm">
-                      <span className="text-gray-400">Extra Charges</span>
-                      <span className="text-white font-medium">{formatCurrency(sale.otherCharges)}</span>
+                      <span className="text-gray-400">Other Charges</span>
+                      <span className="text-white font-medium">{formatCurrency((sale as any).otherCharges)}</span>
                     </div>
-                  ) : null}
-                  
-                  {/* CRITICAL FIX: Show expenses if different from shipping */}
-                  {sale.expenses && sale.expenses > 0 && sale.expenses !== (sale.shippingCharges || 0) ? (
-                    <div className="flex justify-between text-sm">
-                      <span className="text-gray-400">Other Expenses</span>
-                      <span className="text-white font-medium">{formatCurrency(sale.expenses)}</span>
-                    </div>
-                  ) : null}
+                  )}
                   
                   <Separator className="bg-gray-800" />
                   
@@ -1014,7 +1022,7 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
                     <>
                       <div className="flex justify-between text-sm">
                         <span className="text-gray-400">Sale Amount</span>
-                        <span className="text-white font-medium">{formatCurrency(sale.total)}</span>
+                        <span className="text-white font-medium">{formatCurrency(sale.total ?? 0)}</span>
                       </div>
                       <div className="flex justify-between text-sm">
                         <span className="text-gray-400">+ Studio Cost</span>
@@ -1028,7 +1036,7 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
                   ) : (
                     <div className="flex justify-between">
                       <span className="text-gray-300 font-semibold">Grand Total</span>
-                      <span className="text-white text-xl font-bold">{formatCurrency(sale.total)}</span>
+                      <span className="text-white text-xl font-bold">{formatCurrency(sale.total ?? 0)}</span>
                     </div>
                   )}
                   
@@ -1037,14 +1045,12 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
                     <span className="text-green-400 font-medium">{formatCurrency(totalPaidDisplay)}</span>
                   </div>
                   
-                  {dueAmount > 0 && (
-                    <div className="flex justify-between">
-                      <span className="text-gray-400 font-medium">Amount Due</span>
-                      <span className="text-red-400 text-lg font-bold">{formatCurrency(dueAmount)}</span>
-                    </div>
-                  )}
+                  <div className="flex justify-between">
+                    <span className="text-gray-400 font-medium">Amount Due</span>
+                    <span className="text-red-400 text-lg font-bold">{formatCurrency(dueAmount)}</span>
+                  </div>
                   
-                  {sale.returnDue && sale.returnDue > 0 && (
+                  {(sale.returnDue ?? 0) > 0 && (
                     <div className="flex justify-between text-sm">
                       <span className="text-gray-400">Return Due</span>
                       <span className="text-yellow-400 font-medium">{formatCurrency(sale.returnDue)}</span>

@@ -94,6 +94,8 @@ export interface Purchase {
   paymentMethod: string;
   notes?: string;
   attachments?: { url: string; name: string }[] | null; // Purchase attachments
+  /** Line-level charges from purchase_charges (for view drawer detail) */
+  charges?: Array<{ charge_type?: string; chargeType?: string; amount: number }>;
   reference?: string; // STEP 1 FIX: Reference number field
   createdBy?: string; // CRITICAL FIX: User who created the purchase (for "Added By" display)
   createdAt: string;
@@ -198,6 +200,7 @@ export const convertFromSupabasePurchase = (supabasePurchase: any): Purchase => 
     notes: supabasePurchase.notes,
     // CRITICAL FIX: Preserve attachments from database
     attachments: supabasePurchase.attachments || null,
+    charges: Array.isArray(supabasePurchase.charges) ? supabasePurchase.charges : (Array.isArray(supabasePurchase.purchase_charges) ? supabasePurchase.purchase_charges : []),
     reference: supabasePurchase.notes || supabasePurchase.reference || undefined,
     createdAt: supabasePurchase.created_at || new Date().toISOString(),
     updatedAt: supabasePurchase.updated_at || new Date().toISOString(),
@@ -835,6 +838,8 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
       if (updates.total !== undefined) supabaseUpdates.total = updates.total;
       if (updates.paid !== undefined) supabaseUpdates.paid_amount = updates.paid;
       if (updates.due !== undefined) supabaseUpdates.due_amount = updates.due;
+      // Discount: only discount_amount exists in DB (no discount_percentage). Form sends amount.
+      if (updates.discount !== undefined) supabaseUpdates.discount_amount = updates.discount;
 
       if (updates.date !== undefined) supabaseUpdates.po_date = updates.date;
 
@@ -1117,6 +1122,19 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
         }
       }
 
+      // Line-level extra expenses: replace purchase_charges only when form sent expenses (edit screen)
+      const expensesList = (updates as any).expenses;
+      if (Array.isArray(expensesList)) {
+        const charges: { charge_type: string; amount: number; ledger_account_id?: string | null }[] = [];
+        expensesList.forEach((e: { type?: string; amount?: number }) => {
+          const amt = Number(e?.amount ?? 0);
+          if (amt > 0) charges.push({ charge_type: (e?.type ?? 'other') as string, amount: amt });
+        });
+        const discountAmt = Number((updates as any).discount ?? updates.discount_amount ?? 0);
+        if (discountAmt > 0) charges.push({ charge_type: 'discount', amount: discountAmt });
+        await purchaseService.replacePurchaseCharges(id, charges, user?.id ?? undefined);
+      }
+
       // 🔒 CRITICAL FIX: Create stock movements for DELTA (after purchase_items are updated)
       // GOLDEN RULE: Only create movements for the delta, not for all items
       // For purchase: deltaQty > 0 means item added/increased → increase stock (positive movement)
@@ -1199,6 +1217,35 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
       ));
       
       toast.success('Purchase updated successfully!');
+
+      // Activity log: detail of what changed (for timeline)
+      const oldP = getPurchaseById(id);
+      if (companyId && user?.id && oldP) {
+        const changes: string[] = [];
+        if (updates.total !== undefined && Number(oldP.total) !== Number(updates.total)) {
+          changes.push(`Total changed from Rs ${Number(oldP.total).toLocaleString()} to Rs ${Number(updates.total).toLocaleString()}`);
+        }
+        if (updates.discount !== undefined && Number(oldP.discount) !== Number(updates.discount)) {
+          changes.push(`Discount from Rs ${Number(oldP.discount).toLocaleString()} to Rs ${Number(updates.discount).toLocaleString()}`);
+        }
+        if (updates.status !== undefined && oldP.status !== updates.status) {
+          changes.push(`Status from ${oldP.status} to ${updates.status}`);
+        }
+        if ((updates as any).items && Array.isArray((updates as any).items) && oldP.itemsCount !== (updates as any).items?.length) {
+          changes.push(`Items count from ${oldP.itemsCount} to ${(updates as any).items.length}`);
+        }
+        if (updates.notes !== undefined && oldP.notes !== updates.notes) changes.push('Notes updated');
+        const description = changes.length > 0 ? changes.join('; ') : 'Purchase updated';
+        activityLogService.logActivity({
+          companyId,
+          module: 'purchase',
+          entityId: id,
+          entityReference: oldP.purchaseNo,
+          action: 'update',
+          performedBy: user.id,
+          description,
+        }).catch((err) => console.warn('[PURCHASE CONTEXT] Activity log failed:', err));
+      }
       
       // 🔒 CRITICAL FIX: Refresh purchases list after update to show correct items count
       // This ensures UI reflects the actual DB state after items update

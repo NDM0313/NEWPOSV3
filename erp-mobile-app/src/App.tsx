@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react';
 import { initInputKeyboard } from './utils/inputKeyboard';
 import type { Screen, User, Branch, BottomNavTab } from './types';
 import * as authApi from './api/auth';
+import { getBranches } from './api/branches';
+import { getUserBranchIds } from './api/permissions';
 import { usePermissions } from './context/PermissionContext';
 import { FEATURE_MOBILE_PERMISSION_V2 } from './config/featureFlags';
 import { getPermissionModuleForScreen } from './utils/permissionModules';
@@ -57,6 +59,7 @@ export default function App() {
   const { online, status, setStatus } = useNetworkStatus();
   const { hasPermission, hasBranchAccess, reload, isPermissionLoaded } = usePermissions();
   const [authLoading, setAuthLoading] = useState(true);
+  const [isBranchResolving, setIsBranchResolving] = useState(true);
   const [currentScreen, setCurrentScreen] = useState<Screen>('login');
   const [user, setUser] = useState<User | null>(null);
   const [companyId, setCompanyId] = useState<string | null>(null);
@@ -75,6 +78,7 @@ export default function App() {
       setUser(null);
       setCompanyId(null);
       setSelectedBranch(null);
+      setIsBranchResolving(false);
       setCurrentScreen('login');
     };
     window.addEventListener('erp-auth-signed-out', onSignedOut);
@@ -112,16 +116,19 @@ export default function App() {
       if (pinSet && !session) {
         setCurrentScreen('login');
         setAuthLoading(false);
+        setIsBranchResolving(false);
         return;
       }
       if (!session) {
         setAuthLoading(false);
+        setIsBranchResolving(false);
         return;
       }
       authApi.getProfile(session.userId).then(async (profile) => {
         if (cancelled) return;
         if (!profile) {
           setAuthLoading(false);
+          setIsBranchResolving(false);
           setCurrentScreen('login');
           return;
         }
@@ -139,11 +146,11 @@ export default function App() {
         if (pinSet) {
           setCurrentScreen('login');
           setAuthLoading(false);
+          setIsBranchResolving(false);
           return;
         }
         if (profile.branchLocked && profile.branchId) {
           try {
-            const { getBranches } = await import('./api/branches');
             const { data: branches } = await getBranches(profile.companyId || '');
             const lockedBranch = branches?.find((b) => b.id === profile.branchId);
             if (lockedBranch) {
@@ -151,29 +158,62 @@ export default function App() {
               try { localStorage.setItem(BRANCH_STORAGE_KEY, JSON.stringify(lockedBranch)); } catch { /* ignore */ }
               setCurrentScreen('home');
               setActiveBottomTab('home');
+              setIsBranchResolving(false);
             } else {
               setCurrentScreen('branch-selection');
+              setIsBranchResolving(false);
             }
           } catch {
             setCurrentScreen('branch-selection');
+            setIsBranchResolving(false);
           }
         } else {
           try {
+            const cid = profile.companyId || '';
+            const profileId = profile.profileId;
+            const [branchesRes, userBranchIds] = await Promise.all([
+              cid ? getBranches(cid) : { data: [] as Branch[], error: null },
+              profileId ? getUserBranchIds(profileId) : Promise.resolve([]),
+            ]);
+            const companyBranches = branchesRes.data || [];
+            const isAdmin = (profile.role || '').toLowerCase() === 'admin';
+
+            if (companyBranches.length === 1) {
+              setSelectedBranch(companyBranches[0]);
+              try { localStorage.setItem(BRANCH_STORAGE_KEY, JSON.stringify(companyBranches[0])); } catch { /* ignore */ }
+              setCurrentScreen('home');
+              setActiveBottomTab('home');
+              setIsBranchResolving(false);
+              setAuthLoading(false);
+              return;
+            }
+            if (!isAdmin && userBranchIds.length === 1) {
+              const assigned = companyBranches.find((b) => b.id === userBranchIds[0]) ?? { id: userBranchIds[0], name: 'Branch', location: '—' };
+              setSelectedBranch(assigned);
+              try { localStorage.setItem(BRANCH_STORAGE_KEY, JSON.stringify(assigned)); } catch { /* ignore */ }
+              setCurrentScreen('home');
+              setActiveBottomTab('home');
+              setIsBranchResolving(false);
+              setAuthLoading(false);
+              return;
+            }
             const saved = localStorage.getItem(BRANCH_STORAGE_KEY);
             const branch = saved ? (JSON.parse(saved) as Branch) : null;
-            if (branch?.id && branch?.name) {
+            if (branch?.id && branch?.name && (isAdmin || userBranchIds.length === 0 || userBranchIds.includes(branch.id))) {
               setSelectedBranch(branch);
               setCurrentScreen('home');
               setActiveBottomTab('home');
             } else {
               setCurrentScreen('branch-selection');
             }
+            setIsBranchResolving(false);
           } catch {
             setCurrentScreen('branch-selection');
+            setIsBranchResolving(false);
           }
         }
         setAuthLoading(false);
-      }).catch(() => { if (!cancelled) setAuthLoading(false); });
+      }).catch(() => { if (!cancelled) { setAuthLoading(false); setIsBranchResolving(false); } });
     };
     run().catch(() => { setAuthLoading(false); });
     return () => { cancelled = true; };
@@ -182,9 +222,9 @@ export default function App() {
   const handleLogin = async (u: User, cid: string | null) => {
     setUser(u);
     setCompanyId(cid);
+    setIsBranchResolving(true);
     if (u.branchLocked && u.branchId && cid) {
       try {
-        const { getBranches } = await import('./api/branches');
         const { data: branches } = await getBranches(cid);
         const lockedBranch = branches?.find((b) => b.id === u.branchId);
         if (lockedBranch) {
@@ -192,11 +232,37 @@ export default function App() {
           try { localStorage.setItem(BRANCH_STORAGE_KEY, JSON.stringify(lockedBranch)); } catch { /* ignore */ }
           setCurrentScreen('home');
           setActiveBottomTab('home');
+          setIsBranchResolving(false);
           return;
         }
       } catch { /* fall through */ }
     }
+    if (cid && u.profileId) {
+      try {
+        const [branchesRes, userBranchIds] = await Promise.all([getBranches(cid), getUserBranchIds(u.profileId)]);
+        const companyBranches = branchesRes.data || [];
+        const isAdmin = (u.role || '').toLowerCase() === 'admin';
+        if (companyBranches.length === 1) {
+          setSelectedBranch(companyBranches[0]);
+          try { localStorage.setItem(BRANCH_STORAGE_KEY, JSON.stringify(companyBranches[0])); } catch { /* ignore */ }
+          setCurrentScreen('home');
+          setActiveBottomTab('home');
+          setIsBranchResolving(false);
+          return;
+        }
+        if (!isAdmin && userBranchIds.length === 1) {
+          const assigned = companyBranches.find((b) => b.id === userBranchIds[0]) ?? { id: userBranchIds[0], name: 'Branch', location: '—' };
+          setSelectedBranch(assigned);
+          try { localStorage.setItem(BRANCH_STORAGE_KEY, JSON.stringify(assigned)); } catch { /* ignore */ }
+          setCurrentScreen('home');
+          setActiveBottomTab('home');
+          setIsBranchResolving(false);
+          return;
+        }
+      } catch { /* ignore */ }
+    }
     setCurrentScreen('branch-selection');
+    setIsBranchResolving(false);
   };
 
   const handleBranchSelect = (b: Branch) => {
@@ -204,6 +270,7 @@ export default function App() {
     try { localStorage.setItem(BRANCH_STORAGE_KEY, JSON.stringify(b)); } catch { /* ignore */ }
     setCurrentScreen('home');
     setActiveBottomTab('home');
+    setIsBranchResolving(false);
   };
 
   const navigateToModule = (screen: Screen, options?: { studioSale?: boolean }) => {
@@ -228,6 +295,7 @@ export default function App() {
     setUser(null);
     setCompanyId(null);
     setSelectedBranch(null);
+    setIsBranchResolving(false);
     setCurrentScreen('login');
   };
 
@@ -247,7 +315,8 @@ export default function App() {
     // others MUST have a mapping and permission to be accessible when V2 is on.
     if (!module) return screen === 'login' || screen === 'branch-selection';
     if (!hasPermission(`${module}.view`)) return false;
-    if (branchId && branchId !== 'all' && !hasBranchAccess(branchId)) return false;
+    // 'default' = no branches configured; skip branch check so user can use app
+    if (branchId && branchId !== 'all' && branchId !== 'default' && !hasBranchAccess(branchId)) return false;
     return true;
   };
 
@@ -281,7 +350,7 @@ export default function App() {
   if (currentScreen === 'branch-selection' && user) {
     return (
       <div className="min-h-screen bg-[#111827] text-[#F9FAFB]">
-        <BranchSelection user={user} companyId={companyId} onBranchSelect={handleBranchSelect} />
+        <BranchSelection user={user} companyId={companyId} profileId={user.profileId} onBranchSelect={handleBranchSelect} />
       </div>
     );
   }
@@ -292,15 +361,29 @@ export default function App() {
         <HomeScreen user={user} branch={selectedBranch} companyId={companyId} onNavigate={navigateToModule} onLogout={handleLogout} />
       )}
       {currentScreen === 'sales' && user && (
-        !canAccessScreen('sales', selectedBranch?.id)
-          ? <AccessDenied onBack={navigateHome} />
-          : <SalesModule
-              onBack={() => { setSalesInitialType(null); navigateHome(); }}
-              user={user}
-              companyId={companyId}
-              branchId={selectedBranch?.id ?? null}
-              initialSaleType={salesInitialType ?? undefined}
-            />
+        isBranchResolving
+          ? (
+            <div className="min-h-screen bg-[#111827] flex flex-col items-center justify-center gap-4 p-6">
+              <div className="w-12 h-12 border-4 border-[#3B82F6] border-t-transparent rounded-full animate-spin" />
+              <p className="text-[#9CA3AF] text-center">Preparing workspace...</p>
+            </div>
+            )
+          : !selectedBranch
+            ? (
+              <div className="min-h-screen bg-[#111827] flex flex-col items-center justify-center gap-4 p-6">
+                <p className="text-[#EF4444] text-center font-medium">No branch assigned. Contact admin.</p>
+                <button type="button" onClick={navigateHome} className="px-4 py-2 bg-[#3B82F6] text-white rounded-lg font-medium">Go to Home</button>
+              </div>
+              )
+            : !canAccessScreen('sales', selectedBranch?.id)
+              ? <AccessDenied onBack={navigateHome} />
+              : <SalesModule
+                  onBack={() => { setSalesInitialType(null); navigateHome(); }}
+                  user={user}
+                  companyId={companyId}
+                  branchId={selectedBranch.id}
+                  initialSaleType={salesInitialType ?? undefined}
+                />
       )}
       {currentScreen === 'pos' && user && (
         !canAccessScreen('pos', selectedBranch?.id)

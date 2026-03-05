@@ -1,8 +1,10 @@
 import { useState, useEffect, useRef } from 'react';
 import { X, Check, Wallet, Building2, Banknote, ChevronDown, ChevronUp, AlertTriangle, Upload, FileText } from 'lucide-react';
 import { getPaymentAccounts } from '../../api/accounts';
+import { getBranches } from '../../api/branches';
 import { useRecordCustomerPayment } from '../../hooks/useRecordCustomerPayment';
 import { uploadPaymentAttachments, updatePaymentAttachments, MAX_FILE_SIZE_BYTES, ACCEPT_TYPES } from '../../api/paymentAttachments';
+import { TransactionSuccessModal, type TransactionSuccessData } from '../shared/TransactionSuccessModal';
 
 export interface MobileReceivePaymentProps {
   onClose: () => void;
@@ -32,6 +34,7 @@ export function MobileReceivePayment({
   onClose,
   onSuccess,
   companyId,
+  branchId,
   userId,
   referenceId,
   referenceNo,
@@ -52,6 +55,7 @@ export function MobileReceivePayment({
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const toastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [confirmationData, setConfirmationData] = useState<TransactionSuccessData | null>(null);
 
   const { submit, isSubmitting } = useRecordCustomerPayment();
 
@@ -137,7 +141,7 @@ export function MobileReceivePayment({
       return;
     }
     const methodStr = paymentMethod === 'wallet' ? 'wallet' : paymentMethod;
-    const { success, error, paymentId } = await submit({
+    const { success, error, paymentId, referenceNumber } = await submit({
       companyId,
       customerId,
       referenceId,
@@ -163,14 +167,30 @@ export function MobileReceivePayment({
       }
     }
     if (success) {
-      setToast({ message: 'Payment received successfully.', type: 'success' });
-      setTimeout(() => {
-        onSuccess();
-        onClose();
-      }, 1200);
+      let branchName: string | null = null;
+      if (companyId && branchId) {
+        const { data: branches } = await getBranches(companyId);
+        branchName = branches?.find((b) => b.id === branchId)?.name ?? null;
+      }
+      setConfirmationData({
+        type: 'payment',
+        title: 'Payment Saved Successfully',
+        transactionNo: referenceNumber ?? null,
+        amount,
+        partyName: customerName,
+        date: new Date().toISOString(),
+        branch: branchName ?? undefined,
+        entityId: paymentId ?? null,
+      });
     } else {
       setToast({ message: error || 'Payment failed.', type: 'error' });
     }
+  };
+
+  const closePaymentSuccessModal = () => {
+    setConfirmationData(null);
+    onSuccess();
+    onClose();
   };
 
   return (
@@ -406,6 +426,17 @@ export function MobileReceivePayment({
           )}
         </button>
       </div>
+
+      {confirmationData && (
+        <TransactionSuccessModal
+          isOpen={!!confirmationData}
+          data={confirmationData}
+          onClose={closePaymentSuccessModal}
+          onShareReceipt={closePaymentSuccessModal}
+          onViewLedger={closePaymentSuccessModal}
+          onBack={closePaymentSuccessModal}
+        />
+      )}
     </div>
   );
 }

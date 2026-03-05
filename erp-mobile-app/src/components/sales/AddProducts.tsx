@@ -471,9 +471,9 @@ function AddToCartModal({
                       >
                         <p className="text-sm font-medium truncate">{label || v.sku}</p>
                         <p className="text-xs text-[#9CA3AF] mt-0.5">Rs. {(v.price || 0).toLocaleString()}</p>
-                        {v.stock != null && v.stock < 10 && (
-                          <p className="text-xs text-[#F59E0B] mt-0.5">Stock: {v.stock}</p>
-                        )}
+                        <p className={`text-xs mt-0.5 ${(v.stock ?? 0) < 10 ? 'text-[#F59E0B]' : 'text-[#9CA3AF]'}`}>
+                          Stock: {v.stock != null ? Number(v.stock) : '—'}
+                        </p>
                       </button>
                     );
                   })}

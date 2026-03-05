@@ -75,9 +75,25 @@ export interface PurchaseChargeInsert {
   ledger_account_id?: string | null;
 }
 
-/** Build purchase row for insert: only columns that exist in DB (no discount_percentage). */
+/** Allowed columns for purchases insert. DB has discount_amount only (no discount_percentage). */
+const PURCHASE_INSERT_KEYS = [
+  'company_id', 'branch_id', 'po_no', 'po_date', 'supplier_id', 'supplier_name',
+  'status', 'payment_status', 'subtotal', 'discount_amount', 'tax_amount', 'shipping_cost',
+  'total', 'paid_amount', 'due_amount', 'notes', 'attachments', 'created_by',
+] as const;
+
+function pickPurchaseRow(row: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const k of PURCHASE_INSERT_KEYS) {
+    if (row[k] !== undefined) out[k] = row[k];
+  }
+  return out;
+}
+
+/** Build purchase row for insert. Only discount_amount is stored; percentage is UI-only and never sent. */
 function buildPurchaseInsertRow(purchase: Purchase): Record<string, unknown> {
-  const row: Record<string, unknown> = {
+  const discountAmount = Number((purchase as any).discount_amount ?? (purchase as any).discount ?? 0) || 0;
+  return pickPurchaseRow({
     company_id: purchase.company_id,
     branch_id: purchase.branch_id,
     po_no: purchase.po_no,
@@ -87,7 +103,7 @@ function buildPurchaseInsertRow(purchase: Purchase): Record<string, unknown> {
     status: purchase.status,
     payment_status: purchase.payment_status,
     subtotal: purchase.subtotal ?? 0,
-    discount_amount: purchase.discount_amount ?? 0,
+    discount_amount: discountAmount,
     tax_amount: purchase.tax_amount ?? 0,
     shipping_cost: purchase.shipping_cost ?? 0,
     total: purchase.total ?? 0,
@@ -96,30 +112,69 @@ function buildPurchaseInsertRow(purchase: Purchase): Record<string, unknown> {
     notes: purchase.notes ?? null,
     attachments: purchase.attachments ?? null,
     created_by: purchase.created_by,
-  };
-  return row;
+  });
 }
 
-/** Build purchase_items row. Uses discount_amount/tax_amount (no discount_percentage) for schema compatibility. */
+/** Allowed columns for purchase_items insert (DB has no discount_percentage/tax_percentage). */
+const PURCHASE_ITEM_INSERT_KEYS = [
+  'purchase_id', 'product_id', 'variation_id', 'product_name', 'sku', 'quantity', 'unit',
+  'unit_price', 'discount_amount', 'tax_amount', 'total',
+  'packing_type', 'packing_quantity', 'packing_unit', 'packing_details', 'notes',
+] as const;
+
+function pickPurchaseItemRow(row: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const k of PURCHASE_ITEM_INSERT_KEYS) {
+    if (row[k] !== undefined) out[k] = row[k];
+  }
+  return out;
+}
+
+/** Build purchase_items row (full schema: discount_amount, tax_amount, sku, unit). No discount_percentage/tax_percentage. */
 function buildPurchaseItemInsertRow(item: PurchaseItem, purchaseId: string): Record<string, unknown> {
-  const discountVal = Number(item.discount_amount ?? (item as any).discount ?? 0);
-  const taxVal = Number(item.tax_amount ?? (item as any).tax ?? 0);
-  return {
+  const discountVal = Number(item.discount_amount ?? (item as any).discount ?? 0) || 0;
+  const taxVal = Number(item.tax_amount ?? (item as any).tax ?? 0) || 0;
+  const quantity = Number(item.quantity) || 0;
+  const unitPrice = Number(item.unit_price) || 0;
+  const total = Number(item.total) || 0;
+  return pickPurchaseItemRow({
     purchase_id: purchaseId,
-    product_id: item.product_id,
+    product_id: String(item.product_id || '').trim() || null,
     variation_id: item.variation_id ?? null,
-    product_name: item.product_name,
+    product_name: String(item.product_name || '').trim() || 'Unknown',
     sku: item.sku ?? 'N/A',
-    quantity: item.quantity,
+    quantity,
     unit: item.unit ?? 'pcs',
-    unit_price: item.unit_price,
+    unit_price: unitPrice,
     discount_amount: discountVal,
     tax_amount: taxVal,
-    total: item.total,
+    total,
     packing_type: item.packing_type ?? null,
-    packing_quantity: item.packing_quantity ?? null,
+    packing_quantity: item.packing_quantity != null ? Number(item.packing_quantity) : null,
     packing_unit: item.packing_unit ?? null,
-    packing_details: item.packing_details ?? null,
+    packing_details: item.packing_details != null ? item.packing_details : null,
+    notes: item.notes ?? null,
+  });
+}
+
+/** Build purchase_items row for older schema (discount, tax; no sku, unit). Use when full schema insert returns 400. */
+function buildPurchaseItemInsertRowMinimal(item: PurchaseItem, purchaseId: string): Record<string, unknown> {
+  const discountVal = Number(item.discount_amount ?? (item as any).discount ?? 0) || 0;
+  const taxVal = Number(item.tax_amount ?? (item as any).tax ?? 0) || 0;
+  return {
+    purchase_id: purchaseId,
+    product_id: String(item.product_id || '').trim() || null,
+    variation_id: item.variation_id ?? null,
+    product_name: String(item.product_name || '').trim() || 'Unknown',
+    quantity: Number(item.quantity) || 0,
+    unit_price: Number(item.unit_price) || 0,
+    discount: discountVal,
+    tax: taxVal,
+    total: Number(item.total) || 0,
+    packing_type: item.packing_type ?? null,
+    packing_quantity: item.packing_quantity != null ? Number(item.packing_quantity) : null,
+    packing_unit: item.packing_unit ?? null,
+    packing_details: item.packing_details != null ? item.packing_details : null,
     notes: item.notes ?? null,
   };
 }
@@ -127,10 +182,7 @@ function buildPurchaseItemInsertRow(item: PurchaseItem, purchaseId: string): Rec
 export const purchaseService = {
   // Create purchase with items and optional per-line charges (for line-by-line ledger)
   async createPurchase(purchase: Purchase, items: PurchaseItem[], charges?: PurchaseChargeInsert[]) {
-    const purchaseRow = buildPurchaseInsertRow(purchase) as Record<string, unknown>;
-    // DB has discount_amount only; never send discount_percentage/tax_percentage
-    delete (purchaseRow as any).discount_percentage;
-    delete (purchaseRow as any).tax_percentage;
+    const purchaseRow = buildPurchaseInsertRow(purchase);
 
     const { data: purchaseData, error: purchaseError } = await supabase
       .from('purchases')
@@ -143,16 +195,18 @@ export const purchaseService = {
       throw purchaseError;
     }
 
-    const itemsWithPurchaseId = items.map(item => {
-      const row = buildPurchaseItemInsertRow(item, purchaseData.id) as Record<string, unknown>;
-      delete (row as any).discount_percentage;
-      delete (row as any).tax_percentage;
-      return row;
-    });
+    const itemsWithPurchaseId = items.map(item => buildPurchaseItemInsertRow(item, purchaseData.id));
 
-    const { error: itemsError } = await supabase
-      .from('purchase_items')
-      .insert(itemsWithPurchaseId);
+    let itemsError: any = null;
+    let res = await supabase.from('purchase_items').insert(itemsWithPurchaseId);
+    itemsError = res.error;
+
+    // If 400 (e.g. column does not exist), retry with minimal schema (discount/tax, no sku/unit)
+    if (itemsError && (itemsError.code === '400' || itemsError.status === 400)) {
+      const minimalItems = items.map(item => buildPurchaseItemInsertRowMinimal(item, purchaseData.id));
+      res = await supabase.from('purchase_items').insert(minimalItems);
+      itemsError = res.error;
+    }
 
     if (itemsError) {
       await supabase.from('purchases').delete().eq('id', purchaseData.id);
@@ -318,7 +372,7 @@ export const purchaseService = {
     return data;
   },
 
-  // Get single purchase (include attachments so edit form shows saved files)
+  // Get single purchase (include attachments + purchase_charges for line-level extra expenses on edit)
   async getPurchase(id: string) {
     const { data, error } = await supabase
       .from('purchases')
@@ -330,7 +384,8 @@ export const purchaseService = {
           *,
           product:products(*),
           variation:product_variations(*)
-        )
+        ),
+        purchase_charges(*)
       `)
       .eq('id', id)
       .single();
@@ -348,9 +403,39 @@ export const purchaseService = {
     if (data) {
       data.hasReturn = (returns && returns.length > 0) || false;
       data.returnCount = returns?.length || 0;
+      // Expose as charges for form (line-level extra expenses + discount)
+      data.charges = Array.isArray((data as any).purchase_charges) ? (data as any).purchase_charges : [];
     }
     
     return data;
+  },
+
+  /** Replace all purchase_charges for a purchase (delete existing + insert). Used on edit to persist line-level expenses. */
+  async replacePurchaseCharges(purchaseId: string, charges: PurchaseChargeInsert[], createdBy?: string | null) {
+    const { error: delError } = await supabase
+      .from('purchase_charges')
+      .delete()
+      .eq('purchase_id', purchaseId);
+    if (delError) {
+      console.warn('[PURCHASE SERVICE] replacePurchaseCharges delete failed:', delError);
+      throw delError;
+    }
+    const chargeRows = (charges || [])
+      .filter((c) => c.amount > 0)
+      .map((c) => ({
+        purchase_id: purchaseId,
+        charge_type: c.charge_type,
+        ledger_account_id: c.ledger_account_id ?? null,
+        amount: Number(c.amount),
+        created_by: createdBy ?? null,
+      }));
+    if (chargeRows.length > 0) {
+      const { error: insError } = await supabase.from('purchase_charges').insert(chargeRows);
+      if (insError) {
+        console.warn('[PURCHASE SERVICE] replacePurchaseCharges insert failed:', insError);
+        throw insError;
+      }
+    }
   },
 
   // Update purchase status (when 'cancelled': create PURCHASE_CANCELLED stock reversals, then update status)
@@ -417,7 +502,7 @@ export const purchaseService = {
     return data;
   },
 
-  // Update purchase (only DB-existing columns; discount_percentage/tax_percentage never sent)
+  // Update purchase. Only DB columns (discount_amount, no discount_percentage). Map app 'discount' → discount_amount.
   async updatePurchase(id: string, updates: Partial<Purchase>) {
     // 🔒 CANCELLED: No updates allowed on cancelled purchases
     const { data: existingPurchase } = await supabase.from('purchases').select('status').eq('id', id).single();
@@ -436,9 +521,16 @@ export const purchaseService = {
       throw new Error('Cannot edit purchase: This purchase has a return and is locked. Returns cannot be edited or deleted.');
     }
 
-    const sanitized = { ...updates } as Record<string, unknown>;
-    delete sanitized.discount_percentage;
-    delete sanitized.tax_percentage;
+    const raw = updates as Record<string, unknown>;
+    const sanitized: Record<string, unknown> = {};
+    const allowed = new Set(PURCHASE_INSERT_KEYS);
+    for (const key of Object.keys(raw)) {
+      if (key === 'discount' && raw.discount !== undefined) {
+        sanitized.discount_amount = Number(raw.discount) || 0;
+      } else if (allowed.has(key as any)) {
+        sanitized[key] = raw[key];
+      }
+    }
 
     const { data, error } = await supabase
       .from('purchases')
@@ -732,6 +824,8 @@ export const purchaseService = {
       throw new Error('Payment account is required. Please select an account.');
     }
 
+    // Let DB trigger set reference_number to avoid duplicate key (payments_reference_number_unique).
+    // Client-provided referenceNumber is not used for insert.
     const insertPayload: any = {
       company_id: companyId,
       branch_id: validBranchId,
@@ -742,7 +836,6 @@ export const purchaseService = {
       payment_method: enumPaymentMethod,
       payment_account_id: accountId,
       payment_date: new Date().toISOString().split('T')[0],
-      ...(referenceNumber ? { reference_number: referenceNumber } : {}),
     };
     if (options?.notes !== undefined && options.notes !== '') insertPayload.notes = options.notes;
     if (options?.attachments !== undefined && options.attachments != null) {

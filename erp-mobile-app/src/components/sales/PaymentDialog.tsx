@@ -130,7 +130,19 @@ export function PaymentDialog({ onBack, totalAmount, companyId, onComplete, savi
     await onComplete(result);
   };
 
-  const quickAmounts = [50000, 40000, 30000, 20000, 10000, 5000];
+  // Round-figure quick amounts (500, 1K, 2K, 5K, …) adjusted to due/total; max 6 buttons
+  const quickAmounts = (() => {
+    const due = paymentMode === 'partial' ? Math.max(0, totalAmount - (parseFloat(amount) || 0)) : totalAmount;
+    const base = [500, 1000, 2000, 5000, 10000, 20000, 50000];
+    const capped = base.filter((a) => a <= due);
+    if (capped.length >= 6) return capped.slice(-6);
+    if (due > 0 && !capped.includes(due)) {
+      const rounded = Math.round(due / 1000) * 1000 || Math.round(due / 500) * 500 || due;
+      if (rounded <= due && rounded > 0 && !capped.includes(rounded)) capped.push(rounded);
+    }
+    capped.sort((a, b) => a - b);
+    return capped.slice(-6);
+  })();
   const paymentAmount = paymentMode === 'full' ? totalAmount :
                        paymentMode === 'partial' ? parseFloat(amount) || 0 : 0;
   const remaining = totalAmount - paymentAmount;
@@ -189,7 +201,9 @@ export function PaymentDialog({ onBack, totalAmount, companyId, onComplete, savi
       {saveError && (
         <div className="mx-4 mt-4 p-4 bg-[#EF4444]/10 border border-[#EF4444]/30 rounded-xl flex items-start gap-3">
           <AlertCircle className="w-5 h-5 text-[#EF4444] flex-shrink-0 mt-0.5" />
-          <p className="text-sm text-[#EF4444]">{saveError}</p>
+          <p className="text-sm text-[#EF4444]">
+            {saveError.includes('No branch') ? 'No branch set up. Contact admin or go to Branch screen.' : saveError}
+          </p>
         </div>
       )}
 

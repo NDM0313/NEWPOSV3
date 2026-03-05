@@ -1,14 +1,18 @@
 import { useState, useEffect } from 'react';
-import { ArrowLeft, Plus, Minus, Trash2, Search, Loader2, Package, ShoppingBag, Check } from 'lucide-react';
+import { ArrowLeft, Plus, Minus, Trash2, Search, Loader2, Package } from 'lucide-react';
 import { useResponsive } from '../../hooks/useResponsive';
 import { SelectSupplierTablet, type Supplier } from './SelectSupplierTablet';
 import type { PackingDetails } from '../transactions/PackingEntryModal';
+import { PackingEntryModal } from '../transactions/PackingEntryModal';
 import { PackingInputButton } from '../transactions/PackingInputButton';
 import * as purchasesApi from '../../api/purchases';
 import * as contactsApi from '../../api/contacts';
 import * as productsApi from '../../api/products';
-import * as accountsApi from '../../api/accounts';
+import { getBranches } from '../../api/branches';
 import type { ProductVariationRow } from '../../api/products';
+import { TransactionSuccessModal, type TransactionSuccessData } from '../shared/TransactionSuccessModal';
+import { PaymentDialog, type PaymentResult } from '../sales/PaymentDialog';
+import { createPortal } from 'react-dom';
 
 interface PurchaseItem {
   id: string;
@@ -47,9 +51,19 @@ interface CreatePurchaseFlowProps {
   onDone: () => void;
 }
 
+/** Map PaymentDialog label to API payment method */
+function paymentLabelToMethod(label: string): 'cash' | 'bank' | 'card' | 'other' {
+  const lower = (label || '').toLowerCase();
+  if (lower.includes('cash')) return 'cash';
+  if (lower.includes('bank')) return 'bank';
+  if (lower.includes('card')) return 'card';
+  if (lower.includes('wallet')) return 'other';
+  return 'cash';
+}
+
 export function CreatePurchaseFlow({ companyId, branchId, userId, onBack, onDone }: CreatePurchaseFlowProps) {
   const responsive = useResponsive();
-  const [step, setStep] = useState<'vendor' | 'items' | 'summary'>('vendor');
+  const [step, setStep] = useState<'vendor' | 'items' | 'summary' | 'payment'>('vendor');
   const [vendor, setVendor] = useState<Vendor | null>(null);
   const [items, setItems] = useState<PurchaseItem[]>([]);
   const [discount, setDiscount] = useState(0);
@@ -62,11 +76,7 @@ export function CreatePurchaseFlow({ companyId, branchId, userId, onBack, onDone
   const [error, setError] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<ProductForPurchase | null>(null);
-  const [purchaseStatus, setPurchaseStatus] = useState<'ordered' | 'final'>('ordered');
-  const [paidAmount, setPaidAmount] = useState(0);
-  const [paymentMethod, setPaymentMethod] = useState<'cash' | 'bank' | 'card' | 'other'>('cash');
-  const [paymentAccountId, setPaymentAccountId] = useState<string | null>(null);
-  const [paymentAccounts, setPaymentAccounts] = useState<{ id: string; name: string; type: string }[]>([]);
+  const [confirmationData, setConfirmationData] = useState<TransactionSuccessData | null>(null);
 
   useEffect(() => {
     if (step === 'vendor') {
@@ -74,14 +84,6 @@ export function CreatePurchaseFlow({ companyId, branchId, userId, onBack, onDone
       contactsApi.getContacts(companyId, 'supplier').then(({ data, error: err }) => {
         setLoading(false);
         setVendors(err ? [] : data.map((c) => ({ id: c.id, name: c.name, phone: c.phone || '' })));
-      });
-    } else if (step === 'summary') {
-      accountsApi.getPaymentAccounts(companyId).then(({ data }) => {
-        if (data?.length) {
-          const accs = data.map((a) => ({ id: a.id, name: a.name, type: a.type }));
-          setPaymentAccounts(accs);
-          if (!paymentAccountId && accs.length > 0) setPaymentAccountId(accs[0].id);
-        }
       });
     } else if (step === 'items' && vendor) {
       setLoading(true);
@@ -115,7 +117,7 @@ export function CreatePurchaseFlow({ companyId, branchId, userId, onBack, onDone
   const addItem = (
     product: ProductForPurchase,
     qty: number,
-    opts?: { unitPrice?: number; variationId?: string; variation?: string; sku?: string }
+    opts?: { unitPrice?: number; variationId?: string; variation?: string; sku?: string; packingDetails?: PackingDetails }
   ) => {
     const price = opts?.unitPrice ?? product.costPrice;
     const totalAmt = qty * price;
@@ -126,7 +128,12 @@ export function CreatePurchaseFlow({ companyId, branchId, userId, onBack, onDone
       setItems(
         items.map((i) =>
           i.productId === product.id && (i.variationId ?? '') === (opts?.variationId ?? '')
-            ? { ...i, quantity: i.quantity + qty, total: (i.quantity + qty) * i.unitPrice }
+            ? {
+                ...i,
+                quantity: i.quantity + qty,
+                total: (i.quantity + qty) * i.unitPrice,
+                ...(opts?.packingDetails != null ? { packingDetails: opts.packingDetails } : {}),
+              }
             : i
         )
       );
@@ -143,6 +150,7 @@ export function CreatePurchaseFlow({ companyId, branchId, userId, onBack, onDone
           total: totalAmt,
           variationId: opts?.variationId,
           variation: opts?.variation,
+          packingDetails: opts?.packingDetails,
         },
       ]);
     }
@@ -171,33 +179,22 @@ export function CreatePurchaseFlow({ companyId, branchId, userId, onBack, onDone
   const removeItem = (productId: string, variationId?: string) =>
     setItems(items.filter((i) => !matchItem(i, productId, variationId)));
 
-  const handleSave = async () => {
+  const handleSaveWithPayment = async (result: PaymentResult) => {
     if (!vendor || items.length === 0) return;
     setSaving(true);
     setError('');
-    const paid = purchaseStatus === 'final' ? Math.min(paidAmount, total) : 0;
-    if (purchaseStatus === 'final' && paid > 0) {
-      if (!paymentAccountId) {
-        setError('Please select a payment account.');
-        setSaving(false);
-        return;
-      }
-      if (paymentAccounts.length === 0) {
-        setError('No payment accounts found. Add accounts in Settings first.');
-        setSaving(false);
-        return;
-      }
-    }
-    const { error: err } = await purchasesApi.createPurchase({
+    const paid = result.paidAmount ?? 0;
+    const status = paid > 0 ? 'final' : 'ordered';
+    const { data: createResult, error: err } = await purchasesApi.createPurchase({
       companyId,
       branchId,
       supplierId: vendor.id,
       supplierName: vendor.name,
       contactNumber: vendor.phone,
-      status: purchaseStatus,
+      status: status as 'ordered' | 'final',
       paidAmount: paid,
-      paymentMethod: paid > 0 ? paymentMethod : undefined,
-      paymentAccountId: paid > 0 ? paymentAccountId ?? undefined : undefined,
+      paymentMethod: paid > 0 ? paymentLabelToMethod(result.paymentMethod ?? '') : undefined,
+      paymentAccountId: paid > 0 ? (result.accountId ?? undefined) : undefined,
       items: items.map((i) => ({
         productId: i.productId,
         variationId: i.variationId,
@@ -227,8 +224,41 @@ export function CreatePurchaseFlow({ companyId, branchId, userId, onBack, onDone
       setError(err);
       return;
     }
+    let branchName: string | null = null;
+    const { data: branches } = await getBranches(companyId);
+    branchName = branches?.find((b) => b.id === branchId)?.name ?? null;
+    setConfirmationData({
+      type: 'purchase',
+      title: 'Purchase Saved Successfully',
+      transactionNo: createResult?.poNo ?? null,
+      amount: total,
+      partyName: vendor.name,
+      date: new Date().toISOString(),
+      branch: branchName ?? undefined,
+      entityId: createResult?.id ?? null,
+    });
+  };
+
+  const closePurchaseSuccessModal = () => {
+    setConfirmationData(null);
     onDone();
   };
+
+  if (confirmationData) {
+    return (
+      <>
+        <div className="fixed inset-0 bg-[#111827]" />
+        <TransactionSuccessModal
+          isOpen={true}
+          data={confirmationData}
+          onClose={closePurchaseSuccessModal}
+          onViewPurchase={closePurchaseSuccessModal}
+          onPrint={closePurchaseSuccessModal}
+          onBackToList={closePurchaseSuccessModal}
+        />
+      </>
+    );
+  }
 
   if (step === 'vendor') {
     if (responsive.isTablet && companyId) {
@@ -386,7 +416,8 @@ export function CreatePurchaseFlow({ companyId, branchId, userId, onBack, onDone
                   </button>
                 </div>
               </div>
-              <div className="pt-2 border-t border-[#374151] w-full">
+              <div className="pt-3 border-t border-[#374151] w-full">
+                <p className="text-xs text-[#9CA3AF] mb-2">Packing (optional)</p>
                 <PackingInputButton
                   packingDetails={i.packingDetails}
                   onPackingChange={(d) => updatePacking(i.productId, d, i.variationId)}
@@ -418,8 +449,8 @@ export function CreatePurchaseFlow({ companyId, branchId, userId, onBack, onDone
               setShowAddModal(false);
               setSelectedProduct(null);
             }}
-            onAdd={(qty, unitPrice, variationId, variation, sku) => {
-              addItem(selectedProduct, qty, { unitPrice, variationId, variation, sku });
+            onAdd={(qty, unitPrice, variationId, variation, sku, packingDetails) => {
+              addItem(selectedProduct, qty, { unitPrice, variationId, variation, sku, packingDetails });
               setShowAddModal(false);
               setSelectedProduct(null);
             }}
@@ -439,7 +470,7 @@ export function CreatePurchaseFlow({ companyId, branchId, userId, onBack, onDone
             </button>
             <div>
               <h1 className="font-semibold text-base text-white">Purchase Summary</h1>
-              <p className="text-xs text-[#9CA3AF]">Step 3: Review Order</p>
+              <p className="text-xs text-[#9CA3AF]">Step 1: Review Order</p>
             </div>
           </div>
         </div>
@@ -448,90 +479,6 @@ export function CreatePurchaseFlow({ companyId, branchId, userId, onBack, onDone
             <p className="text-xs text-[#9CA3AF]">Vendor</p>
             <p className="font-medium text-white">{vendor.name}</p>
           </div>
-
-          <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">
-            <label className="block text-sm font-medium text-[#9CA3AF] mb-3">Order Type</label>
-            <div className="grid grid-cols-2 gap-3">
-              <button
-                type="button"
-                onClick={() => setPurchaseStatus('ordered')}
-                className={`flex items-center gap-2 p-4 rounded-xl border transition-all ${
-                  purchaseStatus === 'ordered'
-                    ? 'border-[#3B82F6] bg-[#3B82F6]/10 text-white'
-                    : 'border-[#374151] bg-[#111827] text-[#9CA3AF] hover:border-[#4B5563]'
-                }`}
-              >
-                <ShoppingBag className="w-5 h-5" />
-                <div className="text-left">
-                  <p className="font-medium">Order</p>
-                  <p className="text-xs opacity-80">Save as order, pay later</p>
-                </div>
-              </button>
-              <button
-                type="button"
-                onClick={() => setPurchaseStatus('final')}
-                className={`flex items-center gap-2 p-4 rounded-xl border transition-all ${
-                  purchaseStatus === 'final'
-                    ? 'border-[#10B981] bg-[#10B981]/10 text-white'
-                    : 'border-[#374151] bg-[#111827] text-[#9CA3AF] hover:border-[#4B5563]'
-                }`}
-              >
-                <Check className="w-5 h-5" />
-                <div className="text-left">
-                  <p className="font-medium">Final</p>
-                  <p className="text-xs opacity-80">Received, add payment now</p>
-                </div>
-              </button>
-            </div>
-          </div>
-
-          {purchaseStatus === 'final' && (
-            <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4 space-y-3">
-              <h3 className="text-sm font-medium text-[#9CA3AF]">Payment</h3>
-              <div>
-                <label className="block text-xs text-[#6B7280] mb-1">Amount Paid (Rs.)</label>
-                <input
-                  type="number"
-                  inputMode="decimal"
-                  pattern="[0-9.]*"
-                  min="0"
-                  max={total}
-                  step="0.01"
-                  value={paidAmount}
-                  onChange={(e) => setPaidAmount(Math.max(0, Math.min(total, parseFloat(e.target.value) || 0)))}
-                  className="w-full h-11 bg-[#111827] border border-[#374151] rounded-lg px-4 text-white focus:outline-none focus:border-[#10B981]"
-                />
-                <p className="text-xs text-[#6B7280] mt-1">Due: Rs. {(total - Math.min(paidAmount, total)).toLocaleString()}</p>
-              </div>
-              <div>
-                <label className="block text-xs text-[#6B7280] mb-1">Payment Method</label>
-                <select
-                  value={paymentMethod}
-                  onChange={(e) => setPaymentMethod(e.target.value as 'cash' | 'bank' | 'card' | 'other')}
-                  className="w-full h-11 bg-[#111827] border border-[#374151] rounded-lg px-4 text-white focus:outline-none focus:border-[#10B981]"
-                >
-                  <option value="cash">Cash</option>
-                  <option value="bank">Bank</option>
-                  <option value="card">Card</option>
-                  <option value="other">Other</option>
-                </select>
-              </div>
-              {paymentAccounts.length > 0 && (
-                <div>
-                  <label className="block text-xs text-[#6B7280] mb-1">Payment Account</label>
-                  <select
-                    value={paymentAccountId ?? ''}
-                    onChange={(e) => setPaymentAccountId(e.target.value || null)}
-                    className="w-full h-11 bg-[#111827] border border-[#374151] rounded-lg px-4 text-white focus:outline-none focus:border-[#10B981]"
-                  >
-                    {paymentAccounts.map((a) => (
-                      <option key={a.id} value={a.id}>{a.name} ({a.type})</option>
-                    ))}
-                  </select>
-                </div>
-              )}
-            </div>
-          )}
 
           <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">
             <h3 className="text-sm font-medium text-[#9CA3AF] mb-3">Items ({items.length})</h3>
@@ -590,14 +537,35 @@ export function CreatePurchaseFlow({ companyId, branchId, userId, onBack, onDone
         {error && <p className="text-sm text-red-400 px-4">{error}</p>}
         <div className="fixed left-0 right-0 bg-[#1F2937] border-t border-[#374151] p-4 safe-area-bottom fixed-bottom-above-nav z-40">
           <button
-            onClick={handleSave}
-            disabled={saving}
-            className="w-full h-12 bg-[#10B981] hover:bg-[#059669] disabled:opacity-70 rounded-lg font-medium text-white"
+            type="button"
+            onClick={() => {
+              setError('');
+              setStep('payment');
+            }}
+            className="w-full h-12 bg-[#10B981] hover:bg-[#059669] rounded-lg font-medium text-white"
           >
-            {saving ? 'Saving...' : 'Save Purchase Order'}
+            Proceed to Payment →
           </button>
         </div>
       </div>
+    );
+  }
+
+  if (step === 'payment' && vendor) {
+    const paymentRoot = typeof document !== 'undefined' ? document.body : null;
+    if (!paymentRoot) return null;
+    return createPortal(
+      <div className="fixed inset-0 z-[100] overflow-auto bg-[#111827]">
+        <PaymentDialog
+          totalAmount={total}
+          companyId={companyId}
+          onBack={() => setStep('summary')}
+          onComplete={(result) => handleSaveWithPayment(result)}
+          saving={saving}
+          saveError={error}
+        />
+      </div>,
+      paymentRoot
     );
   }
 
@@ -614,7 +582,7 @@ function formatVariationLabel(attrs: Record<string, string>): string {
 interface AddToPurchaseModalProps {
   product: ProductForPurchase;
   onClose: () => void;
-  onAdd: (qty: number, unitPrice: number, variationId?: string, variation?: string, sku?: string) => void;
+  onAdd: (qty: number, unitPrice: number, variationId?: string, variation?: string, sku?: string, packingDetails?: PackingDetails) => void;
 }
 
 function AddToPurchaseModal({ product, onClose, onAdd }: AddToPurchaseModalProps) {
@@ -622,6 +590,8 @@ function AddToPurchaseModal({ product, onClose, onAdd }: AddToPurchaseModalProps
   const [quantity, setQuantity] = useState<number>(1);
   const [unitPrice, setUnitPrice] = useState(product.costPrice);
   const [selectedVariation, setSelectedVariation] = useState<ProductVariationRow | null>(null);
+  const [packingDetails, setPackingDetails] = useState<PackingDetails | undefined>(undefined);
+  const [showPacking, setShowPacking] = useState(false);
 
   const hasVariations = product.hasVariations && (product.variations?.length ?? 0) > 0;
   const total = unitPrice * quantity;
@@ -641,11 +611,13 @@ function AddToPurchaseModal({ product, onClose, onAdd }: AddToPurchaseModalProps
       unitPrice,
       selectedVariation?.id,
       selectedVariation ? formatVariationLabel(selectedVariation.attributes) : undefined,
-      selectedVariation?.sku ?? product.sku
+      selectedVariation?.sku ?? product.sku,
+      packingDetails
     );
   };
 
   return (
+    <>
     <div className="fixed inset-0 bg-black/60 z-[70] flex items-end sm:items-center justify-center">
       <div className="bg-[#1F2937] rounded-t-3xl sm:rounded-2xl w-full max-w-md max-h-[85vh] overflow-y-auto pb-6">
         <div className="flex justify-center pt-2 pb-4 sm:hidden">
@@ -694,28 +666,66 @@ function AddToPurchaseModal({ product, onClose, onAdd }: AddToPurchaseModalProps
             </div>
           )}
 
+          {/* Packing Entry - same as Sale */}
+          <div className="bg-[#111827] border border-[#10B981]/30 rounded-xl p-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Package size={18} className="text-[#10B981]" />
+                <span className="text-sm font-medium text-[#F9FAFB]">Packing Entry</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowPacking(true)}
+                className="px-3 py-1.5 bg-[#10B981] hover:bg-[#059669] text-[#F9FAFB] text-xs rounded-lg font-medium"
+              >
+                {packingDetails && (packingDetails.total_meters ?? 0) > 0 ? 'Edit Packing' : 'Add Packing'}
+              </button>
+            </div>
+            {packingDetails && (packingDetails.total_meters ?? 0) > 0 && (
+              <p className="text-xs text-[#9CA3AF] mt-2">
+                {packingDetails.total_boxes ?? 0} Box • {packingDetails.total_pieces ?? 0} Pc • {(packingDetails.total_meters ?? 0).toFixed(1)} M
+              </p>
+            )}
+          </div>
+
           <div>
-            <label className="block text-sm font-medium text-[#9CA3AF] mb-3">Quantity{allowDecimal ? ' (decimals allowed)' : ''}</label>
+            <label className="block text-sm font-medium text-[#9CA3AF] mb-3">
+              Quantity{packingDetails && (packingDetails.total_meters ?? 0) > 0 ? ' (M)' : allowDecimal ? ' (decimals allowed)' : ''}
+            </label>
             <div className="flex items-center gap-4">
               <button
-                onClick={() => setQuantity((q) => Math.max(allowDecimal ? 0.01 : 1, allowDecimal ? q - 0.01 : q - 1))}
-                className="w-12 h-12 bg-[#111827] border border-[#374151] rounded-lg flex items-center justify-center hover:bg-[#374151]"
+                type="button"
+                onClick={() => {
+                  if (packingDetails && (packingDetails.total_meters ?? 0) > 0) return;
+                  setQuantity((q) => Math.max(allowDecimal ? 0.01 : 1, allowDecimal ? q - 0.01 : q - 1));
+                }}
+                disabled={!!(packingDetails && (packingDetails.total_meters ?? 0) > 0)}
+                className="w-12 h-12 bg-[#111827] border border-[#374151] rounded-lg flex items-center justify-center hover:bg-[#374151] disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <Minus className="w-5 h-5 text-[#F9FAFB]" />
               </button>
               <input
                 type="number"
                 min={allowDecimal ? 0.01 : 1}
-                step={allowDecimal ? 0.01 : 1}
+                step={packingDetails && (packingDetails.total_meters ?? 0) > 0 ? 0.1 : allowDecimal ? 0.01 : 1}
                 inputMode={allowDecimal ? 'decimal' : 'numeric'}
                 pattern={allowDecimal ? '[0-9.]*' : '[0-9]*'}
                 value={quantity}
-                onChange={(e) => handleQtyChange(e.target.value)}
-                className="flex-1 h-12 bg-[#111827] border border-[#374151] rounded-lg text-center text-lg font-semibold text-[#F9FAFB] focus:outline-none focus:border-[#10B981]"
+                onChange={(e) => {
+                  if (packingDetails && (packingDetails.total_meters ?? 0) > 0) return;
+                  handleQtyChange(e.target.value);
+                }}
+                readOnly={!!(packingDetails && (packingDetails.total_meters ?? 0) > 0)}
+                className="flex-1 h-12 bg-[#111827] border border-[#374151] rounded-lg text-center text-lg font-semibold text-[#F9FAFB] focus:outline-none focus:border-[#10B981] disabled:opacity-70 disabled:cursor-not-allowed"
               />
               <button
-                onClick={() => setQuantity((q) => allowDecimal ? q + 0.01 : q + 1)}
-                className="w-12 h-12 bg-[#111827] border border-[#374151] rounded-lg flex items-center justify-center hover:bg-[#374151]"
+                type="button"
+                onClick={() => {
+                  if (packingDetails && (packingDetails.total_meters ?? 0) > 0) return;
+                  setQuantity((q) => allowDecimal ? q + 0.01 : q + 1);
+                }}
+                disabled={!!(packingDetails && (packingDetails.total_meters ?? 0) > 0)}
+                className="w-12 h-12 bg-[#111827] border border-[#374151] rounded-lg flex items-center justify-center hover:bg-[#374151] disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <Plus className="w-5 h-5 text-[#F9FAFB]" />
               </button>
@@ -763,5 +773,20 @@ function AddToPurchaseModal({ product, onClose, onAdd }: AddToPurchaseModalProps
         </div>
       </div>
     </div>
+
+      <PackingEntryModal
+        open={showPacking}
+        onOpenChange={setShowPacking}
+        onSave={(d) => {
+          setPackingDetails(d);
+          const m = d.total_meters ?? 0;
+          if (m > 0) setQuantity(m);
+          setShowPacking(false);
+        }}
+        initialData={packingDetails}
+        productName={product.name}
+      />
+    </>
   );
 }
+

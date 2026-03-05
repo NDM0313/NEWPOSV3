@@ -77,6 +77,8 @@ export interface Sale {
   shippingStatus: ShippingStatus;
   notes?: string;
   attachments?: { url: string; name: string }[] | null; // Sale attachments
+  /** Line-level charges from sale_charges (for view/drawer actual data) */
+  charges?: Array<{ charge_type?: string; chargeType?: string; amount: number }>;
   createdAt: string;
   updatedAt: string;
   is_studio?: boolean;
@@ -307,6 +309,8 @@ export const convertFromSupabaseSale = (supabaseSale: any): Sale => {
       notes: supabaseSale.notes,
       // CRITICAL FIX: Preserve attachments from database
       attachments: supabaseSale.attachments || null,
+      // Line-level charges (sale_charges) for drawer/views to show actual data
+      charges: Array.isArray(supabaseSale.charges) ? supabaseSale.charges : (Array.isArray(supabaseSale.sale_charges) ? supabaseSale.sale_charges : []),
       createdAt: supabaseSale.created_at || new Date().toISOString(),
       updatedAt: supabaseSale.updated_at || new Date().toISOString(),
     is_studio: !!supabaseSale.is_studio,
@@ -504,6 +508,24 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
           throw insertError;
         }
       }
+      // Line-level charges: extraExpenses + standalone shipping + discount (all persisted to sale_charges)
+      const createExtraExpenses = (saleData as any).extraExpenses;
+      const createShippingCharges = Number((saleData as any).shippingCharges ?? 0);
+      if (result?.id) {
+        const charges: { charge_type: string; amount: number }[] = [];
+        if (Array.isArray(createExtraExpenses)) {
+          createExtraExpenses.forEach((e: { type?: string; amount?: number }) => {
+            const amt = Number(e?.amount ?? 0);
+            if (amt > 0) charges.push({ charge_type: (e?.type ?? 'other') as string, amount: amt });
+          });
+        }
+        if (createShippingCharges > 0) charges.push({ charge_type: 'shipping', amount: createShippingCharges });
+        const discountAmt = Number(saleData.discount ?? 0);
+        if (discountAmt > 0) charges.push({ charge_type: 'discount', amount: discountAmt });
+        if (charges.length > 0) {
+          await saleService.replaceSaleCharges(result.id, charges, createdByAuthId);
+        }
+      }
       // Set is_studio after create (avoids 400 if sales.is_studio column not yet added by migration)
       if (isStudioSale && result?.id) {
         try {
@@ -580,13 +602,7 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
               }
               
               if (paymentAccountId && partialPayment.amount > 0) {
-                // 🔧 FIX: Use reference number from partialPayment if provided, otherwise auto-generate
-                // Each payment method should have its own unique reference number
-                const paymentRef = partialPayment.reference || generateDocumentNumber('payment');
-                if (!partialPayment.reference) {
-                  incrementNextNumber('payment');
-                }
-                
+                // Let DB trigger set reference_number (avoid duplicate key)
                 await saleService.recordPayment(
                   newSale.id,
                   partialPayment.amount,
@@ -595,7 +611,7 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
                   companyId,
                   effectiveBranchId,
                   saleData.date,
-                  paymentRef
+                  undefined
                 );
                 // Create separate journal entry for this payment
                 accounting.recordSalePayment({
@@ -642,7 +658,6 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
               }
               
               if (paymentAccountId) {
-                const paymentRef = generateDocumentNumber('payment');
                 await saleService.recordPayment(
                   newSale.id,
                   newSale.paid,
@@ -651,9 +666,8 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
                   companyId,
                   effectiveBranchId,
                   saleData.date,
-                  paymentRef
+                  undefined
                 );
-                incrementNextNumber('payment');
               }
             }
             
@@ -1472,6 +1486,24 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
         await saleService.updateSale(id, supabaseUpdates);
       }
 
+      // Line-level charges: extraExpenses + standalone shipping + discount (replace sale_charges on edit)
+      const extraExpensesList = (updates as any).extraExpenses;
+      const updateShippingCharges = Number((updates as any).shippingCharges ?? 0);
+      const hasCharges = Array.isArray(extraExpensesList) || updateShippingCharges > 0;
+      if (hasCharges) {
+        const charges: { charge_type: string; amount: number; ledger_account_id?: string | null }[] = [];
+        if (Array.isArray(extraExpensesList)) {
+          extraExpensesList.forEach((e: { type?: string; amount?: number }) => {
+            const amt = Number(e?.amount ?? 0);
+            if (amt > 0) charges.push({ charge_type: (e?.type ?? 'other') as string, amount: amt });
+          });
+        }
+        if (updateShippingCharges > 0) charges.push({ charge_type: 'shipping', amount: updateShippingCharges });
+        const discountAmt = Number((updates as any).discount ?? updates.discount_amount ?? 0);
+        if (discountAmt > 0) charges.push({ charge_type: 'discount', amount: discountAmt });
+        await saleService.replaceSaleCharges(id, charges, user?.id ?? undefined);
+      }
+
       // Handle commission when updating to final (draft→final or edit with commission)
       if (isFinalStatus && companyId) {
         const commissionAmount = (updates as any).commissionAmount || 0;
@@ -1569,9 +1601,8 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
                 throw new Error(`No payment account found for ${normalizedMethod}. Please create a default account.`);
               }
               
-              // If no payment exists and paidAmount > 0, create payment record
+              // If no payment exists and paidAmount > 0, create payment record (DB sets reference_number)
               if (existingPayments.length === 0 && paidAmount > 0) {
-                const paymentRef = generateDocumentNumber('payment');
                 await saleService.recordPayment(
                   id, 
                   paidAmount, 
@@ -1580,10 +1611,9 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
                   companyId, 
                   effectiveBranchId, 
                   saleForSync.date,
-                  paymentRef
+                  undefined
                 );
-                incrementNextNumber('payment');
-                console.log('[SALES CONTEXT] ✅ Payment record created in payments table:', paymentRef);
+                console.log('[SALES CONTEXT] ✅ Payment record created in payments table');
               } 
               // If single payment exists, update it
               else if (existingPayments.length === 1) {
@@ -1645,7 +1675,6 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
               }
               
               if (paymentAccountId && partialPayment.amount > 0) {
-                const paymentRef = generateDocumentNumber('payment');
                 await saleService.recordPayment(
                   id,
                   partialPayment.amount,
@@ -1654,9 +1683,8 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
                   companyId,
                   updateBranchId,
                   undefined,
-                  paymentRef
+                  undefined
                 );
-                incrementNextNumber('payment');
                 // Create separate journal entry for this payment
                 accounting.recordSalePayment({
                   saleId: id,
@@ -1688,6 +1716,37 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
           : sale
       ));
       }
+      // Activity log: detail of what changed (use sale from start of update, before state refresh)
+      if (companyId && user?.id && sale) {
+        const changes: string[] = [];
+        if (updates.total !== undefined && Number(sale.total) !== Number(updates.total)) {
+          changes.push(`Total changed from Rs ${Number(sale.total).toLocaleString()} to Rs ${Number(updates.total).toLocaleString()}`);
+        }
+        if (updates.discount !== undefined && Number(sale.discount) !== Number(updates.discount)) {
+          changes.push(`Discount from Rs ${Number(sale.discount).toLocaleString()} to Rs ${Number(updates.discount).toLocaleString()}`);
+        }
+        if (updates.expenses !== undefined && Number(sale.expenses) !== Number(updates.expenses)) {
+          changes.push(`Expenses from Rs ${Number(sale.expenses).toLocaleString()} to Rs ${Number(updates.expenses).toLocaleString()}`);
+        }
+        if (updates.status !== undefined && sale.status !== updates.status) {
+          changes.push(`Status from ${sale.status} to ${updates.status}`);
+        }
+        if ((updates as any).items && Array.isArray((updates as any).items) && (sale.itemsCount ?? sale.items?.length) !== (updates as any).items?.length) {
+          changes.push(`Items count from ${sale.itemsCount ?? sale.items?.length ?? 0} to ${(updates as any).items.length}`);
+        }
+        if (updates.notes !== undefined && sale.notes !== updates.notes) changes.push('Notes updated');
+        const description = changes.length > 0 ? changes.join('; ') : 'Sale updated';
+        activityLogService.logActivity({
+          companyId,
+          module: 'sale',
+          entityId: id,
+          entityReference: sale.invoiceNo,
+          action: 'update',
+          performedBy: user.id,
+          description,
+        }).catch((err) => console.warn('[SALES CONTEXT] Activity log failed:', err));
+      }
+
       // POS updates show their own toast; avoid duplicate for POS invoices
       const isPOS = getSaleById(id)?.invoiceNo?.startsWith('POS-');
       if (!isPOS) toast.success('Sale updated successfully!');
@@ -1758,10 +1817,8 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
         throw new Error(`No account found for ${method} payment. Please create a default account.`);
       }
       
-      // CRITICAL FIX: Record payment in Supabase (with account_id); use central PAY- reference
-      const paymentRef = generateDocumentNumber('payment');
-      await saleService.recordPayment(saleId, amount, method, paymentAccountId, companyId, effectiveBranchId, undefined, paymentRef);
-      incrementNextNumber('payment');
+      // Record payment in Supabase; let DB trigger set reference_number (avoid duplicate key)
+      await saleService.recordPayment(saleId, amount, method, paymentAccountId, companyId, effectiveBranchId, undefined, undefined);
 
       // CRITICAL FIX: Reload sale to get updated paid/due amounts from database (trigger updated them)
       // Don't manually calculate - let database trigger handle it
