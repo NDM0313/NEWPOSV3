@@ -10,6 +10,9 @@ import {
   type RolePermissionRow,
   getActionsForModule,
   PERMISSION_MODULES,
+  MODULES_WITH_VISIBILITY_SCOPE,
+  VISIBILITY_SCOPE_ACTIONS,
+  type VisibilityScopeAction,
 } from '@/app/services/permissionService';
 import { useFeatureFlagOptional } from '@/app/context/FeatureFlagContext';
 import { toast } from 'sonner';
@@ -20,6 +23,24 @@ const ENGINE_ROLES: { id: EngineRole; label: string }[] = [
   { id: 'manager', label: 'Manager' },
   { id: 'user', label: 'User (Salesman)' },
 ];
+
+/** Visibility scope: mutually exclusive per module. Priority company > branch > own. */
+const VISIBILITY_OPTIONS: { value: VisibilityScopeAction; label: string }[] = [
+  { value: 'view_own', label: 'Own records only' },
+  { value: 'view_branch', label: 'Assigned branches' },
+  { value: 'view_company', label: 'Full company' },
+];
+
+const MODULE_LABELS: Record<string, string> = {
+  sales: 'Sales',
+  purchase: 'Purchase',
+  inventory: 'Inventory',
+  contacts: 'Contacts',
+  ledger: 'Accounting (Ledger)',
+  studio: 'Studio',
+  rentals: 'Rentals',
+  payments: 'Payments',
+};
 
 export function PermissionManagementPanel() {
   const { permissionV2, setPermissionV2 } = useFeatureFlagOptional();
@@ -34,7 +55,15 @@ export function PermissionManagementPanel() {
     setLoadError(null);
     try {
       const data = await permissionService.getRolePermissions(role);
-      setPerms(data);
+      const normalized = data.map((p) => {
+        if (!(MODULES_WITH_VISIBILITY_SCOPE as readonly string[]).includes(p.module) || !(VISIBILITY_SCOPE_ACTIONS as readonly string[]).includes(p.action)) return p;
+        const viewCompany = data.some((x) => x.module === p.module && x.action === 'view_company' && x.allowed);
+        const viewBranch = data.some((x) => x.module === p.module && x.action === 'view_branch' && x.allowed);
+        const viewOwn = data.some((x) => x.module === p.module && x.action === 'view_own' && x.allowed);
+        const only: VisibilityScopeAction = viewCompany ? 'view_company' : viewBranch ? 'view_branch' : 'view_own';
+        return { ...p, allowed: p.action === only };
+      });
+      setPerms(normalized);
     } catch (e: any) {
       const msg = e?.message || 'Failed to load permissions';
       setLoadError(msg);
@@ -52,6 +81,29 @@ export function PermissionManagementPanel() {
   const getAllowed = (module: string, action: string) => {
     const r = perms.find(p => p.module === module && p.action === action);
     return r?.allowed ?? false;
+  };
+
+  /** Effective visibility scope for a module (mutually exclusive). Priority company > branch > own. */
+  const getVisibilityScope = (module: string): VisibilityScopeAction => {
+    if (getAllowed(module, 'view_company')) return 'view_company';
+    if (getAllowed(module, 'view_branch')) return 'view_branch';
+    if (getAllowed(module, 'view_own')) return 'view_own';
+    return 'view_own';
+  };
+
+  const setVisibilityScope = (module: string, scope: VisibilityScopeAction) => {
+    setPerms(prev => {
+      const withoutScopes = prev.filter(
+        p => !(p.module === module && (VISIBILITY_SCOPE_ACTIONS as readonly string[]).includes(p.action))
+      );
+      const newScopes = [...VISIBILITY_SCOPE_ACTIONS].map(a => ({
+        role: selectedRole,
+        module,
+        action: a,
+        allowed: a === scope,
+      }));
+      return [...withoutScopes, ...newScopes];
+    });
   };
 
   const setAllowed = (module: string, action: string, allowed: boolean) => {
@@ -175,109 +227,52 @@ export function PermissionManagementPanel() {
         </p>
       </div>
 
-      {/* Sales Visibility */}
-      <div className="bg-gray-950 p-4 rounded-lg border border-gray-800">
-        <h4 className="text-white font-medium mb-3">Sales Visibility</h4>
-        <div className="flex flex-wrap gap-6">
-          <label className="flex items-center gap-2 cursor-pointer">
-            <Switch
-              checked={getAllowed('sales', 'view_own')}
-              onCheckedChange={v => setAllowed('sales', 'view_own', v)}
-            />
-            <span className="text-gray-300">Own only</span>
-          </label>
-          <label className="flex items-center gap-2 cursor-pointer">
-            <Switch
-              checked={getAllowed('sales', 'view_branch')}
-              onCheckedChange={v => setAllowed('sales', 'view_branch', v)}
-            />
-            <span className="text-gray-300">Branch</span>
-          </label>
-          <label className="flex items-center gap-2 cursor-pointer">
-            <Switch
-              checked={getAllowed('sales', 'view_company')}
-              onCheckedChange={v => setAllowed('sales', 'view_company', v)}
-            />
-            <span className="text-gray-300">Company</span>
-          </label>
-        </div>
-        <div className="flex flex-wrap gap-4 mt-2">
-          <label className="flex items-center gap-2 cursor-pointer">
-            <Switch checked={getAllowed('sales', 'create')} onCheckedChange={v => setAllowed('sales', 'create', v)} />
-            <span className="text-gray-400 text-sm">Create</span>
-          </label>
-          <label className="flex items-center gap-2 cursor-pointer">
-            <Switch checked={getAllowed('sales', 'edit')} onCheckedChange={v => setAllowed('sales', 'edit', v)} />
-            <span className="text-gray-400 text-sm">Edit</span>
-          </label>
-          <label className="flex items-center gap-2 cursor-pointer">
-            <Switch checked={getAllowed('sales', 'delete')} onCheckedChange={v => setAllowed('sales', 'delete', v)} />
-            <span className="text-gray-400 text-sm">Delete</span>
-          </label>
-        </div>
-      </div>
+      {/* Visibility-scope modules: each has Visibility (radio) + Actions */}
+      {MODULES_WITH_VISIBILITY_SCOPE.map(module => {
+        const actions = getActionsForModule(module).filter(a => !(VISIBILITY_SCOPE_ACTIONS as readonly string[]).includes(a));
+        return (
+          <div key={module} className="bg-gray-950 p-4 rounded-lg border border-gray-800">
+            <h4 className="text-white font-medium mb-3">{MODULE_LABELS[module] ?? module}</h4>
+            <p className="text-xs text-gray-500 mb-3">Visibility: only one scope applies (which records this role can see).</p>
+            <div className="flex flex-col gap-2" role="radiogroup" aria-label={`${module} visibility`}>
+              {VISIBILITY_OPTIONS.map(opt => (
+                <label key={opt.value} className="flex items-center gap-3 cursor-pointer">
+                  <input
+                    type="radio"
+                    name={`${module}-visibility`}
+                    checked={getVisibilityScope(module) === opt.value}
+                    onChange={() => setVisibilityScope(module, opt.value)}
+                    className="rounded-full border-gray-600 bg-gray-800 text-amber-500 focus:ring-amber-500"
+                  />
+                  <span className="text-gray-300">{opt.label}</span>
+                </label>
+              ))}
+            </div>
+            {actions.length > 0 && (
+              <>
+                <h4 className="text-white font-medium mt-4 mb-2">Actions</h4>
+                <div className="flex flex-wrap gap-4">
+                  {actions.map(action => (
+                    <label key={action} className="flex items-center gap-2 cursor-pointer">
+                      <Switch
+                        checked={getAllowed(module, action)}
+                        onCheckedChange={v => setAllowed(module, action, v)}
+                      />
+                      <span className="text-gray-400 text-sm">{action.replace(/_/g, ' ')}</span>
+                    </label>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        );
+      })}
 
-      {/* Payment Permissions */}
-      <div className="bg-gray-950 p-4 rounded-lg border border-gray-800">
-        <h4 className="text-white font-medium mb-3">Payment Permissions</h4>
-        <div className="flex flex-wrap gap-6">
-          <label className="flex items-center gap-2 cursor-pointer">
-            <Switch
-              checked={getAllowed('payments', 'receive')}
-              onCheckedChange={v => setAllowed('payments', 'receive', v)}
-            />
-            <span className="text-gray-300">Can receive</span>
-          </label>
-          <label className="flex items-center gap-2 cursor-pointer">
-            <Switch
-              checked={getAllowed('payments', 'edit')}
-              onCheckedChange={v => setAllowed('payments', 'edit', v)}
-            />
-            <span className="text-gray-300">Can edit</span>
-          </label>
-          <label className="flex items-center gap-2 cursor-pointer">
-            <Switch
-              checked={getAllowed('payments', 'delete')}
-              onCheckedChange={v => setAllowed('payments', 'delete', v)}
-            />
-            <span className="text-gray-300">Can delete</span>
-          </label>
-        </div>
-      </div>
-
-      {/* Ledger Permissions */}
-      <div className="bg-gray-950 p-4 rounded-lg border border-gray-800">
-        <h4 className="text-white font-medium mb-3">Ledger Permissions</h4>
-        <div className="flex flex-wrap gap-6">
-          <label className="flex items-center gap-2 cursor-pointer">
-            <Switch
-              checked={getAllowed('ledger', 'view_customer')}
-              onCheckedChange={v => setAllowed('ledger', 'view_customer', v)}
-            />
-            <span className="text-gray-300">View customer ledger</span>
-          </label>
-          <label className="flex items-center gap-2 cursor-pointer">
-            <Switch
-              checked={getAllowed('ledger', 'view_supplier')}
-              onCheckedChange={v => setAllowed('ledger', 'view_supplier', v)}
-            />
-            <span className="text-gray-300">View supplier ledger</span>
-          </label>
-          <label className="flex items-center gap-2 cursor-pointer">
-            <Switch
-              checked={getAllowed('ledger', 'view_full_accounting')}
-              onCheckedChange={v => setAllowed('ledger', 'view_full_accounting', v)}
-            />
-            <span className="text-gray-300">View full accounting</span>
-          </label>
-        </div>
-      </div>
-
-      {/* Other modules (collapsed) */}
+      {/* Other modules (no visibility scope) */}
       <div className="bg-gray-950 p-4 rounded-lg border border-gray-800">
         <h4 className="text-white font-medium mb-3">Other Modules</h4>
         <div className="grid grid-cols-2 gap-3 text-sm">
-          {PERMISSION_MODULES.filter(m => !['sales', 'payments', 'ledger'].includes(m)).map(module => (
+          {PERMISSION_MODULES.filter(m => !(MODULES_WITH_VISIBILITY_SCOPE as readonly string[]).includes(m)).map(module => (
             <div key={module} className="flex flex-wrap gap-2 items-center">
               <span className="text-gray-400 capitalize w-24">{module}</span>
               {getActionsForModule(module).map(action => (

@@ -78,17 +78,16 @@ export const Sidebar = () => {
       ]
     },
     { id: 'expenses', label: 'Expenses', icon: Receipt, isHidden: !hasPermission('expenses.view') },
-    { id: 'accounting', label: 'Accounting', icon: Calculator, isHidden: !hasPermission('accounting.view') },
+    { id: 'accounting', label: 'Accounting', icon: Calculator, isHidden: !settingsModules.accountingModuleEnabled || !hasPermission('accounting.view') },
     { id: 'reports', label: 'Reports', icon: PieChart, isHidden: !hasPermission('reports.view') },
-    { id: 'erp-permissions', label: 'ERP Permissions', icon: Shield, isHidden: !hasPermission('settings.view') },
-    { id: 'permission-inspector', label: 'Permission Inspector', icon: Shield, isHidden: !hasPermission('settings.view') },
     { id: 'settings', label: 'Settings', icon: Settings, isHidden: !hasPermission('settings.view') },
     { 
       id: 'test-pages-group', 
-      label: 'Test Pages', 
+      label: 'Developer Tools', 
       icon: FlaskConical,
-      isHidden: true, // Developer only - hidden from all users
+      isHidden: !hasPermission('settings.view'), // Admin only – Permission Inspector, test pages
       children: [
+        { id: 'permission-inspector', label: 'Permission Inspector' },
         { id: 'test-account-entry', label: 'Account Entry' },
         { id: 'customer-ledger-test', label: 'Customer Ledger Test' },
         { id: 'ledger-debug-test', label: 'Ledger Debug (RPC vs API)' },
@@ -161,7 +160,7 @@ export const Sidebar = () => {
       <nav className="flex-1 py-6 px-3 space-y-1 overflow-y-auto">
         {visibleNavItems.map((item) => {
           const isExpanded = expandedItems.includes(item.id);
-          const isActive = currentView === item.id || item.children?.some(c => c.id === currentView) || (item.id === 'permission-inspector' && pathname === '/admin/permission-inspector');
+          const isActive = currentView === item.id || item.children?.some(c => c.id === currentView) || (item.id === 'test-pages-group' && pathname === '/admin/permission-inspector');
           
           return (
             <div key={item.id}>
@@ -227,7 +226,12 @@ export const Sidebar = () => {
                       {item.children.map(child => (
                         <button
                           key={child.id}
-                          onClick={() => setCurrentView(child.id as any)}
+                          onClick={() => {
+                            setCurrentView(child.id as any);
+                            if (child.id === 'permission-inspector' && typeof window !== 'undefined') {
+                              window.history.pushState({}, '', '/admin/permission-inspector');
+                            }
+                          }}
                           className={clsx(
                             "w-full text-left py-2 px-3 text-sm rounded-lg transition-colors",
                             currentView === child.id 

@@ -17,6 +17,7 @@ import {
   type EffectiveBranchResult,
 } from '@/app/services/permissionInspectorService';
 import type { RolePermissionRow } from '@/app/services/permissionService';
+import { useCheckPermission } from '@/app/hooks/useCheckPermission';
 import { cn } from '@/app/components/ui/utils';
 
 const MODULE_ORDER = [
@@ -163,9 +164,8 @@ export function PermissionInspectorPage() {
   const [loadingPayload, setLoadingPayload] = useState(false);
   const [rawOpen, setRawOpen] = useState(false);
 
-  const isAdminOrOwner =
-    currentUser?.role === 'Admin' ||
-    (currentUser?.role as string)?.toLowerCase() === 'owner';
+  const { canManageSettings } = useCheckPermission();
+  const isAdminOrOwner = canManageSettings;
 
   const loadUsers = useCallback(async () => {
     if (!companyId) return;

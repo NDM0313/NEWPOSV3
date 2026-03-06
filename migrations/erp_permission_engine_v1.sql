@@ -1,6 +1,8 @@
 -- ============================================================================
--- FULL ERP PERMISSION ENGINE v1.0
--- Role + permission + visibility. Replaces overlapping branch-only logic.
+-- ACTIVE PERMISSION ENGINE – DO NOT MODIFY
+-- FULL ERP PERMISSION ENGINE v1.0 – Used by all ERP modules in production.
+-- Single source of truth: role_permissions + has_permission() + is_owner_or_admin().
+-- RLS policies on sales, payments, contacts, inventory, ledger reference this.
 -- Run after: erp_permission_architecture_global, identity_model_auth_user_id,
 --            create_erp_health_dashboard_view (for Phase 8 integration).
 -- ============================================================================

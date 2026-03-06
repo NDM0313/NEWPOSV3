@@ -19,7 +19,7 @@ interface Module {
 }
 
 export function ModuleGrid({ onClose, onModuleSelect, userRole }: ModuleGridProps) {
-  const { hasPermission, isPermissionLoaded } = usePermissions();
+  const { hasPermission, isPermissionLoaded, isModuleEnabled } = usePermissions();
 
   if (FEATURE_MOBILE_PERMISSION_V2 && !isPermissionLoaded) {
     return null; // Or show a small loader in the grid
@@ -42,12 +42,14 @@ export function ModuleGrid({ onClose, onModuleSelect, userRole }: ModuleGridProp
     { id: 'home', name: 'Home', icon: <LayoutGrid className="w-6 h-6" />, color: '#6B7280', enabled: true },
   ];
 
-  const enabled = FEATURE_MOBILE_PERMISSION_V2
-    ? modules.filter((m) => {
-        const code = getPermissionModuleForScreen(m.id);
-        return m.enabled && code != null && hasPermission(`${code}.view`);
-      })
-    : modules.filter((m) => m.enabled);
+  const enabled = modules.filter((m) => {
+    if (!isModuleEnabled(m.id)) return false;
+    if (FEATURE_MOBILE_PERMISSION_V2) {
+      const code = getPermissionModuleForScreen(m.id);
+      return code != null && hasPermission(`${code}.view`);
+    }
+    return true;
+  });
 
   return (
     <>

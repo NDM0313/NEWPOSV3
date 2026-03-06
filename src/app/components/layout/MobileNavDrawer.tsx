@@ -64,7 +64,7 @@ export const MobileNavDrawer = () => {
       ],
     },
     { id: 'expenses', label: 'Expenses', icon: Receipt, isHidden: !hasPermission('expenses.view') },
-    { id: 'accounting', label: 'Accounting', icon: Calculator, isHidden: !hasPermission('accounting.view') },
+    { id: 'accounting', label: 'Accounting', icon: Calculator, isHidden: !settingsModules.accountingModuleEnabled || !hasPermission('accounting.view') },
     { id: 'reports', label: 'Reports', icon: PieChart, isHidden: !hasPermission('reports.view') },
     { id: 'settings', label: 'Settings', icon: Settings, isHidden: !hasPermission('settings.view') },
   ];

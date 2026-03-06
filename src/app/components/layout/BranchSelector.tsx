@@ -3,6 +3,7 @@ import { Building2, Lock, Loader2 } from 'lucide-react';
 import { Label } from '@/app/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/app/components/ui/select';
 import { useSupabase } from '@/app/context/SupabaseContext';
+import { useCheckPermission } from '@/app/hooks/useCheckPermission';
 import { branchService, Branch } from '@/app/services/branchService';
 
 // Global Current User - Change role to 'user' to test locked behavior
@@ -28,12 +29,13 @@ export const BranchSelector: React.FC<BranchSelectorProps> = ({
   className = '',
   disabled = false
 }) => {
-  const { companyId, branchId: contextBranchId, user, userRole } = useSupabase();
+  const { companyId, branchId: contextBranchId, user } = useSupabase();
+  const { canManageSettings } = useCheckPermission();
   const [branches, setBranches] = useState<Branch[]>([]);
   const [loading, setLoading] = useState(false);
-  
-  // CRITICAL FIX: Use actual userRole from Supabase, fallback to currentUser for compatibility
-  const isAdmin = userRole === 'admin' || userRole === 'Admin' || currentUser.role === 'admin';
+
+  // Permission-based: users with settings access can switch branch (was role === 'admin')
+  const isAdmin = canManageSettings || currentUser.role === 'admin';
   // STEP 4: Disabled if explicitly set OR if user is not admin
   const isBranchLocked = disabled || !isAdmin; // External disabled prop OR normal users = locked, Admin = can change
   

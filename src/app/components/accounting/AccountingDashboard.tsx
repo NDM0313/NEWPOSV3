@@ -114,9 +114,6 @@ export const AccountingDashboard = () => {
   const [departmentFilter, setDepartmentFilter] = useState<string>('all');
   const [statusFilter, setStatusFilter] = useState<string>('all');
 
-  // Role (from auth context in real app)
-  const userRole = 'Admin'; // Admin | User
-  
   // 🎯 Use real entries from AccountingContext
   const transactions = useMemo(() => {
     return accounting.entries;
@@ -246,7 +243,7 @@ export const AccountingDashboard = () => {
             <h1 className="text-2xl font-bold text-white">Accounting</h1>
             <p className="text-sm text-gray-400 mt-0.5">Financial transactions and reporting</p>
           </div>
-          {userRole === 'Admin' && activeTab === 'transactions' && (
+          {canAccessAccounting && activeTab === 'transactions' && (
             <Button 
               onClick={() => setAddEntryFlowOpen(true)}
               className="bg-blue-600 hover:bg-blue-500 text-white h-10 gap-2 shadow-lg shadow-blue-900/30"

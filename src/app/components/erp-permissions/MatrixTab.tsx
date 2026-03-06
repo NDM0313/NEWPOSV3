@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Crown, Shield, Briefcase, ShoppingCart, Info, ChevronDown, ChevronRight, Building2 } from 'lucide-react';
 import { toast } from 'sonner';
-import { permissionService, PERMISSION_MODULES, getActionsForModule, type EngineRole } from '@/app/services/permissionService';
+import { permissionService, PERMISSION_MODULES, getActionsForModule, type EngineRole, MODULES_WITH_VISIBILITY_SCOPE, VISIBILITY_SCOPE_ACTIONS } from '@/app/services/permissionService';
 import { branchService, type BranchAccessMode } from '@/app/services/branchService';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { cn } from '../ui/utils';
@@ -55,13 +55,11 @@ const ACTION_LABELS: Record<string, string> = {
   assign_permissions: 'Assign permissions',
 };
 
-const SALES_VIEW_SCOPES = ['view_own', 'view_branch', 'view_company'] as const;
-const SALES_ACTIONS = ['create', 'edit', 'delete'] as const;
-
-const SALES_SCOPE_CARDS: { value: (typeof SALES_VIEW_SCOPES)[number]; title: string; description: string }[] = [
-  { value: 'view_own', title: 'My sales only', description: 'Only records created by this user' },
-  { value: 'view_branch', title: 'Branch sales', description: 'All records inside assigned branch' },
-  { value: 'view_company', title: 'Company-wide', description: 'Full company sales access' },
+/** Visibility scope: mutually exclusive per module (OWN | BRANCH | COMPANY). */
+const VISIBILITY_SCOPE_CARDS: { value: string; title: string; description: string }[] = [
+  { value: 'view_own', title: 'Own sales only', description: 'Only records created by this user' },
+  { value: 'view_branch', title: 'Assigned branches', description: 'All records in user’s assigned branches' },
+  { value: 'view_company', title: 'Full company', description: 'Full company sales access' },
 ];
 
 export function MatrixTab() {
@@ -141,7 +139,7 @@ export function MatrixTab() {
     setSaving(true);
     try {
       if (enabled) {
-        const defaultAction = module === 'sales' ? 'view_own' : module === 'ledger' ? 'view_customer' : actions[0];
+        const defaultAction = (MODULES_WITH_VISIBILITY_SCOPE as readonly string[]).includes(module) ? 'view_own' : actions[0];
         await permissionService.setRolePermission(selectedRole, module, defaultAction, true);
         setPerms((prev) => {
           const rest = prev.filter((p) => !(p.module === module && p.action === defaultAction));
@@ -166,18 +164,18 @@ export function MatrixTab() {
     }
   };
 
-  const setSalesViewScope = async (scope: string) => {
+  const setVisibilityScope = async (module: string, scope: string) => {
     setSaving(true);
     try {
-      for (const a of SALES_VIEW_SCOPES) {
-        await permissionService.setRolePermission(selectedRole, 'sales', a, a === scope);
+      for (const a of VISIBILITY_SCOPE_ACTIONS) {
+        await permissionService.setRolePermission(selectedRole, module, a, a === scope);
       }
       setPerms((prev) => {
-        const rest = prev.filter((p) => !(p.module === 'sales' && SALES_VIEW_SCOPES.includes(p.action as (typeof SALES_VIEW_SCOPES)[number])));
-        const newScopes = SALES_VIEW_SCOPES.map((a) => ({ module: 'sales', action: a, allowed: a === scope }));
+        const rest = prev.filter((p) => !(p.module === module && (VISIBILITY_SCOPE_ACTIONS as readonly string[]).includes(p.action)));
+        const newScopes = [...VISIBILITY_SCOPE_ACTIONS].map((a) => ({ module, action: a, allowed: a === scope }));
         return [...rest, ...newScopes];
       });
-      toast.success('View scope updated');
+      toast.success('Visibility scope updated');
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Failed to save');
     } finally {
@@ -185,8 +183,8 @@ export function MatrixTab() {
     }
   };
 
-  const currentSalesViewScope = () => {
-    for (const s of SALES_VIEW_SCOPES) if (getAllowed('sales', s)) return s;
+  const getCurrentVisibilityScope = (module: string) => {
+    for (const s of VISIBILITY_SCOPE_ACTIONS) if (getAllowed(module, s)) return s;
     return 'view_own';
   };
 
@@ -292,18 +290,18 @@ export function MatrixTab() {
 
               {open && (
                 <div className="border-t border-gray-800 px-4 pb-4 pt-3">
-                  {module === 'sales' && (
+                  {(MODULES_WITH_VISIBILITY_SCOPE as readonly string[]).includes(module) && (
                     <div className="space-y-4">
                       <div>
-                        <Label className="text-gray-300 text-sm font-medium mb-2 block">Sales access level</Label>
+                        <Label className="text-gray-300 text-sm font-medium mb-2 block">Visibility (one scope)</Label>
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-2">
-                          {SALES_SCOPE_CARDS.map((card) => {
-                            const selected = currentSalesViewScope() === card.value;
+                          {VISIBILITY_SCOPE_CARDS.map((card) => {
+                            const selected = getCurrentVisibilityScope(module) === card.value;
                             return (
                               <button
                                 key={card.value}
                                 type="button"
-                                onClick={() => !saving && setSalesViewScope(card.value)}
+                                onClick={() => !saving && setVisibilityScope(module, card.value)}
                                 disabled={saving}
                                 className={cn(
                                   'rounded-lg border p-3 text-left transition-all',
@@ -324,16 +322,16 @@ export function MatrixTab() {
                       <div>
                         <Label className="text-gray-300 text-sm font-medium">Actions</Label>
                         <div className="mt-2 flex flex-wrap gap-6">
-                          {SALES_ACTIONS.map((action) => (
+                          {actions.filter((a) => (VISIBILITY_SCOPE_ACTIONS as readonly string[]).indexOf(a) < 0).map((action) => (
                             <div key={action} className="flex items-center gap-2">
                               <Checkbox
-                                id={`sales-${action}`}
-                                checked={getAllowed('sales', action)}
-                                onCheckedChange={(c) => setAllowed('sales', action, c === true)}
+                                id={`${module}-${action}`}
+                                checked={getAllowed(module, action)}
+                                onCheckedChange={(c) => setAllowed(module, action, c === true)}
                                 disabled={saving}
                               />
-                              <Label htmlFor={`sales-${action}`} className="text-gray-300 text-sm font-normal cursor-pointer capitalize">
-                                {action}
+                              <Label htmlFor={`${module}-${action}`} className="text-gray-300 text-sm font-normal cursor-pointer">
+                                {ACTION_LABELS[action] ?? action.replace(/_/g, ' ')}
                               </Label>
                             </div>
                           ))}
@@ -342,49 +340,7 @@ export function MatrixTab() {
                     </div>
                   )}
 
-                  {module === 'ledger' && (
-                    <div className="space-y-2">
-                      <Label className="text-gray-300 text-sm font-medium">Accounting access</Label>
-                      <div className="mt-2 flex flex-wrap gap-6">
-                        {['view_customer', 'view_supplier', 'view_full_accounting'].map((action) => (
-                          <div key={action} className="flex items-center gap-2">
-                            <Checkbox
-                              id={`ledger-${action}`}
-                              checked={getAllowed('ledger', action)}
-                              onCheckedChange={(c) => setAllowed('ledger', action, c === true)}
-                              disabled={saving}
-                            />
-                            <Label htmlFor={`ledger-${action}`} className="text-gray-300 text-sm font-normal cursor-pointer">
-                              {ACTION_LABELS[action] ?? action.replace(/_/g, ' ')}
-                            </Label>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {module === 'inventory' && (
-                    <div className="space-y-2">
-                      <Label className="text-gray-300 text-sm font-medium">Inventory access</Label>
-                      <div className="mt-2 flex flex-wrap gap-6">
-                        {['view', 'adjust', 'transfer'].map((action) => (
-                          <div key={action} className="flex items-center gap-2">
-                            <Checkbox
-                              id={`inventory-${action}`}
-                              checked={getAllowed('inventory', action)}
-                              onCheckedChange={(c) => setAllowed('inventory', action, c === true)}
-                              disabled={saving}
-                            />
-                            <Label htmlFor={`inventory-${action}`} className="text-gray-300 text-sm font-normal cursor-pointer">
-                              {ACTION_LABELS[action] ?? action}
-                            </Label>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {module !== 'sales' && module !== 'ledger' && module !== 'inventory' && (
+                  {!(MODULES_WITH_VISIBILITY_SCOPE as readonly string[]).includes(module) && (
                     <div className="space-y-2">
                       <Label className="text-gray-300 text-sm font-medium">Actions</Label>
                       <div className="mt-2 flex flex-wrap gap-6">

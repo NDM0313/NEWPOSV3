@@ -57,7 +57,7 @@ const MODULE_TITLES: Record<Screen, string> = {
 export default function App() {
   const responsive = useResponsive();
   const { online, status, setStatus } = useNetworkStatus();
-  const { hasPermission, hasBranchAccess, reload, isPermissionLoaded } = usePermissions();
+  const { hasPermission, hasBranchAccess, isModuleEnabled, reload, isPermissionLoaded } = usePermissions();
   const [authLoading, setAuthLoading] = useState(true);
   const [isBranchResolving, setIsBranchResolving] = useState(true);
   const [currentScreen, setCurrentScreen] = useState<Screen>('login');
@@ -309,13 +309,11 @@ export default function App() {
   };
 
   const canAccessScreen = (screen: Screen, branchId: string | null | undefined): boolean => {
+    if (!isModuleEnabled(screen)) return false;
     if (!FEATURE_MOBILE_PERMISSION_V2) return true;
     const module = getPermissionModuleForScreen(screen);
-    // login and branch-selection don't have permission modules, but are always accessible.
-    // others MUST have a mapping and permission to be accessible when V2 is on.
     if (!module) return screen === 'login' || screen === 'branch-selection';
     if (!hasPermission(`${module}.view`)) return false;
-    // 'default' = no branches configured; skip branch check so user can use app
     if (branchId && branchId !== 'all' && branchId !== 'default' && !hasBranchAccess(branchId)) return false;
     return true;
   };

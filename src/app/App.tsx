@@ -15,7 +15,6 @@ import { ProductsPage } from './components/products/ProductsPage';
 import { PurchaseList } from './components/purchases/PurchaseList';
 const AccountingDashboard = lazy(() => import('./components/accounting/AccountingDashboard').then(m => ({ default: m.AccountingDashboard })));
 const UserDashboard = lazy(() => import('./components/users/UserDashboard').then(m => ({ default: m.UserDashboard })));
-const RolesDashboard = lazy(() => import('./components/users/RolesDashboard').then(m => ({ default: m.RolesDashboard })));
 import { UserProfilePage } from './components/users/UserProfilePage';
 import { PurchasesPage } from './components/purchases/PurchasesPage';
 import { SalesPage } from './components/sales/SalesPage';
@@ -114,14 +113,14 @@ const AppContent = () => {
     );
   }
 
-  // Route protection based on module toggles
+  // Route protection: module toggles are company-wide and apply to all users/roles (Admin, Manager, Staff).
   if (currentView === 'pos' && !modules.posModuleEnabled) {
     return (
       <Layout>
         <div className="flex items-center justify-center h-full">
           <div className="text-center">
             <h2 className="text-2xl font-bold text-white mb-2">POS Module Disabled</h2>
-            <p className="text-gray-400">Please enable POS module in Settings to access this page.</p>
+            <p className="text-gray-400">This module is turned off for your business. It is hidden for all users and roles. Enable it in Settings → Module Toggles.</p>
           </div>
         </div>
       </Layout>
@@ -134,7 +133,7 @@ const AppContent = () => {
         <div className="flex items-center justify-center h-full">
           <div className="text-center">
             <h2 className="text-2xl font-bold text-white mb-2">Rental Module Disabled</h2>
-            <p className="text-gray-400">Please enable Rental module in Settings to access this page.</p>
+            <p className="text-gray-400">This module is turned off for your business. It is hidden for all users and roles. Enable it in Settings → Module Toggles.</p>
           </div>
         </div>
       </Layout>
@@ -147,14 +146,25 @@ const AppContent = () => {
         <div className="flex items-center justify-center h-full">
           <div className="text-center">
             <h2 className="text-2xl font-bold text-white mb-2">Studio Module Disabled</h2>
-            <p className="text-gray-400">Please enable Studio module in Settings to access this page.</p>
+            <p className="text-gray-400">This module is turned off for your business. It is hidden for all users and roles. Enable it in Settings → Module Toggles.</p>
           </div>
         </div>
       </Layout>
     );
   }
 
-  // Accounting is always available - single engine, no module toggle gate
+  if (currentView === 'accounting' && !modules.accountingModuleEnabled) {
+    return (
+      <Layout>
+        <div className="flex items-center justify-center h-full">
+          <div className="text-center">
+            <h2 className="text-2xl font-bold text-white mb-2">Accounting Module Disabled</h2>
+            <p className="text-gray-400">This module is turned off for your business. It is hidden for all users and roles. Enable it in Settings → Module Toggles.</p>
+          </div>
+        </div>
+      </Layout>
+    );
+  }
   if (currentView === 'pos') {
     return (
       <>
@@ -226,9 +236,10 @@ const AppContent = () => {
           <UserDashboard />
         </Suspense>
       )}
+      {/* Repointed: 'roles' now shows ERP Permissions (Roles tab lives there). Mock RolesDashboard removed from nav. */}
       {currentView === 'roles' && (
         <Suspense fallback={<div className="flex items-center justify-center p-12"><div className="animate-pulse text-gray-500">Loading...</div></div>}>
-          <RolesDashboard />
+          <ErpPermissionArchitecturePage />
         </Suspense>
       )}
       

@@ -179,3 +179,52 @@ export async function setMobileBarcodeScannerSettings(
   );
   return { error: error?.message ?? null };
 }
+
+// --- Module toggles (same as Web: modules_config table). Company-wide: apply to all users/roles in that business. ---
+
+export interface ModuleConfigRow {
+  company_id: string;
+  module_name: string;
+  is_enabled: boolean;
+}
+
+const MODULE_CONFIG_NAMES = ['rentals', 'studio', 'accounting', 'production', 'pos', 'combos'] as const;
+
+export interface ModuleToggles {
+  rentalModuleEnabled: boolean;
+  studioModuleEnabled: boolean;
+  accountingModuleEnabled: boolean;
+  posModuleEnabled: boolean;
+}
+
+const DEFAULT_MODULE_TOGGLES: ModuleToggles = {
+  rentalModuleEnabled: true,
+  studioModuleEnabled: true,
+  accountingModuleEnabled: true,
+  posModuleEnabled: true,
+};
+
+export async function getModuleConfigs(
+  companyId: string | null
+): Promise<{ data: ModuleToggles; error: string | null }> {
+  if (!isSupabaseConfigured || !companyId) {
+    return { data: DEFAULT_MODULE_TOGGLES, error: null };
+  }
+  const { data: rows, error } = await supabase
+    .from('modules_config')
+    .select('module_name, is_enabled')
+    .eq('company_id', companyId)
+    .in('module_name', [...MODULE_CONFIG_NAMES]);
+  if (error) return { data: DEFAULT_MODULE_TOGGLES, error: error.message };
+  const map = new Map<string, boolean>();
+  (rows || []).forEach((r: ModuleConfigRow) => map.set(r.module_name, r.is_enabled === true));
+  return {
+    data: {
+      rentalModuleEnabled: map.get('rentals') ?? true,
+      studioModuleEnabled: map.get('studio') ?? true,
+      accountingModuleEnabled: map.get('accounting') ?? true,
+      posModuleEnabled: map.get('pos') ?? true,
+    },
+    error: null,
+  };
+}

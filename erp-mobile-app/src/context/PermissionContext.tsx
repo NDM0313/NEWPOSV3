@@ -1,12 +1,15 @@
-import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
+import React, { createContext, useContext, useState, useCallback } from 'react';
 import * as permissionsApi from '../api/permissions';
+import { getModuleConfigs, type ModuleToggles } from '../api/settings';
 import { getBranches } from '../api/branches';
 import { FEATURE_MOBILE_PERMISSION_V2 } from '../config/featureFlags';
 import type { RolePermissionRow } from '../api/permissions';
+import type { Screen } from '../types';
 
 interface PermissionState {
   permissions: RolePermissionRow[];
   branchIds: string[];
+  moduleToggles: ModuleToggles;
   isPermissionLoaded: boolean;
   isAdminOrOwner: boolean;
   isOwner: boolean;
@@ -15,13 +18,31 @@ interface PermissionState {
 interface PermissionContextValue extends PermissionState {
   hasPermission: (module: string, action?: string) => boolean;
   hasBranchAccess: (branchId: string) => boolean;
+  /** Company Module Toggles (same as Web): apply to all users/roles in this business. If module is off, hidden for everyone. */
+  isModuleEnabled: (screenId: Screen) => boolean;
   /** profileId = public users.id for user_branches; companyId = fallback when user has no assigned branches (single-branch company). */
   reload: (userId: string, appRole: string, profileId?: string, companyId?: string) => Promise<void>;
 }
 
+const defaultModuleToggles: ModuleToggles = {
+  rentalModuleEnabled: true,
+  studioModuleEnabled: true,
+  accountingModuleEnabled: true,
+  posModuleEnabled: true,
+};
+
+/** When API fails or company not set: hide toggleable modules so Staff don't see POS/Rental etc. */
+const safeModuleTogglesWhenFail: ModuleToggles = {
+  rentalModuleEnabled: false,
+  studioModuleEnabled: false,
+  accountingModuleEnabled: false,
+  posModuleEnabled: false,
+};
+
 const defaultState: PermissionState = {
   permissions: [],
   branchIds: [],
+  moduleToggles: defaultModuleToggles,
   isPermissionLoaded: false,
   isAdminOrOwner: false,
   isOwner: false,
@@ -31,6 +52,7 @@ const PermissionContext = createContext<PermissionContextValue>({
   ...defaultState,
   hasPermission: () => false,
   hasBranchAccess: () => false,
+  isModuleEnabled: () => true,
   reload: async () => {},
 });
 
@@ -38,15 +60,25 @@ export function PermissionProvider({ children }: { children: React.ReactNode }) 
   const [state, setState] = useState<PermissionState>(defaultState);
 
   const reload = useCallback(async (userId: string, appRole: string, profileId?: string, companyId?: string) => {
+    const branchUserId = profileId ?? userId;
     if (!FEATURE_MOBILE_PERMISSION_V2) {
-      setState({ permissions: [], branchIds: [], isPermissionLoaded: true, isAdminOrOwner: true, isOwner: true });
+      const moduleRes = companyId ? await getModuleConfigs(companyId) : { data: null, error: new Error('No company') };
+      const toggles = (moduleRes.error || !moduleRes.data) ? safeModuleTogglesWhenFail : moduleRes.data;
+      setState({
+        permissions: [],
+        branchIds: [],
+        moduleToggles: toggles,
+        isPermissionLoaded: true,
+        isAdminOrOwner: true,
+        isOwner: true,
+      });
       return;
     }
-    const branchUserId = profileId ?? userId;
     try {
-      const [perms, userBranchIds] = await Promise.all([
+      const [perms, userBranchIds, moduleRes] = await Promise.all([
         permissionsApi.getRolePermissions(appRole),
         permissionsApi.getUserBranchIds(branchUserId),
+        companyId ? getModuleConfigs(companyId) : Promise.resolve({ data: null, error: new Error('No company') }),
       ]);
       let branchIds = userBranchIds;
       if (branchIds.length === 0 && companyId) {
@@ -58,17 +90,26 @@ export function PermissionProvider({ children }: { children: React.ReactNode }) 
       const r = (appRole || '').toLowerCase();
       const isAdminOrOwner = ['owner', 'admin', 'super admin', 'superadmin'].includes(r);
       const isOwner = r === 'owner';
-      
+      const moduleToggles = (moduleRes.error || !moduleRes.data) ? safeModuleTogglesWhenFail : moduleRes.data;
+
       setState({
         permissions: perms,
         branchIds,
+        moduleToggles,
         isPermissionLoaded: true,
         isAdminOrOwner,
         isOwner,
       });
     } catch (err) {
       console.error("[PermissionContext] Error loading permissions:", err);
-      setState({ permissions: [], branchIds: [], isPermissionLoaded: true, isAdminOrOwner: false, isOwner: false });
+      setState({
+        permissions: [],
+        branchIds: [],
+        moduleToggles: safeModuleTogglesWhenFail,
+        isPermissionLoaded: true,
+        isAdminOrOwner: false,
+        isOwner: false,
+      });
     }
   }, []);
 
@@ -98,12 +139,27 @@ export function PermissionProvider({ children }: { children: React.ReactNode }) 
     [state.isPermissionLoaded, state.branchIds, state.isAdminOrOwner]
   );
 
+  const isModuleEnabled = useCallback(
+    (screenId: Screen): boolean => {
+      const t = state.moduleToggles;
+      switch (screenId) {
+        case 'rental': return t.rentalModuleEnabled;
+        case 'studio': return t.studioModuleEnabled;
+        case 'pos': return t.posModuleEnabled;
+        case 'accounts': return t.accountingModuleEnabled;
+        default: return true;
+      }
+    },
+    [state.moduleToggles]
+  );
+
   return (
     <PermissionContext.Provider
       value={{
         ...state,
         hasPermission,
         hasBranchAccess,
+        isModuleEnabled,
         reload,
       }}
     >

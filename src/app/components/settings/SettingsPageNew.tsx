@@ -28,10 +28,8 @@ import { LeadTools } from './LeadTools';
 import { invoiceDocumentService } from '@/app/services/invoiceDocumentService';
 import type { InvoiceTemplate } from '@/app/types/invoiceDocument';
 import { getHealthDashboard, type ErpHealthRow } from '@/app/services/healthService';
-import { PermissionManagementPanel } from './PermissionManagementPanel';
-import { UserPermissionsTab } from './UserPermissionsTab';
-import { useFeatureFlagOptional } from '@/app/context/FeatureFlagContext';
 import { EmployeesTab } from './EmployeesTab';
+import { ErpPermissionArchitecturePage } from '@/app/components/erp-permissions/ErpPermissionArchitecturePage';
 
 function TemplateFormFields({
   template,
@@ -227,10 +225,9 @@ type SettingsTab =
   | 'printer'
   | 'invoiceTemplates'
   | 'users'
+  | 'rolesPermissions'
   | 'modules'
   | 'leadTools'
-  | 'permissions'
-  | 'userPermissions'
   | 'employees'
   | 'systemHealth'
   | 'data';
@@ -238,7 +235,6 @@ type SettingsTab =
 export const SettingsPageNew = () => {
   const settings = useSettings();
   const printer = usePrinterConfig();
-  const { permissionV2 } = useFeatureFlagOptional();
   const { companyId, refreshEnablePacking, userRole } = useSupabase();
   const isAdminOrOwner = (() => {
     if (!userRole) return false;
@@ -399,13 +395,6 @@ export const SettingsPageNew = () => {
       loadBranches();
     }
   }, [activeTab, loadBranches]);
-
-  // When Permission V2 is turned off and we're on User Permissions tab, switch to Permission Management
-  useEffect(() => {
-    if (!permissionV2 && activeTab === 'userPermissions') {
-      setActiveTab('permissions');
-    }
-  }, [permissionV2, activeTab]);
 
   // Load units when inventory tab is active (for Default Unit dropdown)
   useEffect(() => {
@@ -596,27 +585,33 @@ export const SettingsPageNew = () => {
     }
   };
 
-  const tabs = [
-    { id: 'company' as const, label: 'Company Info', icon: Building2 },
-    { id: 'branches' as const, label: 'Branch Management', icon: MapPin },
-    { id: 'pos' as const, label: 'POS Settings', icon: Store },
-    { id: 'sales' as const, label: 'Sales Settings', icon: ShoppingCart },
-    { id: 'purchase' as const, label: 'Purchase Settings', icon: ShoppingBag },
-    { id: 'inventory' as const, label: 'Inventory Settings', icon: Package },
-    { id: 'rental' as const, label: 'Rental Settings', icon: Shirt },
-    { id: 'accounting' as const, label: 'Accounting Settings', icon: Calculator },
-    { id: 'accounts' as const, label: 'Default Accounts', icon: CreditCard },
-    { id: 'numbering' as const, label: 'Numbering Rules', icon: Hash },
-    { id: 'printer' as const, label: 'Printer Configuration', icon: Printer },
-    { id: 'invoiceTemplates' as const, label: 'Invoice Templates', icon: FileText },
-    { id: 'users' as const, label: 'User Management', icon: UserCog },
-    ...(isAdminOrOwner ? [{ id: 'permissions' as const, label: 'Permission Management', icon: Shield }] : []),
-    { id: 'userPermissions' as const, label: 'User Permissions', icon: Users },
-    { id: 'employees' as const, label: 'Employees', icon: Briefcase },
-    { id: 'modules' as const, label: 'Module Toggles', icon: ToggleLeft },
-    { id: 'leadTools' as const, label: 'Lead Tools', icon: QrCode },
-    ...(isAdminOrOwner ? [{ id: 'systemHealth' as const, label: 'System Health', icon: Activity }] : []),
-    { id: 'data' as const, label: 'Data & Backup', icon: Download },
+  type TabEntry = { id: SettingsTab; label: string; icon: typeof Building2; group: 'settings' | 'access' | 'workforce' | 'system' };
+  const tabGroups: { title: string; key: TabEntry['group'] }[] = [
+    { title: 'Settings', key: 'settings' },
+    { title: 'Access Control', key: 'access' },
+    { title: 'Workforce', key: 'workforce' },
+    { title: 'System', key: 'system' },
+  ];
+  const tabs: TabEntry[] = [
+    { id: 'company', label: 'Company Info', icon: Building2, group: 'settings' },
+    { id: 'branches', label: 'Branch Management', icon: MapPin, group: 'settings' },
+    { id: 'pos', label: 'POS Settings', icon: Store, group: 'settings' },
+    { id: 'sales', label: 'Sales Settings', icon: ShoppingCart, group: 'settings' },
+    { id: 'purchase', label: 'Purchase Settings', icon: ShoppingBag, group: 'settings' },
+    { id: 'inventory', label: 'Inventory Settings', icon: Package, group: 'settings' },
+    { id: 'rental', label: 'Rental Settings', icon: Shirt, group: 'settings' },
+    { id: 'accounting', label: 'Accounting Settings', icon: Calculator, group: 'settings' },
+    { id: 'accounts', label: 'Default Accounts', icon: CreditCard, group: 'settings' },
+    { id: 'numbering', label: 'Numbering Rules', icon: Hash, group: 'settings' },
+    { id: 'printer', label: 'Printer Configuration', icon: Printer, group: 'settings' },
+    { id: 'invoiceTemplates', label: 'Invoice Templates', icon: FileText, group: 'settings' },
+    { id: 'leadTools', label: 'Lead Tools', icon: QrCode, group: 'settings' },
+    { id: 'users', label: 'Users', icon: UserCog, group: 'access' },
+    { id: 'rolesPermissions', label: 'Roles & Permissions', icon: Shield, group: 'access' },
+    { id: 'employees', label: 'Employees', icon: Briefcase, group: 'workforce' },
+    { id: 'modules', label: 'Module Toggles', icon: ToggleLeft, group: 'system' },
+    ...(isAdminOrOwner ? [{ id: 'systemHealth' as const, label: 'System Health', icon: Activity, group: 'system' as const }] : []),
+    { id: 'data', label: 'Data & Backup', icon: Download, group: 'system' },
   ];
 
   return (
@@ -642,23 +637,34 @@ export const SettingsPageNew = () => {
       </div>
 
       <div className="grid grid-cols-5 gap-6">
-        {/* Sidebar Navigation */}
-        <div className="col-span-1 space-y-2">
-          {tabs.map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={cn(
-                "w-full flex items-center gap-3 px-4 py-3 rounded-lg text-left transition-all",
-                activeTab === tab.id
-                  ? "bg-blue-600 text-white shadow-lg"
-                  : "text-gray-400 hover:bg-gray-800 hover:text-white"
-              )}
-            >
-              <tab.icon size={18} />
-              <span className="font-medium text-sm">{tab.label}</span>
-            </button>
-          ))}
+        {/* Sidebar Navigation (grouped) */}
+        <div className="col-span-1 space-y-4">
+          {tabGroups.map((grp) => {
+            const groupTabs = tabs.filter((t) => t.group === grp.key);
+            if (groupTabs.length === 0) return null;
+            return (
+              <div key={grp.key}>
+                <p className="px-3 mb-1.5 text-xs font-semibold text-gray-500 uppercase tracking-wider">{grp.title}</p>
+                <div className="space-y-1">
+                  {groupTabs.map((tab) => (
+                    <button
+                      key={tab.id}
+                      onClick={() => setActiveTab(tab.id)}
+                      className={cn(
+                        "w-full flex items-center gap-3 px-4 py-3 rounded-lg text-left transition-all",
+                        activeTab === tab.id
+                          ? "bg-blue-600 text-white shadow-lg"
+                          : "text-gray-400 hover:bg-gray-800 hover:text-white"
+                      )}
+                    >
+                      <tab.icon size={18} />
+                      <span className="font-medium text-sm">{tab.label}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
         </div>
 
         {/* Content Area */}
@@ -2296,7 +2302,7 @@ export const SettingsPageNew = () => {
               </div>
             )}
 
-            {/* USER MANAGEMENT TAB */}
+            {/* USERS TAB (Access Control) */}
             {activeTab === 'users' && (
               <div className="space-y-6">
                 <div className="flex items-center justify-between mb-6">
@@ -2305,8 +2311,8 @@ export const SettingsPageNew = () => {
                       <UserCog className="text-indigo-500" size={24} />
                     </div>
                     <div>
-                      <h3 className="text-xl font-bold text-white">User Management</h3>
-                      <p className="text-sm text-gray-400">Manage system users and access</p>
+                      <h3 className="text-xl font-bold text-white">Users</h3>
+                      <p className="text-sm text-gray-400">Manage system users, roles, and branch access</p>
                     </div>
                   </div>
                   <Button 
@@ -2343,10 +2349,10 @@ export const SettingsPageNew = () => {
                     <table className="w-full">
                       <thead className="bg-gray-900 border-b border-gray-800">
                         <tr>
-                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Code</th>
                           <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">User</th>
-                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Email</th>
                           <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Role</th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Branches</th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Email</th>
                           <th className="px-4 py-3 text-center text-xs font-medium text-gray-400 uppercase tracking-wider">Status</th>
                           <th className="px-4 py-3 text-center text-xs font-medium text-gray-400 uppercase tracking-wider">Actions</th>
                         </tr>
@@ -2354,12 +2360,6 @@ export const SettingsPageNew = () => {
                       <tbody className="divide-y divide-gray-800">
                         {users.map((user) => (
                           <tr key={user.id} className="hover:bg-gray-900/50 transition-colors">
-                            {/* User Code */}
-                            <td className="px-4 py-4">
-                              <Badge className="bg-purple-500/20 text-purple-400 border-purple-500/30 font-mono text-xs">
-                                {user.code || user.user_code || '—'}
-                              </Badge>
-                            </td>
                             <td className="px-4 py-4">
                               <div className="flex items-center gap-3">
                                 <div className={cn(
@@ -2388,7 +2388,6 @@ export const SettingsPageNew = () => {
                                 </div>
                               </div>
                             </td>
-                            <td className="px-4 py-4 text-gray-400">{user.email}</td>
                             <td className="px-4 py-4">
                               <Badge className={cn(
                                 "text-xs",
@@ -2401,6 +2400,10 @@ export const SettingsPageNew = () => {
                                 {user.role ? user.role.charAt(0).toUpperCase() + user.role.slice(1) : 'Staff'}
                               </Badge>
                             </td>
+                            <td className="px-4 py-4 text-gray-400 text-sm">
+                              {(user as any).branch_names?.length ? (user as any).branch_names.join(', ') : '—'}
+                            </td>
+                            <td className="px-4 py-4 text-gray-400">{user.email}</td>
                             <td className="px-4 py-4 text-center">
                               <Badge className={cn(
                                 "text-xs",
@@ -2451,15 +2454,11 @@ export const SettingsPageNew = () => {
               </div>
             )}
 
-
-            {/* PERMISSION MANAGEMENT TAB (Admin/Owner only) */}
-            {activeTab === 'permissions' && (
-              <PermissionManagementPanel />
-            )}
-
-            {/* USER PERMISSIONS TAB (V2 – roles, matrix, branch access) */}
-            {activeTab === 'userPermissions' && (
-              <UserPermissionsTab />
+            {/* ROLES & PERMISSIONS TAB (Access Control – merged ERP Permissions + Matrix) */}
+            {activeTab === 'rolesPermissions' && (
+              <div className="space-y-6">
+                <ErpPermissionArchitecturePage />
+              </div>
             )}
 
             {/* MODULE TOGGLES TAB */}
@@ -2547,7 +2546,7 @@ export const SettingsPageNew = () => {
 
                 <div className="bg-blue-900/20 border border-blue-500/30 rounded-lg p-4 mt-6">
                   <p className="text-sm text-blue-300">
-                    ℹ️ <strong>Note:</strong> Disabling a module will hide it from the sidebar. Existing data will be preserved.
+                    ℹ️ <strong>Note:</strong> Disabling a module hides it from the sidebar and mobile app for <strong>all users and roles</strong> (Admin, Manager, Staff) in this business. Existing data is preserved.
                   </p>
                 </div>
               </div>

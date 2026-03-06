@@ -45,7 +45,7 @@ const MODULES: ModuleCard[] = [
 
 export function HomeScreen({ user, branch, companyId, onNavigate, onLogout }: HomeScreenProps) {
   const responsive = useResponsive();
-  const { hasPermission, isPermissionLoaded } = usePermissions();
+  const { hasPermission, isPermissionLoaded, isModuleEnabled } = usePermissions();
   const [showFeatures, setShowFeatures] = useState(false);
   const [todaySales, setTodaySales] = useState<number>(0);
   const [pendingAmount, setPendingAmount] = useState<number>(0);
@@ -61,12 +61,14 @@ export function HomeScreen({ user, branch, companyId, onNavigate, onLogout }: Ho
     );
   }
 
-  const enabled = FEATURE_MOBILE_PERMISSION_V2
-    ? MODULES.filter((m) => {
-        const code = getPermissionModuleForScreen(m.id);
-        return m.enabled && code != null && hasPermission(`${code}.view`);
-      })
-    : MODULES.filter((m) => m.enabled);
+  const enabled = MODULES.filter((m) => {
+    if (!isModuleEnabled(m.id)) return false;
+    if (FEATURE_MOBILE_PERMISSION_V2) {
+      const code = getPermissionModuleForScreen(m.id);
+      return code != null && hasPermission(`${code}.view`);
+    }
+    return true;
+  });
 
   useEffect(() => {
     if (!companyId || !branch?.id) return;

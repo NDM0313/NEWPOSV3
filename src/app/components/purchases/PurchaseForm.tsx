@@ -74,6 +74,7 @@ import { BranchSelector, currentUser } from '@/app/components/layout/BranchSelec
 import { PurchaseItemsSection } from './PurchaseItemsSection';
 import { PaymentAttachments, PaymentAttachment } from '../payments/PaymentAttachments';
 import { useSupabase } from '@/app/context/SupabaseContext';
+import { useCheckPermission } from '@/app/hooks/useCheckPermission';
 import { useSettings } from '@/app/context/SettingsContext';
 import { formatCurrency } from '@/app/utils/formatCurrency';
 import { contactService } from '@/app/services/contactService';
@@ -146,11 +147,12 @@ interface PurchaseFormProps {
 
 export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFormProps) => {
     // Supabase & Context
-    const { companyId, branchId: contextBranchId, userRole, supabaseClient, requiresBranchSelection } = useSupabase();
+    const { companyId, branchId: contextBranchId, supabaseClient, requiresBranchSelection } = useSupabase();
     const { inventorySettings, company } = useSettings();
+    const { canManageSettings } = useCheckPermission();
     const enablePacking = inventorySettings.enablePacking;
-    // CRITICAL FIX: Check if user is admin
-    const isAdmin = userRole === 'admin' || userRole === 'Admin';
+    // Permission-based: settings access allows branch selection (was role === 'admin')
+    const isAdmin = canManageSettings;
     const { createPurchase, updatePurchase } = usePurchases();
     const { openDrawer, activeDrawer, createdContactId, createdContactType, setCreatedContactId, openPackingModal } = useNavigation();
     const { generateDocumentNumber, generateDocumentNumberSafe } = useDocumentNumbering();

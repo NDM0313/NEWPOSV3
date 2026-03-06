@@ -1,11 +1,9 @@
 /**
- * Centralized permission utility for ERP.
- * Use everywhere - no UI-only checks. Backend must validate separately via RLS.
- *
- * Maps: module + action -> UserPermissions flags
- *
- * Backend: Use has_module_permission(module_name, permission_type) RPC in Supabase.
- * UI: Use checkPermission(permissions, module, action) or useCheckPermission() hook.
+ * ACTIVE PERMISSION ENGINE – DO NOT MODIFY
+ * Centralized permission utility for ERP. Used by all modules (Sales, Purchases, POS, Studio, Accounting, Inventory, etc.).
+ * permissions (UserPermissions) are derived from role_permissions in SettingsContext.
+ * Backend: has_permission(module, action) in DB; RLS uses same role_permissions.
+ * UI: checkPermission(permissions, module, action) or useCheckPermission() hook.
  */
 
 export type PermissionAction = 'view' | 'create' | 'edit' | 'delete' | 'cancel' | 'use';

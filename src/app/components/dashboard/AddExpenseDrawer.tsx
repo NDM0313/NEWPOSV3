@@ -38,6 +38,7 @@ import { userService } from "@/app/services/userService";
 import { toast } from "sonner";
 import type { ExpenseCategory } from "@/app/context/ExpenseContext";
 import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
+import { useCheckPermission } from '@/app/hooks/useCheckPermission';
 
 interface AddExpenseDrawerProps {
   isOpen: boolean;
@@ -60,6 +61,7 @@ const FALLBACK_CATEGORIES: { id: ExpenseCategory; name: string; slug: string; ic
 
 export const AddExpenseDrawer = ({ isOpen, onClose, onSuccess, expenseToEdit }: AddExpenseDrawerProps) => {
   const { formatCurrency } = useFormatCurrency();
+  const { canManageSettings } = useCheckPermission();
   const { companyId, branchId: contextBranchId, requiresBranchSelection } = useSupabase();
   const { createExpense, updateExpense, refreshExpenses } = useExpenses();
   const { accounts: accountingAccounts } = useAccounting();
@@ -289,7 +291,7 @@ export const AddExpenseDrawer = ({ isOpen, onClose, onSuccess, expenseToEdit }: 
                   <Building2 size={20} className="text-blue-400" />
                 </div>
                 <div>
-                  {userRole === "Admin" && branches.length > 0 ? (
+                  {canManageSettings && branches.length > 0 ? (
                     <Select value={selectedBranchId || branches[0]?.id} onValueChange={setSelectedBranchId}>
                       <SelectTrigger className="h-8 bg-gray-800 border-gray-700 text-white hover:bg-gray-700 w-[200px] focus:ring-0 focus:ring-offset-0">
                         <SelectValue placeholder="Select branch" />

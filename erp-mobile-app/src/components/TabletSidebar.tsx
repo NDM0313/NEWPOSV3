@@ -24,7 +24,7 @@ interface ModuleItem {
 }
 
 export function TabletSidebar({ user, branch, currentScreen, onNavigate, onLogout }: TabletSidebarProps) {
-  const { hasPermission, isPermissionLoaded } = usePermissions();
+  const { hasPermission, isPermissionLoaded, isModuleEnabled } = usePermissions();
 
   if (FEATURE_MOBILE_PERMISSION_V2 && !isPermissionLoaded) {
     return (
@@ -50,12 +50,14 @@ export function TabletSidebar({ user, branch, currentScreen, onNavigate, onLogou
     { id: 'settings', title: 'Settings', icon: <Settings size={20} />, color: '#6B7280', enabled: true },
   ];
 
-  const enabled = FEATURE_MOBILE_PERMISSION_V2
-    ? modules.filter((m) => {
-        const code = getPermissionModuleForScreen(m.id);
-        return m.enabled && code != null && hasPermission(`${code}.view`);
-      })
-    : modules.filter((m) => m.enabled);
+  const enabled = modules.filter((m) => {
+    if (!isModuleEnabled(m.id)) return false;
+    if (FEATURE_MOBILE_PERMISSION_V2) {
+      const code = getPermissionModuleForScreen(m.id);
+      return code != null && hasPermission(`${code}.view`);
+    }
+    return true;
+  });
 
   return (
     <div className="w-72 h-screen bg-[#1F2937] border-r border-[#374151] flex flex-col">

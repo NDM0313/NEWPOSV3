@@ -733,24 +733,25 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
               console.warn('[PERM_DEBUG] ⚠️ role "' + engineRole + '" not in DB. Maujood roles:', distinctRoles);
             }
             // ---------- end [PERM_DEBUG] ----------
-            const hasPurchase = rolePerms.some(x => x.module === 'purchase' && (x.action === 'view' || x.action === 'create') && x.allowed);
+            const visibilityScopeActions = ['view_own', 'view_branch', 'view_company'];
+            const hasPurchase = rolePerms.some(x => x.module === 'purchase' && (visibilityScopeActions.includes(x.action) || x.action === 'create') && x.allowed);
             const hasPos = rolePerms.some(x => x.module === 'pos' && (x.action === 'use' || x.action === 'view') && x.allowed);
-            const hasStudio = rolePerms.some(x => x.module === 'studio' && ['view', 'create', 'edit', 'delete'].includes(x.action) && x.allowed);
-            const hasRentals = rolePerms.some(x => x.module === 'rentals' && (x.action === 'view' || x.action === 'create') && x.allowed);
-            const hasSalesView = rolePerms.some(x => x.module === 'sales' && ['view_own', 'view_branch', 'view_company'].includes(x.action) && x.allowed);
+            const hasStudio = rolePerms.some(x => x.module === 'studio' && (visibilityScopeActions.includes(x.action) || ['view', 'create', 'edit', 'delete'].includes(x.action)) && x.allowed);
+            const hasRentals = rolePerms.some(x => x.module === 'rentals' && (visibilityScopeActions.includes(x.action) || x.action === 'create') && x.allowed);
+            const hasSalesView = rolePerms.some(x => x.module === 'sales' && visibilityScopeActions.includes(x.action) && x.allowed);
             const hasSalesCreate = rolePerms.some(x => x.module === 'sales' && x.action === 'create' && x.allowed);
             const hasSalesEdit = rolePerms.some(x => x.module === 'sales' && x.action === 'edit' && x.allowed);
             const hasSalesDelete = rolePerms.some(x => x.module === 'sales' && x.action === 'delete' && x.allowed);
             const hasReportsView = rolePerms.some(x => x.module === 'reports' && x.action === 'view' && x.allowed);
             // Accounting (UI) = ledger in DB. Show full Accounting only for view_full_accounting or view_supplier; view_customer alone = customer ledger only, not full module.
-            const hasAccountingVisibility = rolePerms.some(x => x.module === 'ledger' && (x.action === 'view_full_accounting' || x.action === 'view_supplier') && x.allowed);
-            const hasInventory = rolePerms.some(x => x.module === 'inventory' && x.action === 'view' && x.allowed);
-            const hasContacts = rolePerms.some(x => x.module === 'contacts' && x.action === 'view' && x.allowed);
+            const hasAccountingVisibility = rolePerms.some(x => x.module === 'ledger' && (visibilityScopeActions.includes(x.action) || x.action === 'view_full_accounting' || x.action === 'view_supplier') && x.allowed);
+            const hasInventory = rolePerms.some(x => x.module === 'inventory' && (visibilityScopeActions.includes(x.action) || x.action === 'view') && x.allowed);
+            const hasContacts = rolePerms.some(x => x.module === 'contacts' && (visibilityScopeActions.includes(x.action) || x.action === 'create') && x.allowed);
             const hasContactsCreate = rolePerms.some(x => x.module === 'contacts' && x.action === 'create' && x.allowed);
             const hasContactsDelete = rolePerms.some(x => x.module === 'contacts' && x.action === 'delete' && x.allowed);
             const hasUsers = rolePerms.some(x => x.module === 'users' && (x.action === 'create' || x.action === 'edit' || x.action === 'delete' || x.action === 'assign_permissions') && x.allowed);
             const hasSettings = rolePerms.some(x => x.module === 'settings' && x.action === 'modify' && x.allowed);
-            const hasPaymentsReceive = rolePerms.some(x => x.module === 'payments' && x.action === 'receive' && x.allowed);
+            const hasPaymentsReceive = rolePerms.some(x => x.module === 'payments' && (visibilityScopeActions.includes(x.action) || x.action === 'receive') && x.allowed);
             const hasPaymentsEdit = rolePerms.some(x => x.module === 'payments' && x.action === 'edit' && x.allowed);
             const hasPurchaseEdit = rolePerms.some(x => x.module === 'purchase' && x.action === 'edit' && x.allowed);
             const hasPurchaseDelete = rolePerms.some(x => x.module === 'purchase' && x.action === 'delete' && x.allowed);

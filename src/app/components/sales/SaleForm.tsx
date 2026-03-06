@@ -100,6 +100,7 @@ import { PaymentAttachments, PaymentAttachment } from '../payments/PaymentAttach
 import { UnifiedPaymentDialog } from '@/app/components/shared/UnifiedPaymentDialog';
 import { uploadSaleAttachments } from '@/app/utils/uploadTransactionAttachments';
 import { useSupabase } from '@/app/context/SupabaseContext';
+import { useCheckPermission } from '@/app/hooks/useCheckPermission';
 import { useSettings } from '@/app/context/SettingsContext';
 import { formatCurrency, getCurrencySymbol } from '@/app/utils/formatCurrency';
 import { contactService } from '@/app/services/contactService';
@@ -171,13 +172,14 @@ interface SaleFormProps {
 export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
     // Supabase & Context
     const { companyId, branchId: contextBranchId, user, userRole, accessibleBranchIds, requiresBranchSelection } = useSupabase();
+    const { canManageSettings } = useCheckPermission();
     const { inventorySettings, loading: settingsLoading, company } = useSettings();
     const enablePacking = inventorySettings.enablePacking;
     const { createSale, updateSale } = useSales();
     const { openDrawer, closeDrawer, activeDrawer, createdContactId, createdContactType, setCreatedContactId, openPackingModal, setCurrentView, setSelectedStudioSaleId } = useNavigation();
     
-    // TASK 4 FIX - Check if user is admin
-    const isAdmin = userRole === 'admin' || userRole === 'Admin';
+    // Permission-based: settings access allows branch selection and full branch list (was role === 'admin')
+    const isAdmin = canManageSettings;
     
     // Data State
     const [customers, setCustomers] = useState<Array<{ id: number | string; name: string; dueBalance: number }>>([]);

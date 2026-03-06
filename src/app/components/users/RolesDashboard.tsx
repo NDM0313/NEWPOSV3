@@ -1,3 +1,11 @@
+/**
+ * EXPERIMENTAL / UNUSED – Safe to remove after verification.
+ * This page uses mock data (mockRoles, permissionCategories) and does NOT connect to
+ * role_permissions or permissionService. Production role management is in:
+ * - ERP Permissions (ErpPermissionArchitecturePage) → RolesTab, MatrixTab
+ * - Settings → User Permissions tab (UserPermissionsTab) or Permission Management (PermissionManagementPanel).
+ * Sidebar "Roles" links here; consider redirecting to erp-permissions or hiding this nav item.
+ */
 import React, { useState } from 'react';
 import { Plus, Shield, Users, Edit, Trash2, ChevronRight } from 'lucide-react';
 import { Button } from "../ui/button";
