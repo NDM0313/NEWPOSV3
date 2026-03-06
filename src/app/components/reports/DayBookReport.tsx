@@ -127,7 +127,7 @@ export const DayBookReport = () => {
   return (
     <div className="space-y-6 animate-in slide-in-from-bottom-2 duration-300">
       <ReportActions
-        title="Roznamcha (Day Book)"
+        title="Journal Day Book"
         onPrint={() => window.print()}
         onPdf={() => exportToPDF(exportData, 'DayBook')}
         onExcel={() => exportToExcel(exportData, 'DayBook')}

@@ -211,7 +211,8 @@ function SystemHealthPanel() {
   );
 }
 
-type SettingsTab =
+/** Content key used to render the right panel (maps main tab + sub-tab to legacy tab id) */
+type SettingsContentKey =
   | 'company'
   | 'branches'
   | 'pos'
@@ -232,6 +233,85 @@ type SettingsTab =
   | 'systemHealth'
   | 'data';
 
+type MainTab = 'general' | 'sales' | 'purchases' | 'inventory' | 'accounting' | 'system' | 'access' | 'workforce';
+
+const MAIN_TABS: { id: MainTab; label: string }[] = [
+  { id: 'general', label: 'General' },
+  { id: 'sales', label: 'Sales' },
+  { id: 'purchases', label: 'Purchases' },
+  { id: 'inventory', label: 'Inventory' },
+  { id: 'accounting', label: 'Accounting' },
+  { id: 'system', label: 'System' },
+  { id: 'access', label: 'Access' },
+  { id: 'workforce', label: 'Workforce' },
+];
+
+const SUB_TABS: Record<MainTab, { id: string; label: string }[]> = {
+  general: [
+    { id: 'company', label: 'Company' },
+    { id: 'branches', label: 'Branches' },
+  ],
+  sales: [
+    { id: 'pos', label: 'POS' },
+    { id: 'salesRules', label: 'Sales Rules' },
+    { id: 'invoiceTemplates', label: 'Invoice Templates' },
+  ],
+  purchases: [
+    { id: 'purchaseRules', label: 'Purchase Rules' },
+  ],
+  inventory: [
+    { id: 'general', label: 'General' },
+    { id: 'units', label: 'Units' },
+    { id: 'categories', label: 'Categories' },
+    { id: 'sub-categories', label: 'Sub-Categories' },
+    { id: 'brands', label: 'Brands' },
+  ],
+  accounting: [
+    { id: 'fiscalTax', label: 'Fiscal & Tax' },
+    { id: 'defaultAccounts', label: 'Default Accounts' },
+    { id: 'policies', label: 'Policies' },
+  ],
+  system: [
+    { id: 'documentsPrinting', label: 'Documents & Printing' },
+    { id: 'numbering', label: 'Numbering' },
+    { id: 'modules', label: 'Modules' },
+    { id: 'backup', label: 'Backup' },
+    { id: 'systemHealth', label: 'System Health' },
+    { id: 'rental', label: 'Rental' },
+    { id: 'leadTools', label: 'Lead Tools' },
+  ],
+  access: [
+    { id: 'users', label: 'Users' },
+    { id: 'rolesPermissions', label: 'Roles & Permissions' },
+  ],
+  workforce: [
+    { id: 'employees', label: 'Employees' },
+  ],
+};
+
+/** Maps (mainTab, subTabId) to content key for rendering */
+function getContentKey(mainTab: MainTab, subTabId: string): SettingsContentKey {
+  const map: Record<string, Record<string, SettingsContentKey>> = {
+    general: { company: 'company', branches: 'branches' },
+    sales: { pos: 'pos', salesRules: 'sales', invoiceTemplates: 'invoiceTemplates' },
+    purchases: { purchaseRules: 'purchase' },
+    inventory: { general: 'inventory', units: 'inventory', categories: 'inventory', 'sub-categories': 'inventory', brands: 'inventory' },
+    accounting: { fiscalTax: 'accounting', defaultAccounts: 'accounts', policies: 'accounting' },
+    system: {
+      documentsPrinting: 'printer',
+      numbering: 'numbering',
+      modules: 'modules',
+      backup: 'data',
+      systemHealth: 'systemHealth',
+      rental: 'rental',
+      leadTools: 'leadTools',
+    },
+    access: { users: 'users', rolesPermissions: 'rolesPermissions' },
+    workforce: { employees: 'employees' },
+  };
+  return map[mainTab]?.[subTabId] ?? 'company';
+}
+
 export const SettingsPageNew = () => {
   const settings = useSettings();
   const printer = usePrinterConfig();
@@ -242,8 +322,13 @@ export const SettingsPageNew = () => {
     return r === 'admin' || r === 'owner' || r === 'super admin' || r === 'superadmin';
   })();
   const accounting = useAccounting();
-  const [activeTab, setActiveTab] = useState<SettingsTab>('company');
+  const [mainTab, setMainTab] = useState<MainTab>('general');
+  const [activeSubTab, setActiveSubTab] = useState<string>('company');
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+
+  const subTabs = SUB_TABS[mainTab];
+  const effectiveSubTab = subTabs.some((t) => t.id === activeSubTab) ? activeSubTab : subTabs[0]?.id ?? '';
+  const contentKey: SettingsContentKey = getContentKey(mainTab, effectiveSubTab);
 
   // Branch edit dialog state (OLD - keeping for backward compatibility)
   const [isBranchDialogOpen, setIsBranchDialogOpen] = useState(false);
@@ -271,7 +356,6 @@ export const SettingsPageNew = () => {
   const [accountsForm, setAccountsForm] = useState(settings.defaultAccounts);
   const [numberingForm, setNumberingForm] = useState(settings.numberingRules);
   const [modulesForm, setModulesForm] = useState(settings.modules);
-  const [inventorySubTab, setInventorySubTab] = useState<InventoryMasterTab>('general');
   const [units, setUnits] = useState<{ id: string; name: string; short_code?: string }[]>([]);
 
   // Phase B: Invoice template settings (A4 & Thermal)
@@ -373,42 +457,42 @@ export const SettingsPageNew = () => {
 
   // Sync forms when switching tabs (show latest from DB)
   useEffect(() => {
-    if (activeTab === 'inventory') setInventoryForm(settings.inventorySettings);
-  }, [activeTab]);
+    if (contentKey === 'inventory') setInventoryForm(settings.inventorySettings);
+  }, [contentKey, settings.inventorySettings]);
   useEffect(() => {
-    if (activeTab === 'company') setCompanyForm(settings.company);
-  }, [activeTab, settings.company]);
+    if (contentKey === 'company') setCompanyForm(settings.company);
+  }, [contentKey, settings.company]);
 
   // Load users when users tab is active
   useEffect(() => {
-    if (activeTab === 'users') {
+    if (contentKey === 'users') {
       loadUsers();
     }
-    if (activeTab === 'invoiceTemplates') {
+    if (contentKey === 'invoiceTemplates') {
       loadInvoiceTemplates();
     }
-  }, [activeTab, loadUsers, loadInvoiceTemplates]);
+  }, [contentKey, loadUsers, loadInvoiceTemplates]);
 
   // Load branches when branches tab is active
   useEffect(() => {
-    if (activeTab === 'branches') {
+    if (contentKey === 'branches') {
       loadBranches();
     }
-  }, [activeTab, loadBranches]);
+  }, [contentKey, loadBranches]);
 
   // Load units when inventory tab is active (for Default Unit dropdown)
   useEffect(() => {
-    if (activeTab === 'inventory' && companyId) {
+    if (contentKey === 'inventory' && companyId) {
       unitService.getAll(companyId, { includeInactive: false }).then((list) => {
         setUnits(list || []);
       }).catch(() => setUnits([]));
     }
-  }, [activeTab, companyId]);
+  }, [contentKey, companyId]);
 
   // 🔧 FIX: Auto-select default core accounts if not already set
   // This runs when accounts tab is opened and accounts are loaded
   useEffect(() => {
-    if (activeTab === 'accounts' && accounting.accounts.length > 0) {
+    if (contentKey === 'accounts' && accounting.accounts.length > 0) {
       setAccountsForm(prev => {
         // Check if any default account needs to be auto-selected
         const cashMethod = prev.paymentMethods.find(p => p.method === 'Cash');
@@ -465,12 +549,12 @@ export const SettingsPageNew = () => {
         return { ...prev, paymentMethods: updatedMethods };
       });
     }
-  }, [activeTab, accounting.accounts.length]); // Only depend on accounts length to avoid infinite loops
+  }, [contentKey, accounting.accounts.length]); // Only depend on accounts length to avoid infinite loops
 
   // Listen for userCreated event - Real-time update
   useEffect(() => {
     const handleUserCreated = () => {
-      if (activeTab === 'users') {
+      if (contentKey === 'users') {
         loadUsers();
       }
     };
@@ -479,7 +563,7 @@ export const SettingsPageNew = () => {
     return () => {
       window.removeEventListener('userCreated', handleUserCreated);
     };
-  }, [activeTab, loadUsers]);
+  }, [contentKey, loadUsers]);
 
   // Handle branch edit (using new modal) – pass default account IDs so modal can prefill
   const handleEditBranch = (branch: BranchSettings) => {
@@ -543,7 +627,7 @@ export const SettingsPageNew = () => {
 
   const handleSave = async () => {
     try {
-      switch(activeTab) {
+      switch (contentKey) {
         case 'company':
           await settings.updateCompanySettings(companyForm);
           break;
@@ -585,94 +669,78 @@ export const SettingsPageNew = () => {
     }
   };
 
-  type TabEntry = { id: SettingsTab; label: string; icon: typeof Building2; group: 'settings' | 'access' | 'workforce' | 'system' };
-  const tabGroups: { title: string; key: TabEntry['group'] }[] = [
-    { title: 'Settings', key: 'settings' },
-    { title: 'Access Control', key: 'access' },
-    { title: 'Workforce', key: 'workforce' },
-    { title: 'System', key: 'system' },
-  ];
-  const tabs: TabEntry[] = [
-    { id: 'company', label: 'Company Info', icon: Building2, group: 'settings' },
-    { id: 'branches', label: 'Branch Management', icon: MapPin, group: 'settings' },
-    { id: 'pos', label: 'POS Settings', icon: Store, group: 'settings' },
-    { id: 'sales', label: 'Sales Settings', icon: ShoppingCart, group: 'settings' },
-    { id: 'purchase', label: 'Purchase Settings', icon: ShoppingBag, group: 'settings' },
-    { id: 'inventory', label: 'Inventory Settings', icon: Package, group: 'settings' },
-    { id: 'rental', label: 'Rental Settings', icon: Shirt, group: 'settings' },
-    { id: 'accounting', label: 'Accounting Settings', icon: Calculator, group: 'settings' },
-    { id: 'accounts', label: 'Default Accounts', icon: CreditCard, group: 'settings' },
-    { id: 'numbering', label: 'Numbering Rules', icon: Hash, group: 'settings' },
-    { id: 'printer', label: 'Printer Configuration', icon: Printer, group: 'settings' },
-    { id: 'invoiceTemplates', label: 'Invoice Templates', icon: FileText, group: 'settings' },
-    { id: 'leadTools', label: 'Lead Tools', icon: QrCode, group: 'settings' },
-    { id: 'users', label: 'Users', icon: UserCog, group: 'access' },
-    { id: 'rolesPermissions', label: 'Roles & Permissions', icon: Shield, group: 'access' },
-    { id: 'employees', label: 'Employees', icon: Briefcase, group: 'workforce' },
-    { id: 'modules', label: 'Module Toggles', icon: ToggleLeft, group: 'system' },
-    ...(isAdminOrOwner ? [{ id: 'systemHealth' as const, label: 'System Health', icon: Activity, group: 'system' as const }] : []),
-    { id: 'data', label: 'Data & Backup', icon: Download, group: 'system' },
-  ];
+  const visibleSystemSubTabs = isAdminOrOwner
+    ? SUB_TABS.system
+    : SUB_TABS.system.filter((t) => t.id !== 'systemHealth');
 
   return (
-    <div className="space-y-6 animate-in fade-in duration-500">
-      {/* Header */}
-      <div className="flex justify-between items-start border-b border-gray-800 pb-4">
-        <div>
-          <h2 className="text-3xl font-bold text-white tracking-tight flex items-center gap-3">
-            <SettingsIcon size={32} className="text-blue-500" />
-            System Settings
-          </h2>
-          <p className="text-gray-400 mt-1">Configure your ERP system defaults and preferences.</p>
+    <div className="min-h-screen bg-gray-950 text-white animate-in fade-in duration-500">
+      {/* HEADER – sticky, max-width container */}
+      <div className="sticky top-0 z-30 border-b border-gray-800 bg-gray-950">
+        <div className="max-w-6xl mx-auto px-6 py-4">
+          <div className="flex justify-between items-start">
+            <div>
+              <h1 className="text-xl font-semibold text-white">Settings</h1>
+              <p className="text-sm text-gray-400 mt-0.5">
+                Configure your ERP defaults and preferences
+              </p>
+            </div>
+            {hasUnsavedChanges && (
+              <Button
+                onClick={handleSave}
+                className="bg-green-600 hover:bg-green-500 text-white gap-2 shadow-lg shrink-0"
+              >
+                <Save size={16} /> Save Changes
+              </Button>
+            )}
+          </div>
+
+          {/* MAIN TABS – Stripe/Shopify style */}
+          <div className="flex gap-6 mt-4 text-sm overflow-x-auto pb-px">
+            {MAIN_TABS.map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => {
+                  setMainTab(tab.id);
+                  setActiveSubTab(SUB_TABS[tab.id][0]?.id ?? '');
+                }}
+                className={cn(
+                  'shrink-0 pb-1.5 font-medium transition-colors',
+                  mainTab === tab.id
+                    ? 'text-white border-b-2 border-blue-500'
+                    : 'text-gray-400 hover:text-white'
+                )}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+
+          {/* SUB TABS */}
+          <div className="flex gap-3 mt-4 overflow-x-auto">
+            {(mainTab === 'system' ? visibleSystemSubTabs : subTabs).map((st) => (
+              <button
+                key={st.id}
+                onClick={() => setActiveSubTab(st.id)}
+                className={cn(
+                  'shrink-0 px-3 py-1.5 rounded-md text-[13px] font-medium transition-colors',
+                  effectiveSubTab === st.id
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-gray-900 text-gray-400 hover:text-white'
+                )}
+              >
+                {st.label}
+              </button>
+            ))}
+          </div>
         </div>
-        
-        {hasUnsavedChanges && (
-          <Button 
-            onClick={handleSave}
-            className="bg-green-600 hover:bg-green-500 text-white gap-2 shadow-lg"
-          >
-            <Save size={16} /> Save Changes
-          </Button>
-        )}
       </div>
 
-      <div className="grid grid-cols-5 gap-6">
-        {/* Sidebar Navigation (grouped) */}
-        <div className="col-span-1 space-y-4">
-          {tabGroups.map((grp) => {
-            const groupTabs = tabs.filter((t) => t.group === grp.key);
-            if (groupTabs.length === 0) return null;
-            return (
-              <div key={grp.key}>
-                <p className="px-3 mb-1.5 text-xs font-semibold text-gray-500 uppercase tracking-wider">{grp.title}</p>
-                <div className="space-y-1">
-                  {groupTabs.map((tab) => (
-                    <button
-                      key={tab.id}
-                      onClick={() => setActiveTab(tab.id)}
-                      className={cn(
-                        "w-full flex items-center gap-3 px-4 py-3 rounded-lg text-left transition-all",
-                        activeTab === tab.id
-                          ? "bg-blue-600 text-white shadow-lg"
-                          : "text-gray-400 hover:bg-gray-800 hover:text-white"
-                      )}
-                    >
-                      <tab.icon size={18} />
-                      <span className="font-medium text-sm">{tab.label}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-
-        {/* Content Area */}
-        <div className="col-span-4">
-          <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-8">
-            
-            {/* COMPANY INFO TAB */}
-            {activeTab === 'company' && (
+      {/* CONTENT – max-width container, consistent spacing */}
+      <div className="max-w-6xl mx-auto px-6 py-8">
+        <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-6 space-y-8">
+          {/* COMPANY INFO */}
+          {contentKey === 'company' && (
               <div className="space-y-6">
                 <div className="flex items-center gap-3 mb-6">
                   <div className="p-3 bg-blue-500/10 rounded-lg">
@@ -684,7 +752,7 @@ export const SettingsPageNew = () => {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div>
                     <Label className="text-gray-300 mb-2 block">Business Name *</Label>
                     <Input 
@@ -771,7 +839,7 @@ export const SettingsPageNew = () => {
             )}
 
             {/* BRANCH MANAGEMENT TAB */}
-            {activeTab === 'branches' && (
+            {contentKey === 'branches' && (
               <div className="space-y-6">
                 <div className="flex items-center justify-between mb-6">
                   <div className="flex items-center gap-3">
@@ -828,7 +896,7 @@ export const SettingsPageNew = () => {
                         </Button>
                       </div>
 
-                      <div className="grid grid-cols-3 gap-3 mt-4">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 mt-4">
                         <div className="bg-gray-900 p-3 rounded-lg border border-gray-800">
                           <p className="text-xs text-gray-500 mb-1">Cash Account</p>
                           <p className="text-sm text-white font-medium">{branch.cashAccount}</p>
@@ -849,7 +917,7 @@ export const SettingsPageNew = () => {
             )}
 
             {/* POS SETTINGS TAB */}
-            {activeTab === 'pos' && (
+            {contentKey === 'pos' && (
               <div className="space-y-6">
                 <div className="flex items-center gap-3 mb-6">
                   <div className="p-3 bg-purple-500/10 rounded-lg">
@@ -861,7 +929,7 @@ export const SettingsPageNew = () => {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div>
                     <Label className="text-gray-300 mb-2 block">Default Cash Account</Label>
                     <Input
@@ -982,7 +1050,7 @@ export const SettingsPageNew = () => {
             )}
 
             {/* SALES SETTINGS TAB */}
-            {activeTab === 'sales' && (
+            {contentKey === 'sales' && (
               <div className="space-y-6">
                 <div className="flex items-center gap-3 mb-6">
                   <div className="p-3 bg-blue-500/10 rounded-lg">
@@ -994,7 +1062,7 @@ export const SettingsPageNew = () => {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div>
                     <Label className="text-gray-300 mb-2 block">Invoice Prefix</Label>
                     <Input
@@ -1103,7 +1171,7 @@ export const SettingsPageNew = () => {
             )}
 
             {/* PURCHASE SETTINGS TAB */}
-            {activeTab === 'purchase' && (
+            {contentKey === 'purchase' && (
               <div className="space-y-6">
                 <div className="flex items-center gap-3 mb-6">
                   <div className="p-3 bg-orange-500/10 rounded-lg">
@@ -1115,7 +1183,7 @@ export const SettingsPageNew = () => {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div>
                     <Label className="text-gray-300 mb-2 block">Supplier Payable Account</Label>
                     <Input
@@ -1208,7 +1276,7 @@ export const SettingsPageNew = () => {
             )}
 
             {/* INVENTORY SETTINGS TAB – General + Masters (Units, Categories, Sub-Categories, Brands) */}
-            {activeTab === 'inventory' && (
+            {contentKey === 'inventory' && (
               <div className="space-y-6">
                 <div className="flex items-center gap-3 mb-6">
                   <div className="p-3 bg-teal-500/10 rounded-lg">
@@ -1221,11 +1289,11 @@ export const SettingsPageNew = () => {
                 </div>
 
                 <InventoryMasters
-                  activeSubTab={inventorySubTab}
-                  onSubTabChange={setInventorySubTab}
+                  activeSubTab={(mainTab === 'inventory' ? effectiveSubTab : 'general') as InventoryMasterTab}
+                  onSubTabChange={(t) => setActiveSubTab(t)}
                   generalContent={
                     <>
-                      <div className="grid grid-cols-2 gap-6">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div>
                           <Label className="text-gray-300 mb-2 block">Low Stock Threshold</Label>
                           <Input
@@ -1383,7 +1451,7 @@ export const SettingsPageNew = () => {
             )}
 
             {/* RENTAL SETTINGS TAB */}
-            {activeTab === 'rental' && (
+            {contentKey === 'rental' && (
               <div className="space-y-6">
                 <div className="flex items-center gap-3 mb-6">
                   <div className="p-3 bg-pink-500/10 rounded-lg">
@@ -1395,7 +1463,7 @@ export const SettingsPageNew = () => {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div>
                     <Label className="text-gray-300 mb-2 block">Late Fee Per Day (Rs)</Label>
                     <Input
@@ -1520,7 +1588,7 @@ export const SettingsPageNew = () => {
             )}
 
             {/* ACCOUNTING SETTINGS TAB */}
-            {activeTab === 'accounting' && (
+            {contentKey === 'accounting' && (
               <div className="space-y-6">
                 <div className="flex items-center gap-3 mb-6">
                   <div className="p-3 bg-yellow-500/10 rounded-lg">
@@ -1532,7 +1600,7 @@ export const SettingsPageNew = () => {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div>
                     <Label className="text-gray-300 mb-2 block">Fiscal Year Start</Label>
                     <Input
@@ -1652,7 +1720,7 @@ export const SettingsPageNew = () => {
             )}
 
             {/* DEFAULT ACCOUNTS TAB */}
-            {activeTab === 'accounts' && (
+            {contentKey === 'accounts' && (
               <div className="space-y-6">
                 <div className="flex items-center gap-3 mb-6">
                   <div className="p-3 bg-green-500/10 rounded-lg">
@@ -1756,7 +1824,7 @@ export const SettingsPageNew = () => {
             )}
 
             {/* NUMBERING RULES TAB */}
-            {activeTab === 'numbering' && (
+            {contentKey === 'numbering' && (
               <div className="space-y-6">
                 <div className="flex items-center gap-3 mb-6">
                   <div className="p-3 bg-cyan-500/10 rounded-lg">
@@ -1774,7 +1842,7 @@ export const SettingsPageNew = () => {
                   </p>
                 </div>
 
-                <div className="grid grid-cols-2 gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   {/* Sales */}
                   <div className="bg-gray-950 p-5 rounded-lg border border-gray-800">
                     <div className="flex items-center gap-2 mb-4">
@@ -2139,7 +2207,7 @@ export const SettingsPageNew = () => {
             )}
 
             {/* PRINTER CONFIGURATION TAB */}
-            {activeTab === 'printer' && (
+            {contentKey === 'printer' && (
               <div className="space-y-6">
                 <div className="flex items-center gap-3 mb-6">
                   <div className="p-3 bg-slate-500/10 rounded-lg">
@@ -2214,7 +2282,7 @@ export const SettingsPageNew = () => {
             )}
 
             {/* PHASE B: INVOICE TEMPLATES TAB */}
-            {activeTab === 'invoiceTemplates' && (
+            {contentKey === 'invoiceTemplates' && (
               <div className="space-y-6">
                 <div className="flex items-center justify-between mb-6">
                   <div className="flex items-center gap-3">
@@ -2303,7 +2371,7 @@ export const SettingsPageNew = () => {
             )}
 
             {/* USERS TAB (Access Control) */}
-            {activeTab === 'users' && (
+            {contentKey === 'users' && (
               <div className="space-y-6">
                 <div className="flex items-center justify-between mb-6">
                   <div className="flex items-center gap-3">
@@ -2455,14 +2523,14 @@ export const SettingsPageNew = () => {
             )}
 
             {/* ROLES & PERMISSIONS TAB (Access Control – merged ERP Permissions + Matrix) */}
-            {activeTab === 'rolesPermissions' && (
+            {contentKey === 'rolesPermissions' && (
               <div className="space-y-6">
                 <ErpPermissionArchitecturePage />
               </div>
             )}
 
             {/* MODULE TOGGLES TAB */}
-            {activeTab === 'modules' && (
+            {contentKey === 'modules' && (
               <div className="space-y-6">
                 <div className="flex items-center gap-3 mb-6">
                   <div className="p-3 bg-lime-500/10 rounded-lg">
@@ -2553,7 +2621,7 @@ export const SettingsPageNew = () => {
             )}
 
             {/* LEAD TOOLS TAB */}
-            {activeTab === 'leadTools' && (
+            {contentKey === 'leadTools' && (
               <div className="space-y-6">
                 <div className="flex items-center gap-3 mb-6">
                   <div className="p-3 bg-blue-500/10 rounded-lg">
@@ -2569,7 +2637,7 @@ export const SettingsPageNew = () => {
             )}
 
             {/* SYSTEM HEALTH TAB (Admin/Owner only) */}
-            {activeTab === 'employees' && (
+            {contentKey === 'employees' && (
               <div className="space-y-6">
                 <div className="flex items-center gap-3 mb-6">
                   <div className="p-3 bg-blue-500/10 rounded-lg">
@@ -2584,12 +2652,12 @@ export const SettingsPageNew = () => {
               </div>
             )}
 
-            {activeTab === 'systemHealth' && (
+            {contentKey === 'systemHealth' && (
               <SystemHealthPanel />
             )}
 
             {/* DATA & BACKUP TAB */}
-            {activeTab === 'data' && (
+            {contentKey === 'data' && (
               <div className="space-y-6">
                 <div className="flex items-center gap-3 mb-6">
                   <div className="p-3 bg-emerald-500/10 rounded-lg">
@@ -2679,7 +2747,6 @@ export const SettingsPageNew = () => {
 
           </div>
         </div>
-      </div>
 
       {/* Branch Edit Dialog */}
       <Dialog open={isBranchDialogOpen} onOpenChange={setIsBranchDialogOpen}>
@@ -2692,7 +2759,7 @@ export const SettingsPageNew = () => {
           </DialogHeader>
 
           <div className="space-y-4 py-4">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <Label className="text-gray-300 mb-2 block">Branch Name *</Label>
                 <Input
@@ -2734,7 +2801,7 @@ export const SettingsPageNew = () => {
               />
             </div>
 
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
               <div>
                 <Label className="text-gray-300 mb-2 block">Cash Account</Label>
                 <Input

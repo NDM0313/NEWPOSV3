@@ -158,7 +158,7 @@ export const DateRangePicker: React.FC<DateRangePickerProps> = ({
           )}
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-auto p-0 bg-gray-900 border-gray-800" align="start">
+      <PopoverContent className="w-[335px] p-0 bg-gray-900 border-gray-800" align="start">
         <div className="flex">
           {/* Quick Presets */}
           <div className="border-r border-gray-800 p-3 space-y-1 min-w-[140px]">
