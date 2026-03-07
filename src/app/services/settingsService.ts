@@ -1,4 +1,6 @@
 import { supabase } from '@/lib/supabase';
+import { documentNumberService } from '@/app/services/documentNumberService';
+import type { ErpDocumentType } from '@/app/services/documentNumberService';
 
 // ============================================
 // 🎯 SETTINGS SERVICE
@@ -314,34 +316,104 @@ export const settingsService = {
     return data;
   },
 
-  // Increment document sequence and return next number
+  /** ERP Numbering Rules row for UI (from erp_document_sequences, current year, company-level branch). */
+  async getErpDocumentSequences(
+    companyId: string,
+    branchId?: string | null
+  ): Promise<{ document_type: string; prefix: string; last_number: number; padding: number; year_reset: boolean; branch_based: boolean }[]> {
+    const year = new Date().getFullYear();
+    const sentinel = '00000000-0000-0000-0000-000000000000';
+    let query = supabase
+      .from('erp_document_sequences')
+      .select('document_type, prefix, last_number, padding, year_reset, branch_based')
+      .eq('company_id', companyId)
+      .eq('year', year);
+    if (branchId && branchId !== 'all') {
+      query = query.eq('branch_id', branchId);
+    } else {
+      query = query.eq('branch_id', sentinel);
+    }
+    let result = await query.order('document_type');
+    if (result.error && (result.error.message?.includes('year_reset') || result.error.message?.includes('branch_based'))) {
+      result = await supabase
+        .from('erp_document_sequences')
+        .select('document_type, prefix, last_number, padding')
+        .eq('company_id', companyId)
+        .eq('year', year)
+        .eq('branch_id', sentinel)
+        .order('document_type');
+    }
+    const { data, error } = result;
+    if (error) return [];
+    return (data || []).map((r: any) => {
+      const p = (r.prefix || '').trim().replace(/-$/, '');
+      return {
+        document_type: r.document_type,
+        prefix: p,
+        last_number: Number(r.last_number ?? 0),
+        padding: Number(r.padding ?? 4),
+        year_reset: r.year_reset !== false,
+        branch_based: r.branch_based === true,
+      };
+    });
+  },
+
+  /** Update numbering rule in ERP engine (prefix, padding, year_reset, branch_based). last_number optional. */
+  async setErpDocumentSequence(
+    companyId: string,
+    branchId: string | null,
+    documentType: string,
+    prefix: string,
+    lastNumber?: number,
+    padding: number = 4,
+    yearReset: boolean = true,
+    branchBased: boolean = false
+  ): Promise<void> {
+    const year = new Date().getFullYear();
+    const branchUuid = branchId && branchId !== 'all' ? branchId : '00000000-0000-0000-0000-000000000000';
+    const prefixClean = (prefix || '').trim().replace(/-$/, '');
+    const payload: Record<string, unknown> = {
+      company_id: companyId,
+      branch_id: branchUuid,
+      document_type: documentType.toUpperCase(),
+      prefix: prefixClean,
+      year,
+      last_number: lastNumber != null ? lastNumber : 0,
+      padding,
+      year_reset: yearReset,
+      branch_based: branchBased,
+      updated_at: new Date().toISOString(),
+    };
+    const { error } = await supabase.from('erp_document_sequences').upsert(payload, {
+      onConflict: 'company_id,branch_id,document_type,year',
+    });
+    if (error) throw error;
+  },
+
+  // Increment document sequence and return next number. Tries ERP engine first for supported types.
   async getNextDocumentNumber(
     companyId: string,
     branchId: string | undefined,
     documentType: string
   ): Promise<string> {
-    // Get current sequence
+    const docType = documentType.toLowerCase();
+    const erpDocTypes = new Set(['sale', 'purchase', 'payment', 'expense', 'rental', 'studio', 'journal', 'job', 'pos']);
+    if (erpDocTypes.has(docType)) {
+      try {
+        return await documentNumberService.getNextDocumentNumber(companyId, branchId ?? null, docType as ErpDocumentType);
+      } catch (e) {
+        // Fallback to legacy document_sequences
+      }
+    }
+
     const sequence = await this.getDocumentSequence(companyId, branchId, documentType);
-    
     if (!sequence) {
       throw new Error(`Document sequence not found for ${documentType}`);
     }
 
-    // Increment: next number to use and to persist
     const nextNumber = sequence.current_number + 1;
     const padding = sequence.padding || 4;
-    
-    // Update DB so next call gets nextNumber+1
-    await this.setDocumentSequence(
-      companyId,
-      branchId,
-      documentType,
-      sequence.prefix,
-      nextNumber,
-      padding
-    );
-
-    // Return the new number (nextNumber), not the old current_number
+    await this.setDocumentSequence(companyId, branchId, documentType, sequence.prefix, nextNumber, padding);
     return `${sequence.prefix}${String(nextNumber).padStart(padding, '0')}`;
   },
 };

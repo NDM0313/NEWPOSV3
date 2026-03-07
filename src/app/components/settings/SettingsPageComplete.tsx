@@ -12,6 +12,9 @@ import { Switch } from "../ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
 import { cn } from "../ui/utils";
 import { useSettings } from '@/app/context/SettingsContext';
+import { NumberingRulesTable } from './NumberingRulesTable';
+import { NumberingMaintenanceTable } from './NumberingMaintenanceTable';
+import { NumberAuditTable } from './NumberAuditTable';
 import { toast } from 'sonner';
 
 type SettingsTab = 
@@ -44,6 +47,7 @@ export const SettingsPageComplete = () => {
   const [accountingForm, setAccountingForm] = useState(settings.accountingSettings);
   const [accountsForm, setAccountsForm] = useState(settings.defaultAccounts);
   const [numberingForm, setNumberingForm] = useState(settings.numberingRules);
+  const [numberingSubTab, setNumberingSubTab] = useState<'rules' | 'maintenance' | 'audit'>('rules');
   const [permissionsForm, setPermissionsForm] = useState(settings.currentUser);
   const [modulesForm, setModulesForm] = useState(settings.modules);
 
@@ -1066,8 +1070,45 @@ export const SettingsPageComplete = () => {
         )}
 
         {activeTab === 'numbering' && (
-          <div className="text-center text-gray-400 py-12">
-            <p>Numbering Rules settings (already implemented in SettingsPageNew)</p>
+          <div className="space-y-6">
+            <div className="flex items-center gap-3 mb-2">
+              <div className="p-3 bg-cyan-500/10 rounded-lg">
+                <Hash className="text-cyan-500" size={24} />
+              </div>
+              <div>
+                <h3 className="text-xl font-bold text-white">Numbering</h3>
+                <p className="text-sm text-gray-400">Rules, sequence sync, and audit log</p>
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-2 border-b border-gray-800 pb-4">
+              <Button
+                variant={numberingSubTab === 'rules' ? 'default' : 'ghost'}
+                size="sm"
+                className={numberingSubTab === 'rules' ? 'bg-cyan-600 hover:bg-cyan-500' : 'text-gray-400 hover:text-white'}
+                onClick={() => setNumberingSubTab('rules')}
+              >
+                Numbering Rules
+              </Button>
+              <Button
+                variant={numberingSubTab === 'maintenance' ? 'default' : 'ghost'}
+                size="sm"
+                className={numberingSubTab === 'maintenance' ? 'bg-cyan-600 hover:bg-cyan-500' : 'text-gray-400 hover:text-white'}
+                onClick={() => setNumberingSubTab('maintenance')}
+              >
+                Numbering Maintenance
+              </Button>
+              <Button
+                variant={numberingSubTab === 'audit' ? 'default' : 'ghost'}
+                size="sm"
+                className={numberingSubTab === 'audit' ? 'bg-cyan-600 hover:bg-cyan-500' : 'text-gray-400 hover:text-white'}
+                onClick={() => setNumberingSubTab('audit')}
+              >
+                Number Audit Log
+              </Button>
+            </div>
+            {numberingSubTab === 'rules' && <NumberingRulesTable />}
+            {numberingSubTab === 'maintenance' && <NumberingMaintenanceTable />}
+            {numberingSubTab === 'audit' && <NumberAuditTable />}
           </div>
         )}
 

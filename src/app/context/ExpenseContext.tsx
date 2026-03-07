@@ -4,7 +4,7 @@
 // Manages expenses with auto-numbering and accounting integration
 
 import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
-import { useDocumentNumbering } from '@/app/hooks/useDocumentNumbering';
+import { documentNumberService } from '@/app/services/documentNumberService';
 import { useAccounting } from '@/app/context/AccountingContext';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { expenseService, Expense as SupabaseExpense } from '@/app/services/expenseService';
@@ -100,7 +100,6 @@ export const useExpenses = () => {
 export const ExpenseProvider = ({ children }: { children: ReactNode }) => {
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [loading, setLoading] = useState(true);
-  const { generateDocumentNumber, incrementNextNumber } = useDocumentNumbering();
   const accounting = useAccounting();
   const { companyId, branchId, user, requiresBranchSelection } = useSupabase();
 
@@ -207,9 +206,9 @@ export const ExpenseProvider = ({ children }: { children: ReactNode }) => {
     }
 
     try {
-      // Generate expense number for display (DB may not have expense_no column)
-      const expenseNo = generateDocumentNumber('expense');
-      
+      // ERP Numbering Engine: atomic, duplicate-free
+      const expenseNo = await documentNumberService.getNextDocumentNumber(companyId, effectiveBranchId, 'expense');
+
       // Convert to Supabase format (expense_no = EXP-0001 style from document numbering)
       const supabaseExpense: Partial<SupabaseExpense> = {
         company_id: companyId,
@@ -228,10 +227,7 @@ export const ExpenseProvider = ({ children }: { children: ReactNode }) => {
 
       // Save to Supabase
       const result = await expenseService.createExpense(supabaseExpense);
-      
-      // Increment document number
-      incrementNextNumber('expense');
-      
+
       // Convert back to app format (use generated expenseNo if DB doesn't return expense_no)
       const newExpense = convertFromSupabaseExpense(result);
       if (!newExpense.expenseNo) (newExpense as { expenseNo: string }).expenseNo = expenseNo;

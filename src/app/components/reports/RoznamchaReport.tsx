@@ -126,7 +126,7 @@ export const RoznamchaReport = () => {
       {/* 1. FILTERS */}
       <div className="rounded-xl border border-gray-800 bg-gray-900/50 p-4">
         <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-3">Filters</h3>
-        <div className="flex flex-wrap items-center gap-4">
+        <div className="flex flex-nowrap justify-start items-start gap-[57px]">
           <div className="flex items-center gap-2">
             <span className="text-sm text-gray-400">Date Range</span>
             <DateRangePicker
@@ -286,7 +286,7 @@ export const RoznamchaReport = () => {
                         )}
                       </td>
                       <td className="px-4 py-3">
-                        <AccountBadge accountLabel={r.accountLabel} />
+                        <AccountBadge accountLabel={r.accountName ?? r.accountLabel} />
                       </td>
                       <td className="px-4 py-3 text-right font-mono text-green-400">
                         {r.cashIn > 0 ? r.cashIn.toLocaleString() : '—'}

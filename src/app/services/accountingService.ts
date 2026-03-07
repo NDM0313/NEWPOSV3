@@ -190,30 +190,17 @@ export const accountingService = {
         }
       }
 
-      // Filter entries: only include if purchase/sale/payment still exists
+      // Filter entries: only include if purchase/sale/payment still exists (no per-entry logging on load)
       const validEntries = data.filter((entry: any) => {
-        // Skip entries for deleted purchases
-        if (entry.reference_type === 'purchase' && entry.reference_id && !existingPurchases.has(entry.reference_id)) {
-          console.log(`[ACCOUNTING SERVICE] Skipping entry for deleted purchase: ${entry.reference_id}`);
-          return false;
-        }
-        
-        // Skip entries for deleted sales
-        if (entry.reference_type === 'sale' && entry.reference_id && !existingSales.has(entry.reference_id)) {
-          console.log(`[ACCOUNTING SERVICE] Skipping entry for deleted sale: ${entry.reference_id}`);
-          return false;
-        }
-        
-        // Skip payment entries for deleted purchases/sales
-        if (entry.reference_type === 'payment' && entry.reference_id && !validPayments.has(entry.reference_id)) {
-          console.log(`[ACCOUNTING SERVICE] Skipping payment entry for deleted purchase/sale: ${entry.reference_id}`);
-          return false;
-        }
-        
+        if (entry.reference_type === 'purchase' && entry.reference_id && !existingPurchases.has(entry.reference_id)) return false;
+        if (entry.reference_type === 'sale' && entry.reference_id && !existingSales.has(entry.reference_id)) return false;
+        if (entry.reference_type === 'payment' && entry.reference_id && !validPayments.has(entry.reference_id)) return false;
         return true;
       });
 
-      console.log(`[ACCOUNTING SERVICE] Filtered ${data.length} entries to ${validEntries.length} valid entries`);
+      if (import.meta.env?.DEV && validEntries.length !== data.length) {
+        console.log(`[ACCOUNTING SERVICE] Filtered ${data.length} entries to ${validEntries.length} valid entries`);
+      }
       
       return validEntries;
     } catch (error: any) {

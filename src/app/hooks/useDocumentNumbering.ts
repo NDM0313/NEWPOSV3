@@ -16,7 +16,7 @@
 import { useContext } from 'react';
 import { SettingsContext } from '@/app/context/SettingsContext';
 import { useSupabase } from '@/app/context/SupabaseContext';
-import { documentNumberService } from '@/app/services/documentNumberService';
+import { documentNumberService, type ErpDocumentType } from '@/app/services/documentNumberService';
 
 export type DocumentType =
   | 'invoice'
@@ -70,9 +70,21 @@ const DEFAULT_NUMBERING = {
   journalNextNumber: 1,
 };
 
+const DOC_TYPE_TO_ERP: Partial<Record<DocumentType, ErpDocumentType>> = {
+  invoice: 'sale',
+  purchase: 'purchase',
+  payment: 'payment',
+  expense: 'expense',
+  rental: 'rental',
+  studio: 'studio',
+  job: 'job',
+  journal: 'journal',
+  pos: 'pos',
+};
+
 export const useDocumentNumbering = () => {
   const settings = useContext(SettingsContext);
-  const { companyId } = useSupabase();
+  const { companyId, branchId } = useSupabase();
   const numbering = settings?.numberingRules ?? DEFAULT_NUMBERING;
 
   // Get numbering config for document type
@@ -216,12 +228,21 @@ export const useDocumentNumbering = () => {
       return generateDocumentNumber(type);
     }
 
-    // Product SKU: use atomic RPC so sequence stays correct and no duplicates
     if (type === 'production') {
       try {
         return await documentNumberService.getNextProductSKU(companyId, undefined);
       } catch (e) {
         console.warn('[DOCUMENT NUMBERING] getNextProductSKU failed, using fallback:', e);
+      }
+    }
+
+    const erpType = DOC_TYPE_TO_ERP[type];
+    if (erpType) {
+      try {
+        const next = await documentNumberService.getNextDocumentNumber(companyId, branchId ?? null, erpType);
+        return next;
+      } catch (e) {
+        // Fallback to legacy check loop
       }
     }
 

@@ -54,10 +54,21 @@ const MODULES_ACTIONS: Record<string, string[]> = {
 export const PERMISSION_MODULES = Object.keys(MODULES_ACTIONS);
 export const getActionsForModule = (module: string): string[] => MODULES_ACTIONS[module] ?? [];
 
+/** In-memory cache: load role_permissions once per role per session to avoid repeated DB calls. */
+const rolePermissionsCache = new Map<EngineRole, RolePermissionRow[]>();
+
+function invalidateRoleCache(role?: EngineRole) {
+  if (role) rolePermissionsCache.delete(role);
+  else rolePermissionsCache.clear();
+}
+
 /**
  * Fetch all role_permissions for a role (admin/owner only by RLS).
+ * Cached in memory so repeated checks (e.g. on every page) do not hit the DB.
  */
 export async function getRolePermissions(role: EngineRole): Promise<RolePermissionRow[]> {
+  const cached = rolePermissionsCache.get(role);
+  if (cached !== undefined) return cached;
   const { data, error } = await supabase
     .from('role_permissions')
     .select('role, module, action, allowed')
@@ -65,7 +76,9 @@ export async function getRolePermissions(role: EngineRole): Promise<RolePermissi
     .order('module')
     .order('action');
   if (error) throw error;
-  return (data ?? []) as RolePermissionRow[];
+  const rows = (data ?? []) as RolePermissionRow[];
+  rolePermissionsCache.set(role, rows);
+  return rows;
 }
 
 /**
@@ -97,6 +110,7 @@ export async function setRolePermission(
     { onConflict: 'role,module,action' }
   );
   if (error) throw error;
+  invalidateRoleCache(role);
 }
 
 /**

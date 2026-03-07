@@ -4,7 +4,7 @@
 // Manages purchases and supplier orders with auto-numbering
 
 import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
-import { useDocumentNumbering } from '@/app/hooks/useDocumentNumbering';
+import { documentNumberService } from '@/app/services/documentNumberService';
 import { useAccounting } from '@/app/context/AccountingContext';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { purchaseService, Purchase as SupabasePurchase, PurchaseItem as SupabasePurchaseItem } from '@/app/services/purchaseService';
@@ -214,7 +214,6 @@ export const convertFromSupabasePurchase = (supabasePurchase: any): Purchase => 
 export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
   const [purchases, setPurchases] = useState<Purchase[]>([]);
   const [loading, setLoading] = useState(true);
-  const { generateDocumentNumber, generateDocumentNumberSafe, incrementNextNumber } = useDocumentNumbering();
   const accounting = useAccounting();
   const { formatCurrency } = useFormatCurrency();
   const { companyId, branchId, user } = useSupabase();
@@ -260,18 +259,13 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
     }
 
     try {
-      // CRITICAL FIX: Use provided purchase number if available, otherwise generate collision-safe number
-      const purchaseNo = providedPurchaseNo || await generateDocumentNumberSafe('purchase');
-      
-      // Get branch_id: Use from purchaseData if provided, otherwise use context branchId
-      // CRITICAL: If context branchId is "all", we must have branchId in purchaseData
-      let finalBranchId = purchaseData.branchId || branchId;
-      
-      // Validate branch_id: Must be a valid UUID, not "all" or empty
+      const finalBranchId = purchaseData.branchId || branchId;
       if (!finalBranchId || finalBranchId === 'all' || finalBranchId.trim() === '') {
         throw new Error('Please select a specific branch. "All Branches" is not allowed for purchases.');
       }
-      
+      // ERP Numbering Engine: atomic, duplicate-free (no 409)
+      const purchaseNo = providedPurchaseNo ?? await documentNumberService.getNextDocumentNumber(companyId, finalBranchId, 'purchase');
+
       // Convert to Supabase format
       // Database enum: 'draft', 'ordered', 'received', 'final' (NO 'completed')
       // App status: 'draft', 'ordered', 'received', 'final', 'completed', 'cancelled'
@@ -373,10 +367,7 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
       });
       
       const result = await purchaseService.createPurchase(supabasePurchase, supabaseItems, charges);
-      
-      // Increment document number
-      incrementNextNumber('purchase');
-      
+
       // Convert back to app format
       const newPurchase = convertFromSupabasePurchase(result);
       
@@ -748,10 +739,7 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
           }
           
           if (paymentAccountId) {
-            // Generate payment reference number
-            const paymentRef = generateDocumentNumber('payment');
-            
-            // Record payment in payments table
+            // recordPayment uses ERP Numbering Engine (generate_document_number) for reference_number
             await purchaseService.recordPayment(
               newPurchase.id,
               newPurchase.paid,
@@ -759,9 +747,8 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
               paymentAccountId,
               companyId,
               finalBranchId,
-              paymentRef
+              undefined
             );
-            incrementNextNumber('payment');
             
             console.log('[PURCHASE CONTEXT] ✅ Initial payment recorded in payments table:', {
               purchaseId: newPurchase.id,

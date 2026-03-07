@@ -90,13 +90,17 @@ function CommandList({
     <CommandPrimitive.List
       data-slot="command-list"
       className={cn(
-        "max-h-[280px] scroll-py-1 overflow-x-hidden overflow-y-auto overscroll-behavior-contain",
+        "min-h-0 max-h-[280px] scroll-py-1 overflow-x-hidden overflow-y-auto overscroll-behavior-contain",
         "[&>*]:pointer-events-auto",
         className,
       )}
-      style={{ 
+      style={{
         scrollbarWidth: 'thin',
         scrollbarColor: '#4b5563 #1f2937'
+      }}
+      onWheel={(e) => {
+        // Allow scroll inside popover/dialog without propagating to parent
+        e.stopPropagation();
       }}
       {...props}
     />
@@ -127,7 +131,7 @@ function CommandGroup({
     <CommandPrimitive.Group
       data-slot="command-group"
       className={cn(
-        "text-foreground [&_[cmdk-group-heading]]:text-muted-foreground overflow-hidden p-1 [&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:py-1.5 [&_[cmdk-group-heading]]:text-xs [&_[cmdk-group-heading]]:font-medium",
+        "text-foreground [&_[cmdk-group-heading]]:text-muted-foreground overflow-visible p-1 [&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:py-1.5 [&_[cmdk-group-heading]]:text-xs [&_[cmdk-group-heading]]:font-medium",
         className,
       )}
       {...props}

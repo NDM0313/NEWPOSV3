@@ -30,6 +30,8 @@ import type { InvoiceTemplate } from '@/app/types/invoiceDocument';
 import { getHealthDashboard, type ErpHealthRow } from '@/app/services/healthService';
 import { EmployeesTab } from './EmployeesTab';
 import { ErpPermissionArchitecturePage } from '@/app/components/erp-permissions/ErpPermissionArchitecturePage';
+import { NumberingPanel } from './NumberingPanel';
+import type { NumberingInnerTab } from './NumberingPanel';
 
 function TemplateFormFields({
   template,
@@ -233,7 +235,7 @@ type SettingsContentKey =
   | 'systemHealth'
   | 'data';
 
-type MainTab = 'general' | 'sales' | 'purchases' | 'inventory' | 'accounting' | 'system' | 'access' | 'workforce';
+type MainTab = 'general' | 'sales' | 'purchases' | 'inventory' | 'accounting' | 'system' | 'access' | 'workforce' | 'numbering';
 
 const MAIN_TABS: { id: MainTab; label: string }[] = [
   { id: 'general', label: 'General' },
@@ -244,6 +246,7 @@ const MAIN_TABS: { id: MainTab; label: string }[] = [
   { id: 'system', label: 'System' },
   { id: 'access', label: 'Access' },
   { id: 'workforce', label: 'Workforce' },
+  { id: 'numbering', label: 'Numbering' },
 ];
 
 const SUB_TABS: Record<MainTab, { id: string; label: string }[]> = {
@@ -287,6 +290,11 @@ const SUB_TABS: Record<MainTab, { id: string; label: string }[]> = {
   workforce: [
     { id: 'employees', label: 'Employees' },
   ],
+  numbering: [
+    { id: 'rules', label: 'Numbering Rules' },
+    { id: 'maintenance', label: 'Maintenance' },
+    { id: 'audit', label: 'Audit Log' },
+  ],
 };
 
 /** Maps (mainTab, subTabId) to content key for rendering */
@@ -308,6 +316,7 @@ function getContentKey(mainTab: MainTab, subTabId: string): SettingsContentKey {
     },
     access: { users: 'users', rolesPermissions: 'rolesPermissions' },
     workforce: { employees: 'employees' },
+    numbering: { rules: 'numbering', maintenance: 'numbering', audit: 'numbering' },
   };
   return map[mainTab]?.[subTabId] ?? 'company';
 }
@@ -653,7 +662,7 @@ export const SettingsPageNew = () => {
           await settings.updateDefaultAccounts(accountsForm);
           break;
         case 'numbering':
-          await settings.updateNumberingRules(numberingForm);
+          // Numbering is saved via NumberingPanel → NumberingRulesTable "Save Rules" (erp_document_sequences)
           break;
         case 'modules':
           await settings.updateModules(modulesForm);
@@ -672,6 +681,10 @@ export const SettingsPageNew = () => {
   const visibleSystemSubTabs = isAdminOrOwner
     ? SUB_TABS.system
     : SUB_TABS.system.filter((t) => t.id !== 'systemHealth');
+
+  const visibleMainTabs = isAdminOrOwner
+    ? MAIN_TABS
+    : MAIN_TABS.filter((t) => t.id !== 'numbering');
 
   return (
     <div className="min-h-screen bg-gray-950 text-white animate-in fade-in duration-500">
@@ -695,9 +708,9 @@ export const SettingsPageNew = () => {
             )}
           </div>
 
-          {/* MAIN TABS – Stripe/Shopify style */}
+          {/* MAIN TABS – Stripe/Shopify style (Numbering only for Admin/Owner) */}
           <div className="flex gap-6 mt-4 text-sm overflow-x-auto pb-px">
-            {MAIN_TABS.map((tab) => (
+            {visibleMainTabs.map((tab) => (
               <button
                 key={tab.id}
                 onClick={() => {
@@ -1823,388 +1836,14 @@ export const SettingsPageNew = () => {
               </div>
             )}
 
-            {/* NUMBERING RULES TAB */}
+            {/* NUMBERING – Rules, Maintenance, Audit (Admin/Owner only) */}
             {contentKey === 'numbering' && (
-              <div className="space-y-6">
-                <div className="flex items-center gap-3 mb-6">
-                  <div className="p-3 bg-cyan-500/10 rounded-lg">
-                    <Hash className="text-cyan-500" size={24} />
-                  </div>
-                  <div>
-                    <h3 className="text-xl font-bold text-white">Numbering Rules</h3>
-                    <p className="text-sm text-gray-400">Configure auto-increment patterns for all modules</p>
-                  </div>
-                </div>
-
-                <div className="bg-amber-900/10 border border-amber-500/20 rounded-lg p-4 mb-6">
-                  <p className="text-sm text-amber-300">
-                    ⚠️ <strong>Warning:</strong> Changing numbering rules will only affect new entries. Existing records remain unchanged.
-                  </p>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  {/* Sales */}
-                  <div className="bg-gray-950 p-5 rounded-lg border border-gray-800">
-                    <div className="flex items-center gap-2 mb-4">
-                      <ShoppingCart size={18} className="text-blue-400" />
-                      <h4 className="text-white font-semibold">Sales Invoice</h4>
-                    </div>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <Label className="text-gray-400 text-xs mb-1 block">Prefix</Label>
-                        <Input 
-                          value={numberingForm.salePrefix}
-                          onChange={(e) => {
-                            setNumberingForm({ ...numberingForm, salePrefix: e.target.value });
-                            setHasUnsavedChanges(true);
-                          }}
-                          className="bg-gray-900 border-gray-700 text-white text-sm"
-                          placeholder="SAL-"
-                        />
-                      </div>
-                      <div>
-                        <Label className="text-gray-400 text-xs mb-1 block">Next #</Label>
-                        <Input 
-                          type="number"
-                          value={numberingForm.saleNextNumber || ''}
-                          onFocus={(e) => e.target.value === '0' && (e.target.value = '')}
-                          onChange={(e) => {
-                            setNumberingForm({ ...numberingForm, saleNextNumber: Number(e.target.value) || 0 });
-                            setHasUnsavedChanges(true);
-                          }}
-                          className="bg-gray-900 border-gray-700 text-white text-sm"
-                        />
-                      </div>
-                    </div>
-                    <p className="text-xs text-gray-500 mt-2">Preview: {numberingForm.salePrefix}{String(numberingForm.saleNextNumber).padStart(4, '0')}</p>
-                  </div>
-
-                  {/* Purchases – PUR */}
-                  <div className="bg-gray-950 p-5 rounded-lg border border-gray-800">
-                    <div className="flex items-center gap-2 mb-4">
-                      <ShoppingBag size={18} className="text-orange-400" />
-                      <h4 className="text-white font-semibold">Purchase (PUR)</h4>
-                    </div>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <Label className="text-gray-400 text-xs mb-1 block">Prefix</Label>
-                        <Input 
-                          value={numberingForm.purchasePrefix}
-                          onChange={(e) => {
-                            setNumberingForm({ ...numberingForm, purchasePrefix: e.target.value });
-                            setHasUnsavedChanges(true);
-                          }}
-                          className="bg-gray-900 border-gray-700 text-white text-sm"
-                          placeholder="PUR-"
-                        />
-                      </div>
-                      <div>
-                        <Label className="text-gray-400 text-xs mb-1 block">Next #</Label>
-                        <Input 
-                          type="number"
-                          value={numberingForm.purchaseNextNumber || ''}
-                          onFocus={(e) => e.target.value === '0' && (e.target.value = '')}
-                          onChange={(e) => {
-                            setNumberingForm({ ...numberingForm, purchaseNextNumber: Number(e.target.value) || 0 });
-                            setHasUnsavedChanges(true);
-                          }}
-                          className="bg-gray-900 border-gray-700 text-white text-sm"
-                        />
-                      </div>
-                    </div>
-                    <p className="text-xs text-gray-500 mt-2">Preview: {numberingForm.purchasePrefix}{String(numberingForm.purchaseNextNumber).padStart(4, '0')}</p>
-                  </div>
-
-                  {/* Rentals */}
-                  <div className="bg-gray-950 p-5 rounded-lg border border-gray-800">
-                    <div className="flex items-center gap-2 mb-4">
-                      <Shirt size={18} className="text-pink-400" />
-                      <h4 className="text-white font-semibold">Rental Booking</h4>
-                    </div>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <Label className="text-gray-400 text-xs mb-1 block">Prefix</Label>
-                        <Input 
-                          value={numberingForm.rentalPrefix}
-                          onChange={(e) => {
-                            setNumberingForm({ ...numberingForm, rentalPrefix: e.target.value });
-                            setHasUnsavedChanges(true);
-                          }}
-                          className="bg-gray-900 border-gray-700 text-white text-sm"
-                          placeholder="RNT-"
-                        />
-                      </div>
-                      <div>
-                        <Label className="text-gray-400 text-xs mb-1 block">Next #</Label>
-                        <Input 
-                          type="number"
-                          value={numberingForm.rentalNextNumber || ''}
-                          onFocus={(e) => e.target.value === '0' && (e.target.value = '')}
-                          onChange={(e) => {
-                            setNumberingForm({ ...numberingForm, rentalNextNumber: Number(e.target.value) || 0 });
-                            setHasUnsavedChanges(true);
-                          }}
-                          className="bg-gray-900 border-gray-700 text-white text-sm"
-                        />
-                      </div>
-                    </div>
-                    <p className="text-xs text-gray-500 mt-2">Preview: {numberingForm.rentalPrefix}{String(numberingForm.rentalNextNumber).padStart(4, '0')}</p>
-                  </div>
-
-                  {/* POS */}
-                  <div className="bg-gray-950 p-5 rounded-lg border border-gray-800">
-                    <div className="flex items-center gap-2 mb-4">
-                      <Store size={18} className="text-purple-400" />
-                      <h4 className="text-white font-semibold">POS Invoice</h4>
-                    </div>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <Label className="text-gray-400 text-xs mb-1 block">Prefix</Label>
-                        <Input 
-                          value={numberingForm.posPrefix}
-                          onChange={(e) => {
-                            setNumberingForm({ ...numberingForm, posPrefix: e.target.value });
-                            setHasUnsavedChanges(true);
-                          }}
-                          className="bg-gray-900 border-gray-700 text-white text-sm"
-                          placeholder="POS-"
-                        />
-                      </div>
-                      <div>
-                        <Label className="text-gray-400 text-xs mb-1 block">Next #</Label>
-                        <Input 
-                          type="number"
-                          value={numberingForm.posNextNumber || ''}
-                          onFocus={(e) => e.target.value === '0' && (e.target.value = '')}
-                          onChange={(e) => {
-                            setNumberingForm({ ...numberingForm, posNextNumber: Number(e.target.value) || 0 });
-                            setHasUnsavedChanges(true);
-                          }}
-                          className="bg-gray-900 border-gray-700 text-white text-sm"
-                        />
-                      </div>
-                    </div>
-                    <p className="text-xs text-gray-500 mt-2">Preview: {numberingForm.posPrefix}{String(numberingForm.posNextNumber).padStart(4, '0')}</p>
-                  </div>
-
-                  {/* Expenses */}
-                  <div className="bg-gray-950 p-5 rounded-lg border border-gray-800">
-                    <div className="flex items-center gap-2 mb-4">
-                      <CreditCard size={18} className="text-red-400" />
-                      <h4 className="text-white font-semibold">Expense Entry</h4>
-                    </div>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <Label className="text-gray-400 text-xs mb-1 block">Prefix</Label>
-                        <Input 
-                          value={numberingForm.expensePrefix}
-                          onChange={(e) => {
-                            setNumberingForm({ ...numberingForm, expensePrefix: e.target.value });
-                            setHasUnsavedChanges(true);
-                          }}
-                          className="bg-gray-900 border-gray-700 text-white text-sm"
-                          placeholder="EXP-"
-                        />
-                      </div>
-                      <div>
-                        <Label className="text-gray-400 text-xs mb-1 block">Next #</Label>
-                        <Input 
-                          type="number"
-                          value={numberingForm.expenseNextNumber || ''}
-                          onFocus={(e) => e.target.value === '0' && (e.target.value = '')}
-                          onChange={(e) => {
-                            setNumberingForm({ ...numberingForm, expenseNextNumber: Number(e.target.value) || 0 });
-                            setHasUnsavedChanges(true);
-                          }}
-                          className="bg-gray-900 border-gray-700 text-white text-sm"
-                        />
-                      </div>
-                    </div>
-                    <p className="text-xs text-gray-500 mt-2">Preview: {numberingForm.expensePrefix}{String(numberingForm.expenseNextNumber).padStart(4, '0')}</p>
-                  </div>
-
-                  {/* Products */}
-                  <div className="bg-gray-950 p-5 rounded-lg border border-gray-800">
-                    <div className="flex items-center gap-2 mb-4">
-                      <Package size={18} className="text-teal-400" />
-                      <h4 className="text-white font-semibold">Product SKU</h4>
-                    </div>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <Label className="text-gray-400 text-xs mb-1 block">Prefix</Label>
-                        <Input 
-                          value={numberingForm.productPrefix}
-                          onChange={(e) => {
-                            setNumberingForm({ ...numberingForm, productPrefix: e.target.value });
-                            setHasUnsavedChanges(true);
-                          }}
-                          className="bg-gray-900 border-gray-700 text-white text-sm"
-                          placeholder="PRD-"
-                        />
-                      </div>
-                      <div>
-                        <Label className="text-gray-400 text-xs mb-1 block">Next #</Label>
-                        <Input 
-                          type="number"
-                          value={numberingForm.productNextNumber || ''}
-                          onFocus={(e) => e.target.value === '0' && (e.target.value = '')}
-                          onChange={(e) => {
-                            setNumberingForm({ ...numberingForm, productNextNumber: Number(e.target.value) || 0 });
-                            setHasUnsavedChanges(true);
-                          }}
-                          className="bg-gray-900 border-gray-700 text-white text-sm"
-                        />
-                      </div>
-                    </div>
-                    <p className="text-xs text-gray-500 mt-2">Preview: {numberingForm.productPrefix}{String(numberingForm.productNextNumber).padStart(4, '0')}</p>
-                  </div>
-
-                  {/* Studio Sale – STD */}
-                  <div className="bg-gray-950 p-5 rounded-lg border border-gray-800">
-                    <div className="flex items-center gap-2 mb-4">
-                      <Package size={18} className="text-amber-400" />
-                      <h4 className="text-white font-semibold">Studio Sale (STD)</h4>
-                    </div>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <Label className="text-gray-400 text-xs mb-1 block">Prefix</Label>
-                        <Input 
-                          value={numberingForm.studioPrefix ?? 'STD-'}
-                          onChange={(e) => {
-                            setNumberingForm({ ...numberingForm, studioPrefix: e.target.value });
-                            setHasUnsavedChanges(true);
-                          }}
-                          className="bg-gray-900 border-gray-700 text-white text-sm"
-                          placeholder="STD-"
-                        />
-                      </div>
-                      <div>
-                        <Label className="text-gray-400 text-xs mb-1 block">Next #</Label>
-                        <Input 
-                          type="number"
-                          value={numberingForm.studioNextNumber ?? ''}
-                          onFocus={(e) => e.target.value === '0' && (e.target.value = '')}
-                          onChange={(e) => {
-                            setNumberingForm({ ...numberingForm, studioNextNumber: Number(e.target.value) || 0 });
-                            setHasUnsavedChanges(true);
-                          }}
-                          className="bg-gray-900 border-gray-700 text-white text-sm"
-                        />
-                      </div>
-                    </div>
-                    <p className="text-xs text-gray-500 mt-2">Preview: {(numberingForm.studioPrefix || 'STD-')}{String(numberingForm.studioNextNumber ?? 1).padStart(4, '0')}</p>
-                  </div>
-
-                  {/* Payment – PAY */}
-                  <div className="bg-gray-950 p-5 rounded-lg border border-gray-800">
-                    <div className="flex items-center gap-2 mb-4">
-                      <CreditCard size={18} className="text-emerald-400" />
-                      <h4 className="text-white font-semibold">Payment (PAY)</h4>
-                    </div>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <Label className="text-gray-400 text-xs mb-1 block">Prefix</Label>
-                        <Input 
-                          value={numberingForm.paymentPrefix ?? 'PAY-'}
-                          onChange={(e) => {
-                            setNumberingForm({ ...numberingForm, paymentPrefix: e.target.value });
-                            setHasUnsavedChanges(true);
-                          }}
-                          className="bg-gray-900 border-gray-700 text-white text-sm"
-                          placeholder="PAY-"
-                        />
-                      </div>
-                      <div>
-                        <Label className="text-gray-400 text-xs mb-1 block">Next #</Label>
-                        <Input 
-                          type="number"
-                          value={numberingForm.paymentNextNumber ?? ''}
-                          onFocus={(e) => e.target.value === '0' && (e.target.value = '')}
-                          onChange={(e) => {
-                            setNumberingForm({ ...numberingForm, paymentNextNumber: Number(e.target.value) || 0 });
-                            setHasUnsavedChanges(true);
-                          }}
-                          className="bg-gray-900 border-gray-700 text-white text-sm"
-                        />
-                      </div>
-                    </div>
-                    <p className="text-xs text-gray-500 mt-2">Preview: {(numberingForm.paymentPrefix || 'PAY-')}{String(numberingForm.paymentNextNumber ?? 1).padStart(4, '0')}</p>
-                  </div>
-
-                  {/* Job (Worker) – JOB */}
-                  <div className="bg-gray-950 p-5 rounded-lg border border-gray-800">
-                    <div className="flex items-center gap-2 mb-4">
-                      <Package size={18} className="text-sky-400" />
-                      <h4 className="text-white font-semibold">Job / Worker (JOB)</h4>
-                    </div>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <Label className="text-gray-400 text-xs mb-1 block">Prefix</Label>
-                        <Input 
-                          value={numberingForm.jobPrefix ?? 'JOB-'}
-                          onChange={(e) => {
-                            setNumberingForm({ ...numberingForm, jobPrefix: e.target.value });
-                            setHasUnsavedChanges(true);
-                          }}
-                          className="bg-gray-900 border-gray-700 text-white text-sm"
-                          placeholder="JOB-"
-                        />
-                      </div>
-                      <div>
-                        <Label className="text-gray-400 text-xs mb-1 block">Next #</Label>
-                        <Input 
-                          type="number"
-                          value={numberingForm.jobNextNumber ?? ''}
-                          onFocus={(e) => e.target.value === '0' && (e.target.value = '')}
-                          onChange={(e) => {
-                            setNumberingForm({ ...numberingForm, jobNextNumber: Number(e.target.value) || 0 });
-                            setHasUnsavedChanges(true);
-                          }}
-                          className="bg-gray-900 border-gray-700 text-white text-sm"
-                        />
-                      </div>
-                    </div>
-                    <p className="text-xs text-gray-500 mt-2">Preview: {(numberingForm.jobPrefix || 'JOB-')}{String(numberingForm.jobNextNumber ?? 1).padStart(4, '0')}</p>
-                  </div>
-
-                  {/* Journal – JV */}
-                  <div className="bg-gray-950 p-5 rounded-lg border border-gray-800">
-                    <div className="flex items-center gap-2 mb-4">
-                      <CreditCard size={18} className="text-violet-400" />
-                      <h4 className="text-white font-semibold">Journal (JV)</h4>
-                    </div>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <Label className="text-gray-400 text-xs mb-1 block">Prefix</Label>
-                        <Input 
-                          value={numberingForm.journalPrefix ?? 'JV-'}
-                          onChange={(e) => {
-                            setNumberingForm({ ...numberingForm, journalPrefix: e.target.value });
-                            setHasUnsavedChanges(true);
-                          }}
-                          className="bg-gray-900 border-gray-700 text-white text-sm"
-                          placeholder="JV-"
-                        />
-                      </div>
-                      <div>
-                        <Label className="text-gray-400 text-xs mb-1 block">Next #</Label>
-                        <Input 
-                          type="number"
-                          value={numberingForm.journalNextNumber ?? ''}
-                          onFocus={(e) => e.target.value === '0' && (e.target.value = '')}
-                          onChange={(e) => {
-                            setNumberingForm({ ...numberingForm, journalNextNumber: Number(e.target.value) || 0 });
-                            setHasUnsavedChanges(true);
-                          }}
-                          className="bg-gray-900 border-gray-700 text-white text-sm"
-                        />
-                      </div>
-                    </div>
-                    <p className="text-xs text-gray-500 mt-2">Preview: {(numberingForm.journalPrefix || 'JV-')}{String(numberingForm.journalNextNumber ?? 1).padStart(4, '0')}</p>
-                  </div>
-                </div>
-              </div>
+              <NumberingPanel
+                isAdminOrOwner={isAdminOrOwner}
+                activeSubTab={(effectiveSubTab === 'rules' || effectiveSubTab === 'maintenance' || effectiveSubTab === 'audit' ? effectiveSubTab : 'rules') as NumberingInnerTab}
+              />
             )}
+
 
             {/* PRINTER CONFIGURATION TAB */}
             {contentKey === 'printer' && (

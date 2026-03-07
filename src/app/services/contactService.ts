@@ -52,6 +52,31 @@ export const contactService = {
     return data;
   },
 
+  /**
+   * Get receivables/payables per contact in one RPC (avoids loading all sales + purchases).
+   * Returns map of contact_id -> { receivables, payables }. If RPC is missing, returns null (caller should fallback).
+   */
+  async getContactBalancesSummary(
+    companyId: string,
+    branchId?: string | null
+  ): Promise<Map<string, { receivables: number; payables: number }> | null> {
+    const { data, error } = await supabase.rpc('get_contact_balances_summary', {
+      p_company_id: companyId,
+      p_branch_id: branchId && branchId !== 'all' ? branchId : null,
+    });
+    if (error) return null;
+    const map = new Map<string, { receivables: number; payables: number }>();
+    (data ?? []).forEach((row: { contact_id: string; receivables?: number; payables?: number }) => {
+      if (row?.contact_id) {
+        map.set(row.contact_id, {
+          receivables: Number(row.receivables ?? 0) || 0,
+          payables: Number(row.payables ?? 0) || 0,
+        });
+      }
+    });
+    return map;
+  },
+
   // Get single contact
   async getContact(id: string) {
     const { data, error } = await supabase

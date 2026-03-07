@@ -530,7 +530,7 @@ const ContactFormContent = ({ onClose }: { onClose: () => void }) => {
       
       const contactData: Record<string, unknown> = {
         company_id: companyId,
-        type: primaryType === 'both' ? 'customer' : primaryType,
+        type: primaryType,
         name: (name || '').trim() || undefined,
         phone: (phone || '').trim() || undefined,
         email: (formData.get('email') as string)?.trim() || undefined,
@@ -674,23 +674,7 @@ const ContactFormContent = ({ onClose }: { onClose: () => void }) => {
         setCreatedContactId(contactId, contactTypeForFilter);
         console.log('[CONTACT FORM] Created contact ID stored:', contactId, 'Type:', contactTypeForFilter);
       }
-      
-      // If both customer and supplier selected, create a second record for supplier (if 'both' type not supported)
-      // Note: This creates duplicate records but maintains backward compatibility
-      if (contactRoles.customer && contactRoles.supplier && primaryType !== 'both') {
-        try {
-          const supplierData = {
-            ...contactData,
-            type: 'supplier' as const,
-            name: (formData.get('supplier-business-name') as string) || contactData.name,
-          };
-          await contactService.createContact(supplierData);
-        } catch (supplierError: any) {
-          // If supplier record creation fails, log but don't fail the whole operation
-          console.warn('[CONTACT FORM] Failed to create supplier record:', supplierError);
-        }
-      }
-      
+
       toast.success('Contact created successfully!');
       
       // CRITICAL FIX: If opened from Sale/Purchase, keep drawer open briefly to allow auto-select

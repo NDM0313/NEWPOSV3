@@ -336,6 +336,22 @@ export const PurchaseItemsSection: React.FC<PurchaseItemsSectionProps> = ({
                                     const displayColor = item.color ?? selectedVariationForDisplay?.color ?? '';
                                     const displayStock = item.stock ?? selectedVariationForDisplay?.stock ?? 0;
                                     const displayPrice = (item as PurchaseItem & { lastPurchasePrice?: number }).lastPurchasePrice ?? item.price;
+                                    // Human-readable variation name for main row (e.g. "BLUE / WHITE" or "Large" or from attributes)
+                                    const variationDisplayName = selectedVariationForDisplay
+                                        ? (() => {
+                                            const v = selectedVariationForDisplay as { size?: string; color?: string; attributes?: Record<string, unknown> };
+                                            const size = (v.size || '').toString().trim();
+                                            const color = (v.color || '').toString().trim();
+                                            if (size && color) return `${size} / ${color}`;
+                                            if (size) return size;
+                                            if (color) return color;
+                                            if (v.attributes && typeof v.attributes === 'object') {
+                                                const firstVal = Object.values(v.attributes).find((val): val is string => typeof val === 'string' && String(val).trim().length > 0);
+                                                if (firstVal) return String(firstVal).trim();
+                                            }
+                                            return 'Default';
+                                        })()
+                                        : '';
 
                                     return (
                                 <div key={item.id}>
@@ -355,7 +371,12 @@ export const PurchaseItemsSection: React.FC<PurchaseItemsSectionProps> = ({
                                         <div className="min-w-0">
                                             <div className="flex items-start">
                                                 <div className="flex-1 min-w-0">
-                                                    <div className="text-sm font-medium text-white leading-tight mb-0.5 truncate">{item.name}</div>
+                                                    <div className="text-sm font-medium text-white leading-tight mb-0.5 truncate">
+                                                        {item.name}
+                                                        {variationDisplayName && (
+                                                            <span className="text-blue-400 font-normal ml-1">· {variationDisplayName}</span>
+                                                        )}
+                                                    </div>
                                                     <div className="flex items-center gap-1 text-[11px] text-gray-500">
                                                         <span className="font-mono">{displaySku}</span>
                                                         {(displaySize || displayColor) ? (

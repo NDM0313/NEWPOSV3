@@ -1,5 +1,7 @@
 import { supabase } from '@/lib/supabase';
 import { activityLogService } from '@/app/services/activityLogService';
+import { documentNumberService } from '@/app/services/documentNumberService';
+import { generatePaymentReference } from '@/app/utils/paymentUtils';
 
 /** Enrich purchases with creator full_name. purchases.created_by = auth.users.id; resolve via users.auth_user_id. */
 async function enrichPurchasesWithCreatorNames(purchases: any[]): Promise<void> {
@@ -438,6 +440,11 @@ export const purchaseService = {
     }
   },
 
+  /** Cancel purchase (final/received): reverses stock, sets status=cancelled. */
+  async cancelPurchase(id: string, _options?: { reason?: string; performedBy?: string }) {
+    await this.updatePurchaseStatus(id, 'cancelled');
+  },
+
   // Update purchase status (when 'cancelled': create PURCHASE_CANCELLED stock reversals, then update status)
   async updatePurchaseStatus(id: string, status: Purchase['status']) {
     if (status === 'cancelled') {
@@ -824,8 +831,12 @@ export const purchaseService = {
       throw new Error('Payment account is required. Please select an account.');
     }
 
-    // Let DB trigger set reference_number to avoid duplicate key (payments_reference_number_unique).
-    // Client-provided referenceNumber is not used for insert.
+    let uniqueRef: string;
+    try {
+      uniqueRef = await documentNumberService.getNextDocumentNumber(companyId, validBranchId ?? null, 'payment');
+    } catch {
+      uniqueRef = generatePaymentReference(referenceNumber);
+    }
     const insertPayload: any = {
       company_id: companyId,
       branch_id: validBranchId,
@@ -836,6 +847,7 @@ export const purchaseService = {
       payment_method: enumPaymentMethod,
       payment_account_id: accountId,
       payment_date: new Date().toISOString().split('T')[0],
+      reference_number: uniqueRef,
     };
     if (options?.notes !== undefined && options.notes !== '') insertPayload.notes = options.notes;
     if (options?.attachments !== undefined && options.attachments != null) {

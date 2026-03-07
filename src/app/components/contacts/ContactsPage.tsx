@@ -57,7 +57,7 @@ interface Contact {
   uuid: string; // Supabase UUID
   name: string;
   code: string;
-  type: 'customer' | 'supplier' | 'worker';
+  type: 'customer' | 'supplier' | 'worker' | 'both';
   workerRole?: WorkerRole;
   email: string;
   phone: string;
@@ -111,7 +111,8 @@ export const ContactsPage = () => {
     const isWorker = supabaseContact.type === 'worker';
     const isSupplier = supabaseContact.type === 'supplier' || supabaseContact.type === 'both';
     const isCustomer = supabaseContact.type === 'customer' || supabaseContact.type === 'both';
-    let contactType: 'customer' | 'supplier' | 'worker' = isWorker ? 'worker' : isSupplier ? 'supplier' : 'customer';
+    const contactType: 'customer' | 'supplier' | 'worker' | 'both' =
+      supabaseContact.type === 'both' ? 'both' : isWorker ? 'worker' : isSupplier ? 'supplier' : 'customer';
 
     // Receivables: opening_balance + sales due (for customer or both)
     const contactSales = sales.filter(s =>
@@ -174,16 +175,15 @@ export const ContactsPage = () => {
     };
   }, []);
 
-  // Load contacts from Supabase (with timeout so we never hang on "Loading contacts...")
+  // Load contacts in two phases: (1) contacts list fast, (2) receivables/payables from sales/purchases
   const loadContacts = useCallback(async () => {
     if (!companyId) {
       setLoading(false);
       return;
     }
 
-    const timeoutMs = 20000;
+    const timeoutMs = 25000;
     let timeoutId: ReturnType<typeof setTimeout> | null = null;
-
     const timeoutPromise = new Promise<never>((_, reject) => {
       timeoutId = setTimeout(() => reject(new Error('Request timed out')), timeoutMs);
     });
@@ -191,20 +191,50 @@ export const ContactsPage = () => {
     try {
       setLoading(true);
 
-      const loadPromise = (async () => {
-        await contactService.ensureDefaultWalkingCustomerForCompany(companyId);
-        const contactsData = await contactService.getAllContacts(companyId);
+      await contactService.ensureDefaultWalkingCustomerForCompany(companyId);
+      const contactsData = await contactService.getAllContacts(companyId);
+      if (!contactsData?.length) {
+        setContacts([]);
+        setLoading(false);
+        if (timeoutId) clearTimeout(timeoutId);
+        return;
+      }
+
+      // Phase 1: show contacts immediately with opening balances only (no sales/purchases query yet)
+      const phase1Contacts: Contact[] = contactsData.map((c: any, index: number) =>
+        convertFromSupabaseContact(c, index, [], [])
+      );
+      setContacts(phase1Contacts);
+
+      // Phase 2: load balances via RPC (one call) or fallback to sales + purchases
+      const loadBalances = async () => {
+        const balanceMap = await contactService.getContactBalancesSummary(companyId, branchId === 'all' ? null : branchId).catch(() => null);
+        if (balanceMap && balanceMap.size > 0) {
+          const withBalances: Contact[] = phase1Contacts.map((contact) => {
+            const uuid = contact.uuid;
+            const bal = uuid ? balanceMap.get(uuid) : undefined;
+            if (!bal) return contact;
+            return {
+              ...contact,
+              receivables: bal.receivables,
+              payables: bal.payables,
+              netBalance: bal.receivables - bal.payables,
+            };
+          });
+          setContacts(withBalances);
+          return;
+        }
         const [salesData, purchasesData] = await Promise.all([
           saleService.getAllSales(companyId, branchId === 'all' ? undefined : branchId || undefined).catch(() => []),
           purchaseService.getAllPurchases(companyId, branchId === 'all' ? undefined : branchId || undefined).catch(() => []),
         ]);
-        const convertedContacts: Contact[] = contactsData.map((c: any, index: number) =>
+        const withBalances: Contact[] = contactsData.map((c: any, index: number) =>
           convertFromSupabaseContact(c, index, salesData, purchasesData)
         );
-        setContacts(convertedContacts);
-      })();
+        setContacts(withBalances);
+      };
 
-      await Promise.race([loadPromise, timeoutPromise]);
+      await Promise.race([loadBalances(), timeoutPromise]);
     } catch (error: any) {
       console.error('[CONTACTS PAGE] Error loading contacts:', error);
       toast.error('Failed to load contacts: ' + (error.message || 'Unknown error'));
@@ -255,12 +285,17 @@ export const ContactsPage = () => {
   const [branchFilter, setBranchFilter] = useState('all');
   const [phoneFilter, setPhoneFilter] = useState<'all' | 'has' | 'no'>('all');
 
-  // Filtered contacts
+  // Filtered contacts (type 'both' appears in both Customer and Supplier tabs)
   const filteredContacts = useMemo(() => {
     return contacts.filter(contact => {
-      // Tab filter
-      if (activeTab !== 'all' && contact.type !== activeTab.slice(0, -1)) return false;
-      
+      // Tab filter: customers tab = customer | both, suppliers tab = supplier | both, workers tab = worker only
+      if (activeTab !== 'all') {
+        const tabType = activeTab.slice(0, -1);
+        if (tabType === 'customer' && contact.type !== 'customer' && contact.type !== 'both') return false;
+        if (tabType === 'supplier' && contact.type !== 'supplier' && contact.type !== 'both') return false;
+        if (tabType === 'worker' && contact.type !== 'worker') return false;
+      }
+
       // Search filter
       if (searchTerm) {
         const search = searchTerm.toLowerCase();
@@ -274,8 +309,13 @@ export const ContactsPage = () => {
         if (!matchesSearch) return false;
       }
 
-      // Type filter (for advanced filters)
-      if (typeFilter.length > 0 && !typeFilter.includes(contact.type)) return false;
+      // Type filter (for advanced filters): 'customer' filter includes 'both', 'supplier' filter includes 'both'
+      if (typeFilter.length > 0) {
+        const matchesType = typeFilter.some(t =>
+          t === contact.type || (t === 'customer' && contact.type === 'both') || (t === 'supplier' && contact.type === 'both')
+        );
+        if (!matchesType) return false;
+      }
       
       // Worker role filter
       if (workerRoleFilter.length > 0 && contact.type === 'worker' && contact.workerRole && !workerRoleFilter.includes(contact.workerRole)) return false;
@@ -298,9 +338,15 @@ export const ContactsPage = () => {
     });
   }, [contacts, activeTab, searchTerm, typeFilter, workerRoleFilter, statusFilter, balanceFilter, branchFilter, phoneFilter]);
 
-  // Calculate summary based on active tab
+  // Calculate summary based on active tab (type 'both' counts in both Customer and Supplier)
   const summary = useMemo(() => {
-    const filtered = contacts.filter(c => activeTab === 'all' || c.type === activeTab.slice(0, -1));
+    const filtered = contacts.filter(c => {
+      if (activeTab === 'all') return true;
+      const tabType = activeTab.slice(0, -1);
+      if (tabType === 'customer') return c.type === 'customer' || c.type === 'both';
+      if (tabType === 'supplier') return c.type === 'supplier' || c.type === 'both';
+      return c.type === 'worker';
+    });
     return {
       totalReceivables: filtered.reduce((sum, c) => sum + c.receivables, 0),
       totalPayables: filtered.reduce((sum, c) => sum + c.payables, 0),
@@ -309,11 +355,11 @@ export const ContactsPage = () => {
     };
   }, [activeTab, contacts]);
 
-  // Calculate tab counts
+  // Calculate tab counts (type 'both' counts in both Customer and Supplier)
   const tabCounts = useMemo(() => ({
     all: contacts.length,
-    customers: contacts.filter(c => c.type === 'customer').length,
-    suppliers: contacts.filter(c => c.type === 'supplier').length,
+    customers: contacts.filter(c => c.type === 'customer' || c.type === 'both').length,
+    suppliers: contacts.filter(c => c.type === 'supplier' || c.type === 'both').length,
     workers: contacts.filter(c => c.type === 'worker').length,
   }), [contacts]);
 
@@ -326,6 +372,7 @@ export const ContactsPage = () => {
       case 'customer': return 'bg-blue-600';
       case 'supplier': return 'bg-purple-600';
       case 'worker': return 'bg-orange-600';
+      case 'both': return 'bg-cyan-600';
       default: return 'bg-gray-600';
     }
   };
@@ -874,9 +921,10 @@ export const ContactsPage = () => {
                           "text-xs font-medium capitalize w-fit px-2 py-0.5 h-5",
                           contact.type === 'customer' && "bg-blue-500/20 text-blue-400 border-blue-500/30",
                           contact.type === 'supplier' && "bg-purple-500/20 text-purple-400 border-purple-500/30",
-                          contact.type === 'worker' && "bg-orange-500/20 text-orange-400 border-orange-500/30"
+                          contact.type === 'worker' && "bg-orange-500/20 text-orange-400 border-orange-500/30",
+                          contact.type === 'both' && "bg-cyan-500/20 text-cyan-400 border-cyan-500/30"
                         )}>
-                          {contact.type}
+                          {contact.type === 'both' ? 'Customer + Supplier' : contact.type}
                         </Badge>
                         {contact.type === 'worker' && contact.workerRole && (
                           <span className="text-[10px] text-gray-500 leading-[1.2]">
@@ -944,8 +992,8 @@ export const ContactsPage = () => {
                             </button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end" className="bg-gray-900 border-gray-700 text-white w-52">
-                            {/* Customer Actions */}
-                            {contact.type === 'customer' && (
+                            {/* Customer Actions (customer or both) */}
+                            {(contact.type === 'customer' || contact.type === 'both') && (
                               <>
                                 <DropdownMenuItem 
                                   onClick={() => {
@@ -1038,8 +1086,8 @@ export const ContactsPage = () => {
                               </>
                             )}
 
-                            {/* Supplier Actions */}
-                            {contact.type === 'supplier' && (
+                            {/* Supplier Actions (supplier or both) */}
+                            {(contact.type === 'supplier' || contact.type === 'both') && (
                               <>
                                 <DropdownMenuItem 
                                   onClick={() => {
@@ -1232,13 +1280,13 @@ export const ContactsPage = () => {
             setPaymentDialogOpen(false);
             setSelectedContact(null);
           }}
-          context={selectedContact.type === 'customer' ? 'customer' : 'supplier'}
+          context={selectedContact.type === 'supplier' ? 'supplier' : 'customer'}
           entityName={selectedContact.name}
           entityId={selectedContact.id.toString()}
           outstandingAmount={
-            selectedContact.type === 'customer' 
-              ? selectedContact.receivables 
-              : selectedContact.payables
+            selectedContact.type === 'supplier'
+              ? selectedContact.payables
+              : selectedContact.receivables
           }
           referenceNo={selectedContact.code}
           onSuccess={async () => {
@@ -1250,8 +1298,8 @@ export const ContactsPage = () => {
         />
       )}
 
-      {/* Customer Ledger - Full Screen (for customers only) */}
-      {selectedContact && selectedContact.type === 'customer' && ledgerOpen && (
+      {/* Customer Ledger - Full Screen (for customers and both) */}
+      {selectedContact && (selectedContact.type === 'customer' || selectedContact.type === 'both') && ledgerOpen && (
         <div className="fixed inset-0 z-50 bg-[#111827] overflow-y-auto">
           {ledgerType === 'modern' ? (
             <CustomerLedgerPageOriginal 
@@ -1277,8 +1325,8 @@ export const ContactsPage = () => {
         </div>
       )}
 
-      {/* Supplier / Worker Ledger - Full screen, same as Customer (real ledger_master + ledger_entries) */}
-      {selectedContact && selectedContact.type !== 'customer' && ledgerOpen && (
+      {/* Supplier / Worker Ledger - Full screen (exclude customer-only so 'both' uses Customer Ledger above) */}
+      {selectedContact && (selectedContact.type === 'supplier' || selectedContact.type === 'worker') && ledgerOpen && (
         <div className="fixed inset-0 z-50 bg-[#111827] overflow-y-auto">
           <div className="sticky top-0 z-10 bg-[#111827] border-b border-gray-800 px-6 py-4 flex items-center justify-between">
             <h2 className="text-xl font-bold text-white">

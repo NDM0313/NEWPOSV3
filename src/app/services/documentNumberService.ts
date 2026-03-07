@@ -9,6 +9,9 @@ import { supabase } from '@/lib/supabase';
 
 export type DocumentType = 'invoice' | 'quotation' | 'draft' | 'order' | 'purchase' | 'rental' | 'studio' | 'expense' | 'payment' | 'job' | 'journal' | 'production';
 
+/** Document types for ERP Numbering Engine (generate_document_number RPC). */
+export type ErpDocumentType = 'sale' | 'purchase' | 'payment' | 'expense' | 'rental' | 'stock' | 'stock_adjustment' | 'journal' | 'product' | 'studio' | 'job' | 'pos';
+
 interface DocumentNumberCheck {
   exists: boolean;
   maxNumber?: number;
@@ -157,6 +160,33 @@ export const documentNumberService = {
     }
     if (typeof data !== 'string' || !data) {
       throw new Error('Invalid product SKU returned from database');
+    }
+    return data;
+  },
+
+  /**
+   * ERP Numbering Engine: get next document number (atomic, duplicate-free, multi-user safe).
+   * Uses generate_document_number RPC. Use for payments, and optionally sales/purchases/expenses.
+   * @param includeYear - if true, format is PREFIX-YY-NNNN (e.g. SL-26-0001); else PREFIX-NNNN
+   */
+  async getNextDocumentNumber(
+    companyId: string,
+    branchId: string | null,
+    documentType: ErpDocumentType,
+    includeYear?: boolean
+  ): Promise<string> {
+    const { data, error } = await supabase.rpc('generate_document_number', {
+      p_company_id: companyId,
+      p_branch_id: branchId,
+      p_document_type: documentType,
+      p_include_year: includeYear ?? false,
+    });
+    if (error) {
+      console.warn('[DOCUMENT NUMBER] generate_document_number error:', error);
+      throw new Error(error.message || 'Failed to get next document number');
+    }
+    if (typeof data !== 'string' || !data) {
+      throw new Error('Invalid document number from generate_document_number');
     }
     return data;
   },

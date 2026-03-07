@@ -470,7 +470,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
   // ============================================
 
   const loadAllSettings = useCallback(async () => {
-    console.log('[PERM_DEBUG] loadAllSettings started; loading=true → isPermissionLoaded=false');
+    if (import.meta.env?.DEV) console.log('[PERM_DEBUG] loadAllSettings started; loading=true → isPermissionLoaded=false');
     if (!companyId) {
       setLoading(false);
       return;
@@ -619,42 +619,49 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
         ],
       });
 
-      // Load Numbering Rules from document_sequences
+      // Load Numbering Rules: prefer ERP engine (erp_document_sequences), fallback to document_sequences
+      const erpSequences = await settingsService.getErpDocumentSequences(companyId, branchId === 'all' ? null : branchId || null).catch(() => []);
+      const erpMap = new Map(erpSequences.map(s => [s.document_type.toLowerCase(), s]));
+
       const sequences = await settingsService.getAllDocumentSequences(companyId, branchId === 'all' ? undefined : branchId || undefined);
       const sequencesMap = new Map(sequences.map(s => [s.document_type, s]));
-      
-      const getSequence = (type: string) => sequencesMap.get(type);
-      // When document_sequences has no 'studio' row, derive next number from sales (STD-*) so header shows latest
-      let studioNext = getSequence('studio')?.current_number ?? null;
-      if (studioNext == null) {
+
+      const getNext = (type: string) => {
+        const erp = erpMap.get(type);
+        if (erp) return { prefix: erp.prefix, next: erp.last_number + 1 };
+        const leg = sequencesMap.get(type);
+        return { prefix: leg?.prefix || '', next: leg?.current_number ?? 1 };
+      };
+      let studioNext = getNext('studio').next;
+      if (studioNext === 1 && !erpMap.has('studio') && !sequencesMap.get('studio')) {
         try {
           studioNext = await saleService.getNextStudioInvoiceNumber(companyId);
         } catch {
           studioNext = 1;
         }
       }
-      
+
       setNumberingRules({
-        salePrefix: getSequence('sale')?.prefix || 'SL-',
-        saleNextNumber: getSequence('sale')?.current_number || 1,
-        purchasePrefix: getSequence('purchase')?.prefix || 'PUR-',
-        purchaseNextNumber: getSequence('purchase')?.current_number || 1,
-        rentalPrefix: getSequence('rental')?.prefix || 'RNT-',
-        rentalNextNumber: getSequence('rental')?.current_number || 1,
-        expensePrefix: getSequence('expense')?.prefix || 'EXP-',
-        expenseNextNumber: getSequence('expense')?.current_number || 1,
-        productPrefix: getSequence('product')?.prefix || 'PRD-',
-        productNextNumber: getSequence('product')?.current_number || 1,
-        studioPrefix: getSequence('studio')?.prefix || 'STD-',
+        salePrefix: getNext('sale').prefix || 'SL-',
+        saleNextNumber: getNext('sale').next,
+        purchasePrefix: getNext('purchase').prefix || 'PUR-',
+        purchaseNextNumber: getNext('purchase').next,
+        rentalPrefix: getNext('rental').prefix || 'RNT-',
+        rentalNextNumber: getNext('rental').next,
+        expensePrefix: getNext('expense').prefix || 'EXP-',
+        expenseNextNumber: getNext('expense').next,
+        productPrefix: getNext('product').prefix || 'PRD-',
+        productNextNumber: getNext('product').next,
+        studioPrefix: getNext('studio').prefix || 'STD-',
         studioNextNumber: studioNext,
-        posPrefix: getSequence('pos')?.prefix || 'POS-',
-        posNextNumber: getSequence('pos')?.current_number || 1,
-        paymentPrefix: getSequence('payment')?.prefix || 'PAY-',
-        paymentNextNumber: getSequence('payment')?.current_number ?? 1,
-        jobPrefix: getSequence('job')?.prefix || 'JOB-',
-        jobNextNumber: getSequence('job')?.current_number ?? 1,
-        journalPrefix: getSequence('journal')?.prefix || 'JV-',
-        journalNextNumber: getSequence('journal')?.current_number ?? 1,
+        posPrefix: getNext('pos').prefix || 'POS-',
+        posNextNumber: getNext('pos').next,
+        paymentPrefix: getNext('payment').prefix || 'PAY-',
+        paymentNextNumber: getNext('payment').next ?? 1,
+        jobPrefix: getNext('job').prefix || 'JOB-',
+        jobNextNumber: getNext('job').next ?? 1,
+        journalPrefix: getNext('journal').prefix || 'JV-',
+        journalNextNumber: getNext('journal').next ?? 1,
       });
 
       // Load Module Toggles
@@ -720,19 +727,19 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
           let canDeletePurchase = p.canDeletePurchase ?? (role === 'Admin');
           try {
             const rolePerms = await permissionService.getRolePermissions(engineRole);
-            // ---------- [PERM_DEBUG] 4 LINES — Instant diagnosis (filter console by PERM_DEBUG) ----------
             const permCount = rolePerms?.length ?? 0;
             const isEmpty = permCount === 0;
-            const { data: allRoleRows } = await supabase.from('role_permissions').select('role');
-            const distinctRoles = [...new Set((allRoleRows || []).map((r: { role: string }) => r.role))];
-            console.log('[PERM_DEBUG] engineRole =', engineRole);
-            console.log('[PERM_DEBUG] role_permissions count =', permCount);
-            console.log('[PERM_DEBUG] role_permissions returning empty array? =', isEmpty);
-            console.log('[PERM_DEBUG] DB: SELECT DISTINCT role FROM role_permissions =', distinctRoles);
-            if (isEmpty && distinctRoles.length > 0) {
-              console.warn('[PERM_DEBUG] ⚠️ role "' + engineRole + '" not in DB. Maujood roles:', distinctRoles);
+            if (import.meta.env?.DEV) {
+              const { data: allRoleRows } = await supabase.from('role_permissions').select('role');
+              const distinctRoles = [...new Set((allRoleRows || []).map((r: { role: string }) => r.role))];
+              console.log('[PERM_DEBUG] engineRole =', engineRole);
+              console.log('[PERM_DEBUG] role_permissions count =', permCount);
+              console.log('[PERM_DEBUG] role_permissions returning empty array? =', isEmpty);
+              console.log('[PERM_DEBUG] DB: SELECT DISTINCT role FROM role_permissions =', distinctRoles);
+              if (isEmpty && distinctRoles.length > 0) {
+                console.warn('[PERM_DEBUG] ⚠️ role "' + engineRole + '" not in DB. Maujood roles:', distinctRoles);
+              }
             }
-            // ---------- end [PERM_DEBUG] ----------
             const visibilityScopeActions = ['view_own', 'view_branch', 'view_company'];
             const hasPurchase = rolePerms.some(x => x.module === 'purchase' && (visibilityScopeActions.includes(x.action) || x.action === 'create') && x.allowed);
             const hasPos = rolePerms.some(x => x.module === 'pos' && (x.action === 'use' || x.action === 'view') && x.allowed);
@@ -782,21 +789,9 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
             }
           } catch (err) {
             // Keep defaults from p / role when role_permissions unavailable
-            console.log('[PERM_DEBUG] getRolePermissions threw:', err);
+            if (import.meta.env?.DEV) console.log('[PERM_DEBUG] getRolePermissions threw:', err);
           }
-          // ---------- [PERM_DEBUG] 3. Derived flags (POS, Studio, Accounting, Sales for visibility) ----------
-          console.log('[PERM_DEBUG] 3. Derived flags:', {
-            canViewSale,
-            canCreateSale,
-            canEditSale,
-            canViewReports,
-            canManageProducts,
-            canViewContacts,
-            canAccessAccounting,
-            canUsePos,
-            canAccessStudio,
-          });
-          // ---------- end [PERM_DEBUG] ----------
+          if (import.meta.env?.DEV) console.log('[PERM_DEBUG] 3. Derived flags:', { canViewSale, canCreateSale, canEditSale, canViewReports, canManageProducts, canViewContacts, canAccessAccounting, canUsePos, canAccessStudio });
           setCurrentUser({
             role,
             canCreateSale,
@@ -831,7 +826,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
       toast.error('Failed to load settings');
     } finally {
       setLoading(false);
-      console.log('[PERM_DEBUG] loadAllSettings finished; loading=false → isPermissionLoaded=true');
+      if (import.meta.env?.DEV) console.log('[PERM_DEBUG] loadAllSettings finished; loading=false → isPermissionLoaded=true');
     }
   }, [companyId, branchId, user?.id]);
 
@@ -994,12 +989,11 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
 
   const updateNumberingRules = async (rules: Partial<NumberingRules>) => {
     if (!companyId) return;
-    
+
     const updated = { ...numberingRules, ...rules };
     setNumberingRules(updated);
-    
+
     try {
-      // Map numbering rules to document sequences
       const documentTypeMap: Record<string, { prefix: string; nextNumber: number }> = {
         sale: { prefix: updated.salePrefix, nextNumber: updated.saleNextNumber },
         purchase: { prefix: updated.purchasePrefix, nextNumber: updated.purchaseNextNumber },
@@ -1013,11 +1007,21 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
         journal: { prefix: updated.journalPrefix ?? 'JV-', nextNumber: updated.journalNextNumber ?? 1 },
       };
 
-      // Save each document sequence
+      const branch = branchId === 'all' ? undefined : branchId || undefined;
+
       for (const [docType, { prefix, nextNumber }] of Object.entries(documentTypeMap)) {
-        await settingsService.setDocumentSequence(companyId, branchId === 'all' ? undefined : branchId || undefined, docType, prefix, nextNumber, 4);
+        await settingsService.setDocumentSequence(companyId, branch, docType, prefix, nextNumber, 4);
       }
-      
+
+      // Sync to ERP Numbering Engine so generate_document_number uses these prefixes and next number
+      try {
+        for (const [docType, { prefix, nextNumber }] of Object.entries(documentTypeMap)) {
+          await settingsService.setErpDocumentSequence(companyId, branch ?? null, docType, prefix, Math.max(0, nextNumber - 1), 4);
+        }
+      } catch (erpErr) {
+        // Table may not exist yet; legacy document_sequences still saved
+      }
+
       toast.success('Numbering rules saved');
     } catch (error) {
       console.error('[SETTINGS] Error saving numbering rules:', error);

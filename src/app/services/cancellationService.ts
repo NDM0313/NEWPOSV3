@@ -56,6 +56,19 @@ export async function cancelSale(saleId: string, options: CancelOptions): Promis
     refundMethod: options.refundMethod,
     refundAccountId: options.refundAccountId,
   });
+
+  const invoiceNo = (sale as any).invoice_no;
+  if (invoiceNo && (sale as any).company_id) {
+    supabase.rpc('log_deleted_document_number', {
+      p_company_id: (sale as any).company_id,
+      p_document_type: 'sale',
+      p_document_number: invoiceNo,
+      p_reference_type: 'sale',
+      p_reference_id: saleId,
+      p_reason: options.reason ?? 'Cancelled',
+      p_created_by: options.performedBy ?? null,
+    }).then(({ error }) => { if (error) console.warn('[cancellationService] log_deleted_document_number:', error); });
+  }
 }
 
 /**
@@ -77,6 +90,19 @@ export async function cancelPurchase(purchaseId: string, options: CancelOptions)
   }
 
   await purchaseService.cancelPurchase(purchaseId, options);
+
+  const poNo = (purchase as any).po_no;
+  if (poNo && (purchase as any).company_id) {
+    supabase.rpc('log_deleted_document_number', {
+      p_company_id: (purchase as any).company_id,
+      p_document_type: 'purchase',
+      p_document_number: poNo,
+      p_reference_type: 'purchase',
+      p_reference_id: purchaseId,
+      p_reason: options.reason ?? 'Cancelled',
+      p_created_by: options.performedBy ?? null,
+    }).then(({ error }) => { if (error) console.warn('[cancellationService] log_deleted_document_number:', error); });
+  }
 }
 
 /**

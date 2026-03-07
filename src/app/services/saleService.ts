@@ -1,4 +1,6 @@
 import { supabase } from '@/lib/supabase';
+import { documentNumberService } from '@/app/services/documentNumberService';
+import { generatePaymentReference } from '@/app/utils/paymentUtils';
 import { employeeService } from './employeeService';
 import { activityLogService } from '@/app/services/activityLogService';
 import { settingsService } from '@/app/services/settingsService';
@@ -572,6 +574,14 @@ export const saleService = {
     return saleData;
   },
 
+  /** Cancel final sale: reverses stock, sets status=cancelled. Optionally credit note/refund via options. */
+  async cancelSale(
+    id: string,
+    _options?: { reason?: string; performedBy?: string; refundOption?: string; refundAmount?: number; refundMethod?: string; refundAccountId?: string }
+  ) {
+    await this.updateSaleStatus(id, 'cancelled');
+  },
+
   // Update sale status (when 'cancelled': create SALE_CANCELLED stock reversals, then update status)
   async updateSaleStatus(id: string, status: Sale['status']) {
     if (status === 'cancelled') {
@@ -952,8 +962,16 @@ export const saleService = {
     const { data: { user: authUser } } = await supabase.auth.getUser();
     const authUserId = authUser?.id ?? null;
 
-    // Build payment data - use actual schema columns; include received_by (auth.users.id).
-    // Omit reference_number so DB trigger sets it (avoids duplicate key).
+    let uniqueRef: string;
+    if (callerRef) {
+      uniqueRef = callerRef;
+    } else {
+      try {
+        uniqueRef = await documentNumberService.getNextDocumentNumber(companyId, branchId ?? null, 'payment');
+      } catch {
+        uniqueRef = generatePaymentReference(null);
+      }
+    }
     const paymentData: any = {
       company_id: companyId,
       branch_id: branchId,
@@ -966,8 +984,8 @@ export const saleService = {
       payment_account_id: accountId,
       received_by: authUserId,
       created_by: authUserId,
+      reference_number: uniqueRef,
     };
-    if (callerRef) paymentData.reference_number = callerRef;
     if (options?.notes !== undefined && options.notes !== '') {
       paymentData.notes = options.notes;
     }

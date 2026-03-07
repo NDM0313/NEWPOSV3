@@ -25,6 +25,8 @@ export interface RoznamchaRow {
   accountType: 'cash' | 'bank' | null;
   /** Display label for Account column: "Cash", "Bank", "JazzCash", etc. */
   accountLabel: string;
+  /** Resolved account name from accounts table when payment_account_id is set (e.g. "HBL Main", "CASH IN HAND") */
+  accountName?: string | null;
   branchId: string | null;
   type: string;
 }
@@ -202,6 +204,18 @@ async function fetchPaymentRows(
       const p = paymentById.get(r.id) as any;
       const rb = p?.received_by;
       if (rb) r.createdBy = nameByReceivedBy.get(rb) || null;
+    });
+  }
+
+  // Resolve payment_account_id to actual account name from accounts table
+  const accountIds = [...new Set((data || []).map((p: any) => (p as any).payment_account_id).filter(Boolean))] as string[];
+  if (accountIds.length > 0) {
+    const { data: accounts } = await supabase.from('accounts').select('id, name').in('id', accountIds);
+    const nameByAccountId = new Map<string, string>((accounts || []).map((a: any) => [a.id, (a.name || '').trim()]));
+    rows.forEach((r) => {
+      const p = paymentById.get(r.id) as any;
+      const aid = p?.payment_account_id;
+      if (aid) r.accountName = nameByAccountId.get(aid) || null;
     });
   }
 
