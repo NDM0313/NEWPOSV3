@@ -1,7 +1,7 @@
 /**
- * Central document number generation – same format as web ERP.
- * Uses RPC get_next_document_number (atomic, document_sequences).
- * All mobile sub-modules (expenses, accounts, payments, etc.) use this.
+ * Central document number generation – same engine as Web ERP (Settings → Numbering Rules).
+ * Uses RPC generate_document_number (erp_document_sequences). Single source of truth.
+ * All mobile modules (sales, purchases, expenses, payments, etc.) use this.
  */
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 
@@ -14,18 +14,28 @@ export type DocumentType =
   | 'journal'
   | 'payment'
   | 'receipt'
-  | 'product';
+  | 'product'
+  | 'pos'
+  | 'customer'
+  | 'supplier'
+  | 'worker'
+  | 'job';
 
 const FALLBACK_PREFIX: Record<DocumentType, string> = {
-  sale: 'INV-',
-  purchase: 'PO-',
+  sale: 'SL-',
+  purchase: 'PUR-',
   expense: 'EXP-',
-  rental: 'RNT-',
-  studio: 'STU-',
+  rental: 'REN-',
+  studio: 'STD-',
   journal: 'JE-',
-  payment: 'PMT-',
+  payment: 'PAY-',
   receipt: 'RCP-',
   product: 'PRD-',
+  pos: 'POS-',
+  customer: 'CUS-',
+  supplier: 'SUP-',
+  worker: 'WRK-',
+  job: 'JOB-',
 };
 
 async function getFirstBranchId(companyId: string): Promise<string | null> {
@@ -39,13 +49,15 @@ async function getFirstBranchId(companyId: string): Promise<string | null> {
 }
 
 /**
- * Get next document number from server – ATOMIC, web ERP format.
- * When branchId is null, uses first branch of company.
+ * Get next document number from server – ATOMIC, same as Web (Settings → Numbering Rules).
+ * Uses generate_document_number RPC (erp_document_sequences). No duplicates across Web/Mobile/POS.
+ * When branchId is null, uses first branch of company (or company-level sequence per engine).
  */
 export async function getNextDocumentNumber(
   companyId: string,
   branchId: string | null,
-  documentType: DocumentType
+  documentType: DocumentType,
+  includeYear?: boolean
 ): Promise<string> {
   if (!isSupabaseConfigured) {
     const prefix = FALLBACK_PREFIX[documentType];
@@ -59,13 +71,14 @@ export async function getNextDocumentNumber(
     const prefix = FALLBACK_PREFIX[documentType];
     return `${prefix}${String(Date.now()).slice(-4)}`;
   }
-  const { data, error } = await supabase.rpc('get_next_document_number', {
+  const { data, error } = await supabase.rpc('generate_document_number', {
     p_company_id: companyId,
     p_branch_id: effectiveBranchId,
     p_document_type: documentType,
+    p_include_year: includeYear ?? false,
   });
   if (error) {
-    console.error(`[DOCUMENT NUMBER] get_next_document_number failed (${documentType}):`, error);
+    console.error(`[DOCUMENT NUMBER] generate_document_number failed (${documentType}):`, error);
     const prefix = FALLBACK_PREFIX[documentType];
     return `${prefix}${String(Date.now()).slice(-4)}`;
   }

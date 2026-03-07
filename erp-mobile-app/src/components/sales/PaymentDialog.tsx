@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { ArrowLeft, Banknote, Building2, Smartphone, CreditCard, AlertCircle, Loader2 } from 'lucide-react';
+import { ArrowLeft, Banknote, Building2, Smartphone, CreditCard, AlertCircle, Loader2, Receipt } from 'lucide-react';
 import { getPaymentAccounts } from '../../api/accounts';
 
 export interface PaymentResult {
@@ -18,9 +18,11 @@ interface PaymentDialogProps {
   onComplete: (result: PaymentResult) => void | Promise<void>;
   saving?: boolean;
   saveError?: string | null;
+  /** When true, show Credit option (customer due balance). */
+  hasCustomer?: boolean;
 }
 
-type PaymentMethod = 'cash' | 'bank' | 'wallet' | 'card';
+type PaymentMethod = 'cash' | 'bank' | 'wallet' | 'card' | 'credit';
 type PaymentMode = 'full' | 'partial' | 'skip';
 
 interface Account {
@@ -31,14 +33,14 @@ interface Account {
 }
 
 /** Map payment method to account type filter */
-const METHOD_TO_TYPE: Record<PaymentMethod, string[]> = {
+const METHOD_TO_TYPE: Record<Exclude<PaymentMethod, 'credit'>, string[]> = {
   cash: ['cash'],
   bank: ['bank'],
   wallet: ['mobile_wallet'],
   card: ['bank'], // Card terminals typically use bank accounts
 };
 
-export function PaymentDialog({ onBack, totalAmount, companyId, onComplete, saving, saveError }: PaymentDialogProps) {
+export function PaymentDialog({ onBack, totalAmount, companyId, onComplete, saving, saveError, hasCustomer }: PaymentDialogProps) {
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod | null>(null);
   const [selectedAccount, setSelectedAccount] = useState<Account | null>(null);
@@ -65,7 +67,7 @@ export function PaymentDialog({ onBack, totalAmount, companyId, onComplete, savi
   }, [companyId]);
 
   const getAccounts = (): Account[] => {
-    if (!paymentMethod) return [];
+    if (!paymentMethod || paymentMethod === 'credit') return [];
     const types = METHOD_TO_TYPE[paymentMethod].map((t) => t.toLowerCase());
     return allAccounts.filter((a) => types.includes((a.type || '').toLowerCase()));
   };
@@ -73,6 +75,17 @@ export function PaymentDialog({ onBack, totalAmount, companyId, onComplete, savi
   const handleMethodSelect = (method: PaymentMethod) => {
     setPaymentMethod(method);
     setSelectedAccount(null);
+    if (method === 'credit') {
+      // Credit: no account/amount; complete immediately with paid=0, due=total
+      onComplete({
+        paymentMethod: 'Credit',
+        paidAmount: 0,
+        dueAmount: totalAmount,
+        accountId: null,
+        accountName: null,
+      });
+      return;
+    }
     setStep(2);
   };
 
@@ -96,6 +109,7 @@ export function PaymentDialog({ onBack, totalAmount, companyId, onComplete, savi
       bank: 'Bank Transfer',
       wallet: 'Wallet',
       card: 'Card',
+      credit: 'Credit',
     };
     return labels[paymentMethod];
   };
@@ -271,6 +285,23 @@ export function PaymentDialog({ onBack, totalAmount, companyId, onComplete, savi
               </div>
             </div>
           </button>
+
+          {hasCustomer && (
+            <button
+              onClick={() => handleMethodSelect('credit')}
+              className="w-full bg-[#1F2937] border border-[#374151] rounded-xl p-6 hover:border-[#F59E0B] transition-all active:scale-[0.98] text-left"
+            >
+              <div className="flex items-center gap-4">
+                <div className="w-14 h-14 bg-[#F59E0B]/10 rounded-xl flex items-center justify-center">
+                  <Receipt className="w-7 h-7 text-[#F59E0B]" />
+                </div>
+                <div className="flex-1">
+                  <h3 className="font-semibold text-lg mb-1 text-white">CREDIT</h3>
+                  <p className="text-sm text-[#9CA3AF]">Customer due balance</p>
+                </div>
+              </div>
+            </button>
+          )}
         </div>
       )}
 

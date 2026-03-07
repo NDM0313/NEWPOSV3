@@ -926,15 +926,17 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
     setInventorySettings(updated);
     
     try {
-      // Save inventory_settings (excluding enablePacking; defaultUnitId is included)
+      // Company-level: save to DB (ensure boolean, not string) so all users get same behavior
       const { enablePacking, ...otherSettings } = updated;
-      await settingsService.setSetting(companyId, 'inventory_settings', otherSettings, 'inventory', 'Inventory module settings');
+      const payload = { ...otherSettings, negativeStockAllowed: Boolean(otherSettings.negativeStockAllowed) };
+      await settingsService.setSetting(companyId, 'inventory_settings', payload, 'inventory', 'Inventory module settings');
       
-      // Save enablePacking separately (global setting)
       if (settings.enablePacking !== undefined) {
         await settingsService.setEnablePacking(companyId, settings.enablePacking);
       }
       
+      // Refetch from DB so context (and Sales/POS) see latest; avoids stale cache after toggle
+      await loadAllSettings();
       if (!options?.silent) toast.success('Inventory settings saved');
     } catch (error) {
       console.error('[SETTINGS] Error saving inventory settings:', error);

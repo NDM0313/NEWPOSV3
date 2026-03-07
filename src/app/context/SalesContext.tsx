@@ -76,6 +76,8 @@ export interface Sale {
   paymentMethod: string;
   shippingStatus: ShippingStatus;
   notes?: string;
+  /** Delivery/deadline date (YYYY-MM-DD) for studio sales. */
+  deadline?: string;
   attachments?: { url: string; name: string }[] | null; // Sale attachments
   /** Line-level charges from sale_charges (for view/drawer actual data) */
   charges?: Array<{ charge_type?: string; chargeType?: string; amount: number }>;
@@ -307,6 +309,7 @@ export const convertFromSupabaseSale = (supabaseSale: any): Sale => {
     paymentMethod: supabaseSale.payment_method || 'Cash',
     shippingStatus: supabaseSale.shipping_status || 'pending',
       notes: supabaseSale.notes,
+      deadline: supabaseSale.deadline || undefined,
       // CRITICAL FIX: Preserve attachments from database
       attachments: supabaseSale.attachments || null,
       // Line-level charges (sale_charges) for drawer/views to show actual data
@@ -409,9 +412,14 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
         throw new Error(`Invalid invoice number generated: ${invoiceNo}. Check document numbering settings.`);
       }
 
-      // Negative stock enforcement: use current DB setting (not context) so Settings change is respected immediately
+      // Negative stock: allow if EITHER context (UI) or DB says true — avoids stale context / RLS mismatch
       const isFinal = saleData.status === 'final' || saleData.type === 'invoice';
-      const allowNegative = await import('@/app/services/settingsService').then(m => m.settingsService.getAllowNegativeStock(companyId));
+      const fromContext = inventorySettings.negativeStockAllowed === true;
+      const fromDb = await import('@/app/services/settingsService').then(m => m.settingsService.getAllowNegativeStock(companyId));
+      const allowNegative = fromContext || fromDb;
+      if (import.meta.env?.DEV) {
+        console.log('[SALES CONTEXT] Negative stock:', { allowNegative, fromContext, fromDb, inventorySettingsNegative: inventorySettings.negativeStockAllowed });
+      }
       if (isFinal && !allowNegative && saleData.items?.length > 0) {
         const { supabase } = await import('@/lib/supabase');
         const productIds = [...new Set(saleData.items.map((i) => i.productId))];
@@ -461,6 +469,7 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
         due_amount: saleData.due || 0,
         return_due: saleData.returnDue || 0,
         notes: saleData.notes,
+        deadline: (saleData as any).deadline ?? null,
         created_by: createdByAuthId,
         // Do not send is_studio in insert – column may not exist yet; set via update after create
       };
@@ -487,10 +496,19 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
       };
       });
 
+      const allowNegativeStock = allowNegative; // DB value passed to service so it does not re-read
       let result: any;
       let effectiveInvoiceNo = invoiceNo;
       try {
-        result = await saleService.createSale(supabaseSale, supabaseItems);
+        result = await saleService.createSale(supabaseSale, supabaseItems, { allowNegativeStock });
+        const deadlineErr = (result as any)?.deadlineError;
+        if (deadlineErr) {
+          toast.warning(`Deadline could not be saved: ${deadlineErr}. Run migrations/sales_set_deadline_rpc.sql in Supabase, then try again.`);
+        } else if ((saleData as any).deadline && result && (result.deadline == null || result.deadline === '')) {
+          toast.warning(
+            'Notes saved. Deadline did not persist. Run "migrations/sales_set_deadline_rpc.sql" in Supabase SQL Editor, then save again.'
+          );
+        }
       } catch (insertError: any) {
         const msg = insertError?.message || '';
         const isDuplicateInvoice = insertError?.code === '23505' || (msg && String(msg).includes('sales_company_branch_invoice_unique'));
@@ -501,7 +519,7 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
           effectiveInvoiceNo = `${config.prefix}${String(nextNum).padStart(config.padding, '0')}`;
           incrementNextNumber(docType);
           supabaseSale.invoice_no = effectiveInvoiceNo;
-          result = await saleService.createSale(supabaseSale, supabaseItems);
+          result = await saleService.createSale(supabaseSale, supabaseItems, { allowNegativeStock });
           if (weGeneratedNumber) incrementNextNumber(docType);
           console.warn('[SALES CONTEXT] Duplicate invoice number; retried with', effectiveInvoiceNo);
         } else {
@@ -1180,6 +1198,7 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
         supabaseUpdates.branch_id = updates.location;
       }
       if (updates.notes !== undefined) supabaseUpdates.notes = updates.notes;
+      if ((updates as any).deadline !== undefined) supabaseUpdates.deadline = (updates as any).deadline;
       if (updates.shippingStatus !== undefined) supabaseUpdates.shipping_status = updates.shippingStatus;
       if (updates.paymentMethod !== undefined) {
         supabaseUpdates.payment_method = normalizePaymentMethodForEnum(updates.paymentMethod);
@@ -1296,11 +1315,11 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
         }
       }
 
-      // Negative stock enforcement: use current DB setting so Settings change is respected immediately
+      // Negative stock enforcement: company-level setting from DB only (same for all users)
       const reducingDeltas = stockMovementDeltas.filter((d) => d.deltaQty < 0);
       const allowNegativeUpdate = companyId
         ? await import('@/app/services/settingsService').then(m => m.settingsService.getAllowNegativeStock(companyId))
-        : true;
+        : false;
       if (!allowNegativeUpdate && reducingDeltas.length > 0 && companyId) {
         const { supabase } = await import('@/lib/supabase');
         const productIds = [...new Set(reducingDeltas.map((d) => d.productId))];

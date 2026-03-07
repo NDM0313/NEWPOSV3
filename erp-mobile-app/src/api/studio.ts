@@ -1,20 +1,26 @@
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 
-/** DB stage types - only these 3 exist in enum */
-export type DbStageType = 'dyer' | 'stitching' | 'handwork';
+/** DB stage types (enum: dyer, stitching, handwork, embroidery, finishing, quality_check after migration) */
+export type DbStageType = 'dyer' | 'stitching' | 'handwork' | 'embroidery' | 'finishing' | 'quality_check';
 
-/** UI stage types - map to DB: dyeing->dyer, rest map to handwork if not in DB */
+/** UI stage types */
 export type UiStageType = 'dyeing' | 'stitching' | 'handwork' | 'embroidery' | 'finishing' | 'quality-check';
 
 function uiToDbStageType(ui: UiStageType): DbStageType {
   if (ui === 'dyeing') return 'dyer';
   if (ui === 'stitching') return 'stitching';
-  return 'handwork'; // handwork, embroidery, finishing, quality-check
+  if (ui === 'embroidery') return 'embroidery';
+  if (ui === 'finishing') return 'finishing';
+  if (ui === 'quality-check') return 'quality_check';
+  return 'handwork';
 }
 
 function dbToUiStageType(db: string): UiStageType {
   if (db === 'dyer') return 'dyeing';
   if (db === 'stitching') return 'stitching';
+  if (db === 'embroidery') return 'embroidery';
+  if (db === 'finishing') return 'finishing';
+  if (db === 'quality_check') return 'quality-check';
   return 'handwork';
 }
 
@@ -35,9 +41,10 @@ export interface StudioProductionRow {
   production_no: string;
   production_date: string;
   status: 'draft' | 'in_progress' | 'completed' | 'cancelled';
+  current_stage_id?: string | null;
   product_id: string;
   product?: { id: string; name: string; sku?: string };
-  sale?: { id: string; invoice_no: string; customer_name: string; total: number; invoice_date: string };
+  sale?: { id: string; invoice_no: string; customer_name: string; total: number; invoice_date: string; deadline?: string | null };
 }
 
 export interface StudioStageRow {
@@ -168,14 +175,8 @@ export async function ensureStudioProductionsForCompany(companyId: string): Prom
         console.warn('[studio] ensureStudioProductions backfill insert failed:', insErr);
         continue;
       }
-      const prodId = (inserted as { id: string })?.id;
-      if (prodId) {
-        await supabase.from('studio_production_stages').insert([
-          { production_id: prodId, stage_type: 'dyer', cost: 0, status: 'pending' },
-          { production_id: prodId, stage_type: 'handwork', cost: 0, status: 'pending' },
-          { production_id: prodId, stage_type: 'stitching', cost: 0, status: 'pending' },
-        ]);
-      }
+      // New productions start with 0 stages; user adds stages via "+" in Studio dashboard
+      // (No default stages inserted – workflow: Assign Stages → Stage Execution → Receive → Next)
     }
     return { error: null };
   } catch (e: unknown) {
@@ -193,7 +194,7 @@ export async function getStudioProductions(
   try {
     let q = supabase
       .from('studio_productions')
-      .select('id, sale_id, production_no, production_date, status, product_id, product:products(id, name, sku), sale:sales(id, invoice_no, customer_name, total, invoice_date)')
+      .select('id, sale_id, production_no, production_date, status, product_id, product:products(id, name, sku), sale:sales(id, invoice_no, customer_name, total, invoice_date, deadline)')
       .eq('company_id', companyId)
       .order('created_at', { ascending: false })
       .limit(100);
@@ -415,9 +416,9 @@ export async function getStudioStages(productionId: string): Promise<{
   try {
     const { data, error } = await supabase
       .from('studio_production_stages')
-      .select('id, production_id, stage_type, assigned_worker_id, cost, expected_cost, status, expected_completion_date, completed_at, assigned_at, sent_date, received_date, worker:workers(id, name)')
+      .select('id, production_id, stage_type, stage_order, assigned_worker_id, cost, expected_cost, status, expected_completion_date, completed_at, assigned_at, sent_date, received_date, notes, worker:workers(id, name)')
       .eq('production_id', productionId)
-      .order('created_at', { ascending: true });
+      .order('stage_order', { ascending: true });
     if (error) return { data: [], error: error.message };
     const rows = (data || []) as StudioStageRow[];
     const missingWorkerIds = rows
@@ -517,11 +518,12 @@ export async function getWorkers(companyId: string): Promise<{ data: WorkerRow[]
   }
 }
 
-/** Create a stage for a production. PHASE 1: No auto-assignment – always assigned_worker_id=null. Manager assigns via Assign flow only. */
+/** Create a stage for a production. Uses stage_order (next available if not provided). */
 export async function createStudioStage(
   productionId: string,
   input: {
     stage_type: UiStageType;
+    stage_order?: number;
     assigned_worker_id?: string | null;
     cost: number;
     expected_completion_date: string | null;
@@ -533,24 +535,64 @@ export async function createStudioStage(
     console.warn('[studioApi] createStudioStage: ignoring assigned_worker_id – assignment only via Assign flow');
   }
   try {
+    let stageOrder = input.stage_order;
+    if (stageOrder == null) {
+      const { data: existing } = await supabase
+        .from('studio_production_stages')
+        .select('stage_order')
+        .eq('production_id', productionId)
+        .order('stage_order', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      stageOrder = ((existing as { stage_order?: number } | null)?.stage_order ?? 0) + 1;
+    }
     const { data, error } = await supabase
       .from('studio_production_stages')
       .insert({
         production_id: productionId,
         stage_type: uiToDbStageType(input.stage_type),
+        stage_order: stageOrder,
         assigned_worker_id: null,
         cost: 0,
         expected_completion_date: input.expected_completion_date,
         status: 'pending',
         notes: input.notes ?? null,
       })
-      .select('id, production_id, stage_type, assigned_worker_id, cost, status, expected_completion_date, completed_at, worker:workers(id, name)')
+      .select('id, production_id, stage_type, stage_order, assigned_worker_id, cost, status, expected_completion_date, completed_at, worker:workers(id, name)')
       .single();
     if (error) return { data: null, error: error.message };
     return { data: data as StudioStageRow, error: null };
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : 'Unknown error';
     return { data: null, error: msg };
+  }
+}
+
+/** Add multiple stages to a production in order (stage_order 1, 2, 3...). Used when user selects stages from pipeline. */
+export async function addStudioStagesBatch(
+  productionId: string,
+  stageTypes: UiStageType[]
+): Promise<{ data: StudioStageRow[]; error: string | null }> {
+  if (!isSupabaseConfigured) return { data: [], error: 'App not configured.' };
+  if (!stageTypes.length) return { data: [], error: null };
+  try {
+    const rows = stageTypes.map((st, i) => ({
+      production_id: productionId,
+      stage_type: uiToDbStageType(st),
+      stage_order: i + 1,
+      assigned_worker_id: null,
+      cost: 0,
+      status: 'pending',
+    }));
+    const { data, error } = await supabase
+      .from('studio_production_stages')
+      .insert(rows)
+      .select('id, production_id, stage_type, stage_order, assigned_worker_id, cost, status, expected_completion_date, completed_at, worker:workers(id, name)');
+    if (error) return { data: [], error: error.message };
+    return { data: (data || []) as StudioStageRow[], error: null };
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : 'Unknown error';
+    return { data: [], error: msg };
   }
 }
 

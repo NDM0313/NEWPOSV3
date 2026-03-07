@@ -57,6 +57,7 @@ import { contactService } from '@/app/services/contactService';
 import { saleService } from '@/app/services/saleService';
 import { studioProductionService } from '@/app/services/studioProductionService';
 import { branchService } from '@/app/services/branchService';
+import { getStudioDeadlineFromNotes } from '@/app/utils/studioDeadlineNotes';
 import { cn } from '../ui/utils';
 import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
 import { Loader2 } from 'lucide-react';
@@ -437,7 +438,7 @@ export const StudioSaleDetailNew = () => {
       customerName: sale.customer_name || customer.name || 'Unknown',
       customerPhone: customer.phone || '',
       saleDate: sale.invoice_date || sale.invoiceDate || new Date().toISOString().split('T')[0],
-      expectedDeliveryDate: sale.notes || '',
+      expectedDeliveryDate: sale.deadline || getStudioDeadlineFromNotes(sale.notes) || '',
       saleStatus: sale.status === 'final' ? 'Completed' : sale.status === 'in_progress' ? 'In Progress' : 'Draft',
       fabricName,
       meters,

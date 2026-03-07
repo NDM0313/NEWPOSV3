@@ -5,7 +5,9 @@ import * as studioApi from '../../api/studio';
 import { StudioDashboard, type StudioOrder, type StudioStage } from './StudioDashboard';
 import { StudioOrderDetail } from './StudioOrderDetail';
 import { StudioStageAssignment } from './StudioStageAssignment';
+import { StudioStageSelection } from './StudioStageSelection';
 import { StudioUpdateStatusView } from './StudioUpdateStatusView';
+import type { UiStageType } from '../../api/studio';
 
 interface StudioModuleProps {
   onBack: () => void;
@@ -18,6 +20,7 @@ interface StudioModuleProps {
 type View =
   | 'dashboard'
   | 'order-detail'
+  | 'select-stages'
   | 'add-stage'
   | 'edit-stage'
   | 'update-status'
@@ -28,7 +31,7 @@ function mapProductionToOrder(
   prod: studioApi.StudioProductionRow,
   stages: studioApi.StudioStageRow[]
 ): StudioOrder {
-  const sale = prod.sale as { customer_name?: string; total?: number; invoice_no?: string; invoice_date?: string } | undefined;
+  const sale = prod.sale as { customer_name?: string; total?: number; invoice_no?: string; invoice_date?: string; deadline?: string | null } | undefined;
   const product = prod.product as { name?: string } | undefined;
   const completedCount = stages.filter((s) => s.status === 'completed').length;
   const inProgress = stages.find((s) => {
@@ -46,9 +49,18 @@ function mapProductionToOrder(
   else if (allDone) status = 'ready';
   else if (prod.status === 'in_progress' || inProgress) status = 'in-progress';
 
+  const stageTypeToName: Record<string, string> = {
+    dyer: 'Dyeing',
+    stitching: 'Stitching',
+    handwork: 'Handwork',
+    embroidery: 'Embroidery',
+    finishing: 'Finishing',
+    quality_check: 'Quality Check',
+  };
   const mappedStages: StudioStage[] = stages.map((s) => {
     const worker = s.worker as { id?: string; name?: string } | undefined;
     const cost = (s.status === 'received' || s.status === 'completed') ? Number(s.cost) || 0 : Number(s.expected_cost ?? s.cost) || 0;
+    const expectedCostVal = Number(s.expected_cost ?? s.cost) || 0;
     const effectiveStatus: StudioStage['status'] =
       s.status === 'completed'
         ? 'completed'
@@ -58,13 +70,15 @@ function mapProductionToOrder(
     const sentDate = s.sent_date ? new Date(s.sent_date).toISOString().slice(0, 10) : undefined;
     const receivedDate = s.received_date ? new Date(s.received_date).toISOString().slice(0, 10) : undefined;
     const completedDate = s.completed_at ? new Date(s.completed_at).toISOString().slice(0, 10) : undefined;
+    const typeUi = s.stage_type === 'dyer' ? 'dyeing' : s.stage_type === 'stitching' ? 'stitching' : s.stage_type === 'embroidery' ? 'embroidery' : s.stage_type === 'finishing' ? 'finishing' : s.stage_type === 'quality_check' ? 'quality-check' : 'handwork';
     return {
       id: s.id,
-      name: s.stage_type === 'dyer' ? 'Dyeing' : s.stage_type === 'stitching' ? 'Stitching' : 'Handwork',
-      type: s.stage_type === 'dyer' ? 'dyeing' : s.stage_type === 'stitching' ? 'stitching' : 'handwork',
+      name: stageTypeToName[s.stage_type] ?? 'Stage',
+      type: typeUi as StudioStage['type'],
       assignedTo: worker?.name ?? 'Unassigned',
       workerId: s.assigned_worker_id ?? undefined,
       internalCost: cost,
+      expectedCost: expectedCostVal,
       customerCharge: cost,
       expectedDate: s.expected_completion_date ?? '',
       status: effectiveStatus,
@@ -75,6 +89,10 @@ function mapProductionToOrder(
     };
   });
 
+  const currentStageRow = prod.current_stage_id ? stages.find((s) => s.id === prod.current_stage_id) : inProgress;
+  const currentStageName = currentStageRow ? (stageTypeToName[currentStageRow.stage_type] ?? currentStageRow.stage_type) : 'Not Started';
+
+  const deadlineStr = sale?.deadline ? new Date(sale.deadline).toISOString().slice(0, 10) : undefined;
   return {
     id: prod.id,
     orderNumber: sale?.invoice_no ?? prod.production_no,
@@ -82,8 +100,9 @@ function mapProductionToOrder(
     productName: product?.name ?? '—',
     totalAmount: Number(sale?.total ?? prod.product ? 0 : 0) || 0,
     createdDate: prod.production_date ? new Date(prod.production_date).toISOString().slice(0, 10) : '—',
+    deadline: deadlineStr,
     status,
-    currentStage: allDone ? 'Ready for Invoice' : inProgress ? (inProgress.stage_type === 'dyer' ? 'Dyeing' : inProgress.stage_type === 'stitching' ? 'Stitching' : 'Handwork') : 'Not Started',
+    currentStage: allDone ? 'Ready for Invoice' : currentStageName,
     stages: mappedStages,
     completedStages: completedCount,
     totalStages: stages.length,
@@ -184,7 +203,7 @@ export function StudioModule({ onBack, companyId, branch, onNewStudioSale }: Stu
         }}
         onAddStage={() => {
           setSelectedStage(null);
-          setView('add-stage');
+          setView(selectedOrder.stages.length === 0 ? 'select-stages' : 'add-stage');
         }}
         onEditStage={(stage) => {
           setSelectedStage(stage);
@@ -280,6 +299,29 @@ export function StudioModule({ onBack, companyId, branch, onNewStudioSale }: Stu
     );
   }
 
+  if (view === 'select-stages' && selectedOrder && companyId) {
+    return (
+      <StudioStageSelection
+        onBack={() => setView('order-detail')}
+        existingStageTypes={selectedOrder.stages.map((s) => s.type) as UiStageType[]}
+        onSave={async (stageTypes) => {
+          const { data, error: err } = await studioApi.addStudioStagesBatch(selectedOrder.id, stageTypes);
+          if (err) {
+            alert(err);
+            return;
+          }
+          await loadOrders();
+          const prod = (await studioApi.getStudioProductions(companyId, undefined)).data?.find((p) => p.id === selectedOrder.id);
+          if (prod) {
+            const { data: stages } = await studioApi.getStudioStages(prod.id);
+            setSelectedOrder(mapProductionToOrder(prod, stages || []));
+          }
+          setView('order-detail');
+        }}
+      />
+    );
+  }
+
   if ((view === 'add-stage' || view === 'edit-stage') && selectedOrder && companyId) {
     return (
       <StudioStageAssignment
@@ -306,7 +348,7 @@ export function StudioModule({ onBack, companyId, branch, onNewStudioSale }: Stu
                   worker_id: workerId,
                   expected_cost: internalCost,
                   expected_completion_date: stageData.expectedDate || null,
-                  notes: null,
+                  notes: (stageData as { notes?: string })?.notes ?? null,
                 });
                 if (assignErr) {
                   alert(assignErr);

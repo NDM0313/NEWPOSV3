@@ -12,6 +12,7 @@ import { AddProducts } from './AddProducts';
 import { SaleSummary } from './SaleSummary';
 import { PaymentDialog } from './PaymentDialog';
 import { SaleConfirmation } from './SaleConfirmation';
+import { StudioDetailsStep, type StudioDetailsData } from './StudioDetailsStep';
 import { TransactionSuccessModal, type TransactionSuccessData } from '../shared/TransactionSuccessModal';
 
 export type SalesStep = 'home' | 'customer' | 'products' | 'summary' | 'payment' | 'confirmation';
@@ -47,6 +48,10 @@ export interface SaleData {
   total: number;
   notes: string;
   saleType: 'regular' | 'studio';
+  /** Studio only: order date (YYYY-MM-DD), deadline (YYYY-MM-DD), production notes */
+  orderDate?: string;
+  deadlineDate?: string;
+  productionNotes?: string;
 }
 
 interface SalesModuleProps {
@@ -66,6 +71,12 @@ export function SalesModule({ onBack, user, companyId, branchId, initialSaleType
   const [createdInvoiceNo, setCreatedInvoiceNo] = useState<string | null>(null);
   const [createdSaleId, setCreatedSaleId] = useState<string | null>(null);
   const [confirmationData, setConfirmationData] = useState<TransactionSuccessData | null>(null);
+  const todayStr = () => new Date().toISOString().split('T')[0];
+  const todayPlus7Str = () => {
+    const d = new Date();
+    d.setDate(d.getDate() + 7);
+    return d.toISOString().split('T')[0];
+  };
   const [saleData, setSaleData] = useState<SaleData>({
     customer: null,
     products: [],
@@ -76,12 +87,16 @@ export function SalesModule({ onBack, user, companyId, branchId, initialSaleType
     total: 0,
     notes: '',
     saleType: initialSaleType === 'studio' ? 'studio' : 'regular',
+    orderDate: todayStr(),
+    deadlineDate: todayPlus7Str(),
+    productionNotes: '',
   });
 
   const handleStepBack = () => {
     if (step === 'customer') setStep('home');
     else if (step === 'products') setStep('customer');
-    else if (step === 'summary') setStep('products');
+    else if (step === 'studioDetails') setStep('products');
+    else if (step === 'summary') setStep(saleData.saleType === 'studio' ? 'studioDetails' : 'products');
     else if (step === 'payment') setStep('summary');
     else if (step === 'confirmation') setStep('home');
     else onBack();
@@ -96,7 +111,14 @@ export function SalesModule({ onBack, user, companyId, branchId, initialSaleType
     const subtotal = products.reduce((sum, p) => sum + p.total, 0);
     setSaleData((prev) => ({ ...prev, products, subtotal, total: subtotal - prev.discount + prev.shipping + prev.tax }));
   };
-  const handleNextToSummary = () => setStep('summary');
+  const handleNextFromProducts = () => {
+    if (saleData.saleType === 'studio') setStep('studioDetails');
+    else setStep('summary');
+  };
+  const handleStudioDetailsNext = (data: StudioDetailsData) => {
+    setSaleData((prev) => ({ ...prev, ...data }));
+    setStep('summary');
+  };
   const handleSummaryUpdate = (data: Partial<SaleData>) => {
     setSaleData((prev) => {
       const next = { ...prev, ...data };
@@ -158,9 +180,13 @@ export function SalesModule({ onBack, user, companyId, branchId, initialSaleType
       paidAmount: result.paidAmount,
       dueAmount: result.dueAmount,
       paymentAccountId: result.accountId ?? undefined,
-      notes: saleData.notes || undefined,
+      notes: saleData.saleType === 'studio' ? (saleData.productionNotes || saleData.notes || undefined) : (saleData.notes || undefined),
       isStudio: saleData.saleType === 'studio',
       userId: user.id,
+      ...(saleData.saleType === 'studio' && {
+        orderDate: saleData.orderDate || undefined,
+        deadline: saleData.deadlineDate || undefined,
+      }),
     };
 
     if (!navigator.onLine) {
@@ -211,6 +237,9 @@ export function SalesModule({ onBack, user, companyId, branchId, initialSaleType
       total: 0,
       notes: '',
       saleType: 'regular',
+      orderDate: todayStr(),
+      deadlineDate: todayPlus7Str(),
+      productionNotes: '',
     });
     setStep('customer');
   };
@@ -228,6 +257,9 @@ export function SalesModule({ onBack, user, companyId, branchId, initialSaleType
       total: 0,
       notes: '',
       saleType: 'regular',
+      orderDate: todayStr(),
+      deadlineDate: todayPlus7Str(),
+      productionNotes: '',
     });
     onBack();
   };
@@ -246,6 +278,9 @@ export function SalesModule({ onBack, user, companyId, branchId, initialSaleType
       total: 0,
       notes: '',
       saleType: 'regular',
+      orderDate: todayStr(),
+      deadlineDate: todayPlus7Str(),
+      productionNotes: '',
     });
     setStep('home');
   };
@@ -264,6 +299,9 @@ export function SalesModule({ onBack, user, companyId, branchId, initialSaleType
       total: 0,
       notes: '',
       saleType: 'regular',
+      orderDate: todayStr(),
+      deadlineDate: todayPlus7Str(),
+      productionNotes: '',
     });
     setStep('customer');
   };
@@ -295,7 +333,18 @@ export function SalesModule({ onBack, user, companyId, branchId, initialSaleType
           customer={saleData.customer}
           initialProducts={saleData.products}
           onProductsUpdate={handleProductsUpdate}
-          onNext={handleNextToSummary}
+          onNext={handleNextFromProducts}
+        />
+      )}
+      {step === 'studioDetails' && (
+        <StudioDetailsStep
+          onBack={handleStepBack}
+          initialData={{
+            orderDate: saleData.orderDate || new Date().toISOString().split('T')[0],
+            deadlineDate: saleData.deadlineDate || (() => { const d = new Date(); d.setDate(d.getDate() + 7); return d.toISOString().split('T')[0]; })(),
+            productionNotes: saleData.productionNotes || '',
+          }}
+          onNext={handleStudioDetailsNext}
         />
       )}
       {step === 'summary' && <SaleSummary onBack={handleStepBack} saleData={saleData} onUpdate={handleSummaryUpdate} onProceedToPayment={handleProceedToPayment} />}
@@ -315,6 +364,7 @@ export function SalesModule({ onBack, user, companyId, branchId, initialSaleType
               onComplete={handlePaymentComplete}
               saving={saving}
               saveError={saveError}
+              hasCustomer={!!saleData.customer?.id}
             />
             )
       )}

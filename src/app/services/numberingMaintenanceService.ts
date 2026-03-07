@@ -48,6 +48,7 @@ const DOC_TYPES: { document_type: string; label: string; prefix: string; table: 
   { document_type: 'PAYMENT', label: 'Payment', prefix: 'PAY', table: 'payments', column: 'reference_number', prefixFilter: (v) => /^PAY-\d/i.test(v) },
   { document_type: 'EXPENSE', label: 'Expense', prefix: 'EXP', table: 'expenses', column: 'expense_no' },
   { document_type: 'RENTAL', label: 'Rental', prefix: 'REN', table: 'rentals', column: 'booking_no' },
+  { document_type: 'PRODUCT', label: 'Product', prefix: 'PRD', table: 'products', column: 'sku', prefixFilter: (v) => /^PRD-/i.test(v) },
 ];
 
 export const numberingMaintenanceService = {
@@ -69,6 +70,7 @@ export const numberingMaintenanceService = {
       supabase.from('payments').select('reference_number').eq('company_id', companyId),
       supabase.from('expenses').select('expense_no').eq('company_id', companyId),
       supabase.from('rentals').select('booking_no').eq('company_id', companyId),
+      supabase.from('products').select('sku').eq('company_id', companyId),
     ]);
 
     const sequenceByType = new Map<string, number>();
@@ -83,6 +85,7 @@ export const numberingMaintenanceService = {
     const paymentRows = (tableResults[2].data || []) as { reference_number?: string }[];
     const expenseRows = (tableResults[3].data || []) as { expense_no?: string }[];
     const rentalRows = (tableResults[4].data || []) as { booking_no?: string }[];
+    const productRows = (tableResults[5].data || []) as { sku?: string }[];
 
     const result: NumberingAnalysisRow[] = [];
 
@@ -100,6 +103,9 @@ export const numberingMaintenanceService = {
         databaseMax = maxFromStrings(expenseRows.map((r) => r.expense_no));
       } else if (doc.table === 'rentals') {
         databaseMax = maxFromStrings(rentalRows.map((r) => r.booking_no));
+      } else if (doc.table === 'products') {
+        const values = productRows.map((r) => r.sku).filter((v) => !doc.prefixFilter || doc.prefixFilter(v || ''));
+        databaseMax = maxFromStrings(values);
       }
 
       const sequenceLast = sequenceByType.get(doc.document_type) ?? 0;
@@ -150,6 +156,7 @@ export const numberingMaintenanceService = {
     } else {
       const defaults: Record<string, string> = {
         SALE: 'SL', PURCHASE: 'PUR', PAYMENT: 'PAY', EXPENSE: 'EXP', RENTAL: 'REN', STUDIO: 'STD', POS: 'POS',
+        PRODUCT: 'PRD', CUSTOMER: 'CUS', SUPPLIER: 'SUP', WORKER: 'WRK', JOB: 'JOB',
       };
       payload.prefix = defaults[documentType.toUpperCase()] || documentType.substring(0, 3).toUpperCase();
       payload.padding = 4;

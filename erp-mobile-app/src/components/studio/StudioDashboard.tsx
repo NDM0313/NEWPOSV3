@@ -8,6 +8,8 @@ export interface StudioOrder {
   productName: string;
   totalAmount: number;
   createdDate: string;
+  /** Deadline date (from sale) for display on card */
+  deadline?: string;
   status: 'pending' | 'in-progress' | 'ready' | 'completed' | 'shipped';
   currentStage?: string;
   stages: StudioStage[];
@@ -23,6 +25,8 @@ export interface StudioStage {
   /** Worker UUID for API (when available from backend) */
   workerId?: string;
   internalCost: number;
+  /** Expected cost from assign (for Confirm Payment pre-fill when not yet confirmed) */
+  expectedCost?: number;
   customerCharge: number;
   expectedDate: string;
   status: 'pending' | 'assigned' | 'in-progress' | 'sent_to_worker' | 'received' | 'completed';
@@ -172,7 +176,15 @@ export function StudioDashboard({ orders, onOrderClick }: StudioDashboardProps) 
 
                 <div className="mb-3 pb-3 border-b border-[#374151]">
                   <p className="text-sm text-white">{order.productName}</p>
-                  <p className="text-xs text-[#6B7280] mt-1">Created: {order.createdDate}</p>
+                  <div className="flex flex-wrap gap-x-4 gap-y-0.5 mt-1 text-xs text-[#6B7280]">
+                    <span>Created: {order.createdDate}</span>
+                    {order.deadline && (
+                      <span className="flex items-center gap-1">
+                        <Clock size={10} />
+                        Deadline: {order.deadline}
+                      </span>
+                    )}
+                  </div>
                 </div>
 
                 {order.stages.length > 0 && (
@@ -211,10 +223,10 @@ export function StudioDashboard({ orders, onOrderClick }: StudioDashboardProps) 
                   </div>
                 )}
 
-                {order.currentStage && (
-                  <div className="bg-[#374151] rounded-lg p-2">
-                    <p className="text-xs text-[#9CA3AF]">Current Stage:</p>
-                    <p className="text-sm font-medium text-white">{order.currentStage}</p>
+                {(order.currentStage || order.stages.length === 0) && (
+                  <div className="bg-[#374151] rounded-lg p-2 space-y-0.5">
+                    <p className="text-xs text-[#9CA3AF]">Stage: <span className="text-white font-medium">{order.currentStage}</span></p>
+                    <p className="text-xs text-[#9CA3AF]">Status: <span className="text-white font-medium">{statusConfig.text}</span></p>
                   </div>
                 )}
               </button>

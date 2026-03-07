@@ -118,6 +118,11 @@ export const CalendarDatePicker: React.FC<CalendarDatePickerProps> = ({
 
   const handleDateClick = (date: Date) => {
     setSelectedDate(date);
+    // When no time picker, commit immediately so parent state updates even if user closes without clicking Confirm
+    if (!showTime) {
+      onChange?.(date);
+      setIsOpen(false);
+    }
   };
 
   const isDateDisabled = (date: Date) => {
@@ -165,11 +170,12 @@ export const CalendarDatePicker: React.FC<CalendarDatePickerProps> = ({
     setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1));
   };
 
-  const displayText = selectedDate
-    ? formatDateTime(selectedDate, selectedTime)
-    : placeholder;
+  // Show value (linked from parent) when present, else in-popover selection, so trigger is always linked to actual date
+  const effectiveDate = getDateValue(value) ?? selectedDate;
+  const timeForDisplay = effectiveDate === selectedDate ? selectedTime : (effectiveDate ? `${effectiveDate.getHours().toString().padStart(2, '0')}:${effectiveDate.getMinutes().toString().padStart(2, '0')}` : '00:00');
+  const displayText = effectiveDate ? formatDateTime(effectiveDate, timeForDisplay) : placeholder;
 
-  const hasValue = !!selectedDate;
+  const hasValue = !!effectiveDate;
 
   return (
     <div className="w-full">

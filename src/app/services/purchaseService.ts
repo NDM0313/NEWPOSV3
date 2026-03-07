@@ -837,6 +837,10 @@ export const purchaseService = {
     } catch {
       uniqueRef = generatePaymentReference(referenceNumber);
     }
+    // Identity: same as sale payments – set received_by so Roznamcha shows "by [user]"
+    const { data: { user: authUser } } = await supabase.auth.getUser();
+    const authUserId = authUser?.id ?? null;
+
     const insertPayload: any = {
       company_id: companyId,
       branch_id: validBranchId,
@@ -848,6 +852,7 @@ export const purchaseService = {
       payment_account_id: accountId,
       payment_date: new Date().toISOString().split('T')[0],
       reference_number: uniqueRef,
+      received_by: authUserId,
     };
     if (options?.notes !== undefined && options.notes !== '') insertPayload.notes = options.notes;
     if (options?.attachments !== undefined && options.attachments != null) {

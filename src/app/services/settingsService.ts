@@ -147,13 +147,38 @@ export const settingsService = {
     );
   },
 
-  /** Allow negative stock (inventory_settings.negativeStockAllowed or key allow_negative_stock). Used for sale validation. */
+  /**
+   * Company-level: allow negative stock (inventory_settings.negativeStockAllowed).
+   * Single source of truth for validation — always read from DB so all users get same behavior.
+   * Normalizes boolean/string so "true" or true both work.
+   */
   async getAllowNegativeStock(companyId: string): Promise<boolean> {
     const invRecord = await this.getSetting(companyId, 'inventory_settings');
-    const invVal = invRecord?.value as { negativeStockAllowed?: boolean } | undefined;
-    if (typeof invVal?.negativeStockAllowed === 'boolean') return invVal.negativeStockAllowed;
+    if (import.meta.env?.DEV) {
+      console.log('[SETTINGS] getAllowNegativeStock:', { companyId, hasRecord: !!invRecord, rawValue: invRecord?.value });
+    }
+    let invVal = invRecord?.value as { negativeStockAllowed?: boolean | string } | undefined;
+    if (typeof invVal === 'string') {
+      try {
+        invVal = JSON.parse(invVal) as { negativeStockAllowed?: boolean | string };
+      } catch {
+        invVal = undefined;
+      }
+    }
+    if (invVal != null && 'negativeStockAllowed' in invVal) {
+      const v = invVal.negativeStockAllowed;
+      if (typeof v === 'boolean') return v;
+      if (v === 'true' || v === true) return true;
+      if (String(v).toLowerCase() === 'true') return true;
+    }
     const legacy = await this.getSetting(companyId, 'allow_negative_stock');
-    return legacy?.value === true || legacy?.value === 'true';
+    const legacyVal = legacy?.value;
+    const out = legacyVal === true || legacyVal === 'true' || String(legacyVal).toLowerCase() === 'true';
+    // When no row found (RLS or missing): allow negative so sales aren't blocked by config/RLS
+    const fallback = !invRecord && !legacy;
+    const result = out || fallback;
+    if (import.meta.env?.DEV) console.log('[SETTINGS] getAllowNegativeStock result:', result, '(from legacy:', !!legacy, ', fallback no-row:', fallback, ')');
+    return result;
   },
 
   // ============================================

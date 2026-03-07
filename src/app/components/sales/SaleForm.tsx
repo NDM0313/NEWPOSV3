@@ -39,6 +39,7 @@ import {
   Upload
 } from 'lucide-react';
 import { format, parseISO } from "date-fns";
+import { buildNotesWithStudioDeadline, parseStudioDeadlineFromNotes, getStudioDeadlineFromNotes } from "@/app/utils/studioDeadlineNotes";
 import { cn, formatDateWithTimezone } from "../ui/utils";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
@@ -322,6 +323,7 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
     // Status State (Draft, Quotation, Final, etc.)
     const [saleStatus, setSaleStatus] = useState<'draft' | 'quotation' | 'order' | 'final'>('draft');
     const [studioDeadline, setStudioDeadline] = useState<Date | undefined>(undefined);
+    const studioDeadlineRef = useRef<Date | undefined>(undefined);
 
     // Packing Modal State - Now using global modal via NavigationContext
     const [activePackingItemId, setActivePackingItemId] = useState<number | null>(null);
@@ -1084,8 +1086,22 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
             setSavedSaleAttachments(Array.isArray((initialSale as any)?.attachments) ? (initialSale as any).attachments : []);
             setInvoiceNumber(initialSale.invoiceNo || '');
             setRefNumber('');
-            // CRITICAL FIX: Load notes from initialSale
-            setSaleNotes(initialSale.notes || '');
+            // Load notes; for studio sales set studioDeadline and Studio Notes input (studioNotes) so full note shows
+            const { deadline, notesWithoutDeadline } = parseStudioDeadlineFromNotes(initialSale.notes);
+            const loadedNotes = notesWithoutDeadline || '';
+            setSaleNotes(loadedNotes);
+            setStudioNotes(loadedNotes);
+            const deadlineStr = (initialSale as any).deadline || deadline;
+            if (deadlineStr) {
+                try {
+                    const d = new Date(deadlineStr);
+                    studioDeadlineRef.current = d;
+                    setStudioDeadline(d);
+                } catch { /* ignore */ }
+            } else {
+                studioDeadlineRef.current = undefined;
+                setStudioDeadline(undefined);
+            }
             
             // Pre-fill items (from initialSale or fetch if missing)
             const mapItemsToForm = (list: any[]) => {
@@ -1179,6 +1195,23 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                                 mapItemsToForm(initialSale.items);
                             }
                         }
+                        // Sync deadline & notes from DB so edit always shows saved values (not null)
+                        const dbDeadline = (full as any).deadline || getStudioDeadlineFromNotes((full as any).notes);
+                        if (dbDeadline) {
+                            try {
+                                const d = new Date(dbDeadline);
+                                studioDeadlineRef.current = d;
+                                setStudioDeadline(d);
+                            } catch { /* ignore */ }
+                        } else {
+                            studioDeadlineRef.current = undefined;
+                            setStudioDeadline(undefined);
+                        }
+                        const { notesWithoutDeadline } = parseStudioDeadlineFromNotes((full as any).notes);
+                        const loadedNotes = notesWithoutDeadline || '';
+                        setSaleNotes(loadedNotes);
+                        setStudioNotes(loadedNotes);
+
                         // Pre-fill from sale_charges: shipping → Shipping section; others → Extra Expenses
                         const charges = (full as any).charges ?? (full as any).sale_charges ?? [];
                         const chargeList = Array.isArray(charges) ? charges : [];
@@ -1962,7 +1995,17 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                 paymentStatus: finalPaymentStatus,
                 paymentMethod: (saleStatus === 'final' && partialPayments.length > 0) ? partialPayments[0].method : 'cash',
                 shippingStatus: shippingEnabled ? 'pending' as const : 'pending' as const,
-                notes: saleNotes || studioNotes || refNumber || undefined, // CRITICAL: Use saleNotes (saves to database)
+                notes: isStudioSale
+                    ? buildNotesWithStudioDeadline(studioDeadline, saleNotes || studioNotes || refNumber || '')
+                    : (saleNotes || studioNotes || refNumber || undefined),
+                deadline: (() => {
+                    const d = studioDeadlineRef.current ?? studioDeadline;
+                    const value = isStudioSale && d ? d.toISOString().split('T')[0] : null;
+                    if (import.meta.env?.DEV && isStudioSale) {
+                        console.log('[SALE FORM] Saving deadline:', value, 'from ref:', !!studioDeadlineRef.current, 'state:', !!studioDeadline);
+                    }
+                    return value;
+                })(),
                 // CRITICAL: Include extra expenses + standalone shipping so backend saves both to DB/sale_charges
                 extraExpenses: extraExpenses,
                 shippingCharges: finalShippingCharges,
@@ -2529,7 +2572,10 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                             <div className="w-40">
                                 <CalendarDatePicker
                                     value={studioDeadline}
-                                    onChange={setStudioDeadline}
+                                    onChange={(date) => {
+                                        studioDeadlineRef.current = date ?? undefined;
+                                        setStudioDeadline(date ?? undefined);
+                                    }}
                                     placeholder="Deadline"
                                     showTime={false}
                                 />

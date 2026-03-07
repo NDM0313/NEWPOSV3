@@ -34,6 +34,10 @@ export interface CreateSaleInput {
   notes?: string;
   isStudio: boolean;
   userId: string;
+  /** Studio: order date (YYYY-MM-DD) */
+  orderDate?: string;
+  /** Studio: deadline (YYYY-MM-DD) */
+  deadline?: string;
 }
 
 /** When branchId is 'default' (no branches), use first branch for RPC. No auto-create (POST branches can 403). */
@@ -46,29 +50,13 @@ async function resolveBranchId(companyId: string, branchId: string): Promise<str
 }
 
 /**
- * Get next invoice number from server – ATOMIC, no race conditions.
- * Uses RPC get_next_document_number. Studio sales use 'studio' (STD-xxx), regular use 'sale' (SL-xxx).
+ * Get next invoice number from server – ATOMIC, same engine as Web (Settings → Numbering Rules).
+ * Uses generate_document_number via getNextDocumentNumber. Studio → STD-xxx, regular → SL-xxx.
  * When branchId is 'default', uses first branch of company (RPC requires UUID).
  */
 async function getNextInvoiceNumber(companyId: string, branchId: string, isStudio: boolean): Promise<string> {
   const effectiveBranchId = await resolveBranchId(companyId, branchId);
-  const documentType = isStudio ? 'studio' : 'sale';
-  const { data, error } = await supabase.rpc('get_next_document_number', {
-    p_company_id: companyId,
-    p_branch_id: effectiveBranchId,
-    p_document_type: documentType,
-  });
-
-  if (error) {
-    console.error('[SALES API] get_next_document_number failed:', error);
-    throw new Error(`Failed to get invoice number: ${error.message}`);
-  }
-
-  if (!data || typeof data !== 'string') {
-    throw new Error('Invalid invoice number from server');
-  }
-
-  return data;
+  return getNextDocumentNumber(companyId, effectiveBranchId, isStudio ? 'studio' : 'sale');
 }
 
 export async function createSale(input: CreateSaleInput): Promise<{ data: { id: string; invoiceNo: string } | null; error: string | null }> {
@@ -76,7 +64,7 @@ export async function createSale(input: CreateSaleInput): Promise<{ data: { id: 
     return { data: null, error: 'App not configured.' };
   }
 
-  const { companyId, branchId, customerId, customerName, contactNumber, items, subtotal, discountAmount, taxAmount, expenses, total, paymentMethod, notes, isStudio, userId, paidAmount, dueAmount, paymentAccountId } = input;
+  const { companyId, branchId, customerId, customerName, contactNumber, items, subtotal, discountAmount, taxAmount, expenses, total, paymentMethod, notes, isStudio, userId, paidAmount, dueAmount, paymentAccountId, orderDate, deadline } = input;
 
   if (!companyId || !branchId || !userId) {
     return { data: null, error: 'Missing company, branch, or user.' };
@@ -128,6 +116,7 @@ export async function createSale(input: CreateSaleInput): Promise<{ data: { id: 
     created_by: userId,
     is_studio: !!isStudio,
     notes: notes || null,
+    ...(deadline != null && deadline !== '' && { deadline: deadline }),
   };
 
   let saleRow: Record<string, unknown> = { ...saleRowBase, invoice_no: invoiceNo };

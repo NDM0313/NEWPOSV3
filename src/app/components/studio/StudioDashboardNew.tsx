@@ -35,6 +35,7 @@ import {
 import { useNavigation } from '@/app/context/NavigationContext';
 import { cn } from '../ui/utils';
 import { format } from 'date-fns';
+import { getStudioDeadlineFromNotes } from '@/app/utils/studioDeadlineNotes';
 
 // Studio orders will be loaded from Supabase
 
@@ -144,7 +145,7 @@ const OrderDetailsModal = ({
   const balanceDue = sale?.due_amount != null ? Number(sale.due_amount) : totalBill - paidAmount;
   const workerCostTotal = stages.reduce((sum: number, s: any) => sum + (Number(s?.cost) || 0), 0);
   const allCompleted = stages.length > 0 && stages.every((s: any) => s.status === 'completed');
-  const anyInProgress = stages.some((s: any) => s.status === 'in_progress' || s.status === 'completed');
+  const anyInProgress = stages.some((s: any) => s.status === 'assigned' || s.status === 'in_progress' || s.status === 'completed');
   const derivedStatus = allCompleted ? 'Completed' : anyInProgress ? 'In Progress' : 'Pending';
   const expectedDelivery = sale?.notes || (stages.length > 0
     ? stages.map((s: any) => s.expected_completion_date).filter(Boolean).pop()
@@ -501,7 +502,7 @@ export const StudioDashboardNew = () => {
     const items = sale.items || [];
     const firstItem = items[0];
     const customer = sale.customer || {};
-    const saleDeadline = sale.notes || ''; // sale deadline / expected date when no stage
+    const saleDeadline = sale.deadline || getStudioDeadlineFromNotes(sale.notes) || ''; // sale deadline / expected date when no stage
     let stages: any[] = [];
     try {
       const productions = await studioProductionService.getProductionsBySaleId(sale.id);

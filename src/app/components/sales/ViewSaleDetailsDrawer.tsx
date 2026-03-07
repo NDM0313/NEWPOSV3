@@ -50,6 +50,7 @@ import { toast } from 'sonner';
 import { getAttachmentOpenUrl } from '@/app/utils/paymentAttachmentUrl';
 import { AttachmentPreviewRow } from '@/app/components/shared/AttachmentPreviewRow';
 import { getEffectiveSaleStatus, getSaleStatusBadgeConfig, canAddPaymentToSale } from '@/app/utils/statusHelpers';
+import { getStudioDeadlineFromNotes } from '@/app/utils/studioDeadlineNotes';
 import {
   Table,
   TableBody,
@@ -542,11 +543,17 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
         <div className="bg-gray-900/80 border-b border-gray-800 px-6 py-4 flex items-center justify-between shrink-0">
           <div className="flex items-center gap-4">
             <div>
-              <h2 className="text-xl font-bold text-white flex items-center gap-3">
+              <h2 className="text-xl font-bold text-white flex items-center gap-3 flex-wrap">
                 {sale.invoiceNo}
                 <Badge className={cn("text-xs font-semibold border", badge.bg, badge.text, badge.border)}>
                   {badge.label}
                 </Badge>
+                {((sale as any).is_studio || (sale.invoiceNo || '').startsWith('STD-') || (sale.invoiceNo || '').startsWith('ST-')) && (
+                  <Badge className="text-xs font-semibold border bg-purple-500/20 text-purple-300 border-purple-500/30">
+                    <Scissors size={12} className="mr-1" />
+                    Studio Sale
+                  </Badge>
+                )}
               </h2>
               <p className="text-sm text-gray-400 mt-0.5">
                 Sale Transaction Details
@@ -730,6 +737,15 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
                         <span className="text-white">{new Date(sale.updatedAt).toLocaleString()}</span>
                       </div>
                     )}
+                    {((sale as any).is_studio || (sale.invoiceNo || '').startsWith('STD-') || (sale.invoiceNo || '').startsWith('ST-')) && (() => {
+                      const studioDue = (sale as any).deadline || getStudioDeadlineFromNotes((sale as any).notes);
+                      return studioDue ? (
+                        <div className="flex justify-between">
+                          <span className="text-xs text-gray-500">Studio / Due Date</span>
+                          <span className="text-white">{new Date(studioDue).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
+                        </div>
+                      ) : null;
+                    })()}
                   </div>
                 </div>
               </div>

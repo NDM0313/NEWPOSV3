@@ -15,14 +15,20 @@ import { toast } from 'sonner';
 
 const SENTINEL = '00000000-0000-0000-0000-000000000000';
 
-const MODULES: { document_type: string; label: string; defaultPrefix: string }[] = [
-  { document_type: 'SALE', label: 'Sales', defaultPrefix: 'SL' },
-  { document_type: 'PURCHASE', label: 'Purchase', defaultPrefix: 'PUR' },
-  { document_type: 'PAYMENT', label: 'Payment', defaultPrefix: 'PAY' },
-  { document_type: 'EXPENSE', label: 'Expense', defaultPrefix: 'EXP' },
-  { document_type: 'RENTAL', label: 'Rental', defaultPrefix: 'REN' },
-  { document_type: 'STUDIO', label: 'Studio', defaultPrefix: 'STD' },
-  { document_type: 'POS', label: 'POS', defaultPrefix: 'POS' },
+/** Document = transaction (invoice, payment). Master = permanent record (product, customer). */
+const MODULES: { document_type: string; label: string; defaultPrefix: string; type: 'Document' | 'Master' }[] = [
+  { document_type: 'SALE', label: 'Sale', defaultPrefix: 'SL', type: 'Document' },
+  { document_type: 'PURCHASE', label: 'Purchase', defaultPrefix: 'PUR', type: 'Document' },
+  { document_type: 'PAYMENT', label: 'Payment', defaultPrefix: 'PAY', type: 'Document' },
+  { document_type: 'EXPENSE', label: 'Expense', defaultPrefix: 'EXP', type: 'Document' },
+  { document_type: 'RENTAL', label: 'Rental', defaultPrefix: 'REN', type: 'Document' },
+  { document_type: 'STUDIO', label: 'Studio', defaultPrefix: 'STD', type: 'Document' },
+  { document_type: 'POS', label: 'POS', defaultPrefix: 'POS', type: 'Document' },
+  { document_type: 'PRODUCT', label: 'Product', defaultPrefix: 'PRD', type: 'Master' },
+  { document_type: 'CUSTOMER', label: 'Customer', defaultPrefix: 'CUS', type: 'Master' },
+  { document_type: 'SUPPLIER', label: 'Supplier', defaultPrefix: 'SUP', type: 'Master' },
+  { document_type: 'WORKER', label: 'Worker', defaultPrefix: 'WRK', type: 'Master' },
+  { document_type: 'JOB', label: 'Studio Job', defaultPrefix: 'JOB', type: 'Master' },
 ];
 
 export interface NumberingRuleRow {
@@ -32,6 +38,7 @@ export interface NumberingRuleRow {
   year_reset: boolean;
   branch_based: boolean;
   last_number: number;
+  type?: 'Document' | 'Master';
 }
 
 function previewNumber(prefix: string, padding: number): string {
@@ -58,9 +65,10 @@ export function NumberingRulesTable() {
           document_type: m.document_type,
           prefix: existing?.prefix ?? m.defaultPrefix,
           padding: existing?.padding ?? 4,
-          year_reset: existing?.year_reset ?? true,
+          year_reset: existing?.year_reset ?? (m.type === 'Master' ? false : true),
           branch_based: existing?.branch_based ?? false,
           last_number: existing?.last_number ?? 0,
+          type: m.type,
         };
       });
       setRows(merged);
@@ -72,9 +80,10 @@ export function NumberingRulesTable() {
           document_type: m.document_type,
           prefix: m.defaultPrefix,
           padding: 4,
-          year_reset: true,
+          year_reset: m.type === 'Master' ? false : true,
           branch_based: false,
           last_number: 0,
+          type: m.type,
         }))
       );
     } finally {
@@ -153,6 +162,7 @@ export function NumberingRulesTable() {
             <thead className="bg-gray-900/80 text-gray-400 border-b border-gray-800">
               <tr>
                 <th className="px-4 py-3 text-left font-medium w-28">Module</th>
+                <th className="px-4 py-3 text-left font-medium w-20">Type</th>
                 <th className="px-4 py-3 text-left font-medium w-32">Prefix</th>
                 <th className="px-4 py-3 text-left font-medium w-24">Digits</th>
                 <th className="px-4 py-3 text-left font-medium w-28">Year Reset</th>
@@ -164,6 +174,7 @@ export function NumberingRulesTable() {
               {rows.map((r) => (
                 <tr key={r.document_type} className="hover:bg-gray-800/30 bg-gray-950/30">
                   <td className="px-4 py-3 text-white font-medium">{r.document_type.charAt(0) + r.document_type.slice(1).toLowerCase()}</td>
+                  <td className="px-4 py-3 text-gray-400 text-xs uppercase tracking-wide">{r.type ?? 'Document'}</td>
                   <td className="px-4 py-3">
                     <Input
                       value={r.prefix}

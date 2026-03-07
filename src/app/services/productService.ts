@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase';
+import { documentNumberService } from '@/app/services/documentNumberService';
 
 export interface Product {
   id: string;
@@ -162,23 +163,44 @@ export const productService = {
     return data;
   },
 
-  // Create product
+  // Create product (uses ERP numbering engine for SKU; auto-retry once on duplicate SKU)
   async createProduct(product: Partial<Product>) {
     const payload = ensureProductIds(product as Record<string, unknown>);
-    const { data, error } = await supabase
-      .from('products')
-      .insert(payload)
-      .select()
-      .single();
+    const companyId = (payload.company_id as string) || (product as any).company_id;
+    let lastError: unknown = null;
 
-    if (error) {
-      if (error.code === '23505' || (error.message && /duplicate key value|unique constraint/i.test(error.message))) {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const { data, error } = await supabase
+        .from('products')
+        .insert(payload)
+        .select()
+        .single();
+
+      if (!error) return data;
+
+      const isDuplicate = error.code === '23505' || (error.message && /duplicate key value|unique constraint/i.test(error.message));
+      const isSkuConflict = isDuplicate && (error.message && /sku|SKU/i.test(error.message) || (product.sku && error.message?.includes(product.sku as string)));
+
+      if (isSkuConflict && companyId && attempt === 0) {
+        try {
+          const nextSKU = await documentNumberService.getNextProductSKU(companyId, null);
+          (payload as any).sku = nextSKU;
+          lastError = error;
+          continue;
+        } catch (e) {
+          lastError = e;
+        }
+      }
+
+      if (isDuplicate) {
         const hint = product.sku ? `SKU "${product.sku}" is already in use for this company.` : 'A product with this SKU already exists.';
         throw new Error(`${hint} Please use a different SKU or generate a new one.`);
       }
       throw error;
     }
-    return data;
+
+    const hint = (payload as any).sku ? `SKU "${(payload as any).sku}" is already in use.` : 'Duplicate SKU.';
+    throw new Error(`${hint} Please use a different SKU or generate a new one.`);
   },
 
   /** Create a product variation (Size, Color, etc.). product_variations table.

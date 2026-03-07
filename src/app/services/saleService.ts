@@ -58,6 +58,8 @@ export interface Sale {
   due_amount: number;
   return_due?: number;
   notes?: string;
+  /** Delivery/deadline date (YYYY-MM-DD) for studio sales. */
+  deadline?: string;
   attachments?: { url: string; name: string }[] | null;
   created_by: string;
   is_studio?: boolean;
@@ -84,41 +86,96 @@ export interface SaleItem {
   notes?: string;
 }
 
+/** Options for createSale. allowNegativeStock: when true, skip stock check (caller already validated). */
+export type CreateSaleOptions = { allowNegativeStock?: boolean };
+
 export const saleService = {
-  // Create sale with items
-  async createSale(sale: Sale, items: SaleItem[]) {
-    // Backend validation: when negative stock not allowed, ensure sufficient stock (branch-based)
+  // Create sale with items. options.allowNegativeStock from caller (context or DB) — allow if either says true.
+  async createSale(sale: Sale, items: SaleItem[], options?: CreateSaleOptions) {
+    const fromCaller = options?.allowNegativeStock === true;
+    const fromDb = fromCaller ? true : await settingsService.getAllowNegativeStock(sale.company_id);
+    const allowNegative = fromCaller || fromDb;
+    if (import.meta.env?.DEV) {
+      console.log('[SALE SERVICE] Negative stock check:', { allowNegative, fromCaller, fromDb, companyId: sale.company_id });
+    }
     const isFinal = sale.status === 'final';
-    if (isFinal && items.length > 0) {
-      const allowNegative = await settingsService.getAllowNegativeStock(sale.company_id);
-      if (!allowNegative) {
-        const branchId = sale.branch_id || undefined;
-        for (const item of items) {
-          const movements = await productService.getStockMovements(
-            item.product_id,
-            sale.company_id,
-            item.variation_id || undefined,
-            branchId
+    if (isFinal && items.length > 0 && !allowNegative) {
+      const branchId = sale.branch_id || undefined;
+      for (const item of items) {
+        const movements = await productService.getStockMovements(
+          item.product_id,
+          sale.company_id,
+          item.variation_id || undefined,
+          branchId
+        );
+        const { currentBalance } = calculateStockFromMovements(movements || []);
+        if (Number(item.quantity) > currentBalance) {
+          throw new Error(
+            `Insufficient stock: ${item.product_name || item.sku} — requested ${item.quantity}, available ${currentBalance}. ` +
+            'Enable "Negative Stock Allowed" in Settings → Inventory to allow.'
           );
-          const { currentBalance } = calculateStockFromMovements(movements || []);
-          if (Number(item.quantity) > currentBalance) {
-            throw new Error(
-              `Insufficient stock: ${item.product_name || item.sku} — requested ${item.quantity}, available ${currentBalance}. ` +
-              'Enable "Negative Stock Allowed" in Settings → Inventory to allow.'
-            );
-          }
         }
       }
     }
 
-    // Start transaction
-    const { data: saleData, error: saleError } = await supabase
+    // Build insert row: notes + deadline (always send both so JSON never drops them)
+    const deadlineForDb = sale.deadline != null && String(sale.deadline).trim() !== '' ? String(sale.deadline).trim() : null;
+    const insertRow = {
+      ...sale,
+      notes: sale.notes ?? null,
+      deadline: deadlineForDb,
+    };
+    if (import.meta.env?.DEV && deadlineForDb) {
+      console.log('[SALE SERVICE] createSale inserting deadline:', deadlineForDb);
+    }
+
+    let saleData: any;
+    const { data: inserted, error: saleError } = await supabase
       .from('sales')
-      .insert(sale)
+      .insert(insertRow)
       .select()
       .single();
 
-    if (saleError) throw saleError;
+    if (saleError) {
+      // If insert fails because deadline column is missing, retry without deadline then update
+      const missingColumn = saleError.message?.includes('deadline') || saleError.code === '42703';
+      if (missingColumn && sale.deadline) {
+        const { deadline: _d, ...rowWithoutDeadline } = insertRow;
+        const retry = await supabase.from('sales').insert(rowWithoutDeadline).select().single();
+        if (retry.error) throw retry.error;
+        saleData = retry.data;
+        const { error: upErr } = await supabase.from('sales').update({ deadline: sale.deadline }).eq('id', saleData.id);
+        if (upErr) console.warn('[SALE SERVICE] deadline update failed:', upErr.message);
+        (saleData as any).deadline = upErr ? null : sale.deadline;
+      } else {
+        throw saleError;
+      }
+    } else {
+      saleData = inserted;
+    }
+
+    // Persist deadline: try direct update, then RPC fallback so it always saves
+    if (deadlineForDb && saleData?.id) {
+      const { error: deadlineUpErr } = await supabase
+        .from('sales')
+        .update({ deadline: deadlineForDb })
+        .eq('id', saleData.id);
+      if (deadlineUpErr) {
+        console.warn('[SALE SERVICE] deadline update failed, trying RPC:', deadlineUpErr.message);
+        const { error: rpcErr } = await supabase.rpc('set_sale_deadline', {
+          p_sale_id: saleData.id,
+          p_deadline: deadlineForDb,
+        });
+        if (rpcErr) {
+          console.warn('[SALE SERVICE] set_sale_deadline RPC failed:', rpcErr.message);
+          (saleData as any).deadlineError = deadlineUpErr.message || rpcErr.message;
+        } else {
+          (saleData as any).deadline = deadlineForDb;
+        }
+      } else {
+        (saleData as any).deadline = deadlineForDb;
+      }
+    }
 
     // Insert items: only send columns that exist in DB (no discount_percentage / tax_percentage)
     const sanitizeItem = (item: SaleItem) => {
@@ -685,6 +742,9 @@ export const saleService = {
     const sanitized = { ...updates };
     delete (sanitized as any).discount_percentage;
     delete (sanitized as any).tax_percentage;
+    // Ensure notes + deadline are persisted when present (DB columns)
+    if ('notes' in updates) (sanitized as any).notes = updates.notes ?? null;
+    if ('deadline' in updates) (sanitized as any).deadline = updates.deadline ?? null;
 
     const { data, error } = await supabase
       .from('sales')

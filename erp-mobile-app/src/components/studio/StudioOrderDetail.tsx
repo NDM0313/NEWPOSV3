@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ArrowLeft, Plus, Edit2, Trash2, CheckCircle, Clock, Package } from 'lucide-react';
+import { ArrowLeft, Plus, Edit2, Trash2, CheckCircle, Clock, Package, Banknote, Building2, Wallet } from 'lucide-react';
 import type { StudioOrder, StudioStage } from './StudioDashboard';
 
 interface StudioOrderDetailProps {
@@ -244,7 +244,7 @@ export function StudioOrderDetail({
                       </div>
                       <div>
                         <p className="text-xs text-[#9CA3AF]">Type</p>
-                        <p className="text-sm text-white capitalize">{stage.type.replace('-', ' ')}</p>
+                        <p className="text-sm text-white">{stage.name}</p>
                       </div>
                     </div>
 
@@ -283,7 +283,8 @@ export function StudioOrderDetail({
                           }
                           if (stage.status === 'received') {
                             if ((stage.internalCost ?? 0) <= 0 && onConfirmPayment) {
-                              setPaymentFinalCost(String(stage.internalCost || stage.customerCharge || ''));
+                              const assignedAmount = stage.expectedCost ?? stage.internalCost ?? stage.customerCharge ?? 0;
+                              setPaymentFinalCost(assignedAmount ? String(assignedAmount) : '');
                               setPaymentDialogStage(stage);
                               return;
                             }
@@ -362,22 +363,23 @@ export function StudioOrderDetail({
 
       {paymentDialogStage && onConfirmPayment && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
-          <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4 w-full max-w-sm">
-            <h3 className="text-lg font-semibold text-white mb-3">Confirm Payment</h3>
-            <p className="text-sm text-[#9CA3AF] mb-2">{paymentDialogStage.name} – Worker: {paymentDialogStage.assignedTo}</p>
-            <label className="block text-sm text-[#9CA3AF] mb-1">Final Cost (Rs)</label>
+          <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-5 w-full max-w-sm shadow-xl">
+            <h3 className="text-lg font-semibold text-white mb-1">Confirm Payment</h3>
+            <p className="text-sm text-[#9CA3AF] mb-4">{paymentDialogStage.name} – Worker: {paymentDialogStage.assignedTo}</p>
+            <label className="block text-sm font-medium text-[#9CA3AF] mb-2">Final Cost (Rs)</label>
             <input
               type="number"
               inputMode="decimal"
               value={paymentFinalCost}
               onChange={(e) => setPaymentFinalCost(e.target.value)}
-              placeholder={String(paymentDialogStage.internalCost || '')}
-              className="w-full bg-[#374151] border border-[#4B5563] rounded-lg px-3 py-2 text-white mb-4"
+              placeholder={String(paymentDialogStage.expectedCost ?? paymentDialogStage.internalCost ?? paymentDialogStage.customerCharge ?? '')}
+              className="w-full bg-[#374151] border border-[#4B5563] rounded-lg px-4 py-3 text-white text-base mb-4 focus:outline-none focus:border-[#8B5CF6]"
             />
-            <div className="flex gap-2">
+            <p className="text-xs text-[#6B7280] mb-3">Payment method (Pay Now) or record as Pay Later</p>
+            <div className="grid grid-cols-3 gap-2 mb-3">
               <button
                 onClick={async () => {
-                  const cost = parseFloat(paymentFinalCost) || paymentDialogStage.internalCost || 0;
+                  const cost = parseFloat(paymentFinalCost) || (paymentDialogStage.expectedCost ?? paymentDialogStage.internalCost ?? paymentDialogStage.customerCharge ?? 0);
                   if (cost <= 0) {
                     alert('Enter final cost');
                     return;
@@ -391,34 +393,77 @@ export function StudioOrderDetail({
                   }
                 }}
                 disabled={paymentSubmitting}
-                className="flex-1 py-2 rounded-lg text-sm font-medium bg-[#10B981] hover:bg-[#059669] text-white"
+                className="flex flex-col items-center justify-center gap-1 py-3 rounded-xl bg-[#10B981]/20 border border-[#10B981]/50 hover:bg-[#10B981]/30 text-[#10B981] disabled:opacity-50"
               >
-                Pay Now
+                <Banknote className="w-6 h-6" />
+                <span className="text-xs font-medium">Cash</span>
               </button>
               <button
                 onClick={async () => {
-                  const cost = parseFloat(paymentFinalCost) || paymentDialogStage.internalCost || 0;
+                  const cost = parseFloat(paymentFinalCost) || (paymentDialogStage.expectedCost ?? paymentDialogStage.internalCost ?? paymentDialogStage.customerCharge ?? 0);
                   if (cost <= 0) {
                     alert('Enter final cost');
                     return;
                   }
                   setPaymentSubmitting(true);
                   try {
-                    await Promise.resolve(onConfirmPayment(paymentDialogStage, { final_cost: cost, pay_now: false }));
+                    await Promise.resolve(onConfirmPayment(paymentDialogStage, { final_cost: cost, pay_now: true }));
                     setPaymentDialogStage(null);
                   } finally {
                     setPaymentSubmitting(false);
                   }
                 }}
                 disabled={paymentSubmitting}
-                className="flex-1 py-2 rounded-lg text-sm font-medium bg-[#3B82F6] hover:bg-[#2563EB] text-white"
+                className="flex flex-col items-center justify-center gap-1 py-3 rounded-xl bg-[#3B82F6]/20 border border-[#3B82F6]/50 hover:bg-[#3B82F6]/30 text-[#3B82F6] disabled:opacity-50"
               >
-                Pay Later
+                <Building2 className="w-6 h-6" />
+                <span className="text-xs font-medium">Bank</span>
+              </button>
+              <button
+                onClick={async () => {
+                  const cost = parseFloat(paymentFinalCost) || (paymentDialogStage.expectedCost ?? paymentDialogStage.internalCost ?? paymentDialogStage.customerCharge ?? 0);
+                  if (cost <= 0) {
+                    alert('Enter final cost');
+                    return;
+                  }
+                  setPaymentSubmitting(true);
+                  try {
+                    await Promise.resolve(onConfirmPayment(paymentDialogStage, { final_cost: cost, pay_now: true }));
+                    setPaymentDialogStage(null);
+                  } finally {
+                    setPaymentSubmitting(false);
+                  }
+                }}
+                disabled={paymentSubmitting}
+                className="flex flex-col items-center justify-center gap-1 py-3 rounded-xl bg-[#F59E0B]/20 border border-[#F59E0B]/50 hover:bg-[#F59E0B]/30 text-[#F59E0B] disabled:opacity-50"
+              >
+                <Wallet className="w-6 h-6" />
+                <span className="text-xs font-medium">Wallet</span>
               </button>
             </div>
             <button
+              onClick={async () => {
+                const cost = parseFloat(paymentFinalCost) || (paymentDialogStage.expectedCost ?? paymentDialogStage.internalCost ?? paymentDialogStage.customerCharge ?? 0);
+                if (cost <= 0) {
+                  alert('Enter final cost');
+                  return;
+                }
+                setPaymentSubmitting(true);
+                try {
+                  await Promise.resolve(onConfirmPayment(paymentDialogStage, { final_cost: cost, pay_now: false }));
+                  setPaymentDialogStage(null);
+                } finally {
+                  setPaymentSubmitting(false);
+                }
+              }}
+              disabled={paymentSubmitting}
+              className="w-full py-3 rounded-xl text-sm font-medium bg-[#374151] hover:bg-[#4B5563] text-white mb-2 disabled:opacity-50"
+            >
+              Pay Later (record in ledger)
+            </button>
+            <button
               onClick={() => setPaymentDialogStage(null)}
-              className="w-full mt-2 py-2 rounded-lg text-sm text-[#9CA3AF] hover:bg-[#374151]"
+              className="w-full py-2 rounded-lg text-sm text-[#9CA3AF] hover:bg-[#374151]"
             >
               Cancel
             </button>

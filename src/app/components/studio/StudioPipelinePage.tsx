@@ -30,6 +30,7 @@ import { cn } from '../ui/utils';
 import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
+import { getStudioDeadlineFromNotes } from '@/app/utils/studioDeadlineNotes';
 
 type ProductionStatus = 'Not Started' | 'In Progress' | 'Completed';
 
@@ -66,11 +67,14 @@ export const StudioPipelinePage = () => {
   const [sales, setSales] = useState<StudioItem[]>([]);
   const [loading, setLoading] = useState(true);
 
+  // Pipeline: Not Started = no tasks assigned; In Progress = any task assigned or started; Completed = all completed
   const deriveProductionStatus = useCallback((stages: Array<{ status?: string }>): ProductionStatus => {
     if (!stages || stages.length === 0) return 'Not Started';
     const allCompleted = stages.every((s: any) => s.status === 'completed');
     if (allCompleted) return 'Completed';
-    const anyInProgress = stages.some((s: any) => s.status === 'in_progress' || s.status === 'completed');
+    const anyInProgress = stages.some((s: any) =>
+      s.status === 'assigned' || s.status === 'in_progress' || s.status === 'completed'
+    );
     return anyInProgress ? 'In Progress' : 'Not Started';
   }, []);
 
@@ -98,6 +102,7 @@ export const StudioPipelinePage = () => {
   const convertFromSale = useCallback((sale: any, stages?: Array<{ status?: string }>): StudioItem => {
     const items = sale.items || [];
     const productionStatus = stages ? deriveProductionStatus(stages) : 'Not Started';
+    const deliveryDeadline = sale.deadline || getStudioDeadlineFromNotes(sale.notes) || sale.notes || '';
     return {
       id: sale.id || '',
       invoiceNo: sale.invoice_no || sale.invoiceNo || `STD-${sale.id?.slice(0, 8)}`,
@@ -105,7 +110,7 @@ export const StudioPipelinePage = () => {
       fabricSummary: items.length > 0 ? (items[0].product_name || items[0].item_description || 'N/A') : 'N/A',
       meters: items.reduce((s: number, i: any) => s + (Number(i.quantity) || 0), 0),
       saleDate: sale.invoice_date || sale.invoiceDate || '',
-      deliveryDeadline: sale.notes || '',
+      deliveryDeadline,
       totalAmount: Number(sale.total) || 0,
       paidAmount: Number(sale.paid_amount) || 0,
       balanceDue: Number(sale.due_amount) ?? 0,

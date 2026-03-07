@@ -11,7 +11,8 @@ import {
   Eye,
   Edit2,
   Package,
-  Printer
+  Printer,
+  FileText
 } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
@@ -33,6 +34,7 @@ import { studioProductionService } from '@/app/services/studioProductionService'
 import { convertFromSupabaseSale } from '@/app/context/SalesContext';
 import { ViewSaleDetailsDrawer } from '@/app/components/sales/ViewSaleDetailsDrawer';
 import { exportToCSV, exportToExcel, exportToPDF, type ExportData } from '@/app/utils/exportUtils';
+import { getStudioDeadlineFromNotes, parseStudioDeadlineFromNotes } from '@/app/utils/studioDeadlineNotes';
 import { toast } from 'sonner';
 
 function formatDateSafe(value: string | undefined | null, formatStr: string): string {
@@ -57,6 +59,7 @@ interface StudioSale {
   meters: number;
   saleDate: string;
   deliveryDeadline: string;
+  notes: string;
   totalAmount: number;
   paidAmount: number;
   balanceDue: number;
@@ -108,6 +111,7 @@ export const StudioSalesListNew = () => {
       meters,
       saleDate: order.order_date || new Date().toISOString().split('T')[0],
       deliveryDeadline: order.delivery_date || order.actual_delivery_date || '',
+      notes: order.notes || '',
       totalAmount: order.total_cost || 0,
       paidAmount: order.advance_paid || 0,
       balanceDue: order.balance_due || 0,
@@ -116,12 +120,14 @@ export const StudioSalesListNew = () => {
     };
   }, []);
 
-  // Derive production status from studio_production_stages (same logic as dashboard)
+  // Derive production status: Not Started = no tasks assigned; In Progress = any task assigned or started; Completed = all completed
   const deriveProductionStatus = useCallback((stages: Array<{ status?: string }>): ProductionStatus => {
     if (!stages || stages.length === 0) return 'Not Started';
     const allCompleted = stages.every((s: any) => s.status === 'completed');
     if (allCompleted) return 'Completed';
-    const anyInProgress = stages.some((s: any) => s.status === 'in_progress' || s.status === 'completed');
+    const anyInProgress = stages.some((s: any) =>
+      s.status === 'assigned' || s.status === 'in_progress' || s.status === 'completed'
+    );
     return anyInProgress ? 'In Progress' : 'Not Started';
   }, []);
 
@@ -134,6 +140,8 @@ export const StudioSalesListNew = () => {
       : 'N/A';
     const meters = items.reduce((sum: number, item: any) => sum + (Number(item.quantity) || 0), 0);
     const productionStatus = stages ? deriveProductionStatus(stages) : 'Not Started';
+    const { notesWithoutDeadline } = parseStudioDeadlineFromNotes(sale.notes);
+    const deliveryDeadline = sale.deadline || getStudioDeadlineFromNotes(sale.notes) || '';
     return {
       id: sale.id || '',
       invoiceNo: sale.invoice_no || sale.invoiceNo || `STD-${sale.id?.slice(0, 8)}`,
@@ -142,7 +150,8 @@ export const StudioSalesListNew = () => {
       fabricSummary,
       meters,
       saleDate: sale.invoice_date || sale.invoiceDate || new Date().toISOString().split('T')[0],
-      deliveryDeadline: sale.notes || '',
+      deliveryDeadline,
+      notes: notesWithoutDeadline || '',
       totalAmount: Number(sale.total) || 0,
       paidAmount: Number(sale.paid_amount) || 0,
       balanceDue: Number(sale.due_amount) ?? (Number(sale.total) || 0) - (Number(sale.paid_amount) || 0),
@@ -313,7 +322,7 @@ export const StudioSalesListNew = () => {
   const getExportData = useCallback((): ExportData => {
     const headers = [
       'Sale / Invoice No', 'Customer', 'Phone', 'Product / Fabric', 'Meters',
-      'Sale Date', 'Deadline', 'Total Amount', 'Paid Amount', 'Balance Due', 'Production Status'
+      'Sale Date', 'Deadline', 'Notes', 'Total Amount', 'Paid Amount', 'Balance Due', 'Production Status'
     ];
     const rows = filteredSales.map(s => [
       s.invoiceNo,
@@ -323,6 +332,7 @@ export const StudioSalesListNew = () => {
       s.meters,
       formatDateSafe(s.saleDate, 'yyyy-MM-dd'),
       formatDateSafe(s.deliveryDeadline, 'yyyy-MM-dd'),
+      s.notes || '',
       s.totalAmount,
       s.paidAmount,
       s.balanceDue,
@@ -470,6 +480,7 @@ export const StudioSalesListNew = () => {
                 <th className="p-4 font-medium min-w-[180px]">Product / Fabric</th>
                 <th className="p-4 font-medium min-w-[120px]">Sale Date</th>
                 <th className="p-4 font-medium min-w-[120px]">Deadline</th>
+                <th className="p-4 font-medium min-w-[160px]">Notes</th>
                 <th className="p-4 font-medium text-right min-w-[120px]">Total Amount</th>
                 <th className="p-4 font-medium text-right min-w-[120px]">Paid Amount</th>
                 <th className="p-4 font-medium text-right min-w-[120px]">Balance Due</th>
@@ -481,7 +492,7 @@ export const StudioSalesListNew = () => {
             <tbody className="divide-y divide-gray-800">
               {displayedSales.length === 0 ? (
                 <tr>
-                  <td colSpan={11} className="p-8 text-center text-gray-500">
+                  <td colSpan={12} className="p-8 text-center text-gray-500">
                     No studio sales found
                   </td>
                 </tr>
@@ -534,6 +545,23 @@ export const StudioSalesListNew = () => {
                         !alert && "text-gray-300"
                       )}>
                         {formatDateSafe(sale.deliveryDeadline, 'dd MMM yyyy')}
+                      </p>
+                    </td>
+
+                    {/* Notes: first 40 chars, full text on hover */}
+                    <td className="p-4 max-w-[200px]">
+                      <p
+                        className="text-gray-300 text-sm truncate flex items-center gap-1.5"
+                        title={sale.notes || undefined}
+                      >
+                        {sale.notes ? (
+                          <>
+                            <FileText size={14} className="text-purple-400/80 shrink-0" aria-hidden />
+                            <span>{sale.notes.length > 40 ? `${sale.notes.slice(0, 40)}…` : sale.notes}</span>
+                          </>
+                        ) : (
+                          '—'
+                        )}
                       </p>
                     </td>
 

@@ -21,6 +21,7 @@ export function StudioUpdateStatusView({
   const [loading, setLoading] = useState(false);
   const [workers, setWorkers] = useState<{ id: string; name: string }[]>([]);
   const [workerId, setWorkerId] = useState<string>(selectedStage.workerId ?? '');
+  const [expectedDate, setExpectedDate] = useState(selectedStage.expectedDate || '');
   const [expectedCost, setExpectedCost] = useState(selectedStage.internalCost?.toString() ?? '');
   const [finalCost, setFinalCost] = useState(selectedStage.internalCost?.toString() ?? '');
   const isPending = selectedStage.status === 'pending';
@@ -44,7 +45,7 @@ export function StudioUpdateStatusView({
     const { error } = await studioApi.assignWorkerToStep(selectedStage.id, {
       worker_id: wid,
       expected_cost: cost,
-      expected_completion_date: selectedStage.expectedDate || null,
+      expected_completion_date: expectedDate.trim() || null,
       notes: null,
     });
     setLoading(false);
@@ -151,7 +152,7 @@ export function StudioUpdateStatusView({
             </div>
             <div className="flex justify-between">
               <span className="text-[#9CA3AF]">Expected Date</span>
-              <span className="text-white">{selectedStage.expectedDate || '—'}</span>
+              <span className="text-white">{expectedDate || selectedStage.expectedDate || '—'}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-[#9CA3AF]">Sent</span>
@@ -182,6 +183,16 @@ export function StudioUpdateStatusView({
                   <option key={w.id} value={w.id}>{w.name}</option>
                 ))}
               </select>
+            </div>
+            <div>
+              <label className="block text-sm text-[#9CA3AF] mb-2">Expected Return Date</label>
+              <input
+                type="date"
+                value={expectedDate}
+                onChange={(e) => setExpectedDate(e.target.value)}
+                min={new Date().toISOString().split('T')[0]}
+                className="w-full bg-[#1F2937] border border-[#374151] rounded-lg px-4 py-3 text-white"
+              />
             </div>
             <div>
               <label className="block text-sm text-[#9CA3AF] mb-2">Expected Cost (Rs)</label>

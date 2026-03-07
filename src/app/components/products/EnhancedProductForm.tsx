@@ -49,6 +49,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../ui/select";
+import { SearchableSelect } from "../ui/searchable-select";
 import { Switch } from "../ui/switch";
 import { Textarea } from "../ui/textarea";
 import { Separator } from "../ui/separator";
@@ -1363,60 +1364,6 @@ export const EnhancedProductForm = ({
                   )}
                 </div>
 
-                <div>
-                  <Label
-                    htmlFor="barcode-type"
-                    className="text-gray-200"
-                  >
-                    Barcode Type
-                  </Label>
-                  <Controller
-                    control={control}
-                    name="barcodeType"
-                    render={({ field }) => (
-                      <Select
-                        onValueChange={field.onChange}
-                        value={field.value ?? 'code128'}
-                      >
-                        <SelectTrigger className="bg-gray-800 border-gray-700 text-white mt-1">
-                          <SelectValue placeholder="Select Type" />
-                        </SelectTrigger>
-                        <SelectContent className="bg-gray-900 border-gray-800 text-white">
-                          <SelectItem value="ean13">
-                            EAN-13
-                          </SelectItem>
-                          <SelectItem value="ean8">
-                            EAN-8
-                          </SelectItem>
-                          <SelectItem value="upc">UPC-A</SelectItem>
-                          <SelectItem value="code128">
-                            Code 128
-                          </SelectItem>
-                        </SelectContent>
-                      </Select>
-                    )}
-                  />
-                </div>
-
-                <div>
-                  <Label htmlFor="barcode" className="text-gray-200">Barcode</Label>
-                  <div className="relative mt-1">
-                    <Input
-                      id="barcode"
-                      {...register("barcode")}
-                      placeholder="Optional barcode"
-                      className="bg-gray-800 border-gray-700 text-white pr-24"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setValue('barcode', getValues('sku') || '')}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white transition-colors text-xs"
-                    >
-                      Use SKU
-                    </button>
-                  </div>
-                  <p className="text-xs text-gray-500 mt-0.5">Default empty. Optional for scanning.</p>
-                </div>
               </div>
             </div>
 
@@ -1428,149 +1375,124 @@ export const EnhancedProductForm = ({
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <Label className="text-gray-200">Brand</Label>
-                  <Controller
-                    control={control}
-                    name="brand"
-                    render={({ field }) => (
-                      <Select
-                        onValueChange={field.onChange}
-                        value={field.value ?? ''}
-                      >
-                        <SelectTrigger className="bg-gray-800 border-gray-700 text-white mt-1">
-                          <SelectValue placeholder="Select Brand" />
-                        </SelectTrigger>
-                        <SelectContent className="bg-gray-900 border-gray-800 text-white">
-                          {loadingBrands ? (
-                            <div className="px-2 py-1.5 text-sm text-gray-400">Loading brands...</div>
-                          ) : brands.length > 0 ? (
-                            brands.map((b) => (
-                              <SelectItem key={b.id} value={b.id}>
-                                {b.name}
-                              </SelectItem>
-                            ))
-                          ) : (
-                            <div className="px-2 py-1.5 text-sm text-gray-500">No brands. Add in Settings → Inventory → Brands.</div>
-                          )}
-                        </SelectContent>
-                      </Select>
+                  <div className="mt-1">
+                    {loadingBrands ? (
+                      <div className="flex h-9 items-center rounded-md border border-gray-700 bg-gray-800 px-3 text-sm text-gray-400">Loading brands...</div>
+                    ) : (
+                      <SearchableSelect
+                        value={watch('brand') ?? ''}
+                        onValueChange={(v) => setValue('brand', v)}
+                        options={brands}
+                        placeholder="Select Brand"
+                        searchPlaceholder="Search brand..."
+                        emptyText="No brand found."
+                        className="bg-gray-800 border-gray-700 text-white h-9"
+                        enableAddNew
+                        addNewLabel="Add Brand"
+                        onAddNew={async (searchText) => {
+                          if (!companyId) return;
+                          try {
+                            const name = (searchText || '').trim() || 'New Brand';
+                            const created = await brandService.create({ company_id: companyId, name });
+                            setBrands((prev) => [...prev, { id: created.id, name: created.name }]);
+                            setValue('brand', created.id);
+                            toast.success('Brand added');
+                          } catch (e) {
+                            toast.error('Failed to add brand');
+                          }
+                        }}
+                      />
                     )}
-                  />
+                  </div>
                 </div>
 
                 <div>
                   <Label className="text-gray-200">Category</Label>
-                  <Controller
-                    control={control}
-                    name="category"
-                    render={({ field }) => (
-                      <Select
-                        onValueChange={(val) => {
-                          field.onChange(val);
+                  <div className="mt-1">
+                    {loadingCategories ? (
+                      <div className="flex h-9 items-center rounded-md border border-gray-700 bg-gray-800 px-3 text-sm text-gray-400">Loading categories...</div>
+                    ) : (
+                      <SearchableSelect
+                        value={watch('category') ?? ''}
+                        onValueChange={(v) => {
+                          setValue('category', v);
                           setValue('subCategory', '');
                         }}
-                        value={field.value ?? ''}
-                      >
-                        <SelectTrigger className="bg-gray-800 border-gray-700 text-white mt-1">
-                          <SelectValue placeholder="Select Category" />
-                        </SelectTrigger>
-                        <SelectContent className="bg-gray-900 border-gray-800 text-white">
-                          {loadingCategories ? (
-                            <div className="px-2 py-1.5 text-sm text-gray-400">Loading categories...</div>
-                          ) : categories.length > 0 ? (
-                            categories.map((cat) => (
-                              <SelectItem key={cat.id} value={cat.id}>
-                                {cat.name}
-                              </SelectItem>
-                            ))
-                          ) : (
-                            <div className="px-2 py-1.5 text-sm text-gray-500">No categories. Add in Settings → Inventory → Categories.</div>
-                          )}
-                        </SelectContent>
-                      </Select>
+                        options={categories}
+                        placeholder="Select Category"
+                        searchPlaceholder="Search category..."
+                        emptyText="No category found."
+                        className="bg-gray-800 border-gray-700 text-white h-9"
+                        enableAddNew
+                        addNewLabel="Add Category"
+                        onAddNew={async (searchText) => {
+                          if (!companyId) return;
+                          try {
+                            const name = (searchText || '').trim() || 'New Category';
+                            const created = await productCategoryService.create({ company_id: companyId, name, parent_id: null });
+                            setCategories((prev) => [...prev, { id: created.id, name: created.name }]);
+                            setValue('category', created.id);
+                            setValue('subCategory', '');
+                            toast.success('Category added');
+                          } catch (e) {
+                            toast.error('Failed to add category');
+                          }
+                        }}
+                      />
                     )}
-                  />
+                  </div>
                 </div>
 
                 <div>
                   <Label className="text-gray-200">Sub-Category</Label>
-                  <Controller
-                    control={control}
-                    name="subCategory"
-                    render={({ field }) => (
-                      <Select
-                        onValueChange={field.onChange}
-                        value={field.value ?? ''}
-                        disabled={!selectedCategoryId}
-                      >
-                        <SelectTrigger className="bg-gray-800 border-gray-700 text-white mt-1">
-                          <SelectValue placeholder={selectedCategoryId ? 'Select Sub-Category' : 'Select category first'} />
-                        </SelectTrigger>
-                        <SelectContent className="bg-gray-900 border-gray-800 text-white">
-                          {!selectedCategoryId ? (
-                            <div className="px-2 py-1.5 text-sm text-gray-500">Select a category above first.</div>
-                          ) : subCategories.length > 0 ? (
-                            subCategories.map((sc) => (
-                              <SelectItem key={sc.id} value={sc.id}>
-                                {sc.name}
-                              </SelectItem>
-                            ))
-                          ) : (
-                            <div className="px-2 py-1.5 text-sm text-gray-500">No sub-categories. Add in Settings → Inventory → Sub-Categories.</div>
-                          )}
-                        </SelectContent>
-                      </Select>
+                  <div className="mt-1">
+                    {!selectedCategoryId ? (
+                      <div className="flex h-9 items-center rounded-md border border-gray-700 bg-gray-800 px-3 text-sm text-gray-500">Select a category first</div>
+                    ) : (
+                      <SearchableSelect
+                        value={watch('subCategory') ?? ''}
+                        onValueChange={(v) => setValue('subCategory', v)}
+                        options={subCategories}
+                        placeholder="Select Sub-Category"
+                        searchPlaceholder="Search sub-category..."
+                        emptyText="No sub-category found."
+                        className="bg-gray-800 border-gray-700 text-white h-9"
+                        enableAddNew
+                        addNewLabel="Add Sub-Category"
+                        onAddNew={async (searchText) => {
+                          if (!companyId || !selectedCategoryId) return;
+                          try {
+                            const name = (searchText || '').trim() || 'New Sub-Category';
+                            const created = await productCategoryService.create({ company_id: companyId, name, parent_id: selectedCategoryId });
+                            setSubCategories((prev) => [...prev, { id: created.id, name: created.name }]);
+                            setValue('subCategory', created.id);
+                            toast.success('Sub-category added');
+                          } catch (e) {
+                            toast.error('Failed to add sub-category');
+                          }
+                        }}
+                      />
                     )}
-                  />
+                  </div>
                 </div>
 
                 <div>
                   <Label className="text-gray-200">Unit</Label>
-                  <Controller
-                    control={control}
-                    name="unit"
-                    render={({ field }) => (
-                      <Select
-                        onValueChange={field.onChange}
-                        value={field.value ?? ''}
-                      >
-                        <SelectTrigger className="bg-gray-800 border-gray-700 text-white mt-1">
-                          <SelectValue placeholder="Select Unit" />
-                        </SelectTrigger>
-                        <SelectContent className="bg-gray-900 border-gray-800 text-white">
-                          {loadingUnits ? (
-                            <div className="px-2 py-1.5 text-sm text-gray-400">Loading units...</div>
-                          ) : units.length > 0 ? (
-                            <>
-                              {units.map((u) => (
-                                <SelectItem key={u.id} value={u.id}>
-                                  {u.name} ({u.short_code || u.symbol || '—'})
-                                </SelectItem>
-                              ))}
-                              <div className="border-t border-gray-800 mt-1 pt-1">
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.preventDefault();
-                                    // Open Settings → Inventory → Units
-                                    // This would require navigation context
-                                    toast.info('Go to Settings → Inventory → Units to add a new unit');
-                                  }}
-                                  className="w-full px-2 py-1.5 text-sm text-blue-400 hover:text-blue-300 hover:bg-gray-800 rounded flex items-center gap-2"
-                                >
-                                  <Plus size={14} />
-                                  Add New Unit
-                                </button>
-                              </div>
-                            </>
-                          ) : (
-                            <div className="px-2 py-1.5 text-sm text-gray-500">
-                              No units. <button type="button" onClick={() => toast.info('Go to Settings → Inventory → Units')} className="text-blue-400 hover:underline">Add in Settings → Inventory → Units</button>.
-                            </div>
-                          )}
-                        </SelectContent>
-                      </Select>
+                  <div className="mt-1">
+                    {loadingUnits ? (
+                      <div className="flex h-9 items-center rounded-md border border-gray-700 bg-gray-800 px-3 text-sm text-gray-400">Loading units...</div>
+                    ) : (
+                      <SearchableSelect
+                        value={watch('unit') ?? ''}
+                        onValueChange={(v) => setValue('unit', v)}
+                        options={units.map((u) => ({ id: u.id, name: `${u.name} (${u.short_code || u.symbol || '—'})` }))}
+                        placeholder="Select Unit"
+                        searchPlaceholder="Search unit..."
+                        emptyText="No unit found. Add units in Settings → Inventory → Units."
+                        className="bg-gray-800 border-gray-700 text-white h-9"
+                      />
                     )}
-                  />
+                  </div>
                 </div>
               </div>
             </div>

@@ -39,6 +39,7 @@ import { contactService } from '../../services/contactService';
 import { saleService } from '../../services/saleService';
 import { useSales } from '../../context/SalesContext';
 import { useSettings } from '../../context/SettingsContext';
+import { settingsService } from '../../services/settingsService';
 import { useFormatCurrency } from '../../hooks/useFormatCurrency';
 import { calculateStockFromMovements } from '../../utils/stockCalculation';
 import { supabase } from '@/lib/supabase';
@@ -94,6 +95,8 @@ export const POS = () => {
   const { companyId, branchId, user } = useSupabase();
   const { sales, createSale, updateSale, refreshSales, getSaleById } = useSales();
   const { posSettings } = useSettings();
+  // Company-level setting from DB (same for all users — not context)
+  const [allowNegativeStock, setAllowNegativeStock] = useState(false);
   const { formatCurrency, currencySymbol } = useFormatCurrency();
   const [products, setProducts] = useState<POSProduct[]>([]);
   const [customers, setCustomers] = useState<POSCustomer[]>([
@@ -150,6 +153,12 @@ export const POS = () => {
 
   // Variation selection modal: when product has variations, pick one before adding to cart
   const [variationModalProduct, setVariationModalProduct] = useState<POSProduct | null>(null);
+
+  // Load company-level negative stock setting from DB (single source of truth for all users)
+  useEffect(() => {
+    if (!companyId) return;
+    settingsService.getAllowNegativeStock(companyId).then(setAllowNegativeStock);
+  }, [companyId]);
 
   // Sync invoice number display with selected sale
   useEffect(() => {
@@ -518,7 +527,8 @@ export const POS = () => {
       return;
     }
 
-    if (!posSettings.negativeStockAllowed) {
+    // Company-level setting from DB: block only when negative stock not allowed
+    if (!allowNegativeStock) {
       const key = (pid: string, vid?: string) => vid ? `${pid}_${vid}` : pid;
       const qtyByKey = cart.reduce<Record<string, number>>((acc, item) => {
         const k = key(item.productId, item.variationId);
@@ -1249,7 +1259,7 @@ export const POS = () => {
             <div className="overflow-y-auto p-4 space-y-2">
               {variationModalProduct.variations?.map((v) => {
                 const stock = v.current_stock ?? 0;
-                const disabled = !posSettings.negativeStockAllowed && stock <= 0;
+                const disabled = !allowNegativeStock && stock <= 0;
                 return (
                   <button
                     key={v.id}

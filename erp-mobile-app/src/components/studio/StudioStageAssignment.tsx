@@ -48,6 +48,7 @@ export function StudioStageAssignment({ companyId, onBack, onComplete, existingS
   );
   const [hasCustomerCharge, setHasCustomerCharge] = useState(existingStage ? existingStage.customerCharge > 0 : false);
   const [expectedDate, setExpectedDate] = useState(existingStage?.expectedDate || '');
+  const [notes, setNotes] = useState('');
   const dateInputRef = useRef<HTMLInputElement>(null);
 
   /** Format YYYY-MM-DD → DD MMM YYYY (app standard) */
@@ -66,7 +67,7 @@ export function StudioStageAssignment({ companyId, onBack, onComplete, existingS
   const handleComplete = () => {
     if (!expectedDate) return;
 
-    const stageData: Partial<StudioStage> = {
+    const stageData: Partial<StudioStage> & { notes?: string } = {
       type: stageType as StudioStage['type'],
       name: stageName,
       assignedTo,
@@ -75,6 +76,7 @@ export function StudioStageAssignment({ companyId, onBack, onComplete, existingS
       customerCharge: hasCustomerCharge && customerCharge ? parseFloat(customerCharge) : 0,
       expectedDate,
       status: 'pending',
+      notes: notes.trim() || undefined,
     };
 
     onComplete(stageData);
@@ -394,7 +396,7 @@ export function StudioStageAssignment({ companyId, onBack, onComplete, existingS
               <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4 w-full max-w-full min-w-0 overflow-hidden">
                 <label className="block text-sm font-medium text-white mb-2">
                   <Calendar className="w-4 h-4 inline mr-1" />
-                  Expected Completion Date
+                  Expected Return Date
                 </label>
                 <div className="relative min-h-[48px]">
                   <div
@@ -414,10 +416,20 @@ export function StudioStageAssignment({ companyId, onBack, onComplete, existingS
                     min={new Date().toISOString().split('T')[0]}
                     className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                     style={{ fontSize: '16px' }}
-                    aria-label="Expected completion date"
+                    aria-label="Expected return date"
                     title="Tap to choose date"
                   />
                 </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-white mb-2">Notes (optional)</label>
+                <textarea
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  placeholder="Instructions or notes for this stage"
+                  rows={2}
+                  className="w-full px-4 py-3 bg-[#1F2937] border border-[#374151] rounded-xl text-white placeholder-[#6B7280] focus:outline-none focus:border-[#8B5CF6] resize-none"
+                />
               </div>
             </div>
           </div>

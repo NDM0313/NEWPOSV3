@@ -9,8 +9,8 @@ import { supabase } from '@/lib/supabase';
 
 export type DocumentType = 'invoice' | 'quotation' | 'draft' | 'order' | 'purchase' | 'rental' | 'studio' | 'expense' | 'payment' | 'job' | 'journal' | 'production';
 
-/** Document types for ERP Numbering Engine (generate_document_number RPC). */
-export type ErpDocumentType = 'sale' | 'purchase' | 'payment' | 'expense' | 'rental' | 'stock' | 'stock_adjustment' | 'journal' | 'product' | 'studio' | 'job' | 'pos';
+/** Document types for ERP Numbering Engine (generate_document_number RPC). Includes documents + master records. */
+export type ErpDocumentType = 'sale' | 'purchase' | 'payment' | 'expense' | 'rental' | 'stock' | 'stock_adjustment' | 'journal' | 'product' | 'studio' | 'job' | 'pos' | 'customer' | 'supplier' | 'worker';
 
 interface DocumentNumberCheck {
   exists: boolean;
@@ -145,23 +145,15 @@ export const documentNumberService = {
   },
 
   /**
-   * Get next product SKU from database (atomic, PRD-0001, PRD-0002, ...).
-   * Uses get_next_document_number RPC. branchId can be null for company-level sequence.
+   * Get next product SKU from ERP numbering engine (atomic, PRD-0001, PRD-0002, ...).
+   * Uses generate_document_number RPC (same engine as Sale, Purchase, Payment). No duplicates.
    */
   async getNextProductSKU(companyId: string, branchId?: string | null): Promise<string> {
-    const { data, error } = await supabase.rpc('get_next_document_number', {
-      p_company_id: companyId,
-      p_branch_id: branchId ?? null,
-      p_document_type: 'product',
-    });
-    if (error) {
-      console.error('[DOCUMENT NUMBER] get_next_document_number(product) error:', error);
-      throw new Error(error.message || 'Failed to get next product SKU');
+    const next = await this.getNextDocumentNumber(companyId, branchId ?? null, 'product', false);
+    if (!next || typeof next !== 'string') {
+      throw new Error('Invalid product SKU returned from ERP numbering engine');
     }
-    if (typeof data !== 'string' || !data) {
-      throw new Error('Invalid product SKU returned from database');
-    }
-    return data;
+    return next;
   },
 
   /**

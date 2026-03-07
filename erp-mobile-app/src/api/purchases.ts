@@ -32,26 +32,12 @@ export interface CreatePurchaseInput {
 }
 
 /**
- * Get next PO number from server – ATOMIC, no race conditions.
- * Uses RPC get_next_document_number. Never generate locally.
+ * Get next PO number from server – ATOMIC, same engine as Web (Settings → Numbering Rules).
+ * Uses generate_document_number via getNextDocumentNumber. Never generate locally.
  */
 async function getNextPONumber(companyId: string, branchId: string): Promise<string> {
-  const { data, error } = await supabase.rpc('get_next_document_number', {
-    p_company_id: companyId,
-    p_branch_id: branchId,
-    p_document_type: 'purchase',
-  });
-
-  if (error) {
-    console.error('[PURCHASES API] get_next_document_number failed:', error);
-    throw new Error(`Failed to get PO number: ${error.message}`);
-  }
-
-  if (!data || typeof data !== 'string') {
-    throw new Error('Invalid PO number from server');
-  }
-
-  return data;
+  const { getNextDocumentNumber } = await import('./documentNumber');
+  return getNextDocumentNumber(companyId, branchId, 'purchase');
 }
 
 export async function createPurchase(

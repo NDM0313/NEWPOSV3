@@ -95,6 +95,7 @@ async function fetchPaymentRows(
       notes,
       branch_id,
       payment_account_id,
+      created_by,
       received_by
     `)
     .eq('company_id', companyId)
@@ -185,25 +186,27 @@ async function fetchPaymentRows(
     }
   });
 
-  // Resolve received_by (auth.users.id) to full_name via users.auth_user_id
-  const receivedByIds = [...new Set((data || []).map((p: any) => (p as any).received_by).filter(Boolean))] as string[];
-  if (receivedByIds.length > 0) {
-    const nameByReceivedBy = new Map<string, string>();
-    const { data: usersByAuth } = await supabase.from('users').select('auth_user_id, full_name, email').in('auth_user_id', receivedByIds);
+  // Resolve "by [user]" from created_by || received_by (sale = received_by, purchase = received_by, old rows may have created_by only)
+  const allUserIds = [...new Set(
+    (data || []).flatMap((p: any) => [(p as any).created_by, (p as any).received_by].filter(Boolean))
+  )] as string[];
+  if (allUserIds.length > 0) {
+    const nameByUserId = new Map<string, string>();
+    const { data: usersByAuth } = await supabase.from('users').select('auth_user_id, full_name, email').in('auth_user_id', allUserIds);
     (usersByAuth || []).forEach((u: any) => {
-      if (u?.auth_user_id) nameByReceivedBy.set(u.auth_user_id, u.full_name || u.email || '');
+      if (u?.auth_user_id) nameByUserId.set(u.auth_user_id, u.full_name || u.email || '');
     });
-    const missing = receivedByIds.filter((id) => !nameByReceivedBy.has(id));
+    const missing = allUserIds.filter((id) => !nameByUserId.has(id));
     if (missing.length > 0) {
       const { data: usersById } = await supabase.from('users').select('id, full_name, email').in('id', missing);
       (usersById || []).forEach((u: any) => {
-        if (u?.id) nameByReceivedBy.set(u.id, u.full_name || u.email || '');
+        if (u?.id) nameByUserId.set(u.id, u.full_name || u.email || '');
       });
     }
     rows.forEach((r) => {
       const p = paymentById.get(r.id) as any;
-      const rb = p?.received_by;
-      if (rb) r.createdBy = nameByReceivedBy.get(rb) || null;
+      const userId = p?.created_by || p?.received_by || null;
+      if (userId) r.createdBy = nameByUserId.get(userId) || null;
     });
   }
 
