@@ -213,6 +213,13 @@ export const StudioSalesListNew = () => {
     loadStudioOrders();
   }, [loadStudioOrders]);
 
+  // Refetch list when any sale is updated (e.g. after editing from this list's Edit → SaleForm)
+  useEffect(() => {
+    const handler = () => loadStudioOrders();
+    window.addEventListener('saleUpdated', handler);
+    return () => window.removeEventListener('saleUpdated', handler);
+  }, [loadStudioOrders]);
+
   // Calculate deadline alerts
   const getDeadlineAlert = (deadline: string, status: ProductionStatus) => {
     if (status === 'Completed') return null;

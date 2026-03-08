@@ -59,7 +59,8 @@ type View =
   | 'responsive-test'
   | 'test-account-entry'
   | 'erp-permissions'
-  | 'permission-inspector';
+  | 'permission-inspector'
+  | 'studio-order-detail-v3';
 
 type DrawerType = 'none' | 'addUser' | 'addProduct' | 'edit-product' | 'addSale' | 'edit-sale' | 'addPurchase' | 'edit-purchase' | 'addContact';
 
@@ -81,6 +82,8 @@ interface NavigationContextType {
   setOpenSaleIdForView?: (id: string | null) => void;
   selectedProductionId?: string;
   setSelectedProductionId?: (id: string) => void;
+  selectedStudioOrderIdV3?: string | null;
+  setSelectedStudioOrderIdV3?: (id: string | null) => void;
   drawerContactType?: 'customer' | 'supplier' | 'worker';
   drawerData?: any; // For passing data to drawers (e.g., product for edit)
   drawerPrefillName?: string; // Prefill name when opening contact form
@@ -127,6 +130,7 @@ export const NavigationProvider = ({ children }: { children: ReactNode }) => {
   const [openSaleIdForView, setOpenSaleIdForView] = useState<string | null>(null);
   const [selectedWorkerId, setSelectedWorkerId] = useState<string | undefined>(undefined);
   const [selectedProductionId, setSelectedProductionId] = useState<string | undefined>(undefined);
+  const [selectedStudioOrderIdV3, setSelectedStudioOrderIdV3] = useState<string | null>(null);
   const [drawerContactType, setDrawerContactType] = useState<'customer' | 'supplier' | 'worker' | undefined>(undefined);
   const [drawerData, setDrawerData] = useState<any>(undefined);
   const [drawerPrefillName, setDrawerPrefillName] = useState<string | undefined>(undefined);
@@ -251,6 +255,8 @@ export const NavigationProvider = ({ children }: { children: ReactNode }) => {
       setSelectedWorkerId,
       selectedProductionId,
       setSelectedProductionId,
+      selectedStudioOrderIdV3,
+      setSelectedStudioOrderIdV3,
       drawerContactType,
       drawerData,
       drawerPrefillName,

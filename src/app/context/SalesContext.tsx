@@ -86,6 +86,12 @@ export interface Sale {
   is_studio?: boolean;
   /** User who created the sale (full name for display) */
   createdBy?: string;
+  /** Origin e.g. studio_production_v3 */
+  source?: string;
+  /** ID of source record (e.g. studio_production_orders_v3.id) */
+  source_id?: string;
+  /** Show production breakdown on invoice (Studio V3) */
+  show_studio_breakdown?: boolean;
 }
 
 interface SalesContextType {
@@ -318,6 +324,9 @@ export const convertFromSupabaseSale = (supabaseSale: any): Sale => {
       updatedAt: supabaseSale.updated_at || new Date().toISOString(),
     is_studio: !!supabaseSale.is_studio,
     createdBy: (supabaseSale.created_by?.full_name ?? supabaseSale.created_by_user?.full_name) || undefined,
+    source: (supabaseSale as any).source ?? undefined,
+    source_id: (supabaseSale as any).source_id ?? undefined,
+    show_studio_breakdown: !!(supabaseSale as any).show_studio_breakdown,
   };
 };
 
@@ -1769,6 +1778,8 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
       // POS updates show their own toast; avoid duplicate for POS invoices
       const isPOS = getSaleById(id)?.invoiceNo?.startsWith('POS-');
       if (!isPOS) toast.success('Sale updated successfully!');
+      // Notify views (e.g. Studio Sale Detail, Studio Sales List) to refetch so UI shows updated data
+      window.dispatchEvent(new CustomEvent('saleUpdated', { detail: { saleId: id } }));
     } catch (error: any) {
       console.error('[SALES CONTEXT] Error updating sale:', error);
       toast.error(`Failed to update sale: ${error.message || 'Unknown error'}`);

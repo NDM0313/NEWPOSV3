@@ -1219,7 +1219,6 @@ export const saleService = {
 
   // Get payments for a specific sale (by sale ID)
   async getSalePayments(saleId: string) {
-    console.log('[SALE SERVICE] getSalePayments called with saleId:', saleId);
 
     const selectWithAttachments = `
       id,
@@ -1266,12 +1265,6 @@ export const saleService = {
     const data = result.data;
     const error = result.error;
 
-    console.log('[SALE SERVICE] Payment query result:', {
-      dataCount: data?.length || 0,
-      error: error?.message,
-      saleId
-    });
-
     if (error) {
       console.error('[SALE SERVICE] Error fetching payments:', error);
     }
@@ -1314,7 +1307,6 @@ export const saleService = {
 
     // FALLBACK: If no payments found by reference_id, check if sale has paid_amount > 0
     // This handles cases where paid_amount was set but payment records are missing
-    console.log('[SALE SERVICE] No payments found by reference_id, checking sale paid_amount...');
     try {
       const { data: saleData } = await supabase
         .from('sales')

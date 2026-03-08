@@ -40,6 +40,8 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/app/components/ui/dialog";
+import { Input } from "@/app/components/ui/input";
+import { Label } from "@/app/components/ui/label";
 import { cn } from "@/app/components/ui/utils";
 import { useNavigation } from '@/app/context/NavigationContext';
 import { useSales, Sale, convertFromSupabaseSale } from '@/app/context/SalesContext';
@@ -48,6 +50,7 @@ import { useDateRange } from '@/app/context/DateRangeContext';
 import { saleService } from '@/app/services/saleService';
 import { branchService, Branch } from '@/app/services/branchService';
 import { saleReturnService } from '@/app/services/saleReturnService';
+import { shipmentService, type ShipmentType } from '@/app/services/shipmentService';
 import { Pagination } from '@/app/components/ui/pagination';
 import { ListToolbar } from '@/app/components/ui/list-toolbar';
 import { formatLongDate, formatDateAndTime } from '@/app/components/ui/utils';
@@ -197,6 +200,11 @@ export const SalesPage = () => {
   const [returnPaymentSaleId, setReturnPaymentSaleId] = useState<string | null>(null);
   const [cancelInvoiceDialogOpen, setCancelInvoiceDialogOpen] = useState(false);
   const [cancellingInvoice, setCancellingInvoice] = useState(false);
+
+  // Add Shipment modal (from row dropdown – does not open ViewSaleDetailsDrawer)
+  const [addShipmentSaleId, setAddShipmentSaleId] = useState<string | null>(null);
+  const [addShipmentForm, setAddShipmentForm] = useState({ shipmentType: 'Courier' as ShipmentType, courierName: '', chargedToCustomer: 0, actualCost: 0, trackingId: '', notes: '' });
+  const [savingShipment, setSavingShipment] = useState(false);
   
   // State for viewing sale returns
   const [viewReturnsDialogOpen, setViewReturnsDialogOpen] = useState(false);
@@ -382,6 +390,11 @@ export const SalesPage = () => {
       case 'update_shipping':
         setShippingDialogOpen(true);
         break;
+
+      case 'add_shipment':
+        setAddShipmentSaleId(sale.id);
+        setAddShipmentForm({ shipmentType: 'Courier', courierName: '', chargedToCustomer: 0, actualCost: 0, trackingId: '', notes: '' });
+        break;
         
       case 'delete':
         setDeleteDialogOpen(true);
@@ -441,6 +454,47 @@ export const SalesPage = () => {
     } catch (error: any) {
       console.error('Shipping update error:', error);
       toast.error(error.message || 'Failed to update shipping status');
+    }
+  };
+
+  // 🎯 ADD SHIPMENT (from row dropdown modal)
+  const handleAddShipmentSubmit = async () => {
+    const saleId = addShipmentSaleId;
+    const sale = selectedSale;
+    if (!saleId || !sale || !companyId || addShipmentForm.chargedToCustomer <= 0) {
+      if (addShipmentForm.chargedToCustomer <= 0) toast.error('Enter charged amount');
+      return;
+    }
+    const branchIdForShipment = salesBranchIdMap.get(saleId) ?? (branchId !== 'all' ? branchId : branches[0]?.id);
+    if (!branchIdForShipment) {
+      toast.error('Could not determine branch for this sale');
+      return;
+    }
+    setSavingShipment(true);
+    try {
+      await shipmentService.create(
+        saleId,
+        companyId,
+        branchIdForShipment,
+        {
+          shipment_type: addShipmentForm.shipmentType,
+          courier_name: addShipmentForm.courierName || undefined,
+          actual_cost: addShipmentForm.actualCost ?? 0,
+          charged_to_customer: addShipmentForm.chargedToCustomer,
+          currency: 'PKR',
+          notes: addShipmentForm.notes || undefined,
+          tracking_id: addShipmentForm.trackingId || undefined,
+        },
+        user?.id
+      );
+      setAddShipmentSaleId(null);
+      setAddShipmentForm({ shipmentType: 'Courier', courierName: '', chargedToCustomer: 0, actualCost: 0, trackingId: '', notes: '' });
+      toast.success('Shipment added');
+      await refreshSales();
+    } catch (e: any) {
+      toast.error(e?.message || 'Failed to add shipment');
+    } finally {
+      setSavingShipment(false);
     }
   };
   
@@ -2028,6 +2082,13 @@ export const SalesPage = () => {
                               <Truck size={14} className="mr-2 text-orange-400" />
                               Update Shipping
                             </DropdownMenuItem>
+                            <DropdownMenuItem 
+                              className="hover:bg-gray-800 cursor-pointer"
+                              onClick={() => handleSaleAction('add_shipment', sale)}
+                            >
+                              <Truck size={14} className="mr-2 text-blue-400" />
+                              Add Shipment
+                            </DropdownMenuItem>
                             <DropdownMenuSeparator className="bg-gray-700" />
                             {canCancelSale && sale.status === 'final' && getEffectiveSaleStatus(sale) !== 'cancelled' && (
                               <DropdownMenuItem 
@@ -2276,6 +2337,103 @@ export const SalesPage = () => {
             handleSaleAction('receive_payment', selectedSale);
           }}
         />
+      )}
+
+      {/* 🎯 ADD SHIPMENT MODAL (from row dropdown – does not open details drawer) */}
+      {addShipmentSaleId && selectedSale?.id === addShipmentSaleId && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+          <div className="bg-gray-900 border border-gray-800 rounded-xl p-6 max-w-md w-full">
+            <div className="flex items-center justify-between mb-5">
+              <h3 className="text-lg font-bold text-white">Add Shipment — {selectedSale.invoiceNo}</h3>
+              <Button size="sm" variant="ghost" onClick={() => { setAddShipmentSaleId(null); setAddShipmentForm({ shipmentType: 'Courier', courierName: '', chargedToCustomer: 0, actualCost: 0, trackingId: '', notes: '' }); }} className="h-8 w-8 p-0">
+                <X size={16} />
+              </Button>
+            </div>
+            <div className="space-y-4">
+              <div>
+                <Label className="text-gray-400 text-sm">Shipment Type</Label>
+                <select
+                  value={addShipmentForm.shipmentType}
+                  onChange={(e) => setAddShipmentForm(prev => ({ ...prev, shipmentType: e.target.value as ShipmentType }))}
+                  className="w-full mt-1 bg-gray-950 border border-gray-700 rounded-lg text-white h-10 px-3"
+                >
+                  <option value="Courier">Courier (DHL, TCS, etc.)</option>
+                  <option value="Local">Local Delivery</option>
+                </select>
+              </div>
+              {addShipmentForm.shipmentType === 'Courier' && (
+                <div>
+                  <Label className="text-gray-400 text-sm">Courier Name</Label>
+                  <Input
+                    value={addShipmentForm.courierName}
+                    onChange={(e) => setAddShipmentForm(prev => ({ ...prev, courierName: e.target.value }))}
+                    placeholder="e.g., DHL, TCS"
+                    className="mt-1 bg-gray-950 border-gray-700"
+                  />
+                </div>
+              )}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label className="text-gray-400 text-sm">Charged to Customer (Rs)</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    value={addShipmentForm.chargedToCustomer || ''}
+                    onChange={(e) => setAddShipmentForm(prev => ({ ...prev, chargedToCustomer: Number(e.target.value) }))}
+                    placeholder="0"
+                    className="mt-1 bg-gray-950 border-gray-700"
+                  />
+                </div>
+                <div>
+                  <Label className="text-gray-400 text-sm">Actual Cost (Rs)</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    value={addShipmentForm.actualCost || ''}
+                    onChange={(e) => setAddShipmentForm(prev => ({ ...prev, actualCost: Number(e.target.value) }))}
+                    placeholder="0"
+                    className="mt-1 bg-gray-950 border-gray-700"
+                  />
+                </div>
+              </div>
+              <div>
+                <Label className="text-gray-400 text-sm">Tracking ID (Optional)</Label>
+                <Input
+                  value={addShipmentForm.trackingId}
+                  onChange={(e) => setAddShipmentForm(prev => ({ ...prev, trackingId: e.target.value }))}
+                  placeholder="e.g., DHL-123456789"
+                  className="mt-1 bg-gray-950 border-gray-700"
+                />
+              </div>
+              <div>
+                <Label className="text-gray-400 text-sm">Notes (Optional)</Label>
+                <Input
+                  value={addShipmentForm.notes}
+                  onChange={(e) => setAddShipmentForm(prev => ({ ...prev, notes: e.target.value }))}
+                  placeholder="Additional notes..."
+                  className="mt-1 bg-gray-950 border-gray-700"
+                />
+              </div>
+              <div className="bg-blue-950/20 border border-blue-800/30 rounded-lg p-3">
+                <p className="text-xs text-blue-400 font-medium mb-1">Note:</p>
+                <p className="text-xs text-gray-400">
+                  This amount will be added to the total bill. You can upload tracking documents after creating the shipment.
+                </p>
+              </div>
+            </div>
+            <div className="flex gap-3 pt-4 mt-4 border-t border-gray-800">
+              <Button variant="outline" className="flex-1 border-gray-700" onClick={() => { setAddShipmentSaleId(null); setAddShipmentForm({ shipmentType: 'Courier', courierName: '', chargedToCustomer: 0, actualCost: 0, trackingId: '', notes: '' }); }}>Cancel</Button>
+              <Button
+                className="flex-1 bg-blue-600 hover:bg-blue-700"
+                disabled={savingShipment || addShipmentForm.chargedToCustomer <= 0}
+                onClick={handleAddShipmentSubmit}
+              >
+                {savingShipment ? <Loader2 size={16} className="animate-spin mr-2" /> : null}
+                Add Shipment
+              </Button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* 🎯 SALE RETURN FORM (create: saleId only; edit: saleId + returnId for draft) */}

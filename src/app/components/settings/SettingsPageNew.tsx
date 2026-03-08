@@ -3,7 +3,7 @@ import {
   Building2, CreditCard, Hash, ToggleLeft, Save, 
   CheckCircle, Users, Lock,   Key, Settings as SettingsIcon, AlertCircle, UserCog,
   Briefcase,
-  MapPin, Store, ShoppingCart, ShoppingBag, Package, Shirt, Calculator, X, Edit, Download, Server, Copy, Printer, RefreshCw, QrCode, FileText, Activity, Shield, FlaskConical
+  MapPin, Store, ShoppingCart, ShoppingBag, Package, Shirt, Calculator, X, Edit, Download, Server, Copy, Printer, RefreshCw, QrCode, FileText, Activity, Shield, FlaskConical, Factory
 } from 'lucide-react';
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
@@ -2295,6 +2295,21 @@ export const SettingsPageNew = () => {
                       checked={settings.featureFlags?.studio_customer_invoice_v1 === true}
                       onCheckedChange={(val) => {
                         settings.updateFeatureFlag('studio_customer_invoice_v1', val);
+                      }}
+                    />
+                  </div>
+                  <div className="flex items-center justify-between bg-gray-950 p-5 rounded-lg border border-gray-800">
+                    <div className="flex items-center gap-3">
+                      <Factory size={20} className="text-amber-400" />
+                      <div>
+                        <p className="text-white font-medium">Studio Production V3</p>
+                        <p className="text-sm text-gray-400">New workflow: stages, cost breakdown, invoice panel, product/sale creation. When ON, shows V3 instead of V2.</p>
+                      </div>
+                    </div>
+                    <Switch
+                      checked={settings.featureFlags?.studio_production_v3 === true}
+                      onCheckedChange={(val) => {
+                        settings.updateFeatureFlag('studio_production_v3', val);
                       }}
                     />
                   </div>

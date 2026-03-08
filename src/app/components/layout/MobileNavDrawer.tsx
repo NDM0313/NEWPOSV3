@@ -35,6 +35,7 @@ export const MobileNavDrawer = () => {
   const { modules: settingsModules, featureFlags, isPermissionLoaded } = useSettings();
   const { hasPermission } = useCheckPermission();
   const studioProductionV2 = featureFlags?.studio_production_v2 === true;
+  const studioProductionV3 = featureFlags?.studio_production_v3 === true;
   const [expandedItems, setExpandedItems] = useState<string[]>([]);
 
   const toggleExpand = (id: string) => {
@@ -56,7 +57,7 @@ export const MobileNavDrawer = () => {
       id: 'studio-group',
       label: 'Studio Production',
       icon: Factory,
-      isHidden: (!settingsModules.studioModuleEnabled && !studioProductionV2) || !hasPermission('studio.view'),
+      isHidden: (!settingsModules.studioModuleEnabled && !studioProductionV2 && !studioProductionV3) || !hasPermission('studio.view'),
       children: [
         { id: 'studio-dashboard-new', label: 'Dashboard' },
         { id: 'studio', label: 'Studio Sales' },

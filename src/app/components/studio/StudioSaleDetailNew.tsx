@@ -43,11 +43,17 @@ import {
   Image as ImageIcon,
   File,
   Undo2,
-  MoreHorizontal
+  MoreHorizontal,
+  Info,
+  ChevronRight,
+  Printer,
+  Share2
 } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
+import { Label } from '../ui/label';
 import { Badge } from '../ui/badge';
+import { Switch } from '../ui/switch';
 import { DatePicker } from '../ui/DatePicker';
 import { format } from 'date-fns';
 import { useNavigation } from '@/app/context/NavigationContext';
@@ -56,8 +62,16 @@ import { studioService } from '@/app/services/studioService';
 import { contactService } from '@/app/services/contactService';
 import { saleService } from '@/app/services/saleService';
 import { studioProductionService } from '@/app/services/studioProductionService';
+import { syncInvoiceWithProductionPricing, type SyncInvoiceResult } from '@/app/services/studioProductionInvoiceSyncService';
 import { branchService } from '@/app/services/branchService';
+import { shipmentService, mapShipmentRowsToUi } from '@/app/services/shipmentService';
+import { productService } from '@/app/services/productService';
+import { documentNumberService } from '@/app/services/documentNumberService';
+import { productCategoryService } from '@/app/services/productCategoryService';
 import { getStudioDeadlineFromNotes } from '@/app/utils/studioDeadlineNotes';
+import { uploadProductImages } from '@/app/utils/productImageUpload';
+import { supabase } from '@/lib/supabase';
+import { useDropzone } from 'react-dropzone';
 import { cn } from '../ui/utils';
 import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
 import { Loader2 } from 'lucide-react';
@@ -73,6 +87,12 @@ import {
   AlertDialogTitle,
 } from '../ui/alert-dialog';
 import { UnifiedPaymentDialog } from '../shared/UnifiedPaymentDialog';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '../ui/dropdown-menu';
 
 /** Avoid RangeError when date is missing or invalid */
 function safeFormatDate(value: string | null | undefined, fmt: string): string {
@@ -213,7 +233,7 @@ interface StudioSaleDetail {
 // Mock data removed - data is loaded from Supabase via loadStudioOrder()
 
 export const StudioSaleDetailNew = () => {
-  const { setCurrentView, selectedStudioSaleId, setSelectedStudioSaleId, openDrawer } = useNavigation();
+  const { setCurrentView, selectedStudioSaleId, setSelectedStudioSaleId, openDrawer, setOpenSaleIdForView } = useNavigation();
   const { companyId, branchId, user } = useSupabase();
   const { formatCurrency } = useFormatCurrency();
   const [saleDetail, setSaleDetail] = useState<StudioSaleDetail | null>(null);
@@ -227,6 +247,7 @@ export const StudioSaleDetailNew = () => {
   const [showCostBreakdown, setShowCostBreakdown] = useState(false);
   const [showAccessoryModal, setShowAccessoryModal] = useState(false);
   const [showShipmentModal, setShowShipmentModal] = useState(false);
+  const [savingShipment, setSavingShipment] = useState(false);
   const [showDocumentUpload, setShowDocumentUpload] = useState<string | null>(null);
   const [showWorkerEditModal, setShowWorkerEditModal] = useState<string | null>(null);
   const [showReceiveModal, setShowReceiveModal] = useState<string | null>(null);
@@ -243,6 +264,16 @@ export const StudioSaleDetailNew = () => {
   const [showCustomerPaymentDialog, setShowCustomerPaymentDialog] = useState(false);
   const [showTrackingModal, setShowTrackingModal] = useState<string | null>(null);
   const [showTaskCustomizationModal, setShowTaskCustomizationModal] = useState(false);
+  const [showCreateProductInvoiceModal, setShowCreateProductInvoiceModal] = useState(false);
+  const [createProductInvoiceForm, setCreateProductInvoiceForm] = useState({
+    productName: '',
+    categoryId: '',
+    salePrice: '',
+    description: '',
+  });
+  const [createProductInvoiceImageFiles, setCreateProductInvoiceImageFiles] = useState<File[]>([]);
+  const [createProductInvoiceCategories, setCreateProductInvoiceCategories] = useState<{ id: string; name: string }[]>([]);
+  const [creatingProductAndInvoice, setCreatingProductAndInvoice] = useState(false);
   const [reopenStepId, setReopenStepId] = useState<string | null>(null);
   const [savingStage, setSavingStage] = useState(false);
   const [pendingLeaveTarget, setPendingLeaveTarget] = useState<'studio' | 'studio-sales-list-new' | null>(null);
@@ -278,6 +309,21 @@ export const StudioSaleDetailNew = () => {
     trackingUrl: ''
   });
 
+  /** After sync, show "Invoice Synced With Production Pricing" until next change. */
+  const [lastInvoiceSyncResult, setLastInvoiceSyncResult] = useState<SyncInvoiceResult | null>(null);
+  /** Stage id -> 'unpaid' | 'partial' | 'paid'. When paid, lock stage cost editing. */
+  const [workerStagePaymentStatus, setWorkerStagePaymentStatus] = useState<Record<string, 'unpaid' | 'partial' | 'paid'>>({});
+
+  const createProductInvoiceOnDrop = useCallback((acceptedFiles: File[]) => {
+    setCreateProductInvoiceImageFiles(prev => [...prev, ...acceptedFiles]);
+  }, []);
+  const createProductInvoiceDropzone = useDropzone({
+    onDrop: createProductInvoiceOnDrop,
+    accept: { 'image/*': ['.png', '.jpg', '.jpeg', '.webp', '.gif'] },
+    maxSize: 5 * 1024 * 1024,
+    disabled: !showCreateProductInvoiceModal,
+  });
+
   const [expandedSteps, setExpandedSteps] = useState<Set<string>>(new Set());
 
   // Available task templates
@@ -290,6 +336,13 @@ export const StudioSaleDetailNew = () => {
   const [customTasks, setCustomTasks] = useState<Array<{ id: string; name: string }>>([]);
   const [newCustomTaskName, setNewCustomTaskName] = useState('');
   const [selectedTasksForModal, setSelectedTasksForModal] = useState<string[]>([]);
+
+  // Pricing Calculator (Figma) – right panel
+  const [profitMarginMode, setProfitMarginMode] = useState<'percentage' | 'fixed'>('percentage');
+  const [profitMarginValue, setProfitMarginValue] = useState<string>('30');
+  const [showProfitDistributionModal, setShowProfitDistributionModal] = useState(false);
+  /** Per-stage profit share. Only completed stages. isManual = user edited this stage. */
+  const [profitDistributionRows, setProfitDistributionRows] = useState<Array<{ stepId: string; name: string; workerName: string; amount: number; isManual: boolean }>>([]);
 
   // Convert Supabase StudioOrder to StudioSaleDetail interface
   const convertFromSupabaseOrder = useCallback((order: any): StudioSaleDetail => {
@@ -523,9 +576,22 @@ export const StudioSaleDetailNew = () => {
                 }
               }
             }
-          } catch (e) {
-            console.warn('[StudioSaleDetail] Production/stages load or create failed:', e);
+          } catch (e: unknown) {
+            const err = e as { message?: string; code?: string; details?: string };
+            const msg = err?.message ?? String(e);
+            const code = err?.code ?? '';
+            console.warn('[StudioSaleDetail] Production/stages load or create failed:', msg, code || undefined, err?.details || undefined);
           }
+          // Load shipments from DB when sale is source (backend-linked)
+          try {
+            const rows = await shipmentService.getBySaleId(sale.id);
+            const shipments = mapShipmentRowsToUi(rows);
+            const shipmentCharges = shipments.reduce((sum, s) => sum + s.chargedToCustomer, 0);
+            convertedDetail.shipments = shipments;
+            convertedDetail.shipmentCharges = shipmentCharges;
+            convertedDetail.totalAmount = (convertedDetail.baseAmount || 0) + shipmentCharges;
+            convertedDetail.balanceDue = Math.max(0, convertedDetail.totalAmount - (convertedDetail.paidAmount || 0));
+          } catch (_) { /* ignore */ }
           setSaleDetail({ ...convertedDetail, productionSteps });
           return;
         }
@@ -546,6 +612,17 @@ export const StudioSaleDetailNew = () => {
       setLoading(false);
     }
   }, [selectedStudioSaleId, companyId, branchId, user?.id, convertFromSale, convertFromSupabaseOrder, stagesToProductionSteps]);
+
+  // Refetch studio sale detail when this sale was updated (e.g. after editing in SaleForm drawer)
+  useEffect(() => {
+    const handler = (e: CustomEvent<{ saleId: string }>) => {
+      if (e.detail?.saleId && selectedStudioSaleId && e.detail.saleId === selectedStudioSaleId) {
+        loadStudioOrder();
+      }
+    };
+    window.addEventListener('saleUpdated', handler as EventListener);
+    return () => window.removeEventListener('saleUpdated', handler as EventListener);
+  }, [selectedStudioSaleId, loadStudioOrder]);
 
   /** Filter workers by task category: Dyeing → dyer/dyeing; Stitching → tailor/stitching-master/cutter; Handwork → hand-worker/helper/embroidery */
   const getWorkersForStageType = useCallback((stageType: 'dyer' | 'stitching' | 'handwork' | undefined, workerList: Worker[]): Worker[] => {
@@ -621,6 +698,104 @@ export const StudioSaleDetailNew = () => {
   const studioCharges = saleDetail ? saleDetail.productionSteps.reduce((s, step) => s + step.workerCost, 0) : 0;
   const effectiveTotalAmount = saleDetail ? saleDetail.baseAmount + saleDetail.shipmentCharges + studioCharges : 0;
   const effectiveBalanceDue = saleDetail ? effectiveTotalAmount - saleDetail.paidAmount : 0;
+
+  // Pricing Calculator: production cost from completed stages only (read-only)
+  const completedProductionSteps = saleDetail
+    ? saleDetail.productionSteps.filter((s) => (s.status || '').toLowerCase() === 'completed')
+    : [];
+  const productionCostFromStages = completedProductionSteps.reduce((sum, s) => sum + s.workerCost, 0);
+  const profitMarginNum = parseFloat(profitMarginValue) || 0;
+  const profitAmount =
+    profitMarginMode === 'percentage'
+      ? (productionCostFromStages * profitMarginNum) / 100
+      : profitMarginNum;
+  const finalSalePriceFromCalculator = productionCostFromStages + profitAmount;
+  const marginPercent =
+    productionCostFromStages > 0 ? ((profitAmount / productionCostFromStages) * 100).toFixed(1) : '0';
+  /** Unified Payment panel: use pricing calculator total so Profit Margin updates Grand Total & Balance Due live */
+  const displayFinalSalePrice = finalSalePriceFromCalculator;
+  /** Grand Total = cost + profit + shipment (used in Payment card) */
+  const grandTotalForCard = displayFinalSalePrice + (saleDetail?.shipmentCharges ?? 0);
+  const displayBalanceDue = saleDetail ? Math.max(0, grandTotalForCard - saleDetail.paidAmount) : 0;
+
+  const roundInt = (n: number) => Math.round(n);
+  const completedStepKey = completedProductionSteps.map((s) => s.id).join(',');
+  // Sync profit distribution: round figures only (no decimals)
+  useEffect(() => {
+    if (completedProductionSteps.length === 0) {
+      setProfitDistributionRows([]);
+      return;
+    }
+    const totalProfit = roundInt(Math.max(0, profitAmount));
+    const n = completedProductionSteps.length;
+    const equalShareRaw = totalProfit / n;
+    const equalShares = Array.from({ length: n }, () => roundInt(equalShareRaw));
+    const diff = totalProfit - equalShares.reduce((s, x) => s + x, 0);
+    if (diff !== 0) equalShares[n - 1] = roundInt(equalShares[n - 1] + diff);
+    setProfitDistributionRows((prev) => {
+      const prevKey = prev.map((r) => r.stepId).join(',');
+      if (prevKey !== completedStepKey || prev.length !== completedProductionSteps.length) {
+        return completedProductionSteps.map((step, i) => ({
+          stepId: step.id,
+          name: step.name,
+          workerName: step.assignedWorker || (step.assignedWorkers?.[0]?.workerName ?? '—'),
+          amount: equalShares[i] ?? roundInt(equalShareRaw),
+          isManual: false,
+        }));
+      }
+      const manualSum = roundInt(prev.filter((r) => r.isManual).reduce((s, r) => s + r.amount, 0));
+      const autoRows = prev.filter((r) => !r.isManual);
+      const autoCount = autoRows.length;
+      const remainder = roundInt(totalProfit - manualSum);
+      const autoShareRaw = autoCount > 0 ? remainder / autoCount : 0;
+      const autoAmounts = Array.from({ length: autoCount }, () => roundInt(autoShareRaw));
+      const autoDiff = remainder - autoAmounts.reduce((s, x) => s + x, 0);
+      if (autoDiff !== 0 && autoAmounts.length > 0) autoAmounts[autoAmounts.length - 1] = roundInt(autoAmounts[autoAmounts.length - 1]! + autoDiff);
+      let idx = 0;
+      return prev.map((r) => (r.isManual ? r : { ...r, amount: autoAmounts[idx++] ?? 0 }));
+    });
+  }, [completedStepKey, completedProductionSteps.length, profitAmount]);
+  const totalDistributed = profitDistributionRows.reduce((s, r) => s + r.amount, 0);
+  const updateProfitShare = useCallback(
+    (stepId: string, value: number) => {
+      const totalProfit = roundInt(Math.max(0, profitAmount));
+      const valueRounded = roundInt(value);
+      setProfitDistributionRows((prev) => {
+        const next = prev.map((r) => (r.stepId === stepId ? { ...r, amount: valueRounded, isManual: true } : r));
+        const manualSum = next.filter((r) => r.isManual).reduce((s, r) => s + r.amount, 0);
+        const autoCount = next.filter((r) => !r.isManual).length;
+        const remainder = roundInt(totalProfit - manualSum);
+        const autoShareRaw = autoCount > 0 ? remainder / autoCount : 0;
+        const autoAmounts = Array.from({ length: autoCount }, () => roundInt(autoShareRaw));
+        const autoDiff = remainder - autoAmounts.reduce((s, x) => s + x, 0);
+        if (autoDiff !== 0 && autoAmounts.length > 0) autoAmounts[autoAmounts.length - 1] = roundInt(autoAmounts[autoAmounts.length - 1]! + autoDiff);
+        let idx = 0;
+        return next.map((r) => {
+          if (r.stepId === stepId) return { ...r, amount: valueRounded, isManual: true };
+          if (r.isManual) return r; // keep other manual stages unchanged (allow multiple manuals)
+          return { ...r, amount: autoAmounts[idx++] ?? 0, isManual: false };
+        });
+      });
+    },
+    [profitAmount]
+  );
+  const resetProfitDistribution = useCallback(() => {
+    const totalProfit = roundInt(Math.max(0, profitAmount));
+    const n = completedProductionSteps.length;
+    const equalShareRaw = n > 0 ? totalProfit / n : 0;
+    const equalShares = Array.from({ length: n }, () => roundInt(equalShareRaw));
+    const diff = totalProfit - equalShares.reduce((s, x) => s + x, 0);
+    if (diff !== 0 && equalShares.length > 0) equalShares[equalShares.length - 1] = roundInt(equalShares[equalShares.length - 1]! + diff);
+    setProfitDistributionRows(
+      completedProductionSteps.map((step, i) => ({
+        stepId: step.id,
+        name: step.name,
+        workerName: step.assignedWorker || (step.assignedWorkers?.[0]?.workerName ?? '—'),
+        amount: equalShares[i] ?? roundInt(equalShareRaw),
+        isManual: false,
+      }))
+    );
+  }, [completedProductionSteps, profitAmount]);
 
   // Check if all production tasks are completed (normalize status so 'Completed'/'completed' both count)
   const isStepCompleted = (s: { status?: string }) => (s.status || '').toLowerCase() === 'completed';
@@ -790,8 +965,11 @@ export const StudioSaleDetailNew = () => {
       });
       // No auto-stages: manager decides via Customize Tasks
       return { productionId: production.id };
-    } catch (e) {
-      console.warn('[StudioSaleDetail] ensureProductionForSale failed:', e);
+    } catch (e: unknown) {
+      const err = e as { message?: string; code?: string; details?: string };
+      const msg = err?.message ?? String(e);
+      const code = err?.code ?? '';
+      console.warn('[StudioSaleDetail] ensureProductionForSale failed:', msg, code || undefined, err?.details || undefined);
       return { productionId: null, error: 'CREATE_FAILED' };
     }
   }, [selectedStudioSaleId, companyId, branchId, user?.id]);
@@ -914,13 +1092,32 @@ export const StudioSaleDetailNew = () => {
       savedSuccessfullyRef.current = true;
       toast.success('Changes saved to database.');
       window.dispatchEvent(new CustomEvent('studio-production-saved'));
+      if (saleDetail?.id) {
+        try {
+          const marginVal = parseFloat(profitMarginValue) || 0;
+          const syncParams = profitMarginMode === 'fixed'
+            ? { profitAmount: marginVal }
+            : { profitMarginPercent: marginVal };
+          const syncResult = await syncInvoiceWithProductionPricing(saleDetail.id, syncParams);
+          setLastInvoiceSyncResult(syncResult);
+          if (syncResult.success) {
+            window.dispatchEvent(new CustomEvent('saleUpdated', { detail: { saleId: saleDetail.id } }));
+            toast.success('Studio invoice item synced with production pricing.');
+          } else if (syncResult.error) {
+            toast.error(syncResult.error);
+          }
+        } catch (syncErr) {
+          console.warn('[StudioSaleDetailNew] Invoice sync failed:', syncErr);
+          toast.error((syncErr as Error)?.message || 'Invoice sync failed');
+        }
+      }
       if (!opts?.skipConfirmDialog) setShowSaveConfirmDialog(true);
     } catch (e: any) {
       toast.error(e?.message || 'Failed to save changes');
     } finally {
       setSavingStage(false);
     }
-  }, [saleDetail, productionId, ensureProductionForSale, reloadProductionSteps, workers]);
+  }, [saleDetail, productionId, ensureProductionForSale, reloadProductionSteps, workers, profitMarginValue, profitMarginMode]);
 
   const handleSaveAndLeave = useCallback(async () => {
     const target = pendingLeaveTarget;
@@ -967,29 +1164,80 @@ export const StudioSaleDetailNew = () => {
     setSaleDetail(prev => ({ ...prev, accessories: prev.accessories.filter(acc => acc.id !== id) }));
   };
 
-  const handleAddShipment = () => {
+  const handleAddShipment = async () => {
     if (newShipment.chargedToCustomer <= 0) return;
+    if (!saleDetail) return;
 
-    const shipment: Shipment = {
-      id: `SHP-${Date.now()}`,
+    const charged = newShipment.chargedToCustomer;
+    const payload = {
       shipmentType: newShipment.shipmentType,
-      courierName: newShipment.courierName,
-      shipmentStatus: 'Pending',
-      trackingId: newShipment.trackingId,
-      actualCost: newShipment.actualCost,
-      chargedToCustomer: newShipment.chargedToCustomer,
-      currency: 'PKR',
-      notes: newShipment.notes,
-      trackingDocuments: []
+      courierName: newShipment.courierName || undefined,
+      shipmentStatus: 'Pending' as const,
+      trackingId: newShipment.trackingId || undefined,
+      actualCost: newShipment.actualCost ?? 0,
+      chargedToCustomer: charged,
+      currency: 'PKR' as const,
+      notes: newShipment.notes || undefined,
     };
 
-    setSaleDetail(prev => ({
-      ...prev,
-      shipments: [...prev.shipments, shipment],
-      shipmentCharges: prev.shipmentCharges + newShipment.chargedToCustomer,
-      totalAmount: prev.totalAmount + newShipment.chargedToCustomer,
-      balanceDue: prev.balanceDue + newShipment.chargedToCustomer
-    }));
+    if (saleDetail.source === 'sale' && saleDetail.id && companyId && branchId) {
+      setSavingShipment(true);
+      try {
+        const created = await shipmentService.create(
+          saleDetail.id,
+          companyId,
+          branchId,
+          payload,
+          user?.id
+        );
+        const mapped = mapShipmentRowsToUi([created])[0];
+        const shipment: Shipment = { ...mapped, id: created.id };
+        setSaleDetail(prev => prev ? {
+          ...prev,
+          shipments: [...prev.shipments, shipment],
+          shipmentCharges: prev.shipmentCharges + charged,
+          totalAmount: prev.totalAmount + charged,
+          balanceDue: prev.balanceDue + charged,
+        } : prev);
+        toast.success('Shipment added and saved.');
+      } catch (e: any) {
+        const isTableMissing = e?.status === 404 || e?.code === '42P01' || (typeof e?.message === 'string' && (e.message.includes('sale_shipments') || e.message.includes('does not exist') || e.message.includes('404')));
+        if (isTableMissing) {
+          const shipment: Shipment = {
+            id: `SHP-${Date.now()}`,
+            ...payload,
+            trackingDocuments: [],
+          };
+          setSaleDetail(prev => prev ? {
+            ...prev,
+            shipments: [...prev.shipments, shipment],
+            shipmentCharges: prev.shipmentCharges + charged,
+            totalAmount: prev.totalAmount + charged,
+            balanceDue: prev.balanceDue + charged,
+          } : prev);
+          toast.warning('Shipments table not created yet. Added locally. Run migration "sale_shipments_table.sql" in Supabase to save to database.');
+        } else {
+          console.error('Failed to save shipment:', e);
+          toast.error(e instanceof Error ? e.message : 'Failed to save shipment');
+          return;
+        }
+      } finally {
+        setSavingShipment(false);
+      }
+    } else {
+      const shipment: Shipment = {
+        id: `SHP-${Date.now()}`,
+        ...payload,
+        trackingDocuments: [],
+      };
+      setSaleDetail(prev => ({
+        ...prev,
+        shipments: [...prev.shipments, shipment],
+        shipmentCharges: prev.shipmentCharges + charged,
+        totalAmount: prev.totalAmount + charged,
+        balanceDue: prev.balanceDue + charged,
+      }));
+    }
 
     setNewShipment({
       shipmentType: 'Courier',
@@ -1002,23 +1250,139 @@ export const StudioSaleDetailNew = () => {
     setShowShipmentModal(false);
   };
 
-  const handleDeleteShipment = (shipmentId: string) => {
+  const handleDeleteShipment = async (shipmentId: string) => {
     if (!saleDetail) return;
     const shipment = saleDetail.shipments.find(s => s.id === shipmentId);
     if (!shipment) return;
 
-    // Confirm before deleting
     if (!confirm(`Delete shipment? This will reduce the total bill by ${formatCurrency(shipment.chargedToCustomer)}`)) {
       return;
     }
 
-    setSaleDetail(prev => ({
+    const isDbId = /^[0-9a-f-]{36}$/i.test(shipmentId);
+    if (isDbId) {
+      try {
+        await shipmentService.delete(shipmentId);
+        toast.success('Shipment removed.');
+      } catch (e) {
+        console.error('Failed to delete shipment:', e);
+        toast.error(e instanceof Error ? e.message : 'Failed to delete shipment');
+        return;
+      }
+    }
+
+    setSaleDetail(prev => prev ? {
       ...prev,
       shipments: prev.shipments.filter(s => s.id !== shipmentId),
       shipmentCharges: prev.shipmentCharges - shipment.chargedToCustomer,
       totalAmount: prev.totalAmount - shipment.chargedToCustomer,
       balanceDue: prev.balanceDue - shipment.chargedToCustomer
-    }));
+    } : prev);
+  };
+
+  const handleCreateProductAndInvoice = async () => {
+    if (!saleDetail || saleDetail.source !== 'sale' || !saleDetail.id || !companyId || !branchId) {
+      toast.error('Sale or company context missing.');
+      return;
+    }
+    const name = (createProductInvoiceForm.productName || '').trim() || `Studio – ${saleDetail.invoiceNo}`;
+    const salePriceNum = parseFloat(createProductInvoiceForm.salePrice) || 0;
+    if (salePriceNum <= 0) {
+      toast.error('Enter a valid sale price.');
+      return;
+    }
+    setCreatingProductAndInvoice(true);
+    try {
+      const sku = await documentNumberService.getNextProductSKU(companyId, null).catch(() => `STUDIO-${saleDetail.invoiceNo}-${Date.now().toString(36)}`);
+      const product = await productService.createProduct({
+        company_id: companyId,
+        name,
+        sku,
+        category_id: createProductInvoiceForm.categoryId || (null as any),
+        cost_price: 0,
+        retail_price: salePriceNum,
+        wholesale_price: salePriceNum,
+        current_stock: 0,
+        min_stock: 0,
+        max_stock: 1000,
+        has_variations: false,
+        is_rentable: false,
+        is_sellable: true,
+        track_stock: false,
+        is_active: true,
+        description: createProductInvoiceForm.description || undefined,
+      }) as { id: string; name: string; sku: string };
+      const itemRow = {
+        sale_id: saleDetail.id,
+        product_id: product.id,
+        product_name: product.name,
+        sku: product.sku,
+        quantity: 1,
+        unit_price: salePriceNum,
+        total: salePriceNum,
+      };
+      let insertedItemId: string | null = null;
+      const { data: insertedItem, error: itemErr } = await supabase
+        .from('sales_items')
+        .insert(itemRow)
+        .select('id')
+        .single();
+      if (itemErr) {
+        const { data: fallbackData, error: fallbackErr } = await supabase
+          .from('sale_items')
+          .insert({
+            sale_id: saleDetail.id,
+            product_id: product.id,
+            product_name: product.name,
+            sku: product.sku,
+            quantity: 1,
+            price: salePriceNum,
+            total: salePriceNum,
+          })
+          .select('id')
+          .single();
+        if (fallbackErr) throw new Error(fallbackErr.message || 'Failed to add item to invoice');
+        insertedItemId = (fallbackData as any)?.id ?? null;
+      } else {
+        insertedItemId = (insertedItem as any)?.id ?? null;
+      }
+      if (productionId && insertedItemId) {
+        try {
+          await studioProductionService.setGeneratedInvoiceItem(productionId, product.id, insertedItemId);
+        } catch (linkErr: any) {
+          console.warn('[StudioSaleDetailNew] Link studio production to invoice item:', linkErr?.message);
+        }
+      }
+      const { data: saleRow } = await supabase.from('sales').select('total, paid_amount').eq('id', saleDetail.id).single();
+      const currentTotal = Number((saleRow as any)?.total) || 0;
+      const paid = Number((saleRow as any)?.paid_amount) || 0;
+      const newTotal = currentTotal + salePriceNum;
+      const newDue = Math.max(0, newTotal - paid);
+      await supabase.from('sales').update({
+        total: newTotal,
+        due_amount: newDue,
+        updated_at: new Date().toISOString(),
+      }).eq('id', saleDetail.id);
+      if (createProductInvoiceImageFiles.length > 0 && product?.id) {
+        try {
+          const imageUrls = await uploadProductImages(companyId, product.id, createProductInvoiceImageFiles);
+          await productService.updateProduct(product.id, { image_urls: imageUrls });
+        } catch (uploadErr: any) {
+          console.error('[StudioSaleDetailNew] Product image upload failed:', uploadErr);
+          toast.error(uploadErr?.message || 'Product and invoice saved but image upload failed.');
+        }
+      }
+      setCreateProductInvoiceImageFiles([]);
+      setShowCreateProductInvoiceModal(false);
+      toast.success('Product created and invoice updated.');
+      if (setOpenSaleIdForView) setOpenSaleIdForView(saleDetail.id);
+      setCurrentView('sales');
+    } catch (e: any) {
+      console.error('Create product & invoice:', e);
+      toast.error(e?.message || 'Failed to create product or update invoice');
+    } finally {
+      setCreatingProductAndInvoice(false);
+    }
   };
 
   // Handle file upload
@@ -1056,7 +1420,12 @@ export const StudioSaleDetailNew = () => {
   const handleOpenWorkerEdit = (stepId: string) => {
     const step = saleDetail.productionSteps.find(s => s.id === stepId);
     if (!step) return;
-    
+    const isServerUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(stepId);
+    if (isServerUuid) {
+      studioProductionService.getLedgerStatusForStages([stepId]).then((statusMap) => {
+        setWorkerStagePaymentStatus(prev => ({ ...prev, ...statusMap }));
+      }).catch(() => {});
+    }
     // Load existing workers or create from legacy data
     const workers = step.assignedWorkers && step.assignedWorkers.length > 0
       ? step.assignedWorkers
@@ -1480,17 +1849,15 @@ export const StudioSaleDetailNew = () => {
             </div>
           </div>
           <div className="flex items-center gap-3">
-            {selectedStudioSaleId && (
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => handleAttemptLeave('studio-sales-list-new')}
-                className="border-cyan-600 text-cyan-400 hover:bg-cyan-900/30"
-              >
-                <Package size={14} className="mr-1.5" />
-                Studio Sales
-              </Button>
-            )}
+            <Button
+              size="sm"
+              disabled={savingStage}
+              onClick={() => persistAllStagesToBackend()}
+              className="bg-green-600 hover:bg-green-700 text-white"
+            >
+              {savingStage ? <Loader2 size={14} className="animate-spin mr-1.5" /> : <Save size={14} className="mr-1.5" />}
+              Save
+            </Button>
             {/* Assign flow: explicit Save/Done in header (top-right) – save only on this button, not on dropdown change */}
             {showWorkerEditModal && (() => {
               const currentStep = saleDetail?.productionSteps.find(s => s.id === showWorkerEditModal);
@@ -1572,7 +1939,7 @@ export const StudioSaleDetailNew = () => {
             </div>
             <div>
               <p className="text-xs text-gray-500 mb-1">Total Bill</p>
-              <p className="text-white font-bold text-lg">{formatCurrency(effectiveTotalAmount)}</p>
+              <p className="text-white font-bold text-lg">{formatCurrency(grandTotalForCard)}</p>
               {saleDetail.shipmentCharges > 0 && (
                 <p className="text-xs text-blue-400">Inc. shipping {formatCurrency(saleDetail.shipmentCharges)}</p>
               )}
@@ -1584,12 +1951,18 @@ export const StudioSaleDetailNew = () => {
               <p className="text-xs text-gray-500 mb-1">Balance Due</p>
               <p className={cn(
                 "font-bold text-lg",
-                effectiveBalanceDue === 0 ? "text-green-400" : "text-orange-400"
+                displayBalanceDue === 0 ? "text-green-400" : "text-orange-400"
               )}>
-                {formatCurrency(effectiveBalanceDue)}
+                {formatCurrency(displayBalanceDue)}
               </p>
             </div>
           </div>
+          {lastInvoiceSyncResult?.success && (
+            <div className="mt-3 pt-3 border-t border-gray-800 flex items-center gap-2">
+              <CheckCircle size={16} className="text-green-400 shrink-0" />
+              <span className="text-sm text-green-400 font-medium">Studio invoice item synced with production pricing.</span>
+            </div>
+          )}
         </div>
 
         {/* Production Progress Bar */}
@@ -1667,11 +2040,76 @@ export const StudioSaleDetailNew = () => {
                 Final Complete
               </Button>
             )}
-            {allTasksCompleted && (
-              <Badge className="bg-green-600 text-white px-4 py-2 text-sm font-semibold">
-                <CheckCircle2 size={16} className="mr-2" />
-                Production Complete ✓
-              </Badge>
+            {/* Invoice actions – when production completed: one blue button, options in dropdown */}
+            {allTasksCompleted && saleDetail && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    size="sm"
+                    className="bg-blue-600 hover:bg-blue-700 text-white border-0"
+                  >
+                    <FileText size={14} className="mr-2" />
+                    Invoice
+                    <ChevronDown size={14} className="ml-2" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="bg-gray-900 border-gray-700 min-w-[180px]">
+                  <DropdownMenuItem
+                    className="text-gray-200 focus:bg-blue-600 focus:text-white focus:outline-none cursor-pointer"
+                    onSelect={() => {
+                      setCreateProductInvoiceForm(prev => ({
+                        ...prev,
+                        productName: '',
+                        categoryId: '',
+                        salePrice: grandTotalForCard > 0 ? String(Math.round(grandTotalForCard)) : '',
+                        description: '',
+                      }));
+                      if (companyId) {
+                        productCategoryService.getAllCategoriesFlat(companyId)
+                          .then(cats => setCreateProductInvoiceCategories(cats.map(c => ({ id: c.id, name: c.name }))))
+                          .catch(() => setCreateProductInvoiceCategories([]));
+                      }
+                      setShowCreateProductInvoiceModal(true);
+                    }}
+                  >
+                    <FileText size={14} className="mr-2" />
+                    Generate Bill
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    className="text-gray-200 focus:bg-blue-600 focus:text-white focus:outline-none cursor-pointer"
+                    onSelect={() => window.print()}
+                  >
+                    <Printer size={14} className="mr-2" />
+                    Print
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    className="text-gray-200 focus:bg-blue-600 focus:text-white focus:outline-none cursor-pointer"
+                    onSelect={() => {
+                      toast.info('PDF – open sale in Sales to download/share PDF');
+                      if (setOpenSaleIdForView && saleDetail.id) {
+                        setOpenSaleIdForView(saleDetail.id);
+                        setCurrentView('sales');
+                      }
+                    }}
+                  >
+                    <FileText size={14} className="mr-2" />
+                    PDF
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    className="text-gray-200 focus:bg-blue-600 focus:text-white focus:outline-none cursor-pointer"
+                    onSelect={() => {
+                      if (setOpenSaleIdForView && saleDetail.id) {
+                        setOpenSaleIdForView(saleDetail.id);
+                        setCurrentView('sales');
+                      }
+                      toast.success('Open Sales to view or share invoice');
+                    }}
+                  >
+                    <Share2 size={14} className="mr-2" />
+                    Share
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             )}
           </div>
         </div>
@@ -1973,7 +2411,7 @@ export const StudioSaleDetailNew = () => {
                         {formatCurrency(saleDetail.productionSteps.reduce((sum, step) => sum + step.workerCost, 0))}
                       </span>
                     </div>
-                    
+                    <p className="text-xs text-gray-500">Set profit margin in the right panel &quot;Pricing Calculator&quot;, then click Save to sync invoice.</p>
                     {/* Payment Status Breakdown */}
                     <div className="pt-2 border-t border-gray-800">
                       <p className="text-xs text-gray-500 mb-2">Payment Status:</p>
@@ -2086,7 +2524,7 @@ export const StudioSaleDetailNew = () => {
           <div className="flex flex-col h-full overflow-y-auto bg-[#0F1419]">
             <div className="p-6 space-y-6">
               
-              {/* SHIPMENT SECTION - NOW AT TOP */}
+              {/* SHIPMENT SECTION – show full design only when there is at least one shipment; otherwise only header + Add */}
               <div>
                 <div className="flex items-center justify-between mb-4">
                   <h2 className="text-base font-bold text-white flex items-center gap-2">
@@ -2117,28 +2555,8 @@ export const StudioSaleDetailNew = () => {
                 </div>
 
                 {(!saleDetail.shipments || saleDetail.shipments.length === 0) ? (
-                  <div className={cn(
-                    "border border-dashed rounded-lg p-8 text-center",
-                    allTasksCompleted 
-                      ? "bg-gray-900/30 border-gray-800" 
-                      : "bg-gray-950/50 border-gray-900"
-                  )}>
-                    <Truck size={32} className={cn(
-                      "mx-auto mb-2",
-                      allTasksCompleted ? "text-gray-600" : "text-gray-800"
-                    )} />
-                    {!allTasksCompleted ? (
-                      <>
-                        <p className="text-sm text-gray-600 mb-1">🔒 Shipment Locked</p>
-                        <p className="text-xs text-gray-700">Complete all production tasks to unlock</p>
-                      </>
-                    ) : (
-                      <>
-                        <p className="text-sm text-gray-500 mb-1">No shipment details</p>
-                        <p className="text-xs text-gray-600">Add when ready to dispatch</p>
-                      </>
-                    )}
-                  </div>
+                  /* No shipments: hide detailed block – only header + Add above; no empty-state box */
+                  null
                 ) : (
                   <div className="space-y-3">
                     {saleDetail.shipments.map((shipment) => {
@@ -2275,54 +2693,9 @@ export const StudioSaleDetailNew = () => {
 
                             {/* Tracking Documents */}
                             <div>
-                              <div className="flex items-center justify-between mb-2">
-                                <p className="text-xs text-gray-500 uppercase font-medium">Tracking Documents</p>
-                                <div className="flex gap-2">
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    onClick={() => {
-                                      setShowDocumentUpload(shipment.id);
-                                      setTimeout(() => fileInputRef.current?.click(), 100);
-                                    }}
-                                    className="border-gray-700 text-gray-300 h-7 text-xs"
-                                  >
-                                    <Upload size={12} className="mr-1" />
-                                    Upload
-                                  </Button>
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    onClick={() => {
-                                      setShowDocumentUpload(shipment.id);
-                                      setTimeout(() => cameraInputRef.current?.click(), 100);
-                                    }}
-                                    className="border-gray-700 text-gray-300 h-7 text-xs"
-                                  >
-                                    <Camera size={12} className="mr-1" />
-                                    Camera
-                                  </Button>
-                                </div>
-                              </div>
+                              <p className="text-xs text-gray-500 uppercase font-medium mb-2">Tracking Documents</p>
 
-                              {/* Hidden File Inputs */}
-                              <input
-                                ref={fileInputRef}
-                                type="file"
-                                accept="image/*,.pdf"
-                                className="hidden"
-                                onChange={(e) => handleFileUpload(shipment.id, e)}
-                              />
-                              <input
-                                ref={cameraInputRef}
-                                type="file"
-                                accept="image/*"
-                                capture="environment"
-                                className="hidden"
-                                onChange={(e) => handleCameraCapture(shipment.id, e)}
-                              />
-
-                              {/* Documents List */}
+                              {/* Documents List or clickable empty state with Upload / Take pic */}
                               {shipment.trackingDocuments && shipment.trackingDocuments.length > 0 ? (
                                 <div className="space-y-2">
                                   {shipment.trackingDocuments.map(doc => (
@@ -2358,58 +2731,36 @@ export const StudioSaleDetailNew = () => {
                                   ))}
                                 </div>
                               ) : (
-                                <div className="bg-gray-950 border border-gray-800 border-dashed rounded-lg p-4 text-center">
-                                  <Paperclip size={20} className="mx-auto text-gray-600 mb-1" />
-                                  <p className="text-xs text-gray-500">No documents uploaded</p>
-                                </div>
+                                <DropdownMenu>
+                                  <DropdownMenuTrigger asChild>
+                                    <button
+                                      type="button"
+                                      onClick={() => setShowDocumentUpload(shipment.id)}
+                                      className="w-full bg-gray-950 border border-gray-800 border-dashed rounded-lg p-4 text-center hover:bg-gray-900/80 hover:border-gray-700 transition-colors cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500/50"
+                                    >
+                                      <Paperclip size={20} className="mx-auto text-gray-600 mb-1" />
+                                      <p className="text-xs text-gray-500">No documents uploaded</p>
+                                      <p className="text-[10px] text-blue-400 mt-1">Click to upload or take pic</p>
+                                    </button>
+                                  </DropdownMenuTrigger>
+                                  <DropdownMenuContent align="center" className="bg-gray-900 border-gray-700 min-w-[160px]">
+                                    <DropdownMenuItem
+                                      className="text-gray-200 focus:bg-blue-600 focus:text-white cursor-pointer"
+                                      onSelect={() => setTimeout(() => fileInputRef.current?.click(), 100)}
+                                    >
+                                      <Upload size={14} className="mr-2" />
+                                      Upload
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem
+                                      className="text-gray-200 focus:bg-blue-600 focus:text-white cursor-pointer"
+                                      onSelect={() => setTimeout(() => cameraInputRef.current?.click(), 100)}
+                                    >
+                                      <Camera size={14} className="mr-2" />
+                                      Take pic
+                                    </DropdownMenuItem>
+                                  </DropdownMenuContent>
+                                </DropdownMenu>
                               )}
-                            </div>
-
-                            {/* Financial */}
-                            <div className="bg-gray-950 border border-gray-800 rounded-lg p-4">
-                              <p className="text-xs text-gray-500 uppercase font-medium mb-3">Financial Details (Reference)</p>
-                              <div className="space-y-2 text-sm">
-                                <div className="flex items-center justify-between">
-                                  <span className="text-gray-400">Charged to Customer</span>
-                                  <span className="text-white font-semibold">
-                                    {shipment.currency} {shipment.chargedToCustomer.toLocaleString()}
-                                  </span>
-                                </div>
-                                <div className="flex items-center justify-between">
-                                  <span className="text-gray-400">Actual Cost</span>
-                                  <span className="text-orange-400 font-semibold">
-                                    {shipment.currency} {shipment.actualCost.toLocaleString()}
-                                  </span>
-                                </div>
-                                <div className="h-px bg-gray-800"></div>
-                                <div className="flex items-center justify-between">
-                                  <span className="text-gray-300 font-medium">Profit/Loss</span>
-                                  <div className="flex items-center gap-1.5">
-                                    <TrendingUp size={16} className={profit >= 0 ? "text-green-400" : "text-red-400"} />
-                                    <span className={cn(
-                                      "font-bold text-base",
-                                      profit >= 0 ? "text-green-400" : "text-red-400"
-                                    )}>
-                                      {profit >= 0 ? '+' : ''}{shipment.currency} {profit.toLocaleString()}
-                                    </span>
-                                  </div>
-                                </div>
-                              </div>
-
-                              {shipment.currency === 'USD' && shipment.usdToPkrRate && (
-                                <div className="mt-3 pt-3 border-t border-gray-800">
-                                  <p className="text-xs text-gray-500">
-                                    Rate: 1 USD = {shipment.usdToPkrRate} • {formatCurrency(shipment.chargedToCustomer * shipment.usdToPkrRate)}
-                                  </p>
-                                </div>
-                              )}
-                              
-                              {/* ERP Info */}
-                              <div className="mt-3 pt-3 border-t border-blue-800/30">
-                                <p className="text-[10px] text-blue-400">
-                                  📊 Accounting entries auto-created in Expense & Income ledgers
-                                </p>
-                              </div>
                             </div>
 
                             {/* Notes */}
@@ -2427,6 +2778,83 @@ export const StudioSaleDetailNew = () => {
                 )}
               </div>
 
+              {/* Single hidden file/camera inputs for Tracking Documents (use showDocumentUpload for shipment id) */}
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*,.pdf"
+                className="hidden"
+                onChange={(e) => { if (showDocumentUpload) { handleFileUpload(showDocumentUpload, e); e.target.value = ''; } }}
+              />
+              <input
+                ref={cameraInputRef}
+                type="file"
+                accept="image/*"
+                capture="environment"
+                className="hidden"
+                onChange={(e) => { if (showDocumentUpload) { handleCameraCapture(showDocumentUpload, e); e.target.value = ''; } }}
+              />
+
+              {/* PRICING CALCULATOR – inputs only (financial summary moved to Payment panel) */}
+              <div className="rounded-xl overflow-hidden border border-gray-800 bg-gray-900/50">
+                <div className="px-5 py-3 bg-gray-950/50 border-b border-gray-800">
+                  <h2 className="text-base font-bold text-white flex items-center gap-2">
+                    <DollarSign size={18} className="text-blue-400" />
+                    Pricing Calculator
+                  </h2>
+                </div>
+                <div className="p-5 space-y-4">
+                  <div>
+                    <p className="text-sm text-gray-400 mb-1">Production Cost</p>
+                    <p className="text-base font-semibold text-white">{formatCurrency(productionCostFromStages)}</p>
+                  </div>
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <Label className="text-sm text-gray-400">Profit Margin</Label>
+                      <div className="flex items-center gap-2">
+                        <span className={cn("text-xs", profitMarginMode === 'fixed' ? "text-gray-500" : "text-blue-400 font-medium")}>%</span>
+                        <Switch
+                          checked={profitMarginMode === 'fixed'}
+                          onCheckedChange={(checked) => setProfitMarginMode(checked ? 'fixed' : 'percentage')}
+                          className="data-[state=checked]:bg-blue-600"
+                        />
+                        <span className={cn("text-xs", profitMarginMode === 'fixed' ? "text-blue-400 font-medium" : "text-gray-500")}>Fixed</span>
+                      </div>
+                    </div>
+                    <Input
+                      type="number"
+                      min={0}
+                      step={profitMarginMode === 'percentage' ? 0.5 : 1}
+                      className="bg-gray-950 border-gray-700 text-white text-sm"
+                      value={profitMarginValue}
+                      onChange={(e) => setProfitMarginValue(e.target.value)}
+                    />
+                    <p className="text-xs text-gray-500 mt-1.5 flex items-center gap-1">
+                      <Info size={12} className="text-blue-400 shrink-0" />
+                      {profitMarginMode === 'percentage'
+                        ? `${profitMarginValue || 0}% of production cost`
+                        : 'Fixed amount'}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-400 mb-1">Profit Distribution</p>
+                    <div className="flex items-center justify-between bg-gray-950/80 border border-gray-800 rounded-lg p-3">
+                      <span className="text-sm text-white">{completedProductionSteps.length} Stages</span>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="border-gray-600 text-gray-300 hover:bg-gray-800 hover:text-white"
+                        onClick={() => setShowProfitDistributionModal(true)}
+                        disabled={completedProductionSteps.length === 0}
+                      >
+                        Configure Profit Distribution
+                        <ChevronRight size={14} className="ml-1" />
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
               {/* PAYMENT SECTION - NOW AT BOTTOM */}
               <div>
                 <div className="flex items-center justify-between mb-4">
@@ -2436,18 +2864,18 @@ export const StudioSaleDetailNew = () => {
                   </h2>
                   <Badge className={cn(
                     "text-xs",
-                    effectiveBalanceDue === 0 && "bg-green-600",
-                    effectiveBalanceDue > 0 && saleDetail.paidAmount > 0 && "bg-blue-600",
-                    effectiveBalanceDue === effectiveTotalAmount && "bg-orange-600"
+                    displayBalanceDue === 0 && "bg-green-600",
+                    displayBalanceDue > 0 && saleDetail.paidAmount > 0 && "bg-blue-600",
+                    displayBalanceDue >= grandTotalForCard && grandTotalForCard > 0 && "bg-orange-600"
                   )}>
-                    {effectiveBalanceDue === 0 ? 'Paid' : saleDetail.paidAmount > 0 ? 'Partial' : 'Pending'}
+                    {displayBalanceDue === 0 ? 'Paid' : saleDetail.paidAmount > 0 ? 'Partial' : 'Pending'}
                   </Badge>
                 </div>
 
-                {/* Summary Card */}
+                {/* Summary Card – unified: pricing (Production Cost, Profit, Final Sale Price) + Paid + Balance Due */}
                 <div className={cn(
                   "border rounded-xl p-5 mb-4",
-                  effectiveBalanceDue === 0 
+                  displayBalanceDue === 0
                     ? "bg-gradient-to-br from-green-950/30 to-green-900/20 border-green-800/50"
                     : saleDetail.paidAmount > 0
                       ? "bg-gradient-to-br from-blue-950/30 to-blue-900/20 border-blue-800/50"
@@ -2455,36 +2883,32 @@ export const StudioSaleDetailNew = () => {
                 )}>
                   <div className="space-y-3">
                     <div className="flex items-center justify-between">
-                      <span className="text-sm text-gray-400">Sale Amount</span>
-                      <span className="text-xl font-bold text-white">{formatCurrency(saleDetail.baseAmount + saleDetail.shipmentCharges)}</span>
+                      <span className="text-sm text-gray-400">Production Cost</span>
+                      <span className="text-lg font-semibold text-white">{formatCurrency(productionCostFromStages)}</span>
+                    </div>
+                    <div className="flex items-center justify-between bg-transparent">
+                      <span className="text-sm text-gray-400">Profit</span>
+                      <span className="text-lg font-semibold text-white">{formatCurrency(profitAmount)}</span>
                     </div>
                     {saleDetail.shipmentCharges > 0 && (
-                      <div className="flex items-center justify-between text-xs">
-                        <span className="text-gray-500">Base Amount</span>
-                        <span className="text-gray-400">{formatCurrency(saleDetail.baseAmount)}</span>
-                      </div>
-                    )}
-                    {saleDetail.shipmentCharges > 0 && (
-                      <div className="flex items-center justify-between text-xs">
-                        <span className="text-gray-500">Shipping Charges</span>
-                        <span className="text-blue-400">{formatCurrency(saleDetail.shipmentCharges)}</span>
-                      </div>
-                    )}
-                    {studioCharges > 0 && (
                       <div className="flex items-center justify-between">
-                        <span className="text-sm text-gray-400">Studio Charges (worker cost)</span>
-                        <span className="text-xl font-bold text-orange-400">{formatCurrency(studioCharges)}</span>
+                        <span className="text-sm text-gray-400">Shipment</span>
+                        <span className="text-lg font-semibold text-white">{formatCurrency(saleDetail.shipmentCharges)}</span>
                       </div>
                     )}
+                    <div className="h-px bg-gray-800"></div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-semibold text-gray-300">Grand Total</span>
+                      <span className="text-xl font-bold text-white">{formatCurrency(grandTotalForCard)}</span>
+                    </div>
                     {saleDetail.paidAmount > 0 && (
                       <>
-                        <div className="h-px bg-gray-800"></div>
                         <div className="flex items-center justify-between">
-                          <span className="text-sm text-gray-400">Paid</span>
+                          <span className="text-sm text-gray-400">Customer Paid</span>
                           <div className="flex items-center gap-2">
                             <span className="text-lg font-semibold text-green-400">{formatCurrency(saleDetail.paidAmount)}</span>
                             <span className="text-xs text-gray-500">
-                              ({effectiveTotalAmount > 0 ? ((saleDetail.paidAmount / effectiveTotalAmount) * 100).toFixed(0) : 0}%)
+                              ({grandTotalForCard > 0 ? ((saleDetail.paidAmount / grandTotalForCard) * 100).toFixed(0) : 0}%)
                             </span>
                           </div>
                         </div>
@@ -2496,11 +2920,11 @@ export const StudioSaleDetailNew = () => {
                       <div className="flex items-center gap-2">
                         <span className={cn(
                           "text-2xl font-bold",
-                          effectiveBalanceDue === 0 ? "text-green-400" : "text-orange-400"
+                          displayBalanceDue === 0 ? "text-green-400" : "text-orange-400"
                         )}>
-                          {formatCurrency(effectiveBalanceDue)}
+                          {formatCurrency(displayBalanceDue)}
                         </span>
-                        {effectiveBalanceDue === 0 && (
+                        {displayBalanceDue === 0 && (
                           <CheckCircle2 size={24} className="text-green-400" />
                         )}
                       </div>
@@ -2521,7 +2945,7 @@ export const StudioSaleDetailNew = () => {
                         Worker payments are separate: <strong className="text-blue-400">Accounting → Worker Payments</strong>. 
                         Balance Due is driven by customer receipts only.
                       </p>
-                      {effectiveBalanceDue > 0 && saleDetail.source === 'sale' && (
+                      {displayBalanceDue > 0 && saleDetail.source === 'sale' && (
                         <Button
                           onClick={() => setShowCustomerPaymentDialog(true)}
                           className="bg-blue-600 hover:bg-blue-700 h-9 text-sm"
@@ -2580,6 +3004,80 @@ export const StudioSaleDetailNew = () => {
       </div>
 
       {/* ============ MODALS ============ */}
+
+      {/* Profit Distribution Modal */}
+      {showProfitDistributionModal && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+          <div className="bg-[#1A1E27] border border-gray-800 rounded-xl overflow-hidden max-w-[590px] w-full max-h-[103.5vh] flex flex-col">
+            <div className="bg-gradient-to-r from-emerald-600/80 to-blue-600/80 px-5 py-4 flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-2">
+                <Users size={20} className="text-emerald-200" />
+                <h3 className="text-lg font-bold text-white">Profit Distribution</h3>
+              </div>
+              <Button size="sm" variant="ghost" onClick={() => setShowProfitDistributionModal(false)} className="text-white hover:bg-white/20 h-8 w-8 p-0">
+                <X size={18} />
+              </Button>
+            </div>
+            <div className="p-5 overflow-y-auto flex-1 space-y-4">
+              <p className="text-sm text-gray-300">Total Profit: <span className="font-bold text-green-400">{formatCurrency(Math.max(0, profitAmount))}</span></p>
+              <div className="bg-blue-950/30 border border-blue-800/50 rounded-lg p-3">
+                <p className="text-xs font-medium text-blue-300 flex items-center gap-1 mb-2">
+                  <Info size={14} /> How it works:
+                </p>
+                <ul className="text-xs text-gray-400 space-y-1">
+                  <li>• Edit any stage to set a manual amount</li>
+                  <li>• Remaining profit auto-distributes to other stages</li>
+                  <li>• Total profit always remains fixed</li>
+                </ul>
+              </div>
+              <div className="space-y-3">
+                {profitDistributionRows.map((row, index) => (
+                  <div key={row.stepId} className="bg-gray-900/80 border border-gray-800 rounded-lg p-4">
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-2">
+                        <span className="flex h-6 w-6 items-center justify-center rounded-full bg-emerald-600/30 text-emerald-400 text-xs font-bold">{index + 1}</span>
+                        <span className="text-sm font-medium text-white">{row.name}</span>
+                        <Badge variant="outline" className={cn("text-[10px]", row.isManual ? "bg-amber-500/20 text-amber-400 border-amber-600" : "bg-blue-500/20 text-blue-400 border-blue-600")}>
+                          {row.isManual ? 'Manual' : 'Auto'}
+                        </Badge>
+                      </div>
+                      <Edit2 size={14} className="text-gray-500" />
+                    </div>
+                    <p className="text-xs text-gray-500 mb-2">Worker: {row.workerName}</p>
+                    <div>
+                      <p className="text-[10px] text-gray-500 uppercase tracking-wide mb-1">Profit Share</p>
+                      <Input
+                        type="number"
+                        min={0}
+                        step={1}
+                        className="bg-gray-950 border-gray-700 text-white h-9 font-semibold text-green-400"
+                        value={Math.round(row.amount)}
+                        onChange={(e) => {
+                          const v = parseInt(e.target.value, 10);
+                          if (Number.isFinite(v) && v >= 0) updateProfitShare(row.stepId, v);
+                        }}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <Button type="button" variant="outline" size="sm" className="w-full border-amber-600 text-amber-200" onClick={resetProfitDistribution}>
+                <RotateCcw size={14} className="mr-2" />
+                Reset Auto Distribution
+              </Button>
+            </div>
+            <div className="p-4 border-t border-gray-800 flex items-center justify-between shrink-0 bg-gray-950/50">
+              <div className="flex items-center gap-4 text-sm">
+                <span className="text-gray-400">Total Distributed: <span className="font-semibold text-green-400">{formatCurrency(totalDistributed)}</span></span>
+                <span className="text-gray-500">Across Stages: <span className="text-white">{profitDistributionRows.length}</span></span>
+              </div>
+              <Button className="bg-emerald-600 hover:bg-emerald-700" onClick={() => setShowProfitDistributionModal(false)}>
+                Done
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
       
       {/* Add Accessory Modal */}
       {showAccessoryModal && (
@@ -2751,12 +3249,134 @@ export const StudioSaleDetailNew = () => {
                   Cancel
                 </Button>
                 <Button
-                  onClick={handleAddShipment}
+                  onClick={() => handleAddShipment()}
+                  disabled={savingShipment}
                   className="flex-1 bg-blue-600 hover:bg-blue-700"
                 >
+                  {savingShipment ? <Loader2 size={16} className="animate-spin mr-2" /> : null}
                   Add Shipment
                 </Button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Create Product & Generate Invoice Modal */}
+      {showCreateProductInvoiceModal && saleDetail && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+          <div className="bg-[#1A1E27] border border-gray-800 rounded-xl overflow-hidden max-w-lg w-full max-h-[90vh] flex flex-col">
+            <div className="bg-gradient-to-r from-blue-600/80 to-emerald-600/80 px-5 py-4 flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-2">
+                <Package size={20} className="text-white" />
+                <div>
+                  <h3 className="text-lg font-bold text-white">Create Product & Generate Invoice</h3>
+                  <p className="text-xs text-white/80">Auto-create product and sales invoice from production order.</p>
+                </div>
+              </div>
+              <Button size="sm" variant="ghost" onClick={() => { setShowCreateProductInvoiceModal(false); setCreateProductInvoiceImageFiles([]); }} className="text-white hover:bg-white/20 h-8 w-8 p-0">
+                <X size={18} />
+              </Button>
+            </div>
+            <div className="p-5 space-y-4 overflow-y-auto">
+              <div>
+                <Label className="text-gray-400 text-sm">Product Name</Label>
+                <Input
+                  className="mt-1 bg-gray-950 border-gray-700 text-white"
+                  placeholder="e.g., Custom BinSaee Print Dress"
+                  value={createProductInvoiceForm.productName}
+                  onChange={(e) => setCreateProductInvoiceForm(prev => ({ ...prev, productName: e.target.value }))}
+                />
+              </div>
+              <div>
+                <Label className="text-gray-400 text-sm">Product Category</Label>
+                <select
+                  className="mt-1 w-full h-10 rounded-md bg-gray-950 border border-gray-700 text-white px-3 text-sm"
+                  value={createProductInvoiceForm.categoryId}
+                  onChange={(e) => setCreateProductInvoiceForm(prev => ({ ...prev, categoryId: e.target.value }))}
+                >
+                  <option value="">Select Category</option>
+                  {createProductInvoiceCategories.map(c => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <Label className="text-gray-400 text-sm">Upload Product Image (optional)</Label>
+                <div
+                  {...createProductInvoiceDropzone.getRootProps()}
+                  className={cn(
+                    'mt-1 border-2 border-dashed rounded-xl p-6 flex flex-col items-center justify-center cursor-pointer transition-colors',
+                    createProductInvoiceDropzone.isDragActive
+                      ? 'border-blue-500 bg-blue-500/10'
+                      : 'border-gray-700 hover:border-gray-500 bg-gray-800/50'
+                  )}
+                >
+                  <input {...createProductInvoiceDropzone.getInputProps()} />
+                  <Upload size={24} className="text-gray-500 mb-2" />
+                  <Camera size={20} className="text-gray-500 mb-1" />
+                  <p className="text-sm text-gray-400 text-center">
+                    Drag & drop images here, or <span className="text-blue-500">browse</span>
+                  </p>
+                  <p className="text-[10px] text-gray-600 mt-0.5">Supports: JPG, PNG (max 5MB)</p>
+                </div>
+                {createProductInvoiceImageFiles.length > 0 && (
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {createProductInvoiceImageFiles.map((file, idx) => (
+                      <div key={idx} className="relative group aspect-square w-14 h-14 rounded-lg overflow-hidden border border-gray-700 bg-gray-800">
+                        <img src={URL.createObjectURL(file)} alt="" className="w-full h-full object-cover" />
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setCreateProductInvoiceImageFiles(prev => prev.filter((_, i) => i !== idx));
+                          }}
+                          className="absolute top-0 right-0 bg-red-500 text-white p-0.5 rounded-bl opacity-0 group-hover:opacity-100 transition-opacity"
+                        >
+                          <X size={12} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <div>
+                <Label className="text-gray-400 text-sm">Sale Price (Rs)</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  className="mt-1 bg-gray-950 border-gray-700 text-white"
+                  placeholder="0"
+                  value={createProductInvoiceForm.salePrice}
+                  onChange={(e) => setCreateProductInvoiceForm(prev => ({ ...prev, salePrice: e.target.value }))}
+                />
+              </div>
+              <div>
+                <Label className="text-gray-400 text-sm">Description (Optional)</Label>
+                <textarea
+                  className="mt-1 w-full min-h-[80px] rounded-md bg-gray-950 border border-gray-700 text-white px-3 py-2 text-sm resize-y"
+                  placeholder="Product description (same as in Add Product form)..."
+                  value={createProductInvoiceForm.description}
+                  onChange={(e) => setCreateProductInvoiceForm(prev => ({ ...prev, description: e.target.value }))}
+                />
+                <p className="text-[10px] text-gray-500 mt-1">This will be saved as the product description, linked to Add Product.</p>
+              </div>
+              <p className="text-xs text-gray-500">
+                Product will be linked to order <strong className="text-white">{saleDetail.invoiceNo}</strong>.
+              </p>
+            </div>
+            <div className="p-5 border-t border-gray-800 flex gap-3 shrink-0">
+              <Button variant="outline" className="flex-1 border-gray-700" onClick={() => { setShowCreateProductInvoiceModal(false); setCreateProductInvoiceImageFiles([]); }}>
+                Cancel
+              </Button>
+              <Button
+                className="flex-1 bg-blue-600 hover:bg-blue-700"
+                disabled={creatingProductAndInvoice || !createProductInvoiceForm.salePrice || parseFloat(createProductInvoiceForm.salePrice) <= 0}
+                onClick={handleCreateProductAndInvoice}
+              >
+                {creatingProductAndInvoice ? <Loader2 size={16} className="animate-spin mr-2" /> : <Package size={16} className="mr-2" />}
+                Create Product + Generate Invoice
+              </Button>
             </div>
           </div>
         </div>
@@ -2882,13 +3502,20 @@ export const StudioSaleDetailNew = () => {
                             <div className="flex items-center gap-3">
                               <div className="flex-1">
                                 <label className="text-xs text-gray-500 mb-1 block">Worker Cost (Rs)</label>
-                                <Input
-                                  type="number"
-                                  value={worker.cost || ''}
-                                  onChange={(e) => handleUpdateWorker(worker.id, 'cost', Number(e.target.value))}
-                                  placeholder="0"
-                                  className="bg-gray-900 border-gray-700 text-sm h-9"
-                                />
+                                {workerStagePaymentStatus[showWorkerEditModal] === 'paid' ? (
+                                  <div className="bg-gray-800/50 border border-gray-700 rounded-md px-3 py-2 text-sm text-gray-400 flex items-center gap-2">
+                                    <Lock size={14} />
+                                    {formatCurrency(worker.cost || 0)} — locked (worker paid)
+                                  </div>
+                                ) : (
+                                  <Input
+                                    type="number"
+                                    value={worker.cost || ''}
+                                    onChange={(e) => handleUpdateWorker(worker.id, 'cost', Number(e.target.value))}
+                                    placeholder="0"
+                                    className="bg-gray-900 border-gray-700 text-sm h-9"
+                                  />
+                                )}
                               </div>
                               <Button
                                 size="sm"

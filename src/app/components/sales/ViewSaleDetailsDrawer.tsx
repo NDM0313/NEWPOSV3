@@ -8,6 +8,7 @@ import { saleService } from '@/app/services/saleService';
 import { saleReturnService } from '@/app/services/saleReturnService';
 import { activityLogService } from '@/app/services/activityLogService';
 import { studioProductionService } from '@/app/services/studioProductionService';
+import { supabase } from '@/lib/supabase';
 import { InvoiceDocumentView } from '../shared/invoice/InvoiceDocumentView';
 import type { InvoiceTemplateType } from '@/app/types/invoiceDocument';
 import { PaymentDeleteConfirmationModal } from '../shared/PaymentDeleteConfirmationModal';
@@ -180,6 +181,8 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
   const [studioSummary, setStudioSummary] = useState<Awaited<ReturnType<typeof studioProductionService.getStudioSummaryBySaleId>> | null>(null);
   const [loadingStudioSummary, setLoadingStudioSummary] = useState(false);
   const [showStudioBreakdown, setShowStudioBreakdown] = useState(true);
+  const [studioV3Breakdown, setStudioV3Breakdown] = useState<{ stage_name: string; worker_name: string | null; worker_cost: number; type: string }[]>([]);
+  const [loadingStudioV3Breakdown, setLoadingStudioV3Breakdown] = useState(false);
 
   const handleShareWhatsApp = useCallback(() => {
     if (!sale) return;
@@ -395,7 +398,36 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
     return () => { cancelled = true; };
   }, [isOpen, saleId]);
 
-  // CRITICAL FIX: Reload sale data (called after payment is added)
+  // Load Studio Production V3 breakdown when sale has source=studio_production_v3 and show_studio_breakdown
+  useEffect(() => {
+    const src = (sale as any)?.source;
+    const sourceId = (sale as any)?.source_id;
+    const showBreakdown = (sale as any)?.show_studio_breakdown;
+    if (!isOpen || !saleId || src !== 'studio_production_v3' || !showBreakdown || !sourceId) {
+      setStudioV3Breakdown([]);
+      return;
+    }
+    let cancelled = false;
+    setLoadingStudioV3Breakdown(true);
+    supabase
+      .from('studio_production_cost_breakdown_v3')
+      .select('stage_name, worker_name, worker_cost, type')
+      .eq('production_id', sourceId)
+      .order('id')
+      .then(({ data, error }) => {
+        if (!cancelled && !error && data) {
+          setStudioV3Breakdown(data as { stage_name: string; worker_name: string | null; worker_cost: number; type: string }[]);
+        } else if (!cancelled) {
+          setStudioV3Breakdown([]);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingStudioV3Breakdown(false);
+      });
+    return () => { cancelled = true; };
+  }, [isOpen, saleId, (sale as any)?.source, (sale as any)?.source_id, (sale as any)?.show_studio_breakdown]);
+
+  // CRITICAL FIX: Reload sale data (called after payment is added or sale updated e.g. Studio invoice sync)
   const reloadSaleData = useCallback(async () => {
     if (!saleId) return;
     try {
@@ -405,6 +437,10 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
         setSale(convertedSale);
         await loadPayments(saleId);
         await loadActivityLogs(saleId);
+        if ((convertedSale as any).studioCharges != null || (convertedSale as any).is_studio) {
+          const summary = await studioProductionService.getStudioSummaryBySaleId(saleId).catch(() => null);
+          if (summary) setStudioSummary(summary);
+        }
       }
     } catch (error: any) {
       console.error('[VIEW SALE] Error reloading sale:', error?.message || error);
@@ -423,6 +459,17 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
     return () => {
       window.removeEventListener('paymentAdded', handlePaymentAdded);
     };
+  }, [saleId, reloadSaleData]);
+
+  // Reload sale when this sale was updated (e.g. Studio invoice sync) so table prices and totals refresh
+  useEffect(() => {
+    const handler = (e: CustomEvent<{ saleId: string }>) => {
+      if (e.detail?.saleId && saleId && e.detail.saleId === saleId) {
+        reloadSaleData();
+      }
+    };
+    window.addEventListener('saleUpdated', handler as EventListener);
+    return () => window.removeEventListener('saleUpdated', handler as EventListener);
   }, [saleId, reloadSaleData]);
 
   // Load sale returns for this sale when final (so effective status can show Returned/Partially Returned)
@@ -927,9 +974,32 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
                             </span>
                           </div>
                           <div className="flex justify-between text-sm">
-                            <span className="text-gray-400">Total Studio Cost</span>
+                            <span className="text-gray-400">Production Cost</span>
                             <span className="text-white font-semibold">{formatCurrency(studioSummary.totalStudioCost)}</span>
                           </div>
+                          {(() => {
+                            const genId = (studioSummary as any).generatedInvoiceItemId;
+                            const studioItem = genId && sale.items?.length ? sale.items.find((i: any) => i.id === genId) : null;
+                            const qty = studioItem ? (Number(studioItem.quantity) || (studioItem as any).qty || 1) : 0;
+                            const finalSalePrice = studioItem ? (Number(studioItem.price) || 0) * qty : 0;
+                            const profit = Math.max(0, finalSalePrice - studioSummary.totalStudioCost);
+                            return (
+                              <>
+                                {genId && (
+                                  <div className="flex justify-between text-sm">
+                                    <span className="text-gray-400">Final Sale Price</span>
+                                    <span className="text-white">{formatCurrency(finalSalePrice)}</span>
+                                  </div>
+                                )}
+                                {genId && finalSalePrice > 0 && (
+                                  <div className="flex justify-between text-sm">
+                                    <span className="text-green-400 font-medium">Profit</span>
+                                    <span className="text-green-400 font-medium">{formatCurrency(profit)}</span>
+                                  </div>
+                                )}
+                              </>
+                            );
+                          })()}
                           <div className="flex justify-between text-sm">
                             <span className="text-gray-400">Tasks Completed</span>
                             <span className="text-white">{studioSummary.tasksCompleted} / {studioSummary.tasksTotal}</span>
@@ -946,7 +1016,7 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
                               <span className="text-white">{new Date(studioSummary.completedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
                             </div>
                           )}
-                          {studioSummary.breakdown.length > 0 && (
+                          {(studioSummary.breakdown.length > 0 || (sale.total ?? 0) > 0) && (
                             <>
                               <Separator className="bg-gray-800" />
                               <p className="text-xs text-gray-500 uppercase tracking-wide">Breakdown</p>
@@ -967,6 +1037,36 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
                       ) : null}
                     </div>
                   )}
+                </div>
+              )}
+
+              {/* Studio Production V3 – Production Breakdown (when Show Production Detail enabled) */}
+              {(sale as any)?.source === 'studio_production_v3' && (sale as any)?.show_studio_breakdown && (
+                <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden">
+                  <div className="px-5 py-3 bg-gray-950/50 border-b border-gray-800">
+                    <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wide flex items-center gap-2">
+                      <Scissors size={16} className="text-emerald-400" />
+                      Production Breakdown
+                    </h3>
+                  </div>
+                  <div className="p-5 space-y-2">
+                    {loadingStudioV3Breakdown ? (
+                      <p className="text-sm text-gray-500">Loading breakdown…</p>
+                    ) : studioV3Breakdown.length > 0 ? (
+                      <>
+                        {studioV3Breakdown.map((row, i) => (
+                          <div key={i} className="flex justify-between text-sm">
+                            <span className="text-gray-400">
+                              {row.type === 'profit' ? 'Studio Profit' : row.stage_name}
+                            </span>
+                            <span className="text-white">{formatCurrency(Number(row.worker_cost) || 0)}</span>
+                          </div>
+                        ))}
+                      </>
+                    ) : (
+                      <p className="text-sm text-gray-500">No breakdown stored.</p>
+                    )}
+                  </div>
                 </div>
               )}
 

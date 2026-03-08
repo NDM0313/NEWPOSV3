@@ -36,7 +36,9 @@ import {
   ChevronRight,
   Hash,
   Tag,
-  Upload
+  Upload,
+  MapPin,
+  ExternalLink
 } from 'lucide-react';
 import { format, parseISO } from "date-fns";
 import { buildNotesWithStudioDeadline, parseStudioDeadlineFromNotes, getStudioDeadlineFromNotes } from "@/app/utils/studioDeadlineNotes";
@@ -114,6 +116,7 @@ import { InvoicePrintLayout } from '@/app/components/shared/InvoicePrintLayout';
 import { useNavigation } from '@/app/context/NavigationContext';
 import { Loader2 } from 'lucide-react';
 import { useDocumentNumbering } from '@/app/hooks/useDocumentNumbering';
+import { shipmentService, mapShipmentRowsToUi, type ShipmentType } from '@/app/services/shipmentService';
 import { userService, User as UserType } from '@/app/services/userService';
 
 // Variation options come from backend (product.variations) - no dummy data.
@@ -316,6 +319,12 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
     const [shippingAddress, setShippingAddress] = useState<string>("");
     const [shippingCharges, setShippingCharges] = useState<number>(0);
 
+    // Shipment (sale_shipments) – when editing a sale, load from API
+    const [saleShipments, setSaleShipments] = useState<Array<{ id: string; shipmentType: ShipmentType; courierName?: string; shipmentStatus: string; trackingId?: string; chargedToCustomer: number; actualCost: number; notes?: string }>>([]);
+    const [showAddShipmentModal, setShowAddShipmentModal] = useState(false);
+    const [newShipmentForm, setNewShipmentForm] = useState({ shipmentType: 'Courier' as ShipmentType, courierName: '', chargedToCustomer: 0, actualCost: 0, trackingId: '', notes: '' });
+    const [savingShipment, setSavingShipment] = useState(false);
+
     // Studio Sale State
     const [isStudioSale, setIsStudioSale] = useState<boolean>(false);
     const [studioNotes, setStudioNotes] = useState<string>("");
@@ -340,12 +349,14 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
         ? (subtotal * discountValue) / 100 
         : discountValue;
     
-    // Calculate shipping (only if enabled)
+    // Calculate shipping (only if enabled) – for new sales without sale_shipments
     const finalShippingCharges = shippingEnabled ? shippingCharges : 0;
+    // Shipment charges from sale_shipments (when editing existing sale)
+    const shipmentChargesFromApi = saleShipments.reduce((s, x) => s + x.chargedToCustomer, 0);
     
     // Calculate total after discount and expenses
     const afterDiscountTotal = subtotal - discountAmount + expensesTotal;
-    const totalAmount = afterDiscountTotal + finalShippingCharges;
+    const totalAmount = afterDiscountTotal + (initialSale?.id ? shipmentChargesFromApi : finalShippingCharges);
     
     // Calculate salesman commission
     const commissionAmount = commissionType === 'percentage'
@@ -1338,6 +1349,21 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
         }
     }, [initialSale]);
 
+    // Load sale_shipments when editing an existing sale
+    useEffect(() => {
+        if (!initialSale?.id) {
+            setSaleShipments([]);
+            return;
+        }
+        let cancelled = false;
+        shipmentService.getBySaleId(initialSale.id)
+            .then((rows) => {
+                if (!cancelled) setSaleShipments(mapShipmentRowsToUi(rows));
+            })
+            .catch(() => { if (!cancelled) setSaleShipments([]); });
+        return () => { cancelled = true; };
+    }, [initialSale?.id]);
+
     // Status helper functions
     const getStatusColor = () => {
         switch(saleStatus) {
@@ -1725,6 +1751,53 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
 
     const removeExtraExpense = (id: string) => {
         setExtraExpenses(prev => prev.filter(exp => exp.id !== id));
+    };
+
+    const handleAddShipment = async () => {
+        if (!initialSale?.id || !companyId || !branchId || newShipmentForm.chargedToCustomer <= 0) {
+            if (newShipmentForm.chargedToCustomer <= 0) toast.error('Enter charged amount');
+            return;
+        }
+        setSavingShipment(true);
+        try {
+            await shipmentService.create(
+                initialSale.id,
+                companyId,
+                branchId,
+                {
+                    shipment_type: newShipmentForm.shipmentType,
+                    courier_name: newShipmentForm.courierName || undefined,
+                    actual_cost: newShipmentForm.actualCost ?? 0,
+                    charged_to_customer: newShipmentForm.chargedToCustomer,
+                    currency: 'PKR',
+                    notes: newShipmentForm.notes || undefined,
+                    tracking_id: newShipmentForm.trackingId || undefined,
+                },
+                user?.id
+            );
+            const rows = await shipmentService.getBySaleId(initialSale.id);
+            setSaleShipments(mapShipmentRowsToUi(rows));
+            setShowAddShipmentModal(false);
+            setNewShipmentForm({ shipmentType: 'Courier', courierName: '', chargedToCustomer: 0, actualCost: 0, trackingId: '', notes: '' });
+            toast.success('Shipment added');
+        } catch (e: any) {
+            toast.error(e?.message || 'Failed to add shipment');
+        } finally {
+            setSavingShipment(false);
+        }
+    };
+
+    const handleDeleteShipment = async (shipmentId: string) => {
+        const shipment = saleShipments.find(s => s.id === shipmentId);
+        if (!shipment || !initialSale?.id) return;
+        if (!confirm(`Remove this shipment? Bill will decrease by ${(shipment.chargedToCustomer || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}.`)) return;
+        try {
+            await shipmentService.delete(shipmentId);
+            setSaleShipments(prev => prev.filter(s => s.id !== shipmentId));
+            toast.success('Shipment removed');
+        } catch (e: any) {
+            toast.error(e?.message || 'Failed to remove shipment');
+        }
     };
 
     const getCustomerName = () => customers.find(c => c.id.toString() === customerId)?.name || "Select Customer";
@@ -2802,21 +2875,76 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                                         <span className="text-purple-400 font-medium text-sm">+{expensesTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                                     </div>
                                 )}
-                                
-                                {/* Shipping - Optional, show button or charges */}
-                                {!shippingEnabled ? (
-                                    <button 
-                                        onClick={() => setShippingEnabled(true)}
-                                        className="flex items-center gap-1.5 text-xs text-blue-400 hover:text-blue-300 transition-colors py-1"
-                                    >
-                                        <Truck size={12} />
-                                        <span>Add Shipping</span>
-                                    </button>
-                                ) : finalShippingCharges > 0 && (
-                                    <div className="flex justify-between text-xs">
-                                        <span className="text-blue-400">Shipping</span>
-                                        <span className="text-blue-400 font-medium text-sm">+{finalShippingCharges.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+
+                                {/* Shipment (sale_shipments) – when editing existing sale */}
+                                {initialSale?.id ? (
+                                    <div className="space-y-2">
+                                        <div className="flex items-center justify-between">
+                                            <span className="text-xs text-gray-400 flex items-center gap-1.5">
+                                                <Truck size={12} className="text-blue-400" />
+                                                Shipment
+                                            </span>
+                                            <Button
+                                                type="button"
+                                                size="sm"
+                                                variant="ghost"
+                                                className="h-6 px-2 text-xs text-blue-400 hover:text-blue-300 hover:bg-blue-900/20"
+                                                onClick={() => setShowAddShipmentModal(true)}
+                                            >
+                                                <Plus size={12} className="mr-1" />
+                                                Add
+                                            </Button>
+                                        </div>
+                                        {saleShipments.length > 0 ? (
+                                            <div className="space-y-1.5 max-h-32 overflow-y-auto">
+                                                {saleShipments.map((s) => (
+                                                    <div key={s.id} className="bg-gray-950/80 border border-gray-800 rounded-lg p-2 flex items-center justify-between gap-2">
+                                                        <div className="min-w-0 flex-1">
+                                                            <p className="text-xs text-white truncate">{s.shipmentType === 'Courier' ? (s.courierName || 'Courier') : 'Local'}</p>
+                                                            <p className="text-[10px] text-gray-500">+{Number(s.chargedToCustomer).toLocaleString('en-US', { minimumFractionDigits: 2 })}</p>
+                                                        </div>
+                                                        <Button type="button" size="sm" variant="ghost" className="h-6 w-6 p-0 text-red-400 hover:bg-red-900/20" onClick={() => handleDeleteShipment(s.id)} title="Remove">
+                                                            <Trash2 size={12} />
+                                                        </Button>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        ) : (
+                                            <button
+                                                type="button"
+                                                onClick={() => setShowAddShipmentModal(true)}
+                                                className="flex items-center gap-1.5 text-xs text-blue-400 hover:text-blue-300 transition-colors py-1"
+                                            >
+                                                <Truck size={12} />
+                                                <span>Add Shipping</span>
+                                            </button>
+                                        )}
+                                        {shipmentChargesFromApi > 0 && (
+                                            <div className="flex justify-between text-xs">
+                                                <span className="text-blue-400">Shipment total</span>
+                                                <span className="text-blue-400 font-medium text-sm">+{shipmentChargesFromApi.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                            </div>
+                                        )}
                                     </div>
+                                ) : (
+                                    /* New sale: legacy shipping toggle */
+                                    <>
+                                        {!shippingEnabled ? (
+                                            <button
+                                                type="button"
+                                                onClick={() => setShippingEnabled(true)}
+                                                className="flex items-center gap-1.5 text-xs text-blue-400 hover:text-blue-300 transition-colors py-1"
+                                            >
+                                                <Truck size={12} />
+                                                <span>Add Shipping</span>
+                                            </button>
+                                        ) : finalShippingCharges > 0 && (
+                                            <div className="flex justify-between text-xs">
+                                                <span className="text-blue-400">Shipping</span>
+                                                <span className="text-blue-400 font-medium text-sm">+{finalShippingCharges.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                            </div>
+                                        )}
+                                    </>
                                 )}
                                 
                                 <Separator className="bg-gray-800" />
@@ -3140,6 +3268,97 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                     onClose();
                 }}
             />
+
+            {/* Add Shipment Modal (sale_shipments) */}
+            {showAddShipmentModal && initialSale?.id && (
+                <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+                    <div className="bg-gray-900 border border-gray-800 rounded-xl p-6 max-w-md w-full">
+                        <div className="flex items-center justify-between mb-5">
+                            <h3 className="text-lg font-bold text-white">Add Shipment</h3>
+                            <Button size="sm" variant="ghost" onClick={() => setShowAddShipmentModal(false)} className="h-8 w-8 p-0">
+                                <X size={16} />
+                            </Button>
+                        </div>
+                        <div className="space-y-4">
+                            <div>
+                                <Label className="text-gray-400 text-sm">Shipment Type</Label>
+                                <select
+                                    value={newShipmentForm.shipmentType}
+                                    onChange={(e) => setNewShipmentForm(prev => ({ ...prev, shipmentType: e.target.value as ShipmentType }))}
+                                    className="w-full mt-1 bg-gray-950 border border-gray-700 rounded-lg text-white h-10 px-3"
+                                >
+                                    <option value="Courier">Courier (DHL, TCS, etc.)</option>
+                                    <option value="Local">Local Delivery</option>
+                                </select>
+                            </div>
+                            {newShipmentForm.shipmentType === 'Courier' && (
+                                <div>
+                                    <Label className="text-gray-400 text-sm">Courier Name</Label>
+                                    <Input
+                                        value={newShipmentForm.courierName}
+                                        onChange={(e) => setNewShipmentForm(prev => ({ ...prev, courierName: e.target.value }))}
+                                        placeholder="e.g., DHL, TCS"
+                                        className="mt-1 bg-gray-950 border-gray-700"
+                                    />
+                                </div>
+                            )}
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <Label className="text-gray-400 text-sm">Charged to Customer (Rs)</Label>
+                                    <Input
+                                        type="number"
+                                        min={0}
+                                        value={newShipmentForm.chargedToCustomer || ''}
+                                        onChange={(e) => setNewShipmentForm(prev => ({ ...prev, chargedToCustomer: Number(e.target.value) }))}
+                                        placeholder="0"
+                                        className="mt-1 bg-gray-950 border-gray-700"
+                                    />
+                                </div>
+                                <div>
+                                    <Label className="text-gray-400 text-sm">Actual Cost (Rs)</Label>
+                                    <Input
+                                        type="number"
+                                        min={0}
+                                        value={newShipmentForm.actualCost || ''}
+                                        onChange={(e) => setNewShipmentForm(prev => ({ ...prev, actualCost: Number(e.target.value) }))}
+                                        placeholder="0"
+                                        className="mt-1 bg-gray-950 border-gray-700"
+                                    />
+                                </div>
+                            </div>
+                            <div>
+                                <Label className="text-gray-400 text-sm">Tracking ID (Optional)</Label>
+                                <Input
+                                    value={newShipmentForm.trackingId}
+                                    onChange={(e) => setNewShipmentForm(prev => ({ ...prev, trackingId: e.target.value }))}
+                                    placeholder="e.g., DHL-123456789"
+                                    className="mt-1 bg-gray-950 border-gray-700"
+                                />
+                            </div>
+                            <div>
+                                <Label className="text-gray-400 text-sm">Notes (Optional)</Label>
+                                <Input
+                                    value={newShipmentForm.notes}
+                                    onChange={(e) => setNewShipmentForm(prev => ({ ...prev, notes: e.target.value }))}
+                                    placeholder="Additional notes..."
+                                    className="mt-1 bg-gray-950 border-gray-700"
+                                />
+                            </div>
+                        </div>
+                        <div className="flex gap-3 pt-4 mt-4 border-t border-gray-800">
+                            <Button variant="outline" className="flex-1 border-gray-700" onClick={() => setShowAddShipmentModal(false)}>Cancel</Button>
+                            <Button
+                                className="flex-1 bg-blue-600 hover:bg-blue-700"
+                                disabled={savingShipment || newShipmentForm.chargedToCustomer <= 0}
+                                onClick={handleAddShipment}
+                            >
+                                {savingShipment ? <Loader2 size={16} className="animate-spin mr-2" /> : null}
+                                Add Shipment
+                            </Button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* ============ LAYER 3: FIXED FOOTER ============ */}
             <div className="shrink-0 bg-[#0B1019] border-t border-gray-800">

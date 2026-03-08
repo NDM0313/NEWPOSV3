@@ -8,6 +8,7 @@ import { supabase } from '@/lib/supabase';
 
 export const FEATURE_KEYS = {
   STUDIO_PRODUCTION_V2: 'studio_production_v2',
+  STUDIO_PRODUCTION_V3: 'studio_production_v3',
   STUDIO_CUSTOMER_INVOICE_V1: 'studio_customer_invoice_v1',
 } as const;
 

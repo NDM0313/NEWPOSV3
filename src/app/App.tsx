@@ -97,11 +97,15 @@ import { PermissionInspectorPage } from './components/admin/PermissionInspectorP
 
 const StudioProductionV2Dashboard = lazy(() => import('./components/studio/StudioProductionV2Dashboard').then(m => ({ default: m.StudioProductionV2Dashboard })));
 const StudioProductionV2Pipeline = lazy(() => import('./components/studio/StudioProductionV2Pipeline').then(m => ({ default: m.StudioProductionV2Pipeline })));
+const StudioProductionV3Dashboard = lazy(() => import('./components/studio/StudioProductionV3Dashboard').then(m => ({ default: m.StudioProductionV3Dashboard })));
+const StudioProductionV3Pipeline = lazy(() => import('./components/studio/StudioProductionV3Pipeline').then(m => ({ default: m.StudioProductionV3Pipeline })));
+const StudioProductionV3OrderDetail = lazy(() => import('./components/studio/StudioProductionV3OrderDetail').then(m => ({ default: m.StudioProductionV3OrderDetail })));
 
 const AppContent = () => {
   const { currentView } = useNavigation();
   const { modules, featureFlags } = useSettings();
   const studioProductionV2 = featureFlags?.studio_production_v2 === true;
+  const studioProductionV3 = featureFlags?.studio_production_v3 === true;
   const pathname = typeof window !== 'undefined' ? window.location.pathname : '';
 
   // 🎯 Enable global keyboard shortcuts
@@ -144,7 +148,7 @@ const AppContent = () => {
     );
   }
 
-  if ((currentView === 'studio' || currentView === 'studio-dashboard-new' || currentView === 'studio-sales-list-new' || currentView === 'studio-pipeline' || currentView === 'studio-sale-detail' || currentView === 'studio-sale-detail-new' || currentView === 'studio-workflow' || currentView === 'worker-detail') && !modules.studioModuleEnabled) {
+  if ((currentView === 'studio' || currentView === 'studio-dashboard-new' || currentView === 'studio-sales-list-new' || currentView === 'studio-pipeline' || currentView === 'studio-sale-detail' || currentView === 'studio-sale-detail-new' || currentView === 'studio-workflow' || currentView === 'worker-detail' || currentView === 'studio-order-detail-v3') && !modules.studioModuleEnabled) {
     return (
       <Layout>
         <div className="flex items-center justify-center h-full">
@@ -202,13 +206,18 @@ const AppContent = () => {
       )}
       {currentView === 'studio-dashboard-new' && (
         <Suspense fallback={<div className="flex items-center justify-center p-12"><div className="animate-pulse text-gray-500">Loading...</div></div>}>
-          {studioProductionV2 ? <StudioProductionV2Dashboard /> : <StudioDashboardNew />}
+          {studioProductionV3 ? <StudioProductionV3Dashboard /> : studioProductionV2 ? <StudioProductionV2Dashboard /> : <StudioDashboardNew />}
         </Suspense>
       )}
       {currentView === 'studio-sales-list-new' && <StudioSalesListNew />}
       {currentView === 'studio-pipeline' && (
         <Suspense fallback={<div className="flex items-center justify-center p-12"><div className="animate-pulse text-gray-500">Loading...</div></div>}>
-          {studioProductionV2 ? <StudioProductionV2Pipeline /> : <StudioPipelinePage />}
+          {studioProductionV3 ? <StudioProductionV3Pipeline /> : studioProductionV2 ? <StudioProductionV2Pipeline /> : <StudioPipelinePage />}
+        </Suspense>
+      )}
+      {currentView === 'studio-order-detail-v3' && (
+        <Suspense fallback={<div className="flex items-center justify-center p-12"><div className="animate-pulse text-gray-500">Loading...</div></div>}>
+          <StudioProductionV3OrderDetail />
         </Suspense>
       )}
       {currentView === 'studio-sale-detail' && (

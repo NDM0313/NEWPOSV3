@@ -48,6 +48,10 @@ export interface StudioProduction {
   updated_at: string;
   product?: { id: string; name: string; sku?: string };
   worker?: { id: string; name: string };
+  /** Product created for this studio order (invoice line). Set when studio product line is added. */
+  generated_product_id?: string | null;
+  /** sales_items.id of the generated studio line. Pricing sync updates only this item. */
+  generated_invoice_item_id?: string | null;
 }
 
 export type StudioProductionStageType = 'dyer' | 'stitching' | 'handwork';
@@ -294,7 +298,7 @@ export const studioProductionService = {
         .from('studio_productions')
         .select(`
           *,
-          product:products(id, name, sku),
+          product:products!product_id(id, name, sku),
           worker:workers(id, name),
           sale:sales(invoice_no)
         `)
@@ -323,7 +327,7 @@ export const studioProductionService = {
       .from('studio_productions')
       .select(`
         *,
-        product:products(id, name, sku),
+        product:products!product_id(id, name, sku),
         worker:workers(id, name),
         sale:sales(invoice_no)
       `)
@@ -341,7 +345,7 @@ export const studioProductionService = {
     try {
       const { data, error } = await supabase
         .from('studio_productions')
-        .select(`*, product:products(id, name, sku), worker:workers(id, name)`)
+        .select(`*, product:products!product_id(id, name, sku), worker:workers(id, name)`)
         .eq('sale_id', saleId)
         .order('created_at', { ascending: false });
       if (error) {
@@ -353,6 +357,23 @@ export const studioProductionService = {
       if (e?.code === '42703' || e?.message?.includes('sale_id')) return [];
       throw e;
     }
+  },
+
+  /** Set the generated product and invoice item for this production (when studio product line is added to sale). */
+  async setGeneratedInvoiceItem(
+    productionId: string,
+    generatedProductId: string,
+    generatedInvoiceItemId: string
+  ): Promise<void> {
+    const { error } = await supabase
+      .from('studio_productions')
+      .update({
+        generated_product_id: generatedProductId,
+        generated_invoice_item_id: generatedInvoiceItemId,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', productionId);
+    if (error) throw error;
   },
 
   async createProductionJob(input: CreateProductionInput): Promise<StudioProduction> {
@@ -386,7 +407,7 @@ export const studioProductionService = {
       .insert(payload)
       .select(`
         *,
-        product:products(id, name, sku),
+        product:products!product_id(id, name, sku),
         worker:workers(id, name)
       `)
       .single();
@@ -427,7 +448,7 @@ export const studioProductionService = {
       .eq('id', id)
       .select(`
         *,
-        product:products(id, name, sku),
+        product:products!product_id(id, name, sku),
         worker:workers(id, name)
       `)
       .single();
@@ -567,7 +588,7 @@ export const studioProductionService = {
       .eq('id', id)
       .select(`
         *,
-        product:products(id, name, sku),
+        product:products!product_id(id, name, sku),
         worker:workers(id, name)
       `)
       .single();
@@ -1337,6 +1358,8 @@ export const studioProductionService = {
     completedAt: string | null;
     breakdown: { stageType: string; amount: number; label: string }[];
     productions: { id: string; productionNo: string; status: string; completedAt: string | null }[];
+    /** sales_items.id of the generated studio line. Use to get Final Sale Price for profit = Final - Cost. */
+    generatedInvoiceItemId: string | null;
   }> {
     const empty = {
       hasStudio: false,
@@ -1348,6 +1371,7 @@ export const studioProductionService = {
       completedAt: null,
       breakdown: [],
       productions: [],
+      generatedInvoiceItemId: null,
     };
     try {
       const productions = await this.getProductionsBySaleId(saleId);
@@ -1407,6 +1431,7 @@ export const studioProductionService = {
         productionDurationDays = Math.max(0, Math.ceil((end - start) / (24 * 60 * 60 * 1000)));
       }
 
+      const firstWithItem = productions.find((p) => (p as any).generated_invoice_item_id);
       return {
         hasStudio: true,
         productionStatus: allCompleted ? 'completed' : anyInProgress ? 'in_progress' : 'none',
@@ -1422,6 +1447,7 @@ export const studioProductionService = {
           status: p.status,
           completedAt: (p as any).completed_at || null,
         })),
+        generatedInvoiceItemId: firstWithItem ? (firstWithItem as any).generated_invoice_item_id : null,
       };
     } catch (e: any) {
       if (e?.code === 'PGRST116' || e?.message?.includes('does not exist')) return empty;
