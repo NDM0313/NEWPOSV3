@@ -45,6 +45,7 @@ export const customerLedgerAPI = {
       .from('sales')
       .select('customer_id, due_amount')
       .eq('company_id', companyId)
+      .eq('status', 'final')
       .gt('due_amount', 0);
 
     const { data: rentals } = await supabase
@@ -92,7 +93,7 @@ export const customerLedgerAPI = {
     if (error) throw error;
     if (!data) return null;
 
-    const salesDue = (await supabase.from('sales').select('due_amount').eq('customer_id', customerId).gt('due_amount', 0)).data || [];
+    const salesDue = (await supabase.from('sales').select('due_amount').eq('customer_id', customerId).eq('status', 'final').gt('due_amount', 0)).data || [];
     const rentalsDue = (await supabase.from('rentals').select('due_amount').eq('customer_id', customerId).gt('due_amount', 0)).data || [];
     const outstandingBalance =
       (salesDue as any[]).reduce((sum, s: any) => sum + (s.due_amount || 0), 0) +
@@ -153,7 +154,8 @@ export const customerLedgerAPI = {
         .from('sales')
         .select('id, invoice_no, total, paid_amount, due_amount, payment_status, invoice_date')
         .eq('company_id', companyId)
-        .eq('customer_id', cId);
+        .eq('customer_id', cId)
+        .eq('status', 'final');
       if (fromDate) salesQuery = salesQuery.gte('invoice_date', fromDate);
       if (toDate) salesQuery = salesQuery.lte('invoice_date', toDate);
       const res = await salesQuery;
@@ -275,6 +277,7 @@ export const customerLedgerAPI = {
           .select('total, paid_amount')
           .eq('company_id', companyId)
           .eq('customer_id', cId)
+          .eq('status', 'final')
           .lt('invoice_date', fromDate);
         previousSales = res.data ?? [];
       }
@@ -460,7 +463,8 @@ export const customerLedgerAPI = {
         .from('sales')
         .select('id, invoice_no, invoice_date, total, paid_amount, due_amount, payment_status')
         .eq('company_id', companyId)
-        .eq('customer_id', cId);
+        .eq('customer_id', cId)
+        .eq('status', 'final');
       if (fromDate) salesQuery = salesQuery.gte('invoice_date', fromDate);
       if (toDate) salesQuery = salesQuery.lte('invoice_date', toDate);
       const result = await salesQuery.order('invoice_date', { ascending: false });
@@ -472,7 +476,8 @@ export const customerLedgerAPI = {
           .from('sales')
           .select('id, invoice_no, invoice_date, total, paid_amount, due_amount')
           .eq('company_id', companyId)
-          .eq('customer_id', cId);
+          .eq('customer_id', cId)
+          .eq('status', 'final');
         if (fromDate) retryQuery = retryQuery.gte('invoice_date', fromDate);
         if (toDate) retryQuery = retryQuery.lte('invoice_date', toDate);
         const retry = await retryQuery.order('invoice_date', { ascending: false });
@@ -819,6 +824,7 @@ export const customerLedgerAPI = {
           .select('total, paid_amount')
           .eq('company_id', companyId)
           .eq('customer_id', cId)
+          .eq('status', 'final')
           .lt('invoice_date', fromDate);
         prevSales = res.data ?? [];
       }
@@ -924,7 +930,8 @@ export const customerLedgerAPI = {
         )
       `)
       .eq('company_id', companyId)
-      .eq('customer_id', customerId);
+      .eq('customer_id', customerId)
+      .eq('status', 'final');
 
     if (fromDate) {
       query = query.gte('invoice_date', fromDate);
@@ -1012,12 +1019,13 @@ export const customerLedgerAPI = {
     fromDate?: string,
     toDate?: string
   ): Promise<Payment[]> {
-    // First get all sales for this customer
+    // First get all final-invoice sales for this customer
     const { data: sales } = await supabase
       .from('sales')
       .select('id')
       .eq('company_id', companyId)
-      .eq('customer_id', customerId);
+      .eq('customer_id', customerId)
+      .eq('status', 'final');
 
     if (!sales || sales.length === 0) return [];
 
@@ -1080,6 +1088,7 @@ export const customerLedgerAPI = {
       .select('invoice_date, due_amount, invoice_no')
       .eq('company_id', companyId)
       .eq('customer_id', customerId)
+      .eq('status', 'final')
       .gt('due_amount', 0);
 
     if (!sales) {

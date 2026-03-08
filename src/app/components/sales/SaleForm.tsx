@@ -1877,8 +1877,10 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
             // Quotation → status: 'quotation', type: 'quotation'
             // Order → status: 'order', type: 'quotation'
             // Final → status: 'final', type: 'invoice'
-            const saleType: 'invoice' | 'quotation' = saleStatus === 'final' ? 'invoice' : 'quotation';
-            const mappedStatus: 'draft' | 'quotation' | 'order' | 'final' = saleStatus;
+            // Studio (STD): Always treat as CUSTOMER ORDER only — no accounting. Only SL invoice creates revenue.
+            const isNewStudioSale = isStudioSale && !(initialSale && initialSale.id);
+            const saleType: 'invoice' | 'quotation' = isNewStudioSale ? 'quotation' : (saleStatus === 'final' ? 'invoice' : 'quotation');
+            const mappedStatus: 'draft' | 'quotation' | 'order' | 'final' = isNewStudioSale ? 'order' : saleStatus;
             
             // INVOICE PREFIX RULE: Regular sale → generateDocumentNumber('invoice') → SL. Studio → generateDocumentNumber('studio') → STD. Separate counters; never mix.
             // If editing existing sale, preserve original invoice number unless type was changed to Studio.
@@ -1942,12 +1944,11 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
             }
             
             // CRITICAL FIX: For draft/quotation/order, force payment to 0 and payment_status to 'unpaid'
-            // Payment should only be allowed for final sales
-            const finalPaid = (saleStatus === 'final') ? totalPaid : 0;
-            const finalDue = (saleStatus === 'final') ? balanceDue : totalAmount;
-            const finalPaymentStatus: 'paid' | 'partial' | 'unpaid' = (saleStatus === 'final') 
-                ? paymentStatus 
-                : 'unpaid';
+            // Payment should only be allowed for final sales. New Studio (STD) is order-only — no payment.
+            const effectiveFinal = mappedStatus === 'final';
+            const finalPaid = effectiveFinal ? totalPaid : 0;
+            const finalDue = effectiveFinal ? balanceDue : totalAmount;
+            const finalPaymentStatus: 'paid' | 'partial' | 'unpaid' = effectiveFinal ? paymentStatus : 'unpaid';
             
             // Branch: require selection only when multi-branch AND user has no branch mapping (requiresBranchSelection)
             const singleBranchId = accessibleBranches.length === 1 ? accessibleBranches[0]?.id : null;
@@ -1993,7 +1994,7 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                 due: finalDue,
                 returnDue: 0,
                 paymentStatus: finalPaymentStatus,
-                paymentMethod: (saleStatus === 'final' && partialPayments.length > 0) ? partialPayments[0].method : 'cash',
+                paymentMethod: (effectiveFinal && partialPayments.length > 0) ? partialPayments[0].method : 'cash',
                 shippingStatus: shippingEnabled ? 'pending' as const : 'pending' as const,
                 notes: isStudioSale
                     ? buildNotesWithStudioDeadline(studioDeadline, saleNotes || studioNotes || refNumber || '')
@@ -2012,7 +2013,7 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                 commissionAmount: commissionAmount,
                 salesmanId: (salesmanId && salesmanId !== "1" && salesmanId !== "none") ? salesmanId : null,
                 // CRITICAL FIX: Pass partialPayments array for splitting into separate payment records
-                partialPayments: (saleStatus === 'final' && partialPayments.length > 0) ? partialPayments : [],
+                partialPayments: (effectiveFinal && partialPayments.length > 0) ? partialPayments : [],
                 // Studio sale: show on Studio page and use studio invoice numbering
                 isStudioSale: isStudioSale,
                 is_studio: isStudioSale

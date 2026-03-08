@@ -70,7 +70,7 @@ import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
 // Mock data removed - using SalesContext which loads from Supabase
 
 export const SalesPage = () => {
-  const { openDrawer, setCurrentView } = useNavigation();
+  const { openDrawer, setCurrentView, openSaleIdForView, setOpenSaleIdForView } = useNavigation();
   const { canEditSale, canDeleteSale, canCancelSale, canCreateSale } = useCheckPermission();
   const { formatCurrency } = useFormatCurrency();
   const { sales, deleteSale, updateSale, recordPayment, updateShippingStatus, refreshSales, loading } = useSales();
@@ -238,6 +238,27 @@ export const SalesPage = () => {
       }
     }
   }, []);
+
+  // Open sale details drawer when navigated here with openSaleIdForView (e.g. after Generate Sale Invoice from Studio)
+  // Refresh sales list first so the new SL invoice appears in the table, then open drawer
+  useEffect(() => {
+    if (!openSaleIdForView || !setOpenSaleIdForView) return;
+    let cancelled = false;
+    const run = async () => {
+      await refreshSales();
+      if (cancelled) return;
+      try {
+        const full = await saleService.getSaleById(openSaleIdForView);
+        if (cancelled) return;
+        const saleWithItems = convertFromSupabaseSale(full);
+        setSelectedSale(saleWithItems);
+        setViewDetailsOpen(true);
+      } catch (_) {}
+      if (!cancelled && setOpenSaleIdForView) setOpenSaleIdForView(null);
+    };
+    run();
+    return () => { cancelled = true; };
+  }, [openSaleIdForView, setOpenSaleIdForView, refreshSales]);
   const [paymentStatusFilter, setPaymentStatusFilter] = useState<'all' | PaymentStatus>('all');
   const [saleStatusFilter, setSaleStatusFilter] = useState<'all' | 'draft' | 'quotation' | 'order' | 'final' | 'cancelled'>('all');
   const [shippingStatusFilter, setShippingStatusFilter] = useState<'all' | ShippingStatus>('all');

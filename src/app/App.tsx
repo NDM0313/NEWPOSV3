@@ -95,9 +95,13 @@ import { PermissionInspectorPage } from './components/admin/PermissionInspectorP
 
 // v1.0.1 - Enhanced Product Form with SKU auto-generation and global access
 
+const StudioProductionV2Dashboard = lazy(() => import('./components/studio/StudioProductionV2Dashboard').then(m => ({ default: m.StudioProductionV2Dashboard })));
+const StudioProductionV2Pipeline = lazy(() => import('./components/studio/StudioProductionV2Pipeline').then(m => ({ default: m.StudioProductionV2Pipeline })));
+
 const AppContent = () => {
   const { currentView } = useNavigation();
-  const { modules } = useSettings();
+  const { modules, featureFlags } = useSettings();
+  const studioProductionV2 = featureFlags?.studio_production_v2 === true;
   const pathname = typeof window !== 'undefined' ? window.location.pathname : '';
 
   // 🎯 Enable global keyboard shortcuts
@@ -198,13 +202,13 @@ const AppContent = () => {
       )}
       {currentView === 'studio-dashboard-new' && (
         <Suspense fallback={<div className="flex items-center justify-center p-12"><div className="animate-pulse text-gray-500">Loading...</div></div>}>
-          <StudioDashboardNew />
+          {studioProductionV2 ? <StudioProductionV2Dashboard /> : <StudioDashboardNew />}
         </Suspense>
       )}
       {currentView === 'studio-sales-list-new' && <StudioSalesListNew />}
       {currentView === 'studio-pipeline' && (
         <Suspense fallback={<div className="flex items-center justify-center p-12"><div className="animate-pulse text-gray-500">Loading...</div></div>}>
-          <StudioPipelinePage />
+          {studioProductionV2 ? <StudioProductionV2Pipeline /> : <StudioPipelinePage />}
         </Suspense>
       )}
       {currentView === 'studio-sale-detail' && (

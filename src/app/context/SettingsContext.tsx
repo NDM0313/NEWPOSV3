@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
 import { useSupabase } from './SupabaseContext';
 import { settingsService } from '@/app/services/settingsService';
+import { featureFlagsService } from '@/app/services/featureFlagsService';
 import { branchService } from '@/app/services/branchService';
 import { permissionService } from '@/app/services/permissionService';
 import type { EngineRole } from '@/app/services/permissionService';
@@ -247,6 +248,10 @@ interface SettingsContextType {
   // Module Toggles
   modules: ModuleToggles;
   updateModules: (modules: Partial<ModuleToggles>) => Promise<void>;
+
+  // Feature Flags (Safe Zone – e.g. studio_production_v2)
+  featureFlags: Record<string, boolean>;
+  updateFeatureFlag: (featureKey: string, enabled: boolean) => Promise<void>;
   
   // Refresh
   refreshSettings: () => Promise<void>;
@@ -291,6 +296,8 @@ function getDefaultSettingsStub(): SettingsContextType {
     updatePermissions: noop,
     modules: { rentalModuleEnabled: true, studioModuleEnabled: true, accountingModuleEnabled: true, productionModuleEnabled: true, posModuleEnabled: true, combosEnabled: false },
     updateModules: noop,
+    featureFlags: {},
+    updateFeatureFlag: noop,
     refreshSettings: noop,
   };
 }
@@ -464,6 +471,9 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
     posModuleEnabled: false,
     combosEnabled: false,
   });
+
+  // Feature Flags (Safe Zone – studio_production_v2, etc.)
+  const [featureFlags, setFeatureFlags] = useState<Record<string, boolean>>({});
 
   // ============================================
   // 🎯 LOAD SETTINGS FROM DATABASE
@@ -681,6 +691,15 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
         posModuleEnabled: getModuleEnabled('pos'),
         combosEnabled: getModuleEnabled('combos'),
       });
+
+      // Load feature flags (Safe Zone – e.g. studio_production_v2)
+      try {
+        const flags = await featureFlagsService.getAll(companyId);
+        setFeatureFlags(flags);
+      } catch (e) {
+        if (import.meta.env?.DEV) console.warn('[SETTINGS] Feature flags load failed (table may not exist):', e);
+        setFeatureFlags({});
+      }
 
       // Load current user permissions from users table (role-based + granular)
       // user.id = auth UUID; users table has id (ERP PK) and auth_user_id — match either
@@ -1133,6 +1152,20 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
     }
   };
 
+  const updateFeatureFlag = async (featureKey: string, enabled: boolean) => {
+    if (!companyId) return;
+    const previous = featureFlags[featureKey];
+    setFeatureFlags((prev) => ({ ...prev, [featureKey]: enabled }));
+    try {
+      await featureFlagsService.setEnabled(companyId, featureKey, enabled);
+      toast.success('Feature setting saved');
+    } catch (error) {
+      console.error('[SETTINGS] Error saving feature flag:', error);
+      setFeatureFlags((prev) => ({ ...prev, [featureKey]: previous }));
+      toast.error('Failed to save feature setting. Run migration feature_flags_table.sql if needed.');
+    }
+  };
+
   const value: SettingsContextType = {
     loading,
     isPermissionLoaded: !loading,
@@ -1162,6 +1195,8 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
     updatePermissions,
     modules,
     updateModules,
+    featureFlags,
+    updateFeatureFlag,
     refreshSettings: loadAllSettings,
   };
 

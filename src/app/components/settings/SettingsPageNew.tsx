@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { 
   Building2, CreditCard, Hash, ToggleLeft, Save, 
-  CheckCircle, Users, Lock, Key, Settings as SettingsIcon, AlertCircle, UserCog,
+  CheckCircle, Users, Lock,   Key, Settings as SettingsIcon, AlertCircle, UserCog,
   Briefcase,
-  MapPin, Store, ShoppingCart, ShoppingBag, Package, Shirt, Calculator, X, Edit, Download, Server, Copy, Printer, RefreshCw, QrCode, FileText, Activity, Shield
+  MapPin, Store, ShoppingCart, ShoppingBag, Package, Shirt, Calculator, X, Edit, Download, Server, Copy, Printer, RefreshCw, QrCode, FileText, Activity, Shield, FlaskConical
 } from 'lucide-react';
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
@@ -2255,6 +2255,49 @@ export const SettingsPageNew = () => {
                   <p className="text-sm text-blue-300">
                     ℹ️ <strong>Note:</strong> Disabling a module hides it from the sidebar and mobile app for <strong>all users and roles</strong> (Admin, Manager, Staff) in this business. Existing data is preserved.
                   </p>
+                </div>
+
+                {/* Developer / Feature flags (Safe Zone) */}
+                <div className="mt-8 pt-6 border-t border-gray-700">
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="p-3 bg-amber-500/10 rounded-lg">
+                      <FlaskConical className="text-amber-500" size={24} />
+                    </div>
+                    <div>
+                      <h3 className="text-lg font-bold text-white">Developer</h3>
+                      <p className="text-sm text-gray-400">Feature toggles – safe rollback by disabling</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between bg-gray-950 p-5 rounded-lg border border-gray-800">
+                    <div className="flex items-center gap-3">
+                      <Package size={20} className="text-amber-400" />
+                      <div>
+                        <p className="text-white font-medium">Studio Production V2</p>
+                        <p className="text-sm text-gray-400">Advanced workflow (separate tables). Disable to use legacy production.</p>
+                      </div>
+                    </div>
+                    <Switch
+                      checked={settings.featureFlags?.studio_production_v2 === true}
+                      onCheckedChange={(val) => {
+                        settings.updateFeatureFlag('studio_production_v2', val);
+                      }}
+                    />
+                  </div>
+                  <div className="flex items-center justify-between bg-gray-950 p-5 rounded-lg border border-gray-800">
+                    <div className="flex items-center gap-3">
+                      <FileText size={20} className="text-amber-400" />
+                      <div>
+                        <p className="text-white font-medium">Studio Customer Invoice</p>
+                        <p className="text-sm text-gray-400">Generate customer sale invoice from completed production (V2). Requires Studio Production V2.</p>
+                      </div>
+                    </div>
+                    <Switch
+                      checked={settings.featureFlags?.studio_customer_invoice_v1 === true}
+                      onCheckedChange={(val) => {
+                        settings.updateFeatureFlag('studio_customer_invoice_v1', val);
+                      }}
+                    />
+                  </div>
                 </div>
               </div>
             )}

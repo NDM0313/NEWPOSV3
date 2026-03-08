@@ -32,8 +32,9 @@ type NavItem = {
 
 export const MobileNavDrawer = () => {
   const { currentView, setCurrentView, mobileNavOpen, setMobileNavOpen } = useNavigation();
-  const { modules: settingsModules, isPermissionLoaded } = useSettings();
+  const { modules: settingsModules, featureFlags, isPermissionLoaded } = useSettings();
   const { hasPermission } = useCheckPermission();
+  const studioProductionV2 = featureFlags?.studio_production_v2 === true;
   const [expandedItems, setExpandedItems] = useState<string[]>([]);
 
   const toggleExpand = (id: string) => {
@@ -55,7 +56,7 @@ export const MobileNavDrawer = () => {
       id: 'studio-group',
       label: 'Studio Production',
       icon: Factory,
-      isHidden: !settingsModules.studioModuleEnabled || !hasPermission('studio.view'),
+      isHidden: (!settingsModules.studioModuleEnabled && !studioProductionV2) || !hasPermission('studio.view'),
       children: [
         { id: 'studio-dashboard-new', label: 'Dashboard' },
         { id: 'studio', label: 'Studio Sales' },
@@ -118,7 +119,12 @@ export const MobileNavDrawer = () => {
                   >
                     <div className="flex items-center gap-3">
                       <item.icon size={22} strokeWidth={1.5} className="shrink-0" />
-                      <span className="font-medium text-base">{item.label}</span>
+                      <span className="font-medium text-base flex items-center gap-1.5">
+                        {item.label}
+                        {item.id === 'studio-group' && studioProductionV2 && (
+                          <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-400">V2</span>
+                        )}
+                      </span>
                     </div>
                     <ChevronDown
                       size={20}

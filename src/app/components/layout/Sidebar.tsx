@@ -45,8 +45,9 @@ type NavItem = {
 export const Sidebar = () => {
   const { currentView, setCurrentView, isSidebarOpen, toggleSidebar, openDrawer } = useNavigation();
   const { modules: moduleContextModules } = useModules();
-  const { modules: settingsModules, isPermissionLoaded } = useSettings();
+  const { modules: settingsModules, featureFlags, isPermissionLoaded } = useSettings();
   const { hasPermission } = useCheckPermission();
+  const studioProductionV2 = featureFlags?.studio_production_v2 === true;
   const [expandedItems, setExpandedItems] = useState<string[]>([]);
   const pathname = typeof window !== 'undefined' ? window.location.pathname : '';
 
@@ -69,7 +70,7 @@ export const Sidebar = () => {
       id: 'studio-group', 
       label: 'Studio Production', 
       icon: Factory,
-      isHidden: !settingsModules.studioModuleEnabled || !hasPermission('studio.view'),
+      isHidden: (!settingsModules.studioModuleEnabled && !studioProductionV2) || !hasPermission('studio.view'),
       children: [
         { id: 'studio-dashboard-new', label: 'Dashboard' },
         { id: 'studio', label: 'Studio Sales' },
@@ -181,13 +182,17 @@ export const Sidebar = () => {
                       <motion.span 
                         initial={{ opacity: 0 }} 
                         animate={{ opacity: 1 }}
-                        className="font-medium whitespace-nowrap text-sm truncate"
+                        className="font-medium whitespace-nowrap text-sm truncate flex items-center gap-1.5"
                       >
                         {item.label}
+                        {item.id === 'studio-group' && studioProductionV2 && (
+                          <span className="shrink-0 text-[10px] font-semibold px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-400">V2</span>
+                        )}
                       </motion.span>
                     ) : (
-                      <div className="absolute left-14 bg-gray-900 text-white text-sm px-2 py-1 rounded opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity border border-gray-700 whitespace-nowrap z-50 shadow-xl">
+                      <div className="absolute left-14 bg-gray-900 text-white text-sm px-2 py-1 rounded opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity border border-gray-700 whitespace-nowrap z-50 shadow-xl flex items-center gap-1.5">
                         {item.label}
+                        {item.id === 'studio-group' && studioProductionV2 && <span className="text-amber-400 text-xs font-semibold">V2</span>}
                       </div>
                     )}
                   </div>

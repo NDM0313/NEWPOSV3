@@ -76,6 +76,9 @@ interface NavigationContextType {
   parentDrawer: DrawerType | null;
   selectedStudioSaleId?: string;
   setSelectedStudioSaleId?: (id: string) => void;
+  /** When set and user is on Sales view, open the sale details drawer for this invoice (e.g. after Generate Sale Invoice from Studio). */
+  openSaleIdForView?: string | null;
+  setOpenSaleIdForView?: (id: string | null) => void;
   selectedProductionId?: string;
   setSelectedProductionId?: (id: string) => void;
   drawerContactType?: 'customer' | 'supplier' | 'worker';
@@ -106,6 +109,8 @@ const defaultNavigationContext: NavigationContextType = {
   openDrawer: () => {},
   closeDrawer: () => {},
   parentDrawer: null,
+  openSaleIdForView: null,
+  setOpenSaleIdForView: () => {},
   setCreatedContactId: () => {},
   openPackingModal: () => {},
   closePackingModal: () => {},
@@ -119,6 +124,7 @@ export const NavigationProvider = ({ children }: { children: ReactNode }) => {
   const [activeDrawer, setActiveDrawer] = useState<DrawerType>('none');
   const [parentDrawer, setParentDrawer] = useState<DrawerType | null>(null);
   const [selectedStudioSaleId, setSelectedStudioSaleId] = useState<string | undefined>(undefined);
+  const [openSaleIdForView, setOpenSaleIdForView] = useState<string | null>(null);
   const [selectedWorkerId, setSelectedWorkerId] = useState<string | undefined>(undefined);
   const [selectedProductionId, setSelectedProductionId] = useState<string | undefined>(undefined);
   const [drawerContactType, setDrawerContactType] = useState<'customer' | 'supplier' | 'worker' | undefined>(undefined);
@@ -239,6 +245,8 @@ export const NavigationProvider = ({ children }: { children: ReactNode }) => {
       parentDrawer,
       selectedStudioSaleId,
       setSelectedStudioSaleId,
+      openSaleIdForView,
+      setOpenSaleIdForView,
       selectedWorkerId,
       setSelectedWorkerId,
       selectedProductionId,
