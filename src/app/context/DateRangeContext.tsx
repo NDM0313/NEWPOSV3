@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useCallback, useMemo, ReactNode } from 'react';
 
 export type DateRangeType = 'fromStart' | 'today' | 'last7days' | 'last15days' | 'last30days' | 'week' | 'month' | 'lastQuarter' | 'thisYear' | 'lastYear' | 'custom';
 
@@ -108,39 +108,28 @@ export const DateRangeProvider: React.FC<{ children: ReactNode }> = ({ children 
     };
   });
 
-  const setDateRange = (range: DateRange) => {
+  const setDateRange = useCallback((range: DateRange) => {
     setDateRangeState(range);
-  };
+  }, []);
 
-  const setDateRangeType = (type: DateRangeType) => {
-    if (type === 'custom') {
-      // Keep existing custom dates if already set
-      if (dateRange.type === 'custom' && dateRange.startDate && dateRange.endDate) {
-        setDateRangeState({
-          type: 'custom',
-          startDate: dateRange.startDate,
-          endDate: dateRange.endDate,
-        });
-      } else {
+  const setDateRangeType = useCallback((type: DateRangeType) => {
+    setDateRangeState(prev => {
+      if (type === 'custom') {
+        // Keep existing custom dates if already set
+        if (prev.type === 'custom' && prev.startDate && prev.endDate) {
+          return prev; // No change — return same reference to prevent downstream re-renders
+        }
         // Default to today if switching to custom without dates
         const { startDate, endDate } = getDateRangeForType('today');
-        setDateRangeState({
-          type: 'custom',
-          startDate,
-          endDate,
-        });
+        return { type: 'custom', startDate, endDate };
       }
-    } else {
       const { startDate, endDate } = getDateRangeForType(type);
-      setDateRangeState({
-        type,
-        startDate,
-        endDate,
-      });
-    }
-  };
+      return { type, startDate, endDate };
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  const setCustomDateRange = (startDate: Date, endDate: Date) => {
+  const setCustomDateRange = useCallback((startDate: Date, endDate: Date) => {
     const start = new Date(startDate);
     start.setHours(0, 0, 0, 0);
     const end = new Date(endDate);
@@ -150,23 +139,23 @@ export const DateRangeProvider: React.FC<{ children: ReactNode }> = ({ children 
       startDate: start,
       endDate: end,
     });
-  };
+  }, []);
 
-  const getDateRangeForQuery = (): { startDate: string; endDate: string } | null => {
+  const getDateRangeForQuery = useCallback((): { startDate: string; endDate: string } | null => {
     if (!dateRange.startDate || !dateRange.endDate) return null;
     return {
       startDate: dateRange.startDate.toISOString(),
       endDate: dateRange.endDate.toISOString(),
     };
-  };
+  }, [dateRange.startDate, dateRange.endDate]);
 
-  const value: DateRangeContextType = {
+  const value = useMemo<DateRangeContextType>(() => ({
     dateRange,
     setDateRange,
     setDateRangeType,
     setCustomDateRange,
     getDateRangeForQuery,
-  };
+  }), [dateRange, setDateRange, setDateRangeType, setCustomDateRange, getDateRangeForQuery]);
 
   return (
     <DateRangeContext.Provider value={value}>

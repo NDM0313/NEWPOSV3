@@ -3,7 +3,7 @@
 // ============================================
 // Manages expenses with auto-numbering and accounting integration
 
-import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, ReactNode } from 'react';
 import { documentNumberService } from '@/app/services/documentNumberService';
 import { useAccounting } from '@/app/context/AccountingContext';
 import { useSupabase } from '@/app/context/SupabaseContext';
@@ -421,7 +421,7 @@ export const ExpenseProvider = ({ children }: { children: ReactNode }) => {
       .reduce((sum, e) => sum + e.amount, 0);
   };
 
-  const value: ExpenseContextType = {
+  const value = useMemo<ExpenseContextType>(() => ({
     expenses,
     loading,
     getExpenseById,
@@ -435,7 +435,11 @@ export const ExpenseProvider = ({ children }: { children: ReactNode }) => {
     getExpensesByStatus,
     getTotalByCategory,
     refreshExpenses: loadExpenses,
-  };
+  }), [
+    expenses, loading, getExpenseById, createExpense, updateExpense, deleteExpense,
+    approveExpense, rejectExpense, markAsPaid, getExpensesByCategory,
+    getExpensesByStatus, getTotalByCategory, loadExpenses,
+  ]);
 
   return (
     <ExpenseContext.Provider value={value}>

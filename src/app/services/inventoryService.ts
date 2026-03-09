@@ -117,79 +117,69 @@ export const inventoryService = {
     if (!products?.length) return [];
 
     const productIds = products.map((p: any) => p.id);
-
-    // Step 1b: Combo item counts for combo products (for "Bundle (X items)" display)
     const comboProductIds = products.filter((p: any) => p.is_combo_product).map((p: any) => p.id);
-    let comboItemCountMap: Record<string, number> = {};
-    if (comboProductIds.length > 0) {
-      const { data: combos } = await supabase
-        .from('product_combos')
-        .select('id, combo_product_id')
-        .in('combo_product_id', comboProductIds)
-        .eq('company_id', companyId)
-        .eq('is_active', true);
-      if (combos?.length) {
-        const comboIds = combos.map((c: any) => c.id);
-        const { data: comboItems } = await supabase
-          .from('product_combo_items')
-          .select('combo_id')
-          .in('combo_id', comboIds);
-        const countByComboId: Record<string, number> = {};
-        comboItems?.forEach((i: any) => { countByComboId[i.combo_id] = (countByComboId[i.combo_id] || 0) + 1; });
-        combos.forEach((c: any) => { comboItemCountMap[c.combo_product_id] = countByComboId[c.id] ?? 0; });
-      }
-    }
+    const unitIds = [...new Set((products || []).map((p: any) => p.unit_id).filter(Boolean))] as string[];
 
-    // Step 2: Calculate stock from stock_movements (SINGLE SOURCE OF TRUTH)
-    // 🔒 DIAGNOSTIC: Include movement_type, reference_type, reference_id, notes, created_at for negative stock diagnosis
+    // Build stock movements query
     let stockQuery = supabase
       .from('stock_movements')
-      .select('product_id, variation_id, quantity, box_change, piece_change, movement_type, reference_type, reference_id, notes, created_at')
+      .select('product_id, variation_id, quantity, box_change, piece_change')
       .eq('company_id', companyId)
       .in('product_id', productIds);
-
-    // 🔒 CRITICAL FIX: When branchId is 'all' or null, include ALL branches (no filter)
-    // When branchId is a specific UUID, filter by that branch
     if (branchId && branchId !== 'all') {
       stockQuery = stockQuery.eq('branch_id', branchId);
     }
-    // If branchId is 'all' or null, don't filter by branch_id - include all movements
 
-    const { data: movements, error: movementsError } = await stockQuery;
+    // Run movements, variations, and units queries in parallel (they only need productIds from Step 1)
+    console.time('inventoryOverview:parallel');
+    const [
+      { data: movements, error: movementsError },
+      { data: variations, error: variationsError },
+      { data: units },
+      combosResult,
+    ] = await Promise.all([
+      stockQuery,
+      supabase.from('product_variations').select('id, product_id, sku').in('product_id', productIds).eq('is_active', true),
+      unitIds.length > 0
+        ? supabase.from('units').select('id, short_code').in('id', unitIds)
+        : Promise.resolve({ data: [] }),
+      comboProductIds.length > 0
+        ? supabase.from('product_combos').select('id, combo_product_id').in('combo_product_id', comboProductIds).eq('company_id', companyId).eq('is_active', true)
+        : Promise.resolve({ data: [] }),
+    ]);
+    console.timeEnd('inventoryOverview:parallel');
 
-    // Step 3: Get product variations (minimal select for schema compatibility: id, product_id, sku only)
-    const { data: variations, error: variationsError } = await supabase
-      .from('product_variations')
-      .select('id, product_id, sku')
-      .in('product_id', productIds)
-      .eq('is_active', true);
     if (variationsError) {
       console.warn('[INVENTORY SERVICE] product_variations fetch failed (schema may differ):', variationsError.message);
+    }
+
+    // Process combo item counts
+    let comboItemCountMap: Record<string, number> = {};
+    const combos = combosResult.data;
+    if (combos?.length) {
+      const comboIds = combos.map((c: any) => c.id);
+      const { data: comboItems } = await supabase
+        .from('product_combo_items')
+        .select('combo_id')
+        .in('combo_id', comboIds);
+      const countByComboId: Record<string, number> = {};
+      comboItems?.forEach((i: any) => { countByComboId[i.combo_id] = (countByComboId[i.combo_id] || 0) + 1; });
+      combos.forEach((c: any) => { comboItemCountMap[c.combo_product_id] = countByComboId[c.id] ?? 0; });
     }
 
     const variationMap: Record<string, any[]> = {};
     if (variations) {
       variations.forEach((v: any) => {
-        if (!variationMap[v.product_id]) {
-          variationMap[v.product_id] = [];
-        }
+        if (!variationMap[v.product_id]) variationMap[v.product_id] = [];
         variationMap[v.product_id].push(v);
       });
     }
 
-    // Step 3b: Get units for product unit display (unit_id -> short_code)
-    const unitIds = [...new Set((products || []).map((p: any) => p.unit_id).filter(Boolean))] as string[];
     let unitMap: Record<string, { short_code: string }> = {};
-    if (unitIds.length > 0) {
-      const { data: units } = await supabase
-        .from('units')
-        .select('id, short_code')
-        .in('id', unitIds);
-      if (units) {
-        units.forEach((u: any) => {
-          unitMap[u.id] = { short_code: u.short_code || 'pcs' };
-        });
-      }
+    if (units) {
+      units.forEach((u: any) => {
+        unitMap[u.id] = { short_code: u.short_code || 'pcs' };
+      });
     }
 
     // Step 4: Calculate stock + boxes + pieces from stock_movements (SINGLE SOURCE OF TRUTH)
@@ -247,29 +237,22 @@ export const inventoryService = {
         totalPieces = productPieceMap[p.id] || 0;
       }
       
-      // 🔒 SAFETY: Check for negative stock and log warning with diagnostic info (once per product per session to reduce console noise)
-      // Negative stock indicates data issue (e.g., more sales than purchases). UI still shows it for visibility.
+      // Negative stock = more out (sales) than in (purchases/production). UI still shows it; log only in dev to avoid console noise.
       if (totalStock < 0) {
         const alreadyWarned = negativeStockWarnedIds.has(p.id);
-        if (!alreadyWarned) {
+        if (!alreadyWarned && import.meta.env?.DEV) {
           negativeStockWarnedIds.add(p.id);
           const productMovements = movements?.filter((m: any) =>
             m.product_id === p.id && (!m.variation_id || !hasVariations)
           ) || [];
           const movementSummary = {
             purchases: productMovements.filter((m: any) => m.movement_type === 'purchase').reduce((sum: number, m: any) => sum + (Number(m.quantity) || 0), 0),
+            production: productMovements.filter((m: any) => m.movement_type === 'production').reduce((sum: number, m: any) => sum + (Number(m.quantity) || 0), 0),
             sales: productMovements.filter((m: any) => m.movement_type === 'sale').reduce((sum: number, m: any) => sum + (Number(m.quantity) || 0), 0),
             adjustments: productMovements.filter((m: any) => m.movement_type === 'adjustment').reduce((sum: number, m: any) => sum + (Number(m.quantity) || 0), 0),
             totalMovements: productMovements.length
           };
-          console.warn('[INVENTORY SERVICE] ⚠️ Negative stock calculated:', {
-            productId: p.id,
-            productName: p.name,
-            sku: p.sku,
-            calculatedStock: totalStock,
-            hasVariations,
-            movementSummary
-          });
+          console.warn('[INVENTORY SERVICE] ⚠️ Negative stock (dev only):', p.sku, totalStock, movementSummary);
         }
       }
 

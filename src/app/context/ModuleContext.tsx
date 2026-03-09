@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 
 export type ModuleId = 'rentals' | 'manufacturing' | 'repairs' | 'loyalty' | 'accounting';
 
@@ -35,22 +35,24 @@ export const ModuleProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     localStorage.setItem('erp_modules', JSON.stringify(modules));
   }, [modules]);
 
-  const toggleModule = (id: ModuleId, isEnabled: boolean) => {
+  const toggleModule = useCallback((id: ModuleId, isEnabled: boolean) => {
     setModules(prev => ({
       ...prev,
       [id]: { ...prev[id], isEnabled }
     }));
-  };
+  }, []);
 
-  const updateModuleConfig = (id: ModuleId, config: any) => {
+  const updateModuleConfig = useCallback((id: ModuleId, config: any) => {
     setModules(prev => ({
       ...prev,
       [id]: { ...prev[id], config: { ...prev[id].config, ...config } }
     }));
-  };
+  }, []);
+
+  const value = useMemo(() => ({ modules, toggleModule, updateModuleConfig }), [modules, toggleModule, updateModuleConfig]);
 
   return (
-    <ModuleContext.Provider value={{ modules, toggleModule, updateModuleConfig }}>
+    <ModuleContext.Provider value={value}>
       {children}
     </ModuleContext.Provider>
   );

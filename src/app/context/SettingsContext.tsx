@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, ReactNode } from 'react';
 import { useSupabase } from './SupabaseContext';
 import { settingsService } from '@/app/services/settingsService';
 import { featureFlagsService } from '@/app/services/featureFlagsService';
@@ -488,12 +488,41 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
 
     setLoading(true);
     try {
-      // Load company info from companies table
-      const { data: companyData } = await supabase
-        .from('companies')
-        .select('*')
-        .eq('id', companyId)
-        .single();
+      console.time('loadAllSettings');
+
+      // Run all independent top-level fetches in parallel
+      const branchFilterId = branchId === 'all' ? null : branchId || null;
+      const [
+        { data: companyData },
+        branchesData,
+        accountsList,
+        allSettings,
+        enablePacking,
+        erpSequences,
+        sequences,
+        moduleConfigs,
+        flags,
+        userData,
+      ] = await Promise.all([
+        supabase.from('companies').select('*').eq('id', companyId).single(),
+        branchService.getAllBranches(companyId),
+        accountService.getAllAccounts(companyId),
+        settingsService.getAllSettings(companyId),
+        settingsService.getEnablePacking(companyId),
+        settingsService.getErpDocumentSequences(companyId, branchFilterId).catch(() => [] as any[]),
+        settingsService.getAllDocumentSequences(companyId, branchFilterId ?? undefined),
+        settingsService.getAllModuleConfigs(companyId),
+        featureFlagsService.getAll(companyId).catch(() => ({} as Record<string, boolean>)),
+        user?.id && companyId
+          ? supabase
+              .from('users')
+              .select('role, permissions')
+              .or(`id.eq.${user.id},auth_user_id.eq.${user.id}`)
+              .eq('company_id', companyId)
+              .maybeSingle()
+              .then(r => r.data)
+          : Promise.resolve(null),
+      ]);
 
       if (companyData) {
         const c = companyData as any;
@@ -512,11 +541,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
         });
       }
 
-      // Load branches and resolve default account names
-      const [branchesData, accountsList] = await Promise.all([
-        branchService.getAllBranches(companyId),
-        accountService.getAllAccounts(companyId),
-      ]);
+      // Resolve branch account names
       const accountNameById = new Map<string, string>();
       (accountsList || []).forEach((a: any) => { if (a.id && a.name) accountNameById.set(a.id, a.name); });
       const convertedBranches: BranchSettings[] = (branchesData || []).map((b: any) => ({
@@ -536,8 +561,6 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
       }));
       setBranches(convertedBranches);
 
-      // Load all settings
-      const allSettings = await settingsService.getAllSettings(companyId);
       const settingsMap = new Map(allSettings.map(s => [s.key, s.value]));
 
       // Load POS Settings
@@ -576,12 +599,8 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
         defaultPaymentTerms: purchaseData.defaultPaymentTerms || 0,
       });
 
-      // Load Inventory Settings
+      // Load Inventory Settings (enablePacking already fetched in parallel above)
       const inventoryData = (settingsMap.get('inventory_settings') as any) || {};
-      
-      // Load Enable Packing setting (separate key for global control)
-      const enablePacking = await settingsService.getEnablePacking(companyId);
-      
       setInventorySettings({
         lowStockThreshold: inventoryData.lowStockThreshold || 0,
         reorderAlertDays: inventoryData.reorderAlertDays || 0,
@@ -629,12 +648,9 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
         ],
       });
 
-      // Load Numbering Rules: prefer ERP engine (erp_document_sequences), fallback to document_sequences
-      const erpSequences = await settingsService.getErpDocumentSequences(companyId, branchId === 'all' ? null : branchId || null).catch(() => []);
-      const erpMap = new Map(erpSequences.map(s => [s.document_type.toLowerCase(), s]));
-
-      const sequences = await settingsService.getAllDocumentSequences(companyId, branchId === 'all' ? undefined : branchId || undefined);
-      const sequencesMap = new Map(sequences.map(s => [s.document_type, s]));
+      // Load Numbering Rules (erpSequences and sequences already fetched in parallel above)
+      const erpMap = new Map(erpSequences.map((s: any) => [s.document_type.toLowerCase(), s]));
+      const sequencesMap = new Map(sequences.map((s: any) => [s.document_type, s]));
 
       const getNext = (type: string) => {
         const erp = erpMap.get(type);
@@ -674,15 +690,9 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
         journalNextNumber: getNext('journal').next ?? 1,
       });
 
-      // Load Module Toggles
-      const moduleConfigs = await settingsService.getAllModuleConfigs(companyId);
-      const modulesMap = new Map(moduleConfigs.map(m => [m.module_name, m.is_enabled]));
-      
-      const getModuleEnabled = (name: string): boolean => {
-        const enabled = modulesMap.get(name);
-        return enabled === true;
-      };
-      
+      // Module Toggles (already fetched in parallel above)
+      const modulesMap = new Map(moduleConfigs.map((m: any) => [m.module_name, m.is_enabled]));
+      const getModuleEnabled = (name: string): boolean => modulesMap.get(name) === true;
       setModules({
         rentalModuleEnabled: getModuleEnabled('rentals'),
         studioModuleEnabled: getModuleEnabled('studio'),
@@ -692,26 +702,11 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
         combosEnabled: getModuleEnabled('combos'),
       });
 
-      // Load feature flags (Safe Zone – e.g. studio_production_v2)
-      try {
-        const flags = await featureFlagsService.getAll(companyId);
-        setFeatureFlags(flags);
-      } catch (e) {
-        if (import.meta.env?.DEV) console.warn('[SETTINGS] Feature flags load failed (table may not exist):', e);
-        setFeatureFlags({});
-      }
+      // Feature flags (already fetched in parallel above, errors caught with .catch({}))
+      setFeatureFlags(flags || {});
 
-      // Load current user permissions from users table (role-based + granular)
-      // user.id = auth UUID; users table has id (ERP PK) and auth_user_id — match either
-      if (user?.id && companyId) {
-        const { data: userData } = await supabase
-          .from('users')
-          .select('role, permissions')
-          .or(`id.eq.${user.id},auth_user_id.eq.${user.id}`)
-          .eq('company_id', companyId)
-          .maybeSingle();
-
-        if (userData) {
+      // User permissions (userData fetched in parallel above)
+      if (userData) {
           const r = (userData.role || 'staff').toLowerCase();
           const role: 'Admin' | 'Manager' | 'Staff' =
             r === 'owner' || r === 'admin' || r === 'super admin' || r === 'superadmin' ? 'Admin'
@@ -836,9 +831,9 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
             canUsePos: canUsePos ?? (role === 'Admin' || role === 'Manager'),
             canAccessStudio: canAccessStudio ?? (role === 'Admin' || role === 'Manager'),
           });
-        }
       }
 
+      console.timeEnd('loadAllSettings');
       if (import.meta.env?.DEV) console.log('✅ Settings loaded');
     } catch (error) {
       console.error('[SETTINGS CONTEXT] Error loading settings:', error);
@@ -1166,7 +1161,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
     }
   };
 
-  const value: SettingsContextType = {
+  const value = useMemo<SettingsContextType>(() => ({
     loading,
     isPermissionLoaded: !loading,
     company,
@@ -1198,7 +1193,16 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
     featureFlags,
     updateFeatureFlag,
     refreshSettings: loadAllSettings,
-  };
+  }), [
+    loading, company, branches, posSettings, salesSettings, purchaseSettings,
+    inventorySettings, rentalSettings, accountingSettings, defaultAccounts,
+    numberingRules, currentUser, modules, featureFlags,
+    updateCompanySettings, updateBranches, addBranch, updatePOSSettings,
+    updateSalesSettings, updatePurchaseSettings, updateInventorySettings,
+    updateRentalSettings, updateAccountingSettings, updateDefaultAccounts,
+    updateNumberingRules, getNextNumber, updatePermissions, updateModules,
+    updateFeatureFlag, loadAllSettings,
+  ]);
 
   return (
     <SettingsContext.Provider value={value}>

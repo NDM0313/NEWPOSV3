@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState, useRef } from 'react';
+import React, { createContext, useContext, useEffect, useState, useRef, useMemo } from 'react';
 import { supabase } from '@/lib/supabase';
 import { User, Session } from '@supabase/supabase-js';
 import { settingsService } from '@/app/services/settingsService';
@@ -391,29 +391,33 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     else setEnablePackingState(false);
   }, [companyId]);
 
+  const contextValue = useMemo(() => ({
+    user,
+    session,
+    loading,
+    signIn,
+    signOut,
+    companyId,
+    userRole,
+    branchId,
+    defaultBranchId,
+    setBranchId,
+    accessibleBranchIds,
+    setAccessibleBranchIds,
+    branchCount,
+    requiresBranchSelection,
+    enablePacking,
+    setEnablePacking,
+    refreshEnablePacking,
+    supabaseClient: supabase,
+  }), [
+    user, session, loading, companyId, userRole, branchId, defaultBranchId,
+    accessibleBranchIds, branchCount, requiresBranchSelection, enablePacking,
+    signIn, signOut, setBranchId, setAccessibleBranchIds, setEnablePacking, refreshEnablePacking,
+  ]);
+
   return (
-    <SupabaseContext.Provider
-      value={{
-        user,
-        session,
-        loading,
-        signIn,
-        signOut,
-        companyId,
-        userRole,
-        branchId,
-        defaultBranchId,
-        setBranchId,
-        accessibleBranchIds,
-        setAccessibleBranchIds,
-        branchCount,
-        requiresBranchSelection,
-        enablePacking,
-        setEnablePacking,
-        refreshEnablePacking,
-        supabaseClient: supabase,
-      }}
-    >
+    <SupabaseContext.Provider value={contextValue}>
       {children}
     </SupabaseContext.Provider>
   );

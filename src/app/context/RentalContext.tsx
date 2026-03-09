@@ -2,7 +2,7 @@
 // RENTAL CONTEXT – Full ERP (Sale/Purchase standard)
 // ============================================
 
-import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, ReactNode } from 'react';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { useAccounting } from '@/app/context/AccountingContext';
 import { supabase } from '@/lib/supabase';
@@ -369,7 +369,7 @@ export const RentalProvider = ({ children }: { children: ReactNode }) => {
     toast.success(payload.deliverOnCredit ? 'Rental delivered on credit' : 'Rental marked as picked up');
   };
 
-  const value: RentalContextType = {
+  const value = useMemo<RentalContextType>(() => ({
     rentals,
     loading,
     getRentalById,
@@ -383,7 +383,11 @@ export const RentalProvider = ({ children }: { children: ReactNode }) => {
     deletePayment,
     deleteRental,
     markAsPickedUp,
-  };
+  }), [
+    rentals, loading, getRentalById, loadRentals, createRental, updateRental,
+    finalizeRental, receiveReturn, cancelRental, addPayment, deletePayment,
+    deleteRental, markAsPickedUp,
+  ]);
 
   return <RentalContext.Provider value={value}>{children}</RentalContext.Provider>;
 };

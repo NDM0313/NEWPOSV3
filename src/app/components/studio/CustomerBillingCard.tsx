@@ -14,6 +14,8 @@ import {
   getProductionCostSummary,
   generateCustomerInvoiceFromProduction,
   createProductFromProductionOrder,
+  linkExistingProductToProductionOrder,
+  searchProductionProducts,
 } from '@/app/services/studioCustomerInvoiceService';
 import { useNavigation } from '@/app/context/NavigationContext';
 import { useSupabase } from '@/app/context/SupabaseContext';
@@ -50,6 +52,11 @@ export const CustomerBillingCard: React.FC<CustomerBillingCardProps> = ({
   const [generating, setGenerating] = useState(false);
   const [productNameInput, setProductNameInput] = useState('');
   const [creatingProduct, setCreatingProduct] = useState(false);
+  const [productSourceMode, setProductSourceMode] = useState<'new' | 'existing'>('new');
+  const [existingSearchQuery, setExistingSearchQuery] = useState('');
+  const [existingSearchResults, setExistingSearchResults] = useState<{ id: string; name: string; sku: string }[]>([]);
+  const [searchingExisting, setSearchingExisting] = useState(false);
+  const [linkingExisting, setLinkingExisting] = useState(false);
 
   const completed = status === 'completed';
   const profit = customerPrice ? Math.max(0, Number(customerPrice) - productionCost) : 0;
@@ -132,6 +139,7 @@ export const CustomerBillingCard: React.FC<CustomerBillingCardProps> = ({
         productionOrderId: orderId,
         productName: name,
         companyId,
+        createdBy: user?.id ?? undefined,
       });
       toast.success(`Product created (SKU: ${sku}). You can now generate the sale invoice.`);
       onProductCreated?.();
@@ -139,6 +147,37 @@ export const CustomerBillingCard: React.FC<CustomerBillingCardProps> = ({
       toast.error(e?.message || 'Failed to create product.');
     } finally {
       setCreatingProduct(false);
+    }
+  };
+
+  const handleSearchExisting = async () => {
+    if (!companyId) return;
+    setSearchingExisting(true);
+    try {
+      const list = await searchProductionProducts({
+        companyId,
+        query: existingSearchQuery,
+        limit: 15,
+      });
+      setExistingSearchResults(list);
+    } catch (e: any) {
+      toast.error(e?.message || 'Search failed.');
+      setExistingSearchResults([]);
+    } finally {
+      setSearchingExisting(false);
+    }
+  };
+
+  const handleLinkExisting = async (selectedProductId: string) => {
+    setLinkingExisting(true);
+    try {
+      await linkExistingProductToProductionOrder({ productionOrderId: orderId, productId: selectedProductId });
+      toast.success('Production product linked. You can now generate the sale invoice.');
+      onProductCreated?.();
+    } catch (e: any) {
+      toast.error(e?.message || 'Failed to link product.');
+    } finally {
+      setLinkingExisting(false);
     }
   };
 
@@ -172,24 +211,92 @@ export const CustomerBillingCard: React.FC<CustomerBillingCardProps> = ({
                 <span>Product: {linkedProductName || '—'} {linkedProductSku && <span className="text-gray-500">({linkedProductSku})</span>}</span>
               </div>
             ) : (
-              <div className="space-y-2 rounded border border-gray-700/50 p-3 bg-gray-900/50">
-                <Label className="text-gray-400 text-xs">Create Product (optional – manufactured item for invoice)</Label>
-                <Input
-                  className="bg-gray-900 border-gray-700 text-white"
-                  placeholder="e.g. Bridal Dress – Ayesha"
-                  value={productNameInput}
-                  onChange={(e) => setProductNameInput(e.target.value)}
-                />
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="border-amber-600 text-amber-200"
-                  disabled={creatingProduct}
-                  onClick={handleCreateProduct}
-                >
-                  {creatingProduct ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Package className="h-4 w-4 mr-2" />}
-                  Create Product
-                </Button>
+              <div className="space-y-3 rounded border border-gray-700/50 p-3 bg-gray-900/50">
+                <Label className="text-gray-400 text-xs">Product (optional – manufactured item for invoice)</Label>
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    variant={productSourceMode === 'new' ? 'default' : 'outline'}
+                    size="sm"
+                    className={productSourceMode === 'new' ? 'bg-amber-600 hover:bg-amber-700' : 'border-gray-600'}
+                    onClick={() => setProductSourceMode('new')}
+                  >
+                    Create New
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={productSourceMode === 'existing' ? 'default' : 'outline'}
+                    size="sm"
+                    className={productSourceMode === 'existing' ? 'bg-amber-600 hover:bg-amber-700' : 'border-gray-600'}
+                    onClick={() => setProductSourceMode('existing')}
+                  >
+                    Use Existing
+                  </Button>
+                </div>
+
+                {productSourceMode === 'new' && (
+                  <>
+                    <Input
+                      className="bg-gray-900 border-gray-700 text-white"
+                      placeholder="e.g. Bridal Dress – Ayesha"
+                      value={productNameInput}
+                      onChange={(e) => setProductNameInput(e.target.value)}
+                    />
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="border-amber-600 text-amber-200"
+                      disabled={creatingProduct}
+                      onClick={handleCreateProduct}
+                    >
+                      {creatingProduct ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Package className="h-4 w-4 mr-2" />}
+                      Create Product (STD-PROD)
+                    </Button>
+                  </>
+                )}
+
+                {productSourceMode === 'existing' && (
+                  <>
+                    <div className="flex gap-2">
+                      <Input
+                        className="bg-gray-900 border-gray-700 text-white flex-1"
+                        placeholder="Search production products (name or SKU)"
+                        value={existingSearchQuery}
+                        onChange={(e) => setExistingSearchQuery(e.target.value)}
+                        onKeyDown={(e) => e.key === 'Enter' && handleSearchExisting()}
+                      />
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="border-gray-600"
+                        disabled={searchingExisting}
+                        onClick={handleSearchExisting}
+                      >
+                        {searchingExisting ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Search'}
+                      </Button>
+                    </div>
+                    {existingSearchResults.length > 0 && (
+                      <ul className="max-h-40 overflow-y-auto space-y-1 text-sm">
+                        {existingSearchResults.map((p) => (
+                          <li key={p.id}>
+                            <button
+                              type="button"
+                              className="w-full text-left px-2 py-1.5 rounded border border-gray-700 hover:bg-gray-800 flex items-center justify-between gap-2"
+                              disabled={linkingExisting}
+                              onClick={() => handleLinkExisting(p.id)}
+                            >
+                              <span className="text-white truncate">{p.name}</span>
+                              <span className="text-amber-400 shrink-0 text-xs">[{p.sku}]</span>
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                    {existingSearchQuery && existingSearchResults.length === 0 && !searchingExisting && (
+                      <p className="text-xs text-gray-500">No production products found. Create a new one or try another search.</p>
+                    )}
+                  </>
+                )}
               </div>
             )}
           </>

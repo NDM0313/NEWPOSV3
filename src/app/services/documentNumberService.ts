@@ -157,6 +157,18 @@ export const documentNumberService = {
   },
 
   /**
+   * Get next production product SKU: STD-PROD-00001, STD-PROD-00002, ...
+   * For products manufactured through studio production (product_type = 'production').
+   */
+  async getNextProductionProductSKU(companyId: string): Promise<string> {
+    const prefix = 'STD-PROD-';
+    const maxNum = await this.getMaxDocumentNumber(companyId, 'production', prefix);
+    const nextNum = maxNum + 1;
+    const padded = String(nextNum).padStart(5, '0');
+    return `${prefix}${padded}`;
+  },
+
+  /**
    * ERP Numbering Engine: get next document number (atomic, duplicate-free, multi-user safe).
    * Uses generate_document_number RPC. Use for payments, and optionally sales/purchases/expenses.
    * @param includeYear - if true, format is PREFIX-YY-NNNN (e.g. SL-26-0001); else PREFIX-NNNN

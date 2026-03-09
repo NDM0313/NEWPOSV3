@@ -3,7 +3,7 @@
 // ============================================
 // Manages purchases and supplier orders with auto-numbering
 
-import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, ReactNode } from 'react';
 import { documentNumberService } from '@/app/services/documentNumberService';
 import { useAccounting } from '@/app/context/AccountingContext';
 import { useSupabase } from '@/app/context/SupabaseContext';
@@ -1524,7 +1524,7 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
-  const value: PurchaseContextType = {
+  const value = useMemo<PurchaseContextType>(() => ({
     purchases,
     loading,
     getPurchaseById,
@@ -1535,7 +1535,10 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
     updateStatus,
     receiveStock,
     refreshPurchases: loadPurchases,
-  };
+  }), [
+    purchases, loading, getPurchaseById, createPurchase, updatePurchase,
+    deletePurchase, recordPayment, updateStatus, receiveStock, loadPurchases,
+  ]);
 
   return (
     <PurchaseContext.Provider value={value}>

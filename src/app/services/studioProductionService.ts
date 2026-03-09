@@ -359,12 +359,13 @@ export const studioProductionService = {
     }
   },
 
-  /** Set the generated product and invoice item for this production (when studio product line is added to sale). */
+  /** Set the generated product and invoice item for this production (when studio product line is added to sale). If production is already completed, post stock to generated product so Stock Ledger shows history. */
   async setGeneratedInvoiceItem(
     productionId: string,
     generatedProductId: string,
     generatedInvoiceItemId: string
   ): Promise<void> {
+    const existing = await this.getProductionById(productionId);
     const { error } = await supabase
       .from('studio_productions')
       .update({
@@ -374,6 +375,157 @@ export const studioProductionService = {
       })
       .eq('id', productionId);
     if (error) throw error;
+    if (!existing || (existing as any).status !== 'completed') return;
+    const qty = Number(existing.quantity) || 0;
+    if (qty <= 0) return;
+    const fabricProductId = existing.product_id;
+    const movementType = 'PRODUCTION_IN';
+    const insertPayload: Record<string, unknown> = {
+      company_id: existing.company_id,
+      branch_id: existing.branch_id,
+      product_id: generatedProductId,
+      movement_type: movementType,
+      quantity: qty,
+      unit_cost: existing.actual_cost ? Number(existing.actual_cost) / qty : 0,
+      total_cost: existing.actual_cost ?? 0,
+      reference_type: 'studio_production',
+      reference_id: productionId,
+      notes: `Production ${existing.production_no} completed (studio line linked)`,
+      created_by: null,
+    };
+    const { error: movErr } = await supabase.from('stock_movements').insert(insertPayload);
+    if (movErr) {
+      console.warn('[studio_production] Backfill stock movement for generated product failed:', movErr.message);
+      return;
+    }
+    const product = await productService.getProduct(generatedProductId);
+    if (product?.id) {
+      const newStock = (Number(product.current_stock) || 0) + qty;
+      await productService.updateProduct(generatedProductId, { current_stock: newStock });
+    }
+    if (fabricProductId && fabricProductId !== generatedProductId) {
+      const reversePayload: Record<string, unknown> = {
+        company_id: existing.company_id,
+        branch_id: existing.branch_id,
+        product_id: fabricProductId,
+        movement_type: 'adjustment',
+        quantity: -qty,
+        unit_cost: 0,
+        total_cost: 0,
+        reference_type: 'studio_production',
+        reference_id: productionId,
+        notes: `Reclass: stock moved to studio product (${existing.production_no})`,
+        created_by: null,
+      };
+      await supabase.from('stock_movements').insert(reversePayload);
+      const fabricProduct = await productService.getProduct(fabricProductId);
+      if (fabricProduct?.id) {
+        const fabricStock = Math.max(0, (Number(fabricProduct.current_stock) || 0) - qty);
+        await productService.updateProduct(fabricProductId, { current_stock: fabricStock });
+      }
+    }
+  },
+
+  /**
+   * Create generated studio product + add studio line to sale + save links.
+   * Call this at NEW studio sale creation so sync has deterministic links (no fallback inference).
+   * Fabric line = first item (production.product_id). Studio line = this added line (price 0 until sync).
+   */
+  async createGeneratedProductAndStudioLine(params: {
+    productionId: string;
+    saleId: string;
+    invoiceNo: string;
+    fabricProductId: string;
+    companyId: string;
+    createdBy: string | null;
+  }): Promise<{ generatedProductId: string; generatedInvoiceItemId: string }> {
+    const { productionId, saleId, invoiceNo, fabricProductId, companyId, createdBy } = params;
+    const { documentNumberService } = await import('@/app/services/documentNumberService');
+    const sku =
+      await documentNumberService.getNextProductionProductSKU(companyId).catch(() =>
+        `STD-PROD-${invoiceNo}-${Date.now().toString(36)}`);
+    const productName = `Studio – ${invoiceNo}`;
+    if (import.meta.env?.DEV) {
+      console.log('[studio_production] createGeneratedProductAndStudioLine: creating product', { productName, sku });
+    }
+    const product = await productService.createProduct({
+      company_id: companyId,
+      name: productName,
+      sku,
+      category_id: null as any,
+      cost_price: 0,
+      retail_price: 0,
+      wholesale_price: 0,
+      current_stock: 0,
+      min_stock: 0,
+      max_stock: 1000,
+      has_variations: false,
+      is_rentable: false,
+      is_sellable: true,
+      track_stock: true,
+      is_active: true,
+      product_type: 'production',
+    }) as { id: string; name: string; sku: string };
+    if (import.meta.env?.DEV) {
+      console.log('[studio_production] product created', product.id);
+    }
+    const itemRow = {
+      sale_id: saleId,
+      product_id: product.id,
+      product_name: product.name,
+      sku: product.sku,
+      quantity: 1,
+      unit: 'piece',
+      unit_price: 0,
+      discount_amount: 0,
+      tax_amount: 0,
+      total: 0,
+      is_studio_product: true,
+    };
+    const { data: insertedItem, error: itemErr } = await supabase
+      .from('sales_items')
+      .insert(itemRow)
+      .select('id')
+      .single();
+    if (itemErr) {
+      const fallbackPayload: Record<string, unknown> = {
+        sale_id: saleId,
+        product_id: product.id,
+        product_name: product.name,
+        sku: product.sku,
+        quantity: 1,
+        price: 0,
+        total: 0,
+      };
+      let { data: fallbackData, error: fallbackErr } = await supabase
+        .from('sale_items')
+        .insert({ ...fallbackPayload, is_studio_product: true })
+        .select('id')
+        .single();
+      if (fallbackErr && (fallbackErr.code === '42703' || String(fallbackErr.message || '').includes('is_studio_product'))) {
+        ({ data: fallbackData, error: fallbackErr } = await supabase
+          .from('sale_items')
+          .insert(fallbackPayload)
+          .select('id')
+          .single());
+      }
+      if (fallbackErr) {
+        console.error('[studio_production] studio line insert failed', fallbackErr);
+        throw new Error(`Failed to add studio product line: ${fallbackErr.message}. Add studio line from Studio Sale Detail.`);
+      }
+      const insertedItemId = (fallbackData as any)?.id;
+      await this.setGeneratedInvoiceItem(productionId, product.id, insertedItemId);
+      if (import.meta.env?.DEV) {
+        console.log('[studio_production] studio line added (sale_items), links saved', { generatedProductId: product.id, generatedInvoiceItemId: insertedItemId });
+      }
+      return { generatedProductId: product.id, generatedInvoiceItemId: insertedItemId };
+    }
+    const insertedItemId = (insertedItem as any)?.id;
+    await this.setGeneratedInvoiceItem(productionId, product.id, insertedItemId);
+    if (import.meta.env?.DEV) {
+      console.log('[studio_production] studio line added (sales_items), links saved', { generatedProductId: product.id, generatedInvoiceItemId: insertedItemId });
+    }
+    return { generatedProductId: product.id, generatedInvoiceItemId: insertedItemId };
   },
 
   async createProductionJob(input: CreateProductionInput): Promise<StudioProduction> {
@@ -402,17 +554,17 @@ export const studioProductionService = {
       created_by: input.created_by ?? null,
     };
 
-    const { data, error } = await supabase
+    let { data, error } = await supabase
       .from('studio_productions')
       .insert(payload)
-      .select(`
-        *,
-        product:products!product_id(id, name, sku),
-        worker:workers(id, name)
-      `)
+      .select('*')
       .single();
 
     if (error) throw error;
+    if (data?.product_id) {
+      const { data: prod } = await supabase.from('products').select('id, name, sku').eq('id', data.product_id).maybeSingle();
+      if (prod) (data as any).product = prod;
+    }
 
     await logAction(
       data.id,
@@ -537,14 +689,15 @@ export const studioProductionService = {
         }
       }
 
-      // 2. Inventory
+      // 2. Inventory – post to generated product (STD-PROD) so Stock Ledger shows history; fallback to product_id
       const qty = Number(existing.quantity) || 0;
       if (qty > 0) {
+        const productIdForStock = (existing as any).generated_product_id || existing.product_id;
         const movementType = 'PRODUCTION_IN';
         const insertPayload: Record<string, unknown> = {
           company_id: existing.company_id,
           branch_id: existing.branch_id,
-          product_id: existing.product_id,
+          product_id: productIdForStock,
           movement_type: movementType,
           quantity: qty,
           unit_cost: existing.actual_cost ? Number(existing.actual_cost) / qty : 0,
@@ -556,10 +709,10 @@ export const studioProductionService = {
         };
         const { error: movErr } = await supabase.from('stock_movements').insert(insertPayload);
         if (movErr) throw new Error(`Inventory update failed: ${movErr.message}`);
-        const product = await productService.getProduct(existing.product_id);
+        const product = await productService.getProduct(productIdForStock);
         if (product?.id) {
           const newStock = (Number(product.current_stock) || 0) + qty;
-          await productService.updateProduct(existing.product_id, { current_stock: newStock });
+          await productService.updateProduct(productIdForStock, { current_stock: newStock });
         }
       }
 
@@ -637,10 +790,12 @@ export const studioProductionService = {
         .eq('production_id', productionId)
         .order('created_at', { ascending: true });
       if (error) {
+        if (import.meta.env?.DEV) console.log('[studioProductionService] getStagesByProductionId error:', { productionId, code: error.code, message: error.message });
         if (error.code === 'PGRST116' || error.message?.includes('does not exist')) return [];
         throw error;
       }
       const stages = (data || []) as any[];
+      if (import.meta.env?.DEV && stages.length > 0) console.log('[studioProductionService] getStagesByProductionId', { productionId, count: stages.length });
       const workerIds = stages.filter((s) => s.assigned_worker_id).map((s) => s.assigned_worker_id);
       if (workerIds.length > 0) {
         const uniqueIds = [...new Set(workerIds)];
@@ -693,7 +848,7 @@ export const studioProductionService = {
     }
   },
 
-  /** Create a stage (process step) for a production. PHASE 1: No auto-assignment – status=pending, cost=0, assigned_worker_id=null. Assignment ONLY via Assign flow (RPC). */
+  /** Create a stage (process step) for a production. PHASE 1: No auto-assignment – status=pending, cost=0, assigned_worker_id=null. Assignment ONLY via Assign flow (RPC). position = stage_order (1-based); omit to default to 1. */
   async createStage(
     productionId: string,
     input: {
@@ -702,7 +857,8 @@ export const studioProductionService = {
       cost?: number;
       expected_completion_date?: string | null;
       notes?: string | null;
-    }
+    },
+    position?: number
   ): Promise<StudioProductionStage> {
     const production = await this.getProductionById(productionId);
     if (!production) throw new Error('Production not found');
@@ -721,6 +877,7 @@ export const studioProductionService = {
       notes: input.notes ?? null,
       expected_cost: 0,
     };
+    if (position != null) insertPayload.stage_order = position;
     let result = await supabase
       .from('studio_production_stages')
       .insert(insertPayload)
@@ -734,14 +891,91 @@ export const studioProductionService = {
         .select('*')
         .single();
     }
-    if (result.error) throw result.error;
+    if (result.error) {
+      if (import.meta.env?.DEV) console.warn('[studioProductionService] createStage failed:', { productionId, stage_type: input.stage_type, message: result.error.message });
+      throw result.error;
+    }
     const data = result.data as any;
+    if (import.meta.env?.DEV) console.log('[studioProductionService] createStage ok', { productionId, stageId: data?.id, stage_type: input.stage_type });
     if (data?.assigned_worker_id) {
       const stages = await this.getStagesByProductionId(productionId);
       const found = stages.find((s) => s.id === data.id);
       if (found?.worker) data.worker = found.worker;
     }
     return data as StudioProductionStage;
+  },
+
+  /**
+   * Replace all stages for a production: DELETE existing then INSERT all in order.
+   * Use when user saves "Customize Tasks" and all stages are pending (no workers assigned).
+   * Ensures correct stage_order (position) so multiple stages save; single createStage defaults to stage_order=1 and would conflict.
+   */
+  async replaceStages(
+    productionId: string,
+    stages: { stage_type: StudioProductionStageType; position: number }[]
+  ): Promise<StudioProductionStage[]> {
+    if (stages.length === 0) {
+      throw new Error('At least one stage is required.');
+    }
+    const production = await this.getProductionById(productionId);
+    if (!production) throw new Error('Production not found');
+    if (!production.sale_id) throw new Error('Production must be linked to a sale.');
+
+    const { error: delErr } = await supabase
+      .from('studio_production_stages')
+      .delete()
+      .eq('production_id', productionId);
+    if (delErr) {
+      if (import.meta.env?.DEV) console.warn('[studioProductionService] replaceStages delete failed:', { productionId, message: delErr.message, code: delErr.code });
+      throw delErr;
+    }
+
+    const rows = stages.map((s) => ({
+      production_id: productionId,
+      stage_type: s.stage_type,
+      stage_order: s.position,
+      assigned_worker_id: null,
+      cost: 0,
+      status: 'pending',
+      notes: null,
+      expected_cost: 0,
+    }));
+    const { data: inserted, error: insErr } = await supabase
+      .from('studio_production_stages')
+      .insert(rows)
+      .select('*');
+    if (insErr) {
+      if (import.meta.env?.DEV) {
+        console.warn('[studioProductionService] replaceStages insert failed (stage_order may not exist):', { productionId, message: insErr.message });
+      }
+      const rowsWithoutOrder = stages.map((s) => ({
+        production_id: productionId,
+        stage_type: s.stage_type,
+        assigned_worker_id: null,
+        cost: 0,
+        status: 'pending',
+        notes: null,
+      }));
+      // Retry delete (RLS may have blocked first delete) then insert to avoid 409
+      const { error: del2Err } = await supabase.from('studio_production_stages').delete().eq('production_id', productionId);
+      if (del2Err && import.meta.env?.DEV) console.warn('[studioProductionService] replaceStages retry delete:', del2Err.message);
+      const { data: fallback, error: fallbackErr } = await supabase
+        .from('studio_production_stages')
+        .insert(rowsWithoutOrder)
+        .select('*');
+      if (fallbackErr) {
+        if (fallbackErr.code === '23505' || (fallbackErr.message || '').includes('409')) {
+          throw new Error(
+            'Stages could not be saved: existing rows conflict. Ensure studio_production_stages has stage_order column (run migrations/fix_after_drop_studio_orders.sql) and RLS allows delete/insert.'
+          );
+        }
+        throw fallbackErr;
+      }
+      if (import.meta.env?.DEV) console.log('[studioProductionService] replaceStages fallback (no stage_order)', { productionId, count: (fallback || []).length });
+      return (fallback || []) as StudioProductionStage[];
+    }
+    if (import.meta.env?.DEV) console.log('[studioProductionService] replaceStages ok', { productionId, count: (inserted || []).length });
+    return (inserted || []) as StudioProductionStage[];
   },
 
   /** Delete a stage. Only allowed for pending stages (no worker assigned, not completed). Used when manager removes a task via Customize Tasks. */
@@ -799,7 +1033,7 @@ export const studioProductionService = {
         assigned_worker_id: params.worker_id,
         assigned_at: new Date().toISOString(),
         expected_cost: params.expected_cost,
-        cost: 0,
+        cost: params.expected_cost,
         status: 'assigned',
         expected_completion_date: expectedDate,
         ...(params.notes != null ? { notes: params.notes } : {}),
@@ -925,10 +1159,27 @@ export const studioProductionService = {
     const isReopening = isCompleted && updates.status === 'in_progress';
     if (isCompleted && !isReopening) {
       if (updates.status !== undefined && updates.status !== 'completed') throw new Error('Completed stage cannot be reopened.');
-      if (updates.cost !== undefined) throw new Error('Completed stage cost is locked.');
       if (updates.completed_at !== undefined) throw new Error('Completed stage cannot be edited.');
       if (updates.assigned_worker_id !== undefined) throw new Error('Completed stage worker is locked.');
-      if (updates.notes === undefined) {
+      // Allow cost correction on completed stage (and notes); sync sale totals via trigger
+      if (updates.cost !== undefined || updates.notes !== undefined) {
+        const payload: Record<string, unknown> = {};
+        if (updates.cost !== undefined) payload.cost = updates.cost;
+        if (updates.notes !== undefined) payload.notes = updates.notes;
+        if (Object.keys(payload).length > 0) {
+          const { data: updated, error } = await supabase
+            .from('studio_production_stages')
+            .update(payload)
+            .eq('id', stageId)
+            .select('*')
+            .single();
+          if (error) throw error;
+          const result = updated as StudioProductionStage;
+          await resolveStageWorker(result);
+          return result;
+        }
+      }
+      if (updates.notes === undefined && updates.cost === undefined) {
         const { data: d } = await supabase.from('studio_production_stages').select('*').eq('id', stageId).single();
         if (d) {
           const row = d as any;

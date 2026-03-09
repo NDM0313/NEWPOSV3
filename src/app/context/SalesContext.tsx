@@ -3,7 +3,7 @@
 // ============================================
 // Manages sales, quotations, and invoices with auto-numbering
 
-import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, ReactNode } from 'react';
 import { useDocumentNumbering } from '@/app/hooks/useDocumentNumbering';
 import { useAccounting } from '@/app/context/AccountingContext';
 import { useSupabase } from '@/app/context/SupabaseContext';
@@ -46,6 +46,8 @@ export interface SaleItem {
   unit?: string;
   /** Packing from backend (sales_items.packing_*) - for display/reports */
   packingDetails?: { packing_type?: string; packing_quantity?: number; packing_unit?: string; [k: string]: unknown };
+  /** True for the auto-generated studio product line; false/undefined for material items (fabric, lace, etc.). */
+  isStudioProduct?: boolean;
 }
 
 export interface Sale {
@@ -297,6 +299,7 @@ export const convertFromSupabaseSale = (supabaseSale: any): Sale => {
         packingDetails: packingDetails ?? undefined,
         thaans: packingDetails?.total_boxes ?? item.packing_details?.thaans,
         meters: packingDetails?.total_meters ?? item.packing_quantity ?? undefined,
+        isStudioProduct: item.is_studio_product === true,
       };
     }),
       itemsCount: supabaseSale.items?.length || 0,
@@ -390,6 +393,10 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
       // SL and STD have separate counters; never mix.
       const isPOS = (saleData as any).isPOS === true;
       const isStudioSale = (saleData as any).isStudioSale === true;
+      // Studio orders must have at least one product (fabric/material); block creation of empty studio sales
+      if (isStudioSale && (!saleData.items || saleData.items.length === 0)) {
+        throw new Error('Studio order must have at least one product (fabric/material). Add an item in the sale before saving.');
+      }
       let docType: 'draft' | 'quotation' | 'order' | 'invoice' | 'pos' | 'studio' = 'invoice';
       if (isPOS) {
         docType = 'pos';
@@ -559,11 +566,14 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
           const { supabase: sb } = await import('@/lib/supabase');
           await sb.from('sales').update({ is_studio: true }).eq('id', result.id);
         } catch (_) { /* column may not exist */ }
-        // Create studio_production so Studio Sale appears on Studio Production dashboard (same as StudioSaleDetailNew.ensureProductionForSale)
-        if (supabaseItems?.length > 0 && (saleData.status === 'final' || saleData.type === 'invoice')) {
+        // Create studio_production + generated product + studio line + links (deterministic; no sync fallback needed)
+        if (supabaseItems?.length > 0) {
           try {
             const { studioProductionService } = await import('@/app/services/studioProductionService');
             const firstItem = supabaseItems[0];
+            if (import.meta.env?.DEV) {
+              console.log('[SALES CONTEXT] Studio sale: creating production + studio line', { saleId: result.id, invoiceNo: effectiveInvoiceNo });
+            }
             const production = await studioProductionService.createProductionJob({
               company_id: companyId,
               branch_id: effectiveBranchId,
@@ -575,9 +585,45 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
               unit: (firstItem as any).unit || 'piece',
               created_by: createdByAuthId,
             });
-            // No auto-stages: manager decides via Customize Tasks in Studio Sale Detail
-          } catch (prodErr) {
-            console.warn('[SALES CONTEXT] Studio production create failed (sale saved):', prodErr);
+            const linkResult = await studioProductionService.createGeneratedProductAndStudioLine({
+              productionId: production.id,
+              saleId: result.id,
+              invoiceNo: effectiveInvoiceNo,
+              fabricProductId: firstItem.product_id,
+              companyId,
+              createdBy: createdByAuthId,
+            });
+            if (import.meta.env?.DEV) {
+              console.log('[SALES CONTEXT] Studio sale: production + studio line + links saved', linkResult);
+            }
+            // Validation: material_lines >= 1, studio_lines === 1 (multi-material supported)
+            const { supabase: sb } = await import('@/lib/supabase');
+            const { data: items } = await sb.from('sales_items').select('id, product_id, is_studio_product').eq('sale_id', result.id);
+            let fallbackItems: { id: string; product_id: string; is_studio_product?: boolean }[] = (items ?? []).map((i: any) => ({
+              id: i.id,
+              product_id: i.product_id,
+              is_studio_product: i.is_studio_product,
+            }));
+            if (fallbackItems.length === 0) {
+              try {
+                const { data: alt } = await sb.from('sale_items').select('id, product_id').eq('sale_id', result.id);
+                if (alt?.length) fallbackItems = (alt as { id: string; product_id: string }[]).map((i) => ({ ...i, is_studio_product: false }));
+              } catch (_) {}
+            }
+            const studioLines = fallbackItems.filter((i: any) => i.is_studio_product === true);
+            const materialLines = fallbackItems.filter((i: any) => i.is_studio_product !== true);
+            if (studioLines.length !== 1) {
+              console.warn('[SALES CONTEXT] Studio sale creation: expected exactly one studio line (is_studio_product = true)', { studioLines: studioLines.length, materialLines: materialLines.length });
+              toast.warning(studioLines.length === 0
+                ? 'Studio sale created but no studio product line. Add it from Studio Sale Detail (Create Product + Add to Sale).'
+                : `Studio sale created but expected 1 studio line, found ${studioLines.length}. Fix in Studio Sale Detail.`);
+            } else if (materialLines.length < 1) {
+              console.warn('[SALES CONTEXT] Studio sale creation: expected at least one material line', { materialLines: materialLines.length });
+              toast.warning('Studio sale created with no material items. Add at least one material (fabric, lace, etc.) in Sale Detail.');
+            }
+          } catch (prodErr: any) {
+            console.warn('[SALES CONTEXT] Studio production or studio line create failed (sale saved):', prodErr);
+            toast.warning(prodErr?.message || 'Studio sale saved. Add the studio product line from Studio Sale Detail (Create Product + Add to Sale).');
           }
         }
       }
@@ -1509,6 +1555,96 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
         console.log('[SALES CONTEXT] ✅ No stock movement delta (items unchanged or no delta)');
       }
 
+      // Order/Draft/Quotation → Final: create stock OUT for all items when only status is being updated (no item deltas)
+      const saleStatus = (sale?.status ?? (sale as any)?.status)?.toString()?.toLowerCase();
+      const saleType = (sale?.type ?? (sale as any)?.type)?.toString()?.toLowerCase();
+      const wasNotFinal = saleStatus !== 'final' && saleType !== 'invoice';
+      const isNowFinal = updates.status === 'final' || updates.status === 'invoice';
+      const effectiveCompanyId = companyId || (sale as any)?.company_id;
+      if (wasNotFinal && isNowFinal && stockMovementDeltas.length === 0 && effectiveCompanyId) {
+        try {
+          const { supabase: sb } = await import('@/lib/supabase');
+          let currentItems: { product_id: string; variation_id?: string; quantity: number; unit_price?: number; product_name?: string }[] = [];
+          const { data: itemsFromSalesItems, error: itemsErr } = await sb
+            .from('sales_items')
+            .select('product_id, variation_id, quantity, unit_price, product_name')
+            .eq('sale_id', id);
+          if (!itemsErr && itemsFromSalesItems?.length) {
+            currentItems = itemsFromSalesItems;
+          } else {
+            const { data: itemsFromSaleItems } = await sb
+              .from('sale_items')
+              .select('product_id, variation_id, quantity, unit_price, product_name')
+              .eq('sale_id', id);
+            if (itemsFromSaleItems?.length) currentItems = itemsFromSaleItems;
+          }
+          if (currentItems.length > 0) {
+            const { data: { user: authUser } } = await sb.auth.getUser();
+            const updateCreatedByAuthId = authUser?.id ?? (user as any)?.auth_user_id ?? user?.id;
+            const saleForStock = sale || (await saleService.getSaleById(id));
+            const saleInvoiceNo = (saleForStock as any)?.invoice_no ?? (saleForStock as any)?.invoiceNo ?? id;
+            const saleBranchId = (saleForStock as any)?.branch_id ?? null;
+            let effectiveBranchId = isValidBranchId(saleBranchId) ? saleBranchId : (isValidBranchId(branchId) ? branchId : null);
+            if (!effectiveBranchId) {
+              const branches = await branchService.getAllBranches(effectiveCompanyId);
+              effectiveBranchId = branches?.length ? branches[0].id : null;
+            }
+            if (effectiveBranchId === 'all') effectiveBranchId = null;
+            for (const item of currentItems) {
+              const qty = Number(item.quantity) || 0;
+              if (qty <= 0) continue;
+              const productId = item.product_id;
+              const variationId = item.variation_id || undefined;
+              const { data: prod } = await sb.from('products').select('id, product_type').eq('id', productId).maybeSingle();
+              if ((prod as any)?.product_type === 'production') {
+                const { data: existingProd } = await sb
+                  .from('stock_movements')
+                  .select('id')
+                  .eq('product_id', productId)
+                  .eq('company_id', effectiveCompanyId)
+                  .eq('movement_type', 'production')
+                  .limit(1);
+                if (!existingProd?.length) {
+                  await productService.createStockMovement({
+                    company_id: effectiveCompanyId,
+                    branch_id: effectiveBranchId ?? undefined,
+                    product_id: productId,
+                    variation_id: variationId,
+                    movement_type: 'production',
+                    quantity: 1,
+                    unit_cost: 0,
+                    reference_type: 'sale',
+                    reference_id: id,
+                    notes: `Studio sale ${saleInvoiceNo} – production product (backfill)`,
+                    created_by: updateCreatedByAuthId ?? undefined,
+                  });
+                }
+              }
+              await productService.createStockMovement({
+                company_id: effectiveCompanyId,
+                branch_id: effectiveBranchId ?? undefined,
+                product_id: productId,
+                variation_id: variationId,
+                movement_type: 'sale',
+                quantity: -qty,
+                unit_cost: Number(item.unit_price) || 0,
+                reference_type: 'sale',
+                reference_id: id,
+                notes: `Sale ${saleInvoiceNo} – ${(item as any).product_name || 'Item'}`,
+                created_by: updateCreatedByAuthId ?? undefined,
+              });
+            }
+            console.log('[SALES CONTEXT] ✅ Stock OUT created for Order→Final (no item change):', currentItems.length, 'items');
+            window.dispatchEvent(new CustomEvent('saleSaved', { detail: { saleId: id } }));
+            const custId = sale?.customerId ?? (saleForStock as any)?.customer_id;
+            if (custId) window.dispatchEvent(new CustomEvent('ledgerUpdated', { detail: { ledgerType: 'customer', entityId: custId } }));
+          }
+        } catch (orderToFinalErr: any) {
+          console.error('[SALES CONTEXT] Order→Final stock movements error:', orderToFinalErr);
+          toast.warning('Sale marked Final but some stock movements failed. Check stock ledger.');
+        }
+      }
+
       // Update in Supabase
       if (Object.keys(supabaseUpdates).length > 0) {
         await saleService.updateSale(id, supabaseUpdates);
@@ -1957,7 +2093,7 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
-  const value: SalesContextType = {
+  const value = useMemo<SalesContextType>(() => ({
     sales,
     loading,
     getSaleById,
@@ -1968,7 +2104,10 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
     updateShippingStatus,
     convertQuotationToInvoice,
     refreshSales: loadSales,
-  };
+  }), [
+    sales, loading, getSaleById, createSale, updateSale, deleteSale,
+    recordPayment, updateShippingStatus, convertQuotationToInvoice, loadSales,
+  ]);
 
   return (
     <SalesContext.Provider value={value}>

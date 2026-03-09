@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, ReactNode } from 'react';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { useDateRange } from '@/app/context/DateRangeContext';
 import { accountService, Account as SupabaseAccount } from '@/app/services/accountService';
@@ -252,7 +252,10 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const { companyId, branchId, user, userRole } = useSupabase();
-  const { startDate, endDate } = useDateRange();
+  const { dateRange } = useDateRange();
+  // Use ISO strings as stable primitives so useCallback deps don't change on every Date object re-creation
+  const startDateISO = dateRange.startDate?.toISOString() ?? null;
+  const endDateISO = dateRange.endDate?.toISOString() ?? null;
 
   // Current user (from auth context)
   const currentUser = user?.email || 'Admin';
@@ -356,6 +359,9 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
 
     setLoading(true);
     try {
+      // Convert ISO strings back to Date objects only at call time — deps stay as stable primitives
+      const startDate = startDateISO ? new Date(startDateISO) : null;
+      const endDate = endDateISO ? new Date(endDateISO) : null;
       const data = await accountingService.getAllEntries(
         companyId, 
         branchId === 'all' ? undefined : branchId || undefined,
@@ -374,7 +380,7 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
     } finally {
       setLoading(false);
     }
-  }, [companyId, branchId, startDate, endDate, convertFromJournalEntry]);
+  }, [companyId, branchId, startDateISO, endDateISO, convertFromJournalEntry]);
 
   // Recalculate balances from entries
   const recalculateBalances = useCallback((entriesToUse: AccountingEntry[]) => {
@@ -399,7 +405,7 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
       loadAccounts();
       loadEntries();
     }
-  }, [companyId, branchId, startDate, endDate, loadAccounts, loadEntries]);
+  }, [companyId, branchId, startDateISO, endDateISO, loadAccounts, loadEntries]);
 
   // CRITICAL: Listen for purchase/sale delete events to refresh entries
   useEffect(() => {
@@ -1333,7 +1339,10 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
     await Promise.all([loadAccounts(), loadEntries()]);
   }, [loadAccounts, loadEntries]);
 
-  const value: AccountingContextType = {
+  const getAccountsByType = useCallback((type: PaymentMethod) => accounts.filter(account => account.type === type), [accounts]);
+  const getAccountById = useCallback((id: string) => accounts.find(account => account.id === id), [accounts]);
+
+  const value = useMemo<AccountingContextType>(() => ({
     entries,
     balances,
     loading,
@@ -1360,12 +1369,19 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
     recordExpense,
     recordPurchase,
     recordSupplierPayment,
-    
-    // Account management
     accounts,
-    getAccountsByType: (type: PaymentMethod) => accounts.filter(account => account.type === type),
-    getAccountById: (id: string) => accounts.find(account => account.id === id)
-  };
+    getAccountsByType,
+    getAccountById,
+  }), [
+    entries, balances, loading, accounts,
+    createEntry, refreshEntries, getEntriesByReference, getEntriesBySource,
+    getAccountBalance, getEntriesBySupplier, getEntriesByCustomer, getEntriesByWorker,
+    getSupplierBalance, getCustomerBalance, getWorkerBalance,
+    recordSale, recordSalePayment, recordRentalBooking, recordRentalDelivery,
+    recordRentalCreditDelivery, recordRentalReturn, recordStudioSale,
+    recordWorkerJobCompletion, recordWorkerPayment, recordExpense, recordPurchase,
+    recordSupplierPayment, getAccountsByType, getAccountById,
+  ]);
 
   return (
     <AccountingContext.Provider value={value}>

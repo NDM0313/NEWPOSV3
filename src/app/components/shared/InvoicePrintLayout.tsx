@@ -152,7 +152,7 @@ export const InvoicePrintLayout: React.FC<InvoicePrintLayoutProps> = ({ sale, on
             return (
               <tr key={item.id || index}>
                 <td>
-                  <div>{item.productName}</div>
+                  <div>{item.isStudioProduct ? 'Studio Product (Auto Generated)' : item.productName}</div>
                   {item.sku && (
                     <div style={{ fontSize: '10px', color: '#6b7280', marginTop: '2px' }}>
                       <span className="classic-print-sku">{item.sku}</span>

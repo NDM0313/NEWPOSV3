@@ -871,7 +871,9 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
                     </TableHeader>
                     <TableBody>
                       {sale.items.map((item) => {
-                        const productName = item.productName || item.name || 'Unknown Product';
+                        const productName = item.isStudioProduct === true
+                          ? 'Studio Product (Auto Generated)'
+                          : (item.productName || item.name || 'Unknown Product');
                         const displaySku = item.sku || 'N/A';
                         const qty = item.quantity ?? (item as any).qty ?? 0;
                         const variation = (item as any).variation || (item as any).product_variations || null;

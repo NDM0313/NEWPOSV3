@@ -38,7 +38,7 @@ Confirm:
 Run:
 
 git add .
-git commit -m "STUDIO TEST MODE "
+git commit -m "fix studio SALE generated invoice but stock history is not fix  "
 git push origin main
 
 Examples:

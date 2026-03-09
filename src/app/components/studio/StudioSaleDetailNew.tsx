@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { 
   ArrowLeft,
   Calendar,
@@ -58,7 +59,6 @@ import { DatePicker } from '../ui/DatePicker';
 import { format } from 'date-fns';
 import { useNavigation } from '@/app/context/NavigationContext';
 import { useSupabase } from '@/app/context/SupabaseContext';
-import { studioService } from '@/app/services/studioService';
 import { contactService } from '@/app/services/contactService';
 import { saleService } from '@/app/services/saleService';
 import { studioProductionService } from '@/app/services/studioProductionService';
@@ -228,6 +228,8 @@ interface StudioSaleDetail {
   fabricPurchaseCost: number;
   /** 'sale' = from sales table (payment can be recorded); 'studio_order' = from studio_orders only */
   source?: 'sale' | 'studio_order';
+  /** Sale line items (when source is sale). Used to check if studio product line exists (invoice generated). */
+  items?: Array<{ id: string; productId?: string; productName?: string; isStudioProduct?: boolean }>;
 }
 
 // Mock data removed - data is loaded from Supabase via loadStudioOrder()
@@ -506,7 +508,8 @@ export const StudioSaleDetailNew = () => {
       paidAmount: Number(sale.paid_amount) || 0,
       balanceDue: Number(sale.due_amount) || 0,
       fabricPurchaseCost: fabricCost,
-      source: 'sale'
+      source: 'sale',
+      items: items.map((i: any) => ({ id: i.id || '', productId: i.product_id, productName: i.product_name, isStudioProduct: i.isStudioProduct === true || i.is_studio_product === true })),
     };
   }, []);
 
@@ -596,22 +599,16 @@ export const StudioSaleDetailNew = () => {
           return;
         }
       } catch (_) {
-        // Not a sale id or sale not found; try studio_order
+        // Sale not found – do not fall back to legacy studio_orders (table dropped)
       }
-      try {
-        const order = await studioService.getStudioOrder(selectedStudioSaleId);
-        const convertedDetail = convertFromSupabaseOrder(order);
-        setSaleDetail(convertedDetail);
-      } catch {
-        setSaleDetail(null);
-      }
+      setSaleDetail(null);
     } catch (error) {
       console.error('Error loading studio order/sale:', error);
       setSaleDetail(null);
     } finally {
       setLoading(false);
     }
-  }, [selectedStudioSaleId, companyId, branchId, user?.id, convertFromSale, convertFromSupabaseOrder, stagesToProductionSteps]);
+  }, [selectedStudioSaleId, companyId, branchId, user?.id, convertFromSale, stagesToProductionSteps]);
 
   // Refetch studio sale detail when this sale was updated (e.g. after editing in SaleForm drawer)
   useEffect(() => {
@@ -803,6 +800,9 @@ export const StudioSaleDetailNew = () => {
     ? saleDetail.productionSteps.length > 0 && saleDetail.productionSteps.every(isStepCompleted)
     : false;
 
+  /** Invoice is generated when studio product line exists (Create Product + Add to Sale). Shipment Add requires this. */
+  const hasInvoiceGenerated = (saleDetail?.items ?? []).some((i) => i.isStudioProduct === true);
+
   /** Header status: ONLY from production stages. Completed = all stages completed; else In Progress / Pending. */
   const headerStatus: SaleStatus = !saleDetail
     ? 'Draft'
@@ -916,14 +916,7 @@ export const StudioSaleDetailNew = () => {
       const nextStep = stepsAfterReload?.find((s) => s.order === nextOrder);
       if (nextStep) {
         setExpandedSteps((prev) => new Set(prev).add(nextStep.id));
-        if (nextStep.status === 'Pending') {
-          setShowWorkerEditModal(nextStep.id);
-          setEditingWorkerData({
-            workers: [{ id: `aw-${nextStep.id}`, workerId: '', workerName: '', role: 'Main', cost: 0 }],
-            expectedCompletionDate: '',
-            notes: '',
-          });
-        }
+        // Do not auto-open Assign worker dialog – user opens it by clicking Assign
       }
       window.dispatchEvent(new CustomEvent('studio-production-saved'));
       window.dispatchEvent(new CustomEvent('ledgerUpdated', { detail: { ledgerType: 'worker', entityId: workerId } }));
@@ -935,14 +928,17 @@ export const StudioSaleDetailNew = () => {
     }
   };
 
-  /** Try to ensure a studio production exists for the current sale (create if missing). Returns productionId or error reason. */
+  /** Try to ensure a studio production exists for the current sale (create if missing). Returns productionId or error reason. One sale = one production; no duplicates. */
   const ensureProductionForSale = useCallback(async (): Promise<{ productionId: string | null; error?: 'NO_BRANCH' | 'NO_ITEMS' | 'CREATE_FAILED' }> => {
     if (!selectedStudioSaleId || !companyId) return { productionId: null, error: 'CREATE_FAILED' };
     try {
       const sale = await saleService.getSale(selectedStudioSaleId);
       if (!sale?.id) return { productionId: null, error: 'CREATE_FAILED' };
       const productions = await studioProductionService.getProductionsBySaleId(sale.id);
-      if (productions.length > 0) return { productionId: productions[0].id };
+      if (productions.length > 0) {
+        if (import.meta.env?.DEV) console.log('[StudioSaleDetail] ensureProductionForSale: existing production', { saleId: sale.id, productionId: productions[0].id });
+        return { productionId: productions[0].id };
+      }
       let effectiveBranchId = branchId && branchId !== 'all' && /^[0-9a-f-]{36}$/i.test(branchId) ? branchId : null;
       if (!effectiveBranchId) {
         const branches = await branchService.getAllBranches(companyId).catch(() => []);
@@ -963,6 +959,7 @@ export const StudioSaleDetailNew = () => {
         unit: firstItem.unit || 'piece',
         created_by: user?.id
       });
+      if (import.meta.env?.DEV) console.log('[StudioSaleDetail] ensureProductionForSale: created production', { saleId: sale.id, productionId: production.id });
       // No auto-stages: manager decides via Customize Tasks
       return { productionId: production.id };
     } catch (e: unknown) {
@@ -1019,13 +1016,17 @@ export const StudioSaleDetailNew = () => {
       }
     }
     setSavingStage(true);
+    if (import.meta.env?.DEV) {
+      console.log('[StudioSaleDetail] persistAllStagesToBackend', { saleId: saleDetail?.id, productionId: currentProductionId, localStepsCount: localSteps.length });
+    }
     try {
       let serverStages = await studioProductionService.getStagesByProductionId(currentProductionId);
       if (serverStages.length === 0 && localSteps.length > 0) {
-        // Create stages from manager's choices (localSteps), not default 3
-        for (const step of localSteps) {
+        // Create stages from manager's choices (localSteps) with correct position so all save (stage_order)
+        for (let i = 0; i < localSteps.length; i++) {
+          const step = localSteps[i];
           const st = step.stageType || 'handwork';
-          await studioProductionService.createStage(currentProductionId, { stage_type: st, cost: 0 });
+          await studioProductionService.createStage(currentProductionId, { stage_type: st, cost: 0 }, step.order ?? i + 1);
         }
         serverStages = await studioProductionService.getStagesByProductionId(currentProductionId);
       }
@@ -1074,19 +1075,11 @@ export const StudioSaleDetailNew = () => {
             : null
         });
       }
-      const maxCompletedOrder = completedOrdersJustSaved.length ? Math.max(...completedOrdersJustSaved) : 0;
       const stepsAfterReload = await reloadProductionSteps();
-      const nextStepAfterSave = stepsAfterReload?.find((s) => s.order === maxCompletedOrder + 1);
+      const nextStepAfterSave = stepsAfterReload?.find((s) => s.order === (completedOrdersJustSaved.length ? Math.max(...completedOrdersJustSaved) : 0) + 1);
       if (nextStepAfterSave) {
         setExpandedSteps((prev) => new Set(prev).add(nextStepAfterSave.id));
-        if (nextStepAfterSave.status === 'Pending') {
-          setShowWorkerEditModal(nextStepAfterSave.id);
-          setEditingWorkerData({
-            workers: [{ id: `aw-${nextStepAfterSave.id}`, workerId: '', workerName: '', role: 'Main', cost: 0 }],
-            expectedCompletionDate: '',
-            notes: '',
-          });
-        }
+        // Do not auto-open Assign worker dialog – user opens it by clicking Assign
       }
       setHasUnsavedChanges(false);
       savedSuccessfullyRef.current = true;
@@ -1113,7 +1106,19 @@ export const StudioSaleDetailNew = () => {
       }
       if (!opts?.skipConfirmDialog) setShowSaveConfirmDialog(true);
     } catch (e: any) {
-      toast.error(e?.message || 'Failed to save changes');
+      const msg = e?.message ?? String(e);
+      if (import.meta.env?.DEV) console.warn('[StudioSaleDetail] persistAllStagesToBackend failed:', { message: msg, error: e });
+      const isStudioOrders = /relation\s+["']?studio_orders["']?\s+does not exist/i.test(msg);
+      const isStagesMissing = /relation\s+["']?studio_production_stages["']?\s+does not exist/i.test(msg) || e?.code === 'PGRST116' || e?.status === 404;
+      if (isStudioOrders) {
+        toast.error('Database still references studio_orders. Run the FULL fix_after_drop_studio_orders.sql from line 1 in Supabase (all statements).');
+      } else if (isStagesMissing) {
+        toast.error('Production stages table missing. Run migrations/fix_after_drop_studio_orders.sql in Supabase SQL Editor.');
+      } else if (/production.*not.*created|ensure.*sale/i.test(msg)) {
+        toast.error('Production record could not be created for this studio sale.');
+      } else {
+        toast.error(msg ? msg.slice(0, 120) : 'Failed to save stages to database.');
+      }
     } finally {
       setSavingStage(false);
     }
@@ -1320,6 +1325,7 @@ export const StudioSaleDetailNew = () => {
         quantity: 1,
         unit_price: salePriceNum,
         total: salePriceNum,
+        is_studio_product: true,
       };
       let insertedItemId: string | null = null;
       const { data: insertedItem, error: itemErr } = await supabase
@@ -1328,19 +1334,27 @@ export const StudioSaleDetailNew = () => {
         .select('id')
         .single();
       if (itemErr) {
-        const { data: fallbackData, error: fallbackErr } = await supabase
+        const fallbackPayload: Record<string, unknown> = {
+          sale_id: saleDetail.id,
+          product_id: product.id,
+          product_name: product.name,
+          sku: product.sku,
+          quantity: 1,
+          price: salePriceNum,
+          total: salePriceNum,
+        };
+        let { data: fallbackData, error: fallbackErr } = await supabase
           .from('sale_items')
-          .insert({
-            sale_id: saleDetail.id,
-            product_id: product.id,
-            product_name: product.name,
-            sku: product.sku,
-            quantity: 1,
-            price: salePriceNum,
-            total: salePriceNum,
-          })
+          .insert({ ...fallbackPayload, is_studio_product: true })
           .select('id')
           .single();
+        if (fallbackErr && (fallbackErr.code === '42703' || String(fallbackErr.message || '').includes('is_studio_product'))) {
+          ({ data: fallbackData, error: fallbackErr } = await supabase
+            .from('sale_items')
+            .insert(fallbackPayload)
+            .select('id')
+            .single());
+        }
         if (fallbackErr) throw new Error(fallbackErr.message || 'Failed to add item to invoice');
         insertedItemId = (fallbackData as any)?.id ?? null;
       } else {
@@ -1374,6 +1388,7 @@ export const StudioSaleDetailNew = () => {
       }
       setCreateProductInvoiceImageFiles([]);
       setShowCreateProductInvoiceModal(false);
+      setSaleDetail((prev) => prev && insertedItemId ? { ...prev, items: [...(prev.items || []), { id: insertedItemId, productId: product.id, productName: product.name, isStudioProduct: true }] } : prev);
       toast.success('Product created and invoice updated.');
       if (setOpenSaleIdForView) setOpenSaleIdForView(saleDetail.id);
       setCurrentView('sales');
@@ -1456,8 +1471,28 @@ export const StudioSaleDetailNew = () => {
       : editingWorkerData.workers[0]?.workerName || '';
 
     const stepId = showWorkerEditModal;
+    const currentStep = saleDetail?.productionSteps.find((s) => s.id === stepId);
     const isServerUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(stepId);
     const oneWorker = editingWorkerData.workers.length === 1 && editingWorkerData.workers[0]?.workerId;
+
+    if (isServerUuid && currentStep?.status === 'Completed') {
+      setSavingStage(true);
+      try {
+        await studioProductionService.updateStage(stepId, {
+          cost: totalWorkerCost,
+          ...(editingWorkerData.notes != null ? { notes: editingWorkerData.notes?.trim() || null } : {}),
+        });
+        toast.success('Cost updated.');
+        await reloadProductionSteps();
+        setShowWorkerEditModal(null);
+        window.dispatchEvent(new CustomEvent('studio-production-saved'));
+      } catch (e: any) {
+        toast.error(e?.message || 'Update failed');
+      } finally {
+        setSavingStage(false);
+      }
+      return;
+    }
 
     if (isServerUuid && oneWorker && editingWorkerData.workers[0]) {
       setSavingStage(true);
@@ -1680,52 +1715,65 @@ export const StudioSaleDetailNew = () => {
         }
       }
       if (currentProductionId) {
-        const stages = await studioProductionService.getStagesByProductionId(currentProductionId);
+        if (selectedTaskIds.length === 0) {
+          toast.error('Select at least one task.');
+          return;
+        }
         const taskIdToStageType: Record<string, 'dyer' | 'handwork' | 'stitching'> = {
           dyeing: 'dyer',
           handwork: 'handwork',
           stitching: 'stitching',
         };
-        const selectedTypes = new Set(
-          selectedTaskIds
-            .map((tid) => taskIdToStageType[tid])
-            .filter((t): t is 'dyer' | 'handwork' | 'stitching' => !!t)
-        );
+        const stagesToSave = selectedTaskIds
+          .map((tid) => taskIdToStageType[tid])
+          .filter((t): t is 'dyer' | 'handwork' | 'stitching' => !!t);
+        if (stagesToSave.length === 0) {
+          toast.error('Select at least one standard task (Dyeing, Handwork, or Stitching).');
+          return;
+        }
+        if (import.meta.env?.DEV) {
+          console.log('[StudioSaleDetail] Saving production stages:', stagesToSave.map((t, i) => ({ stage_type: t, position: i + 1 })));
+        }
+        const stages = await studioProductionService.getStagesByProductionId(currentProductionId);
         const stagesArr = stages as any[];
-        const existingTypes = new Set(stagesArr.map((s: any) => s.stage_type));
-        const allPendingAndUnassigned = stagesArr.every((s) => s.status !== 'completed' && !s.assigned_worker_id);
+        const noStagesYet = stagesArr.length === 0;
+        const allPendingAndUnassigned = stagesArr.length > 0 && stagesArr.every((s) => s.status !== 'completed' && !s.assigned_worker_id);
 
-        if (allPendingAndUnassigned && stagesArr.length > 0) {
-          // Delete all and recreate in selected order so backend created_at matches selection order
-          for (const s of stagesArr) {
-            try {
-              await studioProductionService.deleteStage(s.id);
-            } catch {
-              /* skip */
-            }
+        // When no stages exist yet, or all existing are pending/unassigned: replace full set in one go (single bulk write)
+        if (noStagesYet || (allPendingAndUnassigned && stagesArr.length > 0)) {
+          if (import.meta.env?.DEV) {
+            console.log('[StudioSaleDetail] Apply config: replaceStages', { productionId: currentProductionId, stagesToSave, noStagesYet });
           }
-          existingTypes.clear();
+          await studioProductionService.replaceStages(
+            currentProductionId,
+            stagesToSave.map((stage_type, i) => ({ stage_type, position: i + 1 }))
+          );
         } else {
-          // Delete only stages that are no longer selected
+          // Some stages have workers or are completed: only remove unselected, add missing with correct position
+          const selectedTypes = new Set(stagesToSave);
+          const keptStages = stagesArr.filter((s: any) => selectedTypes.has(s.stage_type));
           for (const s of stagesArr) {
             const stageType = s.stage_type;
             if (!selectedTypes.has(stageType)) {
               try {
                 await studioProductionService.deleteStage(s.id);
-                existingTypes.delete(stageType);
               } catch (delErr: any) {
                 toast.warning(delErr?.message || `Could not remove ${stageType}. It may have a worker assigned or be completed.`);
               }
             }
           }
-        }
-
-        // Create stages that are selected but not yet in backend (in selected order)
-        for (const taskId of selectedTaskIds) {
-          const stageType = taskIdToStageType[taskId];
-          if (stageType && !existingTypes.has(stageType)) {
-            await studioProductionService.createStage(currentProductionId, { stage_type: stageType, cost: 0 });
-            existingTypes.add(stageType);
+          const existingTypes = new Set(keptStages.map((s: any) => s.stage_type));
+          const maxOrder = keptStages.length > 0
+            ? Math.max(...(keptStages.map((s: any) => (s.stage_order != null ? s.stage_order : 1)) as number[]))
+            : 0;
+          let nextPosition = maxOrder + 1;
+          for (const taskId of selectedTaskIds) {
+            const stageType = taskIdToStageType[taskId];
+            if (stageType && !existingTypes.has(stageType)) {
+              await studioProductionService.createStage(currentProductionId, { stage_type: stageType, cost: 0 }, nextPosition);
+              existingTypes.add(stageType);
+              nextPosition += 1;
+            }
           }
         }
 
@@ -1750,8 +1798,28 @@ export const StudioSaleDetailNew = () => {
         toast.success('Configuration saved.');
       }
     } catch (e: any) {
-      console.warn('[StudioSaleDetail] Persist task config failed:', e?.message);
-      toast.warning('Configuration applied locally. Save from the page to persist.');
+      const msg = e?.message ?? String(e);
+      const code = e?.code ?? e?.status;
+      if (import.meta.env?.DEV) {
+        console.warn('[StudioSaleDetail] Apply task config failed:', { message: msg, code, error: e });
+      }
+      const isStudioOrders = /relation\s+["']?studio_orders["']?\s+does not exist/i.test(msg);
+      const isStagesMissing = /relation\s+["']?studio_production_stages["']?\s+does not exist/i.test(msg) || e?.code === 'PGRST116' || e?.status === 404;
+      if (isStudioOrders) {
+        toast.error(
+          'Database still references dropped table studio_orders. Run the FULL migrations/fix_after_drop_studio_orders.sql from line 1 in Supabase SQL Editor (all statements, including the two functions at the top).',
+          { duration: 10000 }
+        );
+      } else if (isStagesMissing) {
+        toast.error(
+          'Production stages table missing. Run migrations/fix_after_drop_studio_orders.sql in Supabase SQL Editor, then try again.',
+          { duration: 8000 }
+        );
+      } else if (/production|ensure.*sale/i.test(msg) || code === 'CREATE_FAILED') {
+        toast.error('Production record could not be created for this studio sale. Check branch and sale items.');
+      } else {
+        toast.error('Failed to persist selected stages to studio_production_stages. ' + (msg ? msg.slice(0, 80) : ''));
+      }
     }
   };
 
@@ -2245,7 +2313,18 @@ export const StudioSaleDetailNew = () => {
                                         </div>
                                         <div className="flex items-center gap-2 text-sm">
                                           <DollarSign size={14} className="text-orange-500" />
-                                          <span className="text-orange-400 font-medium">{formatCurrency(step.workerCost)}</span>
+                                          <button
+                                            type="button"
+                                            onClick={() => !stepLocked && handleOpenWorkerEdit(step.id)}
+                                            className={cn(
+                                              "text-orange-400 font-medium rounded px-1 -mx-1",
+                                              !stepLocked && "hover:bg-orange-500/20 hover:text-orange-300 cursor-pointer",
+                                              stepLocked && "cursor-default"
+                                            )}
+                                            title={stepLocked ? undefined : 'Click to edit worker / cost'}
+                                          >
+                                            {formatCurrency(step.workerCost)}
+                                          </button>
                                           {step.assignedWorkers && step.assignedWorkers.length > 1 && (
                                             <span className="text-xs text-gray-500">(total)</span>
                                           )}
@@ -2411,7 +2490,11 @@ export const StudioSaleDetailNew = () => {
                         {formatCurrency(saleDetail.productionSteps.reduce((sum, step) => sum + step.workerCost, 0))}
                       </span>
                     </div>
-                    <p className="text-xs text-gray-500">Set profit margin in the right panel &quot;Pricing Calculator&quot;, then click Save to sync invoice.</p>
+                    <p className="text-xs text-gray-500">
+                      {allTasksCompleted
+                        ? 'Set profit margin in the right panel "Pricing Calculator", then click Save to sync invoice.'
+                        : 'Complete all production stages to unlock the Pricing Calculator.'}
+                    </p>
                     {/* Payment Status Breakdown */}
                     <div className="pt-2 border-t border-gray-800">
                       <p className="text-xs text-gray-500 mb-2">Payment Status:</p>
@@ -2524,29 +2607,29 @@ export const StudioSaleDetailNew = () => {
           <div className="flex flex-col h-full overflow-y-auto bg-[#0F1419]">
             <div className="p-6 space-y-6">
               
-              {/* SHIPMENT SECTION – show full design only when there is at least one shipment; otherwise only header + Add */}
+              {/* SHIPMENT SECTION – Add disabled until invoice is generated (studio product line). */}
               <div>
                 <div className="flex items-center justify-between mb-4">
                   <h2 className="text-base font-bold text-white flex items-center gap-2">
-                    <Truck size={18} className={allTasksCompleted ? "text-blue-400" : "text-gray-600"} />
+                    <Truck size={18} className={hasInvoiceGenerated ? "text-blue-400" : "text-gray-600"} />
                     Shipment
-                    {!allTasksCompleted && (
-                      <Lock size={14} className="text-gray-600" />
+                    {!hasInvoiceGenerated && (
+                      <Lock size={14} className="text-gray-600" title="Generate invoice first (Create Product + Add to Sale)" />
                     )}
                   </h2>
                   <Button
                     size="sm"
                     onClick={() => {
-                      if (!allTasksCompleted) {
-                        alert('⚠️ Please complete all production tasks before adding shipment');
+                      if (!hasInvoiceGenerated) {
+                        toast.warning('Generate the invoice first: use "Create Product + Add to Sale" in the left panel, then add shipment.');
                         return;
                       }
                       setShowShipmentModal(true);
                     }}
-                    disabled={!allTasksCompleted}
+                    disabled={!hasInvoiceGenerated}
                     className={cn(
                       "bg-blue-600 hover:bg-blue-700",
-                      !allTasksCompleted && "opacity-50 cursor-not-allowed"
+                      !hasInvoiceGenerated && "opacity-50 cursor-not-allowed"
                     )}
                   >
                     <Plus size={16} className="mr-2" />
@@ -2795,63 +2878,73 @@ export const StudioSaleDetailNew = () => {
                 onChange={(e) => { if (showDocumentUpload) { handleCameraCapture(showDocumentUpload, e); e.target.value = ''; } }}
               />
 
-              {/* PRICING CALCULATOR – inputs only (financial summary moved to Payment panel) */}
-              <div className="rounded-xl overflow-hidden border border-gray-800 bg-gray-900/50">
-                <div className="px-5 py-3 bg-gray-950/50 border-b border-gray-800">
+              {/* PRICING CALCULATOR – disabled until all production stages are complete */}
+              <div className={cn(
+                "rounded-xl overflow-hidden border border-gray-800 bg-gray-900/50",
+                !allTasksCompleted && "opacity-70 pointer-events-none"
+              )}>
+                <div className="px-5 py-3 bg-gray-950/50 border-b border-gray-800 flex items-center justify-between">
                   <h2 className="text-base font-bold text-white flex items-center gap-2">
-                    <DollarSign size={18} className="text-blue-400" />
+                    <DollarSign size={18} className={allTasksCompleted ? "text-blue-400" : "text-gray-500"} />
                     Pricing Calculator
+                    {!allTasksCompleted && <Lock size={14} className="text-gray-500" />}
                   </h2>
                 </div>
                 <div className="p-5 space-y-4">
-                  <div>
-                    <p className="text-sm text-gray-400 mb-1">Production Cost</p>
-                    <p className="text-base font-semibold text-white">{formatCurrency(productionCostFromStages)}</p>
-                  </div>
-                  <div>
-                    <div className="flex items-center justify-between mb-2">
-                      <Label className="text-sm text-gray-400">Profit Margin</Label>
-                      <div className="flex items-center gap-2">
-                        <span className={cn("text-xs", profitMarginMode === 'fixed' ? "text-gray-500" : "text-blue-400 font-medium")}>%</span>
-                        <Switch
-                          checked={profitMarginMode === 'fixed'}
-                          onCheckedChange={(checked) => setProfitMarginMode(checked ? 'fixed' : 'percentage')}
-                          className="data-[state=checked]:bg-blue-600"
-                        />
-                        <span className={cn("text-xs", profitMarginMode === 'fixed' ? "text-blue-400 font-medium" : "text-gray-500")}>Fixed</span>
+                  {!allTasksCompleted ? (
+                    <p className="text-sm text-gray-400">Complete all production stages to set profit margin and sync invoice.</p>
+                  ) : (
+                    <>
+                      <div>
+                        <p className="text-sm text-gray-400 mb-1">Production Cost</p>
+                        <p className="text-base font-semibold text-white">{formatCurrency(productionCostFromStages)}</p>
                       </div>
-                    </div>
-                    <Input
-                      type="number"
-                      min={0}
-                      step={profitMarginMode === 'percentage' ? 0.5 : 1}
-                      className="bg-gray-950 border-gray-700 text-white text-sm"
-                      value={profitMarginValue}
-                      onChange={(e) => setProfitMarginValue(e.target.value)}
-                    />
-                    <p className="text-xs text-gray-500 mt-1.5 flex items-center gap-1">
-                      <Info size={12} className="text-blue-400 shrink-0" />
-                      {profitMarginMode === 'percentage'
-                        ? `${profitMarginValue || 0}% of production cost`
-                        : 'Fixed amount'}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-400 mb-1">Profit Distribution</p>
-                    <div className="flex items-center justify-between bg-gray-950/80 border border-gray-800 rounded-lg p-3">
-                      <span className="text-sm text-white">{completedProductionSteps.length} Stages</span>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="border-gray-600 text-gray-300 hover:bg-gray-800 hover:text-white"
-                        onClick={() => setShowProfitDistributionModal(true)}
-                        disabled={completedProductionSteps.length === 0}
-                      >
-                        Configure Profit Distribution
-                        <ChevronRight size={14} className="ml-1" />
-                      </Button>
-                    </div>
-                  </div>
+                      <div>
+                        <div className="flex items-center justify-between mb-2">
+                          <Label className="text-sm text-gray-400">Profit Margin</Label>
+                          <div className="flex items-center gap-2">
+                            <span className={cn("text-xs", profitMarginMode === 'fixed' ? "text-gray-500" : "text-blue-400 font-medium")}>%</span>
+                            <Switch
+                              checked={profitMarginMode === 'fixed'}
+                              onCheckedChange={(checked) => setProfitMarginMode(checked ? 'fixed' : 'percentage')}
+                              className="data-[state=checked]:bg-blue-600"
+                            />
+                            <span className={cn("text-xs", profitMarginMode === 'fixed' ? "text-blue-400 font-medium" : "text-gray-500")}>Fixed</span>
+                          </div>
+                        </div>
+                        <Input
+                          type="number"
+                          min={0}
+                          step={profitMarginMode === 'percentage' ? 0.5 : 1}
+                          className="bg-gray-950 border-gray-700 text-white text-sm"
+                          value={profitMarginValue}
+                          onChange={(e) => setProfitMarginValue(e.target.value)}
+                        />
+                        <p className="text-xs text-gray-500 mt-1.5 flex items-center gap-1">
+                          <Info size={12} className="text-blue-400 shrink-0" />
+                          {profitMarginMode === 'percentage'
+                            ? `${profitMarginValue || 0}% of production cost`
+                            : 'Fixed amount'}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-sm text-gray-400 mb-1">Profit Distribution</p>
+                        <div className="flex items-center justify-between bg-gray-950/80 border border-gray-800 rounded-lg p-3">
+                          <span className="text-sm text-white">{completedProductionSteps.length} Stages</span>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="border-gray-600 text-gray-300 hover:bg-gray-800 hover:text-white"
+                            onClick={() => setShowProfitDistributionModal(true)}
+                            disabled={completedProductionSteps.length === 0}
+                          >
+                            Configure Profit Distribution
+                            <ChevronRight size={14} className="ml-1" />
+                          </Button>
+                        </div>
+                      </div>
+                    </>
+                  )}
                 </div>
               </div>
 
@@ -3382,15 +3475,25 @@ export const StudioSaleDetailNew = () => {
         </div>
       )}
 
-      {/* Assign Worker Modal – workers filtered by task category (Dyeing / Stitching / Handwork) */}
-      {showWorkerEditModal && (() => {
+      {/* Assign Worker Modal – workers filtered by task category (Dyeing / Stitching / Handwork); rendered in portal so it always stacks on top */}
+      {showWorkerEditModal && createPortal(
+        (() => {
         const currentStep = saleDetail?.productionSteps.find(s => s.id === showWorkerEditModal);
         const workersForCategory = getWorkersForStageType(currentStep?.stageType, workers);
         const workerList = showAllWorkersInAssignModal ? workers : workersForCategory;
         const categoryLabel = currentStep?.stageType === 'dyer' ? 'Dyeing' : currentStep?.stageType === 'stitching' ? 'Stitching' : currentStep?.stageType === 'handwork' ? 'Handwork / Embroidery' : 'this task';
         return (
-        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[9999] p-4" style={{ zIndex: 9999 }}>
-          <div className="bg-gray-900 border border-gray-800 rounded-xl p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+        <div
+          className="fixed inset-0 bg-black/90 backdrop-blur-sm flex items-center justify-center z-[9999] p-4"
+          style={{ zIndex: 9999 }}
+          onClick={() => { setShowWorkerEditModal(null); setShowAllWorkersInAssignModal(false); }}
+          role="dialog"
+          aria-modal="true"
+        >
+          <div
+            className="bg-gray-900 border border-gray-800 rounded-xl p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto"
+            onClick={e => e.stopPropagation()}
+          >
             <div className="flex items-center justify-between mb-5">
               <div>
                 <h3 className="text-lg font-bold text-white flex items-center gap-2">
@@ -3578,10 +3681,9 @@ export const StudioSaleDetailNew = () => {
 
               <div className="flex flex-wrap gap-3 pt-2">
                 <Button
-                  onClick={() => setShowWorkerEditModal(null)}
+                  onClick={() => { setShowWorkerEditModal(null); setShowAllWorkersInAssignModal(false); }}
                   variant="outline"
                   className="border-gray-700"
-                  disabled={savingStage}
                 >
                   Cancel
                 </Button>
@@ -3613,7 +3715,9 @@ export const StudioSaleDetailNew = () => {
           </div>
         </div>
         );
-      })()}
+      })(),
+        document.body
+      )}
 
       {/* Receive from Worker Modal */}
       {showReceiveModal && (

@@ -170,14 +170,9 @@ export const StudioSalesListNew = () => {
     try {
       setLoading(true);
       const effectiveBranchId = branchId === 'all' ? undefined : branchId || undefined;
-      const [orders, studioSalesFromSales] = await Promise.all([
-        studioService.getAllStudioOrders(companyId, effectiveBranchId),
-        saleService.getStudioSales(companyId, effectiveBranchId).catch(() => [])
-      ]);
+      // Load only from sales table (studio_orders table dropped – no legacy orders)
+      const studioSalesFromSales = await saleService.getStudioSales(companyId, effectiveBranchId).catch(() => []);
 
-      const fromOrders = orders.map(convertFromSupabaseOrder);
-
-      // For studio sales: fetch productions and stages to derive production status
       const saleIds = (studioSalesFromSales || []).map((s: any) => s.id).filter(Boolean);
       const stagesBySaleId: Record<string, Array<{ status?: string }>> = {};
       if (saleIds.length > 0) {
@@ -199,7 +194,7 @@ export const StudioSalesListNew = () => {
       const fromSales = (studioSalesFromSales || []).map((sale: any) =>
         convertFromSale(sale, stagesBySaleId[sale.id])
       );
-      setSales([...fromOrders, ...fromSales]);
+      setSales(fromSales);
     } catch (error) {
       console.error('Error loading studio orders:', error);
       toast.error('Failed to load studio sales');
@@ -207,7 +202,7 @@ export const StudioSalesListNew = () => {
     } finally {
       setLoading(false);
     }
-  }, [companyId, branchId, convertFromSupabaseOrder, convertFromSale]);
+  }, [companyId, branchId, convertFromSale]);
 
   useEffect(() => {
     loadStudioOrders();

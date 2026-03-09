@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useCallback, useMemo, ReactNode } from 'react';
 
 type View = 
   | 'dashboard' 
@@ -143,13 +143,13 @@ export const NavigationProvider = ({ children }: { children: ReactNode }) => {
   const [packingModalData, setPackingModalData] = useState<{ itemId: number | string | null; productName: string; initialData?: any; onSave?: (details: any) => void } | null>(null);
   
   // Wrapper function to set both ID and type
-  const setCreatedContactId = (id: string | null, type?: 'customer' | 'supplier' | 'both' | null) => {
+  const setCreatedContactId = useCallback((id: string | null, type?: 'customer' | 'supplier' | 'both' | null) => {
     setCreatedContactIdState(id);
     setCreatedContactType(type || null);
-  };
+  }, []);
 
   // Packing Modal Functions
-  const openPackingModal = (data: { itemId: number | string; productName: string; initialData?: any; onSave: (details: any) => void }) => {
+  const openPackingModal = useCallback((data: { itemId: number | string; productName: string; initialData?: any; onSave: (details: any) => void }) => {
     setPackingModalData({
       itemId: data.itemId,
       productName: data.productName,
@@ -157,20 +157,21 @@ export const NavigationProvider = ({ children }: { children: ReactNode }) => {
       onSave: data.onSave
     });
     setPackingModalOpen(true);
-  };
+  }, []);
 
-  const closePackingModal = () => {
+  const closePackingModal = useCallback(() => {
     setPackingModalOpen(false);
     // Clear data after a short delay to allow modal to close smoothly
     setTimeout(() => {
       setPackingModalData(null);
     }, 200);
-  };
+  }, []);
 
-  const toggleSidebar = () => setIsSidebarOpen(!isSidebarOpen);
+  // Use functional updater to avoid stale closure on isSidebarOpen
+  const toggleSidebar = useCallback(() => setIsSidebarOpen(prev => !prev), []);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   
-  const openDrawer = (drawer: DrawerType, parent?: DrawerType, options?: { contactType?: 'customer' | 'supplier' | 'worker'; product?: any; sale?: any; purchase?: any; contact?: any; prefillName?: string; prefillPhone?: string }) => {
+  const openDrawer = useCallback((drawer: DrawerType, parent?: DrawerType, options?: { contactType?: 'customer' | 'supplier' | 'worker'; product?: any; sale?: any; purchase?: any; contact?: any; prefillName?: string; prefillPhone?: string }) => {
     // Set contact type if provided (or from contact when editing)
     if (options?.contactType) {
       setDrawerContactType(options.contactType);
@@ -215,9 +216,9 @@ export const NavigationProvider = ({ children }: { children: ReactNode }) => {
       setParentDrawer(null);
     }
     setActiveDrawer(drawer);
-  };
+  }, []);
 
-  const closeDrawer = () => {
+  const closeDrawer = useCallback(() => {
     // Clear contact type, data, and prefill when closing
     setDrawerContactType(undefined);
     setDrawerData(undefined);
@@ -225,50 +226,60 @@ export const NavigationProvider = ({ children }: { children: ReactNode }) => {
     setDrawerPrefillPhone(undefined);
     
     // If there's a parent drawer, return to it
-    if (parentDrawer) {
-      setActiveDrawer(parentDrawer);
-      setParentDrawer(null);
-    } else {
-      // Otherwise close completely
+    setParentDrawer(prev => {
+      if (prev) {
+        setActiveDrawer(prev);
+        return null;
+      }
       setActiveDrawer('none');
-    }
+      return null;
+    });
     // Note: Don't clear createdContactId here - let the parent form use it first
-  };
+  }, []);
+
+  const contextValue = useMemo(() => ({
+    currentView, 
+    setCurrentView, 
+    isSidebarOpen, 
+    toggleSidebar, 
+    mobileNavOpen,
+    setMobileNavOpen,
+    activeDrawer, 
+    openDrawer, 
+    closeDrawer, 
+    parentDrawer,
+    selectedStudioSaleId,
+    setSelectedStudioSaleId,
+    openSaleIdForView,
+    setOpenSaleIdForView,
+    selectedWorkerId,
+    setSelectedWorkerId,
+    selectedProductionId,
+    setSelectedProductionId,
+    selectedStudioOrderIdV3,
+    setSelectedStudioOrderIdV3,
+    drawerContactType,
+    drawerData,
+    drawerPrefillName,
+    drawerPrefillPhone,
+    createdContactId,
+    createdContactType,
+    setCreatedContactId,
+    packingModalOpen,
+    openPackingModal,
+    closePackingModal,
+    packingModalData
+  }), [
+    currentView, isSidebarOpen, mobileNavOpen, activeDrawer, parentDrawer,
+    selectedStudioSaleId, openSaleIdForView, selectedWorkerId, selectedProductionId,
+    selectedStudioOrderIdV3, drawerContactType, drawerData, drawerPrefillName,
+    drawerPrefillPhone, createdContactId, createdContactType, packingModalOpen,
+    packingModalData, toggleSidebar, openDrawer, closeDrawer, setCreatedContactId,
+    openPackingModal, closePackingModal
+  ]);
 
   return (
-    <NavigationContext.Provider value={{ 
-      currentView, 
-      setCurrentView, 
-      isSidebarOpen, 
-      toggleSidebar, 
-      mobileNavOpen,
-      setMobileNavOpen,
-      activeDrawer, 
-      openDrawer, 
-      closeDrawer, 
-      parentDrawer,
-      selectedStudioSaleId,
-      setSelectedStudioSaleId,
-      openSaleIdForView,
-      setOpenSaleIdForView,
-      selectedWorkerId,
-      setSelectedWorkerId,
-      selectedProductionId,
-      setSelectedProductionId,
-      selectedStudioOrderIdV3,
-      setSelectedStudioOrderIdV3,
-      drawerContactType,
-      drawerData,
-      drawerPrefillName,
-      drawerPrefillPhone,
-      createdContactId,
-      createdContactType,
-      setCreatedContactId,
-      packingModalOpen,
-      openPackingModal,
-      closePackingModal,
-      packingModalData
-    }}>
+    <NavigationContext.Provider value={contextValue}>
       {children}
     </NavigationContext.Provider>
   );

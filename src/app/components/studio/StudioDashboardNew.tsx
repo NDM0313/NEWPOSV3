@@ -91,6 +91,8 @@ interface StudioOrderDisplay {
   expectedDate: string;
   status: string;
   source: 'studio_order' | 'sale';
+  /** When source === 'sale', this is the sale id (same as id). When source === 'studio_order', undefined – do not use id for Studio Sale Detail. */
+  saleId?: string;
 }
 
 const stageTypeToLabel = (t: string) => t === 'dyer' ? 'Dyeing' : t === 'handwork' ? 'Handwork' : t === 'stitching' ? 'Stitching' : t;
@@ -409,6 +411,7 @@ export const StudioDashboardNew = () => {
   const [selectedDepartment, setSelectedDepartment] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusDetailOrderId, setStatusDetailOrderId] = useState<string | null>(null);
+  const [statusDetailOrderSaleId, setStatusDetailOrderSaleId] = useState<string | null>(null);
 
   // Convert Supabase studio_order to display format
   const convertFromSupabaseOrder = useCallback((supabaseOrder: any): StudioOrderDisplay => {
@@ -443,6 +446,7 @@ export const StudioDashboardNew = () => {
       expectedDate: supabaseOrder.delivery_date || '',
       status: supabaseOrder.status === 'completed' ? 'Completed' : 'In Progress',
       source: 'studio_order',
+      saleId: undefined,
     };
   }, []);
 
@@ -527,6 +531,7 @@ export const StudioDashboardNew = () => {
       assignedWorker,
       expectedDate: formatExpected(expectedDate && expectedDate !== '—' ? expectedDate : (saleDeadline || '—')),
       status,
+      saleId: sale.id,
       source: 'sale',
     };
   }, [deriveFromStages]);
@@ -537,18 +542,15 @@ export const StudioDashboardNew = () => {
     setLoading(true);
     try {
       await ensureStudioProductionsForCompany(companyId);
-      const [studioOrdersData, studioSalesData] = await Promise.all([
-        studioService.getAllStudioOrders(companyId, branchId === 'all' ? undefined : branchId || undefined).catch(() => []),
-        saleService.getStudioSales(companyId, branchId === 'all' ? undefined : branchId || undefined).catch(() => []),
-      ]);
-      const fromOrders = (studioOrdersData || []).map(convertFromSupabaseOrder);
+      // Load only from sales table (studio_orders table dropped)
+      const studioSalesData = await saleService.getStudioSales(companyId, branchId === 'all' ? undefined : branchId || undefined).catch(() => []);
       const fromSales = await Promise.all(
         (studioSalesData || []).map((sale: any) =>
           convertSaleToDisplay(sale).catch(() => null)
         )
       );
       const validFromSales = fromSales.filter((o): o is StudioOrderDisplay => o != null);
-      setOrders([...fromOrders, ...validFromSales]);
+      setOrders(validFromSales);
     } catch (error) {
       console.error('[STUDIO DASHBOARD] Error loading studio orders:', error);
       toast.error('Failed to load studio orders');
@@ -556,7 +558,7 @@ export const StudioDashboardNew = () => {
     } finally {
       setLoading(false);
     }
-  }, [companyId, branchId, convertFromSupabaseOrder, convertSaleToDisplay]);
+  }, [companyId, branchId, convertSaleToDisplay]);
 
   // Load orders on mount and when returning to dashboard (refetch so data is fresh)
   useEffect(() => {
@@ -785,8 +787,13 @@ export const StudioDashboardNew = () => {
                         size="sm"
                         onClick={(e) => {
                           e.stopPropagation();
-                          setSelectedStudioSaleId?.(order.id);
-                          setCurrentView('studio-sale-detail-new');
+                          const saleIdToOpen = order.saleId ?? (order.source === 'sale' ? order.id : null);
+                          if (saleIdToOpen) {
+                            setSelectedStudioSaleId?.(saleIdToOpen);
+                            setCurrentView('studio-sale-detail-new');
+                          } else {
+                            toast.error('Open this order from Studio Sales list (link by sale) to manage production.');
+                          }
                         }}
                         className="bg-cyan-600 hover:bg-cyan-700 text-white text-xs"
                       >
@@ -809,6 +816,7 @@ export const StudioDashboardNew = () => {
                             onClick={(e) => {
                               e.stopPropagation();
                               setStatusDetailOrderId(order.id);
+                              setStatusDetailOrderSaleId(order.saleId ?? null);
                             }}
                             className="text-gray-300 focus:bg-gray-800 focus:text-white cursor-pointer"
                           >
@@ -856,11 +864,19 @@ export const StudioDashboardNew = () => {
       {statusDetailOrderId && (
         <OrderDetailsModal
           orderId={statusDetailOrderId}
-          onClose={() => setStatusDetailOrderId(null)}
-          onOpenProduction={() => {
-            setSelectedStudioSaleId?.(statusDetailOrderId);
-            setCurrentView('studio-sale-detail-new');
+          onClose={() => {
             setStatusDetailOrderId(null);
+            setStatusDetailOrderSaleId(null);
+          }}
+          onOpenProduction={() => {
+            if (statusDetailOrderSaleId) {
+              setSelectedStudioSaleId?.(statusDetailOrderSaleId);
+              setCurrentView('studio-sale-detail-new');
+            } else {
+              toast.error('Open this order from Studio Sales list to manage production.');
+            }
+            setStatusDetailOrderId(null);
+            setStatusDetailOrderSaleId(null);
           }}
         />
       )}

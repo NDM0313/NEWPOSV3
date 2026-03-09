@@ -127,11 +127,8 @@ export const StudioPipelinePage = () => {
     try {
       setLoading(true);
       const effectiveBranchId = branchId === 'all' ? undefined : branchId || undefined;
-      const [orders, studioSalesFromSales] = await Promise.all([
-        studioService.getAllStudioOrders(companyId, effectiveBranchId),
-        saleService.getStudioSales(companyId, effectiveBranchId).catch(() => []),
-      ]);
-      const fromOrders = orders.map(convertFromOrder);
+      // Load only from sales table (studio_orders table dropped)
+      const studioSalesFromSales = await saleService.getStudioSales(companyId, effectiveBranchId).catch(() => []);
 
       const saleIds = (studioSalesFromSales || []).map((s: any) => s.id).filter(Boolean);
       const stagesBySaleId: Record<string, Array<{ status?: string }>> = {};
@@ -151,7 +148,7 @@ export const StudioPipelinePage = () => {
       const fromSales = (studioSalesFromSales || []).map((sale: any) =>
         convertFromSale(sale, stagesBySaleId[sale.id])
       );
-      setSales([...fromOrders, ...fromSales]);
+      setSales(fromSales);
     } catch (e) {
       console.error('[StudioPipeline] Error loading:', e);
       toast.error('Failed to load studio pipeline');
@@ -159,7 +156,7 @@ export const StudioPipelinePage = () => {
     } finally {
       setLoading(false);
     }
-  }, [companyId, branchId, convertFromOrder, convertFromSale]);
+  }, [companyId, branchId, convertFromSale]);
 
   useEffect(() => {
     loadData();

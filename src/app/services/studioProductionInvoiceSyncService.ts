@@ -1,7 +1,7 @@
 /**
  * Studio Production – Invoice auto-adjustment (no regeneration).
- * Updates ONLY the sales_items row linked to the studio production (generated_invoice_item_id).
- * Never updates the original fabric/product line. Product base price is NOT changed.
+ * Updates ONLY the studio line: id = generated_invoice_item_id OR is_studio_product = true.
+ * Never updates material items (fabric, lace, lining, etc.). Multi-material supported.
  */
 
 import { supabase } from '@/lib/supabase';
@@ -27,17 +27,21 @@ export interface SyncInvoiceResult {
   error?: string;
 }
 
+/** Item shape with optional is_studio_product (multi-material: material lines = false, studio line = true). */
+type ItemRow = { id: string; product_id: string; quantity?: number; unit_price?: number; total?: number; is_studio_product?: boolean | null };
+
 /**
- * Resolve which sales_items id is the studio-generated line for this production.
- * Uses generated_invoice_item_id or generated_product_id when set; otherwise infers from fabric.
+ * Resolve which sales_items id is the studio-generated line.
+ * 1) generated_invoice_item_id if set and exists.
+ * 2) Else single item where is_studio_product = true.
+ * Never use position or "first item"; never update material lines.
  */
 function resolveStudioItemId(
   production: {
     generated_invoice_item_id?: string | null;
     generated_product_id?: string | null;
-    product_id: string;
   },
-  items: { id: string; product_id: string }[]
+  items: ItemRow[]
 ): string | null {
   if (production.generated_invoice_item_id) {
     const exists = items.some((i) => i.id === production.generated_invoice_item_id);
@@ -47,20 +51,9 @@ function resolveStudioItemId(
     const match = items.find((i) => i.product_id === production.generated_product_id);
     if (match) return match.id;
   }
+  const studioFlagged = items.filter((i) => i.is_studio_product === true);
+  if (studioFlagged.length === 1) return studioFlagged[0].id;
   return null;
-}
-
-/**
- * When no link is stored: infer the studio line as the single item that is NOT the fabric (production.product_id).
- * Returns that item's id so we can update and backfill the link. Returns null if 0 or >1 non-fabric items.
- */
-function inferStudioItemId(
-  production: { product_id: string },
-  items: { id: string; product_id: string }[]
-): { itemId: string; productId: string } | null {
-  const nonFabric = items.filter((i) => i.product_id !== production.product_id);
-  if (nonFabric.length !== 1) return null;
-  return { itemId: nonFabric[0].id, productId: nonFabric[0].product_id };
 }
 
 /**
@@ -89,7 +82,7 @@ export async function syncInvoiceWithProductionPricing(
     const [saleRow, productions, itemsRows, shipmentsRows] = await Promise.all([
       supabase.from('sales').select('id, invoice_no, total, paid_amount, due_amount').eq('id', saleId).single(),
       studioProductionService.getProductionsBySaleId(saleId),
-      supabase.from('sales_items').select('id, quantity, unit_price, total, product_id').eq('sale_id', saleId).order('created_at'),
+      supabase.from('sales_items').select('id, quantity, unit_price, total, product_id, is_studio_product').eq('sale_id', saleId).order('created_at'),
       supabase.from('sale_shipments').select('charged_to_customer').eq('sale_id', saleId),
     ]);
 
@@ -101,7 +94,7 @@ export async function syncInvoiceWithProductionPricing(
     result.invoiceNo = sale.invoice_no || '';
     result.paidAmount = Number(sale.paid_amount) || 0;
 
-    const items = (itemsRows.data || []) as { id: string; quantity: number; unit_price: number; total: number; product_id: string }[];
+    const items = (itemsRows.data || []) as ItemRow[];
     if (items.length === 0) {
       result.error = 'No sale items';
       return result;
@@ -113,14 +106,12 @@ export async function syncInvoiceWithProductionPricing(
       return result;
     }
 
-    let studioItemId = resolveStudioItemId(production, items);
-    let inferredLink: { itemId: string; productId: string } | null = null;
+    const studioItemId = resolveStudioItemId(production, items);
     if (!studioItemId) {
-      inferredLink = inferStudioItemId(production, items);
-      if (inferredLink) studioItemId = inferredLink.itemId;
-    }
-    if (!studioItemId) {
-      result.error = 'No studio invoice item linked. Add the studio product line (Create Product + Generate Invoice) and save again.';
+      const studioCount = items.filter((i) => i.is_studio_product === true).length;
+      result.error = studioCount === 0
+        ? 'No studio invoice item linked. Add the studio product line (Create Product + Add to Sale) and save again.'
+        : `Expected exactly one studio line (is_studio_product = true), found ${studioCount}.`;
       return result;
     }
 
@@ -170,7 +161,7 @@ export async function syncInvoiceWithProductionPricing(
       !production.generated_invoice_item_id ||
       production.generated_invoice_item_id !== studioItemId ||
       production.generated_product_id !== studioItemProductId;
-    if (needsBackfill) {
+    if (needsBackfill && production.id) {
       try {
         await studioProductionService.setGeneratedInvoiceItem(production.id, studioItemProductId, studioItemId);
       } catch (_) {

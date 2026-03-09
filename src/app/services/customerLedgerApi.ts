@@ -310,19 +310,21 @@ export const customerLedgerAPI = {
           .lt('payment_date', fromDate);
         prevReturnPaymentsTotal = (prevRetPays || []).reduce((sum: number, p: any) => sum + (Number(p.amount) || 0), 0);
       }
-      // Studio orders before fromDate (table may not exist in all deployments)
+      // Studio orders before fromDate (table may not exist – legacy table can be dropped)
       let prevStudioOrderNet = 0;
-      const { data: prevStudioOrders, error: prevSOErr } = await supabase
-        .from('studio_orders')
-        .select('total_cost, advance_paid')
-        .eq('company_id', companyId)
-        .eq('customer_id', cId)
-        .lt('order_date', fromDate);
-      if (!prevSOErr && prevStudioOrders) {
-        prevStudioOrders.forEach((o: any) => {
-          prevStudioOrderNet += (Number(o.total_cost ?? 0) || 0) - (Number(o.advance_paid ?? 0) || 0);
-        });
-      }
+      try {
+        const { data: prevStudioOrders, error: prevSOErr } = await supabase
+          .from('studio_orders')
+          .select('total_cost, advance_paid')
+          .eq('company_id', companyId)
+          .eq('customer_id', cId)
+          .lt('order_date', fromDate);
+        if (!prevSOErr && prevStudioOrders) {
+          prevStudioOrders.forEach((o: any) => {
+            prevStudioOrderNet += (Number(o.total_cost ?? 0) || 0) - (Number(o.advance_paid ?? 0) || 0);
+          });
+        }
+      } catch (_) { /* studio_orders table may be dropped */ }
       // Rentals before fromDate
       let prevRentalTotal = 0;
       let prevRentalPaid = 0;
@@ -348,19 +350,21 @@ export const customerLedgerAPI = {
       openingBalance = previousTotal - previousPaid - previousReturnsTotal - prevReturnPaymentsTotal + prevStudioOrderNet + prevRentalTotal - prevRentalPaid;
     }
 
-    // Studio orders in date range – debit total_cost, credit advance_paid
+    // Studio orders in date range (table may not exist – legacy table can be dropped)
     let studioOrderDebit = 0;
     let studioOrderCredit = 0;
-    let soQuery = supabase.from('studio_orders').select('total_cost, advance_paid').eq('company_id', companyId).eq('customer_id', cId);
-    if (fromDate) soQuery = soQuery.gte('order_date', fromDate);
-    if (toDate) soQuery = soQuery.lte('order_date', toDate);
-    const { data: rangeStudioOrders, error: rangeSOErr } = await soQuery;
-    if (!rangeSOErr && rangeStudioOrders) {
-      rangeStudioOrders.forEach((o: any) => {
-        studioOrderDebit += Number(o.total_cost ?? 0) || 0;
-        studioOrderCredit += Number(o.advance_paid ?? 0) || 0;
-      });
-    }
+    try {
+      let soQuery = supabase.from('studio_orders').select('total_cost, advance_paid').eq('company_id', companyId).eq('customer_id', cId);
+      if (fromDate) soQuery = soQuery.gte('order_date', fromDate);
+      if (toDate) soQuery = soQuery.lte('order_date', toDate);
+      const { data: rangeStudioOrders, error: rangeSOErr } = await soQuery;
+      if (!rangeSOErr && rangeStudioOrders) {
+        rangeStudioOrders.forEach((o: any) => {
+          studioOrderDebit += Number(o.total_cost ?? 0) || 0;
+          studioOrderCredit += Number(o.advance_paid ?? 0) || 0;
+        });
+      }
+    } catch (_) { /* studio_orders table may be dropped */ }
 
     // Return payments in range (credit)
     let returnPaymentsInRange = 0;
@@ -627,20 +631,21 @@ export const customerLedgerAPI = {
       });
     });
 
-    // Studio orders (studio_orders table) – debit total_cost, credit advance_paid so net = balance_due
-    let studioOrdersQuery = supabase
-      .from('studio_orders')
-      .select('id, order_no, order_date, total_cost, advance_paid, balance_due, notes')
-      .eq('company_id', companyId)
-      .eq('customer_id', cId);
-    if (fromDate) studioOrdersQuery = studioOrdersQuery.gte('order_date', fromDate);
-    if (toDate) studioOrdersQuery = studioOrdersQuery.lte('order_date', toDate);
-    const { data: studioOrders, error: studioOrdersError } = await studioOrdersQuery.order('order_date', { ascending: false });
-    if (studioOrdersError) {
-      // studio_orders table may not exist in all deployments
-      if (studioOrdersError.code !== '42P01') console.error('[CUSTOMER LEDGER API] Error fetching studio orders:', studioOrdersError);
-    }
-    (studioOrders || []).forEach((order: any) => {
+    // Studio orders (studio_orders table – may not exist if legacy table was dropped)
+    let studioOrders: any[] = [];
+    try {
+      let studioOrdersQuery = supabase
+        .from('studio_orders')
+        .select('id, order_no, order_date, total_cost, advance_paid, balance_due, notes')
+        .eq('company_id', companyId)
+        .eq('customer_id', cId);
+      if (fromDate) studioOrdersQuery = studioOrdersQuery.gte('order_date', fromDate);
+      if (toDate) studioOrdersQuery = studioOrdersQuery.lte('order_date', toDate);
+      const { data, error: studioOrdersError } = await studioOrdersQuery.order('order_date', { ascending: false });
+      if (studioOrdersError && studioOrdersError.code !== '42P01') console.error('[CUSTOMER LEDGER API] Error fetching studio orders:', studioOrdersError);
+      studioOrders = data || [];
+    } catch (_) { /* studio_orders table may be dropped */ }
+    studioOrders.forEach((order: any) => {
       const totalCost = Number(order.total_cost ?? 0) || 0;
       const advancePaid = Number(order.advance_paid ?? 0) || 0;
       const orderNotes = [order.notes, advancePaid > 0 ? `Advance ${formatCurrency(advancePaid)}` : ''].filter(Boolean).join(' / ');
@@ -850,17 +855,19 @@ export const customerLedgerAPI = {
           .lt('payment_date', fromDate);
         prevReturnPmts = (prevRp || []).reduce((s: number, p: any) => s + (Number(p.amount) || 0), 0);
       }
-      // Studio orders before fromDate: net receivable = total_cost - advance_paid
+      // Studio orders before fromDate (table may not exist – legacy table can be dropped)
       let prevStudioOrderNet = 0;
-      const { data: prevStudioOrders } = await supabase
-        .from('studio_orders')
-        .select('total_cost, advance_paid')
-        .eq('company_id', companyId)
-        .eq('customer_id', cId)
-        .lt('order_date', fromDate);
-      (prevStudioOrders || []).forEach((o: any) => {
-        prevStudioOrderNet += (Number(o.total_cost ?? 0) || 0) - (Number(o.advance_paid ?? 0) || 0);
-      });
+      try {
+        const { data: prevStudioOrders } = await supabase
+          .from('studio_orders')
+          .select('total_cost, advance_paid')
+          .eq('company_id', companyId)
+          .eq('customer_id', cId)
+          .lt('order_date', fromDate);
+        (prevStudioOrders || []).forEach((o: any) => {
+          prevStudioOrderNet += (Number(o.total_cost ?? 0) || 0) - (Number(o.advance_paid ?? 0) || 0);
+        });
+      } catch (_) { /* studio_orders table may be dropped */ }
 
       // Rentals before fromDate: total charges - rental payments
       let prevRentalTotal = 0;

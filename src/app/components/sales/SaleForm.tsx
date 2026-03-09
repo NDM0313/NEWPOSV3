@@ -1818,7 +1818,9 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
         }
         
         if (items.length === 0) {
-            toast.error('Please add at least one item');
+            toast.error(isStudioSale
+              ? 'Studio order must have at least one product (fabric/material). Add an item before saving.'
+              : 'Please add at least one item');
             return;
         }
 

@@ -2,7 +2,7 @@ import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { 
   Plus, ShoppingCart, DollarSign, TrendingUp, 
   MoreVertical, Eye, Edit, Trash2, FileText, Phone, MapPin,
-  Package, Truck, CheckCircle, Clock, XCircle, AlertCircle,
+  Package, Truck, CheckCircle, CheckCircle2, Clock, XCircle, AlertCircle,
   UserCheck, Receipt, Loader2, PackageCheck, PackageX, ChevronDown, ChevronUp,
   RotateCcw, Paperclip, X, Zap, Store, Printer, Download, Share2
 } from 'lucide-react';
@@ -394,6 +394,25 @@ export const SalesPage = () => {
       case 'add_shipment':
         setAddShipmentSaleId(sale.id);
         setAddShipmentForm({ shipmentType: 'Courier', courierName: '', chargedToCustomer: 0, actualCost: 0, trackingId: '', notes: '' });
+        break;
+
+      case 'convert_to_final':
+        if (sale.status === 'final') {
+          toast.info('Sale is already final.');
+          return;
+        }
+        if (getEffectiveSaleStatus(sale) === 'cancelled') {
+          toast.error('Cannot finalize a cancelled sale.');
+          return;
+        }
+        try {
+          await updateSale(sale.id, { status: 'final' });
+          toast.success(`Sale ${sale.invoiceNo} marked as Final. Stock movements created.`);
+          setSelectedSale(null);
+          await refreshSales();
+        } catch (e: any) {
+          toast.error(e?.message || 'Failed to convert to Final');
+        }
         break;
         
       case 'delete':
@@ -1968,6 +1987,15 @@ export const SalesPage = () => {
                               >
                                 <Edit size={14} className="mr-2 text-green-400" />
                                 Edit Sale
+                              </DropdownMenuItem>
+                            )}
+                            {sale.status !== 'final' && getEffectiveSaleStatus(sale) !== 'cancelled' && (
+                              <DropdownMenuItem 
+                                className="hover:bg-gray-800 cursor-pointer"
+                                onClick={() => handleSaleAction('convert_to_final', sale)}
+                              >
+                                <CheckCircle2 size={14} className="mr-2 text-amber-400" />
+                                Convert to Final
                               </DropdownMenuItem>
                             )}
                             <DropdownMenuItem 

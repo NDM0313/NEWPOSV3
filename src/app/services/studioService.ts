@@ -131,25 +131,33 @@ export const studioService = {
     }
   },
 
-  // Get single studio order
+  // Get single studio order (returns null if table missing or row not found – legacy table may be dropped)
   async getStudioOrder(id: string) {
-    const { data, error } = await supabase
-      .from('studio_orders')
-      .select(`
-        *,
-        customer:contacts(*),
-        items:studio_order_items(*),
-        job_cards:job_cards(
+    try {
+      const { data, error } = await supabase
+        .from('studio_orders')
+        .select(`
           *,
-          worker:workers(name, phone)
-        ),
-        created_by:users(full_name, email)
-      `)
-      .eq('id', id)
-      .single();
+          customer:contacts(*),
+          items:studio_order_items(*),
+          job_cards:job_cards(
+            *,
+            worker:workers(name, phone)
+          ),
+          created_by:users(full_name, email)
+        `)
+        .eq('id', id)
+        .single();
 
-    if (error) throw error;
-    return data;
+      if (error) {
+        if (error.code === 'PGRST116' || error.code === '42P01' || error?.message?.includes('Could not find the table')) return null;
+        throw error;
+      }
+      return data;
+    } catch (err: any) {
+      if (err?.code === '42P01' || err?.message?.includes('Could not find the table')) return null;
+      throw err;
+    }
   },
 
   // Update studio order

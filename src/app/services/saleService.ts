@@ -6,7 +6,6 @@ import { activityLogService } from '@/app/services/activityLogService';
 import { settingsService } from '@/app/services/settingsService';
 import { productService } from '@/app/services/productService';
 import { calculateStockFromMovements } from '@/app/utils/stockCalculation';
-import { documentNumberService } from '@/app/services/documentNumberService';
 
 /** Enrich sales with creator full_name. sales.created_by stores auth.users.id; resolve via users.auth_user_id. */
 async function enrichSalesWithCreatorNames(sales: any[]): Promise<void> {
@@ -97,6 +96,10 @@ export const saleService = {
     const allowNegative = fromCaller || fromDb;
     if (import.meta.env?.DEV) {
       console.log('[SALE SERVICE] Negative stock check:', { allowNegative, fromCaller, fromDb, companyId: sale.company_id });
+    }
+    const isStudio = (sale.invoice_no || '').toString().toUpperCase().startsWith('STD-') || (sale.invoice_no || '').toString().toUpperCase().startsWith('ST-');
+    if (isStudio && items.length === 0) {
+      throw new Error('Studio order must have at least one product (fabric/material). Add an item before saving.');
     }
     const isFinal = sale.status === 'final';
     if (isFinal && items.length > 0 && !allowNegative) {
@@ -452,22 +455,18 @@ export const saleService = {
     return data || [];
   },
 
-  /** Get next studio invoice number from DB (max existing STD-* + 1). Use when document_sequences has no studio row. */
+  /** Get next studio invoice number from DB. Uses ORDER BY + LIMIT 1 instead of fetching all rows. */
   async getNextStudioInvoiceNumber(companyId: string): Promise<number> {
     const { data, error } = await supabase
       .from('sales')
       .select('invoice_no')
       .eq('company_id', companyId)
-      .ilike('invoice_no', 'STD-%');
-    if (error) return 1;
-    const numbers = (data || [])
-      .map((r: any) => {
-        const match = (r.invoice_no || '').match(/^STD-0*(\d+)$/i);
-        return match ? parseInt(match[1], 10) : 0;
-      })
-      .filter((n: number) => !isNaN(n));
-    const max = numbers.length > 0 ? Math.max(...numbers) : 0;
-    return max + 1;
+      .ilike('invoice_no', 'STD-%')
+      .order('invoice_no', { ascending: false })
+      .limit(1);
+    if (error || !data || data.length === 0) return 1;
+    const match = (data[0].invoice_no || '').match(/^STD-0*(\d+)$/i);
+    return match ? parseInt(match[1], 10) + 1 : 1;
   },
 
   // Get sales for Studio Sales list by invoice_no prefix 'STD-%' so STD-0002 etc. show (avoids 400 when is_studio column missing).
@@ -490,109 +489,6 @@ export const saleService = {
     return data || [];
   },
   
-  // Legacy getAllSales (keeping for backward compatibility)
-  async getAllSales_OLD(companyId: string, branchId?: string) {
-    // Note: company_id and invoice_date columns may not exist in all databases
-    let query = supabase
-      .from('sales')
-      .select(`
-        *,
-        customer:contacts(name, phone),
-        items:sales_items(
-          *,
-          product:products(name, sku)
-        )
-      `)
-      .order('invoice_date', { ascending: false });
-
-    if (branchId) {
-      query = query.eq('branch_id', branchId);
-    }
-
-    const { data, error } = await query;
-    
-    // If error is about invoice_date column not existing, retry with created_at
-    if (error && error.code === '42703' && error.message?.includes('invoice_date')) {
-      const retryQuery = supabase
-        .from('sales')
-        .select(`
-          *,
-          customer:contacts(name, phone),
-          branch:branches(id, name, code),
-          items:sales_items(
-            *,
-            product:products(name, sku)
-          )
-        `)
-        .order('created_at', { ascending: false });
-      
-      if (branchId) {
-        retryQuery.eq('branch_id', branchId);
-      }
-      
-      const { data: retryData, error: retryError } = await retryQuery;
-      if (retryError) {
-        // If created_at also doesn't exist, try without ordering
-        const finalQuery = supabase
-          .from('sales')
-          .select(`
-            *,
-            customer:contacts(name, phone),
-            branch:branches(id, name, code),
-            items:sales_items(
-              *,
-              product:products(name, sku)
-            )
-          `);
-        
-        if (branchId) {
-          finalQuery.eq('branch_id', branchId);
-        }
-        
-        const { data: finalData, error: finalError } = await finalQuery;
-        if (finalError) throw finalError;
-        return finalData;
-      }
-      return retryData;
-    }
-    
-    // If error is about foreign key relationship or other issues, try without nested selects
-    if (error && (error.code === '42703' || error.code === '42P01' || error.code === 'PGRST116')) {
-      // Try simpler query without nested relationships
-      let simpleQuery = supabase
-        .from('sales')
-        .select('*')
-        .order('created_at', { ascending: false });
-      
-      if (branchId) {
-        simpleQuery = simpleQuery.eq('branch_id', branchId);
-      }
-      
-      const { data: simpleData, error: simpleError } = await simpleQuery;
-      
-      // If created_at doesn't exist, try without ordering
-      if (simpleError && simpleError.code === '42703' && simpleError.message?.includes('created_at')) {
-        let noOrderQuery = supabase
-          .from('sales')
-          .select('*');
-        
-        if (branchId) {
-          noOrderQuery = noOrderQuery.eq('branch_id', branchId);
-        }
-        
-        const { data: noOrderData, error: noOrderError } = await noOrderQuery;
-        if (noOrderError) throw noOrderError;
-        return noOrderData;
-      }
-      
-      if (simpleError) throw simpleError;
-      return simpleData;
-    }
-    
-    if (error) throw error;
-    return data;
-  },
-
   // Get single sale (include sale_charges for line-level extra expenses on edit)
   async getSale(id: string) {
     const baseSelect = `
