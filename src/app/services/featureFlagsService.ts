@@ -10,6 +10,10 @@ export const FEATURE_KEYS = {
   STUDIO_PRODUCTION_V2: 'studio_production_v2',
   STUDIO_PRODUCTION_V3: 'studio_production_v3',
   STUDIO_CUSTOMER_INVOICE_V1: 'studio_customer_invoice_v1',
+  /** TEST only: WIP inventory layer (design in docs/WIP_INVENTORY_DESIGN.md). Do not enable in production until approved. */
+  STUDIO_WIP_INVENTORY_TEST: 'studio_wip_inventory_test',
+  /** TEST only: Kanban board backend (RPC get_studio_kanban_board_test). Do not enable in production until approved. */
+  STUDIO_KANBAN_BOARD_TEST: 'studio_kanban_board_test',
 } as const;
 
 export type FeatureKey = (typeof FEATURE_KEYS)[keyof typeof FEATURE_KEYS];

@@ -116,20 +116,30 @@ export async function syncInvoiceWithProductionPricing(
     }
 
     const stages = await studioProductionService.getStagesByProductionId(production.id);
-    const productionCost = stages.reduce((sum, s) => {
+    const productionCostFromStages = stages.reduce((sum, s) => {
       const st = (s as any).status;
       const cost = st === 'completed' ? (Number((s as any).cost) || 0) : (Number((s as any).expected_cost) || 0);
       return sum + cost;
     }, 0);
+    const productionCost = (production as any).actual_cost != null && Number((production as any).actual_cost) >= 0
+      ? Number((production as any).actual_cost)
+      : productionCostFromStages;
     result.productionCost = productionCost;
 
-    const profit = profitAmount != null
-      ? Math.max(0, profitAmount)
-      : Math.max(0, productionCost * (profitMarginPercent / 100));
-    result.profit = profit;
-
-    const finalLinePrice = productionCost + profit;
-    result.finalLinePrice = finalLinePrice;
+    let finalLinePrice: number;
+    const persistedSalePrice = (production as any).sale_price != null ? Number((production as any).sale_price) : null;
+    if (persistedSalePrice != null && persistedSalePrice > 0) {
+      finalLinePrice = persistedSalePrice;
+      result.finalLinePrice = finalLinePrice;
+      result.profit = Math.max(0, finalLinePrice - productionCost);
+    } else {
+      const profit = profitAmount != null
+        ? Math.max(0, profitAmount)
+        : Math.max(0, productionCost * (profitMarginPercent / 100));
+      result.profit = profit;
+      finalLinePrice = productionCost + profit;
+      result.finalLinePrice = finalLinePrice;
+    }
 
     const studioItem = items.find((i) => i.id === studioItemId);
     if (!studioItem) {

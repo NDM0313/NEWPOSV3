@@ -229,7 +229,7 @@ interface StudioSaleDetail {
   /** 'sale' = from sales table (payment can be recorded); 'studio_order' = from studio_orders only */
   source?: 'sale' | 'studio_order';
   /** Sale line items (when source is sale). Used to check if studio product line exists (invoice generated). */
-  items?: Array<{ id: string; productId?: string; productName?: string; isStudioProduct?: boolean }>;
+  items?: Array<{ id: string; productId?: string; productName?: string; unitPrice?: number; isStudioProduct?: boolean }>;
 }
 
 // Mock data removed - data is loaded from Supabase via loadStudioOrder()
@@ -272,6 +272,8 @@ export const StudioSaleDetailNew = () => {
     categoryId: '',
     salePrice: '',
     description: '',
+    /** When set, reuse this product instead of creating new (existing studio product on this sale). */
+    existingProductId: null as string | null,
   });
   const [createProductInvoiceImageFiles, setCreateProductInvoiceImageFiles] = useState<File[]>([]);
   const [createProductInvoiceCategories, setCreateProductInvoiceCategories] = useState<{ id: string; name: string }[]>([]);
@@ -280,6 +282,13 @@ export const StudioSaleDetailNew = () => {
   const [savingStage, setSavingStage] = useState(false);
   const [syncingPricing, setSyncingPricing] = useState(false);
   const [pendingLeaveTarget, setPendingLeaveTarget] = useState<'studio' | 'studio-sales-list-new' | null>(null);
+  /** Production pricing from DB (actual_cost, profit_margin_percent, sale_price, profit_amount). UI prefers these when set. */
+  const [productionPricing, setProductionPricing] = useState<{
+    actual_cost: number;
+    profit_margin_percent: number | null;
+    sale_price: number | null;
+    profit_amount: number | null;
+  } | null>(null);
 
   const savedSuccessfullyRef = useRef(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -510,7 +519,7 @@ export const StudioSaleDetailNew = () => {
       balanceDue: Number(sale.due_amount) || 0,
       fabricPurchaseCost: fabricCost,
       source: 'sale',
-      items: items.map((i: any) => ({ id: i.id || '', productId: i.product_id, productName: i.product_name, isStudioProduct: i.isStudioProduct === true || i.is_studio_product === true })),
+      items: items.map((i: any) => ({ id: i.id || '', productId: i.product_id, productName: i.product_name, unitPrice: Number(i.unit_price) || Number(i.total) || 0, isStudioProduct: i.isStudioProduct === true || i.is_studio_product === true })),
     };
   }, []);
 
@@ -543,8 +552,15 @@ export const StudioSaleDetailNew = () => {
           try {
             const productions = await studioProductionService.getProductionsBySaleId(sale.id);
             if (productions.length > 0) {
-              const prodId = productions[0].id;
+              const prod = productions[0] as any;
+              const prodId = prod.id;
               setProductionId(prodId);
+              setProductionPricing({
+                actual_cost: Number(prod.actual_cost) || 0,
+                profit_margin_percent: prod.profit_margin_percent != null ? Number(prod.profit_margin_percent) : null,
+                sale_price: prod.sale_price != null ? Number(prod.sale_price) : null,
+                profit_amount: prod.profit_amount != null ? Number(prod.profit_amount) : null,
+              });
               await studioProductionService.syncWorkerLedgerEntriesForProduction(prodId);
               window.dispatchEvent(new CustomEvent('studio-production-saved'));
               const stages = await studioProductionService.getStagesByProductionId(prodId);
@@ -555,6 +571,7 @@ export const StudioSaleDetailNew = () => {
               productionSteps = stagesToProductionSteps(stages, ledgerStatusByStageId);
             } else {
               setProductionId(null);
+              setProductionPricing(null);
             }
             if (productions.length === 0 && companyId) {
               let effectiveBranchId = branchId && branchId !== 'all' && /^[0-9a-f-]{36}$/i.test(branchId) ? branchId : null;
@@ -578,6 +595,7 @@ export const StudioSaleDetailNew = () => {
                     created_by: user?.id
                   });
                   setProductionId(production.id);
+                  setProductionPricing(null);
                   // No auto-stages: manager decides via Customize Tasks
                   const stages = await studioProductionService.getStagesByProductionId(production.id);
                   const stageIds = stages.map((s: any) => s.id);
@@ -680,6 +698,16 @@ export const StudioSaleDetailNew = () => {
         : undefined;
       const steps = stagesToProductionSteps(stages, ledgerStatusByStageId);
       setSaleDetail(prev => prev ? { ...prev, productionSteps: steps } : prev);
+      const prod = await studioProductionService.getProductionById(productionId).catch(() => null);
+      if (prod) {
+        const p = prod as any;
+        setProductionPricing({
+          actual_cost: Number(p.actual_cost) || 0,
+          profit_margin_percent: p.profit_margin_percent != null ? Number(p.profit_margin_percent) : null,
+          sale_price: p.sale_price != null ? Number(p.sale_price) : null,
+          profit_amount: p.profit_amount != null ? Number(p.profit_amount) : null,
+        });
+      }
       return steps;
     } catch (e) {
       console.warn('[StudioSaleDetail] Reload stages failed:', e);
@@ -714,22 +742,29 @@ export const StudioSaleDetailNew = () => {
     ? saleDetail.productionSteps.filter((s) => (s.status || '').toLowerCase() === 'completed')
     : [];
   const productionCostFromStages = completedProductionSteps.reduce((sum, s) => sum + s.workerCost, 0);
+  const productionCostDisplay = productionPricing?.actual_cost ?? productionCostFromStages;
   const profitMarginNum = parseFloat(profitMarginValue) || 0;
   const profitAmount =
     profitMarginMode === 'percentage'
-      ? (productionCostFromStages * profitMarginNum) / 100
+      ? (productionCostDisplay * profitMarginNum) / 100
       : profitMarginNum;
-  const finalSalePriceFromCalculator = productionCostFromStages + profitAmount;
+  const finalSalePriceFromCalculator = productionCostDisplay + profitAmount;
   const marginPercent =
-    productionCostFromStages > 0 ? ((profitAmount / productionCostFromStages) * 100).toFixed(1) : '0';
-  /** Unified Payment panel: use pricing calculator total so Profit Margin updates Grand Total & Balance Due live */
-  const displayFinalSalePrice = finalSalePriceFromCalculator;
+    productionCostDisplay > 0 ? ((profitAmount / productionCostDisplay) * 100).toFixed(1) : '0';
+  /** Prefer DB when available; else use calculator-derived values */
+  const displayProfitAmount = productionPricing?.profit_amount ?? profitAmount;
+  const displayFinalSalePrice = productionPricing?.sale_price ?? finalSalePriceFromCalculator;
   /** Grand Total = cost + profit + shipment (used in Payment card) */
   const grandTotalForCard = displayFinalSalePrice + (saleDetail?.shipmentCharges ?? 0);
   const displayBalanceDue = saleDetail ? Math.max(0, grandTotalForCard - saleDetail.paidAmount) : 0;
 
   const roundInt = (n: number) => Math.round(n);
   const completedStepKey = completedProductionSteps.map((s) => s.id).join(',');
+  // Init profit margin from DB when production pricing is loaded
+  useEffect(() => {
+    if (productionPricing?.profit_margin_percent != null)
+      setProfitMarginValue(String(productionPricing.profit_margin_percent));
+  }, [productionPricing?.profit_margin_percent]);
   // Sync profit distribution: round figures only (no decimals)
   useEffect(() => {
     if (completedProductionSteps.length === 0) {
@@ -1286,6 +1321,22 @@ export const StudioSaleDetailNew = () => {
       toast.error('Sale or company context missing.');
       return;
     }
+    // Prevent duplicate invoice: production already has generated invoice line
+    const productions = await studioProductionService.getProductionsBySaleId(saleDetail.id).catch(() => []);
+    const production = productions[0];
+    if (production?.generated_invoice_item_id) {
+      toast.error('Invoice already exists for this production order.');
+      setShowCreateProductInvoiceModal(false);
+      return;
+    }
+    // Use existing product when production already has one (prevent duplicate product)
+    const existingProductId = production?.generated_product_id ?? createProductInvoiceForm.existingProductId ?? null;
+    const alreadyHasThisProduct = existingProductId && saleDetail.items?.some(it => it.productId === existingProductId);
+    if (alreadyHasThisProduct) {
+      setShowCreateProductInvoiceModal(false);
+      toast.info('Invoice already has this product. No new product created.');
+      return;
+    }
     const name = (createProductInvoiceForm.productName || '').trim() || `Studio – ${saleDetail.invoiceNo}`;
     const salePriceNum = parseFloat(createProductInvoiceForm.salePrice) || 0;
     if (salePriceNum <= 0) {
@@ -1294,25 +1345,35 @@ export const StudioSaleDetailNew = () => {
     }
     setCreatingProductAndInvoice(true);
     try {
-      const sku = await documentNumberService.getNextProductSKU(companyId, null).catch(() => `STUDIO-${saleDetail.invoiceNo}-${Date.now().toString(36)}`);
-      const product = await productService.createProduct({
-        company_id: companyId,
-        name,
-        sku,
-        category_id: createProductInvoiceForm.categoryId || (null as any),
-        cost_price: 0,
-        retail_price: salePriceNum,
-        wholesale_price: salePriceNum,
-        current_stock: 0,
-        min_stock: 0,
-        max_stock: 1000,
-        has_variations: false,
-        is_rentable: false,
-        is_sellable: true,
-        track_stock: false,
-        is_active: true,
-        description: createProductInvoiceForm.description || undefined,
-      }) as { id: string; name: string; sku: string };
+      let product: { id: string; name: string; sku: string };
+      if (existingProductId) {
+        const existing = await productService.getProduct(existingProductId).catch(() => null);
+        if (!existing) {
+          toast.error('Existing product not found. Create a new product or refresh.');
+          return;
+        }
+        product = { id: existing.id, name: (existing as any).name ?? name, sku: (existing as any).sku ?? '' };
+      } else {
+        const sku = await documentNumberService.getNextProductSKU(companyId, null).catch(() => `STUDIO-${saleDetail.invoiceNo}-${Date.now().toString(36)}`);
+        product = await productService.createProduct({
+          company_id: companyId,
+          name,
+          sku,
+          category_id: createProductInvoiceForm.categoryId || (null as any),
+          cost_price: 0,
+          retail_price: salePriceNum,
+          wholesale_price: salePriceNum,
+          current_stock: 0,
+          min_stock: 0,
+          max_stock: 1000,
+          has_variations: false,
+          is_rentable: false,
+          is_sellable: true,
+          track_stock: false,
+          is_active: true,
+          description: createProductInvoiceForm.description || undefined,
+        }) as { id: string; name: string; sku: string };
+      }
       const itemRow = {
         sale_id: saleDetail.id,
         product_id: product.id,
@@ -1362,6 +1423,22 @@ export const StudioSaleDetailNew = () => {
         } catch (linkErr: any) {
           console.warn('[StudioSaleDetailNew] Link studio production to invoice item:', linkErr?.message);
         }
+        const actualCost = Number(production?.actual_cost) || 0;
+        const profitAmt = Math.max(0, salePriceNum - actualCost);
+        const marginPct = actualCost > 0 ? (profitAmt / actualCost) * 100 : null;
+        try {
+          await studioProductionService.updateProductionPricing(productionId, {
+            sale_price: salePriceNum,
+            profit_amount: profitAmt,
+            profit_margin_percent: marginPct,
+          });
+          setProductionPricing(prev => prev ? {
+            ...prev,
+            sale_price: salePriceNum,
+            profit_amount: profitAmt,
+            profit_margin_percent: marginPct,
+          } : { actual_cost: actualCost, profit_margin_percent: marginPct, sale_price: salePriceNum, profit_amount: profitAmt });
+        } catch (_) { /* non-blocking */ }
       }
       const { data: saleRow } = await supabase.from('sales').select('total, paid_amount').eq('id', saleDetail.id).single();
       const currentTotal = Number((saleRow as any)?.total) || 0;
@@ -1384,8 +1461,8 @@ export const StudioSaleDetailNew = () => {
       }
       setCreateProductInvoiceImageFiles([]);
       setShowCreateProductInvoiceModal(false);
-      setSaleDetail((prev) => prev && insertedItemId ? { ...prev, items: [...(prev.items || []), { id: insertedItemId, productId: product.id, productName: product.name, isStudioProduct: true }] } : prev);
-      toast.success('Product created and invoice updated.');
+      setSaleDetail((prev) => prev && insertedItemId ? { ...prev, items: [...(prev.items || []), { id: insertedItemId, productId: product.id, productName: product.name, unitPrice: salePriceNum, isStudioProduct: true }] } : prev);
+      toast.success(existingProductId ? 'Invoice updated with existing product.' : 'Product created and invoice updated.');
       if (setOpenSaleIdForView) setOpenSaleIdForView(saleDetail.id);
       setCurrentView('sales');
     } catch (e: any) {
@@ -2120,14 +2197,29 @@ export const StudioSaleDetailNew = () => {
                 <DropdownMenuContent align="end" className="bg-gray-900 border-gray-700 min-w-[180px]">
                   <DropdownMenuItem
                     className="text-gray-200 focus:bg-blue-600 focus:text-white focus:outline-none cursor-pointer"
-                    onSelect={() => {
-                      setCreateProductInvoiceForm(prev => ({
-                        ...prev,
-                        productName: '',
+                    onSelect={async () => {
+                      if (!saleDetail?.id) return;
+                      const productions = await studioProductionService.getProductionsBySaleId(saleDetail.id).catch(() => []);
+                      const prod = productions[0];
+                      if (prod?.generated_invoice_item_id) {
+                        toast.error('Invoice already exists for this production order.');
+                        return;
+                      }
+                      const existingStudioItem = saleDetail?.items?.find(it => it.isStudioProduct);
+                      const existingProductId = prod?.generated_product_id ?? existingStudioItem?.productId ?? null;
+                      const prefillName = existingStudioItem?.productName ?? (existingProductId ? '' : '');
+                      const prefillPrice = existingStudioItem?.unitPrice != null && existingStudioItem.unitPrice > 0
+                        ? String(Math.round(existingStudioItem.unitPrice))
+                        : (prod?.sale_price != null && prod.sale_price > 0)
+                          ? String(Math.round(Number(prod.sale_price)))
+                          : grandTotalForCard > 0 ? String(Math.round(grandTotalForCard)) : '';
+                      setCreateProductInvoiceForm({
+                        productName: prefillName,
                         categoryId: '',
-                        salePrice: grandTotalForCard > 0 ? String(Math.round(grandTotalForCard)) : '',
+                        salePrice: prefillPrice,
                         description: '',
-                      }));
+                        existingProductId,
+                      });
                       if (companyId) {
                         productCategoryService.getAllCategoriesFlat(companyId)
                           .then(cats => setCreateProductInvoiceCategories(cats.map(c => ({ id: c.id, name: c.name }))))
@@ -2893,7 +2985,7 @@ export const StudioSaleDetailNew = () => {
                     <>
                       <div>
                         <p className="text-sm text-gray-400 mb-1">Production Cost</p>
-                        <p className="text-base font-semibold text-white">{formatCurrency(productionCostFromStages)}</p>
+                        <p className="text-base font-semibold text-white">{formatCurrency(productionCostDisplay)}</p>
                       </div>
                       <div>
                         <div className="flex items-center justify-between mb-2">
@@ -2915,6 +3007,34 @@ export const StudioSaleDetailNew = () => {
                           className="bg-gray-950 border-gray-700 text-white text-sm"
                           value={profitMarginValue}
                           onChange={(e) => setProfitMarginValue(e.target.value)}
+                          onBlur={async () => {
+                            if (!productionId) return;
+                            const marginNum = parseFloat(profitMarginValue);
+                            if (Number.isNaN(marginNum)) return;
+                            const salePrice = profitMarginMode === 'percentage'
+                              ? productionCostDisplay * (1 + marginNum / 100)
+                              : productionCostDisplay + marginNum;
+                            const profitAmt = profitMarginMode === 'percentage'
+                              ? (productionCostDisplay * marginNum) / 100
+                              : marginNum;
+                            try {
+                              await studioProductionService.updateProductionPricing(productionId, {
+                                profit_margin_percent: profitMarginMode === 'percentage' ? marginNum : null,
+                                sale_price: salePrice,
+                                profit_amount: profitAmt,
+                              });
+                              const prod = await studioProductionService.getProductionById(productionId).catch(() => null);
+                              if (prod) {
+                                const p = prod as any;
+                                setProductionPricing({
+                                  actual_cost: Number(p.actual_cost) || 0,
+                                  profit_margin_percent: p.profit_margin_percent != null ? Number(p.profit_margin_percent) : null,
+                                  sale_price: p.sale_price != null ? Number(p.sale_price) : null,
+                                  profit_amount: p.profit_amount != null ? Number(p.profit_amount) : null,
+                                });
+                              }
+                            } catch (_) { /* non-blocking */ }
+                          }}
                         />
                         <p className="text-xs text-gray-500 mt-1.5 flex items-center gap-1">
                           <Info size={12} className="text-blue-400 shrink-0" />
@@ -2956,6 +3076,25 @@ export const StudioSaleDetailNew = () => {
                                 const syncResult = await syncInvoiceWithProductionPricing(saleDetail.id, syncParams);
                                 setLastInvoiceSyncResult(syncResult);
                                 if (syncResult.success) {
+                                  if (productionId) {
+                                    try {
+                                      await studioProductionService.updateProductionPricing(productionId, {
+                                        profit_margin_percent: profitMarginMode === 'percentage' ? marginVal : null,
+                                        sale_price: syncResult.finalLinePrice,
+                                        profit_amount: syncResult.profit,
+                                      });
+                                      const prod = await studioProductionService.getProductionById(productionId).catch(() => null);
+                                      if (prod) {
+                                        const p = prod as any;
+                                        setProductionPricing({
+                                          actual_cost: Number(p.actual_cost) || 0,
+                                          profit_margin_percent: p.profit_margin_percent != null ? Number(p.profit_margin_percent) : null,
+                                          sale_price: p.sale_price != null ? Number(p.sale_price) : null,
+                                          profit_amount: p.profit_amount != null ? Number(p.profit_amount) : null,
+                                        });
+                                      }
+                                    } catch (_) { /* non-blocking */ }
+                                  }
                                   window.dispatchEvent(new CustomEvent('saleUpdated', { detail: { saleId: saleDetail.id } }));
                                   toast.success('Studio invoice item synced with production pricing.');
                                 } else if (syncResult.error) {
@@ -3007,11 +3146,11 @@ export const StudioSaleDetailNew = () => {
                   <div className="space-y-3">
                     <div className="flex items-center justify-between">
                       <span className="text-sm text-gray-400">Production Cost</span>
-                      <span className="text-lg font-semibold text-white">{formatCurrency(productionCostFromStages)}</span>
+                      <span className="text-lg font-semibold text-white">{formatCurrency(productionCostDisplay)}</span>
                     </div>
                     <div className="flex items-center justify-between bg-transparent">
                       <span className="text-sm text-gray-400">Profit</span>
-                      <span className="text-lg font-semibold text-white">{formatCurrency(profitAmount)}</span>
+                      <span className="text-lg font-semibold text-white">{formatCurrency(displayProfitAmount)}</span>
                     </div>
                     {saleDetail.shipmentCharges > 0 && (
                       <div className="flex items-center justify-between">

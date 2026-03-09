@@ -472,6 +472,15 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
     return () => window.removeEventListener('saleUpdated', handler as EventListener);
   }, [saleId, reloadSaleData]);
 
+  // Refetch sale + studio summary when window/tab gains focus and drawer is open (so Grand Total, Amount Due, items stay in sync with DB after changes elsewhere)
+  useEffect(() => {
+    const onFocus = () => {
+      if (isOpen && saleId) reloadSaleData();
+    };
+    window.addEventListener('focus', onFocus);
+    return () => window.removeEventListener('focus', onFocus);
+  }, [isOpen, saleId, reloadSaleData]);
+
   // Load sale returns for this sale when final (so effective status can show Returned/Partially Returned)
   useEffect(() => {
     if (!companyId || !saleId || !sale) return;
@@ -984,23 +993,27 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
                           </div>
                           <div className="flex justify-between text-sm">
                             <span className="text-gray-400">Production Cost</span>
-                            <span className="text-white font-semibold">{formatCurrency(studioSummary.totalStudioCost)}</span>
+                            <span className="text-white font-semibold">{formatCurrency(studioSummary.actualCost ?? studioSummary.totalStudioCost)}</span>
                           </div>
                           {(() => {
+                            const productionCost = studioSummary.actualCost ?? studioSummary.totalStudioCost;
                             const genId = (studioSummary as any).generatedInvoiceItemId;
                             const studioItem = genId && sale.items?.length ? sale.items.find((i: any) => i.id === genId) : null;
                             const qty = studioItem ? (Number(studioItem.quantity) || (studioItem as any).qty || 1) : 0;
-                            const finalSalePrice = studioItem ? (Number(studioItem.price) || 0) * qty : 0;
-                            const profit = Math.max(0, finalSalePrice - studioSummary.totalStudioCost);
+                            const fromInvoiceLine = studioItem ? (Number(studioItem.price) || (studioItem as any).unitPrice || 0) * qty : 0;
+                            const finalSalePrice = (studioSummary as any).salePrice ?? fromInvoiceLine;
+                            const profit = (studioSummary as any).profitAmount != null
+                              ? Number((studioSummary as any).profitAmount)
+                              : Math.max(0, finalSalePrice - productionCost);
                             return (
                               <>
-                                {genId && (
+                                {(genId || finalSalePrice > 0) && (
                                   <div className="flex justify-between text-sm">
                                     <span className="text-gray-400">Final Sale Price</span>
                                     <span className="text-white">{formatCurrency(finalSalePrice)}</span>
                                   </div>
                                 )}
-                                {genId && finalSalePrice > 0 && (
+                                {(genId || finalSalePrice > 0) && (
                                   <div className="flex justify-between text-sm">
                                     <span className="text-green-400 font-medium">Profit</span>
                                     <span className="text-green-400 font-medium">{formatCurrency(profit)}</span>

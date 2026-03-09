@@ -52,6 +52,12 @@ export interface StudioProduction {
   generated_product_id?: string | null;
   /** sales_items.id of the generated studio line. Pricing sync updates only this item. */
   generated_invoice_item_id?: string | null;
+  /** Pricing Calculator: profit margin % (e.g. 30). */
+  profit_margin_percent?: number | null;
+  /** Pricing Calculator: sale_price = actual_cost * (1 + profit_margin_percent/100). */
+  sale_price?: number | null;
+  /** Pricing Calculator: profit amount. */
+  profit_amount?: number | null;
 }
 
 export type StudioProductionStageType = 'dyer' | 'stitching' | 'handwork';
@@ -357,6 +363,77 @@ export const studioProductionService = {
       if (e?.code === '42703' || e?.message?.includes('sale_id')) return [];
       throw e;
     }
+  },
+
+  /**
+   * Recompute production actual_cost = SUM(stage.cost) + fabric cost. Call after any stage cost edit.
+   * Uses RPC calculate_production_cost when available; otherwise computes in JS and updates studio_productions.
+   */
+  async recalculateProductionCost(productionId: string): Promise<number> {
+    const { data: rpcResult, error: rpcErr } = await supabase.rpc('calculate_production_cost', {
+      p_production_id: productionId,
+    });
+    if (!rpcErr && rpcResult != null) return Number(rpcResult);
+
+    // Fallback: compute in JS (e.g. RPC not deployed)
+    const { data: prodRow } = await supabase
+      .from('studio_productions')
+      .select('id, sale_id, product_id')
+      .eq('id', productionId)
+      .single();
+    if (!prodRow) return 0;
+    const prod = prodRow as { id: string; sale_id?: string | null; product_id?: string | null };
+    const stages = await this.getStagesByProductionId(productionId);
+    const stageCost = stages.reduce((sum, s) => sum + (Number((s as any).cost) || 0), 0);
+    let fabricCost = 0;
+    if (prod.sale_id && prod.product_id) {
+      const { data: items } = await supabase
+        .from('sales_items')
+        .select('unit_price, quantity')
+        .eq('sale_id', prod.sale_id)
+        .eq('product_id', prod.product_id);
+      if (items?.length) {
+        fabricCost = (items as any[]).reduce(
+          (s, r) => s + (Number(r.unit_price) || 0) * (Number(r.quantity) || 1),
+          0
+        );
+      }
+      if (fabricCost === 0) {
+        const { data: leg } = await supabase
+          .from('sale_items')
+          .select('unit_price, price, quantity')
+          .eq('sale_id', prod.sale_id)
+          .eq('product_id', prod.product_id);
+        if (leg?.length) {
+          fabricCost = (leg as any[]).reduce(
+            (s, r) => s + (Number(r.unit_price ?? r.price) || 0) * (Number(r.quantity) || 1),
+            0
+          );
+        }
+      }
+    }
+    const total = Math.max(0, stageCost + fabricCost);
+    await supabase
+      .from('studio_productions')
+      .update({ actual_cost: total, updated_at: new Date().toISOString() })
+      .eq('id', productionId);
+    return total;
+  },
+
+  /**
+   * Persist Pricing Calculator values to studio_productions.
+   */
+  async updateProductionPricing(
+    productionId: string,
+    updates: { profit_margin_percent?: number | null; sale_price?: number | null; profit_amount?: number | null }
+  ): Promise<void> {
+    const payload: Record<string, unknown> = { updated_at: new Date().toISOString() };
+    if (updates.profit_margin_percent !== undefined) payload.profit_margin_percent = updates.profit_margin_percent;
+    if (updates.sale_price !== undefined) payload.sale_price = updates.sale_price;
+    if (updates.profit_amount !== undefined) payload.profit_amount = updates.profit_amount;
+    if (Object.keys(payload).length <= 1) return;
+    const { error } = await supabase.from('studio_productions').update(payload).eq('id', productionId);
+    if (error) throw error;
   },
 
   /** Set the generated product and invoice item for this production (when studio product line is added to sale). If production is already completed, post stock to generated product so Stock Ledger shows history. */
@@ -1176,6 +1253,11 @@ export const studioProductionService = {
           if (error) throw error;
           const result = updated as StudioProductionStage;
           await resolveStageWorker(result);
+          if (updates.cost !== undefined) {
+            await this.recalculateProductionCost((existingRow as any).production_id).catch((e) =>
+              console.warn('[studioProductionService] recalculateProductionCost after cost correction:', e?.message)
+            );
+          }
           return result;
         }
       }
@@ -1234,6 +1316,9 @@ export const studioProductionService = {
       const result = updated as StudioProductionStage;
       await resolveStageWorker(result);
       if (workerId && cost > 0) await this.ensureWorkerLedgerEntryForStage(stageId, cost, workerId);
+      await this.recalculateProductionCost((existingRow as any).production_id).catch((e) =>
+        console.warn('[studioProductionService] recalculateProductionCost after complete:', e?.message)
+      );
       return result;
     }
 
@@ -1264,6 +1349,11 @@ export const studioProductionService = {
     if (error) throw error;
     const row = data as any;
     await resolveStageWorker(row);
+    if (updates.cost !== undefined) {
+      await this.recalculateProductionCost((existingRow as any).production_id).catch((e) =>
+        console.warn('[studioProductionService] recalculateProductionCost after update:', e?.message)
+      );
+    }
     return row as StudioProductionStage;
   },
 
@@ -1603,6 +1693,12 @@ export const studioProductionService = {
     hasStudio: boolean;
     productionStatus: 'in_progress' | 'completed' | 'none';
     totalStudioCost: number;
+    /** From studio_productions.actual_cost when set (authoritative for display). */
+    actualCost: number | null;
+    /** From studio_productions.sale_price when set (authoritative for display). */
+    salePrice: number | null;
+    /** From studio_productions.profit_amount when set (authoritative for display). */
+    profitAmount: number | null;
     tasksCompleted: number;
     tasksTotal: number;
     productionDurationDays: number | null;
@@ -1616,6 +1712,9 @@ export const studioProductionService = {
       hasStudio: false,
       productionStatus: 'none' as const,
       totalStudioCost: 0,
+      actualCost: null as number | null,
+      salePrice: null as number | null,
+      profitAmount: null as number | null,
       tasksCompleted: 0,
       tasksTotal: 0,
       productionDurationDays: null,
@@ -1683,10 +1782,17 @@ export const studioProductionService = {
       }
 
       const firstWithItem = productions.find((p) => (p as any).generated_invoice_item_id);
+      const firstProd = productions[0];
+      const actualCost = firstProd && (firstProd as any).actual_cost != null ? Number((firstProd as any).actual_cost) : null;
+      const salePrice = firstProd && (firstProd as any).sale_price != null ? Number((firstProd as any).sale_price) : null;
+      const profitAmount = firstProd && (firstProd as any).profit_amount != null ? Number((firstProd as any).profit_amount) : null;
       return {
         hasStudio: true,
         productionStatus: allCompleted ? 'completed' : anyInProgress ? 'in_progress' : 'none',
         totalStudioCost: totalCost,
+        actualCost: actualCost != null && !Number.isNaN(actualCost) ? actualCost : null,
+        salePrice: salePrice != null && !Number.isNaN(salePrice) ? salePrice : null,
+        profitAmount: profitAmount != null && !Number.isNaN(profitAmount) ? profitAmount : null,
         tasksCompleted,
         tasksTotal,
         productionDurationDays,

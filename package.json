@@ -16,7 +16,8 @@
     "seed:full": "node scripts/run-phases.js",
     "link-auth": "node scripts/run-link-auth.js",
     "sync:mobile-env": "node scripts/sync-mobile-env.js",
-    "mobile:dev": "node scripts/sync-mobile-env.js && cd erp-mobile-app && npm run dev"
+    "mobile:dev": "node scripts/sync-mobile-env.js && cd erp-mobile-app && npm run dev",
+    "test:manufacturing-accounting": "node scripts/test-manufacturing-accounting.js"
   },
   "dependencies": {
     "@emotion/react": "11.14.0",
