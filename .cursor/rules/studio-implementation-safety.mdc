@@ -1,0 +1,26 @@
+---
+description: Studio & Inventory - test-first, no direct production; follow MASTER_PROMPT_STUDIO_SAFETY
+globs: docs/**/*.md, migrations/**/*.sql, src/app/**/studio/**/*, src/app/**/inventory/**/*, src/app/services/**studio*.ts, src/app/services/**sale*.ts, src/app/context/SalesContext.tsx
+---
+
+# Studio & Inventory Implementation — Safety
+
+When changing **Studio Production**, **inventory**, **stock_movements**, or **sale finalization**:
+
+1. **Do NOT apply changes directly to production.**  
+   Use a test branch and test environment first.
+
+2. **Create a safe checkpoint before starting:**  
+   - **Git:** New branch (e.g. `studio-architecture-test`) + tag (e.g. `STUDIO_ARCHITECTURE_PRE_TEST`) + push to GitHub.  
+   - **DB backup:** `mkdir -p backups` then `supabase db dump --file backups/pre_studio_test.sql` (or project’s dump command) so restore is possible if a migration fails.
+
+3. **Follow the flow:**  
+   **Analyze → Build → Test → Report → Wait for approval → Then production.**
+
+4. **Use the full process** described in:  
+   `docs/MASTER_PROMPT_STUDIO_SAFETY.md`  
+   (Steps 0–9: checkpoint, analysis, audit, test fix, architecture review, WIP design, Kanban design, test implementation, test report, wait for approval.)
+
+5. **Never run migrations or deploy to production** without explicit user approval after test validation.
+
+Direct apply to production is not allowed.

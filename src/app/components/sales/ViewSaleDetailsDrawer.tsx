@@ -523,9 +523,16 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
   const isPartiallyReturned = effectiveStatus === 'partially_returned';
   const statusBadgeConfig = getSaleStatusBadgeConfig(sale);
   const badge = statusBadgeConfig?.bg != null ? statusBadgeConfig : { bg: 'bg-gray-500/20', text: 'text-gray-400', border: 'border-gray-500/30', label: 'Draft' };
-  // Studio cost: from sale (DB) or from studio summary (productions/stages) so total shows correctly even before DB sync
-  const studioCost = Number(sale.studioCharges ?? 0) || Number(studioSummary?.totalStudioCost ?? 0);
-  const grandTotal = (sale.total ?? 0) + studioCost;
+  // Studio: show production cost for legacy; when we have generated invoice item, show its total (final sale with profit)
+  const studioCostLegacy = Number(sale.studioCharges ?? 0) || Number(studioSummary?.totalStudioCost ?? 0);
+  const genId = (studioSummary as { generatedInvoiceItemId?: string | null } | null)?.generatedInvoiceItemId;
+  const studioLineItem = genId && sale.items?.length ? (sale.items as any[]).find((i: any) => i.id === genId) : null;
+  const studioLineTotalFromInvoice = studioLineItem
+    ? (Number(studioLineItem.price) || 0) * (Number(studioLineItem.quantity) || (studioLineItem as any).qty || 1)
+    : 0;
+  const studioCost = studioLineTotalFromInvoice > 0 ? studioLineTotalFromInvoice : studioCostLegacy;
+  // When sale.total already includes the studio line (synced invoice), use it as grand total; else add legacy studio cost
+  const grandTotal = studioLineTotalFromInvoice > 0 ? (sale.total ?? 0) : (sale.total ?? 0) + studioCostLegacy;
   // Use sum of actual payment records when loaded (single source of truth); fallback to sale.paid from DB.
   // Fixes desktop drawer showing wrong paid amount (e.g. doubled) when sales.paid_amount is out of sync.
   const totalPaidDisplay =
@@ -1140,10 +1147,10 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
                     <>
                       <div className="flex justify-between text-sm">
                         <span className="text-gray-400">Sale Amount</span>
-                        <span className="text-white font-medium">{formatCurrency(sale.total ?? 0)}</span>
+                        <span className="text-white font-medium">{formatCurrency(studioLineTotalFromInvoice > 0 ? Math.max(0, (sale.total ?? 0) - studioLineTotalFromInvoice) : (sale.total ?? 0))}</span>
                       </div>
                       <div className="flex justify-between text-sm">
-                        <span className="text-gray-400">+ Studio Cost</span>
+                        <span className="text-gray-400">{studioLineTotalFromInvoice > 0 ? '+ Studio (sale with profit)' : '+ Studio Cost'}</span>
                         <span className="text-amber-400 font-medium">{formatCurrency(studioCost)}</span>
                       </div>
                       <div className="flex justify-between">

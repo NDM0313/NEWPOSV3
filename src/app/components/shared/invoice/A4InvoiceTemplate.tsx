@@ -125,7 +125,7 @@ export const A4InvoiceTemplate: React.FC<A4InvoiceTemplateProps> = ({
           </div>
           {template.show_studio && doc.totals.studio_charges > 0 && (
             <div className="classic-print-totals-row">
-              <span className="classic-print-totals-label">Studio Cost:</span>
+              <span className="classic-print-totals-label">Studio (sale with profit):</span>
               <span className="classic-print-totals-value classic-print-currency">{formatCurrency(doc.totals.studio_charges)}</span>
             </div>
           )}

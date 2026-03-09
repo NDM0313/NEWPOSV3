@@ -560,72 +560,14 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
           await saleService.replaceSaleCharges(result.id, charges, createdByAuthId);
         }
       }
-      // Set is_studio after create (avoids 400 if sales.is_studio column not yet added by migration)
+      // Set is_studio after create (avoids 400 if sales.is_studio column not yet added by migration).
+      // Do NOT auto-create production, product, or invoice line here. Invoice is created only when user
+      // clicks "Generate Invoice" (Create Product + Generate Invoice) in Studio Production.
       if (isStudioSale && result?.id) {
         try {
           const { supabase: sb } = await import('@/lib/supabase');
           await sb.from('sales').update({ is_studio: true }).eq('id', result.id);
         } catch (_) { /* column may not exist */ }
-        // Create studio_production + generated product + studio line + links (deterministic; no sync fallback needed)
-        if (supabaseItems?.length > 0) {
-          try {
-            const { studioProductionService } = await import('@/app/services/studioProductionService');
-            const firstItem = supabaseItems[0];
-            if (import.meta.env?.DEV) {
-              console.log('[SALES CONTEXT] Studio sale: creating production + studio line', { saleId: result.id, invoiceNo: effectiveInvoiceNo });
-            }
-            const production = await studioProductionService.createProductionJob({
-              company_id: companyId,
-              branch_id: effectiveBranchId,
-              sale_id: result.id,
-              production_no: `PRD-${effectiveInvoiceNo}`,
-              production_date: saleData.date || new Date().toISOString().split('T')[0],
-              product_id: firstItem.product_id,
-              quantity: Number(firstItem.quantity) || 1,
-              unit: (firstItem as any).unit || 'piece',
-              created_by: createdByAuthId,
-            });
-            const linkResult = await studioProductionService.createGeneratedProductAndStudioLine({
-              productionId: production.id,
-              saleId: result.id,
-              invoiceNo: effectiveInvoiceNo,
-              fabricProductId: firstItem.product_id,
-              companyId,
-              createdBy: createdByAuthId,
-            });
-            if (import.meta.env?.DEV) {
-              console.log('[SALES CONTEXT] Studio sale: production + studio line + links saved', linkResult);
-            }
-            // Validation: material_lines >= 1, studio_lines === 1 (multi-material supported)
-            const { supabase: sb } = await import('@/lib/supabase');
-            const { data: items } = await sb.from('sales_items').select('id, product_id, is_studio_product').eq('sale_id', result.id);
-            let fallbackItems: { id: string; product_id: string; is_studio_product?: boolean }[] = (items ?? []).map((i: any) => ({
-              id: i.id,
-              product_id: i.product_id,
-              is_studio_product: i.is_studio_product,
-            }));
-            if (fallbackItems.length === 0) {
-              try {
-                const { data: alt } = await sb.from('sale_items').select('id, product_id').eq('sale_id', result.id);
-                if (alt?.length) fallbackItems = (alt as { id: string; product_id: string }[]).map((i) => ({ ...i, is_studio_product: false }));
-              } catch (_) {}
-            }
-            const studioLines = fallbackItems.filter((i: any) => i.is_studio_product === true);
-            const materialLines = fallbackItems.filter((i: any) => i.is_studio_product !== true);
-            if (studioLines.length !== 1) {
-              console.warn('[SALES CONTEXT] Studio sale creation: expected exactly one studio line (is_studio_product = true)', { studioLines: studioLines.length, materialLines: materialLines.length });
-              toast.warning(studioLines.length === 0
-                ? 'Studio sale created but no studio product line. Add it from Studio Sale Detail (Create Product + Add to Sale).'
-                : `Studio sale created but expected 1 studio line, found ${studioLines.length}. Fix in Studio Sale Detail.`);
-            } else if (materialLines.length < 1) {
-              console.warn('[SALES CONTEXT] Studio sale creation: expected at least one material line', { materialLines: materialLines.length });
-              toast.warning('Studio sale created with no material items. Add at least one material (fabric, lace, etc.) in Sale Detail.');
-            }
-          } catch (prodErr: any) {
-            console.warn('[SALES CONTEXT] Studio production or studio line create failed (sale saved):', prodErr);
-            toast.warning(prodErr?.message || 'Studio sale saved. Add the studio product line from Studio Sale Detail (Create Product + Add to Sale).');
-          }
-        }
       }
       // Document number comes from DB (get_next_document_number_global); do not increment frontend counter
       
@@ -2045,29 +1987,8 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
     }
 
     try {
-      // Update status in Supabase
+      // Update status in Supabase. DB trigger handle_sale_final_stock_movement creates stock_movements when status becomes final.
       await saleService.updateSaleStatus(quotationId, 'final');
-      
-      // Decrement stock when converting to invoice
-      if (quotation.items && quotation.items.length > 0) {
-        try {
-          for (const item of quotation.items) {
-            if (item.productId && item.quantity > 0) {
-              const product = await productService.getProduct(item.productId);
-              if (product) {
-                // Decrement stock
-                const newStock = Math.max(0, (product.current_stock || 0) - item.quantity);
-                await productService.updateProduct(item.productId, {
-                  current_stock: newStock
-                });
-              }
-            }
-          }
-        } catch (stockError) {
-          console.warn('[SALES CONTEXT] Stock update warning (non-blocking):', stockError);
-          // Don't block conversion if stock update fails
-        }
-      }
       
       // Generate new invoice number
       const invoiceNo = generateDocumentNumber('invoice');

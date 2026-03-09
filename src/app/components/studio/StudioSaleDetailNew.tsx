@@ -278,6 +278,7 @@ export const StudioSaleDetailNew = () => {
   const [creatingProductAndInvoice, setCreatingProductAndInvoice] = useState(false);
   const [reopenStepId, setReopenStepId] = useState<string | null>(null);
   const [savingStage, setSavingStage] = useState(false);
+  const [syncingPricing, setSyncingPricing] = useState(false);
   const [pendingLeaveTarget, setPendingLeaveTarget] = useState<'studio' | 'studio-sales-list-new' | null>(null);
 
   const savedSuccessfullyRef = useRef(false);
@@ -547,7 +548,11 @@ export const StudioSaleDetailNew = () => {
               await studioProductionService.syncWorkerLedgerEntriesForProduction(prodId);
               window.dispatchEvent(new CustomEvent('studio-production-saved'));
               const stages = await studioProductionService.getStagesByProductionId(prodId);
-              productionSteps = stagesToProductionSteps(stages);
+              const stageIds = stages.map((s: any) => s.id);
+              const ledgerStatusByStageId = stageIds.length > 0
+                ? await studioProductionService.getLedgerStatusForStages(stageIds)
+                : undefined;
+              productionSteps = stagesToProductionSteps(stages, ledgerStatusByStageId);
             } else {
               setProductionId(null);
             }
@@ -575,7 +580,11 @@ export const StudioSaleDetailNew = () => {
                   setProductionId(production.id);
                   // No auto-stages: manager decides via Customize Tasks
                   const stages = await studioProductionService.getStagesByProductionId(production.id);
-                  productionSteps = stagesToProductionSteps(stages);
+                  const stageIds = stages.map((s: any) => s.id);
+                  const ledgerStatusByStageId = stageIds.length > 0
+                    ? await studioProductionService.getLedgerStatusForStages(stageIds)
+                    : undefined;
+                  productionSteps = stagesToProductionSteps(stages, ledgerStatusByStageId);
                 }
               }
             }
@@ -665,7 +674,11 @@ export const StudioSaleDetailNew = () => {
       await studioProductionService.syncWorkerLedgerEntriesForProduction(productionId);
       window.dispatchEvent(new CustomEvent('studio-production-saved'));
       const stages = await studioProductionService.getStagesByProductionId(productionId);
-      const steps = stagesToProductionSteps(stages);
+      const stageIds = stages.map((s: any) => s.id);
+      const ledgerStatusByStageId = stageIds.length > 0
+        ? await studioProductionService.getLedgerStatusForStages(stageIds)
+        : undefined;
+      const steps = stagesToProductionSteps(stages, ledgerStatusByStageId);
       setSaleDetail(prev => prev ? { ...prev, productionSteps: steps } : prev);
       return steps;
     } catch (e) {
@@ -1085,25 +1098,8 @@ export const StudioSaleDetailNew = () => {
       savedSuccessfullyRef.current = true;
       toast.success('Changes saved to database.');
       window.dispatchEvent(new CustomEvent('studio-production-saved'));
-      if (saleDetail?.id) {
-        try {
-          const marginVal = parseFloat(profitMarginValue) || 0;
-          const syncParams = profitMarginMode === 'fixed'
-            ? { profitAmount: marginVal }
-            : { profitMarginPercent: marginVal };
-          const syncResult = await syncInvoiceWithProductionPricing(saleDetail.id, syncParams);
-          setLastInvoiceSyncResult(syncResult);
-          if (syncResult.success) {
-            window.dispatchEvent(new CustomEvent('saleUpdated', { detail: { saleId: saleDetail.id } }));
-            toast.success('Studio invoice item synced with production pricing.');
-          } else if (syncResult.error) {
-            toast.error(syncResult.error);
-          }
-        } catch (syncErr) {
-          console.warn('[StudioSaleDetailNew] Invoice sync failed:', syncErr);
-          toast.error((syncErr as Error)?.message || 'Invoice sync failed');
-        }
-      }
+      // Do NOT sync invoice here. Save = production layer only (stages). Invoice sync only when user
+      // clicks "Generate Invoice" or a dedicated "Sync pricing" action after generating invoice.
       if (!opts?.skipConfirmDialog) setShowSaveConfirmDialog(true);
     } catch (e: any) {
       const msg = e?.message ?? String(e);
@@ -1122,7 +1118,7 @@ export const StudioSaleDetailNew = () => {
     } finally {
       setSavingStage(false);
     }
-  }, [saleDetail, productionId, ensureProductionForSale, reloadProductionSteps, workers, profitMarginValue, profitMarginMode]);
+  }, [saleDetail, productionId, ensureProductionForSale, reloadProductionSteps, workers]);
 
   const handleSaveAndLeave = useCallback(async () => {
     const target = pendingLeaveTarget;
@@ -2492,7 +2488,7 @@ export const StudioSaleDetailNew = () => {
                     </div>
                     <p className="text-xs text-gray-500">
                       {allTasksCompleted
-                        ? 'Set profit margin in the right panel "Pricing Calculator", then click Save to sync invoice.'
+                        ? 'Set profit margin in "Pricing Calculator", then use "Sync invoice pricing" after you have generated the invoice.'
                         : 'Complete all production stages to unlock the Pricing Calculator.'}
                     </p>
                     {/* Payment Status Breakdown */}
@@ -2943,6 +2939,40 @@ export const StudioSaleDetailNew = () => {
                           </Button>
                         </div>
                       </div>
+                      {saleDetail?.id && (
+                        <div className="pt-2 border-t border-gray-800">
+                          <p className="text-xs text-gray-500 mb-2">After generating invoice, sync the invoice line with production cost + profit:</p>
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            className="w-full bg-blue-600/20 text-blue-300 hover:bg-blue-600/30 border border-blue-700"
+                            disabled={syncingPricing}
+                            onClick={async () => {
+                              if (!saleDetail?.id) return;
+                              setSyncingPricing(true);
+                              try {
+                                const marginVal = parseFloat(profitMarginValue) || 0;
+                                const syncParams = profitMarginMode === 'fixed' ? { profitAmount: marginVal } : { profitMarginPercent: marginVal };
+                                const syncResult = await syncInvoiceWithProductionPricing(saleDetail.id, syncParams);
+                                setLastInvoiceSyncResult(syncResult);
+                                if (syncResult.success) {
+                                  window.dispatchEvent(new CustomEvent('saleUpdated', { detail: { saleId: saleDetail.id } }));
+                                  toast.success('Studio invoice item synced with production pricing.');
+                                } else if (syncResult.error) {
+                                  toast.error(syncResult.error);
+                                }
+                              } catch (e) {
+                                toast.error((e as Error)?.message || 'Sync failed');
+                              } finally {
+                                setSyncingPricing(false);
+                              }
+                            }}
+                          >
+                            {syncingPricing ? <Loader2 size={14} className="animate-spin mr-2" /> : null}
+                            Sync invoice pricing
+                          </Button>
+                        </div>
+                      )}
                     </>
                   )}
                 </div>
