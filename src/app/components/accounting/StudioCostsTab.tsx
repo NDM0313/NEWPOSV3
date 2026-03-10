@@ -31,6 +31,8 @@ import { cn } from '@/app/components/ui/utils';
 import { format } from 'date-fns';
 import { useNavigation } from '@/app/context/NavigationContext';
 import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
+import { supabase } from '@/lib/supabase';
+import { toast } from 'sonner';
 
 const getStageTypeLabel = (t: string) => {
   const s = (t || '').toLowerCase();
@@ -48,6 +50,16 @@ const getStageTypeIcon = (t: string) => {
   return FileText;
 };
 
+const DEFAULT_SUMMARY: StudioCostsSummary = {
+  totalCost: 0,
+  totalPaid: 0,
+  totalUnpaid: 0,
+  workersCount: 0,
+  productionsCount: 0,
+  byStageType: { dyer: 0, stitching: 0, handwork: 0 },
+  fromJournal: false,
+};
+
 export const StudioCostsTab: React.FC = () => {
   const { companyId, branchId: contextBranchId } = useSupabase();
   const { setCurrentView, setSelectedWorkerId } = useNavigation();
@@ -57,13 +69,21 @@ export const StudioCostsTab: React.FC = () => {
   const [workers, setWorkers] = useState<WorkerCostSummary[]>([]);
   const [productions, setProductions] = useState<ProductionCostSummary[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
-  const [selectedBranchId, setSelectedBranchId] = useState<string | undefined>(contextBranchId);
+  /** Default to All Branches so Studio Costs shows all data; user can filter by branch. */
+  const [selectedBranchId, setSelectedBranchId] = useState<string | undefined>(undefined);
   const [expandedWorker, setExpandedWorker] = useState<string | null>(null);
   const [expandedProduction, setExpandedProduction] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'workers' | 'productions'>('workers');
+  const [ensuringAccounts, setEnsuringAccounts] = useState(false);
 
   const load = useCallback(async () => {
-    if (!companyId) return;
+    if (!companyId) {
+      setSummary(DEFAULT_SUMMARY);
+      setWorkers([]);
+      setProductions([]);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     try {
       const [sum, workerList, prodList, branchList] = await Promise.all([
@@ -78,13 +98,35 @@ export const StudioCostsTab: React.FC = () => {
       setBranches(branchList);
     } catch (e) {
       console.error('[StudioCostsTab] Error:', e);
-      setSummary(null);
+      setSummary(DEFAULT_SUMMARY);
       setWorkers([]);
       setProductions([]);
     } finally {
       setLoading(false);
     }
   }, [companyId, selectedBranchId]);
+
+  const ensureDefaultAccounts = useCallback(async () => {
+    setEnsuringAccounts(true);
+    try {
+      const { data, error } = await supabase.rpc('ensure_erp_accounts_for_current_company');
+      if (error) {
+        toast.error(error.message || 'Failed to create default accounts');
+        return;
+      }
+      const result = data as { ok?: boolean; error?: string } | null;
+      if (result?.ok) {
+        toast.success('Default accounts (5000, 2010, etc.) ensured. Refreshing…');
+        await load();
+      } else {
+        toast.error(result?.error || 'Could not create accounts');
+      }
+    } catch (e: any) {
+      toast.error(e?.message || 'Failed to ensure accounts');
+    } finally {
+      setEnsuringAccounts(false);
+    }
+  }, [load]);
 
   useEffect(() => {
     load();
@@ -95,6 +137,9 @@ export const StudioCostsTab: React.FC = () => {
     setCurrentView('worker-detail');
   };
 
+  const effectiveSummary = summary ?? DEFAULT_SUMMARY;
+  const hasAnyData = effectiveSummary.totalCost > 0 || workers.length > 0 || productions.length > 0;
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-24">
@@ -103,10 +148,22 @@ export const StudioCostsTab: React.FC = () => {
     );
   }
 
+  if (!companyId) {
+    return (
+      <div className="flex flex-col items-center justify-center py-24 text-center">
+        <AlertCircle size={48} className="text-amber-500 mb-4" />
+        <h3 className="text-lg font-semibold text-white mb-2">Company context required</h3>
+        <p className="text-sm text-gray-400 max-w-md">
+          Log in or select a company to view Studio Production Costs. Data is loaded from journal entries (accounts 5000, 2010) and studio productions.
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h3 className="text-lg font-bold text-white">Studio Production Costs</h3>
           <p className="text-sm text-gray-400">
@@ -114,6 +171,14 @@ export const StudioCostsTab: React.FC = () => {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            className="border-gray-600 text-gray-300 hover:bg-gray-800"
+            onClick={() => load()}
+          >
+            Refresh
+          </Button>
           {branches.length > 1 && (
             <select
               value={selectedBranchId || 'all'}
@@ -155,6 +220,34 @@ export const StudioCostsTab: React.FC = () => {
         </div>
       </div>
 
+      {/* Empty state when no data */}
+      {!hasAnyData && (
+        <div className="bg-amber-950/20 border border-amber-800/50 rounded-xl p-6 text-center">
+          <Package size={48} className="mx-auto text-amber-500/80 mb-3" />
+          <h4 className="text-base font-semibold text-white mb-2">No studio cost data yet</h4>
+          <p className="text-sm text-gray-400 max-w-lg mx-auto mb-2">
+            Data comes from completed studio production stages (with worker and cost) and journal entries (Cost of Production 5000 / Worker Payable 2010).
+          </p>
+          <p className="text-xs text-gray-500 mb-4">
+            Ensure Chart of Accounts has accounts <strong className="text-gray-400">5000</strong> (Cost of Production) and <strong className="text-gray-400">2010</strong> (Worker Payable).
+          </p>
+          <div className="flex flex-wrap items-center justify-center gap-2">
+            <Button
+              size="sm"
+              className="bg-amber-600 hover:bg-amber-700 text-white"
+              onClick={ensureDefaultAccounts}
+              disabled={ensuringAccounts}
+            >
+              {ensuringAccounts ? <Loader2 size={14} className="animate-spin mr-1.5" /> : null}
+              Create default accounts (5000 & 2010)
+            </Button>
+            <Button variant="outline" size="sm" className="border-amber-600 text-amber-400 hover:bg-amber-500/10" onClick={() => load()}>
+              Refresh
+            </Button>
+          </div>
+        </div>
+      )}
+
       {/* Summary Cards */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
         <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
@@ -162,7 +255,7 @@ export const StudioCostsTab: React.FC = () => {
             <DollarSign size={20} className="text-gray-500" />
             <span className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Total Cost</span>
           </div>
-          <p className="text-xl font-bold text-white">{formatCurrency(summary?.totalCost ?? 0)}</p>
+          <p className="text-xl font-bold text-white">{formatCurrency(effectiveSummary.totalCost)}</p>
           <p className="text-xs text-gray-500 mt-1">All stage costs</p>
         </div>
         <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
@@ -170,7 +263,7 @@ export const StudioCostsTab: React.FC = () => {
             <CheckCircle2 size={20} className="text-green-500" />
             <span className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Paid</span>
           </div>
-          <p className="text-xl font-bold text-green-400">{formatCurrency(summary?.totalPaid ?? 0)}</p>
+          <p className="text-xl font-bold text-green-400">{formatCurrency(effectiveSummary.totalPaid)}</p>
           <p className="text-xs text-gray-500 mt-1">Worker payments</p>
         </div>
         <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
@@ -178,7 +271,7 @@ export const StudioCostsTab: React.FC = () => {
             <AlertCircle size={20} className="text-amber-500" />
             <span className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Outstanding</span>
           </div>
-          <p className="text-xl font-bold text-amber-400">{formatCurrency(summary?.totalUnpaid ?? 0)}</p>
+          <p className="text-xl font-bold text-amber-400">{formatCurrency(effectiveSummary.totalUnpaid)}</p>
           <p className="text-xs text-gray-500 mt-1">To pay workers</p>
         </div>
         <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
@@ -186,7 +279,7 @@ export const StudioCostsTab: React.FC = () => {
             <Users size={20} className="text-blue-500" />
             <span className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Workers</span>
           </div>
-          <p className="text-xl font-bold text-white">{summary?.workersCount ?? 0}</p>
+          <p className="text-xl font-bold text-white">{effectiveSummary.workersCount}</p>
           <p className="text-xs text-gray-500 mt-1">With costs</p>
         </div>
         <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
@@ -194,46 +287,46 @@ export const StudioCostsTab: React.FC = () => {
             <Package size={20} className="text-purple-500" />
             <span className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Productions</span>
           </div>
-          <p className="text-xl font-bold text-white">{summary?.productionsCount ?? 0}</p>
+          <p className="text-xl font-bold text-white">{effectiveSummary.productionsCount}</p>
           <p className="text-xs text-gray-500 mt-1">With stages</p>
         </div>
       </div>
 
       {/* Cost by Stage Type */}
-      {summary && (summary.byStageType.dyer > 0 || summary.byStageType.stitching > 0 || summary.byStageType.handwork > 0) && (
+      {(effectiveSummary.byStageType.dyer > 0 || effectiveSummary.byStageType.stitching > 0 || effectiveSummary.byStageType.handwork > 0) && (
         <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
           <h4 className="text-sm font-semibold text-white mb-3">Cost by Stage Type</h4>
           <div className="flex flex-wrap gap-4">
-            {summary.byStageType.dyer > 0 && (
+            {effectiveSummary.byStageType.dyer > 0 && (
               <div className="flex items-center gap-2">
                 <div className="w-8 h-8 rounded-lg bg-purple-500/20 flex items-center justify-center">
                   <Palette size={16} className="text-purple-400" />
                 </div>
                 <div>
                   <p className="text-xs text-gray-500">Dyeing</p>
-                  <p className="text-sm font-semibold text-white">{formatCurrency(summary.byStageType.dyer)}</p>
+                  <p className="text-sm font-semibold text-white">{formatCurrency(effectiveSummary.byStageType.dyer)}</p>
                 </div>
               </div>
             )}
-            {summary.byStageType.stitching > 0 && (
+            {effectiveSummary.byStageType.stitching > 0 && (
               <div className="flex items-center gap-2">
                 <div className="w-8 h-8 rounded-lg bg-blue-500/20 flex items-center justify-center">
                   <Scissors size={16} className="text-blue-400" />
                 </div>
                 <div>
                   <p className="text-xs text-gray-500">Stitching</p>
-                  <p className="text-sm font-semibold text-white">{formatCurrency(summary.byStageType.stitching)}</p>
+                  <p className="text-sm font-semibold text-white">{formatCurrency(effectiveSummary.byStageType.stitching)}</p>
                 </div>
               </div>
             )}
-            {summary.byStageType.handwork > 0 && (
+            {effectiveSummary.byStageType.handwork > 0 && (
               <div className="flex items-center gap-2">
                 <div className="w-8 h-8 rounded-lg bg-pink-500/20 flex items-center justify-center">
                   <Sparkles size={16} className="text-pink-400" />
                 </div>
                 <div>
                   <p className="text-xs text-gray-500">Handwork</p>
-                  <p className="text-sm font-semibold text-white">{formatCurrency(summary.byStageType.handwork)}</p>
+                  <p className="text-sm font-semibold text-white">{formatCurrency(effectiveSummary.byStageType.handwork)}</p>
                 </div>
               </div>
             )}
@@ -530,12 +623,12 @@ export const StudioCostsTab: React.FC = () => {
           <div>
             <p className="text-sm font-semibold text-gray-400">
               Standard Accounting Method
-              {summary?.fromJournal === true && (
+              {effectiveSummary.fromJournal === true && (
                 <span className="ml-2 text-xs px-2 py-0.5 rounded-full bg-green-500/20 text-green-400 border border-green-500/30 font-normal">
                   Live from Journal Entries
                 </span>
               )}
-              {summary?.fromJournal === false && (
+              {effectiveSummary.fromJournal === false && (
                 <span className="ml-2 text-xs px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-400 border border-amber-500/30 font-normal">
                   From Legacy Ledger
                 </span>

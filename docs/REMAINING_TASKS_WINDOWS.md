@@ -1,9 +1,19 @@
 # Remaining Tasks – Windows par complete karne ke steps
 
-**Last updated:** Feb 2026  
+**Last updated:** Mar 2026  
 **Purpose:** GitHub se clone ke baad Windows par remaining tasks complete karne ka guide.
 
 **MacBook / VPS:** Agar aap Mac ya Linux par migrations/apply kar rahe ho to **`docs/REMAINING_TASKS_APPLY_ON_MACBOOK.md`** use karein (migration order + immutable runner).
+
+---
+
+## ✅ Recently completed (commit c81489e – MacBook)
+
+- **docs/studio_accounting_dashboard.md** – Studio accounting flow, account codes (5000 Cost, 2010 Worker Payable), dashboard card calculations, data source priority, worker breakdown documented.
+- **VPS SQL migrations (supabase-db)** – `accounting_ensure_default_accounts.sql`, `journal_entry_lines_performance_indexes.sql`, `products_add_source_type.sql`, `studio_cleanup_duplicate_invoice_lines.sql` run kiye.
+- **Studio Costs dashboard** – Ab live journal entry data (JE-8287 to JE-8294) se cost_debit (5000) aur payable_credit (2010) show hota hai.
+
+**Office par:** `git pull origin main` run karo – code already up to date. Phir `npm install` (optional) aur `npm run dev` se app chalao.
 
 ---
 
@@ -80,6 +90,7 @@ Browser: http://localhost:5173
 | `.cursor/rules/vps-ssh.mdc` | VPS SSH host: `dincouture-vps` |
 | `REMAINING_TASKS_ANALYSIS.md` | Full remaining tasks analysis |
 | `docs/MACBOOK_SETUP_AND_REMAINING_TASKS.md` | MacBook + mobile tasks (same list, different OS) |
+| `docs/studio_accounting_dashboard.md` | Studio Costs dashboard – accounting flow, account codes, card calculations |
 
 ---
 

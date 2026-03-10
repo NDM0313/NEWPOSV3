@@ -8,6 +8,7 @@
     "dev": "node scripts/run-migrations.js --allow-fail && vite",
     "dev:no-migrate": "vite",
     "migrate": "node scripts/run-migrations.js",
+    "ensure-accounting": "node scripts/ensure-accounting-accounts.js",
     "health": "node scripts/run-health-check.js",
     "apply-storage-rls": "node scripts/apply-storage-rls.js",
     "dev:with-migrate": "node scripts/run-migrations.js && vite",
