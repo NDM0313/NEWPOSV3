@@ -24,7 +24,25 @@ export interface Branch {
 /** Branch access mode: AUTO = single-branch company (auto-assign); RESTRICTED = multi-branch (user must be assigned). */
 export type BranchAccessMode = 'AUTO' | 'RESTRICTED';
 
+/** In-memory cache for branch list by company (avoids repeated DB calls). Call clearBranchCache() on sign-out. */
+const branchListCache = new Map<string, { data: Branch[]; ts: number }>();
+const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
 export const branchService = {
+  /** Clear in-memory branch cache (call on sign-out). */
+  clearBranchCache(): void {
+    branchListCache.clear();
+  },
+
+  /** Get all branches for a company (cached). Use for BranchSelector and filter bars. */
+  async getBranchesCached(companyId: string): Promise<Branch[]> {
+    const entry = branchListCache.get(companyId);
+    if (entry && Date.now() - entry.ts < CACHE_TTL_MS) return entry.data;
+    const data = await this.getAllBranches(companyId);
+    branchListCache.set(companyId, { data: data as Branch[], ts: Date.now() });
+    return data as Branch[];
+  },
+
   /** Get count of active branches for a company. Used for Branch Access Mode (1 = AUTO, >1 = RESTRICTED). */
   async getCompanyBranchCount(companyId: string): Promise<number> {
     const { count, error } = await supabase

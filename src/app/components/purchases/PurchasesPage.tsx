@@ -28,7 +28,7 @@ import { cn } from "@/app/components/ui/utils";
 import { useNavigation } from '@/app/context/NavigationContext';
 import { usePurchases } from '@/app/context/PurchaseContext';
 import { useSupabase } from '@/app/context/SupabaseContext';
-import { useDateRange } from '@/app/context/DateRangeContext';
+import { useGlobalFilter } from '@/app/context/GlobalFilterContext';
 import { purchaseService } from '@/app/services/purchaseService';
 import { branchService, Branch } from '@/app/services/branchService';
 import { Pagination } from '@/app/components/ui/pagination';
@@ -86,7 +86,13 @@ export const PurchasesPage = () => {
   const { companyId, branchId } = useSupabase();
   const { canDeletePurchase } = useCheckPermission();
   const { formatCurrency } = useFormatCurrency();
-  const { startDate, endDate } = useDateRange();
+  const globalFilter = useGlobalFilter();
+  const { startDate, endDate, setCurrentModule } = globalFilter;
+
+  useEffect(() => {
+    setCurrentModule('purchases');
+  }, [setCurrentModule]);
+
   const { purchases: contextPurchases, loading: contextLoading, refreshPurchases, deletePurchase } = usePurchases();
   const [purchases, setPurchases] = useState<Purchase[]>([]);
   const [loading, setLoading] = useState(true);

@@ -501,23 +501,17 @@ export const StudioDashboardNew = () => {
     return { currentStage: 'Ready for Production', assignedWorker: 'Unassigned', status: 'Pending', expectedDate: saleDeadline || '—' };
   }, []);
 
-  // Convert sale + productions/stages to display format (fully DB-driven)
-  const convertSaleToDisplay = useCallback(async (sale: any): Promise<StudioOrderDisplay> => {
+  // Convert sale + pre-fetched stages to display format (stagesBySaleId from batch load)
+  const convertSaleToDisplayWithStages = useCallback((sale: any, stagesBySaleId: Record<string, any[]>): StudioOrderDisplay => {
     const items = sale.items || [];
     const firstItem = items[0];
     const customer = sale.customer || {};
-    const saleDeadline = sale.deadline || getStudioDeadlineFromNotes(sale.notes) || ''; // sale deadline / expected date when no stage
-    let stages: any[] = [];
-    try {
-      const productions = await studioProductionService.getProductionsBySaleId(sale.id);
-      if (productions && productions.length > 0) {
-        stages = await studioProductionService.getStagesByProductionId(productions[0].id);
-      }
-    } catch (_) { /* no production yet */ }
+    const saleDeadline = sale.deadline || getStudioDeadlineFromNotes(sale.notes) || '';
+    const stages = stagesBySaleId[sale.id] || [];
     const { currentStage, assignedWorker, status, expectedDate } = deriveFromStages(stages, saleDeadline);
     const formatExpected = (v: string) => {
       if (!v || v === '—') return '—';
-      if (v.includes('T')) return v.slice(0, 10); // ISO → YYYY-MM-DD
+      if (v.includes('T')) return v.slice(0, 10);
       return v;
     };
     return {
@@ -536,21 +530,29 @@ export const StudioDashboardNew = () => {
     };
   }, [deriveFromStages]);
 
-  // Load studio orders + studio sales with real production/stage data from DB
+  // Load studio dashboard: last 100 studio sales + batch productions/stages (no N+1)
   const loadStudioOrders = useCallback(async () => {
     if (!companyId) return;
     setLoading(true);
     try {
       await ensureStudioProductionsForCompany(companyId);
-      // Load only from sales table (studio_orders table dropped)
-      const studioSalesData = await saleService.getStudioSales(companyId, branchId === 'all' ? undefined : branchId || undefined).catch(() => []);
-      const fromSales = await Promise.all(
-        (studioSalesData || []).map((sale: any) =>
-          convertSaleToDisplay(sale).catch(() => null)
-        )
-      );
-      const validFromSales = fromSales.filter((o): o is StudioOrderDisplay => o != null);
-      setOrders(validFromSales);
+      const effectiveBranchId = branchId === 'all' ? undefined : branchId || undefined;
+      const result = await saleService
+        .getStudioSales(companyId, effectiveBranchId, { limit: 100, offset: 0 })
+        .catch(() => ({ data: [] }));
+      const studioSalesData = (result && typeof result === 'object' && 'data' in result ? (result as { data: any[] }).data : result) || [];
+      const saleIds = studioSalesData.map((s: any) => s.id).filter(Boolean);
+      let stagesBySaleId: Record<string, any[]> = {};
+      if (saleIds.length > 0) {
+        const productionsBySale = await studioProductionService.getProductionsBySaleIds(saleIds);
+        const productionIds = productionsBySale.map((p: any) => p.id).filter(Boolean);
+        const stagesMap = productionIds.length > 0 ? await studioProductionService.getStagesByProductionIds(productionIds) : new Map<string, any[]>();
+        productionsBySale.forEach((p: any) => {
+          if (p.sale_id) stagesBySaleId[p.sale_id] = stagesMap.get(p.id) || [];
+        });
+      }
+      const fromSales = studioSalesData.map((sale: any) => convertSaleToDisplayWithStages(sale, stagesBySaleId));
+      setOrders(fromSales);
     } catch (error) {
       console.error('[STUDIO DASHBOARD] Error loading studio orders:', error);
       toast.error('Failed to load studio orders');
@@ -558,7 +560,7 @@ export const StudioDashboardNew = () => {
     } finally {
       setLoading(false);
     }
-  }, [companyId, branchId, convertSaleToDisplay]);
+  }, [companyId, branchId, convertSaleToDisplayWithStages]);
 
   // Load orders on mount and when returning to dashboard (refetch so data is fresh)
   useEffect(() => {

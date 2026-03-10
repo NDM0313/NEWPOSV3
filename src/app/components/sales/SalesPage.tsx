@@ -46,7 +46,7 @@ import { cn } from "@/app/components/ui/utils";
 import { useNavigation } from '@/app/context/NavigationContext';
 import { useSales, Sale, convertFromSupabaseSale } from '@/app/context/SalesContext';
 import { useSupabase } from '@/app/context/SupabaseContext';
-import { useDateRange } from '@/app/context/DateRangeContext';
+import { useGlobalFilter } from '@/app/context/GlobalFilterContext';
 import { saleService } from '@/app/services/saleService';
 import { branchService, Branch } from '@/app/services/branchService';
 import { saleReturnService } from '@/app/services/saleReturnService';
@@ -76,9 +76,15 @@ export const SalesPage = () => {
   const { openDrawer, setCurrentView, openSaleIdForView, setOpenSaleIdForView } = useNavigation();
   const { canEditSale, canDeleteSale, canCancelSale, canCreateSale } = useCheckPermission();
   const { formatCurrency } = useFormatCurrency();
-  const { sales, deleteSale, updateSale, recordPayment, updateShippingStatus, refreshSales, loading } = useSales();
+  const { sales, deleteSale, updateSale, recordPayment, updateShippingStatus, refreshSales, loading, totalCount, page, pageSize: contextPageSize, setPage } = useSales();
   const { companyId, branchId, user } = useSupabase();
-  const { startDate, endDate } = useDateRange();
+  const globalFilter = useGlobalFilter();
+  const { startDate, endDate, setCurrentModule } = globalFilter;
+
+  useEffect(() => {
+    setCurrentModule('sales');
+  }, [setCurrentModule]);
+
   const [searchTerm, setSearchTerm] = useState('');
   const [filterOpen, setFilterOpen] = useState(false);
   const [hoveredRow, setHoveredRow] = useState<string | null>(null);
@@ -700,10 +706,12 @@ export const SalesPage = () => {
       }
       // activeTab === 'all' shows all
 
-      // Date range filter (from global date range context) - TASK 1 FIX: Only filter if dates are set
+      // Global filter date range
       if (startDate && endDate) {
         const saleDate = new Date(sale.date);
-        if (saleDate < startDate || saleDate > endDate) return false;
+        const start = new Date(startDate);
+        const end = new Date(endDate);
+        if (saleDate < start || saleDate > end) return false;
       }
       // If no date range, show all (no filter applied)
 
@@ -799,18 +807,13 @@ export const SalesPage = () => {
     invoiceCount: finalSalesForSummary.length,
   }), [finalSalesForSummary, getEffectiveDue]);
 
-  // Pagination state
-  const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize, setPageSize] = useState(25);
-  
-  // Paginated sales (from sorted list)
-  const paginatedSales = useMemo(() => {
-    const startIndex = (currentPage - 1) * pageSize;
-    const endIndex = startIndex + pageSize;
-    return sortedSales.slice(startIndex, endIndex);
-  }, [sortedSales, currentPage, pageSize]);
+  // Server-side pagination (context loads one page at a time; default 50)
+  const pageSize = contextPageSize ?? 50;
+  const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
+  const currentPage = page + 1;
 
-  const totalPages = Math.ceil(sortedSales.length / pageSize);
+  // Paginated sales = current page from context (already filtered/sorted from server page)
+  const paginatedSales = useMemo(() => sortedSales, [sortedSales]);
 
   // Paid amount from payment records (fixes wrong sales.paid_amount in table - same as ViewSaleDetailsDrawer)
   const [paidBySaleId, setPaidBySaleId] = useState<Map<string, number>>(new Map());
@@ -848,18 +851,17 @@ export const SalesPage = () => {
     [paidBySaleId]
   );
 
-  // Reset to page 1 when filters change
+  // Reset to page 0 when filters change
   React.useEffect(() => {
-    setCurrentPage(1);
-  }, [searchTerm, dateFilter, customerFilter, paymentStatusFilter, saleStatusFilter, shippingStatusFilter, branchFilter, paymentMethodFilter]);
+    setPage(0);
+  }, [searchTerm, dateFilter, customerFilter, paymentStatusFilter, saleStatusFilter, shippingStatusFilter, branchFilter, paymentMethodFilter, setPage]);
 
-  const handlePageChange = (page: number) => {
-    setCurrentPage(page);
+  const handlePageChange = (p: number) => {
+    setPage(Math.max(0, p - 1));
   };
 
-  const handlePageSizeChange = (size: number) => {
-    setPageSize(size);
-    setCurrentPage(1);
+  const handlePageSizeChange = (_size: number) => {
+    setPage(0);
   };
 
   const clearAllFilters = () => {
@@ -2153,7 +2155,7 @@ export const SalesPage = () => {
         currentPage={currentPage}
         totalPages={totalPages}
         pageSize={pageSize}
-        totalItems={filteredSales.length}
+        totalItems={totalCount}
         onPageChange={handlePageChange}
         onPageSizeChange={handlePageSizeChange}
       />

@@ -6,7 +6,6 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { useSupabase } from '@/app/context/SupabaseContext';
-import { useSettings } from '@/app/context/SettingsContext';
 import { ReportActions } from './ReportActions';
 import { DateRangePicker } from '../ui/DateRangePicker';
 import { Button } from '../ui/button';
@@ -17,6 +16,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '../ui/select';
+import { BranchSelector } from '@/app/components/layout/BranchSelector';
 import {
   getRoznamcha,
   type AccountFilter,
@@ -46,17 +46,17 @@ function AccountBadge({ accountLabel }: { accountLabel: string }) {
 }
 
 export const RoznamchaReport = () => {
-  const { companyId, branchId: userBranchId } = useSupabase();
-  const { branches } = useSettings();
+  const { companyId, branchId: contextBranchId } = useSupabase();
   const today = new Date();
   const [dateRange, setDateRange] = useState<{ from?: Date; to?: Date }>({ from: today, to: today });
-  const [branchId, setBranchId] = useState<string | null>(null);
   const [accountFilter, setAccountFilter] = useState<AccountFilter>('all');
   const [data, setData] = useState<RoznamchaResult | null>(null);
   const [loading, setLoading] = useState(!!companyId);
 
   const dateFrom = dateRange.from ? format(dateRange.from, 'yyyy-MM-dd') : '';
   const dateTo = dateRange.to ? format(dateRange.to, 'yyyy-MM-dd') : dateFrom;
+
+  const effectiveBranchId = contextBranchId === 'all' ? null : (contextBranchId || null);
 
   const load = useCallback(async () => {
     if (!companyId || !dateFrom || !dateTo) {
@@ -68,7 +68,7 @@ export const RoznamchaReport = () => {
     try {
       const result = await getRoznamcha(
         companyId,
-        branchId || null,
+        effectiveBranchId,
         dateFrom,
         dateTo,
         accountFilter
@@ -79,17 +79,16 @@ export const RoznamchaReport = () => {
     } finally {
       setLoading(false);
     }
-  }, [companyId, branchId, dateFrom, dateTo, accountFilter]);
+  }, [companyId, effectiveBranchId, dateFrom, dateTo, accountFilter]);
 
   useEffect(() => {
     load();
   }, [load]);
 
-  const branchOptions = branches || [];
-  const selectedBranchName = branchId ? branchOptions.find((b: any) => b.id === branchId)?.branchName || 'All' : 'All';
+  const selectedBranchLabel = contextBranchId === 'all' || !contextBranchId ? 'All Branches' : 'Selected branch';
 
   const exportData = {
-    title: `Roznamcha ${dateFrom} to ${dateTo} – ${selectedBranchName}`,
+    title: `Roznamcha ${dateFrom} to ${dateTo} – ${selectedBranchLabel}`,
     headers: ['Time', 'Ref', 'Details', 'Account', 'Cash In', 'Cash Out', 'Balance'],
     rows: data
       ? [
@@ -135,22 +134,8 @@ export const RoznamchaReport = () => {
               placeholder="Select range"
             />
           </div>
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-gray-400">Branch</span>
-            <Select value={branchId || 'all'} onValueChange={(v) => setBranchId(v === 'all' ? null : v)}>
-              <SelectTrigger className="w-[200px] bg-gray-950 border-gray-700 text-white">
-                <SelectValue placeholder="All branches" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All</SelectItem>
-                {branchOptions.map((b: any) => (
-                  <SelectItem key={b.id} value={b.id}>
-                    {b.branchName || b.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+          {/* Global rule: BranchSelector hides when single branch */}
+          <BranchSelector variant="inline" showAllBranchesOption />
           <div className="flex items-center gap-2">
             <span className="text-sm text-gray-400">Account</span>
             <Select value={accountFilter} onValueChange={(v: AccountFilter) => setAccountFilter(v)}>
@@ -166,7 +151,7 @@ export const RoznamchaReport = () => {
           </div>
         </div>
         <p className="text-xs text-gray-500 mt-2">
-          Date: {dateFrom} → {dateTo} · Branch: {selectedBranchName} · Account: {accountFilter === 'all' ? 'All' : accountFilter}
+          Date: {dateFrom} → {dateTo} · Branch: {selectedBranchLabel} · Account: {accountFilter === 'all' ? 'All' : accountFilter}
         </p>
       </div>
 

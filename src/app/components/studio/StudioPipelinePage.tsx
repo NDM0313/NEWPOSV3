@@ -127,27 +127,23 @@ export const StudioPipelinePage = () => {
     try {
       setLoading(true);
       const effectiveBranchId = branchId === 'all' ? undefined : branchId || undefined;
-      // Load only from sales table (studio_orders table dropped)
-      const studioSalesFromSales = await saleService.getStudioSales(companyId, effectiveBranchId).catch(() => []);
-
-      const saleIds = (studioSalesFromSales || []).map((s: any) => s.id).filter(Boolean);
+      const result = await saleService
+        .getStudioSales(companyId, effectiveBranchId, { limit: 100, offset: 0 })
+        .catch(() => ({ data: [] }));
+      const studioSalesFromSales = (result && typeof result === 'object' && 'data' in result ? (result as { data: any[] }).data : result) || [];
+      const saleIds = studioSalesFromSales.map((s: any) => s.id).filter(Boolean);
       const stagesBySaleId: Record<string, Array<{ status?: string }>> = {};
       if (saleIds.length > 0) {
         try {
-          const allProductions = await studioProductionService.getProductions(companyId, effectiveBranchId);
-          const productionsBySale = allProductions.filter((p: any) => p.sale_id && saleIds.includes(p.sale_id));
-          for (const saleId of saleIds) {
-            const prod = productionsBySale.find((p: any) => p.sale_id === saleId);
-            if (prod?.id) {
-              const stages = await studioProductionService.getStagesByProductionId(prod.id);
-              stagesBySaleId[saleId] = stages || [];
-            }
-          }
+          const productionsBySale = await studioProductionService.getProductionsBySaleIds(saleIds);
+          const productionIds = productionsBySale.map((p: any) => p.id).filter(Boolean);
+          const stagesMap = productionIds.length > 0 ? await studioProductionService.getStagesByProductionIds(productionIds) : new Map<string, any[]>();
+          productionsBySale.forEach((p: any) => {
+            if (p.sale_id) stagesBySaleId[p.sale_id] = stagesMap.get(p.id) || [];
+          });
         } catch (_) {}
       }
-      const fromSales = (studioSalesFromSales || []).map((sale: any) =>
-        convertFromSale(sale, stagesBySaleId[sale.id])
-      );
+      const fromSales = studioSalesFromSales.map((sale: any) => convertFromSale(sale, stagesBySaleId[sale.id]));
       setSales(fromSales);
     } catch (e) {
       console.error('[StudioPipeline] Error loading:', e);

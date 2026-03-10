@@ -16,8 +16,7 @@ import {
   BarChart3,
   PieChart as PieChartIcon,
   Activity,
-  ChevronDown,
-  BookMarked
+  ChevronDown
 } from 'lucide-react';
 import { Card } from '@/app/components/ui/card';
 import { Button } from '@/app/components/ui/button';
@@ -32,14 +31,20 @@ import { exportToCSV, exportToExcel, exportToPDF } from '@/app/utils/exportUtils
 import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
 import { useFormatDate } from '@/app/hooks/useFormatDate';
 import { useCheckPermission } from '@/app/hooks/useCheckPermission';
+import { useSupabase } from '@/app/context/SupabaseContext';
+import { useGlobalFilter } from '@/app/context/GlobalFilterContext';
+import { BranchSelector } from '@/app/components/layout/BranchSelector';
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/app/components/ui/dropdown-menu';
-import { DayBookReport } from './DayBookReport';
-import { RoznamchaReport } from './RoznamchaReport';
+import { TrialBalancePage } from './TrialBalancePage';
+import { ProfitLossPage } from './ProfitLossPage';
+import { BalanceSheetPage } from './BalanceSheetPage';
+import { SalesProfitPage } from './SalesProfitPage';
+import { InventoryValuationPage } from './InventoryValuationPage';
 
 const COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899'];
 const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -71,11 +76,22 @@ export const ReportsDashboardEnhanced = () => {
   const { formatCurrency } = useFormatCurrency();
   const { formatDate } = useFormatDate();
   const { canViewReports } = useCheckPermission();
+  const { branchId } = useSupabase();
+  const globalFilter = useGlobalFilter();
+  const { startDate: globalStart, endDate: globalEnd, setCurrentModule, getDateRangeLabel } = globalFilter;
+  const dateRangeLabel = getDateRangeLabel();
 
-  const [dateRange, setDateRange] = useState('30');
-  const [reportType, setReportType] = useState<'overview' | 'roznamcha' | 'daybook' | 'sales' | 'purchases' | 'expenses' | 'financial'>('overview');
+  React.useEffect(() => {
+    setCurrentModule('reports');
+  }, [setCurrentModule]);
 
-  const { start: rangeStart, end: rangeEnd } = useMemo(() => getDateRangeBounds(dateRange), [dateRange]);
+  const [reportType, setReportType] = useState<'overview' | 'sales' | 'purchases' | 'expenses' | 'financial'>('overview');
+  const [financialReportType, setFinancialReportType] = useState<'trial-balance' | 'profit-loss' | 'balance-sheet' | 'sales-profit' | 'inventory-valuation'>('trial-balance');
+
+  const reportStartDate = globalStart ? globalStart.slice(0, 10) : '1900-01-01';
+  const reportEndDate = globalEnd ? globalEnd.slice(0, 10) : new Date().toISOString().slice(0, 10);
+  const rangeStart = globalStart ? new Date(globalStart) : null;
+  const rangeEnd = globalEnd ? new Date(globalEnd) : new Date();
   const filterByRange = useCallback(
     (dateStr: string | undefined) => isInRange(dateStr, rangeStart, rangeEnd),
     [rangeStart, rangeEnd]
@@ -185,24 +201,10 @@ export const ReportsDashboardEnhanced = () => {
     return result;
   }, [filteredSales, filteredPurchases, filteredExpenses]);
 
-  const dateRangeLabel = useMemo(() => {
-    if (dateRange === 'all') return 'All time';
-    const n = parseInt(dateRange, 10);
-    if (n === 7) return 'Last 7 days';
-    if (n === 30) return 'Last 30 days';
-    if (n === 90) return 'Last 90 days';
-    if (n === 365) return 'Last year';
-    return `Last ${dateRange} days`;
-  }, [dateRange]);
-
   // Export data for current report type
   const getExportData = useCallback((): { headers: string[]; rows: (string | number)[][]; title: string } => {
     const title = `Reports - ${reportType} - ${dateRangeLabel}`;
     switch (reportType) {
-      case 'roznamcha':
-        return <RoznamchaReport />;
-      case 'daybook':
-        return { title: '', headers: [], rows: [] };
       case 'overview':
         return {
           title,
@@ -323,18 +325,10 @@ export const ReportsDashboardEnhanced = () => {
               </p>
             </div>
             <div className="flex items-center gap-3">
-              {/* Date Range Filter */}
-              <select
-                value={dateRange}
-                onChange={(e) => setDateRange(e.target.value)}
-                className="px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="7">Last 7 days</option>
-                <option value="30">Last 30 days</option>
-                <option value="90">Last 90 days</option>
-                <option value="365">Last year</option>
-                <option value="all">All time</option>
-              </select>
+              {/* Date range controlled by TopHeader global filter — no local dropdown */}
+
+              {/* Branch — global rule: only visible when multiple branches */}
+              <BranchSelector variant="header" showAllBranchesOption className="flex-shrink-0" />
 
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
@@ -359,12 +353,10 @@ export const ReportsDashboardEnhanced = () => {
             </div>
           </div>
 
-          {/* Report Type Tabs */}
+          {/* Report Type Tabs: Overview, Sales, Purchases, Expenses, Financial */}
           <div className="flex items-center gap-2 mt-4">
             {[
               { key: 'overview', label: 'Overview', icon: Activity },
-              { key: 'roznamcha', label: 'Roznamcha', icon: BookMarked },
-              { key: 'daybook', label: 'Journal Day Book', icon: Activity },
               { key: 'sales', label: 'Sales', icon: TrendingUp },
               { key: 'purchases', label: 'Purchases', icon: ShoppingCart },
               { key: 'expenses', label: 'Expenses', icon: DollarSign },
@@ -387,13 +379,9 @@ export const ReportsDashboardEnhanced = () => {
         </div>
       </div>
 
-      {/* Content – tab-specific */}
+      {/* Content – tab-specific (Overview, Sales, Purchases, Expenses only) */}
       <div className="p-6 space-y-6">
-        {reportType !== 'daybook' && reportType !== 'roznamcha' && <div className="text-xs text-gray-500 mb-2">Period: {dateRangeLabel}</div>}
-
-        {/* Day Book Tab */}
-        {reportType === 'roznamcha' && <RoznamchaReport />}
-        {reportType === 'daybook' && <DayBookReport />}
+        <div className="text-xs text-gray-500 mb-2">Period: {dateRangeLabel}</div>
 
         {/* Overview Tab */}
         {reportType === 'overview' && (
@@ -653,46 +641,49 @@ export const ReportsDashboardEnhanced = () => {
           </>
         )}
 
-        {/* Financial Tab */}
+        {/* Financial Tab – Trial Balance, P&L, Balance Sheet, Sales Profit, Inventory Valuation */}
         {reportType === 'financial' && (
           <>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-              <MetricCard title="Total Revenue" value={formatCurrency(metrics.totalSales)} change={`${metrics.salesCount} invoices`} trend="up" icon={TrendingUp} iconColor="text-green-400" iconBg="bg-green-400/10" />
-              <MetricCard title="Total Outflows" value={formatCurrency(metrics.totalPurchases + metrics.totalExpenses)} change="Purchases + Expenses" trend="up" icon={TrendingDown} iconColor="text-red-400" iconBg="bg-red-400/10" />
-              <MetricCard title="Net Profit" value={formatCurrency(metrics.profit)} change={`${metrics.profitMargin.toFixed(1)}% margin`} trend={metrics.profit > 0 ? 'up' : 'down'} icon={Activity} iconColor={metrics.profit > 0 ? 'text-green-400' : 'text-red-400'} iconBg={metrics.profit > 0 ? 'bg-green-400/10' : 'bg-red-400/10'} />
-              <StatCard icon={FileText} label="Receivables" value={formatCurrency(metrics.totalReceivables)} color="bg-blue-500/10 text-blue-400" />
+            <div className="flex flex-wrap items-center gap-2 mb-4">
+              {[
+                { key: 'trial-balance', label: 'Trial Balance' },
+                { key: 'profit-loss', label: 'Profit & Loss' },
+                { key: 'balance-sheet', label: 'Balance Sheet' },
+                { key: 'sales-profit', label: 'Sales Profit' },
+                { key: 'inventory-valuation', label: 'Inventory Valuation' },
+              ].map((sub) => (
+                <button
+                  key={sub.key}
+                  onClick={() => setFinancialReportType(sub.key as any)}
+                  className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                    financialReportType === sub.key
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-gray-800 text-gray-400 hover:bg-gray-700 hover:text-white'
+                  }`}
+                >
+                  {sub.label}
+                </button>
+              ))}
             </div>
-            <Card className="bg-gray-900 border-gray-800 p-6 max-w-2xl">
-              <h3 className="text-lg font-bold text-white mb-4 flex items-center gap-2"><FileText size={20} className="text-purple-400" /> Financial Summary</h3>
-              <div className="space-y-4">
-                <SummaryRow label="Total Revenue" value={formatCurrency(metrics.totalSales)} color="text-green-400" />
-                <SummaryRow label="Total Purchases" value={formatCurrency(metrics.totalPurchases)} color="text-orange-400" />
-                <SummaryRow label="Total Expenses" value={formatCurrency(metrics.totalExpenses)} color="text-orange-400" />
-                <div className="border-t border-gray-800 pt-3">
-                  <SummaryRow label="Net Profit/Loss" value={formatCurrency(metrics.profit)} color={metrics.profit > 0 ? 'text-green-400' : 'text-red-400'} bold />
-                </div>
-                <div className="border-t border-gray-800 pt-3">
-                  <SummaryRow label="Accounts Receivable" value={formatCurrency(metrics.totalReceivables)} color="text-blue-400" />
-                  <SummaryRow label="Accounts Payable" value={formatCurrency(metrics.totalPayables)} color="text-orange-400" />
-                </div>
-              </div>
-            </Card>
-            <Card className="bg-gray-900 border-gray-800 p-6">
-              <h3 className="text-lg font-bold text-white mb-4">Profit by Month</h3>
-              <ChartContainer className="h-[280px]">
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={monthlyTrend}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-                    <XAxis dataKey="month" stroke="#9CA3AF" />
-                    <YAxis stroke="#9CA3AF" />
-                    <Tooltip contentStyle={{ backgroundColor: '#1F2937', border: '1px solid #374151', borderRadius: '8px' }} />
-                    <Line type="monotone" dataKey="profit" stroke="#10B981" name="Profit" strokeWidth={2} />
-                  </LineChart>
-                </ResponsiveContainer>
-              </ChartContainer>
-            </Card>
+            <div className="text-xs text-gray-500 mb-2">Period: {dateRangeLabel}</div>
+            {financialReportType === 'trial-balance' && (
+              <TrialBalancePage startDate={reportStartDate} endDate={reportEndDate} branchId={branchId} />
+            )}
+            {financialReportType === 'profit-loss' && (
+              <ProfitLossPage startDate={reportStartDate} endDate={reportEndDate} branchId={branchId} />
+            )}
+            {financialReportType === 'balance-sheet' && (
+              <BalanceSheetPage asOfDate={reportEndDate} branchId={branchId} />
+            )}
+            {financialReportType === 'sales-profit' && (
+              <SalesProfitPage startDate={reportStartDate} endDate={reportEndDate} branchId={branchId} />
+            )}
+            {financialReportType === 'inventory-valuation' && (
+              <InventoryValuationPage asOfDate={reportEndDate} branchId={branchId} />
+            )}
           </>
         )}
+
       </div>
     </div>
   );

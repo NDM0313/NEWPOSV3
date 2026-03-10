@@ -22,7 +22,7 @@ import { Badge } from '@/app/components/ui/badge';
 import { cn } from '@/app/components/ui/utils';
 import { useNavigation } from '@/app/context/NavigationContext';
 import { useSales, Sale, PaymentStatus, ShippingStatus } from '@/app/context/SalesContext';
-import { useDateRange } from '@/app/context/DateRangeContext';
+import { useGlobalFilter } from '@/app/context/GlobalFilterContext';
 import { formatDateAndTime } from '@/app/components/ui/utils';
 
 type SourceTab = 'all' | 'pos' | 'regular';
@@ -37,7 +37,7 @@ function isLikelyPOS(sale: Sale): boolean {
 export const SalesListDesignTestPage = () => {
   const { setCurrentView } = useNavigation();
   const { sales, loading } = useSales();
-  const { startDate, endDate } = useDateRange();
+  const { startDate, endDate } = useGlobalFilter();
 
   const [sourceTab, setSourceTab] = useState<SourceTab>('all');
   const [statusTab, setStatusTab] = useState<StatusTab>('all');

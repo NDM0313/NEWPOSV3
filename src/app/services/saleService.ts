@@ -5,7 +5,6 @@ import { employeeService } from './employeeService';
 import { activityLogService } from '@/app/services/activityLogService';
 import { settingsService } from '@/app/services/settingsService';
 import { productService } from '@/app/services/productService';
-import { calculateStockFromMovements } from '@/app/utils/stockCalculation';
 import { saleAccountingService } from './saleAccountingService';
 
 /** Enrich sales with creator full_name. sales.created_by stores auth.users.id; resolve via users.auth_user_id. */
@@ -105,14 +104,11 @@ export const saleService = {
     const isFinal = sale.status === 'final';
     if (isFinal && items.length > 0 && !allowNegative) {
       const branchId = sale.branch_id || undefined;
+      const productIds = [...new Set(items.map(i => i.product_id))];
+      const stockMap = await productService.getStockForProducts(productIds, sale.company_id, branchId);
       for (const item of items) {
-        const movements = await productService.getStockMovements(
-          item.product_id,
-          sale.company_id,
-          item.variation_id || undefined,
-          branchId
-        );
-        const { currentBalance } = calculateStockFromMovements(movements || []);
+        const key = item.variation_id ? `${item.product_id}:${item.variation_id}` : `${item.product_id}:`;
+        const currentBalance = stockMap.get(key) ?? 0;
         if (Number(item.quantity) > currentBalance) {
           throw new Error(
             `Insufficient stock: ${item.product_name || item.sku} — requested ${item.quantity}, available ${currentBalance}. ` +
@@ -357,13 +353,18 @@ export const saleService = {
     })();
   },
 
-  // Get all sales (with items for list count and edit).
-  // Avoid created_by:users(full_name) join to prevent 400 on Supabase when FK is missing; we enrich creator names via enrichSalesWithCreatorNames.
-  async getAllSales(companyId: string, branchId?: string) {
+  /** Pagination options: when provided, returns { data, total }; otherwise returns data array (backward compat). */
+  async getAllSales(
+    companyId: string,
+    branchId?: string,
+    opts?: { limit?: number; offset?: number }
+  ): Promise<any[] | { data: any[]; total: number }> {
     const selectWithoutCreator = `*, customer:contacts(*), branch:branches(id, name, code), items:sales_items(*, product:products(*), variation:product_variations(*))`;
+    const limit = opts?.limit ?? 50;
+    const offset = opts?.offset ?? 0;
     let query = supabase
       .from('sales')
-      .select(selectWithoutCreator)
+      .select(selectWithoutCreator, opts ? { count: 'exact' } : undefined)
       .eq('company_id', companyId)
       .order('created_at', { ascending: false })
       .order('invoice_date', { ascending: false });
@@ -371,10 +372,14 @@ export const saleService = {
     if (branchId) {
       query = query.eq('branch_id', branchId);
     }
+    if (opts) {
+      query = query.range(offset, offset + limit - 1);
+    }
 
-    const { data, error } = await query;
+    const { data, error, count } = await query;
 
     if (error && (error.code === '42P01' || error.message?.includes('sales_items'))) {
+      if (opts) throw error;
       const altSelect = `*, customer:contacts(*), branch:branches(id, name, code), items:sale_items(*, product:products(*), variation:product_variations(*))`;
       let retryQuery = supabase.from('sales').select(altSelect).eq('company_id', companyId).order('invoice_date', { ascending: false });
       if (branchId) retryQuery = retryQuery.eq('branch_id', branchId);
@@ -453,6 +458,9 @@ export const saleService = {
       }
     }
 
+    if (opts) {
+      return { data: data || [], total: count ?? 0 };
+    }
     return data || [];
   },
 
@@ -470,24 +478,35 @@ export const saleService = {
     return match ? parseInt(match[1], 10) + 1 : 1;
   },
 
-  // Get sales for Studio Sales list by invoice_no prefix 'STD-%' so STD-0002 etc. show (avoids 400 when is_studio column missing).
-  async getStudioSales(companyId: string, branchId?: string) {
+  // Get sales for Studio Sales list by invoice_no prefix 'STD-%'. Optional pagination: opts = { limit?, offset? } returns { data, total }.
+  async getStudioSales(
+    companyId: string,
+    branchId?: string,
+    opts?: { limit?: number; offset?: number }
+  ): Promise<any[] | { data: any[]; total: number }> {
+    const limit = opts?.limit ?? 50;
+    const offset = opts?.offset ?? 0;
     const selectWithItems = (itemsTable: 'sales_items' | 'sale_items') =>
       `*, customer:contacts(name, phone), items:${itemsTable}(*)`;
-    const runQuery = async (itemsTable: 'sales_items' | 'sale_items', orderBy: string) => {
-      let q = supabase.from('sales').select(selectWithItems(itemsTable)).eq('company_id', companyId).ilike('invoice_no', 'STD-%');
+    const runQuery = async (itemsTable: 'sales_items' | 'sale_items', orderBy: string, useRange: boolean) => {
+      let q = supabase
+        .from('sales')
+        .select(selectWithItems(itemsTable), useRange ? { count: 'exact' } : undefined)
+        .eq('company_id', companyId)
+        .ilike('invoice_no', 'STD-%');
       if (branchId && branchId !== 'all') q = q.eq('branch_id', branchId);
       q = q.order(orderBy, { ascending: false });
+      if (useRange) q = q.range(offset, offset + limit - 1);
       return await q;
     };
-    let { data, error } = await runQuery('sales_items', 'invoice_date');
-    if (error && (error.code === '42P01' || error.code === '42703' || String(error.message || '').includes('sales_items') || String(error.message || '').includes('invoice_date'))) {
-      const ret = await runQuery('sale_items', 'created_at');
-      data = ret.data;
-      error = ret.error;
+    let result: { data: any[]; error: any; count?: number } = await runQuery('sales_items', 'invoice_date', !!opts);
+    if (result.error && (result.error.code === '42P01' || result.error.code === '42703' || String(result.error.message || '').includes('sales_items') || String(result.error.message || '').includes('invoice_date'))) {
+      result = await runQuery('sale_items', 'created_at', !!opts);
     }
-    if (error) throw error;
-    return data || [];
+    if (result.error) throw result.error;
+    const data = result.data || [];
+    if (opts) return { data, total: result.count ?? 0 };
+    return data;
   },
   
   // Get single sale (include sale_charges for line-level extra expenses on edit)

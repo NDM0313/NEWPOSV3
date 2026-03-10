@@ -105,6 +105,10 @@ export interface Purchase {
 interface PurchaseContextType {
   purchases: Purchase[];
   loading: boolean;
+  totalCount: number;
+  page: number;
+  pageSize: number;
+  setPage: (page: number) => void;
   getPurchaseById: (id: string) => Purchase | undefined;
   createPurchase: (purchase: Omit<Purchase, 'id' | 'purchaseNo' | 'createdAt' | 'updatedAt'>, purchaseNo?: string) => Promise<Purchase>;
   updatePurchase: (id: string, updates: Partial<Purchase>) => Promise<void>;
@@ -135,6 +139,10 @@ export const usePurchases = () => {
         updatePurchase: defaultError,
         deletePurchase: defaultError,
         recordPayment: defaultError,
+        totalCount: 0,
+        page: 0,
+        pageSize: 50,
+        setPage: () => {},
         refreshPurchases: async () => {},
       } as PurchaseContextType;
     }
@@ -220,31 +228,42 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
 
   // Use exported convertFromSupabasePurchase function (no need for local callback)
 
-  // Load purchases from database
+  const PAGE_SIZE = 50;
+  const [totalCount, setTotalCount] = useState(0);
+  const [page, setPageState] = useState(0);
+
+  // Load purchases from database (paginated)
   const loadPurchases = useCallback(async () => {
     if (!companyId) return;
-    
     try {
       setLoading(true);
-      const data = await purchaseService.getAllPurchases(companyId, branchId === 'all' ? undefined : branchId || undefined);
+      const result = await purchaseService.getAllPurchases(
+        companyId,
+        branchId === 'all' ? undefined : branchId || undefined,
+        { offset: page * PAGE_SIZE, limit: PAGE_SIZE }
+      );
+      const isPaginated = result && typeof result === 'object' && 'data' in result && 'total' in result;
+      const data = isPaginated ? (result as { data: any[]; total: number }).data : (result as any[]);
+      const total = isPaginated ? (result as { data: any[]; total: number }).total : data.length;
       setPurchases(data.map(convertFromSupabasePurchase));
+      setTotalCount(total);
     } catch (error) {
       console.error('[PURCHASE CONTEXT] Error loading purchases:', error);
       toast.error('Failed to load purchases');
-      // Fallback to empty array on error
       setPurchases([]);
+      setTotalCount(0);
     } finally {
       setLoading(false);
     }
-  }, [companyId, branchId]);
+  }, [companyId, branchId, page]);
 
-  // Load purchases from Supabase on mount
+  const setPage = useCallback((p: number) => {
+    setPageState(Math.max(0, p));
+  }, []);
+
   useEffect(() => {
-    if (companyId) {
-      loadPurchases();
-    } else {
-      setLoading(false);
-    }
+    if (companyId) loadPurchases();
+    else setLoading(false);
   }, [companyId, loadPurchases]);
 
   // Get purchase by ID
@@ -1534,9 +1553,13 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
     recordPayment,
     updateStatus,
     receiveStock,
+    totalCount,
+    page,
+    pageSize: PAGE_SIZE,
+    setPage,
     refreshPurchases: loadPurchases,
   }), [
-    purchases, loading, getPurchaseById, createPurchase, updatePurchase,
+    purchases, loading, totalCount, page, setPage, getPurchaseById, createPurchase, updatePurchase,
     deletePurchase, recordPayment, updateStatus, receiveStock, loadPurchases,
   ]);
 

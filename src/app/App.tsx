@@ -90,7 +90,7 @@ import { ProtectedRoute } from './components/auth/ProtectedRoute';
 import { PublicContactForm } from './components/public/PublicContactForm';
 import { ErrorBoundary } from './components/shared/ErrorBoundary';
 import { useSettings } from './context/SettingsContext';
-import { DateRangeProvider } from './context/DateRangeContext';
+import { GlobalFilterProvider } from './context/GlobalFilterContext';
 import { PermissionInspectorPage } from './components/admin/PermissionInspectorPage';
 
 // v1.0.1 - Enhanced Product Form with SKU auto-generation and global access
@@ -365,7 +365,7 @@ export default function App() {
           <PermissionV2ThemeSync>
             <SupabaseProvider>
               <ProtectedRoute>
-            <DateRangeProvider>
+            <GlobalFilterProvider>
               <ModuleProvider>
                 <AccountingProvider>
                   <SettingsProvider>
@@ -387,7 +387,7 @@ export default function App() {
                   </SettingsProvider>
                 </AccountingProvider>
               </ModuleProvider>
-            </DateRangeProvider>
+            </GlobalFilterProvider>
               </ProtectedRoute>
             </SupabaseProvider>
           </PermissionV2ThemeSync>

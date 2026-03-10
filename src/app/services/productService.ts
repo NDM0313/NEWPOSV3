@@ -1,5 +1,7 @@
 import { supabase } from '@/lib/supabase';
 import { documentNumberService } from '@/app/services/documentNumberService';
+import { calculateStockFromMovements } from '@/app/utils/stockCalculation';
+import type { StockMovement } from '@/app/utils/stockCalculation';
 
 /** normal = catalog product; production = manufactured from studio (STD-PROD, inventory + cost). */
 export type ProductType = 'normal' | 'production';
@@ -448,6 +450,50 @@ export const productService = {
     } finally {
       console.timeEnd(`stockMovements:${productId}`);
     }
+  },
+
+  /**
+   * Batched stock check: single query for multiple products. Returns map of available qty per product (and per variation).
+   * Key: productId for simple products, or "productId:variationId" for variation-specific.
+   */
+  async getStockForProducts(
+    productIds: string[],
+    companyId: string,
+    branchId?: string
+  ): Promise<Map<string, number>> {
+    if (productIds.length === 0) return new Map();
+    const uniq = [...new Set(productIds)];
+    let query = supabase
+      .from('stock_movements')
+      .select('product_id, variation_id, quantity, movement_type')
+      .in('product_id', uniq)
+      .eq('company_id', companyId)
+      .order('created_at', { ascending: true });
+    if (branchId && branchId !== 'all') {
+      query = query.eq('branch_id', branchId);
+    }
+    const { data, error } = await query;
+    if (error) {
+      if (error.code === '42703' || error.code === '42P01') return new Map();
+      throw error;
+    }
+    const rows = (data || []) as { product_id: string; variation_id?: string | null; quantity: number; movement_type: string }[];
+    const byKey = new Map<string, StockMovement[]>();
+    for (const r of rows) {
+      const key = r.variation_id ? `${r.product_id}:${r.variation_id}` : `${r.product_id}:`;
+      if (!byKey.has(key)) byKey.set(key, []);
+      byKey.get(key)!.push({
+        movement_type: r.movement_type,
+        quantity: r.quantity,
+        variation_id: r.variation_id ?? undefined,
+      });
+    }
+    const out = new Map<string, number>();
+    for (const [key, movements] of byKey.entries()) {
+      const { currentBalance } = calculateStockFromMovements(movements);
+      out.set(key, currentBalance);
+    }
+    return out;
   },
 
   // Create stock movement record (for adjustments, manual entries, etc.)

@@ -1,17 +1,23 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, Cell } from 'recharts';
-import { DollarSign, ShoppingBag, TrendingUp, ArrowDownRight, ArrowUpRight, AlertTriangle, ArrowRight, Loader2, Store, ShoppingCart, Package, Warehouse } from 'lucide-react';
+import React, { useState, useEffect, useMemo, useCallback, lazy, Suspense } from 'react';
+import { BarChart, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line } from 'recharts';
+import { DollarSign, ShoppingBag, TrendingUp, ArrowDownRight, ArrowUpRight, AlertTriangle, ArrowRight, Loader2, Store, ShoppingCart, Package, Warehouse, Wallet, Building2 } from 'lucide-react';
 import { useNavigation } from '../../context/NavigationContext';
 import { useSales } from '../../context/SalesContext';
 import { usePurchases } from '../../context/PurchaseContext';
 import { useExpenses } from '../../context/ExpenseContext';
 import { useSupabase } from '../../context/SupabaseContext';
-import { useDateRange } from '../../context/DateRangeContext';
+import { useGlobalFilter } from '../../context/GlobalFilterContext';
 import { useSettings } from '../../context/SettingsContext';
 import { useCheckPermission } from '../../hooks/useCheckPermission';
 import { productService } from '../../services/productService';
 import { getSalesByCategory } from '../../services/dashboardService';
+import { getFinancialDashboardMetrics, type FinancialDashboardMetrics } from '../../services/financialDashboardService';
+import { getBusinessAlerts, type BusinessAlert } from '../../services/businessAlertsService';
 import { useFormatCurrency } from '../../hooks/useFormatCurrency';
+
+const DashboardRevenueChart = lazy(() =>
+  import('./DashboardRevenueChart').then((m) => ({ default: m.DashboardRevenueChart }))
+);
 
 const CHART_COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#8B5CF6', '#EC4899', '#06B6D4'];
 
@@ -32,13 +38,39 @@ export const Dashboard = () => {
   const { modules: settingsModules } = useSettings();
   const { hasPermission } = useCheckPermission();
   const { formatCurrency } = useFormatCurrency();
-  const { dateRange } = useDateRange();
-  const startDate = dateRange.startDate;
-  const endDate = dateRange.endDate;
+  const globalFilter = useGlobalFilter();
+  const { startDate, endDate, startDateObj, endDateObj, setCurrentModule } = globalFilter;
+
+  useEffect(() => {
+    setCurrentModule('dashboard');
+  }, [setCurrentModule]);
+
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [salesByCategory, setSalesByCategory] = useState<Array<{ categoryName: string; total: number }>>([]);
   const [loadingCategory, setLoadingCategory] = useState(true);
+  const [financialMetrics, setFinancialMetrics] = useState<FinancialDashboardMetrics | null>(null);
+  const [loadingFinancial, setLoadingFinancial] = useState(true);
+  const [alerts, setAlerts] = useState<BusinessAlert[]>([]);
+
+  // Business alerts (Phase-2)
+  useEffect(() => {
+    if (!companyId) return;
+    getBusinessAlerts(companyId).then(setAlerts).catch(() => setAlerts([]));
+  }, [companyId]);
+
+  // Executive financial metrics (single RPC, sub-1s)
+  useEffect(() => {
+    if (!companyId) {
+      setLoadingFinancial(false);
+      return;
+    }
+    setLoadingFinancial(true);
+    getFinancialDashboardMetrics(companyId)
+      .then(setFinancialMetrics)
+      .catch(() => setFinancialMetrics(null))
+      .finally(() => setLoadingFinancial(false));
+  }, [companyId]);
 
   // Load products for low stock items
   const loadProducts = useCallback(async () => {
@@ -61,15 +93,15 @@ export const Dashboard = () => {
     loadProducts();
   }, [loadProducts]);
 
-  // Load sales by category from backend (date range applied)
+  // Load sales by category from backend (global date range applied)
   useEffect(() => {
     if (!companyId) {
       setLoadingCategory(false);
       return;
     }
     setLoadingCategory(true);
-    const start = startDate ? new Date(startDate).toISOString().split('T')[0] : null;
-    const end = endDate ? new Date(endDate).toISOString().split('T')[0] : null;
+    const start = startDate ? startDate.slice(0, 10) : null;
+    const end = endDate ? endDate.slice(0, 10) : null;
     getSalesByCategory(companyId, start, end)
       .then(setSalesByCategory)
       .catch((err) => {
@@ -79,16 +111,15 @@ export const Dashboard = () => {
       .finally(() => setLoadingCategory(false));
   }, [companyId, startDate, endDate]);
 
-  // Filter data by date range
+  // Filter data by global date range
   const filterByDateRange = useCallback((dateStr: string | undefined): boolean => {
-    if (!startDate && !endDate) return true;
+    if (!startDateObj && !endDateObj) return true;
     if (!dateStr) return false;
-    
     const date = new Date(dateStr);
-    if (startDate && date < new Date(startDate)) return false;
-    if (endDate && date > new Date(endDate + 'T23:59:59')) return false;
+    if (startDateObj && date < startDateObj) return false;
+    if (endDateObj && date > endDateObj) return false;
     return true;
-  }, [startDate, endDate]);
+  }, [startDateObj, endDateObj]);
 
   // Calculate metrics from real data (filtered by date range)
   const metrics = useMemo(() => {
@@ -186,13 +217,7 @@ export const Dashboard = () => {
     return data;
   }, [sales.sales, purchases.purchases, startDate, endDate, filterByDateRange]);
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-96">
-        <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
-      </div>
-    );
-  }
+  // No full-page loading: render shell immediately for sub-1s first paint (staged loading)
 
   // Logged in but no company (user not in public.users) — show create-business CTA
   if (!companyId) {
@@ -220,6 +245,34 @@ export const Dashboard = () => {
 
   return (
     <div className="space-y-6 max-w-full overflow-x-hidden">
+      {/* Business Alerts (Phase-2) */}
+      {alerts.length > 0 && (
+        <div className="space-y-2">
+          {alerts.slice(0, 5).map((a) => (
+            <div
+              key={a.id}
+              className={`rounded-xl p-3 flex items-center justify-between border ${
+                a.severity === 'critical' ? 'bg-red-500/10 border-red-500/20 text-red-400' :
+                a.severity === 'warning' ? 'bg-amber-500/10 border-amber-500/20 text-amber-400' :
+                'bg-blue-500/10 border-blue-500/20 text-blue-400'
+              }`}
+            >
+              <span className="font-medium">{a.title}</span>
+              <span className="text-sm opacity-90">{a.message}</span>
+              {a.actionUrl && (
+                <button
+                  type="button"
+                  onClick={() => setCurrentView(a.actionUrl as any)}
+                  className="text-sm font-medium opacity-90 hover:underline"
+                >
+                  View
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* Low Stock Alert Banner */}
       {lowStockItems.length > 0 && (
         <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-4 flex items-center justify-between">
@@ -240,6 +293,72 @@ export const Dashboard = () => {
           </button>
         </div>
       )}
+
+      {/* Executive financial summary (Phase-2 Intelligence) */}
+      <div className="bg-[#111827]/50 border border-[#374151] p-6 rounded-xl">
+        <h3 className="text-lg font-bold text-white mb-4">Executive summary</h3>
+        {loadingFinancial ? (
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 h-24 items-center justify-center">
+            <Loader2 className="w-8 h-8 animate-spin text-[#3B82F6] col-span-2 md:col-span-3 lg:col-span-5 justify-self-center" />
+          </div>
+        ) : financialMetrics ? (
+          <>
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 mb-6">
+              <StatCard title="Today Sales" value={formatCurrency(financialMetrics.today_sales)} change="—" icon={DollarSign} trend="up" iconColor="text-[#10B981]" />
+              <StatCard title="Today Profit" value={formatCurrency(financialMetrics.today_profit)} change="—" icon={TrendingUp} trend={financialMetrics.today_profit >= 0 ? 'up' : 'down'} iconColor="text-[#3B82F6]" />
+              <StatCard title="Monthly Revenue" value={formatCurrency(financialMetrics.monthly_revenue)} change="—" icon={ShoppingBag} trend="up" iconColor="text-[#8B5CF6]" />
+              <StatCard title="Monthly Expenses" value={formatCurrency(financialMetrics.monthly_expenses)} change="—" icon={ArrowUpRight} trend="down" iconColor="text-[#F59E0B]" />
+              <StatCard title="Profit Margin" value={`${financialMetrics.profit_margin_pct}%`} change="—" icon={TrendingUp} trend={financialMetrics.profit_margin_pct >= 0 ? 'up' : 'down'} iconColor="text-[#06B6D4]" />
+              <StatCard title="Cash Balance" value={formatCurrency(financialMetrics.cash_balance)} change="—" icon={Wallet} trend="up" iconColor="text-[#10B981]" />
+              <StatCard title="Bank Balance" value={formatCurrency(financialMetrics.bank_balance)} change="—" icon={Building2} trend="up" iconColor="text-[#3B82F6]" />
+              <StatCard title="Receivables" value={formatCurrency(financialMetrics.receivables)} change="—" icon={ArrowDownRight} trend="up" iconColor="text-[#3B82F6]" />
+              <StatCard title="Payables" value={formatCurrency(financialMetrics.payables)} change="—" icon={ArrowUpRight} trend="down" iconColor="text-[#F59E0B]" />
+            </div>
+            {(financialMetrics.sales_trend?.length > 0 || financialMetrics.expense_trend?.length > 0 || financialMetrics.profit_trend?.length > 0) && (
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                <div className="bg-[#1F2937]/50 rounded-lg p-4 border border-[#374151]">
+                  <h4 className="text-sm font-medium text-[#9CA3AF] mb-2">Sales trend (7d)</h4>
+                  <div className="h-24">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <LineChart data={financialMetrics.sales_trend.map((t) => ({ name: t.date.slice(5), value: t.value }))}>
+                        <XAxis dataKey="name" stroke="#9CA3AF" tick={{ fontSize: 10 }} />
+                        <Tooltip contentStyle={{ backgroundColor: '#1F2937', border: '1px solid #374151' }} formatter={(v: number) => [formatCurrency(v), 'Sales']} />
+                        <Line type="monotone" dataKey="value" stroke="#10B981" strokeWidth={2} dot={false} />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+                <div className="bg-[#1F2937]/50 rounded-lg p-4 border border-[#374151]">
+                  <h4 className="text-sm font-medium text-[#9CA3AF] mb-2">Expense trend (7d)</h4>
+                  <div className="h-24">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <LineChart data={financialMetrics.expense_trend.map((t) => ({ name: t.date.slice(5), value: t.value }))}>
+                        <XAxis dataKey="name" stroke="#9CA3AF" tick={{ fontSize: 10 }} />
+                        <Tooltip contentStyle={{ backgroundColor: '#1F2937', border: '1px solid #374151' }} formatter={(v: number) => [formatCurrency(v), 'Expenses']} />
+                        <Line type="monotone" dataKey="value" stroke="#F59E0B" strokeWidth={2} dot={false} />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+                <div className="bg-[#1F2937]/50 rounded-lg p-4 border border-[#374151]">
+                  <h4 className="text-sm font-medium text-[#9CA3AF] mb-2">Profit trend (7d)</h4>
+                  <div className="h-24">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <LineChart data={financialMetrics.profit_trend.map((t) => ({ name: t.date.slice(5), value: t.value }))}>
+                        <XAxis dataKey="name" stroke="#9CA3AF" tick={{ fontSize: 10 }} />
+                        <Tooltip contentStyle={{ backgroundColor: '#1F2937', border: '1px solid #374151' }} formatter={(v: number) => [formatCurrency(v), 'Profit']} />
+                        <Line type="monotone" dataKey="value" stroke="#3B82F6" strokeWidth={2} dot={false} />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+              </div>
+            )}
+          </>
+        ) : (
+          <p className="text-[#9CA3AF] text-sm">Financial metrics unavailable. Run migration: financial_dashboard_metrics_rpc.sql</p>
+        )}
+      </div>
 
       {/* Quick access: module cards (same visibility as sidebar, including POS) */}
       <div className="bg-[#111827]/50 border border-[#374151] p-6 rounded-xl">
@@ -301,39 +420,19 @@ export const Dashboard = () => {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 bg-[#111827]/50 border border-[#374151] p-6 rounded-xl">
           <h3 className="text-lg font-bold text-white mb-6">Revenue & Profit</h3>
-          <div className="w-full h-[320px] min-h-[320px]">
-            {chartData.length === 0 ? (
-              <div className="h-full flex items-center justify-center text-[#9CA3AF]">
-                <p className="text-sm">No sales or purchase data in the selected date range</p>
+          <Suspense
+            fallback={
+              <div className="w-full h-[320px] flex items-center justify-center text-[#9CA3AF]">
+                <Loader2 className="w-8 h-8 animate-spin text-[#3B82F6]" />
               </div>
-            ) : (
-              <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={320}>
-                <AreaChart data={chartData}>
-                  <defs>
-                    <linearGradient id="colorSales" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#3B82F6" stopOpacity={0.3}/>
-                      <stop offset="95%" stopColor="#3B82F6" stopOpacity={0}/>
-                    </linearGradient>
-                    <linearGradient id="colorProfit" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#10B981" stopOpacity={0.3}/>
-                      <stop offset="95%" stopColor="#10B981" stopOpacity={0}/>
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#374151" vertical={false} />
-                  <XAxis dataKey="name" stroke="#9CA3AF" tick={{ fontSize: 12 }} />
-                  <YAxis stroke="#9CA3AF" tickFormatter={(v) => (v >= 1000 ? `${(v / 1000).toFixed(0)}k` : String(v))} />
-                  <Tooltip 
-                    contentStyle={{ backgroundColor: '#1F2937', borderColor: '#374151', color: '#F3F4F6' }}
-                    itemStyle={{ color: '#F3F4F6' }}
-                    formatter={(value: number) => formatCurrency(value)}
-                    labelFormatter={(label) => `Date: ${label}`}
-                  />
-                  <Area type="monotone" dataKey="sales" name="Revenue" stroke="#3B82F6" fillOpacity={1} fill="url(#colorSales)" />
-                  <Area type="monotone" dataKey="profit" name="Profit" stroke="#10B981" fillOpacity={1} fill="url(#colorProfit)" />
-                </AreaChart>
-              </ResponsiveContainer>
-            )}
-          </div>
+            }
+          >
+            <DashboardRevenueChart
+              data={chartData}
+              formatCurrency={formatCurrency}
+              emptyMessage="No sales or purchase data in the selected date range"
+            />
+          </Suspense>
         </div>
 
           <div className="space-y-6">
@@ -343,7 +442,11 @@ export const Dashboard = () => {
               <AlertTriangle size={18} className="text-red-500" />
               Critical Stock
             </h3>
-            {lowStockItems.length > 0 ? (
+            {loading ? (
+              <div className="h-32 flex items-center justify-center">
+                <Loader2 className="w-6 h-6 animate-spin text-[#3B82F6]" />
+              </div>
+            ) : lowStockItems.length > 0 ? (
               <>
                 <div className="space-y-4">
                   {lowStockItems.map(item => (

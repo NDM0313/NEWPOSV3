@@ -99,6 +99,13 @@ export interface Sale {
 interface SalesContextType {
   sales: Sale[];
   loading: boolean;
+  /** Total count for pagination (when using paginated load). */
+  totalCount: number;
+  /** Current 0-based page (pageSize rows per page). */
+  page: number;
+  pageSize: number;
+  /** Set current page and reload (0-based). */
+  setPage: (page: number) => void;
   getSaleById: (id: string) => Sale | undefined;
   createSale: (sale: Omit<Sale, 'id' | 'invoiceNo' | 'createdAt' | 'updatedAt'>) => Promise<Sale>;
   updateSale: (id: string, updates: Partial<Sale>) => Promise<void>;
@@ -124,6 +131,10 @@ export const useSales = () => {
       return {
         sales: [],
         loading: false,
+        totalCount: 0,
+        page: 0,
+        pageSize: 50,
+        setPage: () => {},
         getSaleById: () => undefined,
         createSale: defaultError,
         updateSale: defaultError,
@@ -333,40 +344,52 @@ export const convertFromSupabaseSale = (supabaseSale: any): Sale => {
   };
 };
 
+const DEFAULT_PAGE_SIZE = 50;
+
 export const SalesProvider = ({ children }: { children: ReactNode }) => {
   const [sales, setSales] = useState<Sale[]>([]);
   const [loading, setLoading] = useState(true);
+  const [totalCount, setTotalCount] = useState(0);
+  const [page, setPageState] = useState(0);
+  const [pageSize] = useState(DEFAULT_PAGE_SIZE);
   const { generateDocumentNumber, incrementNextNumber, getNumberingConfig } = useDocumentNumbering();
   const accounting = useAccounting();
   const { companyId, branchId, user } = useSupabase();
   const { modules, inventorySettings } = useSettings();
   const { formatCurrency } = useFormatCurrency();
 
-  // Load sales from database
+  // Load sales from database (paginated: 50 per page)
   const loadSales = useCallback(async () => {
     if (!companyId) return;
-    
     try {
       setLoading(true);
-      const data = await saleService.getAllSales(companyId, branchId === 'all' ? undefined : branchId || undefined);
+      const result = await saleService.getAllSales(
+        companyId,
+        branchId === 'all' ? undefined : branchId || undefined,
+        { offset: page * pageSize, limit: pageSize }
+      );
+      const isPaginated = result && typeof result === 'object' && 'data' in result && 'total' in result;
+      const data = isPaginated ? (result as { data: any[]; total: number }).data : (result as any[]);
+      const total = isPaginated ? (result as { data: any[]; total: number }).total : data.length;
       setSales(data.map(convertFromSupabaseSale));
+      setTotalCount(total);
     } catch (error) {
       console.error('[SALES CONTEXT] Error loading sales:', error);
       toast.error('Failed to load sales');
-      // Fallback to empty array on error
       setSales([]);
+      setTotalCount(0);
     } finally {
       setLoading(false);
     }
-  }, [companyId, branchId]);
+  }, [companyId, branchId, page, pageSize]);
 
-  // Load sales from Supabase on mount
+  const setPage = useCallback((p: number) => {
+    setPageState(Math.max(0, p));
+  }, []);
+
   useEffect(() => {
-    if (companyId) {
-      loadSales();
-    } else {
-      setLoading(false);
-    }
+    if (companyId) loadSales();
+    else setLoading(false);
   }, [companyId, loadSales]);
 
   // Get sale by ID
@@ -439,18 +462,17 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
       if (isFinal && !allowNegative && saleData.items?.length > 0) {
         const { supabase } = await import('@/lib/supabase');
         const productIds = [...new Set(saleData.items.map((i) => i.productId))];
-        const { data: prods } = await supabase.from('products').select('id, current_stock, has_variations').in('id', productIds);
+        const [stockMap, { data: prods }] = await Promise.all([
+          productService.getStockForProducts(productIds, companyId, effectiveBranchId ?? undefined),
+          supabase.from('products').select('id, current_stock, has_variations').in('id', productIds),
+        ]);
         const productMap = new Map((prods || []).map((p: any) => [p.id, p]));
 
         for (const item of saleData.items) {
           const p = productMap.get(item.productId) as { current_stock?: number; has_variations?: boolean } | undefined;
           if (!p) continue;
-          let stock = Number(p.current_stock || 0);
-          if (p.has_variations && (item as any).variationId) {
-            const movements = await productService.getStockMovements(item.productId, companyId, (item as any).variationId);
-            const { calculateStockFromMovements } = await import('@/app/utils/stockCalculation');
-            stock = calculateStockFromMovements(movements).currentBalance;
-          }
+          const key = (item as any).variationId ? `${item.productId}:${(item as any).variationId}` : `${item.productId}:`;
+          const stock = stockMap.get(key) ?? Number(p.current_stock || 0);
           if (stock < item.quantity) {
             throw new Error(
               `${item.productName}: quantity (${item.quantity}) exceeds available stock (${stock}). ` +
@@ -1320,18 +1342,17 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
       if (!allowNegativeUpdate && reducingDeltas.length > 0 && companyId) {
         const { supabase } = await import('@/lib/supabase');
         const productIds = [...new Set(reducingDeltas.map((d) => d.productId))];
-        const { data: prods } = await supabase.from('products').select('id, current_stock, has_variations').in('id', productIds);
+        const [stockMap, { data: prods }] = await Promise.all([
+          productService.getStockForProducts(productIds, companyId, effectiveBranchId ?? undefined),
+          supabase.from('products').select('id, current_stock, has_variations').in('id', productIds),
+        ]);
         const productMap = new Map((prods || []).map((p: any) => [p.id, p]));
 
         for (const delta of reducingDeltas) {
           const p = productMap.get(delta.productId) as { current_stock?: number; has_variations?: boolean } | undefined;
           if (!p) continue;
-          let stock = Number(p.current_stock || 0);
-          if (p.has_variations && delta.variationId) {
-            const movements = await productService.getStockMovements(delta.productId, companyId, delta.variationId);
-            const { calculateStockFromMovements } = await import('@/app/utils/stockCalculation');
-            stock = calculateStockFromMovements(movements).currentBalance;
-          }
+          const key = delta.variationId ? `${delta.productId}:${delta.variationId}` : `${delta.productId}:`;
+          const stock = stockMap.get(key) ?? Number(p.current_stock || 0);
           const qtyNeeded = Math.abs(delta.deltaQty);
           if (stock < qtyNeeded) {
             throw new Error(
@@ -2017,6 +2038,10 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
   const value = useMemo<SalesContextType>(() => ({
     sales,
     loading,
+    totalCount,
+    page,
+    pageSize,
+    setPage,
     getSaleById,
     createSale,
     updateSale,
@@ -2026,7 +2051,7 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
     convertQuotationToInvoice,
     refreshSales: loadSales,
   }), [
-    sales, loading, getSaleById, createSale, updateSale, deleteSale,
+    sales, loading, totalCount, page, pageSize, setPage, getSaleById, createSale, updateSale, deleteSale,
     recordPayment, updateShippingStatus, convertQuotationToInvoice, loadSales,
   ]);
 

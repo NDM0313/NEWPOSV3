@@ -239,11 +239,17 @@ export const purchaseService = {
   },
 
   // Get all purchases (no created_by_user:users join – production DB may have no FK purchases→users; PGRST200)
-  async getAllPurchases(companyId: string, branchId?: string) {
-    // Note: company_id and po_date columns may not exist in all databases
+  async getAllPurchases(
+    companyId: string,
+    branchId?: string,
+    opts?: { limit?: number; offset?: number }
+  ): Promise<any[] | { data: any[]; total: number }> {
+    const limit = opts?.limit ?? 50;
+    const offset = opts?.offset ?? 0;
     let query = supabase
       .from('purchases')
-      .select(`
+      .select(
+        `
         *,
         supplier:contacts(name, phone),
         branch:branches(id, name, code),
@@ -251,14 +257,22 @@ export const purchaseService = {
           *,
           product:products(name)
         )
-      `)
+      `,
+        opts ? { count: 'exact' } : undefined
+      )
+      .eq('company_id', companyId)
       .order('po_date', { ascending: false });
 
     if (branchId) {
       query = query.eq('branch_id', branchId);
     }
+    if (opts) {
+      query = query.range(offset, offset + limit - 1);
+    }
 
-    const { data, error } = await query;
+    const { data, error, count } = await query;
+
+    if (error && opts) throw error;
 
     // If error is about po_date column not existing, retry with created_at
     if (error && error.code === '42703' && error.message?.includes('po_date')) {
@@ -370,7 +384,8 @@ export const purchaseService = {
         purchase.returnCount = returnsMap.get(purchase.id) || 0;
       });
     }
-    
+
+    if (opts) return { data: data || [], total: count ?? 0 };
     return data;
   },
 

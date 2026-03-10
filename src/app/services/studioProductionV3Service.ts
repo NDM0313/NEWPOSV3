@@ -65,6 +65,41 @@ export const studioProductionV3Service = {
     return (data ?? []) as StudioProductionOrderV3[];
   },
 
+  /** Last N orders (pipeline). Default limit 100. */
+  async getOrdersByCompanyPage(companyId: string, branchId?: string, opts?: { limit?: number; offset?: number }): Promise<StudioProductionOrderV3[]> {
+    const limit = Math.min(opts?.limit ?? 100, 500);
+    const offset = opts?.offset ?? 0;
+    let q = supabase
+      .from('studio_production_orders_v3')
+      .select('*')
+      .eq('company_id', companyId)
+      .order('created_at', { ascending: false })
+      .range(offset, offset + limit - 1);
+    if (branchId) q = q.eq('branch_id', branchId);
+    const { data, error } = await q;
+    if (error) throw error;
+    return (data ?? []) as StudioProductionOrderV3[];
+  },
+
+  /** Batch: stages for multiple orders in one query. */
+  async getStagesByOrderIds(orderIds: string[]): Promise<Map<string, StudioProductionStageV3[]>> {
+    const out = new Map<string, StudioProductionStageV3[]>();
+    if (orderIds.length === 0) return out;
+    const uniq = [...new Set(orderIds)].filter(Boolean);
+    const { data, error } = await supabase
+      .from('studio_production_stages_v3')
+      .select('*')
+      .in('order_id', uniq)
+      .order('sort_order');
+    if (error) throw error;
+    (data ?? []).forEach((row: any) => {
+      const oid = row.order_id;
+      if (!out.has(oid)) out.set(oid, []);
+      out.get(oid)!.push(row as StudioProductionStageV3);
+    });
+    return out;
+  },
+
   async getOrderById(orderId: string): Promise<StudioProductionOrderV3 | null> {
     const { data, error } = await supabase
       .from('studio_production_orders_v3')

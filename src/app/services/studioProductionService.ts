@@ -322,6 +322,36 @@ export const studioProductionService = {
     }
   },
 
+  /** Paginated: last N productions (for pipeline). Default limit 100. */
+  async getProductionsPage(
+    companyId: string,
+    opts: { limit?: number; offset?: number; branchId?: string | null }
+  ): Promise<StudioProduction[]> {
+    const limit = Math.min(opts.limit ?? 100, 500);
+    const offset = opts.offset ?? 0;
+    try {
+      let query = supabase
+        .from('studio_productions')
+        .select('*')
+        .eq('company_id', companyId)
+        .order('created_at', { ascending: false })
+        .range(offset, offset + limit - 1);
+      if (opts.branchId && opts.branchId !== 'all') {
+        query = query.eq('branch_id', opts.branchId);
+      }
+      const { data, error } = await query;
+      if (error) {
+        if (error.code === 'PGRST116' || error.message?.includes('does not exist')) return [];
+        throw error;
+      }
+      return (data || []) as StudioProduction[];
+    } catch (e: any) {
+      if (e?.code === 'PGRST204' || e?.message?.includes('relation') || e?.message?.includes('does not exist'))
+        return [];
+      throw e;
+    }
+  },
+
   async getProductionById(id: string): Promise<StudioProduction | null> {
     const { data, error } = await supabase
       .from('studio_productions')
@@ -347,6 +377,26 @@ export const studioProductionService = {
         .from('studio_productions')
         .select(`*, product:products!product_id(id, name, sku), worker:workers(id, name)`)
         .eq('sale_id', saleId)
+        .order('created_at', { ascending: false });
+      if (error) {
+        if (error.code === 'PGRST116' || error.message?.includes('sale_id')) return [];
+        throw error;
+      }
+      return (data || []) as StudioProduction[];
+    } catch (e: any) {
+      if (e?.code === '42703' || e?.message?.includes('sale_id')) return [];
+      throw e;
+    }
+  },
+
+  /** Batch: get productions for multiple sale IDs in one query (for Studio Sales list page). */
+  async getProductionsBySaleIds(saleIds: string[]): Promise<StudioProduction[]> {
+    if (saleIds.length === 0) return [];
+    try {
+      const { data, error } = await supabase
+        .from('studio_productions')
+        .select('id, sale_id, production_no, company_id, branch_id, status, created_at')
+        .in('sale_id', saleIds)
         .order('created_at', { ascending: false });
       if (error) {
         if (error.code === 'PGRST116' || error.message?.includes('sale_id')) return [];
@@ -779,6 +829,43 @@ export const studioProductionService = {
       throw error;
     }
     return (data || []) as StudioProductionLog[];
+  },
+
+  /** Batch: get stages for multiple productions in one query. Returns map productionId -> stages[]. */
+  async getStagesByProductionIds(productionIds: string[]): Promise<Map<string, StudioProductionStage[]>> {
+    const out = new Map<string, StudioProductionStage[]>();
+    if (productionIds.length === 0) return out;
+    const uniq = [...new Set(productionIds)].filter(Boolean);
+    try {
+      const { data, error } = await supabase
+        .from('studio_production_stages')
+        .select('*')
+        .in('production_id', uniq)
+        .order('created_at', { ascending: true });
+      if (error) {
+        if (error.code === 'PGRST116' || error.message?.includes('does not exist')) return out;
+        throw error;
+      }
+      const rows = (data || []) as any[];
+      const workerIds = [...new Set(rows.filter((s) => s.assigned_worker_id).map((s) => s.assigned_worker_id))];
+      let nameById = new Map<string, string>();
+      if (workerIds.length > 0) {
+        const { data: contacts } = await supabase.from('contacts').select('id, name').in('id', workerIds);
+        nameById = new Map((contacts || []).map((c: any) => [c.id, c.name || '']));
+      }
+      rows.forEach((s) => {
+        const pid = s.production_id;
+        if (!out.has(pid)) out.set(pid, []);
+        if (s.assigned_worker_id) {
+          s.worker = { id: s.assigned_worker_id, name: nameById.get(s.assigned_worker_id) || '' };
+        }
+        out.get(pid)!.push(s as StudioProductionStage);
+      });
+      return out;
+    } catch (e: any) {
+      if (e?.code === '42P01' || e?.message?.includes('does not exist')) return out;
+      throw e;
+    }
   },
 
   /** Stages for a production. Select * only (no workers join) to avoid 400 when workers table missing or assigned_worker_id = contact id. Resolve names from contacts. */

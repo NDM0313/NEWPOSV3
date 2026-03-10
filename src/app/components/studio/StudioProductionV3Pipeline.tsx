@@ -21,14 +21,11 @@ export const StudioProductionV3Pipeline = () => {
   const loadOrders = () => {
     if (!companyId) return;
     studioProductionV3Service
-      .getOrdersByCompany(companyId, branchId ?? undefined)
+      .getOrdersByCompanyPage(companyId, branchId ?? undefined, { limit: 100, offset: 0 })
       .then(async (list) => {
-        const withStages = await Promise.all(
-          list.map(async (o) => {
-            const stages = await studioProductionV3Service.getStagesByOrderId(o.id);
-            return { ...o, stages };
-          })
-        );
+        const orderIds = list.map((o) => o.id);
+        const stagesMap = orderIds.length > 0 ? await studioProductionV3Service.getStagesByOrderIds(orderIds) : new Map();
+        const withStages = list.map((o) => ({ ...o, stages: stagesMap.get(o.id) ?? [] }));
         setOrders(withStages);
       })
       .catch(() => {})

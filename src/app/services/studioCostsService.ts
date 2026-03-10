@@ -82,11 +82,12 @@ async function resolveWorkerNames(workerIds: string[]): Promise<Map<string, { na
   const map = new Map<string, { name: string; code?: string }>();
   if (workerIds.length === 0) return map;
 
+  // workers table has id, name (no code column in schema)
   const { data: workers } = await supabase
     .from('workers')
-    .select('id, name, code')
+    .select('id, name')
     .in('id', workerIds);
-  (workers || []).forEach((w: any) => map.set(w.id, { name: w.name || 'Unknown', code: w.code }));
+  (workers || []).forEach((w: any) => map.set(w.id, { name: w.name || 'Unknown', code: undefined }));
 
   const missing = workerIds.filter((id) => !map.has(id));
   if (missing.length > 0) {
@@ -440,12 +441,12 @@ export const studioCostsService = {
   // ═══════════════════════════════════════════════════════════════════════════
 
   async getProductionCostSummaries(companyId: string, branchId?: string | null): Promise<ProductionCostSummary[]> {
+    // Avoid PGRST201: do not embed products (two FKs). Select product_id and fetch product names in a second query.
     let query = supabase
       .from('studio_productions')
       .select(`
-        id, production_no, sale_id, actual_cost, status,
-        product:products(id, name),
-        sale:sales(invoice_no, customer:contacts(name))
+        id, production_no, sale_id, actual_cost, status, product_id,
+        sale:sales(invoice_no)
       `)
       .eq('company_id', companyId)
       .order('created_at', { ascending: false });
@@ -462,6 +463,14 @@ export const studioCostsService = {
 
     const prodList = (prods || []) as any[];
     if (prodList.length === 0) return [];
+
+    // Batch fetch product names by product_id (avoids ambiguous product embed).
+    const productIds = [...new Set((prodList as any[]).map((p) => p.product_id).filter(Boolean))] as string[];
+    const productNameById = new Map<string, string>();
+    if (productIds.length > 0) {
+      const { data: products } = await supabase.from('products').select('id, name').in('id', productIds);
+      (products || []).forEach((p: any) => productNameById.set(p.id, p.name || ''));
+    }
 
     const prodIds = prodList.map((p) => p.id);
     const { data: stages } = await supabase
@@ -533,14 +542,14 @@ export const studioCostsService = {
         };
       });
       const totalStageCost = stagesDetail.reduce((sum, s) => sum + s.cost, 0);
-      const sale = p.sale;
+      const sale = p.sale as { invoice_no?: string } | null;
       return {
         productionId: p.id,
         productionNo: p.production_no || '',
         saleId: p.sale_id || null,
         saleInvoice: sale?.invoice_no || null,
-        customerName: sale?.customer?.name || null,
-        productName: p.product?.name || null,
+        customerName: null,
+        productName: (p.product_id ? productNameById.get(p.product_id) : null) || null,
         status: p.status || 'draft',
         totalStageCost,
         actualCost: Number(p.actual_cost) || 0,

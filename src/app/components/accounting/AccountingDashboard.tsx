@@ -26,7 +26,8 @@ import {
   Star,
   List,
   ChevronDown,
-  X
+  X,
+  BookMarked
 } from 'lucide-react';
 import { Button } from '@/app/components/ui/button';
 import { Badge } from '@/app/components/ui/badge';
@@ -49,8 +50,12 @@ import { DepositsTab } from './DepositsTab';
 import { useSettings } from '@/app/context/SettingsContext';
 import { AccountingTestPage } from '@/app/components/test/AccountingTestPage';
 import { useSupabase } from '@/app/context/SupabaseContext';
+import { useGlobalFilter } from '@/app/context/GlobalFilterContext';
 import { accountService } from '@/app/services/accountService';
 import { toast } from 'sonner';
+import { DayBookReport } from '@/app/components/reports/DayBookReport';
+import { RoznamchaReport } from '@/app/components/reports/RoznamchaReport';
+import { AccountLedgerReportPage } from '@/app/components/reports/AccountLedgerReportPage';
 import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
 import { useCheckPermission } from '@/app/hooks/useCheckPermission';
 import {
@@ -93,8 +98,20 @@ export const AccountingDashboard = () => {
   const expenses = useExpenses();
   const { openDrawer } = useNavigation();
   const { companyId, branchId } = useSupabase();
+  const { setCurrentModule } = useGlobalFilter();
   const { formatCurrency } = useFormatCurrency();
-  const [activeTab, setActiveTab] = useState<'transactions' | 'accounts' | 'ledger' | 'receivables' | 'payables' | 'deposits' | 'studio' | 'reports'>('transactions');
+
+  useEffect(() => {
+    setCurrentModule('accounting');
+  }, [setCurrentModule]);
+
+  const [activeTab, setActiveTab] = useState<'journal_entries' | 'daybook' | 'roznamcha' | 'accounts' | 'ledger' | 'receivables' | 'payables' | 'deposits' | 'studio' | 'account_statements'>('journal_entries');
+  const reportStartDate = useMemo(() => {
+    const d = new Date();
+    d.setDate(1);
+    return d.toISOString().slice(0, 10);
+  }, []);
+  const reportEndDate = useMemo(() => new Date().toISOString().slice(0, 10), []);
   
   // UI-only view mode: Operational (day-to-day accounts) vs Professional (full Chart of Accounts)
   const [accountsViewMode, setAccountsViewMode] = useState<'operational' | 'professional'>('operational');
@@ -169,24 +186,25 @@ export const AccountingDashboard = () => {
     };
   }, [transactions]);
   
-  // Tab configuration – Ledger: one tab, dropdown on same page for type (Customer/Supplier/User/Worker) + entity
-  // Deposits: only when Rental module enabled. Studio Costs: only when Studio module enabled.
+  // Tab configuration: Journal Entries | Day Book | Roznamcha | Accounts | Ledger | Receivables | Payables | Studio Costs | Account Statements
   const allTabs = [
-    { key: 'transactions', label: 'Transactions', icon: Receipt },
+    { key: 'journal_entries', label: 'Journal Entries', icon: Receipt },
+    { key: 'daybook', label: 'Day Book', icon: List },
+    { key: 'roznamcha', label: 'Roznamcha', icon: BookMarked },
     { key: 'accounts', label: 'Accounts', icon: Wallet },
     { key: 'ledger', label: 'Ledger', icon: FileText },
     { key: 'receivables', label: 'Receivables', icon: TrendingUp },
     { key: 'payables', label: 'Payables', icon: TrendingDown },
     { key: 'deposits', label: 'Deposits', icon: Shield, isHidden: !settingsModules.rentalModuleEnabled },
     { key: 'studio', label: 'Studio Costs', icon: Wrench, isHidden: !settingsModules.studioModuleEnabled },
-    { key: 'reports', label: 'Reports', icon: BarChart3 },
+    { key: 'account_statements', label: 'Account Statements', icon: BarChart3 },
   ];
   const tabs = allTabs.filter((t) => !('isHidden' in t) || !(t as any).isHidden);
 
   // Reset activeTab if current tab becomes hidden (e.g. rental/studio disabled)
   useEffect(() => {
-    if (activeTab === 'deposits' && !settingsModules.rentalModuleEnabled) setActiveTab('transactions');
-    if (activeTab === 'studio' && !settingsModules.studioModuleEnabled) setActiveTab('transactions');
+    if (activeTab === 'deposits' && !settingsModules.rentalModuleEnabled) setActiveTab('journal_entries');
+    if (activeTab === 'studio' && !settingsModules.studioModuleEnabled) setActiveTab('journal_entries');
   }, [activeTab, settingsModules.rentalModuleEnabled, settingsModules.studioModuleEnabled]);
 
   // Filter transactions based on search and filters
@@ -245,7 +263,7 @@ export const AccountingDashboard = () => {
             variant="ghost"
             size="icon"
             className="text-gray-400 hover:text-white hover:bg-gray-800"
-            onClick={() => setActiveTab('transactions')}
+            onClick={() => setActiveTab('journal_entries')}
           >
             <X className="h-5 w-5" />
           </Button>
@@ -266,7 +284,7 @@ export const AccountingDashboard = () => {
             <h1 className="text-2xl font-bold text-white">Accounting</h1>
             <p className="text-sm text-gray-400 mt-0.5">Financial transactions and reporting</p>
           </div>
-          {canAccessAccounting && activeTab === 'transactions' && (
+          {canAccessAccounting && activeTab === 'journal_entries' && (
             <Button 
               onClick={() => setAddEntryFlowOpen(true)}
               className="bg-blue-600 hover:bg-blue-500 text-white h-10 gap-2 shadow-lg shadow-blue-900/30"
@@ -419,17 +437,16 @@ export const AccountingDashboard = () => {
 
       {/* Tab Content */}
       <div className="flex-1 overflow-auto px-6 py-4 bg-[#0B0F19]">
-        {activeTab === 'transactions' && (
+        {activeTab === 'journal_entries' && (
           <div className="space-y-4">
-            {/* Header */}
             <div className="flex items-center justify-between">
               <div>
-                <h3 className="text-lg font-bold text-white">Transactions</h3>
-                <p className="text-sm text-gray-400">All journal entries from accounting system</p>
+                <h3 className="text-lg font-bold text-white">Journal Entries</h3>
+                <p className="text-sm text-gray-400">All journal entries – click a reference to view details</p>
               </div>
             </div>
 
-            {/* Transactions Table */}
+            {/* Journal Entries Table (same as former Transactions – opens TransactionDetailModal on click) */}
             <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden">
               {accounting.entries.length === 0 ? (
                 <div className="text-center py-12">
@@ -527,137 +544,18 @@ export const AccountingDashboard = () => {
           </div>
         )}
 
-        {activeTab === 'transactions_old' && (
+        {activeTab === 'daybook' && (
           <div className="space-y-4">
-            {/* Search and Filter Bar */}
-            <div className="flex items-center gap-4">
-              <div className="flex-1 relative">
-                <input
-                  type="text"
-                  placeholder="Search transactions..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full bg-gray-900/50 border border-gray-800 rounded-lg px-4 py-2 pl-10 text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all"
-                />
-                <Filter size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none" />
-              </div>
-              <Button
-                variant="outline"
-                onClick={() => setFilterOpen(!filterOpen)}
-                className={cn(
-                  "border-gray-800 text-gray-300 hover:bg-gray-800 transition-all",
-                  filterOpen && "bg-gray-800 border-blue-500"
-                )}
-              >
-                <Filter size={16} className="mr-2" />
-                Filter
-              </Button>
-            </div>
+            <h3 className="text-lg font-bold text-white">Day Book (Journal)</h3>
+            <p className="text-sm text-gray-400 mb-4">Click voucher number to open transaction detail</p>
+            <DayBookReport onVoucherClick={(voucher) => setTransactionReference(voucher)} />
+          </div>
+        )}
 
-            {/* Filter Panel */}
-            {filterOpen && (
-              <div className="bg-gray-900/50 border border-gray-800 rounded-lg p-4">
-                <div className="grid grid-cols-4 gap-4">
-                  <div>
-                    <label className="text-xs text-gray-500 uppercase tracking-wide mb-2 block">Type</label>
-                    <select
-                      value={typeFilter}
-                      onChange={(e) => setTypeFilter(e.target.value)}
-                      className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500"
-                    >
-                      <option value="all">All Types</option>
-                      <option value="expense">Expense</option>
-                      <option value="sale">Sale</option>
-                      <option value="purchase">Purchase</option>
-                      <option value="payment">Payment</option>
-                    </select>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Transactions Table */}
-            <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden">
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead className="bg-gray-900/70 border-b border-gray-800 sticky top-0 z-10">
-                    <tr className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                      <th className="px-4 py-3 text-left">Date</th>
-                      <th className="px-4 py-3 text-left">Reference</th>
-                      <th className="px-4 py-3 text-left">Category</th>
-                      <th className="px-4 py-3 text-left">Description</th>
-                      <th className="px-4 py-3 text-left">Type</th>
-                      <th className="px-4 py-3 text-left">Account</th>
-                      <th className="px-4 py-3 text-right">Amount</th>
-                      <th className="px-4 py-3 text-left">By</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {transactions.length === 0 ? (
-                      <tr>
-                        <td colSpan={8} className="px-4 py-12 text-center">
-                          <Receipt size={48} className="mx-auto text-gray-600 mb-3" />
-                          <p className="text-gray-400 text-sm">No transactions yet</p>
-                          <p className="text-gray-600 text-xs mt-1">Transactions will appear here</p>
-                        </td>
-                      </tr>
-                    ) : (
-                      filteredTransactions
-                        .map((txn) => {
-                          // Determine transaction type based on source and accounts
-                          const getTransactionType = () => {
-                            if (txn.source === 'Expense') return 'Expense';
-                            if (txn.source === 'Sale') return 'Income';
-                            if (txn.source === 'Purchase') return 'Purchase';
-                            if (txn.debitAccount === 'Accounts Receivable') return 'Receivable';
-                            if (txn.creditAccount === 'Accounts Payable') return 'Payable';
-                            return 'Transfer';
-                          };
-
-                          const transactionType = getTransactionType();
-                          const accountName = txn.debitAccount !== 'Expense' && txn.debitAccount !== 'Accounts Receivable' 
-                            ? txn.debitAccount 
-                            : txn.creditAccount;
-
-                          return (
-                            <tr 
-                              key={txn.id} 
-                              className="border-b border-gray-800/50 hover:bg-gray-800/30 transition-colors cursor-pointer"
-                            >
-                              <td className="px-4 py-3 text-sm text-gray-400">
-                                {new Date(txn.date).toLocaleDateString('en-US', { month: 'numeric', day: 'numeric', year: 'numeric' })}
-                              </td>
-                              <td className="px-4 py-3 text-sm text-blue-400 font-mono">
-                                {txn.referenceNo}
-                              </td>
-                              <td className="px-4 py-3 text-xs">
-                                <Badge className="bg-gray-800/50 text-gray-300 border-gray-700/50">
-                                  {txn.module}
-                                </Badge>
-                              </td>
-                              <td className="px-4 py-3 text-sm text-gray-300 max-w-md">
-                                {txn.description}
-                              </td>
-                              <td className="px-4 py-3 text-sm text-green-400 font-medium">
-                                {transactionType}
-                              </td>
-                              <td className="px-4 py-3 text-sm text-red-400">
-                                {accountName}
-                              </td>
-                              <td className="px-4 py-3 text-sm text-white font-semibold text-right tabular-nums">
-                                {formatCurrency(txn.amount)}
-                              </td>
-                              <td className="px-4 py-3 text-xs text-gray-500">
-                                {txn.createdBy}
-                              </td>
-                            </tr>
-                          );
-                        })
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
+        {activeTab === 'roznamcha' && (
+          <div className="space-y-4">
+            <h3 className="text-lg font-bold text-white">Roznamcha (Daily Cash Book)</h3>
+            <RoznamchaReport />
           </div>
         )}
 
@@ -1076,90 +974,12 @@ export const AccountingDashboard = () => {
 
         {activeTab === 'studio' && <StudioCostsTab />}
 
-        {activeTab === 'reports' && (
+        {activeTab === 'account_statements' && (
           <div className="space-y-4">
-            {/* Summary Cards */}
-            <div className="grid grid-cols-3 gap-4">
-              <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-6">
-                <div className="flex items-center justify-between mb-4">
-                  <div>
-                    <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold mb-1">Total Income</p>
-                    <p className="text-2xl font-bold text-green-400">{formatCurrency(summary.totalIncome)}</p>
-                  </div>
-                  <TrendingUp size={32} className="text-green-500/50" />
-                </div>
-              </div>
-              <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-6">
-                <div className="flex items-center justify-between mb-4">
-                  <div>
-                    <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold mb-1">Total Expense</p>
-                    <p className="text-2xl font-bold text-red-400">{formatCurrency(summary.totalExpense)}</p>
-                  </div>
-                  <TrendingDown size={32} className="text-red-500/50" />
-                </div>
-              </div>
-              <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-6">
-                <div className="flex items-center justify-between mb-4">
-                  <div>
-                    <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold mb-1">Net Profit</p>
-                    <p className={cn(
-                      "text-2xl font-bold",
-                      summary.netProfit >= 0 ? "text-green-400" : "text-red-400"
-                    )}>
-                      {formatCurrency(summary.netProfit)}
-                    </p>
-                  </div>
-                  <DollarSign size={32} className={summary.netProfit >= 0 ? "text-green-500/50" : "text-red-500/50"} />
-                </div>
-              </div>
-            </div>
-
-            {/* Account Balances */}
-            <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-6">
-              <h3 className="text-lg font-semibold text-white mb-4">Account Balances</h3>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                {Array.from(accounting.balances.entries()).map(([accountType, balance]) => (
-                  <div key={accountType} className="bg-gray-950/50 border border-gray-800 rounded-lg p-4">
-                    <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">{accountType}</p>
-                    <p className={cn(
-                      "text-xl font-bold",
-                      balance >= 0 ? "text-green-400" : "text-red-400"
-                    )}>
-                      {formatCurrency(balance)}
-                    </p>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Transaction Summary */}
-            <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-6">
-              <h3 className="text-lg font-semibold text-white mb-4">Transaction Summary</h3>
-              <div className="space-y-2">
-                <div className="flex items-center justify-between py-2 border-b border-gray-800">
-                  <span className="text-sm text-gray-400">Total Transactions</span>
-                  <span className="text-sm font-semibold text-white">{transactions.length}</span>
-                </div>
-                <div className="flex items-center justify-between py-2 border-b border-gray-800">
-                  <span className="text-sm text-gray-400">Sales Transactions</span>
-                  <span className="text-sm font-semibold text-white">
-                    {transactions.filter(t => t.source === 'Sale').length}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between py-2 border-b border-gray-800">
-                  <span className="text-sm text-gray-400">Purchase Transactions</span>
-                  <span className="text-sm font-semibold text-white">
-                    {transactions.filter(t => t.source === 'Purchase').length}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between py-2 border-b border-gray-800">
-                  <span className="text-sm text-gray-400">Expense Transactions</span>
-                  <span className="text-sm font-semibold text-white">
-                    {transactions.filter(t => t.source === 'Expense').length}
-                  </span>
-                </div>
-              </div>
-            </div>
+            <h3 className="text-lg font-bold text-white">Account Statements</h3>
+            <p className="text-sm text-gray-400 mb-4">Account-wise ledger / statement by date range</p>
+            <div className="text-xs text-gray-500 mb-2">Period: {reportStartDate} to {reportEndDate}</div>
+            <AccountLedgerReportPage startDate={reportStartDate} endDate={reportEndDate} branchId={branchId} />
           </div>
         )}
       </div>

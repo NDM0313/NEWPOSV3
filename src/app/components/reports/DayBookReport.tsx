@@ -31,7 +31,12 @@ function refTypeToDisplayType(ref: string): DayBookEntry['type'] {
   return m[ref?.toLowerCase() ?? ''] ?? 'Journal';
 }
 
-export const DayBookReport = () => {
+export interface DayBookReportProps {
+  /** When provided, voucher number is clickable and opens transaction detail (e.g. in Accounting module). */
+  onVoucherClick?: (voucher: string) => void;
+}
+
+export const DayBookReport = ({ onVoucherClick }: DayBookReportProps) => {
   const { companyId } = useSupabase();
   const today = new Date();
   const [dateRange, setDateRange] = useState<{ from?: Date; to?: Date }>({
@@ -168,7 +173,19 @@ export const DayBookReport = () => {
                 {entries.map((e, i) => (
                   <tr key={e.id} className={cn('hover:bg-gray-800/30', i % 2 === 0 ? 'bg-gray-950/30' : 'bg-gray-900/20')}>
                     <td className="px-4 py-3 text-gray-300">{e.time}</td>
-                    <td className="px-4 py-3 font-mono text-gray-300">{e.voucher}</td>
+                    <td className="px-4 py-3 font-mono text-gray-300">
+                      {onVoucherClick ? (
+                        <button
+                          type="button"
+                          onClick={() => onVoucherClick(e.voucher)}
+                          className="text-blue-400 hover:text-blue-300 hover:underline text-left"
+                        >
+                          {e.voucher}
+                        </button>
+                      ) : (
+                        e.voucher
+                      )}
+                    </td>
                     <td className="px-4 py-3 text-white">{e.account}</td>
                     <td className="px-4 py-3 text-gray-400 max-w-xs truncate" title={e.description}>{e.description}</td>
                     <td className="px-4 py-3 text-right font-mono text-green-400">

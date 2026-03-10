@@ -5,6 +5,7 @@ import { featureFlagsService } from '@/app/services/featureFlagsService';
 import { branchService } from '@/app/services/branchService';
 import { permissionService } from '@/app/services/permissionService';
 import type { EngineRole } from '@/app/services/permissionService';
+import { permissionEngine } from '@/app/services/permissionEngine';
 import { accountService } from '@/app/services/accountService';
 import { saleService } from '@/app/services/saleService';
 import { supabase } from '@/lib/supabase';
@@ -739,71 +740,37 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
           let canManageProducts = p.canManageProducts ?? (role === 'Admin' || role === 'Manager');
           let canEditPurchase = p.canEditPurchase ?? (role === 'Admin' || role === 'Manager');
           let canDeletePurchase = p.canDeletePurchase ?? (role === 'Admin');
+          let derivedPerms: UserPermissions | null = null;
           try {
-            const rolePerms = await permissionService.getRolePermissions(engineRole);
-            const permCount = rolePerms?.length ?? 0;
-            const isEmpty = permCount === 0;
-            if (import.meta.env?.DEV) {
-              const { data: allRoleRows } = await supabase.from('role_permissions').select('role');
-              const distinctRoles = [...new Set((allRoleRows || []).map((r: { role: string }) => r.role))];
-              console.log('[PERM_DEBUG] engineRole =', engineRole);
-              console.log('[PERM_DEBUG] role_permissions count =', permCount);
-              console.log('[PERM_DEBUG] role_permissions returning empty array? =', isEmpty);
-              console.log('[PERM_DEBUG] DB: SELECT DISTINCT role FROM role_permissions =', distinctRoles);
-              if (isEmpty && distinctRoles.length > 0) {
-                console.warn('[PERM_DEBUG] ⚠️ role "' + engineRole + '" not in DB. Maujood roles:', distinctRoles);
-              }
-            }
-            const visibilityScopeActions = ['view_own', 'view_branch', 'view_company'];
-            const hasPurchase = rolePerms.some(x => x.module === 'purchase' && (visibilityScopeActions.includes(x.action) || x.action === 'create') && x.allowed);
-            const hasPos = rolePerms.some(x => x.module === 'pos' && (x.action === 'use' || x.action === 'view') && x.allowed);
-            const hasStudio = rolePerms.some(x => x.module === 'studio' && (visibilityScopeActions.includes(x.action) || ['view', 'create', 'edit', 'delete'].includes(x.action)) && x.allowed);
-            const hasRentals = rolePerms.some(x => x.module === 'rentals' && (visibilityScopeActions.includes(x.action) || x.action === 'create') && x.allowed);
-            const hasSalesView = rolePerms.some(x => x.module === 'sales' && visibilityScopeActions.includes(x.action) && x.allowed);
-            const hasSalesCreate = rolePerms.some(x => x.module === 'sales' && x.action === 'create' && x.allowed);
-            const hasSalesEdit = rolePerms.some(x => x.module === 'sales' && x.action === 'edit' && x.allowed);
-            const hasSalesDelete = rolePerms.some(x => x.module === 'sales' && x.action === 'delete' && x.allowed);
-            const hasReportsView = rolePerms.some(x => x.module === 'reports' && x.action === 'view' && x.allowed);
-            // Accounting (UI) = ledger in DB. Show full Accounting only for view_full_accounting or view_supplier; view_customer alone = customer ledger only, not full module.
-            const hasAccountingVisibility = rolePerms.some(x => x.module === 'ledger' && (visibilityScopeActions.includes(x.action) || x.action === 'view_full_accounting' || x.action === 'view_supplier') && x.allowed);
-            const hasInventory = rolePerms.some(x => x.module === 'inventory' && (visibilityScopeActions.includes(x.action) || x.action === 'view') && x.allowed);
-            const hasContacts = rolePerms.some(x => x.module === 'contacts' && (visibilityScopeActions.includes(x.action) || x.action === 'create') && x.allowed);
-            const hasContactsCreate = rolePerms.some(x => x.module === 'contacts' && x.action === 'create' && x.allowed);
-            const hasContactsDelete = rolePerms.some(x => x.module === 'contacts' && x.action === 'delete' && x.allowed);
-            const hasUsers = rolePerms.some(x => x.module === 'users' && (x.action === 'create' || x.action === 'edit' || x.action === 'delete' || x.action === 'assign_permissions') && x.allowed);
-            const hasSettings = rolePerms.some(x => x.module === 'settings' && x.action === 'modify' && x.allowed);
-            const hasPaymentsReceive = rolePerms.some(x => x.module === 'payments' && (visibilityScopeActions.includes(x.action) || x.action === 'receive') && x.allowed);
-            const hasPaymentsEdit = rolePerms.some(x => x.module === 'payments' && x.action === 'edit' && x.allowed);
-            const hasPurchaseEdit = rolePerms.some(x => x.module === 'purchase' && x.action === 'edit' && x.allowed);
-            const hasPurchaseDelete = rolePerms.some(x => x.module === 'purchase' && x.action === 'delete' && x.allowed);
-            canManagePurchases = hasPurchase;
-            canUsePos = hasPos;
-            canAccessStudio = hasStudio;
-            canManageRentals = hasRentals;
-            canViewSale = hasSalesView;
-            canViewReports = hasReportsView;
-            canAccessAccounting = hasAccountingVisibility;
-            canManageProducts = hasInventory;
-            canViewContacts = hasContacts;
-            canCreateContact = hasContactsCreate;
-            canDeleteContact = hasContactsDelete;
-            canManageUsers = hasUsers;
-            canManageSettings = hasSettings;
-            canReceivePayments = hasPaymentsReceive;
-            canMakePayments = hasPaymentsEdit || hasPaymentsReceive;
-            canManageExpenses = hasPaymentsReceive;
-            if (hasPurchase) {
-              canEditPurchase = hasPurchaseEdit;
-              canDeletePurchase = hasPurchaseDelete;
-            }
-            if (hasSalesView || hasSalesCreate || hasSalesEdit || hasSalesDelete) {
-              canCreateSale = hasSalesCreate;
-              canEditSale = hasSalesEdit;
-              canDeleteSale = hasSalesDelete;
+            const userId = user?.id ?? '';
+            if (userId && companyId) {
+              derivedPerms = await permissionEngine.loadPermissions(userId, companyId, engineRole, role);
             }
           } catch (err) {
-            // Keep defaults from p / role when role_permissions unavailable
-            if (import.meta.env?.DEV) console.log('[PERM_DEBUG] getRolePermissions threw:', err);
+            if (import.meta.env?.DEV) console.log('[PERM_DEBUG] permissionEngine.loadPermissions threw:', err);
+          }
+          if (derivedPerms) {
+            canManagePurchases = derivedPerms.canManagePurchases;
+            canUsePos = derivedPerms.canUsePos ?? (role === 'Admin' || role === 'Manager');
+            canAccessStudio = derivedPerms.canAccessStudio ?? (role === 'Admin' || role === 'Manager');
+            canManageRentals = derivedPerms.canManageRentals;
+            canViewSale = derivedPerms.canViewSale;
+            canViewReports = derivedPerms.canViewReports;
+            canAccessAccounting = derivedPerms.canAccessAccounting;
+            canManageProducts = derivedPerms.canManageProducts;
+            canViewContacts = derivedPerms.canViewContacts;
+            canCreateContact = derivedPerms.canCreateContact ?? derivedPerms.canViewContacts;
+            canDeleteContact = derivedPerms.canDeleteContact ?? false;
+            canManageUsers = derivedPerms.canManageUsers;
+            canManageSettings = derivedPerms.canManageSettings;
+            canReceivePayments = derivedPerms.canReceivePayments;
+            canMakePayments = derivedPerms.canMakePayments ?? derivedPerms.canReceivePayments;
+            canManageExpenses = derivedPerms.canReceivePayments;
+            canEditPurchase = derivedPerms.canEditPurchase ?? derivedPerms.canManagePurchases;
+            canDeletePurchase = derivedPerms.canDeletePurchase ?? false;
+            canCreateSale = derivedPerms.canCreateSale;
+            canEditSale = derivedPerms.canEditSale;
+            canDeleteSale = derivedPerms.canDeleteSale;
           }
           if (import.meta.env?.DEV) console.log('[PERM_DEBUG] 3. Derived flags:', { canViewSale, canCreateSale, canEditSale, canViewReports, canManageProducts, canViewContacts, canAccessAccounting, canUsePos, canAccessStudio });
           setCurrentUser({

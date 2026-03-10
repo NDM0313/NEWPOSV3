@@ -55,14 +55,27 @@ export interface AccountLedgerEntry {
 export const accountingService = {
   // Get all journal entries with lines
   // CRITICAL: Filter out entries for deleted purchases/sales
-  async getAllEntries(companyId: string, branchId?: string, startDate?: string, endDate?: string) {
+  async getAllEntries(companyId: string, branchId?: string, startDate?: string | Date, endDate?: string | Date) {
     try {
+      // Normalize dates to ISO YYYY-MM-DD so PostgREST accepts them (Date objects get serialized incorrectly otherwise).
+      const startStr = startDate == null ? undefined : typeof startDate === 'string' ? startDate.slice(0, 10) : startDate.toISOString().slice(0, 10);
+      const endStr = endDate == null ? undefined : typeof endDate === 'string' ? endDate.slice(0, 10) : endDate.toISOString().slice(0, 10);
+
+      // Journal-based accounting: journal_entries + journal_entry_lines only (no ledger_entries).
+      // Embed account name per line for display; avoid payment embed so query works when payment_id column is missing.
       let query = supabase
         .from('journal_entries')
         .select(`
           *,
-          lines:journal_entry_lines(*),
-          payment:payments(reference_number, payment_method, amount)
+          lines:journal_entry_lines(
+            id,
+            journal_entry_id,
+            account_id,
+            debit,
+            credit,
+            description,
+            account:accounts(name, code, type)
+          )
         `)
         .eq('company_id', companyId)
         .order('entry_date', { ascending: false })
@@ -72,12 +85,12 @@ export const accountingService = {
         query = query.eq('branch_id', branchId);
       }
 
-      if (startDate) {
-        query = query.gte('entry_date', startDate);
+      if (startStr) {
+        query = query.gte('entry_date', startStr);
       }
 
-      if (endDate) {
-        query = query.lte('entry_date', endDate);
+      if (endStr) {
+        query = query.lte('entry_date', endStr);
       }
 
       const { data, error } = await query;

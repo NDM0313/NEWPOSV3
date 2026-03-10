@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, ReactNode } from 'react';
 import { useSupabase } from '@/app/context/SupabaseContext';
-import { useDateRange } from '@/app/context/DateRangeContext';
+import { useGlobalFilter } from '@/app/context/GlobalFilterContext';
 import { accountService, Account as SupabaseAccount } from '@/app/services/accountService';
 import { accountingService, JournalEntryWithLines, JournalEntryLine } from '@/app/services/accountingService';
 import { toast } from 'sonner';
@@ -252,10 +252,7 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const { companyId, branchId, user, userRole } = useSupabase();
-  const { dateRange } = useDateRange();
-  // Use ISO strings as stable primitives so useCallback deps don't change on every Date object re-creation
-  const startDateISO = dateRange.startDate?.toISOString() ?? null;
-  const endDateISO = dateRange.endDate?.toISOString() ?? null;
+  const { startDate: startDateISO, endDate: endDateISO } = useGlobalFilter();
 
   // Current user (from auth context)
   const currentUser = user?.email || 'Admin';
@@ -297,10 +294,13 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
 
     const source = sourceMap[journalEntry.reference_type || 'manual'] || 'Manual';
 
-    // Get payment reference if available
-    const payment = (journalEntry as any).payment;
-    const paymentRef = Array.isArray(payment) ? payment[0]?.reference_number : payment?.reference_number;
-    const paymentMethod = Array.isArray(payment) ? payment[0]?.payment_method : payment?.payment_method;
+    // Payment reference: no longer embedded in main query; use entry_no as primary
+    const paymentRef = (journalEntry as any).payment ? (Array.isArray((journalEntry as any).payment) ? (journalEntry as any).payment[0]?.reference_number : (journalEntry as any).payment?.reference_number) : undefined;
+    const paymentMethod = (journalEntry as any).payment ? (Array.isArray((journalEntry as any).payment) ? (journalEntry as any).payment[0]?.payment_method : (journalEntry as any).payment?.payment_method) : undefined;
+
+    // Account names from embedded account (journal-based; no legacy ledger)
+    const debitAccountName = debitLine?.account_name ?? (debitLine as any)?.account?.name ?? 'Expense';
+    const creditAccountName = creditLine?.account_name ?? (creditLine as any)?.account?.name ?? 'Cash';
 
     // Extract metadata from description or reference
     const metadata: AccountingEntry['metadata'] = {
@@ -325,8 +325,8 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
       date: new Date(journalEntry.entry_date),
       source,
       referenceNo: referenceNo,
-      debitAccount: (debitLine?.account_name || 'Expense') as AccountType,
-      creditAccount: (creditLine?.account_name || 'Cash') as AccountType,
+      debitAccount: (debitAccountName || 'Expense') as AccountType,
+      creditAccount: (creditAccountName || 'Cash') as AccountType,
       amount: debitLine?.debit || creditLine?.credit || 0,
       description: journalEntry.description,
       createdBy: journalEntry.created_by || 'System',

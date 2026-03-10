@@ -477,6 +477,7 @@ export const studioService = {
   /**
    * Single worker detail with current and recent stages (as jobs) for WorkerDetailPage.
    */
+  /** Worker detail without loading all company workers/stages. Fetches one worker + their stages only. */
   async getWorkerDetail(companyId: string, workerId: string): Promise<{
     worker: Worker & { activeJobs: number; pendingJobs: number; completedJobs: number; pendingAmount: number; totalEarnings: number };
     currentStages: Array<{
@@ -499,45 +500,43 @@ export const studioService = {
       customer_name?: string;
     }>;
   } | null> {
-    const withStats = await this.getWorkersWithStats(companyId);
-    const worker = withStats.find((w) => w.id === workerId) || null;
-    if (!worker) return null;
+    const currentStages: Array<{ id: string; stage_type: string; status: string; cost: number; expected_completion_date?: string | null; completed_at?: string | null; production_no?: string; sale_id?: string; customer_name?: string }> = [];
+    const recentCompletedStages: Array<{ id: string; stage_type: string; cost: number; completed_at?: string | null; production_no?: string; customer_name?: string }> = [];
 
-    const currentStages: Array<{
-      id: string;
-      stage_type: string;
-      status: string;
-      cost: number;
-      expected_completion_date?: string | null;
-      completed_at?: string | null;
-      production_no?: string;
-      sale_id?: string;
-      customer_name?: string;
-    }> = [];
-    const recentCompletedStages: Array<{
-      id: string;
-      stage_type: string;
-      cost: number;
-      completed_at?: string | null;
-      production_no?: string;
-      customer_name?: string;
-    }> = [];
+    const workerRow = await (async (): Promise<Worker | null> => {
+      const { data: fromWorkers } = await supabase.from('workers').select('*').eq('id', workerId).eq('company_id', companyId).maybeSingle();
+      if (fromWorkers) {
+        return { id: fromWorkers.id, company_id: fromWorkers.company_id, name: fromWorkers.name || '', phone: fromWorkers.phone, worker_type: (fromWorkers.worker_type || 'General') as Worker['worker_type'], rate: Number(fromWorkers.rate) || 0, current_balance: Number(fromWorkers.current_balance) || 0, is_active: fromWorkers.is_active !== false };
+      }
+      const { data: fromContacts } = await supabase.from('contacts').select('id, company_id, name, phone, mobile, is_active').eq('id', workerId).eq('company_id', companyId).maybeSingle();
+      if (fromContacts) {
+        return { id: fromContacts.id, company_id: fromContacts.company_id, name: fromContacts.name || '', phone: fromContacts.phone || (fromContacts as any).mobile, worker_type: ((fromContacts as any).worker_role || 'General') as Worker['worker_type'], rate: 0, current_balance: 0, is_active: (fromContacts as any).is_active !== false };
+      }
+      return null;
+    })();
+    if (!workerRow) return null;
 
     try {
-      const { data: prods } = await supabase
-        .from('studio_productions')
-        .select('id, production_no, sale_id, sale:sales(customer_name, customer:contacts(name))')
-        .eq('company_id', companyId);
-      const prodMap = new Map((prods || []).map((p: any) => [p.id, p]));
-
       const { data: stages } = await supabase
         .from('studio_production_stages')
         .select('id, production_id, stage_type, status, cost, expected_completion_date, completed_at')
         .eq('assigned_worker_id', workerId)
-        .in('status', ['pending', 'in_progress', 'completed'])
         .order('created_at', { ascending: false });
-
-      (stages || []).forEach((s: any) => {
+      const stageList = stages || [];
+      const prodIds = [...new Set(stageList.map((s: any) => s.production_id).filter(Boolean))];
+      let prodMap = new Map<string, any>();
+      if (prodIds.length > 0) {
+        const { data: prods } = await supabase
+          .from('studio_productions')
+          .select('id, production_no, sale_id, sale:sales(customer_name, customer:contacts(name))')
+          .in('id', prodIds);
+        prodMap = new Map((prods || []).map((p: any) => [p.id, p]));
+      }
+      let assigned = 0;
+      let inProgress = 0;
+      let completed = 0;
+      let totalCost = 0;
+      stageList.forEach((s: any) => {
         const prod = prodMap.get(s.production_id);
         const productionNo = prod?.production_no;
         const sale = prod?.sale;
@@ -553,15 +552,12 @@ export const studioService = {
           sale_id: prod?.sale_id,
           customer_name: customerName,
         };
+        const st = (s.status || '').toLowerCase();
+        if (st === 'assigned' || st === 'pending') assigned++;
+        else if (st === 'in_progress') inProgress++;
+        else if (st === 'completed') { completed++; totalCost += Number(s.cost) || 0; }
         if (s.status === 'completed') {
-          recentCompletedStages.push({
-            id: s.id,
-            stage_type: s.stage_type,
-            cost: item.cost,
-            completed_at: s.completed_at,
-            production_no: productionNo,
-            customer_name: customerName,
-          });
+          recentCompletedStages.push({ id: s.id, stage_type: s.stage_type, cost: item.cost, completed_at: s.completed_at, production_no: productionNo, customer_name: customerName });
         } else {
           currentStages.push(item);
         }
@@ -571,24 +567,35 @@ export const studioService = {
         const db = b.completed_at ? new Date(b.completed_at).getTime() : 0;
         return db - da;
       });
-      const keepRecent = 10;
-      if (recentCompletedStages.length > keepRecent) recentCompletedStages.length = keepRecent;
+      if (recentCompletedStages.length > 10) recentCompletedStages.length = 10;
+
+      let pendingAmount = 0;
+      let totalEarnings = 0;
+      try {
+        const { data: ledger } = await supabase.from('worker_ledger_entries').select('amount, status').eq('company_id', companyId).eq('worker_id', workerId);
+        (ledger || []).forEach((r: any) => {
+          const amt = Number(r.amount) || 0;
+          totalEarnings += amt;
+          if ((r.status || '').toLowerCase() !== 'paid') pendingAmount += amt;
+        });
+      } catch (_) {}
+
+      return {
+        worker: {
+          ...workerRow,
+          activeJobs: assigned + inProgress,
+          pendingJobs: assigned,
+          completedJobs: completed,
+          pendingAmount,
+          totalEarnings: totalEarnings || totalCost,
+        },
+        currentStages,
+        recentCompletedStages,
+      };
     } catch (e: any) {
       if (e?.code !== 'PGRST205' && !e?.message?.includes('Could not find')) throw e;
+      return { worker: { ...workerRow, activeJobs: 0, pendingJobs: 0, completedJobs: 0, pendingAmount: 0, totalEarnings: 0 }, currentStages: [], recentCompletedStages: [] };
     }
-
-    return {
-      worker: {
-        ...worker,
-        activeJobs: worker.activeJobs,
-        pendingJobs: worker.pendingJobs,
-        completedJobs: worker.completedJobs,
-        pendingAmount: worker.pendingAmount,
-        totalEarnings: worker.totalEarnings,
-      },
-      currentStages,
-      recentCompletedStages,
-    };
   },
 
   /**

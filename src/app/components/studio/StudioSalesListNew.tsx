@@ -74,9 +74,10 @@ export const StudioSalesListNew = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState<'all' | ProductionStatus>('all');
   const [filterOpen, setFilterOpen] = useState(false);
-  const [rowsPerPage, setRowsPerPage] = useState(25);
   const [currentPage, setCurrentPage] = useState(1);
   const [sales, setSales] = useState<StudioSale[]>([]);
+  const [totalCount, setTotalCount] = useState(0);
+  const serverPageSize = 50;
   const [loading, setLoading] = useState<boolean>(true);
   const [printDrawerSaleId, setPrintDrawerSaleId] = useState<string | null>(null);
   const [editLoading, setEditLoading] = useState<string | null>(null);
@@ -160,30 +161,38 @@ export const StudioSalesListNew = () => {
     };
   }, [deriveProductionStatus]);
 
-  // Load studio orders + studio-type sales with production status from DB
+  const serverPage = currentPage;
+
+  // Load studio sales (paginated server-side, 50 per page) with pagination + batch stage lookup (no N+1)
   const loadStudioOrders = useCallback(async () => {
     if (!companyId) {
       setLoading(false);
       return;
     }
-
     try {
       setLoading(true);
       const effectiveBranchId = branchId === 'all' ? undefined : branchId || undefined;
-      // Load only from sales table (studio_orders table dropped – no legacy orders)
-      const studioSalesFromSales = await saleService.getStudioSales(companyId, effectiveBranchId).catch(() => []);
+      const offset = (serverPage - 1) * serverPageSize;
+      const result = await saleService
+        .getStudioSales(companyId, effectiveBranchId, { limit: serverPageSize, offset })
+        .catch(() => ({ data: [], total: 0 }));
+      const studioSalesFromSales = (result && typeof result === 'object' && 'data' in result ? (result as { data: any[] }).data : result) || [];
+      const total = result && typeof result === 'object' && 'total' in result ? (result as { total: number }).total : studioSalesFromSales.length;
+      setTotalCount(total);
 
       const saleIds = (studioSalesFromSales || []).map((s: any) => s.id).filter(Boolean);
       const stagesBySaleId: Record<string, Array<{ status?: string }>> = {};
       if (saleIds.length > 0) {
         try {
-          const allProductions = await studioProductionService.getProductions(companyId, effectiveBranchId);
-          const productionsBySale = allProductions.filter((p: any) => p.sale_id && saleIds.includes(p.sale_id));
+          const productionsBySale = await studioProductionService.getProductionsBySaleIds(saleIds);
+          const productionIds = productionsBySale.map((p: any) => p.id).filter(Boolean);
+          const stagesMap = productionIds.length > 0
+            ? await studioProductionService.getStagesByProductionIds(productionIds)
+            : new Map<string, any[]>();
           for (const saleId of saleIds) {
             const prod = productionsBySale.find((p: any) => p.sale_id === saleId);
             if (prod?.id) {
-              const stages = await studioProductionService.getStagesByProductionId(prod.id);
-              stagesBySaleId[saleId] = stages || [];
+              stagesBySaleId[saleId] = stagesMap.get(prod.id) || [];
             }
           }
         } catch (_) {
@@ -199,10 +208,11 @@ export const StudioSalesListNew = () => {
       console.error('Error loading studio orders:', error);
       toast.error('Failed to load studio sales');
       setSales([]);
+      setTotalCount(0);
     } finally {
       setLoading(false);
     }
-  }, [companyId, branchId, convertFromSale]);
+  }, [companyId, branchId, convertFromSale, serverPage]);
 
   useEffect(() => {
     loadStudioOrders();
@@ -264,17 +274,14 @@ export const StudioSalesListNew = () => {
     return filtered;
   }, [sales, searchQuery, filterStatus]);
 
-  // Pagination
-  const totalFiltered = filteredSales.length;
-  const totalPages = rowsPerPage > 0 ? Math.max(1, Math.ceil(totalFiltered / rowsPerPage)) : 1;
-  const pageStart = (currentPage - 1) * rowsPerPage;
-  const pageEnd = rowsPerPage > 0 ? Math.min(pageStart + rowsPerPage, totalFiltered) : totalFiltered;
-  const displayedSales = rowsPerPage === 0 ? filteredSales : filteredSales.slice(pageStart, pageEnd);
+  // Pagination (server: 50 per page)
+  const totalPages = Math.max(1, Math.ceil(totalCount / serverPageSize));
+  const displayedSales = filteredSales;
 
-  // Reset to page 1 when filters, search, or rows per page change
+  // Reset to page 1 when filters or search change
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery, filterStatus, rowsPerPage]);
+  }, [searchQuery, filterStatus]);
 
   const hasActiveFilters = filterStatus !== 'all';
 
@@ -405,9 +412,9 @@ export const StudioSalesListNew = () => {
           placeholder: "Search by invoice, customer, phone, fabric..."
         }}
         rowsSelector={{
-          value: rowsPerPage,
-          onChange: setRowsPerPage,
-          totalItems: filteredSales.length
+          value: serverPageSize,
+          onChange: () => {},
+          totalItems: totalCount
         }}
         filter={{
           isOpen: filterOpen,
@@ -460,9 +467,9 @@ export const StudioSalesListNew = () => {
           <p className="text-xs text-gray-400">
             Showing{' '}
             <span className="text-white font-medium">
-              {totalFiltered === 0 ? 0 : pageStart + 1}-{pageEnd}
+              {totalCount === 0 ? 0 : (currentPage - 1) * serverPageSize + 1}-{Math.min(currentPage * serverPageSize, totalCount)}
             </span>
-            {' '}of <span className="text-white font-medium">{totalFiltered}</span> sales
+            {' '}of <span className="text-white font-medium">{totalCount}</span> sales
           </p>
           {hasActiveFilters && (
             <span className="text-xs text-pink-400 flex items-center gap-1">
@@ -695,7 +702,7 @@ export const StudioSalesListNew = () => {
         )}
 
         {/* Pagination */}
-        {rowsPerPage > 0 && totalFiltered > 0 && totalPages > 1 && (
+        {totalCount > 0 && totalPages > 1 && (
           <div className="bg-gray-900/70 px-4 py-3 border-t border-gray-800 flex items-center justify-between">
             <p className="text-xs text-gray-500">
               Page <span className="text-white font-medium">{currentPage}</span> of <span className="text-white font-medium">{totalPages}</span>

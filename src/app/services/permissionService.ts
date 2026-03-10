@@ -111,6 +111,12 @@ export async function setRolePermission(
   );
   if (error) throw error;
   invalidateRoleCache(role);
+  try {
+    const { permissionEngine } = await import('@/app/services/permissionEngine');
+    permissionEngine.invalidateForRole(role);
+  } catch {
+    // ignore
+  }
 }
 
 /**

@@ -36,6 +36,10 @@ CREATE INDEX IF NOT EXISTS idx_journal_entries_branch_id
 CREATE INDEX IF NOT EXISTS idx_journal_entries_entry_date
   ON journal_entries(entry_date);
 
+-- Composite: company_id + entry_date (Trial Balance, P&L, Balance Sheet date-range filters)
+CREATE INDEX IF NOT EXISTS idx_journal_entries_company_entry_date
+  ON journal_entries(company_id, entry_date);
+
 -- ============================================================================
 -- VERIFICATION
 -- ============================================================================

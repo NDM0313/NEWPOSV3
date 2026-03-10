@@ -4,7 +4,7 @@
  * Actions: View, Edit (draft), Receive Return (rented/overdue), Add Payment, Print, Delete (draft)
  */
 
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import {
   Plus, Package, DollarSign, Calendar, MoreVertical, Eye, Edit, Trash2, FileText,
   CornerDownLeft, Receipt, MapPin, Loader2, ShoppingBag, Truck, CheckCircle2,
@@ -31,7 +31,7 @@ import {
 import { cn } from '@/app/components/ui/utils';
 import { useRentals, RentalUI, RentalStatus } from '@/app/context/RentalContext';
 import { useSupabase } from '@/app/context/SupabaseContext';
-import { useDateRange } from '@/app/context/DateRangeContext';
+import { useGlobalFilter } from '@/app/context/GlobalFilterContext';
 import { Pagination } from '@/app/components/ui/pagination';
 import { ListToolbar } from '@/app/components/ui/list-toolbar';
 import { formatLongDate } from '@/app/components/ui/utils';
@@ -71,7 +71,13 @@ const STATUS_CLASS: Record<RentalStatus, string> = {
 export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPageProps = {}) => {
   const { companyId, branchId } = useSupabase();
   const { formatCurrency } = useFormatCurrency();
-  const { startDate, endDate } = useDateRange();
+  const globalFilter = useGlobalFilter();
+  const { startDate, endDate, setCurrentModule } = globalFilter;
+
+  useEffect(() => {
+    setCurrentModule('rentals');
+  }, [setCurrentModule]);
+
   const { rentals, loading, refreshRentals, receiveReturn, cancelRental, addPayment, deletePayment, deleteRental, markAsPickedUp, getRentalById } = useRentals();
 
   const [searchTerm, setSearchTerm] = useState('');

@@ -24,7 +24,7 @@ import { useSupabase } from '../../context/SupabaseContext';
 import { useSales } from '../../context/SalesContext';
 import { usePurchases } from '../../context/PurchaseContext';
 import { useExpenses } from '../../context/ExpenseContext';
-import { useDateRange } from '../../context/DateRangeContext';
+import { useGlobalFilter } from '../../context/GlobalFilterContext';
 import { branchService, Branch } from '../../services/branchService';
 import {
   DropdownMenu,
@@ -45,27 +45,25 @@ import { useFormatCurrency } from '../../hooks/useFormatCurrency';
 
 export const TopHeader = () => {
   const { toggleSidebar, openDrawer, setCurrentView, setMobileNavOpen } = useNavigation();
-  const { signOut, user, companyId, branchId, defaultBranchId, setBranchId } = useSupabase();
+  const { signOut, user, companyId, branchId } = useSupabase();
   const { formatCurrency } = useFormatCurrency();
-  
-  // Note: These hooks may throw during hot reload if providers aren't ready
-  // In production, providers are always available, so this is safe
+  const globalFilter = useGlobalFilter();
+  const { dateRangeType, setDateRangeType, setCustomDateRange, getDateRangeLabel, setBranchId: setGlobalBranchId, customStartDate, customEndDate, startDateObj, endDateObj } = globalFilter;
+
   const sales = useSales();
   const purchases = usePurchases();
   const expenses = useExpenses();
   const [branches, setBranches] = useState<Branch[]>([]);
   const [loadingBranches, setLoadingBranches] = useState(false);
-  const { dateRange, setDateRangeType, setCustomDateRange } = useDateRange();
   const [showNotifications, setShowNotifications] = useState(false);
   const [showCustomDatePicker, setShowCustomDatePicker] = useState(false);
 
-  // Load branches from Supabase
+  // Load branches (cached) for header dropdown; global rule: hide when single branch
   const loadBranches = useCallback(async () => {
     if (!companyId) return;
-    
     try {
       setLoadingBranches(true);
-      const branchesData = await branchService.getAllBranches(companyId);
+      const branchesData = await branchService.getBranchesCached(companyId);
       setBranches(branchesData);
     } catch (error) {
       console.error('[TOP HEADER] Error loading branches:', error);
@@ -79,12 +77,12 @@ export const TopHeader = () => {
     loadBranches();
   }, [loadBranches]);
 
-  // If business has only one branch, auto-select it so "Select Branch" is not shown
+  // If business has only one branch, auto-select it (persist in global filter + Supabase)
   useEffect(() => {
     if (branches.length === 1 && (!branchId || branchId === 'all')) {
-      setBranchId(branches[0].id);
+      setGlobalBranchId(branches[0].id);
     }
-  }, [branches, branchId, setBranchId]);
+  }, [branches, branchId, setGlobalBranchId]);
 
   // Get current branch name (All Branches = real option for admin)
   const currentBranch = useMemo(() => {
@@ -116,38 +114,11 @@ export const TopHeader = () => {
     return count;
   }, [sales.sales, purchases.purchases, expenses.expenses]);
 
-  // Handle branch change
-  const handleBranchChange = (branchId: string) => {
-    setBranchId(branchId);
+  // Handle branch change — update global filter (persists + syncs to Supabase)
+  const handleBranchChange = (newBranchId: string) => {
+    setGlobalBranchId(newBranchId);
     toast.success('Branch switched successfully');
-    // Reload data for new branch
     window.location.reload();
-  };
-
-  const getDateRangeLabel = () => {
-    if (dateRange.type === 'fromStart') {
-      return 'From start';
-    } else if (dateRange.type === 'today') {
-      return 'Today';
-    } else if (dateRange.type === 'last7days') {
-      return 'Last 7 Days';
-    } else if (dateRange.type === 'last15days') {
-      return 'Last 15 Days';
-    } else if (dateRange.type === 'last30days') {
-      return 'Last 30 Days';
-    } else if (dateRange.type === 'week') {
-      return 'This Week';
-    } else if (dateRange.type === 'month') {
-      return 'This Month';
-    } else if (dateRange.type === 'custom') {
-      if (dateRange.startDate && dateRange.endDate) {
-        const start = dateRange.startDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-        const end = dateRange.endDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-        return `${start} - ${end}`;
-      }
-      return 'Custom Range';
-    }
-    return dateRange.type === 'fromStart' ? 'From start' : 'Today';
   };
 
   const handleLogout = async () => {
@@ -246,39 +217,27 @@ export const TopHeader = () => {
           <Menu size={22} strokeWidth={2} />
         </button>
         
-        {/* Branch / Location Selector */}
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button 
-              variant="ghost" 
-              className="hidden lg:flex items-center gap-2 px-4 py-2 h-10 bg-accent hover:bg-muted border border-border text-foreground rounded-lg transition-all"
-              disabled={loadingBranches}
+        {/* Branch / Location Selector — global rule: only show when multiple branches */}
+        {!loadingBranches && branches.length > 1 && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button 
+                variant="ghost" 
+                className="hidden lg:flex items-center gap-2 px-4 py-2 h-10 bg-accent hover:bg-muted border border-border text-foreground rounded-lg transition-all"
+              >
+                <div className="w-2 h-2 rounded-full bg-emerald-500 shadow-lg shadow-emerald-500/50 animate-pulse"></div>
+                <MapPin size={16} className="text-blue-500" />
+                <span className="font-medium">{currentBranch}</span>
+                <ChevronDown size={16} className="text-muted-foreground" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent 
+              align="start" 
+              className="w-72 bg-card border-border shadow-2xl rounded-lg p-2"
             >
-              {loadingBranches ? (
-                <Loader2 size={16} className="animate-spin text-muted-foreground" />
-              ) : (
-                <>
-                  <div className="w-2 h-2 rounded-full bg-emerald-500 shadow-lg shadow-emerald-500/50 animate-pulse"></div>
-                  <MapPin size={16} className="text-blue-500" />
-                  <span className="font-medium">{currentBranch}</span>
-                  <ChevronDown size={16} className="text-muted-foreground" />
-                </>
-              )}
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent 
-            align="start" 
-            className="w-72 bg-card border-border shadow-2xl rounded-lg p-2"
-          >
-            <div className="px-3 py-2 mb-2">
-              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Select Location</p>
-            </div>
-            {loadingBranches ? (
-              <div className="px-3 py-4 text-center text-muted-foreground">
-                <Loader2 size={16} className="animate-spin mx-auto mb-2" />
-                <p className="text-xs">Loading branches...</p>
+              <div className="px-3 py-2 mb-2">
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Select Location</p>
               </div>
-            ) : (
               <>
                 <DropdownMenuItem
                   onClick={() => handleBranchChange('all')}
@@ -320,9 +279,14 @@ export const TopHeader = () => {
                   </DropdownMenuItem>
                 ))}
               </>
-            )}
-          </DropdownMenuContent>
-        </DropdownMenu>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
+        {loadingBranches && (
+          <div className="hidden lg:flex items-center gap-2 px-4 py-2 h-10">
+            <Loader2 size={16} className="animate-spin text-muted-foreground" />
+          </div>
+        )}
       </div>
 
       {/* CENTER SECTION: Empty (for balanced layout) */}
@@ -399,9 +363,7 @@ export const TopHeader = () => {
               onClick={() => setDateRangeType('fromStart')}
               className={cn(
                 "px-3 py-2 rounded-lg cursor-pointer",
-                dateRange.type === 'fromStart' 
-                  ? "bg-primary/10 text-primary" 
-                  : "text-foreground hover:bg-accent"
+                dateRangeType === 'fromStart' ? "bg-primary/10 text-primary" : "text-foreground hover:bg-accent"
               )}
             >
               From start
@@ -410,9 +372,7 @@ export const TopHeader = () => {
               onClick={() => setDateRangeType('today')}
               className={cn(
                 "px-3 py-2 rounded-lg cursor-pointer",
-                dateRange.type === 'today' 
-                  ? "bg-primary/10 text-primary" 
-                  : "text-foreground hover:bg-accent"
+                dateRangeType === 'today' ? "bg-primary/10 text-primary" : "text-foreground hover:bg-accent"
               )}
             >
               Today
@@ -421,9 +381,7 @@ export const TopHeader = () => {
               onClick={() => setDateRangeType('last7days')}
               className={cn(
                 "px-3 py-2 rounded-lg cursor-pointer",
-                dateRange.type === 'last7days' 
-                  ? "bg-primary/10 text-primary" 
-                  : "text-foreground hover:bg-accent"
+                dateRangeType === 'last7days' ? "bg-primary/10 text-primary" : "text-foreground hover:bg-accent"
               )}
             >
               Last 7 Days
@@ -432,9 +390,7 @@ export const TopHeader = () => {
               onClick={() => setDateRangeType('last15days')}
               className={cn(
                 "px-3 py-2 rounded-lg cursor-pointer",
-                dateRange.type === 'last15days' 
-                  ? "bg-primary/10 text-primary" 
-                  : "text-foreground hover:bg-accent"
+                dateRangeType === 'last15days' ? "bg-primary/10 text-primary" : "text-foreground hover:bg-accent"
               )}
             >
               Last 15 Days
@@ -443,46 +399,56 @@ export const TopHeader = () => {
               onClick={() => setDateRangeType('last30days')}
               className={cn(
                 "px-3 py-2 rounded-lg cursor-pointer",
-                dateRange.type === 'last30days' 
-                  ? "bg-primary/10 text-primary" 
-                  : "text-foreground hover:bg-accent"
+                dateRangeType === 'last30days' ? "bg-primary/10 text-primary" : "text-foreground hover:bg-accent"
               )}
             >
               Last 30 Days
             </DropdownMenuItem>
             <DropdownMenuItem
-              onClick={() => setDateRangeType('week')}
+              onClick={() => setDateRangeType('last90days')}
               className={cn(
                 "px-3 py-2 rounded-lg cursor-pointer",
-                dateRange.type === 'week' 
-                  ? "bg-primary/10 text-primary" 
-                  : "text-foreground hover:bg-accent"
+                dateRangeType === 'last90days' ? "bg-primary/10 text-primary" : "text-foreground hover:bg-accent"
+              )}
+            >
+              Last 90 Days
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={() => setDateRangeType('thisWeek')}
+              className={cn(
+                "px-3 py-2 rounded-lg cursor-pointer",
+                dateRangeType === 'thisWeek' ? "bg-primary/10 text-primary" : "text-foreground hover:bg-accent"
               )}
             >
               This Week
             </DropdownMenuItem>
             <DropdownMenuItem
-              onClick={() => setDateRangeType('month')}
+              onClick={() => setDateRangeType('thisMonth')}
               className={cn(
                 "px-3 py-2 rounded-lg cursor-pointer",
-                dateRange.type === 'month' 
-                  ? "bg-primary/10 text-primary" 
-                  : "text-foreground hover:bg-accent"
+                dateRangeType === 'thisMonth' ? "bg-primary/10 text-primary" : "text-foreground hover:bg-accent"
               )}
             >
               This Month
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={() => setDateRangeType('thisYear')}
+              className={cn(
+                "px-3 py-2 rounded-lg cursor-pointer",
+                dateRangeType === 'thisYear' ? "bg-primary/10 text-primary" : "text-foreground hover:bg-accent"
+              )}
+            >
+              This Year
             </DropdownMenuItem>
             <DropdownMenuSeparator className="bg-border my-2" />
             <DropdownMenuItem
               onClick={() => {
                 setShowCustomDatePicker(true);
-                setDateRangeType('custom');
+                setDateRangeType('customRange');
               }}
               className={cn(
                 "px-3 py-2 rounded-lg cursor-pointer",
-                dateRange.type === 'custom' 
-                  ? "bg-primary/10 text-primary" 
-                  : "text-foreground hover:bg-accent"
+                dateRangeType === 'customRange' ? "bg-primary/10 text-primary" : "text-foreground hover:bg-accent"
               )}
             >
               Custom Range
@@ -632,7 +598,7 @@ export const TopHeader = () => {
         onClose={() => setShowChangePassword(false)}
       />
 
-      {/* Custom Date Range Picker */}
+      {/* Custom Date Range Picker — global filter */}
       {showCustomDatePicker && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm">
           <div className="absolute top-[1px] left-1/2 -translate-x-1/2 bg-gray-900 border border-gray-800 rounded-xl p-6 max-w-md w-full mx-4">
@@ -641,15 +607,11 @@ export const TopHeader = () => {
               <div>
                 <Label className="text-gray-300 mb-2 block">Start Date</Label>
                 <DatePicker
-                  value={dateRange.startDate ? dateRange.startDate.toISOString().split('T')[0] : ''}
+                  value={startDateObj ? startDateObj.toISOString().split('T')[0] : ''}
                   onChange={(v) => {
-                    const start = v ? new Date(v) : dateRange.startDate;
+                    const start = v ? new Date(v) : startDateObj;
                     if (!start) return;
-                    if (dateRange.endDate) {
-                      setCustomDateRange(start, dateRange.endDate);
-                    } else {
-                      setCustomDateRange(start, start);
-                    }
+                    setCustomDateRange(start, endDateObj || start);
                   }}
                   placeholder="Start date"
                   className="w-full"
@@ -658,17 +620,13 @@ export const TopHeader = () => {
               <div>
                 <Label className="text-gray-300 mb-2 block">End Date</Label>
                 <DatePicker
-                  value={dateRange.endDate ? dateRange.endDate.toISOString().split('T')[0] : ''}
+                  value={endDateObj ? endDateObj.toISOString().split('T')[0] : ''}
                   onChange={(v) => {
-                    const end = v ? new Date(v) : dateRange.endDate;
+                    const end = v ? new Date(v) : endDateObj;
                     if (!end) return;
-                    if (dateRange.startDate) {
-                      setCustomDateRange(dateRange.startDate, end);
-                    } else {
-                      setCustomDateRange(end, end);
-                    }
+                    setCustomDateRange(startDateObj || end, end);
                   }}
-                  minDate={dateRange.startDate || undefined}
+                  minDate={startDateObj || undefined}
                   placeholder="End date"
                   className="w-full"
                 />
@@ -676,7 +634,7 @@ export const TopHeader = () => {
               <div className="flex gap-3 pt-4">
                 <Button
                   onClick={() => {
-                    if (dateRange.startDate && dateRange.endDate) {
+                    if (startDateObj && endDateObj) {
                       setShowCustomDatePicker(false);
                       toast.success('Date range updated');
                     } else {

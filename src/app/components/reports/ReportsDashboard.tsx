@@ -55,7 +55,7 @@ import { usePurchases } from '@/app/context/PurchaseContext';
 import { useExpenses } from '@/app/context/ExpenseContext';
 import { useAccounting } from '@/app/context/AccountingContext';
 import { useSupabase } from '@/app/context/SupabaseContext';
-import { useDateRange } from '@/app/context/DateRangeContext';
+import { useGlobalFilter } from '@/app/context/GlobalFilterContext';
 import { productService } from '@/app/services/productService';
 import { exportToCSV, exportToExcel, exportToPDF, prepareExportData } from '@/app/utils/exportUtils';
 
@@ -204,18 +204,23 @@ export const ReportsDashboard = () => {
   const expenses = useExpenses();
   const accounting = useAccounting();
   const { companyId } = useSupabase();
-  const { startDate, endDate } = useDateRange();
+  const globalFilter = useGlobalFilter();
+  const { startDate, endDate, setCurrentModule } = globalFilter;
+
+  React.useEffect(() => {
+    setCurrentModule('reports');
+  }, [setCurrentModule]);
+
   const [activeTab, setActiveTab] = useState('overview');
   const [products, setProducts] = useState<any[]>([]);
 
-  // Filter data by date range
+  // Filter data by global date range
   const filterByDateRange = useCallback((dateStr: string | undefined): boolean => {
     if (!startDate && !endDate) return true;
     if (!dateStr) return false;
-    
     const date = new Date(dateStr);
     if (startDate && date < new Date(startDate)) return false;
-    if (endDate && date > new Date(endDate + 'T23:59:59')) return false;
+    if (endDate && date > new Date(endDate)) return false;
     return true;
   }, [startDate, endDate]);
 

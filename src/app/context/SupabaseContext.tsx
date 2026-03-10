@@ -2,6 +2,8 @@ import React, { createContext, useContext, useEffect, useState, useRef, useMemo 
 import { supabase } from '@/lib/supabase';
 import { User, Session } from '@supabase/supabase-js';
 import { settingsService } from '@/app/services/settingsService';
+import { permissionEngine } from '@/app/services/permissionEngine';
+import { branchService } from '@/app/services/branchService';
 
 interface SupabaseContextType {
   user: User | null;
@@ -371,6 +373,8 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   // Sign out
   const signOut = async () => {
     await supabase.auth.signOut();
+    permissionEngine.clear();
+    branchService.clearBranchCache();
     setUser(null);
     setSession(null);
     setCompanyId(null);
