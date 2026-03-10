@@ -6,6 +6,7 @@ import { activityLogService } from '@/app/services/activityLogService';
 import { settingsService } from '@/app/services/settingsService';
 import { productService } from '@/app/services/productService';
 import { calculateStockFromMovements } from '@/app/utils/stockCalculation';
+import { saleAccountingService } from './saleAccountingService';
 
 /** Enrich sales with creator full_name. sales.created_by stores auth.users.id; resolve via users.auth_user_id. */
 async function enrichSalesWithCreatorNames(sales: any[]): Promise<void> {
@@ -538,7 +539,7 @@ export const saleService = {
   // Update sale status (when 'cancelled': create SALE_CANCELLED stock reversals, then update status)
   async updateSaleStatus(id: string, status: Sale['status']) {
     if (status === 'cancelled') {
-      const { data: saleRow } = await supabase.from('sales').select('id, invoice_no, branch_id, company_id').eq('id', id).single();
+      const { data: saleRow } = await supabase.from('sales').select('id, invoice_no, branch_id, company_id, total, status').eq('id', id).single();
       if (!saleRow) throw new Error('Sale not found');
       const invoiceNo = (saleRow as any).invoice_no || `SL-${id.substring(0, 8)}`;
 
@@ -586,6 +587,20 @@ export const saleService = {
 
       const { data, error } = await supabase.from('sales').update({ status }).eq('id', id).select().single();
       if (error) throw error;
+
+      // Accounting reversal: only if the sale was previously final
+      if ((saleRow as any).status === 'final') {
+        saleAccountingService.reverseSaleJournalEntry({
+          saleId: id,
+          companyId: (saleRow as any).company_id,
+          branchId: (saleRow as any).branch_id,
+          total: Number((saleRow as any).total) || 0,
+          invoiceNo,
+        }).catch((err: any) =>
+          console.warn('[saleService] Accounting reversal failed (non-critical):', err?.message)
+        );
+      }
+
       return data;
     }
 
@@ -597,6 +612,20 @@ export const saleService = {
       .single();
 
     if (error) throw error;
+
+    // Accounting: Create Dr AR / Cr Sales Revenue when sale is finalized
+    if (status === 'final') {
+      saleAccountingService.createSaleJournalEntry({
+        saleId: data.id,
+        companyId: data.company_id,
+        branchId: data.branch_id,
+        total: Number(data.total) || 0,
+        invoiceNo: data.invoice_no || `SL-${data.id?.substring(0, 8)}`,
+        performedBy: data.created_by,
+      }).catch((err: any) =>
+        console.warn('[saleService] Sale accounting entry failed (non-critical):', err?.message)
+      );
+    }
 
     // Integration: Commission Calculation
     if (status === 'final' && data.salesman_id) {
@@ -619,7 +648,7 @@ export const saleService = {
   // Update sale (full update)
   async updateSale(id: string, updates: Partial<Sale>) {
     // 🔒 CANCELLED: No updates allowed on cancelled sales
-    const { data: existingSale } = await supabase.from('sales').select('status').eq('id', id).single();
+    const { data: existingSale } = await supabase.from('sales').select('id, status, company_id, branch_id, invoice_no, total').eq('id', id).single();
     if (existingSale && (existingSale as any).status === 'cancelled') {
       throw new Error('Cannot edit a cancelled invoice.');
     }
@@ -650,6 +679,24 @@ export const saleService = {
       .single();
 
     if (error) throw error;
+
+    // Accounting: if sale just became final for the first time, create journal entry
+    const prevStatus = (existingSale as any)?.status;
+    const newStatus = updates.status ?? (data as any)?.status;
+    if (newStatus === 'final' && prevStatus !== 'final') {
+      const total = Number((data as any)?.total ?? (existingSale as any)?.total) || 0;
+      saleAccountingService.createSaleJournalEntry({
+        saleId: id,
+        companyId: (data as any)?.company_id ?? (existingSale as any)?.company_id,
+        branchId: (data as any)?.branch_id ?? (existingSale as any)?.branch_id,
+        total,
+        invoiceNo: (data as any)?.invoice_no ?? (existingSale as any)?.invoice_no ?? `SL-${id.substring(0, 8)}`,
+        performedBy: (data as any)?.created_by,
+      }).catch((err: any) =>
+        console.warn('[saleService] updateSale accounting entry failed (non-critical):', err?.message)
+      );
+    }
+
     return data;
   },
 

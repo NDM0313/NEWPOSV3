@@ -1150,7 +1150,7 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
                         <span className="text-white font-medium">{formatCurrency(studioLineTotalFromInvoice > 0 ? Math.max(0, (sale.total ?? 0) - studioLineTotalFromInvoice) : (sale.total ?? 0))}</span>
                       </div>
                       <div className="flex justify-between text-sm">
-                        <span className="text-gray-400">{studioLineTotalFromInvoice > 0 ? '+ Studio (sale with profit)' : '+ Studio Cost'}</span>
+                        <span className="text-gray-400">+ Production Cost</span>
                         <span className="text-amber-400 font-medium">{formatCurrency(studioCost)}</span>
                       </div>
                       <div className="flex justify-between">

@@ -528,10 +528,22 @@ export const StudioCostsTab: React.FC = () => {
         <div className="flex items-start gap-3">
           <FileText size={20} className="text-gray-500 shrink-0 mt-0.5" />
           <div>
-            <p className="text-sm font-semibold text-gray-400">Standard Accounting Method</p>
+            <p className="text-sm font-semibold text-gray-400">
+              Standard Accounting Method
+              {summary?.fromJournal === true && (
+                <span className="ml-2 text-xs px-2 py-0.5 rounded-full bg-green-500/20 text-green-400 border border-green-500/30 font-normal">
+                  Live from Journal Entries
+                </span>
+              )}
+              {summary?.fromJournal === false && (
+                <span className="ml-2 text-xs px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-400 border border-amber-500/30 font-normal">
+                  From Legacy Ledger
+                </span>
+              )}
+            </p>
             <p className="text-xs text-gray-500 mt-1">
-              Studio costs are recorded as <strong>Cost of Production</strong> (expense 5000) / <strong>Worker Payable</strong> (liability 2100).
-              When a stage is completed, worker_ledger_entries are created. Payments reduce Worker Payable and debit Cash/Bank.
+              Studio costs are recorded as <strong>Cost of Production</strong> (account 5000) / <strong>Worker Payable</strong> (account 2010).
+              Summary cards read directly from <strong>journal_entry_lines</strong>. Payments reduce Worker Payable and debit Cash/Bank.
             </p>
           </div>
         </div>

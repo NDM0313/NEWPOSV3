@@ -58,7 +58,6 @@ export const ThermalInvoiceTemplate: React.FC<ThermalInvoiceTemplateProps> = ({
         <thead>
           <tr>
             <th>Product</th>
-            {template.show_sku && <th>SKU</th>}
             <th className="text-right">Qty</th>
             <th className="text-right">Total</th>
           </tr>
@@ -66,11 +65,13 @@ export const ThermalInvoiceTemplate: React.FC<ThermalInvoiceTemplateProps> = ({
         <tbody>
           {doc.items.map((item, index) => (
             <tr key={item.id || index}>
-              <td>
-                <div>{item.product_name}</div>
+              <td style={{ minWidth: '120px' }}>
+                <span>{item.product_name}</span>
+                {template.show_sku && item.sku && (
+                  <span className="classic-print-sku" style={{ marginLeft: '5px' }}>{item.sku}</span>
+                )}
                 {enablePacking && <div style={{ fontSize: '9px', color: '#6b7280' }}>{formatPackingFromItem(item)}</div>}
               </td>
-              {template.show_sku && <td><span className="classic-print-sku">{item.sku}</span></td>}
               <td className="text-right">{Number(item.quantity).toFixed(2)}</td>
               <td className="text-right classic-print-currency">{formatCurrency(item.total)}</td>
             </tr>
@@ -80,6 +81,12 @@ export const ThermalInvoiceTemplate: React.FC<ThermalInvoiceTemplateProps> = ({
 
       <div className="classic-print-totals" style={{ marginTop: '12px' }}>
         <div className="classic-print-totals-inner" style={{ width: '100%' }}>
+          {template.show_studio && doc.totals.studio_charges > 0 && (
+            <div className="classic-print-totals-row">
+              <span className="classic-print-totals-label">Production Cost:</span>
+              <span className="classic-print-totals-value classic-print-currency">{formatCurrency(doc.totals.studio_charges)}</span>
+            </div>
+          )}
           <div className="classic-print-totals-row">
             <span className="classic-print-totals-label">Subtotal:</span>
             <span className="classic-print-totals-value classic-print-currency">{formatCurrency(doc.totals.subtotal)}</span>
@@ -90,20 +97,15 @@ export const ThermalInvoiceTemplate: React.FC<ThermalInvoiceTemplateProps> = ({
               <span className="classic-print-totals-value">- {formatCurrency(doc.totals.discount)}</span>
             </div>
           )}
-          <div className="classic-print-totals-row total">
-            <span className="classic-print-totals-label">Total:</span>
-            <span className="classic-print-totals-value classic-print-currency">{formatCurrency(doc.totals.total)}</span>
-          </div>
-          {template.show_studio && doc.totals.studio_charges > 0 && (
-            <div className="classic-print-totals-row">
-              <span className="classic-print-totals-label">Studio (sale with profit):</span>
-              <span className="classic-print-totals-value classic-print-currency">{formatCurrency(doc.totals.studio_charges)}</span>
-            </div>
-          )}
-          {template.show_studio && doc.totals.studio_charges > 0 && (
+          {template.show_studio && doc.totals.studio_charges > 0 ? (
             <div className="classic-print-totals-row total">
               <span className="classic-print-totals-label">Grand Total:</span>
               <span className="classic-print-totals-value classic-print-currency">{formatCurrency(doc.totals.grand_total)}</span>
+            </div>
+          ) : (
+            <div className="classic-print-totals-row total">
+              <span className="classic-print-totals-label">Total:</span>
+              <span className="classic-print-totals-value classic-print-currency">{formatCurrency(doc.totals.total)}</span>
             </div>
           )}
           <div className="classic-print-totals-row">

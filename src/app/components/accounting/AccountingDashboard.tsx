@@ -73,6 +73,17 @@ import { Label } from '@/app/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/app/components/ui/select';
 import { Switch } from '@/app/components/ui/switch';
 
+// Account type sets used for summary card calculations (module-level constants)
+const INCOME_ACCOUNTS = new Set([
+  'Sales Income', 'Rental Income', 'Studio Sales Income', 'Rental Damage Income',
+  'Sales Revenue', 'Revenue', 'Sales',
+]);
+const EXPENSE_ACCOUNTS = new Set([
+  'Expense', 'Purchase Expense', 'Cost of Production', 'Worker Expense',
+]);
+const AR_ACCOUNTS = new Set(['Accounts Receivable']);
+const AP_ACCOUNTS = new Set(['Accounts Payable', 'Worker Payable']);
+
 export const AccountingDashboard = () => {
   const { canAccessAccounting } = useCheckPermission();
   const { modules: settingsModules } = useSettings();
@@ -119,24 +130,36 @@ export const AccountingDashboard = () => {
     return accounting.entries;
   }, [accounting.entries]);
   
-  // Calculate summary stats
+  // Calculate summary stats from journal entries (uses module-level account sets above)
   const summary = useMemo(() => {
-    const totalIncome = transactions
-      .filter(t => ['Sales Income', 'Rental Income', 'Studio Sales Income'].includes(t.creditAccount))
-      .reduce((sum, t) => sum + t.amount, 0);
-      
-    const totalExpense = transactions
-      .filter(t => t.debitAccount === 'Expense')
-      .reduce((sum, t) => sum + t.amount, 0);
-      
-    const totalReceivable = transactions
-      .filter(t => t.debitAccount === 'Accounts Receivable')
-      .reduce((sum, t) => sum + t.amount, 0);
-      
-    const totalPayable = transactions
-      .filter(t => t.creditAccount === 'Accounts Payable')
-      .reduce((sum, t) => sum + t.amount, 0);
-    
+    let totalIncome = 0;
+    let totalExpense = 0;
+    let arDebit = 0;
+    let arCredit = 0;
+    let apCredit = 0;
+    let apDebit = 0;
+
+    transactions.forEach(t => {
+      // Income: credit side is a revenue account
+      if (INCOME_ACCOUNTS.has(t.creditAccount)) totalIncome += t.amount;
+
+      // Expense: debit side is an expense account
+      if (EXPENSE_ACCOUNTS.has(t.debitAccount)) totalExpense += t.amount;
+
+      // Receivable: track both sides (sale adds debit AR, payment adds credit AR)
+      if (AR_ACCOUNTS.has(t.debitAccount)) arDebit += t.amount;
+      if (AR_ACCOUNTS.has(t.creditAccount)) arCredit += t.amount;
+
+      // Payable: track both sides (purchase adds credit AP, payment reduces AP)
+      if (AP_ACCOUNTS.has(t.creditAccount)) apCredit += t.amount;
+      if (AP_ACCOUNTS.has(t.debitAccount)) apDebit += t.amount;
+    });
+
+    // Net outstanding receivable (what customers owe)
+    const totalReceivable = Math.max(0, arDebit - arCredit);
+    // Net outstanding payable (what we owe)
+    const totalPayable = Math.max(0, apCredit - apDebit);
+
     return {
       totalIncome,
       totalExpense,

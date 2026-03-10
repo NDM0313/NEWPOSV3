@@ -4,6 +4,9 @@ import { documentNumberService } from '@/app/services/documentNumberService';
 /** normal = catalog product; production = manufactured from studio (STD-PROD, inventory + cost). */
 export type ProductType = 'normal' | 'production';
 
+/** Which module created this product. */
+export type ProductSourceType = 'studio' | 'manual' | 'purchase' | 'pos';
+
 export interface Product {
   id: string;
   company_id: string;
@@ -29,6 +32,8 @@ export interface Product {
   image_urls?: string[];
   /** normal = catalog; production = studio manufactured (STD-PROD). */
   product_type?: ProductType;
+  /** Which module created this product (studio | manual | purchase | pos). */
+  source_type?: ProductSourceType;
   created_at: string;
   updated_at: string;
 }
@@ -314,6 +319,51 @@ export const productService = {
     
     if (error) throw error;
     return data;
+  },
+
+  /**
+   * Search products created from Studio production only (source_type = 'studio').
+   * Falls back to product_type = 'production' if source_type column does not exist yet.
+   */
+  async searchStudioProducts(companyId: string, query: string) {
+    const baseQuery = () => {
+      let q = supabase
+        .from('products')
+        .select('id, name, sku, category_id, image_urls, source_type, product_type')
+        .eq('company_id', companyId)
+        .eq('is_active', true)
+        .order('name', { ascending: true })
+        .limit(20);
+      if (query.trim()) {
+        q = q.ilike('name', `%${query.trim()}%`);
+      }
+      return q;
+    };
+
+    // Primary: filter by source_type = 'studio'
+    const { data, error } = await baseQuery().eq('source_type', 'studio');
+
+    if (!error) return data ?? [];
+
+    // Fallback: source_type column may not exist yet – filter by product_type = 'production'
+    const isColumnMissing = /could not find.*column|column.*does not exist|source_type/i.test(error.message ?? '');
+    if (isColumnMissing) {
+      let fallback = supabase
+        .from('products')
+        .select('id, name, sku, category_id, image_urls, product_type')
+        .eq('company_id', companyId)
+        .eq('product_type', 'production')
+        .order('name', { ascending: true })
+        .limit(20);
+      if (query.trim()) {
+        fallback = fallback.ilike('name', `%${query.trim()}%`);
+      }
+      const { data: fbData, error: fbError } = await fallback;
+      if (fbError) throw fbError;
+      return fbData ?? [];
+    }
+
+    throw error;
   },
 
   // Get low stock products

@@ -276,9 +276,25 @@ export const StudioSaleDetailNew = () => {
   const [createProductInvoiceImageFiles, setCreateProductInvoiceImageFiles] = useState<File[]>([]);
   const [createProductInvoiceCategories, setCreateProductInvoiceCategories] = useState<{ id: string; name: string }[]>([]);
   const [creatingProductAndInvoice, setCreatingProductAndInvoice] = useState(false);
+  // Product search state for the Create Product & Invoice modal
+  const [productSearchQuery, setProductSearchQuery] = useState('');
+  const [productSearchResults, setProductSearchResults] = useState<Array<{ id: string; name: string; category_id: string | null; category_name?: string; sku?: string; image_urls?: string[] }>>([]);
+  const [productSearchLoading, setProductSearchLoading] = useState(false);
+  const [showProductDropdown, setShowProductDropdown] = useState(false);
+  const [selectedExistingProduct, setSelectedExistingProduct] = useState<{ id: string; name: string; sku?: string; category_id: string | null; category_name?: string; image_urls?: string[] } | null>(null);
+  const [productUseMode, setProductUseMode] = useState<'exact' | 'variation' | null>(null);
+  const [variantSkuPreview, setVariantSkuPreview] = useState('');
+  const [variantSkuLoading, setVariantSkuLoading] = useState(false);
+  const [variationDescription, setVariationDescription] = useState('');
+  const [variationImageFiles, setVariationImageFiles] = useState<File[]>([]);
+  const productSearchRef = useRef<HTMLDivElement>(null);
   const [reopenStepId, setReopenStepId] = useState<string | null>(null);
   const [savingStage, setSavingStage] = useState(false);
   const [syncingPricing, setSyncingPricing] = useState(false);
+  /** True when a studio invoice item (generated_invoice_item_id) is linked to this production. */
+  const [invoiceLinked, setInvoiceLinked] = useState(false);
+  /** The sale_items.id that is the current studio invoice line for this production (null = not created yet). */
+  const [generatedInvoiceItemId, setGeneratedInvoiceItemId] = useState<string | null>(null);
   const [pendingLeaveTarget, setPendingLeaveTarget] = useState<'studio' | 'studio-sales-list-new' | null>(null);
 
   const savedSuccessfullyRef = useRef(false);
@@ -326,6 +342,99 @@ export const StudioSaleDetailNew = () => {
     maxSize: 5 * 1024 * 1024,
     disabled: !showCreateProductInvoiceModal,
   });
+
+  const variationImageOnDrop = useCallback((acceptedFiles: File[]) => {
+    setVariationImageFiles(prev => [...prev, ...acceptedFiles]);
+  }, []);
+  const variationImageDropzone = useDropzone({
+    onDrop: variationImageOnDrop,
+    accept: { 'image/*': ['.png', '.jpg', '.jpeg', '.webp', '.gif'] },
+    maxSize: 5 * 1024 * 1024,
+    disabled: !showCreateProductInvoiceModal || productUseMode !== 'variation',
+  });
+
+  // Compute next variant SKU: {parentSku}-01, -02, ...
+  const computeNextVariantSku = useCallback(async (productId: string, parentSku: string) => {
+    setVariantSkuLoading(true);
+    try {
+      const { data: existingVars } = await supabase
+        .from('product_variations')
+        .select('id')
+        .eq('product_id', productId);
+      const count = (existingVars?.length ?? 0) + 1;
+      setVariantSkuPreview(`${parentSku || 'STD'}-${String(count).padStart(2, '0')}`);
+    } catch {
+      setVariantSkuPreview(`${parentSku || 'STD'}-01`);
+    } finally {
+      setVariantSkuLoading(false);
+    }
+  }, []);
+
+  // Close product search dropdown when clicking outside
+  useEffect(() => {
+    if (!showProductDropdown) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (productSearchRef.current && !productSearchRef.current.contains(e.target as Node)) {
+        setShowProductDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showProductDropdown]);
+
+  // Debounced product search
+  const fetchAndShowProducts = useCallback(async (query: string) => {
+    if (!companyId) return;
+    setProductSearchLoading(true);
+    setShowProductDropdown(true);
+    try {
+      const results = await productService.searchStudioProducts(companyId, query.trim());
+      setProductSearchResults(
+        (results || []).map((p: any) => ({
+          id: p.id,
+          name: p.name,
+          category_id: p.category_id ?? null,
+          category_name: p.category_name ?? '',
+          sku: p.sku ?? '',
+          image_urls: p.image_urls ?? [],
+        }))
+      );
+    } catch {
+      setProductSearchResults([]);
+    } finally {
+      setProductSearchLoading(false);
+    }
+  }, [companyId]);
+
+  const handleProductSearch = useCallback(async (query: string) => {
+    setProductSearchQuery(query);
+    setSelectedExistingProduct(null);
+    setProductUseMode(null);
+    setCreateProductInvoiceForm(prev => ({ ...prev, productName: query, categoryId: '' }));
+    await fetchAndShowProducts(query);
+  }, [fetchAndShowProducts]);
+
+  const handleProductInputFocus = useCallback(() => {
+    if (!showProductDropdown) {
+      fetchAndShowProducts(productSearchQuery);
+    }
+  }, [showProductDropdown, productSearchQuery, fetchAndShowProducts]);
+
+  const handleSelectExistingProduct = useCallback((product: { id: string; name: string; sku?: string; category_id: string | null; category_name?: string; image_urls?: string[] }) => {
+    setSelectedExistingProduct(product);
+    setProductSearchQuery(product.name);
+    setCreateProductInvoiceForm(prev => ({
+      ...prev,
+      productName: product.name,
+      categoryId: product.category_id ?? '',
+    }));
+    setShowProductDropdown(false);
+    setProductSearchResults([]);
+    setProductUseMode(null);
+    setVariantSkuPreview('');
+    setVariationDescription('');
+    setVariationImageFiles([]);
+  }, []);
 
   const [expandedSteps, setExpandedSteps] = useState<Set<string>>(new Set());
 
@@ -545,6 +654,8 @@ export const StudioSaleDetailNew = () => {
             if (productions.length > 0) {
               const prodId = productions[0].id;
               setProductionId(prodId);
+              setInvoiceLinked(!!productions[0].generated_invoice_item_id);
+              setGeneratedInvoiceItemId(productions[0].generated_invoice_item_id ?? null);
               await studioProductionService.syncWorkerLedgerEntriesForProduction(prodId);
               window.dispatchEvent(new CustomEvent('studio-production-saved'));
               const stages = await studioProductionService.getStagesByProductionId(prodId);
@@ -555,6 +666,8 @@ export const StudioSaleDetailNew = () => {
               productionSteps = stagesToProductionSteps(stages, ledgerStatusByStageId);
             } else {
               setProductionId(null);
+              setInvoiceLinked(false);
+              setGeneratedInvoiceItemId(null);
             }
             if (productions.length === 0 && companyId) {
               let effectiveBranchId = branchId && branchId !== 'all' && /^[0-9a-f-]{36}$/i.test(branchId) ? branchId : null;
@@ -728,6 +841,8 @@ export const StudioSaleDetailNew = () => {
   const grandTotalForCard = displayFinalSalePrice + (saleDetail?.shipmentCharges ?? 0);
   const displayBalanceDue = saleDetail ? Math.max(0, grandTotalForCard - saleDetail.paidAmount) : 0;
 
+  /** Invoice is finalized (sale.status = 'final') — cost editing must be locked. */
+  const saleIsFinalized = saleDetail?.saleStatus === 'Completed';
   const roundInt = (n: number) => Math.round(n);
   const completedStepKey = completedProductionSteps.map((s) => s.id).join(',');
   // Sync profit distribution: round figures only (no decimals)
@@ -934,12 +1049,44 @@ export const StudioSaleDetailNew = () => {
       window.dispatchEvent(new CustomEvent('studio-production-saved'));
       window.dispatchEvent(new CustomEvent('ledgerUpdated', { detail: { ledgerType: 'worker', entityId: workerId } }));
       setPayChoiceAfterReceive({ stageId, workerId, workerName, amount: actual });
+      // Auto-sync invoice if linked and still draft
+      await autoSyncInvoiceAfterCostChange();
     } catch (e: any) {
       toast.error(e?.message || 'Receive failed');
     } finally {
       setSavingStage(false);
     }
   };
+
+  /**
+   * Auto-sync the linked invoice after any production cost change.
+   * Silent: only shows a subtle toast on success. Never runs when invoice is finalized.
+   * Reuses the existing syncInvoiceWithProductionPricing engine — no new DB logic needed.
+   */
+  const autoSyncInvoiceAfterCostChange = useCallback(async () => {
+    if (!saleDetail?.id || !invoiceLinked) return;
+    if (saleDetail.saleStatus === 'Completed') return; // invoice finalized — never auto-edit
+    try {
+      const marginVal = parseFloat(profitMarginValue) || 0;
+      const syncParams = profitMarginMode === 'fixed'
+        ? { profitAmount: marginVal }
+        : { profitMarginPercent: marginVal };
+      const syncResult = await syncInvoiceWithProductionPricing(saleDetail.id, syncParams);
+      if (syncResult.success) {
+        setLastInvoiceSyncResult(syncResult);
+        setSaleDetail(prev => prev ? {
+          ...prev,
+          totalAmount: syncResult.newTotal,
+          balanceDue: syncResult.newDueAmount,
+        } : prev);
+        window.dispatchEvent(new CustomEvent('saleUpdated', { detail: { saleId: saleDetail.id } }));
+        toast.success('Invoice synced with production cost.', { id: 'auto-invoice-sync', duration: 3000 });
+      }
+      // If no studio item yet, silently skip — user hasn't generated invoice yet
+    } catch {
+      // Best-effort: never interrupt the main save flow
+    }
+  }, [saleDetail, invoiceLinked, profitMarginValue, profitMarginMode]);
 
   /** Try to ensure a studio production exists for the current sale (create if missing). Returns productionId or error reason. One sale = one production; no duplicates. */
   const ensureProductionForSale = useCallback(async (): Promise<{ productionId: string | null; error?: 'NO_BRANCH' | 'NO_ITEMS' | 'CREATE_FAILED' }> => {
@@ -1098,8 +1245,8 @@ export const StudioSaleDetailNew = () => {
       savedSuccessfullyRef.current = true;
       toast.success('Changes saved to database.');
       window.dispatchEvent(new CustomEvent('studio-production-saved'));
-      // Do NOT sync invoice here. Save = production layer only (stages). Invoice sync only when user
-      // clicks "Generate Invoice" or a dedicated "Sync pricing" action after generating invoice.
+      // Auto-sync invoice line if one is already linked and sale is still draft
+      await autoSyncInvoiceAfterCostChange();
       if (!opts?.skipConfirmDialog) setShowSaveConfirmDialog(true);
     } catch (e: any) {
       const msg = e?.message ?? String(e);
@@ -1118,7 +1265,7 @@ export const StudioSaleDetailNew = () => {
     } finally {
       setSavingStage(false);
     }
-  }, [saleDetail, productionId, ensureProductionForSale, reloadProductionSteps, workers]);
+  }, [saleDetail, productionId, ensureProductionForSale, reloadProductionSteps, workers, autoSyncInvoiceAfterCostChange]);
 
   const handleSaveAndLeave = useCallback(async () => {
     const target = pendingLeaveTarget;
@@ -1294,98 +1441,251 @@ export const StudioSaleDetailNew = () => {
     }
     setCreatingProductAndInvoice(true);
     try {
-      const sku = await documentNumberService.getNextProductSKU(companyId, null).catch(() => `STUDIO-${saleDetail.invoiceNo}-${Date.now().toString(36)}`);
-      const product = await productService.createProduct({
-        company_id: companyId,
-        name,
-        sku,
-        category_id: createProductInvoiceForm.categoryId || (null as any),
-        cost_price: 0,
-        retail_price: salePriceNum,
-        wholesale_price: salePriceNum,
-        current_stock: 0,
-        min_stock: 0,
-        max_stock: 1000,
-        has_variations: false,
-        is_rentable: false,
-        is_sellable: true,
-        track_stock: false,
-        is_active: true,
-        description: createProductInvoiceForm.description || undefined,
-      }) as { id: string; name: string; sku: string };
-      const itemRow = {
-        sale_id: saleDetail.id,
+      let product: { id: string; name: string; sku: string };
+      let variationId: string | null = null;
+      let invoiceSku = '';
+
+      if (selectedExistingProduct && productUseMode === 'variation') {
+        // ── CREATE VARIATION on existing product ──────────────────────────────
+        product = { id: selectedExistingProduct.id, name: selectedExistingProduct.name, sku: selectedExistingProduct.sku ?? '' };
+        const parentSku = selectedExistingProduct.sku ?? 'STD';
+
+        // Count existing variations to compute SKU
+        const { data: existingVars } = await supabase
+          .from('product_variations')
+          .select('id, sku')
+          .eq('product_id', product.id);
+        const nextNum = (existingVars?.length ?? 0) + 1;
+        const variantSku = variantSkuPreview || `${parentSku}-${String(nextNum).padStart(2, '0')}`;
+
+        // Duplicate variation check
+        const dupVar = (existingVars || []).find((v: any) => v.sku === variantSku);
+        if (dupVar) {
+          variationId = dupVar.id as string;
+          toast.info(`Reusing existing variation "${variantSku}".`);
+        } else {
+          const varData = await productService.createVariation({
+            product_id: product.id,
+            name: variationDescription.trim() || `${product.name} – Variant ${nextNum}`,
+            sku: variantSku,
+            retail_price: salePriceNum,
+            wholesale_price: salePriceNum,
+            cost_price: 0,
+            current_stock: 0,
+          });
+          variationId = (varData as any)?.id ?? null;
+          // Upload variation image
+          if (variationImageFiles.length > 0 && variationId) {
+            try {
+              const imageUrls = await uploadProductImages(companyId, product.id, variationImageFiles);
+              await supabase.from('product_variations').update({ image_url: imageUrls[0] ?? null }).eq('id', variationId);
+            } catch (imgErr: any) {
+              console.warn('[Studio] Variation image upload failed:', imgErr?.message);
+            }
+          }
+        }
+        invoiceSku = variantSku;
+
+      } else if (selectedExistingProduct) {
+        // ── USE EXACT EXISTING PRODUCT ────────────────────────────────────────
+        product = { id: selectedExistingProduct.id, name: selectedExistingProduct.name, sku: selectedExistingProduct.sku ?? '' };
+        invoiceSku = product.sku;
+
+      } else {
+        // ── CREATE NEW PRODUCT ────────────────────────────────────────────────
+        const { data: existingRows } = await supabase
+          .from('products')
+          .select('id, name, sku')
+          .eq('company_id', companyId)
+          .ilike('name', name)
+          .limit(1);
+        if (existingRows && existingRows.length > 0) {
+          product = existingRows[0] as { id: string; name: string; sku: string };
+          toast.info(`Reusing existing product "${product.name}".`);
+        } else {
+          const productCode = await documentNumberService.getNextProductionProductSKU(companyId).catch(
+            () => `STD-PROD-${Date.now().toString(36).toUpperCase()}`
+          );
+          const created = await productService.createProduct({
+            company_id: companyId,
+            name,
+            sku: productCode,
+            category_id: createProductInvoiceForm.categoryId || (null as any),
+            cost_price: 0,
+            retail_price: salePriceNum,
+            wholesale_price: salePriceNum,
+            current_stock: 0,
+            min_stock: 0,
+            max_stock: 1000,
+            has_variations: false,
+            is_rentable: false,
+            is_sellable: true,
+            track_stock: false,
+            is_active: true,
+            description: createProductInvoiceForm.description || undefined,
+            source_type: 'studio',
+            product_type: 'production',
+          } as any) as { id: string; name: string; sku: string };
+          product = created;
+          // Upload product image
+          if (createProductInvoiceImageFiles.length > 0 && product?.id) {
+            try {
+              const imageUrls = await uploadProductImages(companyId, product.id, createProductInvoiceImageFiles);
+              await productService.updateProduct(product.id, { image_urls: imageUrls });
+            } catch (uploadErr: any) {
+              console.error('[StudioSaleDetailNew] Product image upload failed:', uploadErr);
+            }
+          }
+        }
+        invoiceSku = product.sku;
+      }
+
+      // ── UPDATE OR INSERT INVOICE ITEM ────────────────────────────────────
+      // ERP rule: 1 production → 1 invoice line. Always UPDATE if line exists.
+      const itemUpdatePayload: Record<string, unknown> = {
         product_id: product.id,
         product_name: product.name,
-        sku: product.sku,
-        quantity: 1,
+        sku: invoiceSku,
         unit_price: salePriceNum,
         total: salePriceNum,
         is_studio_product: true,
       };
-      let insertedItemId: string | null = null;
-      const { data: insertedItem, error: itemErr } = await supabase
-        .from('sales_items')
-        .insert(itemRow)
-        .select('id')
-        .single();
-      if (itemErr) {
-        const fallbackPayload: Record<string, unknown> = {
+      if (variationId) itemUpdatePayload.variation_id = variationId;
+
+      let finalItemId: string | null = generatedInvoiceItemId;
+
+      // Check 1: use the known linked item id
+      if (!finalItemId && productionId) {
+        // Check 2: scan sale_items for any existing studio line for this production
+        const { data: existingStudioItems } = await supabase
+          .from('sales_items')
+          .select('id')
+          .eq('sale_id', saleDetail.id)
+          .eq('is_studio_product', true)
+          .limit(1);
+        if (existingStudioItems && existingStudioItems.length > 0) {
+          finalItemId = (existingStudioItems[0] as any).id;
+        }
+      }
+
+      if (finalItemId) {
+        // ── UPDATE existing line (no new row) ──
+        const { error: upErr } = await supabase
+          .from('sales_items')
+          .update(itemUpdatePayload)
+          .eq('id', finalItemId);
+        if (upErr) {
+          // Try legacy table name
+          const { error: upErr2 } = await supabase
+            .from('sale_items')
+            .update(itemUpdatePayload)
+            .eq('id', finalItemId);
+          if (upErr2) throw new Error(upErr2.message || 'Failed to update invoice item');
+        }
+        // Recalc sale total: remove old price, add new price
+        const { data: saleRow } = await supabase.from('sales').select('total, paid_amount').eq('id', saleDetail.id).single();
+        const currentTotal = Number((saleRow as any)?.total) || 0;
+        const paid = Number((saleRow as any)?.paid_amount) || 0;
+        // Fetch old item price to subtract it
+        const { data: oldItem } = await supabase.from('sales_items').select('total').eq('id', finalItemId).maybeSingle();
+        const oldItemTotal = Number((oldItem as any)?.total) || 0;
+        const newTotal = Math.max(0, currentTotal - oldItemTotal + salePriceNum);
+        const newDue = Math.max(0, newTotal - paid);
+        await supabase.from('sales').update({ total: newTotal, due_amount: newDue, updated_at: new Date().toISOString() }).eq('id', saleDetail.id);
+      } else {
+        // ── INSERT new line ──
+        const insertRow: Record<string, unknown> = {
           sale_id: saleDetail.id,
-          product_id: product.id,
-          product_name: product.name,
-          sku: product.sku,
           quantity: 1,
-          price: salePriceNum,
-          total: salePriceNum,
+          ...itemUpdatePayload,
         };
-        let { data: fallbackData, error: fallbackErr } = await supabase
-          .from('sale_items')
-          .insert({ ...fallbackPayload, is_studio_product: true })
+        let newItemId: string | null = null;
+        const { data: inserted, error: insErr } = await supabase
+          .from('sales_items')
+          .insert(insertRow)
           .select('id')
           .single();
-        if (fallbackErr && (fallbackErr.code === '42703' || String(fallbackErr.message || '').includes('is_studio_product'))) {
-          ({ data: fallbackData, error: fallbackErr } = await supabase
+        if (insErr) {
+          const fallback: Record<string, unknown> = {
+            sale_id: saleDetail.id,
+            quantity: 1,
+            product_id: product.id,
+            product_name: product.name,
+            sku: invoiceSku,
+            price: salePriceNum,
+            total: salePriceNum,
+          };
+          if (variationId) fallback.variation_id = variationId;
+          let { data: fbData, error: fbErr } = await supabase
             .from('sale_items')
-            .insert(fallbackPayload)
+            .insert({ ...fallback, is_studio_product: true })
             .select('id')
-            .single());
+            .single();
+          if (fbErr && (fbErr.code === '42703' || String(fbErr.message || '').includes('is_studio_product'))) {
+            ({ data: fbData, error: fbErr } = await supabase.from('sale_items').insert(fallback).select('id').single());
+          }
+          if (fbErr) throw new Error(fbErr.message || 'Failed to add item to invoice');
+          newItemId = (fbData as any)?.id ?? null;
+        } else {
+          newItemId = (inserted as any)?.id ?? null;
         }
-        if (fallbackErr) throw new Error(fallbackErr.message || 'Failed to add item to invoice');
-        insertedItemId = (fallbackData as any)?.id ?? null;
-      } else {
-        insertedItemId = (insertedItem as any)?.id ?? null;
+        finalItemId = newItemId;
+        // Recalc totals (adding new line)
+        const { data: saleRow } = await supabase.from('sales').select('total, paid_amount').eq('id', saleDetail.id).single();
+        const currentTotal = Number((saleRow as any)?.total) || 0;
+        const paid = Number((saleRow as any)?.paid_amount) || 0;
+        const newTotal = currentTotal + salePriceNum;
+        const newDue = Math.max(0, newTotal - paid);
+        await supabase.from('sales').update({ total: newTotal, due_amount: newDue, updated_at: new Date().toISOString() }).eq('id', saleDetail.id);
       }
-      if (productionId && insertedItemId) {
+
+      // Link production ↔ invoice item (idempotent)
+      if (productionId && finalItemId) {
         try {
-          await studioProductionService.setGeneratedInvoiceItem(productionId, product.id, insertedItemId);
+          await studioProductionService.setGeneratedInvoiceItem(productionId, product.id, finalItemId);
+          setGeneratedInvoiceItemId(finalItemId);
         } catch (linkErr: any) {
           console.warn('[StudioSaleDetailNew] Link studio production to invoice item:', linkErr?.message);
         }
       }
-      const { data: saleRow } = await supabase.from('sales').select('total, paid_amount').eq('id', saleDetail.id).single();
-      const currentTotal = Number((saleRow as any)?.total) || 0;
-      const paid = Number((saleRow as any)?.paid_amount) || 0;
-      const newTotal = currentTotal + salePriceNum;
-      const newDue = Math.max(0, newTotal - paid);
-      await supabase.from('sales').update({
-        total: newTotal,
-        due_amount: newDue,
-        updated_at: new Date().toISOString(),
-      }).eq('id', saleDetail.id);
-      if (createProductInvoiceImageFiles.length > 0 && product?.id) {
-        try {
-          const imageUrls = await uploadProductImages(companyId, product.id, createProductInvoiceImageFiles);
-          await productService.updateProduct(product.id, { image_urls: imageUrls });
-        } catch (uploadErr: any) {
-          console.error('[StudioSaleDetailNew] Product image upload failed:', uploadErr);
-          toast.error(uploadErr?.message || 'Product and invoice saved but image upload failed.');
-        }
-      }
+
+      // Reset all state
       setCreateProductInvoiceImageFiles([]);
+      setProductSearchQuery('');
+      setProductSearchResults([]);
+      setSelectedExistingProduct(null);
+      setShowProductDropdown(false);
+      setProductUseMode(null);
+      setVariantSkuPreview('');
+      setVariationDescription('');
+      setVariationImageFiles([]);
       setShowCreateProductInvoiceModal(false);
-      setSaleDetail((prev) => prev && insertedItemId ? { ...prev, items: [...(prev.items || []), { id: insertedItemId, productId: product.id, productName: product.name, isStudioProduct: true }] } : prev);
-      toast.success('Product created and invoice updated.');
+      setInvoiceLinked(true); // invoice item now exists
+      setSaleDetail((prev) => {
+        if (!prev) return prev;
+        const alreadyExists = finalItemId && (prev.items || []).some((i: any) => i.id === finalItemId);
+        if (alreadyExists) {
+          // Update in-place
+          return {
+            ...prev,
+            items: (prev.items || []).map((i: any) =>
+              i.id === finalItemId ? { ...i, productId: product.id, productName: product.name, isStudioProduct: true } : i
+            ),
+          };
+        }
+        return finalItemId ? {
+          ...prev,
+          items: [...(prev.items || []), { id: finalItemId, productId: product.id, productName: product.name, isStudioProduct: true }],
+        } : prev;
+      });
+
+      const wasUpdate = !!generatedInvoiceItemId || false;
+      const successMsg = productUseMode === 'variation'
+        ? `Variation ${invoiceSku} ${wasUpdate ? 'updated' : 'created'} and invoice synced.`
+        : selectedExistingProduct
+          ? wasUpdate ? 'Invoice line updated with selected product.' : 'Invoice updated with existing product.'
+          : wasUpdate ? 'Invoice line updated with new product.' : 'Product created and invoice updated.';
+      toast.success(successMsg);
       if (setOpenSaleIdForView) setOpenSaleIdForView(saleDetail.id);
       setCurrentView('sales');
     } catch (e: any) {
@@ -1915,9 +2215,10 @@ export const StudioSaleDetailNew = () => {
           <div className="flex items-center gap-3">
             <Button
               size="sm"
-              disabled={savingStage}
+              disabled={savingStage || saleIsFinalized}
               onClick={() => persistAllStagesToBackend()}
-              className="bg-green-600 hover:bg-green-700 text-white"
+              className="bg-green-600 hover:bg-green-700 text-white disabled:opacity-50"
+              title={saleIsFinalized ? 'Invoice finalized – cost editing locked' : undefined}
             >
               {savingStage ? <Loader2 size={14} className="animate-spin mr-1.5" /> : <Save size={14} className="mr-1.5" />}
               Save
@@ -2120,18 +2421,62 @@ export const StudioSaleDetailNew = () => {
                 <DropdownMenuContent align="end" className="bg-gray-900 border-gray-700 min-w-[180px]">
                   <DropdownMenuItem
                     className="text-gray-200 focus:bg-blue-600 focus:text-white focus:outline-none cursor-pointer"
-                    onSelect={() => {
-                      setCreateProductInvoiceForm(prev => ({
-                        ...prev,
-                        productName: '',
-                        categoryId: '',
-                        salePrice: grandTotalForCard > 0 ? String(Math.round(grandTotalForCard)) : '',
-                        description: '',
-                      }));
+                    onSelect={async () => {
+                      // Reset all fields first
+                      setCreateProductInvoiceForm({ productName: '', categoryId: '', salePrice: grandTotalForCard > 0 ? String(Math.round(grandTotalForCard)) : '', description: '' });
+                      setProductSearchQuery('');
+                      setProductSearchResults([]);
+                      setSelectedExistingProduct(null);
+                      setShowProductDropdown(false);
+                      setProductUseMode(null);
+                      setVariantSkuPreview('');
+                      setVariationDescription('');
+                      setVariationImageFiles([]);
                       if (companyId) {
                         productCategoryService.getAllCategoriesFlat(companyId)
                           .then(cats => setCreateProductInvoiceCategories(cats.map(c => ({ id: c.id, name: c.name }))))
                           .catch(() => setCreateProductInvoiceCategories([]));
+                        productService.searchStudioProducts(companyId, '').then(results => {
+                          setProductSearchResults(
+                            (results || []).map((p: any) => ({
+                              id: p.id, name: p.name,
+                              category_id: p.category_id ?? null,
+                              category_name: p.category_name ?? '',
+                              sku: p.sku ?? '',
+                              image_urls: p.image_urls ?? [],
+                            }))
+                          );
+                        }).catch(() => {});
+                      }
+                      // If an invoice line already exists, pre-populate from it (UPDATE mode)
+                      if (generatedInvoiceItemId) {
+                        try {
+                          const { data: existingItem } = await supabase
+                            .from('sales_items')
+                            .select('id, product_id, unit_price, sku, variation_id')
+                            .eq('id', generatedInvoiceItemId)
+                            .maybeSingle();
+                          const row = existingItem as any;
+                          if (row?.product_id) {
+                            const { data: prod } = await supabase
+                              .from('products')
+                              .select('id, name, sku, category_id, image_urls')
+                              .eq('id', row.product_id)
+                              .maybeSingle();
+                            if (prod) {
+                              const p = prod as any;
+                              setSelectedExistingProduct({ id: p.id, name: p.name, sku: p.sku ?? '', category_id: p.category_id ?? null, image_urls: p.image_urls ?? [] });
+                              setProductSearchQuery(p.name);
+                              setProductUseMode('exact');
+                              setCreateProductInvoiceForm(prev => ({
+                                ...prev,
+                                productName: p.name,
+                                categoryId: p.category_id ?? '',
+                                salePrice: String(row.unit_price ?? prev.salePrice),
+                              }));
+                            }
+                          }
+                        } catch { /* silently ignore — form stays empty */ }
                       }
                       setShowCreateProductInvoiceModal(true);
                     }}
@@ -2311,13 +2656,13 @@ export const StudioSaleDetailNew = () => {
                                           <DollarSign size={14} className="text-orange-500" />
                                           <button
                                             type="button"
-                                            onClick={() => !stepLocked && handleOpenWorkerEdit(step.id)}
+                                            onClick={() => !stepLocked && !saleIsFinalized && handleOpenWorkerEdit(step.id)}
                                             className={cn(
                                               "text-orange-400 font-medium rounded px-1 -mx-1",
-                                              !stepLocked && "hover:bg-orange-500/20 hover:text-orange-300 cursor-pointer",
-                                              stepLocked && "cursor-default"
+                                              !stepLocked && !saleIsFinalized && "hover:bg-orange-500/20 hover:text-orange-300 cursor-pointer",
+                                              (stepLocked || saleIsFinalized) && "cursor-default opacity-60"
                                             )}
-                                            title={stepLocked ? undefined : 'Click to edit worker / cost'}
+                                            title={saleIsFinalized ? 'Invoice finalized – cost locked' : stepLocked ? undefined : 'Click to edit worker / cost'}
                                           >
                                             {formatCurrency(step.workerCost)}
                                           </button>
@@ -2940,37 +3285,69 @@ export const StudioSaleDetailNew = () => {
                         </div>
                       </div>
                       {saleDetail?.id && (
-                        <div className="pt-2 border-t border-gray-800">
-                          <p className="text-xs text-gray-500 mb-2">After generating invoice, sync the invoice line with production cost + profit:</p>
-                          <Button
-                            size="sm"
-                            variant="secondary"
-                            className="w-full bg-blue-600/20 text-blue-300 hover:bg-blue-600/30 border border-blue-700"
-                            disabled={syncingPricing}
-                            onClick={async () => {
-                              if (!saleDetail?.id) return;
-                              setSyncingPricing(true);
-                              try {
-                                const marginVal = parseFloat(profitMarginValue) || 0;
-                                const syncParams = profitMarginMode === 'fixed' ? { profitAmount: marginVal } : { profitMarginPercent: marginVal };
-                                const syncResult = await syncInvoiceWithProductionPricing(saleDetail.id, syncParams);
-                                setLastInvoiceSyncResult(syncResult);
-                                if (syncResult.success) {
-                                  window.dispatchEvent(new CustomEvent('saleUpdated', { detail: { saleId: saleDetail.id } }));
-                                  toast.success('Studio invoice item synced with production pricing.');
-                                } else if (syncResult.error) {
-                                  toast.error(syncResult.error);
-                                }
-                              } catch (e) {
-                                toast.error((e as Error)?.message || 'Sync failed');
-                              } finally {
-                                setSyncingPricing(false);
-                              }
-                            }}
-                          >
-                            {syncingPricing ? <Loader2 size={14} className="animate-spin mr-2" /> : null}
-                            Sync invoice pricing
-                          </Button>
+                        <div className="pt-2 border-t border-gray-800 space-y-2">
+                          {/* ── Invoice Sync Status Banners ── */}
+                          {saleIsFinalized && invoiceLinked && (
+                            <div className="flex items-start gap-2 rounded-lg bg-red-900/20 border border-red-700/40 px-3 py-2.5">
+                              <Lock size={13} className="text-red-400 shrink-0 mt-0.5" />
+                              <div>
+                                <p className="text-xs text-red-300 font-medium">Invoice Finalized — Editing Locked</p>
+                                <p className="text-[11px] text-red-400/80 mt-0.5">
+                                  This sale is marked as final. Stage costs and invoice pricing cannot be modified.
+                                </p>
+                              </div>
+                            </div>
+                          )}
+                          {invoiceLinked && !saleIsFinalized && (
+                            <div className="flex items-start gap-2 rounded-lg bg-blue-900/20 border border-blue-700/30 px-3 py-2.5">
+                              <AlertCircle size={13} className="text-blue-400 shrink-0 mt-0.5" />
+                              <div>
+                                <p className="text-xs text-blue-300 font-medium">Invoice linked — auto-syncing</p>
+                                <p className="text-[11px] text-blue-400/70 mt-0.5">
+                                  Invoice line updates automatically when production cost changes, while sale is in draft.
+                                </p>
+                              </div>
+                            </div>
+                          )}
+                          {/* ── Manual Sync Button (fallback / override) ── */}
+                          {!saleIsFinalized && (
+                            <>
+                              <p className="text-xs text-gray-500">
+                                {invoiceLinked
+                                  ? 'Or manually force-sync invoice pricing:'
+                                  : 'After generating invoice, sync the invoice line with production cost + profit:'}
+                              </p>
+                              <Button
+                                size="sm"
+                                variant="secondary"
+                                className="w-full bg-blue-600/20 text-blue-300 hover:bg-blue-600/30 border border-blue-700"
+                                disabled={syncingPricing}
+                                onClick={async () => {
+                                  if (!saleDetail?.id) return;
+                                  setSyncingPricing(true);
+                                  try {
+                                    const marginVal = parseFloat(profitMarginValue) || 0;
+                                    const syncParams = profitMarginMode === 'fixed' ? { profitAmount: marginVal } : { profitMarginPercent: marginVal };
+                                    const syncResult = await syncInvoiceWithProductionPricing(saleDetail.id, syncParams);
+                                    setLastInvoiceSyncResult(syncResult);
+                                    if (syncResult.success) {
+                                      window.dispatchEvent(new CustomEvent('saleUpdated', { detail: { saleId: saleDetail.id } }));
+                                      toast.success('Studio invoice item synced with production pricing.');
+                                    } else if (syncResult.error) {
+                                      toast.error(syncResult.error);
+                                    }
+                                  } catch (e) {
+                                    toast.error((e as Error)?.message || 'Sync failed');
+                                  } finally {
+                                    setSyncingPricing(false);
+                                  }
+                                }}
+                              >
+                                {syncingPricing ? <Loader2 size={14} className="animate-spin mr-2" /> : null}
+                                {invoiceLinked ? 'Force sync invoice' : 'Sync invoice pricing'}
+                              </Button>
+                            </>
+                          )}
                         </div>
                       )}
                     </>
@@ -3386,124 +3763,465 @@ export const StudioSaleDetailNew = () => {
       )}
 
       {/* Create Product & Generate Invoice Modal */}
-      {showCreateProductInvoiceModal && saleDetail && (
-        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
-          <div className="bg-[#1A1E27] border border-gray-800 rounded-xl overflow-hidden max-w-lg w-full max-h-[90vh] flex flex-col">
-            <div className="bg-gradient-to-r from-blue-600/80 to-emerald-600/80 px-5 py-4 flex items-center justify-between shrink-0">
+      {showCreateProductInvoiceModal && saleDetail && (() => {
+        const closeModal = () => {
+          setShowCreateProductInvoiceModal(false);
+          setCreateProductInvoiceImageFiles([]);
+          setProductSearchQuery('');
+          setProductSearchResults([]);
+          setSelectedExistingProduct(null);
+          setShowProductDropdown(false);
+          setProductUseMode(null);
+          setVariantSkuPreview('');
+          setVariationDescription('');
+          setVariationImageFiles([]);
+        };
+        const canSubmit =
+          !creatingProductAndInvoice &&
+          !!createProductInvoiceForm.salePrice &&
+          parseFloat(createProductInvoiceForm.salePrice) > 0 &&
+          (!!selectedExistingProduct ? productUseMode !== null : !!productSearchQuery.trim());
+
+        return (
+          <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+            <div className="bg-[#1A1E27] border border-gray-800 rounded-xl overflow-hidden max-w-lg w-full max-h-[90vh] flex flex-col">
+
+              {/* ── Header ── */}
+              <div className="bg-gradient-to-r from-blue-600/80 to-purple-700/80 px-5 py-4 flex items-center justify-between shrink-0">
               <div className="flex items-center gap-2">
                 <Package size={20} className="text-white" />
                 <div>
-                  <h3 className="text-lg font-bold text-white">Create Product & Generate Invoice</h3>
-                  <p className="text-xs text-white/80">Auto-create product and sales invoice from production order.</p>
-                </div>
-              </div>
-              <Button size="sm" variant="ghost" onClick={() => { setShowCreateProductInvoiceModal(false); setCreateProductInvoiceImageFiles([]); }} className="text-white hover:bg-white/20 h-8 w-8 p-0">
-                <X size={18} />
-              </Button>
-            </div>
-            <div className="p-5 space-y-4 overflow-y-auto">
-              <div>
-                <Label className="text-gray-400 text-sm">Product Name</Label>
-                <Input
-                  className="mt-1 bg-gray-950 border-gray-700 text-white"
-                  placeholder="e.g., Custom BinSaee Print Dress"
-                  value={createProductInvoiceForm.productName}
-                  onChange={(e) => setCreateProductInvoiceForm(prev => ({ ...prev, productName: e.target.value }))}
-                />
-              </div>
-              <div>
-                <Label className="text-gray-400 text-sm">Product Category</Label>
-                <select
-                  className="mt-1 w-full h-10 rounded-md bg-gray-950 border border-gray-700 text-white px-3 text-sm"
-                  value={createProductInvoiceForm.categoryId}
-                  onChange={(e) => setCreateProductInvoiceForm(prev => ({ ...prev, categoryId: e.target.value }))}
-                >
-                  <option value="">Select Category</option>
-                  {createProductInvoiceCategories.map(c => (
-                    <option key={c.id} value={c.id}>{c.name}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <Label className="text-gray-400 text-sm">Upload Product Image (optional)</Label>
-                <div
-                  {...createProductInvoiceDropzone.getRootProps()}
-                  className={cn(
-                    'mt-1 border-2 border-dashed rounded-xl p-6 flex flex-col items-center justify-center cursor-pointer transition-colors',
-                    createProductInvoiceDropzone.isDragActive
-                      ? 'border-blue-500 bg-blue-500/10'
-                      : 'border-gray-700 hover:border-gray-500 bg-gray-800/50'
-                  )}
-                >
-                  <input {...createProductInvoiceDropzone.getInputProps()} />
-                  <Upload size={24} className="text-gray-500 mb-2" />
-                  <Camera size={20} className="text-gray-500 mb-1" />
-                  <p className="text-sm text-gray-400 text-center">
-                    Drag & drop images here, or <span className="text-blue-500">browse</span>
+                  <h3 className="text-lg font-bold text-white">
+                    {generatedInvoiceItemId ? 'Edit Invoice Line' : 'Product & Invoice'}
+                  </h3>
+                  <p className="text-xs text-white/70">
+                    {generatedInvoiceItemId
+                      ? 'Update product or price — existing invoice line will be edited, no duplicate created.'
+                      : selectedExistingProduct && productUseMode === 'variation'
+                        ? 'Creating product variation'
+                        : selectedExistingProduct && productUseMode === 'exact'
+                          ? 'Reusing existing product'
+                          : 'Search or create product'}
                   </p>
-                  <p className="text-[10px] text-gray-600 mt-0.5">Supports: JPG, PNG (max 5MB)</p>
                 </div>
-                {createProductInvoiceImageFiles.length > 0 && (
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    {createProductInvoiceImageFiles.map((file, idx) => (
-                      <div key={idx} className="relative group aspect-square w-14 h-14 rounded-lg overflow-hidden border border-gray-700 bg-gray-800">
-                        <img src={URL.createObjectURL(file)} alt="" className="w-full h-full object-cover" />
+              </div>
+                <Button size="sm" variant="ghost" onClick={closeModal} className="text-white hover:bg-white/20 h-8 w-8 p-0">
+                  <X size={18} />
+                </Button>
+              </div>
+
+              {/* ── Step indicators ── */}
+              <div className="px-5 pt-3 pb-2 flex items-center gap-2 shrink-0 border-b border-gray-800/60">
+                {[
+                  { label: 'Search', done: !!selectedExistingProduct || (productSearchQuery.trim().length >= 2 && !showProductDropdown) },
+                  { label: 'Choose Mode', done: !!productUseMode || (!selectedExistingProduct && productSearchQuery.trim().length >= 2) },
+                  { label: 'Set Price', done: parseFloat(createProductInvoiceForm.salePrice) > 0 },
+                ].map((step, i) => (
+                  <React.Fragment key={step.label}>
+                    <div className="flex items-center gap-1">
+                      <div className={cn(
+                        'w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-bold transition-colors',
+                        step.done ? 'bg-emerald-500 text-white' : 'bg-gray-700 text-gray-400'
+                      )}>{step.done ? '✓' : i + 1}</div>
+                      <span className={cn('text-[11px]', step.done ? 'text-emerald-400' : 'text-gray-500')}>{step.label}</span>
+                    </div>
+                    {i < 2 && <div className="flex-1 h-px bg-gray-700/60" />}
+                  </React.Fragment>
+                ))}
+              </div>
+
+              <div className="p-5 space-y-4 overflow-y-auto">
+
+                {/* ── 1. Product Search ── */}
+                <div ref={productSearchRef} className="relative">
+                  <Label className="text-gray-400 text-sm flex items-center gap-2 flex-wrap">
+                    Product Name
+                    {selectedExistingProduct && (
+                      <span className="text-[10px] bg-emerald-600/20 text-emerald-400 border border-emerald-600/30 rounded px-1.5 py-0.5">
+                        ✓ Existing product
+                      </span>
+                    )}
+                    {!selectedExistingProduct && productSearchQuery.trim().length >= 2 && !showProductDropdown && (
+                      <span className="text-[10px] bg-amber-600/20 text-amber-400 border border-amber-600/30 rounded px-1.5 py-0.5">
+                        + Will create new
+                      </span>
+                    )}
+                  </Label>
+                  <div className="relative mt-1">
+                    <Input
+                      className={cn(
+                        'bg-gray-950 border-gray-700 text-white pr-8',
+                        selectedExistingProduct && 'border-emerald-600/50 focus-visible:ring-emerald-600/30'
+                      )}
+                      placeholder="Search or tap ▾ to browse all products…"
+                      value={productSearchQuery}
+                      onChange={(e) => handleProductSearch(e.target.value)}
+                      onFocus={handleProductInputFocus}
+                      autoComplete="off"
+                    />
+                    <button
+                      type="button"
+                      tabIndex={-1}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 flex items-center justify-center w-5 h-5"
+                      onClick={() => {
+                        if (showProductDropdown) {
+                          setShowProductDropdown(false);
+                        } else {
+                          fetchAndShowProducts(productSearchQuery);
+                        }
+                      }}
+                    >
+                      {productSearchLoading
+                        ? <Loader2 size={14} className="animate-spin text-gray-500" />
+                        : selectedExistingProduct
+                          ? <CheckCircle size={14} className="text-emerald-500" />
+                          : <ChevronDown size={14} className={cn('text-gray-400 transition-transform', showProductDropdown && 'rotate-180')} />
+                      }
+                    </button>
+                  </div>
+
+                  {/* Dropdown */}
+                  {showProductDropdown && (
+                    <div className="absolute z-20 w-full mt-1 bg-gray-900 border border-gray-700 rounded-lg shadow-2xl max-h-56 overflow-y-auto">
+                      {productSearchLoading && (
+                        <div className="flex items-center gap-2 px-3 py-3 text-gray-400 text-sm">
+                          <Loader2 size={14} className="animate-spin" /> Searching…
+                        </div>
+                      )}
+                      {!productSearchLoading && productSearchResults.length === 0 && (
+                        <div className="px-3 py-3 space-y-1">
+                          {productSearchQuery.trim()
+                            ? <>
+                                <p className="text-sm text-gray-400">No matching products found.</p>
+                                <p className="text-xs text-amber-400">
+                                  A new product <strong>"{productSearchQuery}"</strong> will be created.
+                                </p>
+                              </>
+                            : <p className="text-sm text-gray-500">No products yet. Type a name to create a new one.</p>
+                          }
+                        </div>
+                      )}
+                      {!productSearchLoading && productSearchResults.map(p => (
+                        <button
+                          key={p.id}
+                          type="button"
+                          className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-blue-600/20 transition-colors text-left border-b border-gray-800 last:border-0"
+                          onMouseDown={() => handleSelectExistingProduct(p)}
+                        >
+                          <div className="w-9 h-9 rounded-md bg-gray-800 border border-gray-700 flex items-center justify-center shrink-0 overflow-hidden">
+                            {p.image_urls && p.image_urls.length > 0
+                              ? <img src={p.image_urls[0]} alt="" className="w-full h-full object-cover" />
+                              : <Package size={15} className="text-gray-600" />
+                            }
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm text-white truncate font-medium">{p.name}</p>
+                            <p className="text-[11px] text-gray-500 truncate">
+                              {p.category_name || 'No category'}{p.sku ? ` · ${p.sku}` : ''}
+                            </p>
+                          </div>
+                          <ChevronRight size={14} className="text-gray-600 shrink-0" />
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Selected product info card (parent product) */}
+                  {selectedExistingProduct && (
+                    <div className="mt-2 rounded-lg bg-gray-900 border border-gray-700 overflow-hidden">
+                      <div className="flex items-center gap-3 px-3 py-2.5">
+                        <div className="w-10 h-10 rounded-md bg-gray-800 border border-gray-700 flex items-center justify-center shrink-0 overflow-hidden">
+                          {selectedExistingProduct.image_urls && selectedExistingProduct.image_urls.length > 0
+                            ? <img src={selectedExistingProduct.image_urls[0]} alt="" className="w-full h-full object-cover" />
+                            : <Package size={16} className="text-gray-600" />
+                          }
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm text-white font-medium truncate">{selectedExistingProduct.name}</p>
+                          <p className="text-[11px] text-gray-500 flex items-center gap-1.5 truncate">
+                            {selectedExistingProduct.category_name && <span>{selectedExistingProduct.category_name}</span>}
+                            {selectedExistingProduct.sku && (
+                              <span className="font-mono bg-gray-800 rounded px-1 text-gray-400">{selectedExistingProduct.sku}</span>
+                            )}
+                          </p>
+                        </div>
                         <button
                           type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setCreateProductInvoiceImageFiles(prev => prev.filter((_, i) => i !== idx));
+                          className="text-gray-600 hover:text-red-400 transition-colors shrink-0"
+                          onClick={() => {
+                            setSelectedExistingProduct(null);
+                            setProductSearchQuery('');
+                            setProductUseMode(null);
+                            setVariantSkuPreview('');
+                            setCreateProductInvoiceForm(prev => ({ ...prev, productName: '', categoryId: '' }));
                           }}
-                          className="absolute top-0 right-0 bg-red-500 text-white p-0.5 rounded-bl opacity-0 group-hover:opacity-100 transition-opacity"
+                          title="Clear selection"
                         >
-                          <X size={12} />
+                          <X size={14} />
                         </button>
                       </div>
-                    ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* ── 2. Decision section (only when existing product selected) ── */}
+                {selectedExistingProduct && (
+                  <div className="rounded-lg border border-gray-700 overflow-hidden">
+                    <div className="bg-gray-800/60 px-3 py-2">
+                      <p className="text-[11px] text-gray-400 font-medium uppercase tracking-wide">How would you like to use this product?</p>
+                    </div>
+                    <div className="divide-y divide-gray-700/60">
+
+                      {/* Option A – Use Exact Same */}
+                      <button
+                        type="button"
+                        className={cn(
+                          'w-full flex items-start gap-3 px-4 py-3 text-left transition-colors',
+                          productUseMode === 'exact'
+                            ? 'bg-emerald-600/10 border-l-2 border-emerald-500'
+                            : 'hover:bg-gray-800/40 border-l-2 border-transparent'
+                        )}
+                        onClick={() => setProductUseMode('exact')}
+                      >
+                        <div className={cn(
+                          'w-4 h-4 rounded-full border-2 flex items-center justify-center mt-0.5 shrink-0 transition-colors',
+                          productUseMode === 'exact' ? 'border-emerald-500 bg-emerald-500' : 'border-gray-600'
+                        )}>
+                          {productUseMode === 'exact' && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+                        </div>
+                        <div>
+                          <p className="text-sm text-white font-medium">Use Exact Same Product</p>
+                          <p className="text-[11px] text-gray-500 mt-0.5">
+                            Invoice references <span className="font-mono text-gray-400">{selectedExistingProduct.sku || 'this product'}</span> directly. No new record created.
+                          </p>
+                        </div>
+                        {productUseMode === 'exact' && <CheckCircle size={14} className="text-emerald-500 shrink-0 mt-0.5 ml-auto" />}
+                      </button>
+
+                      {/* Option B – Create Variation */}
+                      <button
+                        type="button"
+                        className={cn(
+                          'w-full flex items-start gap-3 px-4 py-3 text-left transition-colors',
+                          productUseMode === 'variation'
+                            ? 'bg-purple-600/10 border-l-2 border-purple-500'
+                            : 'hover:bg-gray-800/40 border-l-2 border-transparent'
+                        )}
+                        onClick={() => {
+                          setProductUseMode('variation');
+                          if (selectedExistingProduct.id && !variantSkuPreview) {
+                            computeNextVariantSku(selectedExistingProduct.id, selectedExistingProduct.sku ?? 'STD');
+                          }
+                        }}
+                      >
+                        <div className={cn(
+                          'w-4 h-4 rounded-full border-2 flex items-center justify-center mt-0.5 shrink-0 transition-colors',
+                          productUseMode === 'variation' ? 'border-purple-500 bg-purple-500' : 'border-gray-600'
+                        )}>
+                          {productUseMode === 'variation' && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+                        </div>
+                        <div>
+                          <p className="text-sm text-white font-medium">Create Variation</p>
+                          <p className="text-[11px] text-gray-500 mt-0.5">
+                            Create a new variant linked to this product (own image, description &amp; SKU).
+                          </p>
+                        </div>
+                        {productUseMode === 'variation' && <CheckCircle size={14} className="text-purple-400 shrink-0 mt-0.5 ml-auto" />}
+                      </button>
+                    </div>
                   </div>
                 )}
+
+                {/* ── 3. Variation fields (only when variation mode selected) ── */}
+                {selectedExistingProduct && productUseMode === 'variation' && (
+                  <div className="rounded-lg border border-purple-700/30 bg-purple-900/5 p-4 space-y-3">
+                    <p className="text-[11px] text-purple-400 font-medium uppercase tracking-wide flex items-center gap-1.5">
+                      <Sparkles size={11} />
+                      Variation details
+                    </p>
+
+                    {/* Variant SKU preview */}
+                    <div>
+                      <Label className="text-gray-400 text-xs">Variant SKU (auto-generated)</Label>
+                      <div className="mt-1 flex items-center gap-2 h-9 rounded-md bg-gray-950 border border-gray-700 px-3">
+                        {variantSkuLoading
+                          ? <Loader2 size={13} className="animate-spin text-gray-500" />
+                          : <span className="font-mono text-sm text-purple-300">{variantSkuPreview || '…'}</span>
+                        }
+                        <span className="text-[10px] text-gray-600 ml-auto">Parent: {selectedExistingProduct.sku || '—'}</span>
+                      </div>
+                    </div>
+
+                    {/* Variation description */}
+                    <div>
+                      <Label className="text-gray-400 text-xs">Variation Description (optional)</Label>
+                      <textarea
+                        className="mt-1 w-full min-h-[60px] rounded-md bg-gray-950 border border-gray-700 text-white px-3 py-2 text-sm resize-none"
+                        placeholder="e.g. Red embroidery on cream base, size M"
+                        value={variationDescription}
+                        onChange={(e) => setVariationDescription(e.target.value)}
+                      />
+                    </div>
+
+                    {/* Variation image upload */}
+                    <div>
+                      <Label className="text-gray-400 text-xs">Variation Image (optional)</Label>
+                      <div
+                        {...variationImageDropzone.getRootProps()}
+                        className={cn(
+                          'mt-1 border-2 border-dashed rounded-lg p-4 flex flex-col items-center justify-center cursor-pointer transition-colors',
+                          variationImageDropzone.isDragActive
+                            ? 'border-purple-500 bg-purple-500/10'
+                            : 'border-gray-700 hover:border-purple-700 bg-gray-800/30'
+                        )}
+                      >
+                        <input {...variationImageDropzone.getInputProps()} />
+                        <Upload size={18} className="text-gray-500 mb-1" />
+                        <p className="text-xs text-gray-400 text-center">
+                          Drag & drop or <span className="text-purple-400">browse</span>
+                        </p>
+                        <p className="text-[10px] text-gray-600 mt-0.5">JPG · PNG · max 5MB</p>
+                      </div>
+                      {variationImageFiles.length > 0 && (
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {variationImageFiles.map((file, idx) => (
+                            <div key={idx} className="relative group w-12 h-12 rounded-lg overflow-hidden border border-gray-700 bg-gray-800">
+                              <img src={URL.createObjectURL(file)} alt="" className="w-full h-full object-cover" />
+                              <button
+                                type="button"
+                                onClick={() => setVariationImageFiles(prev => prev.filter((_, i) => i !== idx))}
+                                className="absolute top-0 right-0 bg-red-500 text-white p-0.5 rounded-bl opacity-0 group-hover:opacity-100 transition-opacity"
+                              >
+                                <X size={10} />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* ── 4. New product fields (only when no existing product selected) ── */}
+                {!selectedExistingProduct && (
+                  <>
+                    <div>
+                      <Label className="text-gray-400 text-sm">Product Category</Label>
+                      <select
+                        className="mt-1 w-full h-10 rounded-md bg-gray-950 border border-gray-700 text-white px-3 text-sm"
+                        value={createProductInvoiceForm.categoryId}
+                        onChange={(e) => setCreateProductInvoiceForm(prev => ({ ...prev, categoryId: e.target.value }))}
+                      >
+                        <option value="">Select Category</option>
+                        {createProductInvoiceCategories.map(c => (
+                          <option key={c.id} value={c.id}>{c.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <Label className="text-gray-400 text-sm">Upload Product Image (optional)</Label>
+                      <div
+                        {...createProductInvoiceDropzone.getRootProps()}
+                        className={cn(
+                          'mt-1 border-2 border-dashed rounded-xl p-5 flex flex-col items-center justify-center cursor-pointer transition-colors',
+                          createProductInvoiceDropzone.isDragActive
+                            ? 'border-blue-500 bg-blue-500/10'
+                            : 'border-gray-700 hover:border-gray-500 bg-gray-800/50'
+                        )}
+                      >
+                        <input {...createProductInvoiceDropzone.getInputProps()} />
+                        <Upload size={20} className="text-gray-500 mb-1" />
+                        <p className="text-sm text-gray-400 text-center">
+                          Drag & drop, or <span className="text-blue-500">browse</span>
+                        </p>
+                        <p className="text-[10px] text-gray-600 mt-0.5">JPG · PNG · max 5MB</p>
+                      </div>
+                      {createProductInvoiceImageFiles.length > 0 && (
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {createProductInvoiceImageFiles.map((file, idx) => (
+                            <div key={idx} className="relative group w-14 h-14 rounded-lg overflow-hidden border border-gray-700 bg-gray-800">
+                              <img src={URL.createObjectURL(file)} alt="" className="w-full h-full object-cover" />
+                              <button
+                                type="button"
+                                onClick={(e) => { e.stopPropagation(); setCreateProductInvoiceImageFiles(prev => prev.filter((_, i) => i !== idx)); }}
+                                className="absolute top-0 right-0 bg-red-500 text-white p-0.5 rounded-bl opacity-0 group-hover:opacity-100 transition-opacity"
+                              >
+                                <X size={12} />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    <div>
+                      <Label className="text-gray-400 text-sm">Description (Optional)</Label>
+                      <textarea
+                        className="mt-1 w-full min-h-[60px] rounded-md bg-gray-950 border border-gray-700 text-white px-3 py-2 text-sm resize-y"
+                        placeholder="Product description…"
+                        value={createProductInvoiceForm.description}
+                        onChange={(e) => setCreateProductInvoiceForm(prev => ({ ...prev, description: e.target.value }))}
+                      />
+                    </div>
+                  </>
+                )}
+
+                {/* ── 5. Sale Price (always visible) ── */}
+                <div>
+                  <Label className="text-gray-400 text-sm">Sale Price (Rs)</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    className="mt-1 bg-gray-950 border-gray-700 text-white"
+                    placeholder="0"
+                    value={createProductInvoiceForm.salePrice}
+                    onChange={(e) => setCreateProductInvoiceForm(prev => ({ ...prev, salePrice: e.target.value }))}
+                  />
+                </div>
+
+                {/* Context note */}
+                <p className="text-[11px] text-gray-600">
+                  {productUseMode === 'variation'
+                    ? <>Variation <span className="font-mono text-gray-400">{variantSkuPreview}</span> will be linked to invoice <strong className="text-white">{saleDetail.invoiceNo}</strong>.</>
+                    : selectedExistingProduct
+                      ? <>Product <strong className="text-white">{selectedExistingProduct.name}</strong> will be reused — no duplicate created.</>
+                      : <>New product will be created with code <strong className="text-white">STD-PROD-XXXXX</strong> and linked to <strong className="text-white">{saleDetail.invoiceNo}</strong>.</>
+                  }
+                </p>
               </div>
-              <div>
-                <Label className="text-gray-400 text-sm">Sale Price (Rs)</Label>
-                <Input
-                  type="number"
-                  min={0}
-                  className="mt-1 bg-gray-950 border-gray-700 text-white"
-                  placeholder="0"
-                  value={createProductInvoiceForm.salePrice}
-                  onChange={(e) => setCreateProductInvoiceForm(prev => ({ ...prev, salePrice: e.target.value }))}
-                />
+
+              {/* ── Footer ── */}
+              <div className="p-5 border-t border-gray-800 flex gap-3 shrink-0">
+                <Button variant="outline" className="flex-1 border-gray-700" onClick={closeModal}>
+                  Cancel
+                </Button>
+                <Button
+                  className={cn(
+                    'flex-1',
+                    productUseMode === 'variation' ? 'bg-purple-600 hover:bg-purple-700' : 'bg-blue-600 hover:bg-blue-700'
+                  )}
+                  disabled={!canSubmit}
+                  onClick={handleCreateProductAndInvoice}
+                >
+                  {creatingProductAndInvoice
+                    ? <Loader2 size={16} className="animate-spin mr-2" />
+                    : productUseMode === 'variation'
+                      ? <Sparkles size={15} className="mr-2" />
+                      : <Package size={15} className="mr-2" />
+                  }
+                  {generatedInvoiceItemId
+                    ? 'Update Invoice Line'
+                    : productUseMode === 'variation'
+                      ? 'Create Variation + Invoice'
+                      : productUseMode === 'exact'
+                        ? 'Add to Invoice'
+                        : 'Create Product + Invoice'
+                  }
+                </Button>
               </div>
-              <div>
-                <Label className="text-gray-400 text-sm">Description (Optional)</Label>
-                <textarea
-                  className="mt-1 w-full min-h-[80px] rounded-md bg-gray-950 border border-gray-700 text-white px-3 py-2 text-sm resize-y"
-                  placeholder="Product description (same as in Add Product form)..."
-                  value={createProductInvoiceForm.description}
-                  onChange={(e) => setCreateProductInvoiceForm(prev => ({ ...prev, description: e.target.value }))}
-                />
-                <p className="text-[10px] text-gray-500 mt-1">This will be saved as the product description, linked to Add Product.</p>
-              </div>
-              <p className="text-xs text-gray-500">
-                Product will be linked to order <strong className="text-white">{saleDetail.invoiceNo}</strong>.
-              </p>
-            </div>
-            <div className="p-5 border-t border-gray-800 flex gap-3 shrink-0">
-              <Button variant="outline" className="flex-1 border-gray-700" onClick={() => { setShowCreateProductInvoiceModal(false); setCreateProductInvoiceImageFiles([]); }}>
-                Cancel
-              </Button>
-              <Button
-                className="flex-1 bg-blue-600 hover:bg-blue-700"
-                disabled={creatingProductAndInvoice || !createProductInvoiceForm.salePrice || parseFloat(createProductInvoiceForm.salePrice) <= 0}
-                onClick={handleCreateProductAndInvoice}
-              >
-                {creatingProductAndInvoice ? <Loader2 size={16} className="animate-spin mr-2" /> : <Package size={16} className="mr-2" />}
-                Create Product + Generate Invoice
-              </Button>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Assign Worker Modal – workers filtered by task category (Dyeing / Stitching / Handwork); rendered in portal so it always stacks on top */}
       {showWorkerEditModal && createPortal(

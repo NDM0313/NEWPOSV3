@@ -62,7 +62,6 @@ export const A4InvoiceTemplate: React.FC<A4InvoiceTemplateProps> = ({
         <thead>
           <tr>
             <th>Product</th>
-            {template.show_sku && <th>SKU</th>}
             {enablePacking && <th>Packing</th>}
             <th className="text-right">Qty</th>
             <th>Unit</th>
@@ -75,14 +74,12 @@ export const A4InvoiceTemplate: React.FC<A4InvoiceTemplateProps> = ({
         <tbody>
           {doc.items.map((item, index) => (
             <tr key={item.id || index}>
-              <td>
-                <div>{item.product_name}</div>
+              <td style={{ minWidth: '180px' }}>
+                <span>{item.product_name}</span>
+                {template.show_sku && item.sku && (
+                  <span className="classic-print-sku" style={{ marginLeft: '6px' }}>{item.sku}</span>
+                )}
               </td>
-              {template.show_sku && (
-                <td>
-                  <span className="classic-print-sku">{item.sku}</span>
-                </td>
-              )}
               {enablePacking && <td style={{ fontSize: '11px' }}>{formatPackingFromItem(item)}</td>}
               <td className="text-right">{Number(item.quantity).toFixed(2)}</td>
               <td>{item.unit}</td>
@@ -97,6 +94,12 @@ export const A4InvoiceTemplate: React.FC<A4InvoiceTemplateProps> = ({
 
       <div className="classic-print-totals">
         <div className="classic-print-totals-inner">
+          {template.show_studio && doc.totals.studio_charges > 0 && (
+            <div className="classic-print-totals-row">
+              <span className="classic-print-totals-label">Production Cost:</span>
+              <span className="classic-print-totals-value classic-print-currency">{formatCurrency(doc.totals.studio_charges)}</span>
+            </div>
+          )}
           <div className="classic-print-totals-row">
             <span className="classic-print-totals-label">Subtotal:</span>
             <span className="classic-print-totals-value classic-print-currency">{formatCurrency(doc.totals.subtotal)}</span>
@@ -119,20 +122,15 @@ export const A4InvoiceTemplate: React.FC<A4InvoiceTemplateProps> = ({
               <span className="classic-print-totals-value classic-print-currency">{formatCurrency(doc.totals.expenses)}</span>
             </div>
           )}
-          <div className="classic-print-totals-row total">
-            <span className="classic-print-totals-label">Total:</span>
-            <span className="classic-print-totals-value classic-print-currency">{formatCurrency(doc.totals.total)}</span>
-          </div>
-          {template.show_studio && doc.totals.studio_charges > 0 && (
-            <div className="classic-print-totals-row">
-              <span className="classic-print-totals-label">Studio (sale with profit):</span>
-              <span className="classic-print-totals-value classic-print-currency">{formatCurrency(doc.totals.studio_charges)}</span>
-            </div>
-          )}
-          {template.show_studio && doc.totals.studio_charges > 0 && (
+          {template.show_studio && doc.totals.studio_charges > 0 ? (
             <div className="classic-print-totals-row total">
               <span className="classic-print-totals-label">Grand Total:</span>
               <span className="classic-print-totals-value classic-print-currency">{formatCurrency(doc.totals.grand_total)}</span>
+            </div>
+          ) : (
+            <div className="classic-print-totals-row total">
+              <span className="classic-print-totals-label">Total:</span>
+              <span className="classic-print-totals-value classic-print-currency">{formatCurrency(doc.totals.total)}</span>
             </div>
           )}
           <div className="classic-print-totals-row">
