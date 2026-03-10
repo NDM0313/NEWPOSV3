@@ -1,4 +1,9 @@
 import { supabase } from '@/lib/supabase';
+import {
+  shipmentAccountingService,
+  ensureCourierContact,
+  logShipmentHistory,
+} from './shipmentAccountingService';
 
 export type ShipmentType = 'Local' | 'Courier';
 export type ShipmentStatus = 'Pending' | 'Booked' | 'Dispatched' | 'Delivered';
@@ -9,6 +14,7 @@ export interface SaleShipmentRow {
   company_id: string;
   branch_id: string;
   shipment_type: ShipmentType;
+  courier_id?: string | null;
   courier_name?: string | null;
   shipment_status: ShipmentStatus;
   tracking_id?: string | null;
@@ -32,6 +38,7 @@ export interface SaleShipmentRow {
 
 export interface CreateShipmentPayload {
   shipment_type: ShipmentType;
+  courier_id?: string;
   courier_name?: string;
   shipment_status?: ShipmentStatus;
   tracking_id?: string;
@@ -52,6 +59,7 @@ function rowToShipment(r: SaleShipmentRow) {
   return {
     id: r.id,
     shipmentType: r.shipment_type as ShipmentType,
+    courierId: r.courier_id ?? undefined,
     courierName: r.courier_name ?? undefined,
     shipmentStatus: r.shipment_status as ShipmentStatus,
     trackingId: r.tracking_id ?? undefined,
@@ -86,13 +94,21 @@ export const shipmentService = {
     companyId: string,
     branchId: string,
     payload: CreateShipmentPayload,
-    createdBy?: string | null
+    createdBy?: string | null,
+    invoiceNo?: string
   ): Promise<SaleShipmentRow> {
+    // Auto-create courier contact if name provided but id not supplied
+    let courierId = payload.courier_id ?? null;
+    if (!courierId && payload.courier_name) {
+      courierId = await ensureCourierContact(payload.courier_name, companyId);
+    }
+
     const row = {
       sale_id: saleId,
       company_id: companyId,
       branch_id: branchId,
       shipment_type: payload.shipment_type,
+      courier_id: courierId,
       courier_name: payload.courier_name || null,
       shipment_status: payload.shipment_status || 'Pending',
       tracking_id: payload.tracking_id || null,
@@ -110,13 +126,42 @@ export const shipmentService = {
       created_by: createdBy || null,
       updated_by: createdBy || null,
     };
+
     const { data, error } = await supabase
       .from('sale_shipments')
       .insert(row)
       .select()
       .single();
     if (error) throw error;
-    return data as SaleShipmentRow;
+
+    const shipment = data as SaleShipmentRow;
+
+    // Create journal entries (fire-and-forget — don't fail shipment creation)
+    void shipmentAccountingService.createShipmentJournalEntry({
+      shipmentId: shipment.id,
+      companyId,
+      branchId,
+      chargedToCustomer: shipment.charged_to_customer,
+      actualCost: shipment.actual_cost,
+      courierName: shipment.courier_name,
+      invoiceNo,
+      performedBy: createdBy,
+    });
+
+    // Log shipment history
+    void logShipmentHistory({
+      shipmentId: shipment.id,
+      companyId,
+      status: 'Shipment Created',
+      trackingNumber: shipment.tracking_id,
+      courierName: shipment.courier_name,
+      chargedToCustomer: shipment.charged_to_customer,
+      actualCost: shipment.actual_cost,
+      notes: payload.notes,
+      createdBy,
+    });
+
+    return shipment;
   },
 
   async update(
@@ -129,6 +174,7 @@ export const shipmentService = {
       updated_by: updatedBy || null,
     };
     if (payload.shipment_type != null) update.shipment_type = payload.shipment_type;
+    if (payload.courier_id != null) update.courier_id = payload.courier_id;
     if (payload.courier_name != null) update.courier_name = payload.courier_name;
     if (payload.shipment_status != null) update.shipment_status = payload.shipment_status;
     if (payload.tracking_id != null) update.tracking_id = payload.tracking_id;
@@ -147,12 +193,60 @@ export const shipmentService = {
       .select()
       .single();
     if (error) throw error;
-    return data as SaleShipmentRow;
+
+    const shipment = data as SaleShipmentRow;
+
+    // Log history event based on what changed
+    const historyStatus = payload.shipment_status
+      ? `Status: ${payload.shipment_status}`
+      : payload.tracking_id
+        ? 'Tracking Updated'
+        : 'Shipment Updated';
+
+    void logShipmentHistory({
+      shipmentId: shipment.id,
+      companyId: shipment.company_id,
+      status: historyStatus,
+      trackingNumber: shipment.tracking_id,
+      courierName: shipment.courier_name,
+      chargedToCustomer: shipment.charged_to_customer,
+      actualCost: shipment.actual_cost,
+      notes: typeof payload.notes === 'string' ? payload.notes : undefined,
+      createdBy: updatedBy,
+    });
+
+    return shipment;
   },
 
-  async delete(id: string): Promise<void> {
+  async delete(id: string, performedBy?: string | null): Promise<void> {
+    // Fetch shipment before deleting to reverse journal entries
+    const { data: existing } = await supabase
+      .from('sale_shipments')
+      .select('company_id, branch_id, courier_name, charged_to_customer, actual_cost')
+      .eq('id', id)
+      .maybeSingle();
+
+    if (existing) {
+      void shipmentAccountingService.reverseShipmentJournalEntry({
+        shipmentId: id,
+        companyId: existing.company_id,
+        branchId: existing.branch_id,
+        chargedToCustomer: Number(existing.charged_to_customer) || 0,
+        actualCost: Number(existing.actual_cost) || 0,
+        courierName: existing.courier_name,
+        performedBy,
+      });
+    }
+
     const { error } = await supabase.from('sale_shipments').delete().eq('id', id);
     if (error) throw error;
+  },
+
+  /**
+   * Get shipment history for a shipment.
+   */
+  async getHistory(shipmentId: string) {
+    return shipmentAccountingService.getShipmentHistory(shipmentId);
   },
 };
 

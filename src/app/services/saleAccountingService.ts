@@ -3,9 +3,22 @@
  *
  * ERP Rule: Journal entries are created ONLY when a sale is finalized.
  *
- *   Draft Sale   → No accounting entry
- *   Final Sale   → Dr Accounts Receivable (2000) / Cr Sales Revenue (4000)
- *   Cancelled    → Dr Sales Revenue (4000) / Cr Accounts Receivable (2000) [reversal]
+ *   Simple Sale (no discount / extras):
+ *     Dr Accounts Receivable (2000)   total
+ *     Cr Sales Revenue (4000)                  total
+ *
+ *   Sale with discount_amount > 0:
+ *     Dr Accounts Receivable (2000)   net_total  (total after discount)
+ *     Dr Discount Allowed   (5200)    discount_amount
+ *     Cr Sales Revenue      (4000)               gross_total  (subtotal before discount)
+ *
+ *   Sale with extra_expenses > 0:
+ *     Dr Extra Expense (5300)   extra_expenses
+ *     Cr Cash / Accounts Payable (2020)   extra_expenses
+ *     (separate journal entry, reference_type='sale_extra_expense')
+ *
+ *   Cancelled:
+ *     Reversal of the original sale entry.
  *
  * Duplicate Protection: One entry per sale (reference_type='sale', reference_id=saleId).
  */
@@ -118,12 +131,69 @@ async function ensureRevenueAccount(companyId: string): Promise<{ id: string } |
   return null;
 }
 
+/** Ensure Discount Allowed (5200) exists for the company; create if missing. */
+async function ensureDiscountAllowedAccount(companyId: string): Promise<{ id: string } | null> {
+  const existing = await accountHelperService.getAccountByCode('5200', companyId);
+  if (existing?.id) return existing;
+  try {
+    const { data, error } = await supabase
+      .from('accounts')
+      .insert({ company_id: companyId, code: '5200', name: 'Discount Allowed', type: 'Expense', balance: 0, is_active: true })
+      .select('id')
+      .single();
+    if (!error && data?.id) return data;
+  } catch (e) {
+    console.warn('[saleAccountingService] Could not auto-create Discount Allowed account:', e);
+  }
+  return null;
+}
+
+/** Ensure Extra Expense (5300) exists for the company; create if missing. */
+async function ensureExtraExpenseAccount(companyId: string): Promise<{ id: string } | null> {
+  const existing = await accountHelperService.getAccountByCode('5300', companyId);
+  if (existing?.id) return existing;
+  try {
+    const { data, error } = await supabase
+      .from('accounts')
+      .insert({ company_id: companyId, code: '5300', name: 'Extra Expense', type: 'Expense', balance: 0, is_active: true })
+      .select('id')
+      .single();
+    if (!error && data?.id) return data;
+  } catch (e) {
+    console.warn('[saleAccountingService] Could not auto-create Extra Expense account:', e);
+  }
+  return null;
+}
+
+/** Ensure Accounts Payable (2020) exists for the company; create if missing. */
+async function ensureAPAccount(companyId: string): Promise<{ id: string } | null> {
+  const existing = await accountHelperService.getAccountByCode('2020', companyId);
+  if (existing?.id) return existing;
+  try {
+    const { data, error } = await supabase
+      .from('accounts')
+      .insert({ company_id: companyId, code: '2020', name: 'Accounts Payable', type: 'Liability', balance: 0, is_active: true })
+      .select('id')
+      .single();
+    if (!error && data?.id) return data;
+  } catch (e) {
+    console.warn('[saleAccountingService] Could not auto-create Accounts Payable account:', e);
+  }
+  return null;
+}
+
 export const saleAccountingService = {
   /**
    * Create journal entry when sale is finalized.
    *
-   *   Dr Accounts Receivable (2000)   amount
-   *   Cr Sales Revenue (4000)                  amount
+   * With discount:
+   *   Dr Accounts Receivable (2000)   net_total
+   *   Dr Discount Allowed   (5200)    discount_amount
+   *   Cr Sales Revenue      (4000)               gross_total
+   *
+   * Without discount:
+   *   Dr Accounts Receivable (2000)   total
+   *   Cr Sales Revenue (4000)                  total
    *
    * Safe to call multiple times — duplicate is detected and skipped.
    */
@@ -132,10 +202,11 @@ export const saleAccountingService = {
     companyId: string;
     branchId?: string | null;
     total: number;
+    discountAmount?: number;
     invoiceNo: string;
     performedBy?: string | null;
   }): Promise<string | null> {
-    const { saleId, companyId, branchId, total, invoiceNo, performedBy } = params;
+    const { saleId, companyId, branchId, total, discountAmount = 0, invoiceNo, performedBy } = params;
 
     if (!saleId || !companyId) {
       console.warn('[saleAccountingService] createSaleJournalEntry: missing saleId or companyId');
@@ -177,6 +248,9 @@ export const saleAccountingService = {
       created_by: performedBy || undefined,
     };
 
+    const hasDiscount = discountAmount > 0;
+    const grossTotal = hasDiscount ? total + discountAmount : total;
+
     const lines: JournalEntryLine[] = [
       {
         id: '',
@@ -186,15 +260,30 @@ export const saleAccountingService = {
         credit: 0,
         description: `Accounts Receivable – ${invoiceNo}`,
       },
-      {
-        id: '',
-        journal_entry_id: '',
-        account_id: revenueAccount.id,
-        debit: 0,
-        credit: total,
-        description: `Sales Revenue – ${invoiceNo}`,
-      },
     ];
+
+    if (hasDiscount) {
+      const discountAccount = await ensureDiscountAllowedAccount(companyId);
+      if (discountAccount?.id) {
+        lines.push({
+          id: '',
+          journal_entry_id: '',
+          account_id: discountAccount.id,
+          debit: discountAmount,
+          credit: 0,
+          description: `Discount Allowed – ${invoiceNo}`,
+        });
+      }
+    }
+
+    lines.push({
+      id: '',
+      journal_entry_id: '',
+      account_id: revenueAccount.id,
+      debit: 0,
+      credit: hasDiscount ? grossTotal : total,
+      description: `Sales Revenue – ${invoiceNo}`,
+    });
 
     try {
       const result = await accountingService.createEntry(entry, lines);
@@ -203,6 +292,88 @@ export const saleAccountingService = {
       return journalEntryId;
     } catch (err: any) {
       console.error('[saleAccountingService] Failed to create journal entry:', err.message);
+      return null;
+    }
+  },
+
+  /**
+   * Create extra expense journal entry for a sale.
+   *
+   *   Dr Extra Expense (5300)    amount
+   *   Cr Cash (1000) or Accounts Payable (2020)   amount
+   *
+   * Uses reference_type='sale_extra_expense' to allow multiple per sale.
+   */
+  async createExtraExpenseJournalEntry(params: {
+    saleId: string;
+    companyId: string;
+    branchId?: string | null;
+    amount: number;
+    paymentMethod?: 'cash' | 'payable';
+    invoiceNo: string;
+    notes?: string;
+    performedBy?: string | null;
+  }): Promise<string | null> {
+    const { saleId, companyId, branchId, amount, paymentMethod = 'payable', invoiceNo, notes, performedBy } = params;
+
+    if (!saleId || !companyId || amount <= 0) return null;
+
+    const expenseAccount = await ensureExtraExpenseAccount(companyId);
+    if (!expenseAccount?.id) {
+      console.warn('[saleAccountingService] Extra Expense account not found');
+      return null;
+    }
+
+    // Credit account: Cash or Payable
+    let creditAccountId: string | null = null;
+    if (paymentMethod === 'cash') {
+      const cashAccount = await accountHelperService.getAccountByCode('1000', companyId);
+      creditAccountId = cashAccount?.id ?? null;
+    }
+    if (!creditAccountId) {
+      const apAccount = await ensureAPAccount(companyId);
+      creditAccountId = apAccount?.id ?? null;
+    }
+
+    if (!creditAccountId) {
+      console.warn('[saleAccountingService] No credit account found for extra expense');
+      return null;
+    }
+
+    const entry: JournalEntry = {
+      id: '',
+      company_id: companyId,
+      branch_id: (branchId && branchId !== 'all') ? branchId : undefined,
+      entry_no: `JE-EXP-${Date.now()}-${Math.random().toString(36).substr(2, 6).toUpperCase()}`,
+      entry_date: new Date().toISOString().split('T')[0],
+      description: notes ?? `Extra Expense – ${invoiceNo}`,
+      reference_type: 'sale_extra_expense',
+      reference_id: saleId,
+      created_by: performedBy ?? undefined,
+    };
+
+    const lines: JournalEntryLine[] = [
+      {
+        id: '', journal_entry_id: '',
+        account_id: expenseAccount.id,
+        debit: amount, credit: 0,
+        description: `Extra Expense – ${invoiceNo}`,
+      },
+      {
+        id: '', journal_entry_id: '',
+        account_id: creditAccountId,
+        debit: 0, credit: amount,
+        description: paymentMethod === 'cash' ? `Cash paid – Extra Expense ${invoiceNo}` : `Payable – Extra Expense ${invoiceNo}`,
+      },
+    ];
+
+    try {
+      const result = await accountingService.createEntry(entry, lines);
+      const journalEntryId = (result as any)?.id ?? null;
+      console.log(`[saleAccountingService] Extra expense entry created for sale ${invoiceNo}: ${journalEntryId}`);
+      return journalEntryId;
+    } catch (err: any) {
+      console.error('[saleAccountingService] Failed to create extra expense entry:', err.message);
       return null;
     }
   },
@@ -220,10 +391,11 @@ export const saleAccountingService = {
     companyId: string;
     branchId?: string | null;
     total: number;
+    discountAmount?: number;
     invoiceNo: string;
     performedBy?: string | null;
   }): Promise<string | null> {
-    const { saleId, companyId, branchId, total, invoiceNo, performedBy } = params;
+    const { saleId, companyId, branchId, total, discountAmount = 0, invoiceNo, performedBy } = params;
 
     if (!saleId || !companyId || total <= 0) return null;
 
@@ -257,24 +429,40 @@ export const saleAccountingService = {
       created_by: performedBy || undefined,
     };
 
+    const hasDiscount = discountAmount > 0;
+    const grossTotal = hasDiscount ? total + discountAmount : total;
+
     const lines: JournalEntryLine[] = [
       {
         id: '',
         journal_entry_id: '',
         account_id: revenueAccount.id,
-        debit: total,
+        debit: hasDiscount ? grossTotal : total,
         credit: 0,
         description: `Reversal Sales Revenue – ${invoiceNo}`,
       },
-      {
-        id: '',
-        journal_entry_id: '',
-        account_id: arAccount.id,
-        debit: 0,
-        credit: total,
-        description: `Reversal Accounts Receivable – ${invoiceNo}`,
-      },
     ];
+
+    if (hasDiscount) {
+      const discountAccount = await ensureDiscountAllowedAccount(companyId);
+      if (discountAccount?.id) {
+        lines.push({
+          id: '', journal_entry_id: '',
+          account_id: discountAccount.id,
+          debit: 0, credit: discountAmount,
+          description: `Reversal Discount Allowed – ${invoiceNo}`,
+        });
+      }
+    }
+
+    lines.push({
+      id: '',
+      journal_entry_id: '',
+      account_id: arAccount.id,
+      debit: 0,
+      credit: total,
+      description: `Reversal Accounts Receivable – ${invoiceNo}`,
+    });
 
     try {
       const result = await accountingService.createEntry(entry, lines);
