@@ -49,6 +49,7 @@ import { LedgerHub } from './LedgerHub';
 import { StudioCostsTab } from './StudioCostsTab';
 import { DepositsTab } from './DepositsTab';
 import { PayCourierModal } from './PayCourierModal';
+import { CourierReportsTab } from './CourierReportsTab';
 import { useSettings } from '@/app/context/SettingsContext';
 import { AccountingTestPage } from '@/app/components/test/AccountingTestPage';
 import { useSupabase } from '@/app/context/SupabaseContext';
@@ -107,7 +108,7 @@ export const AccountingDashboard = () => {
     setCurrentModule('accounting');
   }, [setCurrentModule]);
 
-  const [activeTab, setActiveTab] = useState<'journal_entries' | 'daybook' | 'roznamcha' | 'accounts' | 'ledger' | 'receivables' | 'payables' | 'deposits' | 'studio' | 'account_statements'>('journal_entries');
+  const [activeTab, setActiveTab] = useState<'journal_entries' | 'daybook' | 'roznamcha' | 'accounts' | 'ledger' | 'receivables' | 'payables' | 'courier' | 'deposits' | 'studio' | 'account_statements'>('journal_entries');
   const reportStartDate = useMemo(() => {
     const d = new Date();
     d.setDate(1);
@@ -198,6 +199,7 @@ export const AccountingDashboard = () => {
     { key: 'ledger', label: 'Ledger', icon: FileText },
     { key: 'receivables', label: 'Receivables', icon: TrendingUp },
     { key: 'payables', label: 'Payables', icon: TrendingDown },
+    { key: 'courier', label: 'Courier Reports', icon: Truck },
     { key: 'deposits', label: 'Deposits', icon: Shield, isHidden: !settingsModules.rentalModuleEnabled },
     { key: 'studio', label: 'Studio Costs', icon: Wrench, isHidden: !settingsModules.studioModuleEnabled },
     { key: 'account_statements', label: 'Account Statements', icon: BarChart3 },
@@ -984,6 +986,8 @@ export const AccountingDashboard = () => {
             )}
           </div>
         )}
+
+        {activeTab === 'courier' && <CourierReportsTab />}
 
         {activeTab === 'deposits' && settingsModules.rentalModuleEnabled && <DepositsTab />}
 

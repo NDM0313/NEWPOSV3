@@ -90,9 +90,10 @@ export interface InventoryValuationResult {
 }
 
 // Normalize account type for grouping (DB may use asset, liability, revenue, expense, equity)
+// P&L: Revenue (Sales Revenue 4000, Shipping Income 4100), Expenses (Cost of Production 5000, Shipping Expense 5100, Discount Allowed 5200, Extra Expense 5300)
 const REVENUE_TYPES = ['revenue', 'income'];
 const EXPENSE_TYPES = ['expense', 'cost of sales', 'cogs'];
-const ASSET_TYPES = ['asset', 'cash', 'bank', 'mobile_wallet'];
+const ASSET_TYPES = ['asset', 'cash', 'bank', 'mobile_wallet', 'receivable'];
 const LIABILITY_TYPES = ['liability'];
 const EQUITY_TYPES = ['equity'];
 

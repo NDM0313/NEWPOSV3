@@ -471,16 +471,21 @@ export const shipmentAccountingService = {
   /**
    * Get courier ledger (date, description, debit, credit, balance) from courier_ledger view.
    */
-  async getCourierLedger(companyId: string, courierId?: string) {
+  async getCourierLedger(
+    companyId: string,
+    courierId?: string,
+    options?: { limit?: number; offset?: number }
+  ) {
     let query = supabase
       .from('courier_ledger')
-      .select('*')
+      .select('company_id, date, courier_name, account_id, courier_id, shipment_id, reference_type, description, debit, credit, balance', { count: 'exact' })
       .eq('company_id', companyId)
       .order('date', { ascending: false });
 
-    if (courierId) {
-      query = query.eq('courier_id', courierId);
-    }
+    if (courierId) query = query.eq('courier_id', courierId);
+    const limit = options?.limit ?? 100;
+    const offset = options?.offset ?? 0;
+    query = query.range(offset, offset + limit - 1);
 
     const { data, error } = await query;
     if (error) throw error;
@@ -490,16 +495,21 @@ export const shipmentAccountingService = {
   /**
    * Get shipment-level ledger from shipment_ledger view (income/expense/payable per shipment).
    */
-  async getShipmentLedger(companyId: string, courierId?: string) {
+  async getShipmentLedger(
+    companyId: string,
+    courierId?: string,
+    options?: { limit?: number; offset?: number }
+  ) {
     let query = supabase
       .from('shipment_ledger')
-      .select('*')
+      .select('shipment_id, company_id, courier_id, courier_name, date, shipping_income, shipping_expense, courier_payable, journal_entry_id, entry_no', { count: 'exact' })
       .eq('company_id', companyId)
       .order('date', { ascending: false });
 
-    if (courierId) {
-      query = query.eq('courier_id', courierId);
-    }
+    if (courierId) query = query.eq('courier_id', courierId);
+    const limit = options?.limit ?? 100;
+    const offset = options?.offset ?? 0;
+    query = query.range(offset, offset + limit - 1);
 
     const { data, error } = await query;
     if (error) throw error;
