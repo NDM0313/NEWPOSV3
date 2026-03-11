@@ -27,7 +27,8 @@ import {
   List,
   ChevronDown,
   X,
-  BookMarked
+  BookMarked,
+  Truck
 } from 'lucide-react';
 import { Button } from '@/app/components/ui/button';
 import { Badge } from '@/app/components/ui/badge';
@@ -47,6 +48,7 @@ import { AddAccountDrawer } from './AddAccountDrawer';
 import { LedgerHub } from './LedgerHub';
 import { StudioCostsTab } from './StudioCostsTab';
 import { DepositsTab } from './DepositsTab';
+import { PayCourierModal } from './PayCourierModal';
 import { useSettings } from '@/app/context/SettingsContext';
 import { AccountingTestPage } from '@/app/components/test/AccountingTestPage';
 import { useSupabase } from '@/app/context/SupabaseContext';
@@ -129,6 +131,7 @@ export const AccountingDashboard = () => {
   const [isAddAccountOpen, setIsAddAccountOpen] = useState(false);
   const [isEditAccountOpen, setIsEditAccountOpen] = useState(false);
   const [editingAccount, setEditingAccount] = useState<any>(null);
+  const [payCourierOpen, setPayCourierOpen] = useState(false);
   
   // 🎯 Ledger & Transaction State
   const [ledgerAccount, setLedgerAccount] = useState<any>(null);
@@ -904,6 +907,18 @@ export const AccountingDashboard = () => {
 
         {activeTab === 'payables' && (
           <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-800">
+              <span className="text-sm text-gray-400">Supplier & Courier payables</span>
+              <Button
+                variant="outline"
+                size="sm"
+                className="border-gray-600 text-gray-300 hover:bg-gray-800 hover:text-white gap-1.5"
+                onClick={() => setPayCourierOpen(true)}
+              >
+                <Truck size={14} />
+                Pay Courier
+              </Button>
+            </div>
             {purchases.purchases.filter(p => p.due > 0).length === 0 ? (
               <div className="text-center py-12">
                 <TrendingDown size={48} className="mx-auto text-gray-600 mb-3" />
@@ -999,6 +1014,15 @@ export const AccountingDashboard = () => {
       <ManualEntryDialog 
         isOpen={manualEntryOpen}
         onClose={() => setManualEntryOpen(false)}
+      />
+
+      {/* Pay Courier Modal */}
+      <PayCourierModal
+        open={payCourierOpen}
+        onClose={() => setPayCourierOpen(false)}
+        companyId={companyId ?? ''}
+        branchId={branchId}
+        onSuccess={() => accounting.refreshEntries()}
       />
 
       {/* Add Account Drawer */}

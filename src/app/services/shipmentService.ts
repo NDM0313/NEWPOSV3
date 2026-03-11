@@ -6,7 +6,16 @@ import {
 } from './shipmentAccountingService';
 
 export type ShipmentType = 'Local' | 'Courier';
-export type ShipmentStatus = 'Pending' | 'Booked' | 'Dispatched' | 'Delivered';
+export type ShipmentStatus =
+  | 'Created'
+  | 'Packed'
+  | 'Pending'
+  | 'Booked'
+  | 'Dispatched'
+  | 'In Transit'
+  | 'Delivered'
+  | 'Returned'
+  | 'Cancelled';
 
 export interface SaleShipmentRow {
   id: string;
@@ -143,6 +152,7 @@ export const shipmentService = {
       branchId,
       chargedToCustomer: shipment.charged_to_customer,
       actualCost: shipment.actual_cost,
+      courierId: shipment.courier_id ?? undefined,
       courierName: shipment.courier_name,
       invoiceNo,
       performedBy: createdBy,
