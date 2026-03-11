@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { Loader2, FileText, FileSpreadsheet, Calendar } from 'lucide-react';
+import { Loader2, FileText, FileSpreadsheet, ExternalLink } from 'lucide-react';
 import { Button } from '@/app/components/ui/button';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
-import { accountingReportsService, TrialBalanceResult } from '@/app/services/accountingReportsService';
+import { accountingReportsService, TrialBalanceResult, TrialBalanceRow } from '@/app/services/accountingReportsService';
 import { exportToPDF, exportToExcel, ExportData } from '@/app/utils/exportUtils';
+import { AccountLedgerView } from '@/app/components/accounting/AccountLedgerView';
 
 const toExport = (r: TrialBalanceResult, formatCurrency: (n: number) => string): ExportData => ({
   title: `Trial Balance`,
@@ -34,6 +35,7 @@ export const TrialBalancePage: React.FC<{
   const { formatCurrency } = useFormatCurrency();
   const [data, setData] = useState<TrialBalanceResult | null>(null);
   const [loading, setLoading] = useState(true);
+  const [ledgerRow, setLedgerRow] = useState<TrialBalanceRow | null>(null);
 
   useEffect(() => {
     if (!companyId || !startDate || !endDate) {
@@ -106,12 +108,13 @@ export const TrialBalancePage: React.FC<{
               <th className="p-3 text-right font-medium text-gray-300">Debit</th>
               <th className="p-3 text-right font-medium text-gray-300">Credit</th>
               <th className="p-3 text-right font-medium text-gray-300">Balance</th>
+              <th className="p-3 w-24 font-medium text-gray-300">Action</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-800">
             {data.rows.length === 0 ? (
               <tr>
-                <td colSpan={6} className="p-6 text-center text-gray-500">
+                <td colSpan={7} className="p-6 text-center text-gray-500">
                   No journal entries in this period.
                 </td>
               </tr>
@@ -124,6 +127,16 @@ export const TrialBalancePage: React.FC<{
                   <td className="p-3 text-right text-gray-300">{row.debit ? formatCurrency(row.debit) : '—'}</td>
                   <td className="p-3 text-right text-gray-300">{row.credit ? formatCurrency(row.credit) : '—'}</td>
                   <td className="p-3 text-right font-medium text-white">{formatCurrency(row.balance)}</td>
+                  <td className="p-3">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 px-2 text-blue-400 hover:text-blue-300"
+                      onClick={() => setLedgerRow(row)}
+                    >
+                      <ExternalLink size={12} className="mr-1" /> Ledger
+                    </Button>
+                  </td>
                 </tr>
               ))
             )}
@@ -135,11 +148,23 @@ export const TrialBalancePage: React.FC<{
                 <td className="p-3 text-right font-medium text-white">{formatCurrency(data.totalDebit)}</td>
                 <td className="p-3 text-right font-medium text-white">{formatCurrency(data.totalCredit)}</td>
                 <td className="p-3 text-right font-medium text-white">{formatCurrency(data.totalDebit - data.totalCredit)}</td>
+                <td className="p-3" />
               </tr>
             </tfoot>
           )}
         </table>
       </div>
+      {ledgerRow && (
+        <AccountLedgerView
+          isOpen={!!ledgerRow}
+          onClose={() => setLedgerRow(null)}
+          accountId={ledgerRow.account_id}
+          accountName={ledgerRow.account_name}
+          accountCode={ledgerRow.account_code}
+          accountType={ledgerRow.account_type}
+          initialDateRange={{ from: startDate, to: endDate }}
+        />
+      )}
     </div>
   );
 };

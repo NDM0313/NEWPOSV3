@@ -37,6 +37,32 @@ if (!supabaseUrl || !isValidSupabaseUrl || !supabaseAnonKey) {
 }
 
 // ============================================
+// SAFE STORAGE (avoids SecurityError when localStorage is denied, e.g. iframe/strict privacy)
+// ============================================
+
+const memoryStore: Record<string, string> = {};
+function safeStorage(): Storage {
+  try {
+    if (typeof window === 'undefined') return memoryFallback();
+    const storage = window.localStorage;
+    storage.getItem('');
+    return storage;
+  } catch {
+    return memoryFallback();
+  }
+}
+function memoryFallback(): Storage {
+  return {
+    getItem: (key: string) => memoryStore[key] ?? null,
+    setItem: (key: string, value: string) => { memoryStore[key] = value; },
+    removeItem: (key: string) => { delete memoryStore[key]; },
+    key: (i: number) => Object.keys(memoryStore)[i] ?? null,
+    length: Object.keys(memoryStore).length,
+    clear: () => { for (const k of Object.keys(memoryStore)) delete memoryStore[k]; },
+  };
+}
+
+// ============================================
 // CREATE CLIENT
 // ============================================
 
@@ -45,6 +71,7 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     persistSession: true,
     autoRefreshToken: true,
     detectSessionInUrl: true,
+    storage: safeStorage(),
   },
 });
 

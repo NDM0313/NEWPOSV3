@@ -1,5 +1,5 @@
-import React, { useState, useMemo } from 'react';
-import { X, Receipt, TrendingUp, TrendingDown, Calendar, FileText, Printer, Download, BarChart3, FileSpreadsheet } from 'lucide-react';
+import React, { useState, useMemo, useEffect } from 'react';
+import { X, Receipt, TrendingUp, TrendingDown, Calendar, FileText, Printer, Download, BarChart3, FileSpreadsheet, Truck } from 'lucide-react';
 import { Button } from '@/app/components/ui/button';
 import { Badge } from '@/app/components/ui/badge';
 import { useAccounting, type AccountingEntry } from '@/app/context/AccountingContext';
@@ -20,6 +20,8 @@ export interface LedgerViewProps {
   entityType: LedgerEntityType;
   entityName: string;
   entityId?: string;
+  /** When viewing a sale's ledger, pass saleId to load and show Shipment Accounting section. */
+  saleId?: string;
 }
 
 // ============================================
@@ -170,18 +172,55 @@ const generateDemoTransactions = (entityType: LedgerEntityType, entityName: stri
 // 🎯 UNIFIED LEDGER VIEW
 // ============================================
 
+interface ShipmentLedgerRow {
+  shipment_id: string;
+  date: string;
+  shipping_income: number;
+  shipping_expense: number;
+  courier_payable: number;
+  entry_no?: string;
+  journal_entry_id?: string;
+  courier_name?: string;
+}
+
 export const UnifiedLedgerView: React.FC<LedgerViewProps> = ({
   isOpen,
   onClose,
   entityType,
   entityName,
-  entityId
+  entityId,
+  saleId,
 }) => {
   const accounting = useAccounting();
   const { formatCurrency } = useFormatCurrency();
   const { formatDate } = useFormatDate();
   const [activeTab, setActiveTab] = useState<'summary' | 'detailed' | 'statement'>('summary');
   const [dateFilter, setDateFilter] = useState<'all' | '7days' | '30days' | '90days'>('all');
+  const [shipmentLedgerRows, setShipmentLedgerRows] = useState<ShipmentLedgerRow[]>([]);
+
+  useEffect(() => {
+    if (!isOpen || !saleId) {
+      setShipmentLedgerRows([]);
+      return;
+    }
+    const load = async () => {
+      try {
+        const { shipmentService } = await import('@/app/services/shipmentService');
+        const { shipmentAccountingService } = await import('@/app/services/shipmentAccountingService');
+        const shipments = await shipmentService.getBySaleId(saleId);
+        const ids = shipments.map((s) => s.id);
+        if (ids.length === 0) {
+          setShipmentLedgerRows([]);
+          return;
+        }
+        const rows = await shipmentAccountingService.getShipmentLedgerByShipmentIds(ids);
+        setShipmentLedgerRows((rows ?? []) as ShipmentLedgerRow[]);
+      } catch {
+        setShipmentLedgerRows([]);
+      }
+    };
+    load();
+  }, [isOpen, saleId]);
 
   // Get entity-specific entries (combine real + demo data)
   const entries = useMemo(() => {
@@ -484,6 +523,38 @@ export const UnifiedLedgerView: React.FC<LedgerViewProps> = ({
 
           {/* Content Area */}
           <div className="flex-1 overflow-y-auto p-6">
+            {shipmentLedgerRows.length > 0 && (
+              <div className="mb-6 rounded-xl border border-gray-800 bg-gray-950/50 overflow-hidden">
+                <div className="px-4 py-3 border-b border-gray-800 flex items-center gap-2">
+                  <Truck size={18} className="text-indigo-400" />
+                  <h4 className="font-semibold text-white">Shipment Accounting</h4>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="text-left text-gray-400 border-b border-gray-800">
+                        <th className="px-4 py-2">Date</th>
+                        <th className="px-4 py-2">Shipping Income</th>
+                        <th className="px-4 py-2">Shipping Expense</th>
+                        <th className="px-4 py-2">Courier Payable</th>
+                        <th className="px-4 py-2">Journal Entry #</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {shipmentLedgerRows.map((row, i) => (
+                        <tr key={row.shipment_id + (row.date || '') + i} className="border-b border-gray-800/50">
+                          <td className="px-4 py-2 text-gray-300">{row.date ? new Date(row.date).toLocaleDateString() : '—'}</td>
+                          <td className="px-4 py-2 text-green-400">{formatCurrency(Number(row.shipping_income) || 0)}</td>
+                          <td className="px-4 py-2 text-red-400">{formatCurrency(Number(row.shipping_expense) || 0)}</td>
+                          <td className="px-4 py-2 text-amber-400">{formatCurrency(Number(row.courier_payable) || 0)}</td>
+                          <td className="px-4 py-2 text-gray-400 font-mono">{row.entry_no || '—'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
             {entries.length === 0 ? (
               <div className="text-center py-16">
                 <Receipt className="mx-auto text-gray-600 mb-4" size={64} />

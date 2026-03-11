@@ -25,14 +25,30 @@ const defaultModules: Record<ModuleId, ModuleConfig> = {
 
 const ModuleContext = createContext<ModuleContextType | undefined>(undefined);
 
-export const ModuleProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [modules, setModules] = useState<Record<ModuleId, ModuleConfig>>(() => {
+function loadModulesFromStorage(): Record<ModuleId, ModuleConfig> {
+  try {
+    if (typeof window === 'undefined') return defaultModules;
     const saved = localStorage.getItem('erp_modules');
     return saved ? JSON.parse(saved) : defaultModules;
-  });
+  } catch {
+    return defaultModules;
+  }
+}
+
+function saveModulesToStorage(modules: Record<ModuleId, ModuleConfig>) {
+  try {
+    if (typeof window === 'undefined') return;
+    localStorage.setItem('erp_modules', JSON.stringify(modules));
+  } catch {
+    // ignore SecurityError / quota / disabled storage
+  }
+}
+
+export const ModuleProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const [modules, setModules] = useState<Record<ModuleId, ModuleConfig>>(loadModulesFromStorage);
 
   useEffect(() => {
-    localStorage.setItem('erp_modules', JSON.stringify(modules));
+    saveModulesToStorage(modules);
   }, [modules]);
 
   const toggleModule = useCallback((id: ModuleId, isEnabled: boolean) => {

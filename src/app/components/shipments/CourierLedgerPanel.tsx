@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { shipmentAccountingService } from '@/app/services/shipmentAccountingService';
-import { Truck, TrendingDown, TrendingUp, AlertCircle, RefreshCw } from 'lucide-react';
+import { courierService } from '@/app/services/courierService';
+import { Truck, AlertCircle, RefreshCw } from 'lucide-react';
 
 interface CourierBalance {
   courier_id: string | null;
@@ -20,6 +21,34 @@ function fmt(amount: number) {
   }).format(amount);
 }
 
+/** Merge master couriers with balance data so all company couriers show (newly added with 0 balance). */
+function mergeCourierBalances(
+  masterCouriers: { id: string; name: string }[],
+  balanceRows: CourierBalance[]
+): CourierBalance[] {
+  const balanceById = new Map<string, CourierBalance>();
+  const balanceByName = new Map<string, CourierBalance>();
+  balanceRows.forEach((b) => {
+    if (b.courier_id) balanceById.set(b.courier_id, b);
+    balanceByName.set(b.courier_name.trim().toLowerCase(), b);
+  });
+  const result: CourierBalance[] = [];
+  const namesAdded = new Set<string>();
+  for (const c of masterCouriers) {
+    const row = balanceById.get(c.id) ?? balanceByName.get(c.name.trim().toLowerCase());
+    result.push(row ?? { courier_id: c.id, courier_name: c.name, total_payable: 0, total_paid: 0, balance: 0 });
+    namesAdded.add(c.name.trim().toLowerCase());
+  }
+  for (const b of balanceRows) {
+    const key = b.courier_name.trim().toLowerCase();
+    if (namesAdded.has(key)) continue;
+    result.push(b);
+    namesAdded.add(key);
+  }
+  result.sort((a, b) => a.courier_name.localeCompare(b.courier_name));
+  return result;
+}
+
 export default function CourierLedgerPanel({ companyId }: CourierLedgerPanelProps) {
   const [balances, setBalances] = useState<CourierBalance[]>([]);
   const [loading, setLoading] = useState(true);
@@ -29,9 +58,17 @@ export default function CourierLedgerPanel({ companyId }: CourierLedgerPanelProp
     if (!companyId) return;
     setLoading(true);
     setError(null);
-    shipmentAccountingService
-      .getCourierBalances(companyId)
-      .then(setBalances)
+    Promise.all([
+      courierService.getByCompanyId(companyId, false),
+      shipmentAccountingService.getCourierBalances(companyId),
+    ])
+      .then(([master, balanceRows]) => {
+        const merged = mergeCourierBalances(
+          master.map((c) => ({ id: c.id, name: c.name })),
+          balanceRows
+        );
+        setBalances(merged);
+      })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
   }

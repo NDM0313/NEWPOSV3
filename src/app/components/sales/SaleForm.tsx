@@ -117,6 +117,8 @@ import { useNavigation } from '@/app/context/NavigationContext';
 import { Loader2 } from 'lucide-react';
 import { useDocumentNumbering } from '@/app/hooks/useDocumentNumbering';
 import { shipmentService, mapShipmentRowsToUi, type ShipmentType } from '@/app/services/shipmentService';
+import { courierService, type CourierRow } from '@/app/services/courierService';
+import { ShipmentModal } from './ShipmentModal';
 import { userService, User as UserType } from '@/app/services/userService';
 
 // Variation options come from backend (product.variations) - no dummy data.
@@ -314,16 +316,14 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
       }
     }, [isAdmin, user, salesmanId]);
 
-    // Shipping State (Optional - enabled via checkbox)
-    const [shippingEnabled, setShippingEnabled] = useState<boolean>(false);
-    const [shippingAddress, setShippingAddress] = useState<string>("");
-    const [shippingCharges, setShippingCharges] = useState<number>(0);
+    // Shipping Charge – amount charged to customer (saved in sale_shipments.charged_to_customer when shipment exists)
+    const [shippingChargeInput, setShippingChargeInput] = useState<number>(0);
 
     // Shipment (sale_shipments) – when editing a sale, load from API
-    const [saleShipments, setSaleShipments] = useState<Array<{ id: string; shipmentType: ShipmentType; courierName?: string; shipmentStatus: string; trackingId?: string; chargedToCustomer: number; actualCost: number; notes?: string }>>([]);
-    const [showAddShipmentModal, setShowAddShipmentModal] = useState(false);
-    const [newShipmentForm, setNewShipmentForm] = useState({ shipmentType: 'Courier' as ShipmentType, courierName: '', chargedToCustomer: 0, actualCost: 0, trackingId: '', notes: '' });
-    const [savingShipment, setSavingShipment] = useState(false);
+    const [saleShipments, setSaleShipments] = useState<Array<{ id: string; shipmentType: ShipmentType; courierMasterId?: string; courierName?: string; shipmentStatus: string; trackingId?: string; weight?: number; chargedToCustomer: number; actualCost: number; notes?: string }>>([]);
+    const [couriers, setCouriers] = useState<CourierRow[]>([]);
+    const [showShipmentModal, setShowShipmentModal] = useState(false);
+    const [editingShipmentId, setEditingShipmentId] = useState<string | null>(null);
 
     // Studio Sale State
     const [isStudioSale, setIsStudioSale] = useState<boolean>(false);
@@ -349,14 +349,14 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
         ? (subtotal * discountValue) / 100 
         : discountValue;
     
-    // Calculate shipping (only if enabled) – for new sales without sale_shipments
-    const finalShippingCharges = shippingEnabled ? shippingCharges : 0;
-    // Shipment charges from sale_shipments (when editing existing sale)
+    // Shipment charges from sale_shipments (when editing existing sale with shipment(s))
     const shipmentChargesFromApi = saleShipments.reduce((s, x) => s + x.chargedToCustomer, 0);
-    
-    // Calculate total after discount and expenses
+    // Document state: only Final enables shipping/shipment/attachments/extra expenses
+    const isFinal = saleStatus === 'final';
+
+    // PART 2: grand_total = items_total + extra_expenses + shipping_charges - discount (shipping_charges = shipment.charged_to_customer)
     const afterDiscountTotal = subtotal - discountAmount + expensesTotal;
-    const totalAmount = afterDiscountTotal + (initialSale?.id ? shipmentChargesFromApi : finalShippingCharges);
+    const totalAmount = afterDiscountTotal + (initialSale?.id ? shipmentChargesFromApi : 0);
     
     // Calculate salesman commission
     const commissionAmount = commissionType === 'percentage'
@@ -1229,10 +1229,7 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                         const shippingRows = chargeList.filter((c: any) => (c.charge_type || c.chargeType) === 'shipping');
                         const expenseRows = chargeList.filter((c: any) => (c.charge_type || c.chargeType) !== 'discount' && (c.charge_type || c.chargeType) !== 'shipping');
                         const shippingTotal = shippingRows.reduce((s: number, c: any) => s + (Number(c.amount) || 0), 0);
-                        if (shippingTotal > 0) {
-                            setShippingCharges(shippingTotal);
-                            setShippingEnabled(true);
-                        }
+                        if (shippingTotal > 0) setShippingChargeInput(shippingTotal);
                         if (expenseRows.length > 0) {
                             const expenses = expenseRows.map((c: any, index: number) => ({
                                 id: c.id?.toString() || String(index + 1),
@@ -1307,10 +1304,7 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
             const shippingRows = chargeList.filter((c: any) => (c.charge_type || c.chargeType) === 'shipping');
             const expenseRows = chargeList.filter((c: any) => (c.charge_type || c.chargeType) !== 'discount' && (c.charge_type || c.chargeType) !== 'shipping');
             const shippingTotal = shippingRows.reduce((s: number, c: any) => s + (Number(c.amount) || 0), 0);
-            if (shippingTotal > 0) {
-                setShippingCharges(shippingTotal);
-                setShippingEnabled(true);
-            }
+            if (shippingTotal > 0) setShippingChargeInput(shippingTotal);
             if (expenseRows.length > 0) {
                 const expenses = expenseRows.map((c: any, index: number) => ({
                     id: c.id?.toString() || String(index + 1),
@@ -1326,8 +1320,7 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                     amount: initialSale.expenses,
                     notes: 'Shipping/Other charges'
                 }]);
-                setShippingCharges(initialSale.expenses);
-                setShippingEnabled(true);
+                setShippingChargeInput(initialSale.expenses);
             }
             
             // Pre-fill discount
@@ -1363,6 +1356,16 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
             .catch(() => { if (!cancelled) setSaleShipments([]); });
         return () => { cancelled = true; };
     }, [initialSale?.id]);
+
+    // Couriers for shipment modal dropdown and Track Shipment URL (PART 2, PART 7)
+    useEffect(() => {
+        if (!companyId) return;
+        let cancelled = false;
+        courierService.getByCompanyId(companyId, false)
+            .then((list) => { if (!cancelled) setCouriers(list); })
+            .catch(() => { if (!cancelled) setCouriers([]); });
+        return () => { cancelled = true; };
+    }, [companyId]);
 
     // Status helper functions
     const getStatusColor = () => {
@@ -1753,38 +1756,10 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
         setExtraExpenses(prev => prev.filter(exp => exp.id !== id));
     };
 
-    const handleAddShipment = async () => {
-        if (!initialSale?.id || !companyId || !branchId || newShipmentForm.chargedToCustomer <= 0) {
-            if (newShipmentForm.chargedToCustomer <= 0) toast.error('Enter charged amount');
-            return;
-        }
-        setSavingShipment(true);
-        try {
-            await shipmentService.create(
-                initialSale.id,
-                companyId,
-                branchId,
-                {
-                    shipment_type: newShipmentForm.shipmentType,
-                    courier_name: newShipmentForm.courierName || undefined,
-                    actual_cost: newShipmentForm.actualCost ?? 0,
-                    charged_to_customer: newShipmentForm.chargedToCustomer,
-                    currency: 'PKR',
-                    notes: newShipmentForm.notes || undefined,
-                    tracking_id: newShipmentForm.trackingId || undefined,
-                },
-                user?.id
-            );
-            const rows = await shipmentService.getBySaleId(initialSale.id);
-            setSaleShipments(mapShipmentRowsToUi(rows));
-            setShowAddShipmentModal(false);
-            setNewShipmentForm({ shipmentType: 'Courier', courierName: '', chargedToCustomer: 0, actualCost: 0, trackingId: '', notes: '' });
-            toast.success('Shipment added');
-        } catch (e: any) {
-            toast.error(e?.message || 'Failed to add shipment');
-        } finally {
-            setSavingShipment(false);
-        }
+    const openShipmentModal = (forUpdate: boolean) => {
+        if (forUpdate && saleShipments.length > 0) setEditingShipmentId(saleShipments[0].id);
+        else setEditingShipmentId(null);
+        setShowShipmentModal(true);
     };
 
     const handleDeleteShipment = async (shipmentId: string) => {
@@ -2063,14 +2038,14 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                 subtotal: subtotal,
                 discount: discountAmount,
                 tax: 0, // Can be enhanced later
-                expenses: expensesTotal + finalShippingCharges,
+                expenses: expensesTotal,
                 total: totalAmount,
                 paid: finalPaid,
                 due: finalDue,
                 returnDue: 0,
                 paymentStatus: finalPaymentStatus,
                 paymentMethod: (effectiveFinal && partialPayments.length > 0) ? partialPayments[0].method : 'cash',
-                shippingStatus: shippingEnabled ? 'pending' as const : 'pending' as const,
+                shippingStatus: 'pending' as const,
                 notes: isStudioSale
                     ? buildNotesWithStudioDeadline(studioDeadline, saleNotes || studioNotes || refNumber || '')
                     : (saleNotes || studioNotes || refNumber || undefined),
@@ -2082,9 +2057,9 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                     }
                     return value;
                 })(),
-                // CRITICAL: Include extra expenses + standalone shipping so backend saves both to DB/sale_charges
+                // CRITICAL: Include extra expenses; shipping from sale_shipments (synced by trigger)
                 extraExpenses: extraExpenses,
-                shippingCharges: finalShippingCharges,
+                shippingCharges: initialSale?.id ? shipmentChargesFromApi : 0,
                 commissionAmount: commissionAmount,
                 salesmanId: (salesmanId && salesmanId !== "1" && salesmanId !== "none") ? salesmanId : null,
                 // CRITICAL FIX: Pass partialPayments array for splitting into separate payment records
@@ -2616,23 +2591,6 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                             </Popover>
                                 </div>
 
-                                {/* Shipping Toggle (only for regular sales) */}
-                                {!isStudioSale && (
-                                    <div className="w-auto flex items-end">
-                                        <button
-                                            onClick={() => setShippingEnabled(!shippingEnabled)}
-                                    className={`${shippingEnabled ? 'w-fit min-w-[38px] max-w-[100px]' : 'w-[28px]'} h-[42px] rounded-lg transition-all flex items-center justify-center shrink-0 ${ 
-                                                shippingEnabled
-                                                    ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30'
-                                                    : 'bg-gray-800 text-gray-500 border border-gray-700 hover:bg-gray-750'
-                                            }`}
-                                            style={{ transform: 'none' }}
-                                            title="Shipping"
-                                        >
-                                            <Truck size={14} />
-                                        </button>
-                                    </div>
-                                )}
                             </div>
                         </div>
                     </div>
@@ -2724,42 +2682,9 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
 
                         {/* RIGHT PANEL - Summary + Payment (Independent Scroll) */}
                         <div className="flex flex-col h-full overflow-y-auto space-y-3 pb-3">
-                            {/* Shipping Section (if enabled) */}
-                            {shippingEnabled && (
-                                <div className="bg-gray-900/50 border border-blue-500/30 rounded-lg p-3 shrink-0">
-                                    <div className="flex items-center justify-between mb-3">
-                                        <h3 className="text-xs font-semibold text-blue-400 uppercase tracking-wide flex items-center gap-2">
-                                            <Truck size={14} />
-                                            Shipping Details
-                                        </h3>
-                                        <button 
-                                            onClick={() => setShippingEnabled(false)}
-                                            className="text-xs text-gray-500 hover:text-red-400"
-                                        >
-                                            <X size={14} />
-                                        </button>
-                                    </div>
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                                        <Input 
-                                            type="text" 
-                                            placeholder="Shipping Address"
-                                            className="bg-gray-950 border-gray-700 text-white h-8 text-xs md:col-span-2"
-                                            value={shippingAddress}
-                                            onChange={(e) => setShippingAddress(e.target.value)}
-                                        />
-                                        <Input 
-                                            type="number" 
-                                            placeholder="Shipping Charges"
-                                            className="bg-gray-950 border-gray-700 text-white h-8 text-xs"
-                                            value={shippingCharges > 0 ? shippingCharges : ''}
-                                            onChange={(e) => setShippingCharges(parseFloat(e.target.value) || 0)}
-                                        />
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* Extra Expenses - Compact Inline */}
-                            <div className="bg-gray-900/50 border border-gray-800 rounded-lg p-4 shrink-0">
+                            {/* PART 8 order: Extra Expenses → Shipping Charge → Shipment → Attachments → Invoice Summary */}
+                            {/* Extra Expenses - disabled when not Final */}
+                            <div className={cn("bg-gray-900/50 border border-gray-800 rounded-lg p-4 shrink-0", !isFinal && "opacity-60 pointer-events-none")}>
                                 <div className="flex items-center justify-between mb-3">
                                 <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide flex items-center gap-2">
                                     <DollarSign size={14} className="text-purple-500" />
@@ -2831,210 +2756,85 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                                 )}
                             </div>
 
-                            {/* Summary Card - Compact with Inline Controls */}
-                            <div className="bg-gradient-to-br from-gray-900/80 to-gray-900/50 border border-gray-800 rounded-lg p-4 shrink-0">
-                                <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">Invoice Summary</h3>
-                                <div className="space-y-2">
-                                <div className="flex justify-between text-xs">
-                                    <span className="text-gray-400">Items Subtotal</span>
-                                    <span className="text-white font-medium text-sm">{subtotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                                </div>
-                                
-                                {/* Discount - Inline Input */}
-                                <div className="flex items-center justify-between gap-2 py-1">
-                                    <div className="flex items-center gap-1.5">
-                                        <Percent size={12} className="text-red-400" />
-                                        <span className="text-xs text-gray-400">Discount</span>
-                                    </div>
-                                    <div className="flex items-center gap-1.5">
-                                        <Select value={discountType} onValueChange={(v: any) => setDiscountType(v)}>
-                                            <SelectTrigger className="w-14 h-8 bg-gray-950 border-gray-700 text-white text-xs px-2">
-                                                <SelectValue />
-                                            </SelectTrigger>
-                                            <SelectContent className="bg-gray-950 border-gray-800 text-white min-w-[60px]">
-                                                <SelectItem value="percentage">%</SelectItem>
-                                                <SelectItem value="fixed">{getCurrencySymbol(company?.currency)}</SelectItem>
-                                            </SelectContent>
-                                        </Select>
-                                        <Input 
-                                            type="number" 
-                                            placeholder="0"
-                                            className="w-20 h-8 bg-gray-950 border-gray-700 text-white text-xs text-right px-2"
-                                            value={discountValue > 0 ? discountValue : ''}
-                                            onChange={(e) => setDiscountValue(parseFloat(e.target.value) || 0)}
-                                        />
-                                        {discountAmount > 0 && (
-                                            <span className="text-sm text-red-400 font-medium min-w-[60px] text-right">
-                                                -{discountAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                            </span>
-                                        )}
-                                    </div>
-                                </div>
-
-                                {expensesTotal > 0 && (
-                                    <div className="flex justify-between text-xs">
-                                        <span className="text-purple-400">Extra Expenses</span>
-                                        <span className="text-purple-400 font-medium text-sm">+{expensesTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                                    </div>
-                                )}
-
-                                {/* Shipment (sale_shipments) – when editing existing sale */}
-                                {initialSale?.id ? (
-                                    <div className="space-y-2">
-                                        <div className="flex items-center justify-between">
-                                            <span className="text-xs text-gray-400 flex items-center gap-1.5">
-                                                <Truck size={12} className="text-blue-400" />
-                                                Shipment
-                                            </span>
-                                            <Button
-                                                type="button"
-                                                size="sm"
-                                                variant="ghost"
-                                                className="h-6 px-2 text-xs text-blue-400 hover:text-blue-300 hover:bg-blue-900/20"
-                                                onClick={() => setShowAddShipmentModal(true)}
-                                            >
-                                                <Plus size={12} className="mr-1" />
-                                                Add
-                                            </Button>
-                                        </div>
-                                        {saleShipments.length > 0 ? (
-                                            <div className="space-y-1.5 max-h-32 overflow-y-auto">
-                                                {saleShipments.map((s) => (
-                                                    <div key={s.id} className="bg-gray-950/80 border border-gray-800 rounded-lg p-2 flex items-center justify-between gap-2">
-                                                        <div className="min-w-0 flex-1">
-                                                            <p className="text-xs text-white truncate">{s.shipmentType === 'Courier' ? (s.courierName || 'Courier') : 'Local'}</p>
-                                                            <p className="text-[10px] text-gray-500">+{Number(s.chargedToCustomer).toLocaleString('en-US', { minimumFractionDigits: 2 })}</p>
-                                                        </div>
-                                                        <Button type="button" size="sm" variant="ghost" className="h-6 w-6 p-0 text-red-400 hover:bg-red-900/20" onClick={() => handleDeleteShipment(s.id)} title="Remove">
-                                                            <Trash2 size={12} />
-                                                        </Button>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        ) : (
-                                            <button
-                                                type="button"
-                                                onClick={() => setShowAddShipmentModal(true)}
-                                                className="flex items-center gap-1.5 text-xs text-blue-400 hover:text-blue-300 transition-colors py-1"
-                                            >
-                                                <Truck size={12} />
-                                                <span>Add Shipping</span>
-                                            </button>
-                                        )}
-                                        {shipmentChargesFromApi > 0 && (
-                                            <div className="flex justify-between text-xs">
-                                                <span className="text-blue-400">Shipment total</span>
-                                                <span className="text-blue-400 font-medium text-sm">+{shipmentChargesFromApi.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                                            </div>
-                                        )}
-                                    </div>
+                            {/* Shipping Charge – charged_to_customer (saved in sale_shipments when shipment exists); disabled when not Final */}
+                            <div className={cn("bg-gray-900/50 border border-gray-800 rounded-lg p-3 shrink-0", !isFinal && "opacity-60 pointer-events-none")}>
+                                <h3 className="text-xs font-semibold text-blue-400 uppercase tracking-wide flex items-center gap-2 mb-2">
+                                    <Truck size={14} />
+                                    Shipping Charge
+                                </h3>
+                                {initialSale?.id && saleShipments.length > 0 ? (
+                                    <p className="text-sm text-white font-medium">{shipmentChargesFromApi.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
                                 ) : (
-                                    /* New sale: legacy shipping toggle */
-                                    <>
-                                        {!shippingEnabled ? (
-                                            <button
-                                                type="button"
-                                                onClick={() => setShippingEnabled(true)}
-                                                className="flex items-center gap-1.5 text-xs text-blue-400 hover:text-blue-300 transition-colors py-1"
-                                            >
-                                                <Truck size={12} />
-                                                <span>Add Shipping</span>
-                                            </button>
-                                        ) : finalShippingCharges > 0 && (
-                                            <div className="flex justify-between text-xs">
-                                                <span className="text-blue-400">Shipping</span>
-                                                <span className="text-blue-400 font-medium text-sm">+{finalShippingCharges.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                                            </div>
-                                        )}
-                                    </>
+                                    <Input
+                                        type="number"
+                                        min={0}
+                                        placeholder="Amount"
+                                        className="bg-gray-950 border-gray-700 text-white h-9 text-sm"
+                                        value={shippingChargeInput > 0 ? shippingChargeInput : ''}
+                                        onChange={(e) => setShippingChargeInput(parseFloat(e.target.value) || 0)}
+                                    />
                                 )}
-                                
-                                <Separator className="bg-gray-800" />
-
-                                {/* Payment history – same as Purchase */}
-                                {partialPayments.length > 0 && (
-                                    <>
-                                        <div className="pt-1">
-                                            <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide flex items-center gap-1.5 mb-1.5">
-                                                <Wallet size={14} />
-                                                Payment history ({partialPayments.length})
-                                            </h4>
-                                            <div className="space-y-1.5 max-h-48 overflow-y-auto">
-                                                {partialPayments.map((p) => (
-                                                    <div key={p.id} className="flex items-center justify-between gap-2 bg-gray-950/80 rounded-md px-2.5 py-2 border border-gray-800/50">
-                                                        <div className="flex items-center gap-2 min-w-0 flex-1">
-                                                            {p.method === 'cash' && <Banknote size={14} className="text-green-500 shrink-0" />}
-                                                            {p.method === 'bank' && <CreditCard size={14} className="text-blue-500 shrink-0" />}
-                                                            {p.method === 'Mobile Wallet' && <Wallet size={14} className="text-amber-500 shrink-0" />}
-                                                            <span className="text-sm text-white capitalize truncate">{p.method}</span>
-                                                            {(p.reference || p.notes || (p.attachments?.length ?? 0) > 0) && (
-                                                                <span className="text-xs text-gray-500 truncate">
-                                                                    {p.reference && `Ref: ${p.reference}`}
-                                                                    {p.reference && (p.notes || (p.attachments?.length ?? 0) > 0) && ' · '}
-                                                                    {(p.attachments?.length ?? 0) > 0 && `${p.attachments!.length} file(s)`}
-                                                                </span>
-                                                            )}
-                                                        </div>
-                                                        <span className="text-base font-semibold text-green-400 shrink-0 tabular-nums">{Number(p.amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        </div>
-                                        <Separator className="bg-gray-800" />
-                                    </>
-                                )}
-
-                                <div className="flex justify-between items-center pt-1">
-                                    <span className="text-sm font-semibold text-white">Grand Total</span>
-                                    <span className="text-xl font-bold text-blue-500">{totalAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                                </div>
-                                <div className="flex justify-between items-center pt-1">
-                                    <span className="text-sm font-semibold text-white">Due balance</span>
-                                    <span className="text-xl font-semibold text-orange-500">{Math.max(0, balanceDue).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                                </div>
-
-                                {/* Salesman Commission - Info Only (not added to total) */}
-                                {salesmanId !== "1" && (
-                                    <>
-                                        <Separator className="bg-gray-800/50" />
-                                        <div className="pt-2 space-y-1.5">
-                                            <div className="flex items-center justify-between gap-2">
-                                                <div className="flex items-center gap-1.5">
-                                                    <UserCheck size={12} className="text-green-400" />
-                                                    <span className="text-xs text-gray-400">Commission</span>
-                                                </div>
-                                                <div className="flex items-center gap-1.5">
-                                                    <Select value={commissionType} onValueChange={(v: any) => setCommissionType(v)}>
-                                                        <SelectTrigger className="w-12 h-6 bg-gray-950 border-gray-700 text-white text-[10px] px-1">
-                                                            <SelectValue />
-                                                        </SelectTrigger>
-                                                        <SelectContent className="bg-gray-950 border-gray-800 text-white min-w-[60px]">
-                                                            <SelectItem value="percentage">%</SelectItem>
-                                                            <SelectItem value="fixed">{getCurrencySymbol(company?.currency)}</SelectItem>
-                                                        </SelectContent>
-                                                    </Select>
-                                                    <Input 
-                                                        type="number" 
-                                                        placeholder="0"
-                                                        className="w-16 h-6 bg-gray-950 border-gray-700 text-white text-xs text-right px-2"
-                                                        value={commissionValue > 0 ? commissionValue : ''}
-                                                        onChange={(e) => setCommissionValue(parseFloat(e.target.value) || 0)}
-                                                    />
-                                                </div>
-                                            </div>
-                                            {commissionAmount > 0 && (
-                                                <div className="text-xs text-green-400 font-medium text-right bg-green-500/10 px-2 py-1 rounded">
-                                                    Commission: {commissionAmount.toLocaleString()}
-                                                </div>
-                                            )}
-                                        </div>
-                                    </>
-                                )}
-                                </div>
                             </div>
 
-                            {/* Attachments Card – same as Purchase; saved with payment when you Pay Now */}
-                            <div className="bg-gray-900/50 border border-gray-800 rounded-lg p-4 space-y-3 shrink-0">
+                            {/* Shipment section – only when Final; Add Shipment / Update Shipment with courier, tracking, status badge */}
+                            <div className={cn("bg-gray-900/50 border border-gray-800 rounded-lg p-3 shrink-0", !isFinal && "opacity-60 pointer-events-none")}>
+                                <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2 flex items-center gap-2">
+                                    <Truck size={14} />
+                                    Shipment
+                                </h3>
+                                {isFinal && initialSale?.id ? (
+                                    saleShipments.length === 0 ? (
+                                        <Button type="button" variant="outline" size="sm" className="w-full border-gray-600 text-blue-400 hover:bg-blue-900/20" onClick={() => openShipmentModal(false)}>
+                                            <Plus size={14} className="mr-2" />
+                                            Add Shipment
+                                        </Button>
+                                    ) : (
+                                        <div className="space-y-2">
+                                            {(() => {
+                                                const s = saleShipments[0];
+                                                const courierForTrack = s.courierMasterId ? couriers.find((c) => c.id === s.courierMasterId) : null;
+                                                const trackUrl = courierService.buildTrackingUrl(courierForTrack?.tracking_url ?? null, s.trackingId);
+                                                const statusIcon = (st: string) => st === 'Delivered' || st === 'delivered' ? '✅' : (st === 'In Transit' || st === 'Out for Delivery' ? '🚚' : st === 'Cancelled' || st === 'cancelled' ? '❌' : '📦');
+                                                return (
+                                                    <>
+                                                        <div className="flex items-center justify-between gap-2 text-sm">
+                                                            <span className="text-gray-400">Courier:</span>
+                                                            <span className="text-white">{s.courierName || '—'}</span>
+                                                        </div>
+                                                        <div className="flex items-center justify-between gap-2 text-sm">
+                                                            <span className="text-gray-400">Tracking:</span>
+                                                            <span className="text-white font-mono truncate">{s.trackingId || '—'}</span>
+                                                        </div>
+                                                        <div className="flex items-center justify-between gap-2">
+                                                            <span className="text-gray-400 text-sm">Status:</span>
+                                                            <span className="text-xs font-medium px-2 py-0.5 rounded bg-blue-500/20 text-blue-400 border border-blue-500/30">
+                                                                {statusIcon(s.shipmentStatus)} {s.shipmentStatus}
+                                                            </span>
+                                                        </div>
+                                                        {trackUrl && (
+                                                            <Button type="button" variant="outline" size="sm" className="w-full border-gray-600 text-blue-400 hover:bg-blue-900/20" asChild>
+                                                                <a href={trackUrl} target="_blank" rel="noopener noreferrer">
+                                                                    <ExternalLink size={14} className="mr-2" />
+                                                                    Track Shipment
+                                                                </a>
+                                                            </Button>
+                                                        )}
+                                                        <Button type="button" variant="outline" size="sm" className="w-full border-gray-600 text-orange-400 hover:bg-orange-900/20" onClick={() => openShipmentModal(true)}>
+                                                            <Edit size={14} className="mr-2" />
+                                                            Update Shipment
+                                                        </Button>
+                                                    </>
+                                                );
+                                            })()}
+                                        </div>
+                                    )
+                                ) : (
+                                    <p className="text-xs text-gray-500">Available when status is Final</p>
+                                )}
+                            </div>
+
+                            {/* Attachments – disabled when not Final (PART 8: before Invoice Summary) */}
+                            <div className={cn("bg-gray-900/50 border border-gray-800 rounded-lg p-4 space-y-3 shrink-0", !isFinal && "opacity-60 pointer-events-none")}>
                                 <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wide flex items-center gap-2">
                                     <Paperclip size={14} />
                                     Attachments
@@ -3149,8 +2949,155 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                                     ) : null;
                                 })()}
                                 {saleAttachmentFiles.length === 0 && partialPayments.flatMap((p) => p.attachments || []).length === 0 && savedSaleAttachments.length === 0 && (
-                                    <p className="text-xs text-gray-500">No files yet. Add above; they’ll be saved with the sale when you save.</p>
+                                    <p className="text-xs text-gray-500">No files yet. Add above; they'll be saved with the sale when you save.</p>
                                 )}
+                            </div>
+
+                            {/* Invoice Summary – Grand Total, Due Balance */}
+                            <div className="bg-gradient-to-br from-gray-900/80 to-gray-900/50 border border-gray-800 rounded-lg p-4 shrink-0">
+                                <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">Invoice Summary</h3>
+                                <div className="space-y-2">
+                                {/* PART 1 & 2: Items Subtotal → Extra Expenses → Shipping Charges (visible line when charged_to_customer > 0) → Discount → Grand Total */}
+                                <div className="flex justify-between text-xs">
+                                    <span className="text-gray-400">Items Subtotal</span>
+                                    <span className="text-white font-medium text-sm">{subtotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                </div>
+
+                                {expensesTotal > 0 && (
+                                    <div className="flex justify-between text-xs">
+                                        <span className="text-purple-400">Extra Expenses</span>
+                                        <span className="text-purple-400 font-medium text-sm">+{expensesTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                    </div>
+                                )}
+
+                                {/* Shipping Charges: only when charged_to_customer > 0; optional subtext Courier / Tracking (PART 6) */}
+                                {shipmentChargesFromApi > 0 && (
+                                    <div className="flex justify-between text-xs items-start gap-2">
+                                        <div className="min-w-0">
+                                            <span className="text-blue-400 block">Shipping Charges</span>
+                                            {saleShipments.length > 0 && (saleShipments[0].courierName || saleShipments[0].trackingId) && (
+                                                <span className="text-[10px] text-gray-500 block mt-0.5">
+                                                    ({[saleShipments[0].courierName, saleShipments[0].trackingId ? `Tracking: ${saleShipments[0].trackingId}` : null].filter(Boolean).join(' – ')})
+                                                </span>
+                                            )}
+                                        </div>
+                                        <span className="text-blue-400 font-medium text-sm shrink-0">+{shipmentChargesFromApi.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                    </div>
+                                )}
+
+                                {/* Discount - Inline Input */}
+                                <div className="flex items-center justify-between gap-2 py-1">
+                                    <div className="flex items-center gap-1.5">
+                                        <Percent size={12} className="text-red-400" />
+                                        <span className="text-xs text-gray-400">Discount</span>
+                                    </div>
+                                    <div className="flex items-center gap-1.5">
+                                        <Select value={discountType} onValueChange={(v: any) => setDiscountType(v)}>
+                                            <SelectTrigger className="w-14 h-8 bg-gray-950 border-gray-700 text-white text-xs px-2">
+                                                <SelectValue />
+                                            </SelectTrigger>
+                                            <SelectContent className="bg-gray-950 border-gray-800 text-white min-w-[60px]">
+                                                <SelectItem value="percentage">%</SelectItem>
+                                                <SelectItem value="fixed">{getCurrencySymbol(company?.currency)}</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                        <Input 
+                                            type="number" 
+                                            placeholder="0"
+                                            className="w-20 h-8 bg-gray-950 border-gray-700 text-white text-xs text-right px-2"
+                                            value={discountValue > 0 ? discountValue : ''}
+                                            onChange={(e) => setDiscountValue(parseFloat(e.target.value) || 0)}
+                                        />
+                                        {discountAmount > 0 && (
+                                            <span className="text-sm text-red-400 font-medium min-w-[60px] text-right">
+                                                -{discountAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                            </span>
+                                        )}
+                                    </div>
+                                </div>
+
+                                <Separator className="bg-gray-800" />
+
+                                {/* Payment history – same as Purchase */}
+                                {partialPayments.length > 0 && (
+                                    <>
+                                        <div className="pt-1">
+                                            <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide flex items-center gap-1.5 mb-1.5">
+                                                <Wallet size={14} />
+                                                Payment history ({partialPayments.length})
+                                            </h4>
+                                            <div className="space-y-1.5 max-h-48 overflow-y-auto">
+                                                {partialPayments.map((p) => (
+                                                    <div key={p.id} className="flex items-center justify-between gap-2 bg-gray-950/80 rounded-md px-2.5 py-2 border border-gray-800/50">
+                                                        <div className="flex items-center gap-2 min-w-0 flex-1">
+                                                            {p.method === 'cash' && <Banknote size={14} className="text-green-500 shrink-0" />}
+                                                            {p.method === 'bank' && <CreditCard size={14} className="text-blue-500 shrink-0" />}
+                                                            {p.method === 'Mobile Wallet' && <Wallet size={14} className="text-amber-500 shrink-0" />}
+                                                            <span className="text-sm text-white capitalize truncate">{p.method}</span>
+                                                            {(p.reference || p.notes || (p.attachments?.length ?? 0) > 0) && (
+                                                                <span className="text-xs text-gray-500 truncate">
+                                                                    {p.reference && `Ref: ${p.reference}`}
+                                                                    {p.reference && (p.notes || (p.attachments?.length ?? 0) > 0) && ' · '}
+                                                                    {(p.attachments?.length ?? 0) > 0 && `${p.attachments!.length} file(s)`}
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                        <span className="text-base font-semibold text-green-400 shrink-0 tabular-nums">{Number(p.amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                        <Separator className="bg-gray-800" />
+                                    </>
+                                )}
+
+                                <div className="flex justify-between items-center pt-1">
+                                    <span className="text-sm font-semibold text-white">Grand Total</span>
+                                    <span className="text-xl font-bold text-blue-500">{totalAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                </div>
+                                <div className="flex justify-between items-center pt-1">
+                                    <span className="text-sm font-semibold text-white">Due balance</span>
+                                    <span className="text-xl font-semibold text-orange-500">{Math.max(0, balanceDue).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                </div>
+
+                                {/* Salesman Commission - Info Only (not added to total) */}
+                                {salesmanId !== "1" && (
+                                    <>
+                                        <Separator className="bg-gray-800/50" />
+                                        <div className="pt-2 space-y-1.5">
+                                            <div className="flex items-center justify-between gap-2">
+                                                <div className="flex items-center gap-1.5">
+                                                    <UserCheck size={12} className="text-green-400" />
+                                                    <span className="text-xs text-gray-400">Commission</span>
+                                                </div>
+                                                <div className="flex items-center gap-1.5">
+                                                    <Select value={commissionType} onValueChange={(v: any) => setCommissionType(v)}>
+                                                        <SelectTrigger className="w-12 h-6 bg-gray-950 border-gray-700 text-white text-[10px] px-1">
+                                                            <SelectValue />
+                                                        </SelectTrigger>
+                                                        <SelectContent className="bg-gray-950 border-gray-800 text-white min-w-[60px]">
+                                                            <SelectItem value="percentage">%</SelectItem>
+                                                            <SelectItem value="fixed">{getCurrencySymbol(company?.currency)}</SelectItem>
+                                                        </SelectContent>
+                                                    </Select>
+                                                    <Input 
+                                                        type="number" 
+                                                        placeholder="0"
+                                                        className="w-16 h-6 bg-gray-950 border-gray-700 text-white text-xs text-right px-2"
+                                                        value={commissionValue > 0 ? commissionValue : ''}
+                                                        onChange={(e) => setCommissionValue(parseFloat(e.target.value) || 0)}
+                                                    />
+                                                </div>
+                                            </div>
+                                            {commissionAmount > 0 && (
+                                                <div className="text-xs text-green-400 font-medium text-right bg-green-500/10 px-2 py-1 rounded">
+                                                    Commission: {commissionAmount.toLocaleString()}
+                                                </div>
+                                            )}
+                                        </div>
+                                    </>
+                                )}
+                                </div>
                             </div>
 
                         </div>
@@ -3271,95 +3218,35 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                 }}
             />
 
-            {/* Add Shipment Modal (sale_shipments) */}
-            {showAddShipmentModal && initialSale?.id && (
-                <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
-                    <div className="bg-gray-900 border border-gray-800 rounded-xl p-6 max-w-md w-full">
-                        <div className="flex items-center justify-between mb-5">
-                            <h3 className="text-lg font-bold text-white">Add Shipment</h3>
-                            <Button size="sm" variant="ghost" onClick={() => setShowAddShipmentModal(false)} className="h-8 w-8 p-0">
-                                <X size={16} />
-                            </Button>
-                        </div>
-                        <div className="space-y-4">
-                            <div>
-                                <Label className="text-gray-400 text-sm">Shipment Type</Label>
-                                <select
-                                    value={newShipmentForm.shipmentType}
-                                    onChange={(e) => setNewShipmentForm(prev => ({ ...prev, shipmentType: e.target.value as ShipmentType }))}
-                                    className="w-full mt-1 bg-gray-950 border border-gray-700 rounded-lg text-white h-10 px-3"
-                                >
-                                    <option value="Courier">Courier (DHL, TCS, etc.)</option>
-                                    <option value="Local">Local Delivery</option>
-                                </select>
-                            </div>
-                            {newShipmentForm.shipmentType === 'Courier' && (
-                                <div>
-                                    <Label className="text-gray-400 text-sm">Courier Name</Label>
-                                    <Input
-                                        value={newShipmentForm.courierName}
-                                        onChange={(e) => setNewShipmentForm(prev => ({ ...prev, courierName: e.target.value }))}
-                                        placeholder="e.g., DHL, TCS"
-                                        className="mt-1 bg-gray-950 border-gray-700"
-                                    />
-                                </div>
-                            )}
-                            <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                    <Label className="text-gray-400 text-sm">Charged to Customer (Rs)</Label>
-                                    <Input
-                                        type="number"
-                                        min={0}
-                                        value={newShipmentForm.chargedToCustomer || ''}
-                                        onChange={(e) => setNewShipmentForm(prev => ({ ...prev, chargedToCustomer: Number(e.target.value) }))}
-                                        placeholder="0"
-                                        className="mt-1 bg-gray-950 border-gray-700"
-                                    />
-                                </div>
-                                <div>
-                                    <Label className="text-gray-400 text-sm">Actual Cost (Rs)</Label>
-                                    <Input
-                                        type="number"
-                                        min={0}
-                                        value={newShipmentForm.actualCost || ''}
-                                        onChange={(e) => setNewShipmentForm(prev => ({ ...prev, actualCost: Number(e.target.value) }))}
-                                        placeholder="0"
-                                        className="mt-1 bg-gray-950 border-gray-700"
-                                    />
-                                </div>
-                            </div>
-                            <div>
-                                <Label className="text-gray-400 text-sm">Tracking ID (Optional)</Label>
-                                <Input
-                                    value={newShipmentForm.trackingId}
-                                    onChange={(e) => setNewShipmentForm(prev => ({ ...prev, trackingId: e.target.value }))}
-                                    placeholder="e.g., DHL-123456789"
-                                    className="mt-1 bg-gray-950 border-gray-700"
-                                />
-                            </div>
-                            <div>
-                                <Label className="text-gray-400 text-sm">Notes (Optional)</Label>
-                                <Input
-                                    value={newShipmentForm.notes}
-                                    onChange={(e) => setNewShipmentForm(prev => ({ ...prev, notes: e.target.value }))}
-                                    placeholder="Additional notes..."
-                                    className="mt-1 bg-gray-950 border-gray-700"
-                                />
-                            </div>
-                        </div>
-                        <div className="flex gap-3 pt-4 mt-4 border-t border-gray-800">
-                            <Button variant="outline" className="flex-1 border-gray-700" onClick={() => setShowAddShipmentModal(false)}>Cancel</Button>
-                            <Button
-                                className="flex-1 bg-blue-600 hover:bg-blue-700"
-                                disabled={savingShipment || newShipmentForm.chargedToCustomer <= 0}
-                                onClick={handleAddShipment}
-                            >
-                                {savingShipment ? <Loader2 size={16} className="animate-spin mr-2" /> : null}
-                                Add Shipment
-                            </Button>
-                        </div>
-                    </div>
-                </div>
+            {/* Reusable Shipment Modal (PART 3) – same component as Sales list 3-dot Add Shipment */}
+            {showShipmentModal && initialSale?.id && companyId && branchId && (
+                <ShipmentModal
+                    open={true}
+                    onClose={() => { setShowShipmentModal(false); setEditingShipmentId(null); }}
+                    saleId={initialSale.id}
+                    companyId={companyId}
+                    branchId={branchId}
+                    invoiceNo={displayInvoiceNumber ?? undefined}
+                    editingShipment={editingShipmentId && saleShipments.length > 0 ? {
+                        id: saleShipments[0].id,
+                        shipmentType: saleShipments[0].shipmentType,
+                        courierMasterId: saleShipments[0].courierMasterId,
+                        courierName: saleShipments[0].courierName,
+                        weight: saleShipments[0].weight,
+                        chargedToCustomer: saleShipments[0].chargedToCustomer,
+                        actualCost: saleShipments[0].actualCost,
+                        trackingId: saleShipments[0].trackingId,
+                        shipmentStatus: saleShipments[0].shipmentStatus,
+                        notes: saleShipments[0].notes,
+                    } : null}
+                    initialChargedToCustomer={shippingChargeInput}
+                    onSaved={async () => {
+                        if (!initialSale?.id) return;
+                        const rows = await shipmentService.getBySaleId(initialSale.id);
+                        setSaleShipments(mapShipmentRowsToUi(rows));
+                    }}
+                    performedBy={user?.id}
+                />
             )}
 
             {/* ============ LAYER 3: FIXED FOOTER ============ */}

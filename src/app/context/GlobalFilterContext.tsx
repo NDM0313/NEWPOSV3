@@ -99,12 +99,11 @@ function getDateRangeForType(type: GlobalDateRangeType, customStart?: string | n
 }
 
 function loadFromStorage(): PersistedFilters {
-  if (typeof window === 'undefined') {
-    return { dateRangeType: null, customStartDate: null, customEndDate: null, branchId: null };
-  }
+  const empty: PersistedFilters = { dateRangeType: null, customStartDate: null, customEndDate: null, branchId: null };
+  if (typeof window === 'undefined') return empty;
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return { dateRangeType: null, customStartDate: null, customEndDate: null, branchId: null };
+    if (!raw) return empty;
     const parsed = JSON.parse(raw) as Partial<PersistedFilters>;
     return {
       dateRangeType: parsed.dateRangeType ?? null,
@@ -113,7 +112,8 @@ function loadFromStorage(): PersistedFilters {
       branchId: parsed.branchId ?? null,
     };
   } catch {
-    return { dateRangeType: null, customStartDate: null, customEndDate: null, branchId: null };
+    // SecurityError / Access denied when localStorage is blocked (e.g. iframe, strict privacy)
+    return empty;
   }
 }
 
@@ -157,6 +157,12 @@ export function useGlobalFilter() {
   const ctx = useContext(GlobalFilterContext);
   if (!ctx) throw new Error('useGlobalFilter must be used within GlobalFilterProvider');
   return ctx;
+}
+
+/** Use when component may render outside GlobalFilterProvider (e.g. during HMR or provider re-mount). Returns null when outside provider. */
+export function useGlobalFilterOptional(): GlobalFilterContextType | null {
+  const ctx = useContext(GlobalFilterContext);
+  return ctx ?? null;
 }
 
 const DEFAULT_MODULE: GlobalFilterModule = 'default';

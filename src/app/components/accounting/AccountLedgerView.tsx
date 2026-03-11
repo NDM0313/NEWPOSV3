@@ -20,6 +20,8 @@ interface AccountLedgerViewProps {
   accountName: string;
   accountCode?: string;
   accountType?: string;
+  /** When opening from Trial Balance drill-down, pass report period so the ledger opens with that range */
+  initialDateRange?: { from: string; to: string };
 }
 
 export const AccountLedgerView: React.FC<AccountLedgerViewProps> = ({
@@ -29,16 +31,23 @@ export const AccountLedgerView: React.FC<AccountLedgerViewProps> = ({
   accountName,
   accountCode,
   accountType,
+  initialDateRange,
 }) => {
   const { companyId } = useSupabase();
   const [ledgerEntries, setLedgerEntries] = useState<AccountLedgerEntry[]>([]);
   const [loading, setLoading] = useState(false);
-  const [dateRange, setDateRange] = useState<{ from: Date | undefined; to: Date | undefined }>({
-    from: undefined,
-    to: undefined,
-  });
+  const [dateRange, setDateRange] = useState<{ from: Date | undefined; to: Date | undefined }>(() => ({
+    from: initialDateRange?.from ? new Date(initialDateRange.from) : undefined,
+    to: initialDateRange?.to ? new Date(initialDateRange.to) : undefined,
+  }));
   const [searchTerm, setSearchTerm] = useState('');
   const [openingBalance, setOpeningBalance] = useState<number>(0);
+
+  useEffect(() => {
+    if (isOpen && initialDateRange?.from && initialDateRange?.to) {
+      setDateRange({ from: new Date(initialDateRange.from), to: new Date(initialDateRange.to) });
+    }
+  }, [isOpen, initialDateRange?.from, initialDateRange?.to]);
 
   useEffect(() => {
     if (isOpen && accountId && companyId) {

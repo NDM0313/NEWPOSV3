@@ -42,6 +42,13 @@ import {
 } from "@/app/components/ui/dialog";
 import { Input } from "@/app/components/ui/input";
 import { Label } from "@/app/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/app/components/ui/select";
 import { cn } from "@/app/components/ui/utils";
 import { useNavigation } from '@/app/context/NavigationContext';
 import { useSales, Sale, convertFromSupabaseSale } from '@/app/context/SalesContext';
@@ -50,13 +57,15 @@ import { useGlobalFilter } from '@/app/context/GlobalFilterContext';
 import { saleService } from '@/app/services/saleService';
 import { branchService, Branch } from '@/app/services/branchService';
 import { saleReturnService } from '@/app/services/saleReturnService';
-import { shipmentService, type ShipmentType } from '@/app/services/shipmentService';
+import { shipmentService } from '@/app/services/shipmentService';
 import { Pagination } from '@/app/components/ui/pagination';
 import { ListToolbar } from '@/app/components/ui/list-toolbar';
 import { formatLongDate, formatDateAndTime } from '@/app/components/ui/utils';
 import { UnifiedPaymentDialog } from '@/app/components/shared/UnifiedPaymentDialog';
 import { UnifiedLedgerView } from '@/app/components/shared/UnifiedLedgerView';
 import { ViewSaleDetailsDrawer } from './ViewSaleDetailsDrawer';
+import { ShipmentHistoryDrawer } from './ShipmentHistoryDrawer';
+import { ShipmentModal } from './ShipmentModal';
 import type { InvoiceTemplateType } from '@/app/types/invoiceDocument';
 import { SaleReturnForm } from './SaleReturnForm';
 import { StandaloneSaleReturnForm } from './StandaloneSaleReturnForm';
@@ -207,10 +216,8 @@ export const SalesPage = () => {
   const [cancelInvoiceDialogOpen, setCancelInvoiceDialogOpen] = useState(false);
   const [cancellingInvoice, setCancellingInvoice] = useState(false);
 
-  // Add Shipment modal (from row dropdown – does not open ViewSaleDetailsDrawer)
+  // Add Shipment modal (from row dropdown) – uses shared ShipmentModal (PART 3, PART 4)
   const [addShipmentSaleId, setAddShipmentSaleId] = useState<string | null>(null);
-  const [addShipmentForm, setAddShipmentForm] = useState({ shipmentType: 'Courier' as ShipmentType, courierName: '', chargedToCustomer: 0, actualCost: 0, trackingId: '', notes: '' });
-  const [savingShipment, setSavingShipment] = useState(false);
   
   // State for viewing sale returns
   const [viewReturnsDialogOpen, setViewReturnsDialogOpen] = useState(false);
@@ -235,6 +242,17 @@ export const SalesPage = () => {
   const [selectedReturnForPrint, setSelectedReturnForPrint] = useState<any | null>(null);
   const [printReturnOpen, setPrintReturnOpen] = useState(false);
 
+  // Shipment History drawer (opened from shipping status icon)
+  const [shipmentHistoryDrawerOpen, setShipmentHistoryDrawerOpen] = useState(false);
+  const [shipmentHistoryShipmentId, setShipmentHistoryShipmentId] = useState<string | null>(null);
+  const [shipmentHistoryInvoiceNo, setShipmentHistoryInvoiceNo] = useState<string>('');
+
+  // Update Shipping modal: form state and loaded shipment
+  const SHIPMENT_STATUS_OPTIONS = ['Booked', 'Picked', 'In Transit', 'Out for Delivery', 'Delivered', 'Returned', 'Cancelled'] as const;
+  const [updateShippingForm, setUpdateShippingForm] = useState({ courierName: '', trackingId: '', shipmentStatus: 'Booked' as string });
+  const [updateShippingSaving, setUpdateShippingSaving] = useState(false);
+  const [updateShippingLoadedShipmentId, setUpdateShippingLoadedShipmentId] = useState<string | null>(null);
+
   // Filter states
   const [dateFilter, setDateFilter] = useState('all');
   const [customerFilter, setCustomerFilter] = useState('all');
@@ -252,6 +270,26 @@ export const SalesPage = () => {
       }
     }
   }, []);
+
+  // Load shipment when Update Shipping modal opens (populate Courier, Tracking, Status)
+  useEffect(() => {
+    if (!shippingDialogOpen || !selectedSale?.firstShipmentId) {
+      if (!shippingDialogOpen) setUpdateShippingLoadedShipmentId(null);
+      return;
+    }
+    const sid = selectedSale.firstShipmentId;
+    if (updateShippingLoadedShipmentId === sid) return;
+    shipmentService.getById(sid).then((row) => {
+      if (row) {
+        setUpdateShippingForm({
+          courierName: row.courier_name ?? '',
+          trackingId: row.tracking_id ?? '',
+          shipmentStatus: row.shipment_status ?? 'Booked',
+        });
+        setUpdateShippingLoadedShipmentId(sid);
+      }
+    }).catch(() => setUpdateShippingLoadedShipmentId(null));
+  }, [shippingDialogOpen, selectedSale?.firstShipmentId, updateShippingLoadedShipmentId]);
 
   // Open sale details drawer when navigated here with openSaleIdForView (e.g. after Generate Sale Invoice from Studio)
   // Refresh sales list first so the new SL invoice appears in the table, then open drawer
@@ -399,7 +437,6 @@ export const SalesPage = () => {
 
       case 'add_shipment':
         setAddShipmentSaleId(sale.id);
-        setAddShipmentForm({ shipmentType: 'Courier', courierName: '', chargedToCustomer: 0, actualCost: 0, trackingId: '', notes: '' });
         break;
 
       case 'convert_to_final':
@@ -466,63 +503,33 @@ export const SalesPage = () => {
     }
   };
   
-  // 🎯 SHIPPING UPDATE HANDLER
-  const handleShippingUpdate = async (newStatus: ShippingStatus) => {
-    if (!selectedSale) return;
-    
+  // 🎯 UPDATE SHIPPING (sale_shipments + shipment_history)
+  const handleUpdateShippingSubmit = async () => {
+    if (!selectedSale?.firstShipmentId) return;
+    setUpdateShippingSaving(true);
     try {
-      await updateShippingStatus(selectedSale.id, newStatus);
-      toast.success(`Shipping status updated to ${newStatus}`);
-      setShippingDialogOpen(false);
-      setSelectedSale(null);
-      await refreshSales();
-    } catch (error: any) {
-      console.error('Shipping update error:', error);
-      toast.error(error.message || 'Failed to update shipping status');
-    }
-  };
-
-  // 🎯 ADD SHIPMENT (from row dropdown modal)
-  const handleAddShipmentSubmit = async () => {
-    const saleId = addShipmentSaleId;
-    const sale = selectedSale;
-    if (!saleId || !sale || !companyId || addShipmentForm.chargedToCustomer <= 0) {
-      if (addShipmentForm.chargedToCustomer <= 0) toast.error('Enter charged amount');
-      return;
-    }
-    const branchIdForShipment = salesBranchIdMap.get(saleId) ?? (branchId !== 'all' ? branchId : branches[0]?.id);
-    if (!branchIdForShipment) {
-      toast.error('Could not determine branch for this sale');
-      return;
-    }
-    setSavingShipment(true);
-    try {
-      await shipmentService.create(
-        saleId,
-        companyId,
-        branchIdForShipment,
+      await shipmentService.update(
+        selectedSale.firstShipmentId,
         {
-          shipment_type: addShipmentForm.shipmentType,
-          courier_name: addShipmentForm.courierName || undefined,
-          actual_cost: addShipmentForm.actualCost ?? 0,
-          charged_to_customer: addShipmentForm.chargedToCustomer,
-          currency: 'PKR',
-          notes: addShipmentForm.notes || undefined,
-          tracking_id: addShipmentForm.trackingId || undefined,
+          courier_name: updateShippingForm.courierName || undefined,
+          tracking_id: updateShippingForm.trackingId || undefined,
+          shipment_status: updateShippingForm.shipmentStatus as any,
         },
         user?.id
       );
-      setAddShipmentSaleId(null);
-      setAddShipmentForm({ shipmentType: 'Courier', courierName: '', chargedToCustomer: 0, actualCost: 0, trackingId: '', notes: '' });
-      toast.success('Shipment added');
+      toast.success('Shipping updated. History recorded.');
+      setShippingDialogOpen(false);
+      setSelectedSale(null);
+      setUpdateShippingLoadedShipmentId(null);
       await refreshSales();
-    } catch (e: any) {
-      toast.error(e?.message || 'Failed to add shipment');
+    } catch (error: any) {
+      console.error('Update shipping error:', error);
+      toast.error(error?.message || 'Failed to update shipping');
     } finally {
-      setSavingShipment(false);
+      setUpdateShippingSaving(false);
     }
   };
-  
+
   // Column visibility state
   // REMOVED: contact and paymentMethod columns per UX requirements
   const [visibleColumns, setVisibleColumns] = useState({
@@ -900,18 +907,30 @@ export const SalesPage = () => {
     );
   };
 
-  const getShippingStatusBadge = (status: ShippingStatus) => {
-    const config: Record<string, { bg: string; text: string; border: string }> = {
-      delivered: { bg: 'bg-green-500/20', text: 'text-green-400', border: 'border-green-500/30' },
-      processing: { bg: 'bg-blue-500/20', text: 'text-blue-400', border: 'border-blue-500/30' },
-      pending: { bg: 'bg-yellow-500/20', text: 'text-yellow-400', border: 'border-yellow-500/30' },
-      cancelled: { bg: 'bg-red-500/20', text: 'text-red-400', border: 'border-red-500/30' },
+  const getShippingStatusBadge = (status: string, options?: { iconOnly?: boolean }) => {
+    const s = (status || '').toString();
+    const config: Record<string, { bg: string; text: string; border: string; icon: string }> = {
+      Booked: { bg: 'bg-amber-500/20', text: 'text-amber-400', border: 'border-amber-500/30', icon: '📦' },
+      Picked: { bg: 'bg-blue-500/20', text: 'text-blue-400', border: 'border-blue-500/30', icon: '📦' },
+      'In Transit': { bg: 'bg-blue-500/20', text: 'text-blue-400', border: 'border-blue-500/30', icon: '🚚' },
+      'Out for Delivery': { bg: 'bg-indigo-500/20', text: 'text-indigo-400', border: 'border-indigo-500/30', icon: '🚚' },
+      Delivered: { bg: 'bg-green-500/20', text: 'text-green-400', border: 'border-green-500/30', icon: '✅' },
+      delivered: { bg: 'bg-green-500/20', text: 'text-green-400', border: 'border-green-500/30', icon: '✅' },
+      Returned: { bg: 'bg-orange-500/20', text: 'text-orange-400', border: 'border-orange-500/30', icon: '↩️' },
+      Cancelled: { bg: 'bg-red-500/20', text: 'text-red-400', border: 'border-red-500/30', icon: '❌' },
+      cancelled: { bg: 'bg-red-500/20', text: 'text-red-400', border: 'border-red-500/30', icon: '❌' },
+      Dispatched: { bg: 'bg-blue-500/20', text: 'text-blue-400', border: 'border-blue-500/30', icon: '🚚' },
+      processing: { bg: 'bg-blue-500/20', text: 'text-blue-400', border: 'border-blue-500/30', icon: '🚚' },
+      pending: { bg: 'bg-yellow-500/20', text: 'text-yellow-400', border: 'border-yellow-500/30', icon: '📦' },
+      Pending: { bg: 'bg-yellow-500/20', text: 'text-yellow-400', border: 'border-yellow-500/30', icon: '📦' },
     };
-    const c = config[status] ?? config.pending ?? { bg: 'bg-gray-500/20', text: 'text-gray-400', border: 'border-gray-500/30' };
-    const { bg, text, border } = c;
+    const c = config[s] ?? { bg: 'bg-gray-500/20', text: 'text-gray-400', border: 'border-gray-500/30', icon: '📦' };
+    const { bg, text, border, icon } = c;
+    const label = s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
     return (
-      <Badge className={cn('text-xs font-medium capitalize h-6 px-2', bg, text, border)}>
-        {status}
+      <Badge className={cn('text-xs font-medium h-6 px-2 flex items-center gap-1', bg, text, border)}>
+        {!options?.iconOnly && <span>{icon}</span>}
+        {label}
       </Badge>
     );
   };
@@ -1196,75 +1215,24 @@ export const SalesPage = () => {
         );
       
       case 'shipping':
-        // Shipping status is clickable with dropdown to change status
-        // Hide badge if status is "pending" - show "—" instead
-        if (sale.shippingStatus === 'pending') {
+        // If no shipment, show "—". If shipment exists, show status badge; click opens Shipment History drawer.
+        if (!sale.hasShipment || !sale.firstShipmentId) {
           return <span className="text-xs text-gray-600">—</span>;
         }
-        
         return (
-          <Popover>
-              <PopoverTrigger asChild>
-                <button 
-                  className="cursor-pointer hover:scale-105 transition-transform flex items-center gap-1"
-                  title="Click to change shipping status"
-                  onClick={(e) => e.stopPropagation()}
-                >
-            {getShippingStatusBadge(sale.shippingStatus)}
-                  <ChevronDown size={12} className="text-gray-500" />
-                </button>
-              </PopoverTrigger>
-              <PopoverContent 
-                className="w-48 p-2 bg-gray-900 border-gray-700" 
-                align="center"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <div className="space-y-1">
-                  <p className="text-xs text-gray-400 px-2 pb-2 border-b border-gray-800">Change Status</p>
-                  {(['pending', 'processing', 'delivered', 'cancelled'] as const).map(status => {
-                    const isActive = sale.shippingStatus === status;
-                    const statusConfig: Record<string, { icon: typeof Clock; color: string; bg: string }> = {
-                      pending: { icon: Clock, color: 'text-yellow-400', bg: 'bg-yellow-500/10' },
-                      processing: { icon: Package, color: 'text-blue-400', bg: 'bg-blue-500/10' },
-                      delivered: { icon: CheckCircle, color: 'text-green-400', bg: 'bg-green-500/10' },
-                      cancelled: { icon: XCircle, color: 'text-red-400', bg: 'bg-red-500/10' },
-                    };
-                    const raw = statusConfig[String(status)] ?? statusConfig.pending ?? { icon: Clock, color: 'text-yellow-400', bg: 'bg-yellow-500/10' };
-                    const config = raw && typeof raw.bg === 'string' ? raw : { icon: Clock, color: 'text-yellow-400', bg: 'bg-yellow-500/10' };
-                    const Icon = config.icon ?? Clock;
-                    
-                    return (
-                      <button
-                        key={status}
-                        onClick={async (e) => {
-                          e.stopPropagation();
-                          if (!isActive) {
-                            try {
-                              await updateShippingStatus(sale.id, status);
-                              toast.success(`Shipping status updated to ${status}`);
-                              await refreshSales();
-                            } catch (error: any) {
-                              toast.error(error.message || 'Failed to update status');
-                            }
-                          }
-                        }}
-                        disabled={isActive}
-                        className={cn(
-                          "w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-all",
-                          isActive 
-                            ? `${config.bg ?? 'bg-yellow-500/10'} ${config.color ?? 'text-yellow-400'} cursor-default` 
-                            : "text-gray-300 hover:bg-gray-800"
-                        )}
-                      >
-                        <Icon size={14} className={isActive ? (config.color ?? 'text-yellow-400') : 'text-gray-500'} />
-                        <span className="capitalize">{status}</span>
-                        {isActive && <CheckCircle size={12} className="ml-auto text-green-400" />}
-                      </button>
-                    );
-                  })}
-                </div>
-              </PopoverContent>
-            </Popover>
+          <button
+            type="button"
+            className="cursor-pointer hover:opacity-90 transition-opacity flex items-center gap-1"
+            title="View shipment history"
+            onClick={(e) => {
+              e.stopPropagation();
+              setShipmentHistoryShipmentId(sale.firstShipmentId ?? null);
+              setShipmentHistoryInvoiceNo(sale.invoiceNo ?? '');
+              setShipmentHistoryDrawerOpen(true);
+            }}
+          >
+            {getShippingStatusBadge(sale.shippingStatus as string)}
+          </button>
         );
       
       case 'items':
@@ -2105,20 +2073,23 @@ export const SalesPage = () => {
                                 )}
                               </>
                             )}
-                            <DropdownMenuItem 
-                              className="hover:bg-gray-800 cursor-pointer"
-                              onClick={() => handleSaleAction('update_shipping', sale)}
-                            >
-                              <Truck size={14} className="mr-2 text-orange-400" />
-                              Update Shipping
-                            </DropdownMenuItem>
-                            <DropdownMenuItem 
-                              className="hover:bg-gray-800 cursor-pointer"
-                              onClick={() => handleSaleAction('add_shipment', sale)}
-                            >
-                              <Truck size={14} className="mr-2 text-blue-400" />
-                              Add Shipment
-                            </DropdownMenuItem>
+                            {sale.hasShipment ? (
+                              <DropdownMenuItem 
+                                className="hover:bg-gray-800 cursor-pointer"
+                                onClick={() => handleSaleAction('update_shipping', sale)}
+                              >
+                                <Truck size={14} className="mr-2 text-orange-400" />
+                                Update Shipping
+                              </DropdownMenuItem>
+                            ) : (
+                              <DropdownMenuItem 
+                                className="hover:bg-gray-800 cursor-pointer"
+                                onClick={() => handleSaleAction('add_shipment', sale)}
+                              >
+                                <Truck size={14} className="mr-2 text-blue-400" />
+                                Add Shipment
+                              </DropdownMenuItem>
+                            )}
                             <DropdownMenuSeparator className="bg-gray-700" />
                             {canCancelSale && sale.status === 'final' && getEffectiveSaleStatus(sale) !== 'cancelled' && (
                               <DropdownMenuItem 
@@ -2270,7 +2241,7 @@ export const SalesPage = () => {
         />
       )}
 
-      {/* 🎯 UNIFIED LEDGER VIEW */}
+      {/* 🎯 UNIFIED LEDGER VIEW (includes Shipment Accounting when sale has shipments) */}
       {selectedSale && (
         <UnifiedLedgerView
           isOpen={ledgerOpen}
@@ -2281,8 +2252,21 @@ export const SalesPage = () => {
           entityType="customer"
           entityName={selectedSale.customerName}
           entityId={selectedSale.id}
+          saleId={selectedSale.id}
         />
       )}
+
+      {/* 🎯 SHIPMENT HISTORY DRAWER */}
+      <ShipmentHistoryDrawer
+        isOpen={shipmentHistoryDrawerOpen}
+        onClose={() => {
+          setShipmentHistoryDrawerOpen(false);
+          setShipmentHistoryShipmentId(null);
+          setShipmentHistoryInvoiceNo('');
+        }}
+        shipmentId={shipmentHistoryShipmentId}
+        invoiceNo={shipmentHistoryInvoiceNo}
+      />
       
       {/* 🎯 DELETE CONFIRMATION DIALOG */}
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
@@ -2369,102 +2353,26 @@ export const SalesPage = () => {
         />
       )}
 
-      {/* 🎯 ADD SHIPMENT MODAL (from row dropdown – does not open details drawer) */}
-      {addShipmentSaleId && selectedSale?.id === addShipmentSaleId && (
-        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
-          <div className="bg-gray-900 border border-gray-800 rounded-xl p-6 max-w-md w-full">
-            <div className="flex items-center justify-between mb-5">
-              <h3 className="text-lg font-bold text-white">Add Shipment — {selectedSale.invoiceNo}</h3>
-              <Button size="sm" variant="ghost" onClick={() => { setAddShipmentSaleId(null); setAddShipmentForm({ shipmentType: 'Courier', courierName: '', chargedToCustomer: 0, actualCost: 0, trackingId: '', notes: '' }); }} className="h-8 w-8 p-0">
-                <X size={16} />
-              </Button>
-            </div>
-            <div className="space-y-4">
-              <div>
-                <Label className="text-gray-400 text-sm">Shipment Type</Label>
-                <select
-                  value={addShipmentForm.shipmentType}
-                  onChange={(e) => setAddShipmentForm(prev => ({ ...prev, shipmentType: e.target.value as ShipmentType }))}
-                  className="w-full mt-1 bg-gray-950 border border-gray-700 rounded-lg text-white h-10 px-3"
-                >
-                  <option value="Courier">Courier (DHL, TCS, etc.)</option>
-                  <option value="Local">Local Delivery</option>
-                </select>
-              </div>
-              {addShipmentForm.shipmentType === 'Courier' && (
-                <div>
-                  <Label className="text-gray-400 text-sm">Courier Name</Label>
-                  <Input
-                    value={addShipmentForm.courierName}
-                    onChange={(e) => setAddShipmentForm(prev => ({ ...prev, courierName: e.target.value }))}
-                    placeholder="e.g., DHL, TCS"
-                    className="mt-1 bg-gray-950 border-gray-700"
-                  />
-                </div>
-              )}
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label className="text-gray-400 text-sm">Charged to Customer (Rs)</Label>
-                  <Input
-                    type="number"
-                    min={0}
-                    value={addShipmentForm.chargedToCustomer || ''}
-                    onChange={(e) => setAddShipmentForm(prev => ({ ...prev, chargedToCustomer: Number(e.target.value) }))}
-                    placeholder="0"
-                    className="mt-1 bg-gray-950 border-gray-700"
-                  />
-                </div>
-                <div>
-                  <Label className="text-gray-400 text-sm">Actual Cost (Rs)</Label>
-                  <Input
-                    type="number"
-                    min={0}
-                    value={addShipmentForm.actualCost || ''}
-                    onChange={(e) => setAddShipmentForm(prev => ({ ...prev, actualCost: Number(e.target.value) }))}
-                    placeholder="0"
-                    className="mt-1 bg-gray-950 border-gray-700"
-                  />
-                </div>
-              </div>
-              <div>
-                <Label className="text-gray-400 text-sm">Tracking ID (Optional)</Label>
-                <Input
-                  value={addShipmentForm.trackingId}
-                  onChange={(e) => setAddShipmentForm(prev => ({ ...prev, trackingId: e.target.value }))}
-                  placeholder="e.g., DHL-123456789"
-                  className="mt-1 bg-gray-950 border-gray-700"
-                />
-              </div>
-              <div>
-                <Label className="text-gray-400 text-sm">Notes (Optional)</Label>
-                <Input
-                  value={addShipmentForm.notes}
-                  onChange={(e) => setAddShipmentForm(prev => ({ ...prev, notes: e.target.value }))}
-                  placeholder="Additional notes..."
-                  className="mt-1 bg-gray-950 border-gray-700"
-                />
-              </div>
-              <div className="bg-blue-950/20 border border-blue-800/30 rounded-lg p-3">
-                <p className="text-xs text-blue-400 font-medium mb-1">Note:</p>
-                <p className="text-xs text-gray-400">
-                  This amount will be added to the total bill. You can upload tracking documents after creating the shipment.
-                </p>
-              </div>
-            </div>
-            <div className="flex gap-3 pt-4 mt-4 border-t border-gray-800">
-              <Button variant="outline" className="flex-1 border-gray-700" onClick={() => { setAddShipmentSaleId(null); setAddShipmentForm({ shipmentType: 'Courier', courierName: '', chargedToCustomer: 0, actualCost: 0, trackingId: '', notes: '' }); }}>Cancel</Button>
-              <Button
-                className="flex-1 bg-blue-600 hover:bg-blue-700"
-                disabled={savingShipment || addShipmentForm.chargedToCustomer <= 0}
-                onClick={handleAddShipmentSubmit}
-              >
-                {savingShipment ? <Loader2 size={16} className="animate-spin mr-2" /> : null}
-                Add Shipment
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* 🎯 ADD SHIPMENT – same ShipmentModal as SaleForm (PART 3, PART 4) */}
+      {addShipmentSaleId && selectedSale?.id === addShipmentSaleId && companyId && (() => {
+        const branchIdForShipment = salesBranchIdMap.get(addShipmentSaleId) ?? (branchId !== 'all' ? branchId : branches[0]?.id);
+        if (!branchIdForShipment) return null;
+        return (
+          <ShipmentModal
+            open={true}
+            onClose={() => setAddShipmentSaleId(null)}
+            saleId={addShipmentSaleId}
+            companyId={companyId}
+            branchId={branchIdForShipment}
+            invoiceNo={selectedSale.invoiceNo}
+            onSaved={async () => {
+              await refreshSales();
+              setAddShipmentSaleId(null);
+            }}
+            performedBy={user?.id}
+          />
+        );
+      })()}
 
       {/* 🎯 SALE RETURN FORM (create: saleId only; edit: saleId + returnId for draft) */}
       {saleReturnFormOpen && saleReturnSaleId && (
@@ -2536,40 +2444,52 @@ export const SalesPage = () => {
         />
       )}
 
-      {/* 🎯 SHIPPING UPDATE DIALOG */}
-      <Dialog open={shippingDialogOpen} onOpenChange={setShippingDialogOpen}>
+      {/* 🎯 UPDATE SHIPPING DIALOG — Courier, Tracking, Status; saves to sale_shipments + shipment_history */}
+      <Dialog open={shippingDialogOpen} onOpenChange={(open) => { setShippingDialogOpen(open); if (!open) setUpdateShippingLoadedShipmentId(null); }}>
         <DialogContent className="bg-gray-900 border-gray-700 text-white">
           <DialogHeader>
-            <DialogTitle>Update Shipping Status</DialogTitle>
+            <DialogTitle>Update Shipping</DialogTitle>
           </DialogHeader>
           {selectedSale && (
             <div className="space-y-4">
               <div className="text-sm text-gray-400">
                 Invoice: <span className="font-semibold text-blue-400">{selectedSale.invoiceNo}</span>
               </div>
-              <div className="text-sm text-gray-400">
-                Current Status: <span className="font-semibold text-white capitalize">{selectedSale.shippingStatus}</span>
-              </div>
-              
               <div className="space-y-2">
-                <label className="text-sm font-medium">New Status</label>
-                <div className="grid grid-cols-2 gap-2">
-                  {(['pending', 'processing', 'delivered', 'cancelled'] as ShippingStatus[]).map(status => (
-                    <button
-                      key={status}
-                      onClick={() => handleShippingUpdate(status)}
-                      disabled={selectedSale.shippingStatus === status}
-                      className={cn(
-                        "px-4 py-2 rounded-lg text-sm font-medium transition-colors",
-                        selectedSale.shippingStatus === status
-                          ? "bg-gray-800 text-gray-600 cursor-not-allowed"
-                          : "bg-gray-800 hover:bg-gray-700 text-white"
-                      )}
-                    >
-                      {status.charAt(0).toUpperCase() + status.slice(1)}
-                    </button>
-                  ))}
-                </div>
+                <Label className="text-sm font-medium">Courier</Label>
+                <Input
+                  className="bg-gray-800 border-gray-700 text-white"
+                  value={updateShippingForm.courierName}
+                  onChange={(e) => setUpdateShippingForm((f) => ({ ...f, courierName: e.target.value }))}
+                  placeholder="Courier name"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label className="text-sm font-medium">Tracking Number</Label>
+                <Input
+                  className="bg-gray-800 border-gray-700 text-white"
+                  value={updateShippingForm.trackingId}
+                  onChange={(e) => setUpdateShippingForm((f) => ({ ...f, trackingId: e.target.value }))}
+                  placeholder="Tracking ID"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label className="text-sm font-medium">Shipment Status</Label>
+                <Select
+                  value={updateShippingForm.shipmentStatus}
+                  onValueChange={(v) => setUpdateShippingForm((f) => ({ ...f, shipmentStatus: v }))}
+                >
+                  <SelectTrigger className="bg-gray-800 border-gray-700 text-white">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="bg-gray-900 border-gray-700">
+                    {SHIPMENT_STATUS_OPTIONS.map((opt) => (
+                      <SelectItem key={opt} value={opt} className="text-white focus:bg-gray-800">
+                        {opt}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
             </div>
           )}
@@ -2580,6 +2500,13 @@ export const SalesPage = () => {
               className="bg-gray-800 hover:bg-gray-700 text-white border-gray-700"
             >
               Cancel
+            </Button>
+            <Button
+              onClick={handleUpdateShippingSubmit}
+              disabled={updateShippingSaving || !selectedSale?.firstShipmentId}
+              className="bg-indigo-600 hover:bg-indigo-500 text-white"
+            >
+              {updateShippingSaving ? 'Saving…' : 'Save'}
             </Button>
           </DialogFooter>
         </DialogContent>

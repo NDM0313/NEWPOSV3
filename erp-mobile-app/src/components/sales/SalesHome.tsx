@@ -21,6 +21,8 @@ type SaleRecord = {
   /** Studio worker cost; grand_total = amount + studio_charges */
   studio_charges?: number;
   grand_total?: number;
+  /** From sales_with_shipping when sale has a shipment */
+  shipment_status?: string;
 };
 
 interface SalesHomeProps {
@@ -107,6 +109,7 @@ export function SalesHome({ onBack, onNewSale, companyId, branchId, userId }: Sa
             created_by_name: (createdByUser?.full_name as string) || '',
             studio_charges: studioCharges,
             grand_total: grandTotal,
+            shipment_status: (s.shipment_status as string) || undefined,
           };
         });
         setRecentSales(list);
@@ -676,6 +679,14 @@ export function SalesHome({ onBack, onNewSale, companyId, branchId, userId }: Sa
                     </span>
                   </div>
                   <p className="text-sm text-[#D1D5DB] truncate">{sale.customer}</p>
+                  {sale.shipment_status && (
+                    <span className="inline-block mt-1 text-xs font-medium px-2 py-0.5 rounded bg-[#3B82F6]/20 text-[#93C5FD] border border-[#3B82F6]/30">
+                      {sale.shipment_status === 'Delivered' || sale.shipment_status === 'delivered' ? '✅ Delivered' :
+                        sale.shipment_status === 'In Transit' || sale.shipment_status === 'Out for Delivery' ? '🚚 In Transit' :
+                        sale.shipment_status === 'Cancelled' || sale.shipment_status === 'cancelled' ? '❌ Cancelled' :
+                        `📦 ${sale.shipment_status}`}
+                    </span>
+                  )}
                   {sale.created_by_name && (
                     <p className="text-xs text-[#9CA3AF] mt-0.5">Created by: {sale.created_by_name}</p>
                   )}

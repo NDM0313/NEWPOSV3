@@ -1,14 +1,6 @@
 /**
  * Create Business Wizard — Multi-step onboarding
- * Replaces single-form flow with structured onboarding.
- * Old CreateBusinessForm.tsx kept as backup.
- *
- * Steps:
- * 1. Basic Business Info
- * 2. Financial Configuration
- * 3. Inventory & Units
- * 4. Modules Selection
- * 5. Initial Setup (branch, COA, roles)
+ * Steps: Business Info → Financial → Inventory → Modules → Branch Setup
  */
 
 import React, { useState, useMemo } from 'react';
@@ -23,13 +15,21 @@ import {
   AlertCircle,
   Loader2,
   DollarSign,
-  Calendar,
   Package,
   Layers,
   Settings,
   ChevronRight,
   ChevronLeft,
   Check,
+  ShoppingCart,
+  Truck,
+  Shirt,
+  Store,
+  Camera,
+  BookOpen,
+  Receipt,
+  BarChart3,
+  MapPin,
 } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 import { businessService } from '@/app/services/businessService';
@@ -63,16 +63,16 @@ const COSTING_METHODS = [
   { value: 'Weighted Average', label: 'Weighted Average' },
 ];
 
-const MODULES = [
-  { id: 'sales', label: 'Sales', required: false },
-  { id: 'purchases', label: 'Purchases', required: false },
-  { id: 'rentals', label: 'Rentals', required: false },
-  { id: 'pos', label: 'POS', required: false },
-  { id: 'studio', label: 'Studio Production', required: false },
-  { id: 'accounting', label: 'Accounting', required: false },
-  { id: 'expenses', label: 'Expenses', required: false },
-  { id: 'payroll', label: 'Payroll (future)', required: false },
-  { id: 'reports', label: 'Reports', required: false },
+const MODULES: { id: string; label: string; description: string; icon: React.ComponentType<{ size?: number; className?: string }> }[] = [
+  { id: 'sales', label: 'Sales', description: 'Create invoices and manage customers', icon: ShoppingCart },
+  { id: 'purchases', label: 'Purchases', description: 'Track supplier purchases', icon: Truck },
+  { id: 'rentals', label: 'Rentals', description: 'Manage rental bookings and returns', icon: Shirt },
+  { id: 'pos', label: 'POS', description: 'Point of sale and quick checkout', icon: Store },
+  { id: 'studio', label: 'Studio Production', description: 'Orders and production stages', icon: Camera },
+  { id: 'accounting', label: 'Accounting', description: 'Financial reporting and ledgers', icon: BookOpen },
+  { id: 'expenses', label: 'Expenses', description: 'Record and track expenses', icon: Receipt },
+  { id: 'payroll', label: 'Payroll', description: 'Worker payments (future)', icon: User },
+  { id: 'reports', label: 'Reports', description: 'Analytics and reports', icon: BarChart3 },
 ];
 
 const BASE_UNITS = [
@@ -82,12 +82,15 @@ const BASE_UNITS = [
   { value: 'liter', label: 'Liter (L)' },
 ];
 
-function getDefaultFiscalYearStart(): string {
+function getFiscalYearStartFromMonth(monthValue: string): string {
+  const month = parseInt(monthValue, 10) || 7;
   const now = new Date();
-  const year = now.getFullYear();
-  const month = now.getMonth();
-  if (month >= 6) return `${year}-07-01`;
-  return `${year - 1}-07-01`;
+  const year = now.getMonth() + 1 >= month ? now.getFullYear() : now.getFullYear() - 1;
+  return `${year}-${String(month).padStart(2, '0')}-01`;
+}
+
+function getDefaultFiscalYearStart(): string {
+  return getFiscalYearStartFromMonth('7');
 }
 
 interface CreateBusinessWizardProps {
@@ -135,10 +138,6 @@ export const CreateBusinessWizard: React.FC<CreateBusinessWizardProps> = ({ onSu
     defaultWarehouse: 'Main',
   });
 
-  const totalSteps = 5;
-  const canNext = step < totalSteps;
-  const canPrev = step > 1;
-
   const validateStep = (s: number): string | null => {
     if (s === 1) {
       if (!formData.businessName.trim()) return 'Business name is required';
@@ -149,7 +148,7 @@ export const CreateBusinessWizard: React.FC<CreateBusinessWizardProps> = ({ onSu
     }
     if (s === 2) {
       if (!formData.currency) return 'Currency is required';
-      if (!formData.fiscalYearStart) return 'Financial year start is required';
+      if (!formData.fiscalMonth) return 'Financial year start month is required';
     }
     if (s === 4) {
       if (formData.modules.length === 0) return 'At least one module is required';
@@ -160,6 +159,13 @@ export const CreateBusinessWizard: React.FC<CreateBusinessWizardProps> = ({ onSu
     }
     return null;
   };
+
+  const totalSteps = 5;
+  const canGoNext = step < totalSteps;
+  const canPrev = step > 1;
+  const stepError = validateStep(step);
+  const isStepValid = !stepError;
+  const canProceed = canGoNext ? isStepValid : isStepValid;
 
   const handleNext = () => {
     const err = validateStep(step);
@@ -194,13 +200,14 @@ export const CreateBusinessWizard: React.FC<CreateBusinessWizardProps> = ({ onSu
     setError('');
     setLoading(true);
     try {
+      const fiscalYearStart = getFiscalYearStartFromMonth(formData.fiscalMonth);
       const result = await businessService.createBusiness({
         businessName: formData.businessName,
         ownerName: formData.ownerName,
         email: formData.email,
         password: formData.password,
         currency: formData.currency,
-        fiscalYearStart: formData.fiscalYearStart,
+        fiscalYearStart,
         branchName: formData.branchName,
         branchCode: formData.branchCode,
         phone: formData.phone || undefined,
@@ -217,363 +224,415 @@ export const CreateBusinessWizard: React.FC<CreateBusinessWizardProps> = ({ onSu
     }
   };
 
-  const steps = [
-    { n: 1, title: 'Basic Info', icon: Building2 },
-    { n: 2, title: 'Financial', icon: DollarSign },
-    { n: 3, title: 'Inventory', icon: Package },
-    { n: 4, title: 'Modules', icon: Layers },
-    { n: 5, title: 'Initial Setup', icon: Settings },
+  const steps: { n: number; title: string; description: string; icon: React.ComponentType<{ size?: number; className?: string }> }[] = [
+    { n: 1, title: 'Business Information', description: 'Company profile and owner details', icon: Building2 },
+    { n: 2, title: 'Financial Settings', description: 'Currency, fiscal year, and tax', icon: DollarSign },
+    { n: 3, title: 'Inventory Settings', description: 'Costing and units', icon: Package },
+    { n: 4, title: 'Module Selection', description: 'Choose modules to enable', icon: Layers },
+    { n: 5, title: 'Branch Setup', description: 'First branch and system setup', icon: Settings },
   ];
 
+  const currentStepInfo = steps.find((s) => s.n === step);
+
   return (
-    <div className="min-h-screen bg-[#111827] flex items-center justify-center p-4">
-      <div className="max-w-lg w-full">
-        <div className="text-center mb-6">
-          <h1 className="text-2xl font-bold text-white mb-1">Create Business</h1>
-          <p className="text-gray-400 text-sm">Step {step} of {totalSteps}</p>
-          <div className="flex justify-center gap-2 mt-3">
+    <div className="min-h-screen bg-[#111827] flex items-center justify-center p-8">
+      <div className="w-full max-w-5xl max-h-[90vh] overflow-y-auto">
+        <div className="text-center mb-8">
+          <h1 className="text-2xl md:text-3xl font-bold text-white mb-1">Create Business</h1>
+          <p className="text-gray-400 text-sm md:text-base">Set up your company profile and system settings.</p>
+          <p className="text-gray-500 text-sm mt-1">Step {step} of {totalSteps}</p>
+          <div className="flex justify-center gap-2 mt-4">
             {steps.map((s) => (
               <div
                 key={s.n}
-                className={`w-2 h-2 rounded-full ${step >= s.n ? 'bg-blue-500' : 'bg-gray-600'}`}
+                className={`w-2.5 h-2.5 rounded-full transition-colors ${step >= s.n ? 'bg-blue-500' : 'bg-gray-600'}`}
               />
             ))}
           </div>
         </div>
 
-        <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6">
+        <div className="bg-gray-900 border border-gray-800 rounded-2xl p-8 space-y-6">
           {error && (
-            <div className="mb-4 p-3 bg-red-500/10 border border-red-500/30 rounded-lg flex items-center gap-2 text-red-400">
-              <AlertCircle size={18} />
+            <div className="p-4 bg-red-500/10 border border-red-500/30 rounded-xl flex items-center gap-2 text-red-400">
+              <AlertCircle size={20} />
               <span className="text-sm">{error}</span>
             </div>
           )}
 
-          {/* Step 1: Basic Business Info */}
+          {/* Step header with icon and description */}
+          {currentStepInfo && (() => {
+            const StepIcon = currentStepInfo.icon;
+            return (
+              <div className="flex items-start gap-4 pb-4 border-b border-gray-800">
+                <div className="w-12 h-12 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center shrink-0">
+                  <StepIcon size={24} className="text-blue-400" />
+                </div>
+                <div>
+                  <h2 className="text-lg font-semibold text-white">{currentStepInfo.title}</h2>
+                  <p className="text-sm text-gray-400 mt-0.5">{currentStepInfo.description}</p>
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* Step 1: Business Information */}
           {step === 1 && (
-            <div className="space-y-4">
+            <div className="space-y-6">
               <div>
-                <Label className="text-gray-400">Business Name *</Label>
-                <div className="relative mt-1">
-                  <Building2 className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={18} />
-                  <Input
-                    value={formData.businessName}
-                    onChange={(e) => setFormData({ ...formData, businessName: e.target.value })}
-                    placeholder="Din Collection"
-                    className="pl-10 bg-gray-800 border-gray-700 text-white"
-                    disabled={loading}
-                  />
-                </div>
-              </div>
-              <div>
-                <Label className="text-gray-400">Business Type</Label>
-                <Select value={formData.businessType} onValueChange={(v) => setFormData({ ...formData, businessType: v })}>
-                  <SelectTrigger className="bg-gray-800 border-gray-700 text-white mt-1">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {BUSINESS_TYPES.map((t) => (
-                      <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label className="text-gray-400">Phone</Label>
-                <Input
-                  value={formData.phone}
-                  onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                  placeholder="+92 300 1234567"
-                  className="bg-gray-800 border-gray-700 text-white mt-1"
-                  disabled={loading}
-                />
-              </div>
-              <div>
-                <Label className="text-gray-400">Email *</Label>
-                <div className="relative mt-1">
-                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={18} />
-                  <Input
-                    type="email"
-                    value={formData.email}
-                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                    placeholder="owner@business.com"
-                    className="pl-10 bg-gray-800 border-gray-700 text-white"
-                    disabled={loading}
-                  />
-                </div>
-              </div>
-              <div>
-                <Label className="text-gray-400">Address</Label>
-                <Input
-                  value={formData.address}
-                  onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-                  placeholder="Street, City, Country"
-                  className="bg-gray-800 border-gray-700 text-white mt-1"
-                  disabled={loading}
-                />
-              </div>
-              <div>
-                <Label className="text-gray-400">Owner Name *</Label>
-                <div className="relative mt-1">
-                  <User className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={18} />
-                  <Input
-                    value={formData.ownerName}
-                    onChange={(e) => setFormData({ ...formData, ownerName: e.target.value })}
-                    placeholder="John Doe"
-                    className="pl-10 bg-gray-800 border-gray-700 text-white"
-                    disabled={loading}
-                  />
-                </div>
-              </div>
-              <div>
-                <Label className="text-gray-400">Password *</Label>
-                <div className="relative mt-1">
-                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={18} />
-                  <Input
-                    type="password"
-                    value={formData.password}
-                    onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                    placeholder="••••••••"
-                    className="pl-10 bg-gray-800 border-gray-700 text-white"
-                    disabled={loading}
-                  />
-                </div>
-              </div>
-              <div>
-                <Label className="text-gray-400">Confirm Password *</Label>
-                <div className="relative mt-1">
-                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={18} />
-                  <Input
-                    type="password"
-                    value={formData.confirmPassword}
-                    onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}
-                    placeholder="••••••••"
-                    className="pl-10 bg-gray-800 border-gray-700 text-white"
-                    disabled={loading}
-                  />
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Step 2: Financial Configuration */}
-          {step === 2 && (
-            <div className="space-y-4">
-              <div>
-                <Label className="text-gray-400">Currency *</Label>
-                <Select value={formData.currency} onValueChange={(v) => setFormData({ ...formData, currency: v })}>
-                  <SelectTrigger className="bg-gray-800 border-gray-700 text-white mt-1">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {CURRENCIES.map((c) => (
-                      <SelectItem key={c.code} value={c.code}>{c.label}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label className="text-gray-400">Financial Year Start *</Label>
-                <div className="relative mt-1">
-                  <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={18} />
-                  <Input
-                    type="date"
-                    value={formData.fiscalYearStart}
-                    onChange={(e) => setFormData({ ...formData, fiscalYearStart: e.target.value })}
-                    className="pl-10 bg-gray-800 border-gray-700 text-white"
-                    disabled={loading}
-                  />
-                </div>
-              </div>
-              <div>
-                <Label className="text-gray-400">Accounting Method</Label>
-                <Select
-                  value={formData.accountingMethod}
-                  onValueChange={(v: 'Accrual' | 'Cash') => setFormData({ ...formData, accountingMethod: v })}
-                >
-                  <SelectTrigger className="bg-gray-800 border-gray-700 text-white mt-1">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Accrual">Accrual</SelectItem>
-                    <SelectItem value="Cash">Cash</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label className="text-gray-400">Default Tax Mode</Label>
-                <Select
-                  value={formData.taxMode}
-                  onValueChange={(v: 'Inclusive' | 'Exclusive') => setFormData({ ...formData, taxMode: v })}
-                >
-                  <SelectTrigger className="bg-gray-800 border-gray-700 text-white mt-1">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Inclusive">Tax Inclusive</SelectItem>
-                    <SelectItem value="Exclusive">Tax Exclusive</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label className="text-gray-400">Default Tax %</Label>
-                <Input
-                  type="number"
-                  min={0}
-                  max={100}
-                  value={formData.defaultTaxRate}
-                  onChange={(e) => setFormData({ ...formData, defaultTaxRate: Number(e.target.value) || 0 })}
-                  className="bg-gray-800 border-gray-700 text-white mt-1"
-                  disabled={loading}
-                />
-              </div>
-              <div className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  id="multiBranch"
-                  checked={formData.enableMultiBranch}
-                  onChange={(e) => setFormData({ ...formData, enableMultiBranch: e.target.checked })}
-                  className="rounded"
-                />
-                <Label htmlFor="multiBranch" className="text-gray-400 cursor-pointer">Enable multi-branch?</Label>
-              </div>
-            </div>
-          )}
-
-          {/* Step 3: Inventory & Units */}
-          {step === 3 && (
-            <div className="space-y-4">
-              <div>
-                <Label className="text-gray-400">Default Costing Method</Label>
-                <Select
-                  value={formData.costingMethod}
-                  onValueChange={(v) => setFormData({ ...formData, costingMethod: v })}
-                >
-                  <SelectTrigger className="bg-gray-800 border-gray-700 text-white mt-1">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {COSTING_METHODS.map((c) => (
-                      <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  id="negStock"
-                  checked={formData.allowNegativeStock}
-                  onChange={(e) => setFormData({ ...formData, allowNegativeStock: e.target.checked })}
-                  className="rounded"
-                />
-                <Label htmlFor="negStock" className="text-gray-400 cursor-pointer">Allow negative stock?</Label>
-              </div>
-              <div>
-                <Label className="text-gray-400">Default Unit</Label>
-                <Select
-                  value={formData.defaultUnit}
-                  onValueChange={(v) => setFormData({ ...formData, defaultUnit: v })}
-                >
-                  <SelectTrigger className="bg-gray-800 border-gray-700 text-white mt-1">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {BASE_UNITS.map((u) => (
-                      <SelectItem key={u.value} value={u.value}>{u.label}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <p className="text-xs text-gray-500">Base units (pcs, meter, kg) are auto-created. Add more in Settings after creation.</p>
-            </div>
-          )}
-
-          {/* Step 4: Modules Selection */}
-          {step === 4 && (
-            <div className="space-y-3">
-              <p className="text-sm text-gray-400">Only enabled modules appear in the sidebar.</p>
-              <div className="grid grid-cols-2 gap-2">
-                {MODULES.map((m) => (
-                  <button
-                    key={m.id}
-                    type="button"
-                    onClick={() => toggleModule(m.id)}
-                    className={`p-3 rounded-xl border text-left transition ${
-                      formData.modules.includes(m.id)
-                        ? 'border-blue-500 bg-blue-500/10 text-white'
-                        : 'border-gray-700 bg-gray-800 text-gray-400 hover:border-gray-600'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm font-medium">{m.label}</span>
-                      {formData.modules.includes(m.id) && <Check size={16} className="text-blue-400" />}
+                <h3 className="text-sm font-medium text-gray-400 uppercase tracking-wide mb-4">Business Information</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div>
+                    <Label className="text-gray-400">Business Name *</Label>
+                    <div className="relative mt-1">
+                      <Building2 className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={18} />
+                      <Input
+                        value={formData.businessName}
+                        onChange={(e) => setFormData({ ...formData, businessName: e.target.value })}
+                        placeholder="Din Collection"
+                        className="pl-10 bg-gray-800 border-gray-700 text-white"
+                        disabled={loading}
+                      />
                     </div>
-                  </button>
-                ))}
+                  </div>
+                  <div>
+                    <Label className="text-gray-400">Business Type</Label>
+                    <Select value={formData.businessType} onValueChange={(v) => setFormData({ ...formData, businessType: v })}>
+                      <SelectTrigger className="bg-gray-800 border-gray-700 text-white mt-1">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {BUSINESS_TYPES.map((t) => (
+                          <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label className="text-gray-400">Phone</Label>
+                    <Input
+                      value={formData.phone}
+                      onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                      placeholder="+92 300 1234567"
+                      className="bg-gray-800 border-gray-700 text-white mt-1"
+                      disabled={loading}
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-gray-400">Email *</Label>
+                    <div className="relative mt-1">
+                      <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={18} />
+                      <Input
+                        type="email"
+                        value={formData.email}
+                        onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                        placeholder="owner@business.com"
+                        className="pl-10 bg-gray-800 border-gray-700 text-white"
+                        disabled={loading}
+                      />
+                    </div>
+                  </div>
+                  <div className="md:col-span-2">
+                    <Label className="text-gray-400">Address</Label>
+                    <div className="relative mt-1">
+                      <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={18} />
+                      <Input
+                        value={formData.address}
+                        onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                        placeholder="Street, City, Country"
+                        className="pl-10 bg-gray-800 border-gray-700 text-white"
+                        disabled={loading}
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <Label className="text-gray-400">Owner Name *</Label>
+                    <div className="relative mt-1">
+                      <User className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={18} />
+                      <Input
+                        value={formData.ownerName}
+                        onChange={(e) => setFormData({ ...formData, ownerName: e.target.value })}
+                        placeholder="John Doe"
+                        className="pl-10 bg-gray-800 border-gray-700 text-white"
+                        disabled={loading}
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <Label className="text-gray-400">Password *</Label>
+                    <div className="relative mt-1">
+                      <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={18} />
+                      <Input
+                        type="password"
+                        value={formData.password}
+                        onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                        placeholder="••••••••"
+                        className="pl-10 bg-gray-800 border-gray-700 text-white"
+                        disabled={loading}
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <Label className="text-gray-400">Confirm Password *</Label>
+                    <div className="relative mt-1">
+                      <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={18} />
+                      <Input
+                        type="password"
+                        value={formData.confirmPassword}
+                        onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}
+                        placeholder="••••••••"
+                        className="pl-10 bg-gray-800 border-gray-700 text-white"
+                        disabled={loading}
+                      />
+                    </div>
+                  </div>
+                </div>
               </div>
-              <p className="text-xs text-amber-400">At least one module required.</p>
             </div>
           )}
 
-          {/* Step 5: Initial Setup */}
+          {/* Step 2: Financial Settings */}
+          {step === 2 && (
+            <div className="space-y-6">
+              <h3 className="text-sm font-medium text-gray-400 uppercase tracking-wide">Financial Settings</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                  <Label className="text-gray-400">Currency *</Label>
+                  <Select value={formData.currency} onValueChange={(v) => setFormData({ ...formData, currency: v })}>
+                    <SelectTrigger className="bg-gray-800 border-gray-700 text-white mt-1">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {CURRENCIES.map((c) => (
+                        <SelectItem key={c.code} value={c.code}>{c.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label className="text-gray-400">Financial Year Start *</Label>
+                  <Select
+                    value={formData.fiscalMonth}
+                    onValueChange={(v) => setFormData({ ...formData, fiscalMonth: v, fiscalYearStart: getFiscalYearStartFromMonth(v) })}
+                  >
+                    <SelectTrigger className="bg-gray-800 border-gray-700 text-white mt-1">
+                      <SelectValue placeholder="Select month" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {FISCAL_MONTHS.map((f) => (
+                        <SelectItem key={f.value} value={f.value}>{f.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-gray-500 mt-1">First month of your financial year</p>
+                </div>
+                <div>
+                  <Label className="text-gray-400">Accounting Method</Label>
+                  <Select
+                    value={formData.accountingMethod}
+                    onValueChange={(v: 'Accrual' | 'Cash') => setFormData({ ...formData, accountingMethod: v })}
+                  >
+                    <SelectTrigger className="bg-gray-800 border-gray-700 text-white mt-1">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Accrual">Accrual</SelectItem>
+                      <SelectItem value="Cash">Cash</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label className="text-gray-400">Default Tax Mode</Label>
+                  <Select
+                    value={formData.taxMode}
+                    onValueChange={(v: 'Inclusive' | 'Exclusive') => setFormData({ ...formData, taxMode: v })}
+                  >
+                    <SelectTrigger className="bg-gray-800 border-gray-700 text-white mt-1">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Inclusive">Tax Inclusive</SelectItem>
+                      <SelectItem value="Exclusive">Tax Exclusive</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label className="text-gray-400">Default Tax %</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    max={100}
+                    value={formData.defaultTaxRate}
+                    onChange={(e) => setFormData({ ...formData, defaultTaxRate: Number(e.target.value) || 0 })}
+                    className="bg-gray-800 border-gray-700 text-white mt-1"
+                    disabled={loading}
+                  />
+                </div>
+                <div className="flex items-center gap-2 md:col-span-2">
+                  <input
+                    type="checkbox"
+                    id="multiBranch"
+                    checked={formData.enableMultiBranch}
+                    onChange={(e) => setFormData({ ...formData, enableMultiBranch: e.target.checked })}
+                    className="rounded border-gray-600"
+                  />
+                  <Label htmlFor="multiBranch" className="text-gray-400 cursor-pointer">Enable multi-branch?</Label>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Step 3: Inventory Settings */}
+          {step === 3 && (
+            <div className="space-y-6">
+              <h3 className="text-sm font-medium text-gray-400 uppercase tracking-wide">Inventory Settings</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                  <Label className="text-gray-400">Default Costing Method</Label>
+                  <Select
+                    value={formData.costingMethod}
+                    onValueChange={(v) => setFormData({ ...formData, costingMethod: v })}
+                  >
+                    <SelectTrigger className="bg-gray-800 border-gray-700 text-white mt-1">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {COSTING_METHODS.map((c) => (
+                        <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    id="negStock"
+                    checked={formData.allowNegativeStock}
+                    onChange={(e) => setFormData({ ...formData, allowNegativeStock: e.target.checked })}
+                    className="rounded border-gray-600"
+                  />
+                  <Label htmlFor="negStock" className="text-gray-400 cursor-pointer">Allow negative stock?</Label>
+                </div>
+                <div className="md:col-span-2">
+                  <Label className="text-gray-400">Default Unit</Label>
+                  <Select
+                    value={formData.defaultUnit}
+                    onValueChange={(v) => setFormData({ ...formData, defaultUnit: v })}
+                  >
+                    <SelectTrigger className="bg-gray-800 border-gray-700 text-white mt-1">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {BASE_UNITS.map((u) => (
+                        <SelectItem key={u.value} value={u.value}>{u.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-gray-500 mt-2">Base units (pcs, meter, kg) will be created automatically.</p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Step 4: Module Selection — cards with icon, name, description */}
+          {step === 4 && (
+            <div className="space-y-6">
+              <h3 className="text-sm font-medium text-gray-400 uppercase tracking-wide">Module Selection</h3>
+              <p className="text-sm text-gray-400">Only enabled modules appear in the sidebar. Select at least one.</p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {MODULES.map((m) => {
+                  const Icon = m.icon;
+                  const selected = formData.modules.includes(m.id);
+                  return (
+                    <button
+                      key={m.id}
+                      type="button"
+                      onClick={() => toggleModule(m.id)}
+                      className={`p-4 rounded-xl border-2 text-left transition-all flex items-start gap-3 ${
+                        selected
+                          ? 'border-blue-500 bg-blue-500/10 text-white'
+                          : 'border-gray-700 bg-gray-800/50 text-gray-400 hover:border-gray-600 hover:bg-gray-800'
+                      }`}
+                    >
+                      <div className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${selected ? 'bg-blue-500/20' : 'bg-gray-700'}`}>
+                        <Icon size={20} className={selected ? 'text-blue-400' : 'text-gray-500'} />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="font-medium text-white">{m.label}</span>
+                          {selected && <Check size={18} className="text-blue-400 shrink-0" />}
+                        </div>
+                        <p className="text-xs text-gray-400 mt-0.5">{m.description}</p>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+              {formData.modules.length === 0 && (
+                <p className="text-sm text-amber-400">At least one module is required.</p>
+              )}
+            </div>
+          )}
+
+          {/* Step 5: Branch Setup */}
           {step === 5 && (
-            <div className="space-y-4">
-              <div>
-                <Label className="text-gray-400">First Branch Name *</Label>
-                <Input
-                  value={formData.branchName}
-                  onChange={(e) => setFormData({ ...formData, branchName: e.target.value })}
-                  placeholder="Main Branch"
-                  className="bg-gray-800 border-gray-700 text-white mt-1"
-                  disabled={loading}
-                />
+            <div className="space-y-6">
+              <h3 className="text-sm font-medium text-gray-400 uppercase tracking-wide">Branch Setup</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                  <Label className="text-gray-400">First Branch Name *</Label>
+                  <Input
+                    value={formData.branchName}
+                    onChange={(e) => setFormData({ ...formData, branchName: e.target.value })}
+                    placeholder="Main Branch"
+                    className="bg-gray-800 border-gray-700 text-white mt-1"
+                    disabled={loading}
+                  />
+                </div>
+                <div>
+                  <Label className="text-gray-400">Branch Code *</Label>
+                  <Input
+                    value={formData.branchCode}
+                    onChange={(e) => setFormData({ ...formData, branchCode: e.target.value })}
+                    placeholder="HQ"
+                    className="bg-gray-800 border-gray-700 text-white mt-1"
+                    disabled={loading}
+                  />
+                </div>
+                <div className="md:col-span-2">
+                  <Label className="text-gray-400">Default Warehouse</Label>
+                  <Input
+                    value={formData.defaultWarehouse}
+                    onChange={(e) => setFormData({ ...formData, defaultWarehouse: e.target.value })}
+                    placeholder="Main"
+                    className="bg-gray-800 border-gray-700 text-white mt-1"
+                    disabled={loading}
+                  />
+                </div>
               </div>
-              <div>
-                <Label className="text-gray-400">Branch Code *</Label>
-                <Input
-                  value={formData.branchCode}
-                  onChange={(e) => setFormData({ ...formData, branchCode: e.target.value })}
-                  placeholder="HQ"
-                  className="bg-gray-800 border-gray-700 text-white mt-1"
-                  disabled={loading}
-                />
-              </div>
-              <div>
-                <Label className="text-gray-400">Default Warehouse</Label>
-                <Input
-                  value={formData.defaultWarehouse}
-                  onChange={(e) => setFormData({ ...formData, defaultWarehouse: e.target.value })}
-                  placeholder="Main"
-                  className="bg-gray-800 border-gray-700 text-white mt-1"
-                  disabled={loading}
-                />
-              </div>
-              <div className="bg-gray-800/50 rounded-lg p-3 text-sm text-gray-400">
-                <p className="font-medium text-gray-300 mb-1">On submit, the system will:</p>
-                <ul className="list-disc list-inside space-y-1">
-                  <li>Create company</li>
-                  <li>Create branch</li>
-                  <li>Create default financial year</li>
-                  <li>Generate default chart of accounts</li>
-                  <li>Insert default payment methods</li>
-                  <li>Insert default units</li>
-                  <li>Enable selected modules</li>
-                  <li>Generate numbering sequences</li>
-                  <li>Create Super Admin role</li>
+              <div className="bg-gray-800/50 border border-gray-700 rounded-xl p-5">
+                <p className="text-sm font-medium text-gray-300 mb-3">On submit, the system will:</p>
+                <ul className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm text-gray-400">
+                  <li className="flex items-center gap-2">• Create company</li>
+                  <li className="flex items-center gap-2">• Create branch</li>
+                  <li className="flex items-center gap-2">• Generate chart of accounts</li>
+                  <li className="flex items-center gap-2">• Create default payment methods</li>
+                  <li className="flex items-center gap-2">• Create base units</li>
+                  <li className="flex items-center gap-2">• Enable selected modules</li>
+                  <li className="flex items-center gap-2">• Generate document numbering</li>
+                  <li className="flex items-center gap-2">• Create Super Admin role</li>
                 </ul>
               </div>
             </div>
           )}
 
-          {/* Step Navigation */}
-          <div className="flex gap-3 mt-6 pt-4 border-t border-gray-800">
+          {/* Step Navigation: Back, Next, Create Business */}
+          <div className="flex flex-wrap gap-3 pt-6 border-t border-gray-800">
             <Button
               type="button"
               onClick={onCancel}
               disabled={loading}
               variant="outline"
-              className="flex-1 bg-gray-800 border-gray-700 text-white hover:bg-gray-700"
+              className="bg-gray-800 border-gray-700 text-white hover:bg-gray-700"
             >
               Cancel
             </Button>
@@ -585,24 +644,26 @@ export const CreateBusinessWizard: React.FC<CreateBusinessWizardProps> = ({ onSu
                 variant="outline"
                 className="bg-gray-800 border-gray-700 text-white hover:bg-gray-700"
               >
-                <ChevronLeft size={18} />
+                <ChevronLeft size={18} className="mr-1" />
+                Back
               </Button>
             )}
-            {canNext ? (
+            {canGoNext ? (
               <Button
                 type="button"
                 onClick={handleNext}
-                disabled={loading}
-                className="flex-1 bg-blue-600 hover:bg-blue-700 text-white"
+                disabled={loading || !canProceed}
+                className="bg-blue-600 hover:bg-blue-700 text-white"
               >
-                Next <ChevronRight size={18} />
+                Next
+                <ChevronRight size={18} className="ml-1" />
               </Button>
             ) : (
               <Button
                 type="button"
                 onClick={handleSubmit}
-                disabled={loading}
-                className="flex-1 bg-blue-600 hover:bg-blue-700 text-white"
+                disabled={loading || !canProceed}
+                className="bg-blue-600 hover:bg-blue-700 text-white"
               >
                 {loading ? (
                   <>

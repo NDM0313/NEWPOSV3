@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, ReactNode } from 'react';
 import { useSupabase } from '@/app/context/SupabaseContext';
-import { useGlobalFilter } from '@/app/context/GlobalFilterContext';
+import { useGlobalFilterOptional } from '@/app/context/GlobalFilterContext';
 import { accountService, Account as SupabaseAccount } from '@/app/services/accountService';
 import { accountingService, JournalEntryWithLines, JournalEntryLine } from '@/app/services/accountingService';
 import { toast } from 'sonner';
@@ -252,7 +252,14 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const { companyId, branchId, user, userRole } = useSupabase();
-  const { startDate: startDateISO, endDate: endDateISO } = useGlobalFilter();
+  const globalFilter = useGlobalFilterOptional();
+const startDateISO = globalFilter?.startDate ?? (() => {
+  const end = new Date();
+  const start = new Date(end);
+  start.setDate(start.getDate() - 29);
+  return start.toISOString().slice(0, 10);
+})();
+const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10);
 
   // Current user (from auth context)
   const currentUser = user?.email || 'Admin';

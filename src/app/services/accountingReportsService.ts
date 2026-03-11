@@ -28,6 +28,16 @@ export interface ProfitLossSection {
   total: number;
 }
 
+export interface ProfitLossComparison {
+  startDate: string;
+  endDate: string;
+  revenue: number;
+  costOfSales: number;
+  grossProfit: number;
+  expenses: number;
+  netProfit: number;
+}
+
 export interface ProfitLossResult {
   revenue: ProfitLossSection;
   costOfSales: ProfitLossSection;
@@ -36,6 +46,7 @@ export interface ProfitLossResult {
   netProfit: number;
   startDate: string;
   endDate: string;
+  comparison?: ProfitLossComparison;
 }
 
 export interface BalanceSheetSection {
@@ -201,12 +212,14 @@ export const accountingReportsService = {
   /**
    * Profit & Loss: Revenue - Cost of Sales = Gross Profit; Gross Profit - Expenses = Net Profit.
    * Uses journal_entry_lines joined to journal_entries (date filter), grouped by account type.
+   * Optional comparison period: pass compareStartDate/compareEndDate to get prior-period totals.
    */
   async getProfitLoss(
     companyId: string,
     startDate: string,
     endDate: string,
-    branchId?: string
+    branchId?: string,
+    options?: { compareStartDate?: string; compareEndDate?: string }
   ): Promise<ProfitLossResult> {
     const tb = await this.getTrialBalance(companyId, startDate, endDate, branchId);
     const revenueItems: { name: string; amount: number; code?: string }[] = [];
@@ -218,7 +231,6 @@ export const accountingReportsService = {
     let totalExpenses = 0;
     tb.rows.forEach((r) => {
       const cat = accountTypeCategory(r.account_type);
-      // Revenue is credit-nature: show credit - debit as positive income
       const revenueAmount = cat === 'revenue' ? r.credit - r.debit : 0;
       const expenseAmount = cat === 'expense' ? r.debit - r.credit : 0;
       if (cat === 'revenue' && revenueAmount !== 0) {
@@ -236,6 +248,32 @@ export const accountingReportsService = {
     });
     const grossProfit = totalRevenue - totalCost;
     const netProfit = grossProfit - totalExpenses;
+
+    let comparison: ProfitLossComparison | undefined;
+    if (options?.compareStartDate && options?.compareEndDate) {
+      const compareTb = await this.getTrialBalance(companyId, options.compareStartDate, options.compareEndDate, branchId);
+      let compRevenue = 0, compCost = 0, compExpenses = 0;
+      compareTb.rows.forEach((r) => {
+        const cat = accountTypeCategory(r.account_type);
+        const revenueAmount = cat === 'revenue' ? r.credit - r.debit : 0;
+        const expenseAmount = cat === 'expense' ? r.debit - r.credit : 0;
+        if (cat === 'revenue') compRevenue += revenueAmount;
+        else if (cat === 'expense' && expenseAmount > 0) {
+          if ((r.account_type || '').toLowerCase().includes('cogs') || (r.account_type || '').toLowerCase().includes('cost')) compCost += expenseAmount;
+          else compExpenses += expenseAmount;
+        }
+      });
+      comparison = {
+        startDate: options.compareStartDate,
+        endDate: options.compareEndDate,
+        revenue: compRevenue,
+        costOfSales: compCost,
+        grossProfit: compRevenue - compCost,
+        expenses: compExpenses,
+        netProfit: compRevenue - compCost - compExpenses,
+      };
+    }
+
     return {
       revenue: { label: 'Revenue', items: revenueItems, total: totalRevenue },
       costOfSales: { label: 'Cost of Sales', items: costItems, total: totalCost },
@@ -244,6 +282,7 @@ export const accountingReportsService = {
       netProfit,
       startDate,
       endDate,
+      comparison,
     };
   },
 

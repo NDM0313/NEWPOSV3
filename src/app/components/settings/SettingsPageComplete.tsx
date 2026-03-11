@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { 
   Building2, CreditCard, Hash, Shield, ToggleLeft, Save, 
   CheckCircle, Users, Lock, Key, Settings as SettingsIcon, AlertCircle, UserCog,
-  MapPin, Store, ShoppingCart, ShoppingBag, Package, Shirt, Calculator, DollarSign
+  MapPin, Store, ShoppingCart, ShoppingBag, Package, Shirt, Calculator, DollarSign, Truck
 } from 'lucide-react';
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
@@ -15,6 +15,7 @@ import { useSettings } from '@/app/context/SettingsContext';
 import { NumberingRulesTable } from './NumberingRulesTable';
 import { NumberingMaintenanceTable } from './NumberingMaintenanceTable';
 import { NumberAuditTable } from './NumberAuditTable';
+import { CourierManagementPanel } from './CourierManagementPanel';
 import { toast } from 'sonner';
 
 type SettingsTab = 
@@ -25,9 +26,10 @@ type SettingsTab =
   | 'purchase' 
   | 'inventory' 
   | 'rental' 
-  | 'accounting'
-  | 'accounts'
+  | 'accounting' 
+  | 'accounts' 
   | 'numbering' 
+  | 'couriers'
   | 'users' 
   | 'permissions' 
   | 'modules';
@@ -102,6 +104,7 @@ export const SettingsPageComplete = () => {
     { id: 'accounting', label: 'Accounting', icon: Calculator, color: 'yellow' },
     { id: 'accounts', label: 'Default Accounts', icon: CreditCard, color: 'indigo' },
     { id: 'numbering', label: 'Numbering', icon: Hash, color: 'cyan' },
+    { id: 'couriers', label: 'Courier Management', icon: Truck, color: 'blue' },
     { id: 'users', label: 'Users', icon: UserCog, color: 'red' },
     { id: 'permissions', label: 'Permissions', icon: Shield, color: 'amber' },
     { id: 'modules', label: 'Module Toggles', icon: ToggleLeft, color: 'lime' },
@@ -1111,6 +1114,8 @@ export const SettingsPageComplete = () => {
             {numberingSubTab === 'audit' && <NumberAuditTable />}
           </div>
         )}
+
+        {activeTab === 'couriers' && <CourierManagementPanel />}
 
         {activeTab === 'users' && (
           <div className="text-center text-gray-400 py-12">

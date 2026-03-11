@@ -21,6 +21,7 @@
 import { supabase } from '@/lib/supabase';
 import { accountHelperService } from './accountHelperService';
 import { accountingService, type JournalEntry, type JournalEntryLine } from './accountingService';
+import { courierService } from './courierService';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Internal helpers
@@ -231,6 +232,8 @@ export const shipmentAccountingService = {
     actualCost: number;
     courierId?: string | null;
     courierName?: string | null;
+    /** PART 2: When set, use this account for Cr Courier Payable instead of creating by name. From couriers.account_id. */
+    courierAccountId?: string | null;
     invoiceNo?: string;
     performedBy?: string | null;
   }): Promise<string | null> {
@@ -242,6 +245,7 @@ export const shipmentAccountingService = {
       actualCost,
       courierId,
       courierName,
+      courierAccountId,
       invoiceNo,
       performedBy,
     } = params;
@@ -264,14 +268,18 @@ export const shipmentAccountingService = {
       ensureAccount('5100', 'Shipping Expense', 'Expense', companyId),
     ]);
 
-    // Case B: per-courier payable account (2031, 2032, …)
-    let courierPayableAccountId: string | null = null;
-    if ((actualCost ?? 0) > 0) {
+    // Case B: per-courier payable account (2031, 2032, …). Use couriers.account_id when provided (PART 2).
+    let courierPayableAccountId: string | null = courierAccountId ?? null;
+    if ((actualCost ?? 0) > 0 && !courierPayableAccountId) {
       courierPayableAccountId = await getOrCreateCourierPayableAccount(
         companyId,
         courierId ?? null,
         courierName ?? 'Courier'
       );
+      // PART 3: Sync ledger courier name to couriers table so dropdown shows it
+      if (courierPayableAccountId && courierName) {
+        void courierService.ensureCourierByName(companyId, courierName, courierPayableAccountId).catch(() => {});
+      }
     }
 
     const lines: JournalEntryLine[] = [];
@@ -517,6 +525,20 @@ export const shipmentAccountingService = {
   },
 
   /**
+   * Get shipment ledger rows for given shipment IDs (e.g. for a sale's shipments).
+   */
+  async getShipmentLedgerByShipmentIds(shipmentIds: string[]) {
+    if (!shipmentIds?.length) return [];
+    const { data, error } = await supabase
+      .from('shipment_ledger')
+      .select('shipment_id, company_id, courier_id, courier_name, date, shipping_income, shipping_expense, courier_payable, journal_entry_id, entry_no')
+      .in('shipment_id', shipmentIds)
+      .order('date', { ascending: false });
+    if (error) throw error;
+    return data ?? [];
+  },
+
+  /**
    * Record courier payment: Dr Courier Payable (specific courier) / Cr Cash or Bank.
    * reference_type = 'courier_payment', reference_id = courier contact_id.
    */
@@ -526,10 +548,12 @@ export const shipmentAccountingService = {
     courierContactId: string;
     courierName: string;
     amount: number;
-    paymentMethod: 'cash' | 'bank' | string;
+    paymentMethod: 'cash' | 'bank' | 'mobile_wallet' | string;
     paymentDate?: string;
     notes?: string | null;
     performedBy?: string | null;
+    /** When provided, use this account for Cr Cash/Bank; otherwise resolve from payment method. */
+    accountId?: string | null;
   }): Promise<string | null> {
     const {
       companyId,
@@ -541,6 +565,7 @@ export const shipmentAccountingService = {
       paymentDate,
       notes,
       performedBy,
+      accountId: providedAccountId,
     } = params;
 
     if (!companyId || !courierContactId || amount <= 0) return null;
@@ -555,10 +580,14 @@ export const shipmentAccountingService = {
       return null;
     }
 
-    const cashOrBankAccountId = await accountHelperService.getDefaultAccountByPaymentMethod(
-      paymentMethod === 'bank' ? 'bank' : 'cash',
-      companyId
-    );
+    let cashOrBankAccountId: string | null = providedAccountId ?? null;
+    if (!cashOrBankAccountId) {
+      const method = String(paymentMethod || '').toLowerCase();
+      cashOrBankAccountId = await accountHelperService.getDefaultAccountByPaymentMethod(
+        method.includes('bank') ? 'bank' : method.includes('wallet') ? 'mobile_wallet' : 'cash',
+        companyId
+      );
+    }
     if (!cashOrBankAccountId) {
       console.warn('[shipmentAccounting] Cash/Bank account not found');
       return null;

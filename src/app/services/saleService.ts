@@ -456,6 +456,26 @@ export const saleService = {
       } catch (_) {
         // RPC may not exist yet (migration not run); leave studio_charges/due_amount as from DB
       }
+
+      // Enrich from sales_with_shipping (first shipment status per sale — avoid N+1)
+      try {
+        const { data: shippingRows } = await supabase
+          .from('sales_with_shipping')
+          .select('id, shipment_status, first_shipment_id')
+          .in('id', saleIds);
+        if (shippingRows && shippingRows.length > 0) {
+          const bySale = new Map(shippingRows.map((r: any) => [r.id, r]));
+          data.forEach((sale: any) => {
+            const row = bySale.get(sale.id);
+            if (row) {
+              sale.shipment_status = row.shipment_status;
+              sale.first_shipment_id = row.first_shipment_id;
+            }
+          });
+        }
+      } catch (_) {
+        // View may not exist yet (migration not run)
+      }
     }
 
     if (opts) {

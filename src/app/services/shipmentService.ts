@@ -24,7 +24,9 @@ export interface SaleShipmentRow {
   branch_id: string;
   shipment_type: ShipmentType;
   courier_id?: string | null;
+  courier_master_id?: string | null;
   courier_name?: string | null;
+  weight?: number | null;
   shipment_status: ShipmentStatus;
   tracking_id?: string | null;
   tracking_url?: string | null;
@@ -48,7 +50,9 @@ export interface SaleShipmentRow {
 export interface CreateShipmentPayload {
   shipment_type: ShipmentType;
   courier_id?: string;
+  courier_master_id?: string;
   courier_name?: string;
+  weight?: number;
   shipment_status?: ShipmentStatus;
   tracking_id?: string;
   tracking_url?: string;
@@ -69,7 +73,9 @@ function rowToShipment(r: SaleShipmentRow) {
     id: r.id,
     shipmentType: r.shipment_type as ShipmentType,
     courierId: r.courier_id ?? undefined,
+    courierMasterId: r.courier_master_id ?? undefined,
     courierName: r.courier_name ?? undefined,
+    weight: r.weight != null ? Number(r.weight) : undefined,
     shipmentStatus: r.shipment_status as ShipmentStatus,
     trackingId: r.tracking_id ?? undefined,
     trackingUrl: r.tracking_url ?? undefined,
@@ -98,6 +104,16 @@ export const shipmentService = {
     return (data || []) as SaleShipmentRow[];
   },
 
+  async getById(shipmentId: string): Promise<SaleShipmentRow | null> {
+    const { data, error } = await supabase
+      .from('sale_shipments')
+      .select('*')
+      .eq('id', shipmentId)
+      .maybeSingle();
+    if (error) throw error;
+    return data as SaleShipmentRow | null;
+  },
+
   async create(
     saleId: string,
     companyId: string,
@@ -106,9 +122,13 @@ export const shipmentService = {
     createdBy?: string | null,
     invoiceNo?: string
   ): Promise<SaleShipmentRow> {
-    // Auto-create courier contact if name provided but id not supplied
+    // Courier: single identity = contact_id. When courier_master_id set, use couriers.contact_id for sale_shipments.courier_id.
     let courierId = payload.courier_id ?? null;
-    if (!courierId && payload.courier_name) {
+    if (payload.courier_master_id) {
+      const { data: courier } = await supabase.from('couriers').select('contact_id').eq('id', payload.courier_master_id).maybeSingle();
+      if ((courier as any)?.contact_id) courierId = (courier as any).contact_id;
+    }
+    if (!payload.courier_master_id && !courierId && payload.courier_name) {
       courierId = await ensureCourierContact(payload.courier_name, companyId);
     }
 
@@ -118,7 +138,9 @@ export const shipmentService = {
       branch_id: branchId,
       shipment_type: payload.shipment_type,
       courier_id: courierId,
+      courier_master_id: payload.courier_master_id || null,
       courier_name: payload.courier_name || null,
+      weight: payload.weight != null ? payload.weight : null,
       shipment_status: payload.shipment_status || 'Pending',
       tracking_id: payload.tracking_id || null,
       tracking_url: payload.tracking_url || null,
@@ -145,6 +167,13 @@ export const shipmentService = {
 
     const shipment = data as SaleShipmentRow;
 
+    // PART 2: Use couriers.account_id when courier_master_id is set
+    let courierAccountId: string | null = null;
+    if (shipment.courier_master_id) {
+      const { data: courier } = await supabase.from('couriers').select('account_id').eq('id', shipment.courier_master_id).maybeSingle();
+      courierAccountId = (courier as any)?.account_id ?? null;
+    }
+
     // Create journal entries (fire-and-forget — don't fail shipment creation)
     void shipmentAccountingService.createShipmentJournalEntry({
       shipmentId: shipment.id,
@@ -154,6 +183,7 @@ export const shipmentService = {
       actualCost: shipment.actual_cost,
       courierId: shipment.courier_id ?? undefined,
       courierName: shipment.courier_name,
+      courierAccountId: courierAccountId ?? undefined,
       invoiceNo,
       performedBy: createdBy,
     });
@@ -185,7 +215,15 @@ export const shipmentService = {
     };
     if (payload.shipment_type != null) update.shipment_type = payload.shipment_type;
     if (payload.courier_id != null) update.courier_id = payload.courier_id;
+    if (payload.courier_master_id !== undefined) {
+      update.courier_master_id = payload.courier_master_id || null;
+      if (payload.courier_master_id) {
+        const { data: courier } = await supabase.from('couriers').select('contact_id').eq('id', payload.courier_master_id).maybeSingle();
+        if ((courier as any)?.contact_id) update.courier_id = (courier as any).contact_id;
+      }
+    }
     if (payload.courier_name != null) update.courier_name = payload.courier_name;
+    if (payload.weight !== undefined) update.weight = payload.weight != null ? payload.weight : null;
     if (payload.shipment_status != null) update.shipment_status = payload.shipment_status;
     if (payload.tracking_id != null) update.tracking_id = payload.tracking_id;
     if (payload.tracking_url != null) update.tracking_url = payload.tracking_url;

@@ -119,22 +119,33 @@ export function HomeScreen({ user, branch, companyId, onNavigate, onLogout }: Ho
             <p className="text-lg font-bold text-[#F59E0B]">Rs. {pendingAmount.toLocaleString()}</p>
           </div>
         </div>
+        {enabled.some((m) => m.id === 'sales') && (
+          <button
+            type="button"
+            onClick={() => onNavigate('sales')}
+            className="mt-4 w-full py-4 px-4 bg-[#3B82F6] hover:bg-[#2563EB] active:scale-[0.99] rounded-xl flex items-center justify-center gap-3 touch-manipulation"
+          >
+            <ShoppingCart className="w-6 h-6 text-white" />
+            <span className="font-semibold text-white text-base">Add Sale</span>
+          </button>
+        )}
       </div>
 
       <div className={responsive.spacing.page}>
         <h2 className="text-sm font-medium text-[#9CA3AF] mb-4">MODULES</h2>
         <div
-          className={`grid ${responsive.spacing.grid}`}
+          className={`grid gap-4 ${responsive.spacing.grid}`}
           style={{ gridTemplateColumns: `repeat(${responsive.columns.dashboard}, minmax(0, 1fr))` }}
         >
           {enabled.map((module) => (
             <button
               key={module.id}
+              type="button"
               onClick={() => onNavigate(module.id)}
-              className={`bg-[#1F2937] border border-[#374151] rounded-2xl ${responsive.isTablet ? 'p-8' : 'p-6'} hover:border-[#3B82F6] active:scale-95 transition-all group`}
+              className={`bg-[#1F2937] border border-[#374151] rounded-2xl min-h-[100px] ${responsive.isTablet ? 'p-8' : 'p-5'} hover:border-[#3B82F6] active:scale-[0.98] transition-all group touch-manipulation`}
             >
               <div
-                className={`${responsive.isTablet ? 'w-20 h-20' : 'w-16 h-16'} ${module.bgColor} rounded-2xl flex items-center justify-center mb-4 mx-auto group-hover:scale-110 transition-transform`}
+                className={`${responsive.isTablet ? 'w-20 h-20' : 'w-14 h-14'} ${module.bgColor} rounded-2xl flex items-center justify-center mb-3 mx-auto group-hover:scale-110 transition-transform`}
                 style={{ color: module.color }}
               >
                 {module.icon}

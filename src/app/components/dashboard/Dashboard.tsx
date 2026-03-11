@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useMemo, useCallback, lazy, Suspense } from 'react';
 import { BarChart, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line } from 'recharts';
-import { DollarSign, ShoppingBag, TrendingUp, ArrowDownRight, ArrowUpRight, AlertTriangle, ArrowRight, Loader2, Store, ShoppingCart, Package, Warehouse, Wallet, Building2 } from 'lucide-react';
+import { DollarSign, ShoppingBag, TrendingUp, ArrowDownRight, ArrowUpRight, AlertTriangle, Loader2, Store, ShoppingCart, Package, Warehouse, Wallet, Building2 } from 'lucide-react';
 import { useNavigation } from '../../context/NavigationContext';
 import { useSales } from '../../context/SalesContext';
 import { usePurchases } from '../../context/PurchaseContext';
 import { useExpenses } from '../../context/ExpenseContext';
+import { useAccounting } from '../../context/AccountingContext';
 import { useSupabase } from '../../context/SupabaseContext';
 import { useGlobalFilter } from '../../context/GlobalFilterContext';
 import { useSettings } from '../../context/SettingsContext';
@@ -34,6 +35,7 @@ export const Dashboard = () => {
   const sales = useSales();
   const purchases = usePurchases();
   const expenses = useExpenses();
+  const accounting = useAccounting();
   const { companyId, signOut } = useSupabase();
   const { modules: settingsModules } = useSettings();
   const { hasPermission } = useCheckPermission();
@@ -165,6 +167,118 @@ export const Dashboard = () => {
       }));
   }, [products]);
 
+  // Executive summary: use API metrics when available and non-empty; otherwise compute from context so it's always functional
+  const todayStr = useMemo(() => new Date().toISOString().slice(0, 10), []);
+  const monthStartStr = useMemo(() => {
+    const d = new Date();
+    d.setDate(1);
+    return d.toISOString().slice(0, 10);
+  }, []);
+  const monthEndStr = useMemo(() => {
+    const d = new Date();
+    d.setMonth(d.getMonth() + 1);
+    d.setDate(0);
+    return d.toISOString().slice(0, 10);
+  }, []);
+
+  const executiveFromContext = useMemo((): FinancialDashboardMetrics => {
+    const finalSales = sales.sales.filter((s: any) => s.status === 'final');
+    const finalPurchases = purchases.purchases.filter((p: any) => p.status === 'final' || p.status === 'received');
+    const paidExpenses = expenses.expenses.filter((e: any) => e.status === 'paid');
+
+    const todaySales = finalSales
+      .filter((s: any) => (s.date || s.sale_date || '').toString().slice(0, 10) === todayStr)
+      .reduce((sum, s) => sum + (Number(s.total) || 0), 0);
+    const todayPurchases = finalPurchases
+      .filter((p: any) => (p.poDate || p.po_date || '').toString().slice(0, 10) === todayStr)
+      .reduce((sum, p) => sum + (Number(p.total) || 0), 0);
+    const todayExpenses = paidExpenses
+      .filter((e: any) => (e.expenseDate || e.expense_date || '').toString().slice(0, 10) === todayStr)
+      .reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
+
+    const monthlyRevenue = finalSales
+      .filter((s: any) => {
+        const d = (s.date || s.sale_date || '').toString().slice(0, 10);
+        return d >= monthStartStr && d <= monthEndStr;
+      })
+      .reduce((sum, s) => sum + (Number(s.total) || 0), 0);
+    const monthlyPurchases = finalPurchases
+      .filter((p: any) => {
+        const d = (p.poDate || p.po_date || '').toString().slice(0, 10);
+        return d >= monthStartStr && d <= monthEndStr;
+      })
+      .reduce((sum, p) => sum + (Number(p.total) || 0), 0);
+    const monthlyExpensesOnly = paidExpenses
+      .filter((e: any) => {
+        const d = (e.expenseDate || e.expense_date || '').toString().slice(0, 10);
+        return d >= monthStartStr && d <= monthEndStr;
+      })
+      .reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
+    const monthlyExpenses = monthlyPurchases + monthlyExpensesOnly;
+
+    const receivables = finalSales.reduce((sum, s) => sum + (Number((s as any).due ?? (s as any).due_amount) || 0), 0);
+    const payables = finalPurchases.reduce((sum, p) => sum + (Number((p as any).due ?? (p as any).due_amount) || 0), 0);
+
+    const monthlyProfit = monthlyRevenue - monthlyExpenses;
+    const profit_margin_pct = monthlyRevenue > 0 ? Math.round((monthlyProfit / monthlyRevenue) * 10000) / 100 : 0;
+
+    const last7: { date: string; value: number }[] = [];
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      const ds = d.toISOString().slice(0, 10);
+      const daySales = finalSales
+        .filter((s: any) => (s.date || s.sale_date || '').toString().slice(0, 10) === ds)
+        .reduce((sum, s) => sum + (Number(s.total) || 0), 0);
+      const dayPurch = finalPurchases
+        .filter((p: any) => (p.poDate || p.po_date || '').toString().slice(0, 10) === ds)
+        .reduce((sum, p) => sum + (Number(p.total) || 0), 0);
+      const dayExp = paidExpenses
+        .filter((e: any) => (e.expenseDate || e.expense_date || '').toString().slice(0, 10) === ds)
+        .reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
+      last7.push({ date: ds, value: daySales - dayPurch - dayExp });
+    }
+    const sales_trend = last7.map((t) => ({ date: t.date, value: finalSales.filter((s: any) => (s.date || s.sale_date || '').toString().slice(0, 10) === t.date).reduce((sum, s) => sum + (Number(s.total) || 0), 0) }));
+    const expense_trend = last7.map((t) => ({
+      date: t.date,
+      value: finalPurchases.filter((p: any) => (p.poDate || p.po_date || '').toString().slice(0, 10) === t.date).reduce((sum, p) => sum + (Number(p.total) || 0), 0)
+        + paidExpenses.filter((e: any) => (e.expenseDate || e.expense_date || '').toString().slice(0, 10) === t.date).reduce((sum, e) => sum + (Number(e.amount) || 0), 0),
+    }));
+    const profit_trend = last7;
+
+    return {
+      today_sales: todaySales,
+      today_profit: todaySales - todayPurchases - todayExpenses,
+      monthly_revenue: monthlyRevenue,
+      monthly_expenses: monthlyExpenses,
+      monthly_profit: monthlyProfit,
+      profit_margin_pct,
+      cash_balance: 0,
+      bank_balance: 0,
+      receivables,
+      payables,
+      sales_trend,
+      expense_trend,
+      profit_trend,
+    };
+  }, [sales.sales, purchases.purchases, expenses.expenses, todayStr, monthStartStr, monthEndStr]);
+
+  const hasNonZeroMetrics = financialMetrics && (
+    (financialMetrics.today_sales !== 0) || (financialMetrics.monthly_revenue !== 0) ||
+    (financialMetrics.cash_balance !== 0) || (financialMetrics.bank_balance !== 0) ||
+    (financialMetrics.receivables !== 0) || (financialMetrics.payables !== 0)
+  );
+  const displayMetrics = (financialMetrics && hasNonZeroMetrics) ? financialMetrics : executiveFromContext;
+  const displayMetricsWithCashBank = useMemo(() => {
+    if ((financialMetrics && hasNonZeroMetrics) && (financialMetrics.cash_balance !== 0 || financialMetrics.bank_balance !== 0)) {
+      return displayMetrics;
+    }
+    const cash = accounting.getAccountBalance ? accounting.getAccountBalance('Cash' as any) : 0;
+    const bank = accounting.getAccountBalance ? accounting.getAccountBalance('Bank' as any) : 0;
+    if (cash === 0 && bank === 0) return displayMetrics;
+    return { ...displayMetrics, cash_balance: cash, bank_balance: bank };
+  }, [displayMetrics, financialMetrics, hasNonZeroMetrics, accounting]);
+
   // Generate chart data from date range (or last 7 days if no range)
   const chartData = useMemo(() => {
     // Use date range if set, otherwise default to last 7 days
@@ -273,27 +387,6 @@ export const Dashboard = () => {
         </div>
       )}
 
-      {/* Low Stock Alert Banner */}
-      {lowStockItems.length > 0 && (
-        <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-red-500/20 rounded-lg text-red-500">
-              <AlertTriangle size={24} />
-            </div>
-            <div>
-              <h3 className="text-red-500 font-bold">Low Stock Alert</h3>
-              <p className="text-red-400 text-sm">{lowStockItems.length} items are below minimum stock level</p>
-            </div>
-          </div>
-          <button 
-            onClick={() => setCurrentView('inventory')}
-            className="text-sm font-medium text-red-500 hover:text-red-400 flex items-center gap-1"
-          >
-            View Inventory <ArrowRight size={16} />
-          </button>
-        </div>
-      )}
-
       {/* Executive financial summary (Phase-2 Intelligence) */}
       <div className="bg-[#111827]/50 border border-[#374151] p-6 rounded-xl">
         <h3 className="text-lg font-bold text-white mb-4">Executive summary</h3>
@@ -301,26 +394,26 @@ export const Dashboard = () => {
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 h-24 items-center justify-center">
             <Loader2 className="w-8 h-8 animate-spin text-[#3B82F6] col-span-2 md:col-span-3 lg:col-span-5 justify-self-center" />
           </div>
-        ) : financialMetrics ? (
+        ) : (
           <>
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 mb-6">
-              <StatCard title="Today Sales" value={formatCurrency(financialMetrics.today_sales)} change="—" icon={DollarSign} trend="up" iconColor="text-[#10B981]" />
-              <StatCard title="Today Profit" value={formatCurrency(financialMetrics.today_profit)} change="—" icon={TrendingUp} trend={financialMetrics.today_profit >= 0 ? 'up' : 'down'} iconColor="text-[#3B82F6]" />
-              <StatCard title="Monthly Revenue" value={formatCurrency(financialMetrics.monthly_revenue)} change="—" icon={ShoppingBag} trend="up" iconColor="text-[#8B5CF6]" />
-              <StatCard title="Monthly Expenses" value={formatCurrency(financialMetrics.monthly_expenses)} change="—" icon={ArrowUpRight} trend="down" iconColor="text-[#F59E0B]" />
-              <StatCard title="Profit Margin" value={`${financialMetrics.profit_margin_pct}%`} change="—" icon={TrendingUp} trend={financialMetrics.profit_margin_pct >= 0 ? 'up' : 'down'} iconColor="text-[#06B6D4]" />
-              <StatCard title="Cash Balance" value={formatCurrency(financialMetrics.cash_balance)} change="—" icon={Wallet} trend="up" iconColor="text-[#10B981]" />
-              <StatCard title="Bank Balance" value={formatCurrency(financialMetrics.bank_balance)} change="—" icon={Building2} trend="up" iconColor="text-[#3B82F6]" />
-              <StatCard title="Receivables" value={formatCurrency(financialMetrics.receivables)} change="—" icon={ArrowDownRight} trend="up" iconColor="text-[#3B82F6]" />
-              <StatCard title="Payables" value={formatCurrency(financialMetrics.payables)} change="—" icon={ArrowUpRight} trend="down" iconColor="text-[#F59E0B]" />
+              <StatCard title="Today Sales" value={formatCurrency(displayMetricsWithCashBank.today_sales)} change="—" icon={DollarSign} trend="up" iconColor="text-[#10B981]" />
+              <StatCard title="Today Profit" value={formatCurrency(displayMetricsWithCashBank.today_profit)} change="—" icon={TrendingUp} trend={displayMetricsWithCashBank.today_profit >= 0 ? 'up' : 'down'} iconColor="text-[#3B82F6]" />
+              <StatCard title="Monthly Revenue" value={formatCurrency(displayMetricsWithCashBank.monthly_revenue)} change="—" icon={ShoppingBag} trend="up" iconColor="text-[#8B5CF6]" />
+              <StatCard title="Monthly Expenses" value={formatCurrency(displayMetricsWithCashBank.monthly_expenses)} change="—" icon={ArrowUpRight} trend="down" iconColor="text-[#F59E0B]" />
+              <StatCard title="Profit Margin" value={`${displayMetricsWithCashBank.profit_margin_pct}%`} change="—" icon={TrendingUp} trend={displayMetricsWithCashBank.profit_margin_pct >= 0 ? 'up' : 'down'} iconColor="text-[#06B6D4]" />
+              <StatCard title="Cash Balance" value={formatCurrency(displayMetricsWithCashBank.cash_balance)} change="—" icon={Wallet} trend="up" iconColor="text-[#10B981]" />
+              <StatCard title="Bank Balance" value={formatCurrency(displayMetricsWithCashBank.bank_balance)} change="—" icon={Building2} trend="up" iconColor="text-[#3B82F6]" />
+              <StatCard title="Receivables" value={formatCurrency(displayMetricsWithCashBank.receivables)} change="—" icon={ArrowDownRight} trend="up" iconColor="text-[#3B82F6]" />
+              <StatCard title="Payables" value={formatCurrency(displayMetricsWithCashBank.payables)} change="—" icon={ArrowUpRight} trend="down" iconColor="text-[#F59E0B]" />
             </div>
-            {(financialMetrics.sales_trend?.length > 0 || financialMetrics.expense_trend?.length > 0 || financialMetrics.profit_trend?.length > 0) && (
+            {(displayMetricsWithCashBank.sales_trend?.length > 0 || displayMetricsWithCashBank.expense_trend?.length > 0 || displayMetricsWithCashBank.profit_trend?.length > 0) && (
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
                 <div className="bg-[#1F2937]/50 rounded-lg p-4 border border-[#374151]">
                   <h4 className="text-sm font-medium text-[#9CA3AF] mb-2">Sales trend (7d)</h4>
                   <div className="h-24">
                     <ResponsiveContainer width="100%" height="100%">
-                      <LineChart data={financialMetrics.sales_trend.map((t) => ({ name: t.date.slice(5), value: t.value }))}>
+                      <LineChart data={(displayMetricsWithCashBank.sales_trend || []).map((t) => ({ name: t.date.slice(5), value: t.value }))}>
                         <XAxis dataKey="name" stroke="#9CA3AF" tick={{ fontSize: 10 }} />
                         <Tooltip contentStyle={{ backgroundColor: '#1F2937', border: '1px solid #374151' }} formatter={(v: number) => [formatCurrency(v), 'Sales']} />
                         <Line type="monotone" dataKey="value" stroke="#10B981" strokeWidth={2} dot={false} />
@@ -332,7 +425,7 @@ export const Dashboard = () => {
                   <h4 className="text-sm font-medium text-[#9CA3AF] mb-2">Expense trend (7d)</h4>
                   <div className="h-24">
                     <ResponsiveContainer width="100%" height="100%">
-                      <LineChart data={financialMetrics.expense_trend.map((t) => ({ name: t.date.slice(5), value: t.value }))}>
+                      <LineChart data={(displayMetricsWithCashBank.expense_trend || []).map((t) => ({ name: t.date.slice(5), value: t.value }))}>
                         <XAxis dataKey="name" stroke="#9CA3AF" tick={{ fontSize: 10 }} />
                         <Tooltip contentStyle={{ backgroundColor: '#1F2937', border: '1px solid #374151' }} formatter={(v: number) => [formatCurrency(v), 'Expenses']} />
                         <Line type="monotone" dataKey="value" stroke="#F59E0B" strokeWidth={2} dot={false} />
@@ -344,7 +437,7 @@ export const Dashboard = () => {
                   <h4 className="text-sm font-medium text-[#9CA3AF] mb-2">Profit trend (7d)</h4>
                   <div className="h-24">
                     <ResponsiveContainer width="100%" height="100%">
-                      <LineChart data={financialMetrics.profit_trend.map((t) => ({ name: t.date.slice(5), value: t.value }))}>
+                      <LineChart data={(displayMetricsWithCashBank.profit_trend || []).map((t) => ({ name: t.date.slice(5), value: t.value }))}>
                         <XAxis dataKey="name" stroke="#9CA3AF" tick={{ fontSize: 10 }} />
                         <Tooltip contentStyle={{ backgroundColor: '#1F2937', border: '1px solid #374151' }} formatter={(v: number) => [formatCurrency(v), 'Profit']} />
                         <Line type="monotone" dataKey="value" stroke="#3B82F6" strokeWidth={2} dot={false} />
@@ -355,8 +448,6 @@ export const Dashboard = () => {
               </div>
             )}
           </>
-        ) : (
-          <p className="text-[#9CA3AF] text-sm">Financial metrics unavailable. Run migration: financial_dashboard_metrics_rpc.sql</p>
         )}
       </div>
 

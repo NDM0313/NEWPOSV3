@@ -26,7 +26,11 @@ import { exportAndDownloadBackup } from '@/app/services/backupService';
 import { InventoryMasters, type InventoryMasterTab } from './inventory/InventoryMasters';
 import { LeadTools } from './LeadTools';
 import { invoiceDocumentService } from '@/app/services/invoiceDocumentService';
+import { printingSettingsService } from '@/app/services/printingSettingsService';
 import type { InvoiceTemplate } from '@/app/types/invoiceDocument';
+import type { CompanyPrintingSettings } from '@/app/types/printingSettings';
+import { mergeWithDefaults } from '@/app/types/printingSettings';
+import { PrintingSettingsPanel } from './PrintingSettingsPanel';
 import { getHealthDashboard, type ErpHealthRow } from '@/app/services/healthService';
 import { EmployeesTab } from './EmployeesTab';
 import { ErpPermissionArchitecturePage } from '@/app/components/erp-permissions/ErpPermissionArchitecturePage';
@@ -226,6 +230,7 @@ type SettingsContentKey =
   | 'accounts'
   | 'numbering'
   | 'printer'
+  | 'printing'
   | 'invoiceTemplates'
   | 'users'
   | 'rolesPermissions'
@@ -235,7 +240,7 @@ type SettingsContentKey =
   | 'systemHealth'
   | 'data';
 
-type MainTab = 'general' | 'sales' | 'purchases' | 'inventory' | 'accounting' | 'system' | 'access' | 'workforce' | 'numbering';
+type MainTab = 'general' | 'sales' | 'purchases' | 'inventory' | 'accounting' | 'system' | 'access' | 'workforce' | 'numbering' | 'printing';
 
 const MAIN_TABS: { id: MainTab; label: string }[] = [
   { id: 'general', label: 'General' },
@@ -243,6 +248,7 @@ const MAIN_TABS: { id: MainTab; label: string }[] = [
   { id: 'purchases', label: 'Purchases' },
   { id: 'inventory', label: 'Inventory' },
   { id: 'accounting', label: 'Accounting' },
+  { id: 'printing', label: 'Printing' },
   { id: 'system', label: 'System' },
   { id: 'access', label: 'Access' },
   { id: 'workforce', label: 'Workforce' },
@@ -258,6 +264,15 @@ const SUB_TABS: Record<MainTab, { id: string; label: string }[]> = {
     { id: 'pos', label: 'POS' },
     { id: 'salesRules', label: 'Sales Rules' },
     { id: 'invoiceTemplates', label: 'Invoice Templates' },
+  ],
+  printing: [
+    { id: 'general', label: 'General' },
+    { id: 'documentTemplates', label: 'Document Templates' },
+    { id: 'pageSetup', label: 'Page Setup' },
+    { id: 'fields', label: 'Fields' },
+    { id: 'layoutEditor', label: 'Layout Editor' },
+    { id: 'thermalPrint', label: 'Thermal Print' },
+    { id: 'pdfExport', label: 'PDF Export' },
   ],
   purchases: [
     { id: 'purchaseRules', label: 'Purchase Rules' },
@@ -302,6 +317,15 @@ function getContentKey(mainTab: MainTab, subTabId: string): SettingsContentKey {
   const map: Record<string, Record<string, SettingsContentKey>> = {
     general: { company: 'company', branches: 'branches' },
     sales: { pos: 'pos', salesRules: 'sales', invoiceTemplates: 'invoiceTemplates' },
+    printing: {
+      general: 'printing',
+      documentTemplates: 'printing',
+      pageSetup: 'printing',
+      fields: 'printing',
+      layoutEditor: 'printing',
+      thermalPrint: 'printing',
+      pdfExport: 'printing',
+    },
     purchases: { purchaseRules: 'purchase' },
     inventory: { general: 'inventory', units: 'inventory', categories: 'inventory', 'sub-categories': 'inventory', brands: 'inventory' },
     accounting: { fiscalTax: 'accounting', defaultAccounts: 'accounts', policies: 'accounting' },
@@ -377,6 +401,11 @@ export const SettingsPageNew = () => {
   const [loadingInvoiceTemplates, setLoadingInvoiceTemplates] = useState(false);
   const [savingInvoiceTemplates, setSavingInvoiceTemplates] = useState(false);
 
+  // Centralized Printing settings (Settings → Printing)
+  const [printingSettings, setPrintingSettings] = useState<CompanyPrintingSettings | null>(null);
+  const [loadingPrinting, setLoadingPrinting] = useState(false);
+  const [savingPrinting, setSavingPrinting] = useState(false);
+
   // Load users function
   const loadUsers = useCallback(async () => {
     if (!companyId) return;
@@ -432,6 +461,44 @@ export const SettingsPageNew = () => {
     }
   }, [companyId]);
 
+  const loadPrintingSettings = useCallback(async () => {
+    if (!companyId) return;
+    setLoadingPrinting(true);
+    try {
+      const { data, error } = await printingSettingsService.get(companyId);
+      if (error) {
+        toast.error(error);
+        return;
+      }
+      setPrintingSettings(data ?? null);
+    } catch (e) {
+      console.error('[SETTINGS] Error loading printing settings:', e);
+      toast.error('Failed to load printing settings');
+    } finally {
+      setLoadingPrinting(false);
+    }
+  }, [companyId]);
+
+  const savePrintingSettings = useCallback(async () => {
+    if (!companyId) return;
+    setSavingPrinting(true);
+    try {
+      const toSave = mergeWithDefaults(printingSettings);
+      const { error } = await printingSettingsService.update(companyId, toSave);
+      if (error) {
+        toast.error(error);
+        return;
+      }
+      setPrintingSettings(toSave);
+      toast.success('Printing settings saved');
+    } catch (e) {
+      console.error('[SETTINGS] Error saving printing settings:', e);
+      toast.error('Failed to save printing settings');
+    } finally {
+      setSavingPrinting(false);
+    }
+  }, [companyId, printingSettings]);
+
   // Load branches from database and resolve default account names
   const loadBranches = useCallback(async () => {
     if (!companyId) return;
@@ -480,7 +547,10 @@ export const SettingsPageNew = () => {
     if (contentKey === 'invoiceTemplates') {
       loadInvoiceTemplates();
     }
-  }, [contentKey, loadUsers, loadInvoiceTemplates]);
+    if (contentKey === 'printing') {
+      loadPrintingSettings();
+    }
+  }, [contentKey, loadUsers, loadInvoiceTemplates, loadPrintingSettings]);
 
   // Load branches when branches tab is active
   useEffect(() => {
@@ -1921,6 +1991,18 @@ export const SettingsPageNew = () => {
             )}
 
             {/* PHASE B: INVOICE TEMPLATES TAB */}
+            {/* Centralized Printing (Settings → Printing) */}
+            {contentKey === 'printing' && (
+              <PrintingSettingsPanel
+                subTabId={effectiveSubTab}
+                settings={printingSettings}
+                loading={loadingPrinting}
+                saving={savingPrinting}
+                onSettingsChange={(partial) => setPrintingSettings((prev) => ({ ...(prev ?? {}), ...partial }))}
+                onSave={savePrintingSettings}
+              />
+            )}
+
             {contentKey === 'invoiceTemplates' && (
               <div className="space-y-6">
                 <div className="flex items-center justify-between mb-6">

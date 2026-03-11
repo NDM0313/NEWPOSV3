@@ -28,7 +28,22 @@ function isValidBranchId(id: string | null): id is string {
 // ============================================
 
 export type PaymentStatus = 'paid' | 'partial' | 'unpaid';
-export type ShippingStatus = 'delivered' | 'processing' | 'pending' | 'cancelled';
+export type ShippingStatus =
+  | 'delivered'
+  | 'processing'
+  | 'pending'
+  | 'cancelled'
+  | 'Booked'
+  | 'Picked'
+  | 'In Transit'
+  | 'Out for Delivery'
+  | 'Delivered'
+  | 'Returned'
+  | 'Cancelled'
+  | 'Dispatched'
+  | 'Created'
+  | 'Packed'
+  | 'Pending';
 export type SaleType = 'invoice' | 'quotation';
 
 export interface SaleItem {
@@ -76,7 +91,11 @@ export interface Sale {
   returnDue: number;
   paymentStatus: PaymentStatus;
   paymentMethod: string;
-  shippingStatus: ShippingStatus;
+  shippingStatus: ShippingStatus | string;
+  /** True when sale has at least one record in sale_shipments. */
+  hasShipment?: boolean;
+  /** First shipment id (from sale_shipments) for this sale; used for ledger and history. */
+  firstShipmentId?: string;
   notes?: string;
   /** Delivery/deadline date (YYYY-MM-DD) for studio sales. */
   deadline?: string;
@@ -327,7 +346,9 @@ export const convertFromSupabaseSale = (supabaseSale: any): Sale => {
     returnDue: supabaseSale.return_due || 0,
       paymentStatus: supabaseSale.payment_status || 'unpaid',
     paymentMethod: supabaseSale.payment_method || 'Cash',
-    shippingStatus: supabaseSale.shipping_status || 'pending',
+    shippingStatus: (supabaseSale.shipment_status || supabaseSale.shipping_status || 'pending') as ShippingStatus | string,
+      hasShipment: !!supabaseSale.first_shipment_id,
+      firstShipmentId: supabaseSale.first_shipment_id || undefined,
       notes: supabaseSale.notes,
       deadline: supabaseSale.deadline || undefined,
       // CRITICAL FIX: Preserve attachments from database

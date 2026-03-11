@@ -48,7 +48,19 @@ export default function ShipmentLedgerPage({ companyId }: ShipmentLedgerPageProp
 
   useEffect(() => { load(); }, [companyId]);
 
-  const couriers = Array.from(new Set(rows.map((r) => r.courier_name))).sort();
+  // Build dropdown from rows using courier_id (UUID); views expect UUID, not name.
+  const courierOptions = (() => {
+    const seen = new Set<string>();
+    const out: { id: string; name: string }[] = [];
+    for (const r of rows) {
+      if (r.courier_id && !seen.has(r.courier_id)) {
+        seen.add(r.courier_id);
+        out.push({ id: r.courier_id, name: r.courier_name || 'Unknown' });
+      }
+    }
+    out.sort((a, b) => a.name.localeCompare(b.name));
+    return out;
+  })();
 
   const totalIncome = rows.reduce((s, r) => s + (r.shipping_income ?? 0), 0);
   const totalExpense = rows.reduce((s, r) => s + (r.shipping_expense ?? 0), 0);
@@ -64,25 +76,26 @@ export default function ShipmentLedgerPage({ companyId }: ShipmentLedgerPageProp
           <h2 className="text-base font-semibold text-white">Shipment Ledger</h2>
         </div>
         <div className="flex items-center gap-2">
-          {/* Courier filter */}
+          {/* Courier filter: value must be courier_id (UUID); backend expects UUID */}
           <div className="relative">
             <select
               value={selectedCourier}
               onChange={(e) => {
-                setSelectedCourier(e.target.value);
-                load(e.target.value || undefined);
+                const v = e.target.value;
+                setSelectedCourier(v);
+                load(v || undefined);
               }}
               className="appearance-none bg-[#1a2035] border border-white/10 text-white text-xs rounded-lg px-3 py-1.5 pr-7 focus:outline-none focus:border-indigo-500 cursor-pointer"
             >
               <option value="">All Couriers</option>
-              {couriers.map((c) => (
-                <option key={c} value={c}>{c}</option>
+              {courierOptions.map((c) => (
+                <option key={c.id} value={c.id}>{c.name}</option>
               ))}
             </select>
             <ChevronDown size={12} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
           </div>
           <button
-            onClick={() => load(selectedCourier || undefined)}
+            onClick={() => load(selectedCourier ? selectedCourier : undefined)}
             className="flex items-center gap-1 text-xs text-gray-400 hover:text-white transition-colors px-2 py-1.5 rounded-lg border border-white/10"
           >
             <RefreshCw size={12} className={loading ? 'animate-spin' : ''} />

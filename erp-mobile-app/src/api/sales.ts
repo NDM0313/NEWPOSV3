@@ -305,14 +305,16 @@ export async function getAllSales(
       const { data: retryData, error: retryError } = await retry;
       if (retryError) return { data: [], error: retryError.message };
       const retryList = retryData || [];
-      const enrichedRetry = await enrichSalesWithPayments(companyId, branchId, retryList);
+      const withPaymentsRetry = await enrichSalesWithPayments(companyId, branchId, retryList);
+      const enrichedRetry = await enrichSalesWithShipping(withPaymentsRetry);
       return { data: enrichedRetry, error: null };
     }
     return { data: [], error: error.message };
   }
 
   const list = data || [];
-  const enriched = await enrichSalesWithPayments(companyId, branchId, list);
+  const withPayments = await enrichSalesWithPayments(companyId, branchId, list);
+  const enriched = await enrichSalesWithShipping(withPayments);
   return { data: enriched, error: null };
 }
 
@@ -359,6 +361,33 @@ async function enrichSalesWithPayments(
       credit_balance: creditBalance,
     };
   });
+}
+
+/** Attach first shipment status from sales_with_shipping view (avoids N+1). */
+async function enrichSalesWithShipping(
+  sales: Array<Record<string, unknown>>
+): Promise<Array<Record<string, unknown>>> {
+  if (!sales.length) return sales;
+  const saleIds = sales.map((s) => s.id as string).filter(Boolean);
+  try {
+    const { data: rows } = await supabase
+      .from('sales_with_shipping')
+      .select('id, shipment_status, first_shipment_id')
+      .in('id', saleIds);
+    if (!rows?.length) return sales;
+    const byId = new Map(rows.map((r: Record<string, unknown>) => [(r.id as string), r]));
+    return sales.map((s) => {
+      const row = byId.get(s.id as string);
+      if (!row) return s;
+      return {
+        ...s,
+        shipment_status: row.shipment_status,
+        first_shipment_id: row.first_shipment_id,
+      };
+    });
+  } catch {
+    return sales;
+  }
 }
 
 /** Get studio cost summary for a sale (production status, total studio cost, breakdown, workers). */

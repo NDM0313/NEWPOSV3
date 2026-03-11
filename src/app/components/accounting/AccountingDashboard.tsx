@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, Suspense, lazy } from 'react';
 import { 
   Receipt, 
   Wallet,
@@ -46,19 +46,20 @@ import { AccountLedgerPage } from './AccountLedgerPage';
 import { TransactionDetailModal } from './TransactionDetailModal';
 import { AddAccountDrawer } from './AddAccountDrawer';
 import { LedgerHub } from './LedgerHub';
-import { StudioCostsTab } from './StudioCostsTab';
-import { DepositsTab } from './DepositsTab';
 import { PayCourierModal } from './PayCourierModal';
-import { CourierReportsTab } from './CourierReportsTab';
 import { useSettings } from '@/app/context/SettingsContext';
 import { AccountingTestPage } from '@/app/components/test/AccountingTestPage';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { useGlobalFilter } from '@/app/context/GlobalFilterContext';
 import { accountService } from '@/app/services/accountService';
 import { toast } from 'sonner';
-import { DayBookReport } from '@/app/components/reports/DayBookReport';
-import { RoznamchaReport } from '@/app/components/reports/RoznamchaReport';
-import { AccountLedgerReportPage } from '@/app/components/reports/AccountLedgerReportPage';
+
+const StudioCostsTab = lazy(() => import('./StudioCostsTab').then((m) => ({ default: m.StudioCostsTab })));
+const DepositsTab = lazy(() => import('./DepositsTab').then((m) => ({ default: m.DepositsTab })));
+const CourierReportsTab = lazy(() => import('./CourierReportsTab').then((m) => ({ default: m.CourierReportsTab })));
+const DayBookReport = lazy(() => import('@/app/components/reports/DayBookReport').then((m) => ({ default: m.DayBookReport })));
+const RoznamchaReport = lazy(() => import('@/app/components/reports/RoznamchaReport').then((m) => ({ default: m.RoznamchaReport })));
+const AccountLedgerReportPage = lazy(() => import('@/app/components/reports/AccountLedgerReportPage').then((m) => ({ default: m.AccountLedgerReportPage })));
 import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
 import { useCheckPermission } from '@/app/hooks/useCheckPermission';
 import {
@@ -242,6 +243,20 @@ export const AccountingDashboard = () => {
 
     return filtered;
   }, [transactions, searchTerm, typeFilter]);
+
+  // Journal entries pagination: 50 per page (stable performance as company grows)
+  const JOURNAL_PAGE_SIZE = 50;
+  const totalJournalPages = Math.max(1, Math.ceil(filteredTransactions.length / JOURNAL_PAGE_SIZE));
+  const paginatedJournalEntries = useMemo(() => {
+    const start = (currentPage - 1) * JOURNAL_PAGE_SIZE;
+    return filteredTransactions.slice(start, start + JOURNAL_PAGE_SIZE);
+  }, [filteredTransactions, currentPage, JOURNAL_PAGE_SIZE]);
+  useEffect(() => {
+    if (currentPage > totalJournalPages && totalJournalPages >= 1) setCurrentPage(1);
+  }, [currentPage, totalJournalPages]);
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, typeFilter]);
 
   // Permission gate – Accounting restricted to authorized roles
   if (!canAccessAccounting) {
@@ -447,18 +462,19 @@ export const AccountingDashboard = () => {
             <div className="flex items-center justify-between">
               <div>
                 <h3 className="text-lg font-bold text-white">Journal Entries</h3>
-                <p className="text-sm text-gray-400">All journal entries – click a reference to view details</p>
+                <p className="text-sm text-gray-400">All journal entries – click a reference to view details (50 per page)</p>
               </div>
             </div>
 
-            {/* Journal Entries Table (same as former Transactions – opens TransactionDetailModal on click) */}
+            {/* Journal Entries Table with pagination */}
             <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden">
-              {accounting.entries.length === 0 ? (
+              {filteredTransactions.length === 0 ? (
                 <div className="text-center py-12">
                   <FileText size={48} className="mx-auto text-gray-600 mb-3" />
                   <p className="text-gray-400 text-sm">No transactions found</p>
                 </div>
               ) : (
+                <>
                 <div className="overflow-x-auto">
                   <table className="w-full">
                     <thead className="bg-gray-900 border-b border-gray-800">
@@ -474,7 +490,7 @@ export const AccountingDashboard = () => {
                       </tr>
                     </thead>
                     <tbody>
-                      {accounting.entries.map((entry) => {
+                      {paginatedJournalEntries.map((entry) => {
                         // Get reference from metadata or generate from id
                         const referenceNumber = entry.referenceNo || 
                           (entry.metadata as any)?.paymentId?.substring(0, 8) || 
@@ -544,6 +560,51 @@ export const AccountingDashboard = () => {
                     </tbody>
                   </table>
                 </div>
+                {totalJournalPages > 1 && (
+                  <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 border-t border-gray-800 bg-gray-900/80">
+                    <p className="text-xs text-gray-400">
+                      Showing {(currentPage - 1) * JOURNAL_PAGE_SIZE + 1}–{Math.min(currentPage * JOURNAL_PAGE_SIZE, filteredTransactions.length)} of {filteredTransactions.length}
+                    </p>
+                    <div className="flex items-center gap-1">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-8 border-gray-700 text-gray-300"
+                        disabled={currentPage <= 1}
+                        onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                      >
+                        Previous
+                      </Button>
+                      {Array.from({ length: totalJournalPages }, (_, i) => i + 1)
+                        .filter((p) => p === 1 || p === totalJournalPages || Math.abs(p - currentPage) <= 2)
+                        .map((p, idx, arr) => (
+                          <React.Fragment key={p}>
+                            {idx > 0 && arr[idx - 1] !== p - 1 && <span className="px-1 text-gray-500">…</span>}
+                            <button
+                              type="button"
+                              className={cn(
+                                'h-8 min-w-[2rem] rounded px-2 text-sm font-medium',
+                                p === currentPage ? 'bg-blue-600 text-white' : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
+                              )}
+                              onClick={() => setCurrentPage(p)}
+                            >
+                              {p}
+                            </button>
+                          </React.Fragment>
+                        ))}
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-8 border-gray-700 text-gray-300"
+                        disabled={currentPage >= totalJournalPages}
+                        onClick={() => setCurrentPage((p) => Math.min(totalJournalPages, p + 1))}
+                      >
+                        Next
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </>
               )}
             </div>
           </div>
@@ -553,14 +614,18 @@ export const AccountingDashboard = () => {
           <div className="space-y-4">
             <h3 className="text-lg font-bold text-white">Day Book (Journal)</h3>
             <p className="text-sm text-gray-400 mb-4">Click voucher number to open transaction detail</p>
-            <DayBookReport onVoucherClick={(voucher) => setTransactionReference(voucher)} />
+            <Suspense fallback={<div className="flex items-center justify-center py-12 text-gray-400">Loading…</div>}>
+              <DayBookReport onVoucherClick={(voucher) => setTransactionReference(voucher)} />
+            </Suspense>
           </div>
         )}
 
         {activeTab === 'roznamcha' && (
           <div className="space-y-4">
             <h3 className="text-lg font-bold text-white">Roznamcha (Daily Cash Book)</h3>
-            <RoznamchaReport />
+            <Suspense fallback={<div className="flex items-center justify-center py-12 text-gray-400">Loading…</div>}>
+              <RoznamchaReport />
+            </Suspense>
           </div>
         )}
 
@@ -987,18 +1052,32 @@ export const AccountingDashboard = () => {
           </div>
         )}
 
-        {activeTab === 'courier' && <CourierReportsTab />}
+        {activeTab === 'courier' && (
+          <Suspense fallback={<div className="flex items-center justify-center py-12 text-gray-400">Loading…</div>}>
+            <CourierReportsTab />
+          </Suspense>
+        )}
 
-        {activeTab === 'deposits' && settingsModules.rentalModuleEnabled && <DepositsTab />}
+        {activeTab === 'deposits' && settingsModules.rentalModuleEnabled && (
+          <Suspense fallback={<div className="flex items-center justify-center py-12 text-gray-400">Loading…</div>}>
+            <DepositsTab />
+          </Suspense>
+        )}
 
-        {activeTab === 'studio' && <StudioCostsTab />}
+        {activeTab === 'studio' && (
+          <Suspense fallback={<div className="flex items-center justify-center py-12 text-gray-400">Loading…</div>}>
+            <StudioCostsTab />
+          </Suspense>
+        )}
 
         {activeTab === 'account_statements' && (
           <div className="space-y-4">
             <h3 className="text-lg font-bold text-white">Account Statements</h3>
             <p className="text-sm text-gray-400 mb-4">Account-wise ledger / statement by date range</p>
             <div className="text-xs text-gray-500 mb-2">Period: {reportStartDate} to {reportEndDate}</div>
-            <AccountLedgerReportPage startDate={reportStartDate} endDate={reportEndDate} branchId={branchId} />
+            <Suspense fallback={<div className="flex items-center justify-center py-12 text-gray-400">Loading…</div>}>
+              <AccountLedgerReportPage startDate={reportStartDate} endDate={reportEndDate} branchId={branchId} />
+            </Suspense>
           </div>
         )}
       </div>
