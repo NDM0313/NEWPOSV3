@@ -1,10 +1,8 @@
 -- ============================================================================
 -- WHOLESALE: bulk_invoices + bulk_invoice_items (Step 5 — Bulk Invoice)
 -- ============================================================================
+-- Run after: wholesale_packing_lists_and_items.sql (filename ensures packing_lists exists).
 -- Flow: Select multiple packing lists → Generate Bulk Invoice → one invoice.
--- bulk_invoice_packing_lists links which packing lists are included.
--- Print via UnifiedSalesInvoiceView (invoice document built from bulk_invoice + items).
--- Safe to run multiple times.
 -- ============================================================================
 
 CREATE TABLE IF NOT EXISTS bulk_invoices (

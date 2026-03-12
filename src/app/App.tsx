@@ -2,11 +2,11 @@ import React, { lazy, Suspense, useEffect } from 'react';
 import { FeatureFlagProvider, useFeatureFlag } from './context/FeatureFlagContext';
 import { NavigationProvider, useNavigation } from './context/NavigationContext';
 import { Layout } from './components/layout/Layout';
-import { Dashboard } from './components/dashboard/Dashboard';
+const Dashboard = lazy(() => import('./components/dashboard/Dashboard').then(m => ({ default: m.Dashboard })));
 import { ProductList } from './components/products/ProductList';
 import { POS } from './components/pos/POS';
 import { SalesEntry } from './components/sales/SalesEntry';
-import { StockDashboard } from './components/dashboard/StockDashboard';
+const StockDashboard = lazy(() => import('./components/dashboard/StockDashboard').then(m => ({ default: m.StockDashboard })));
 import { ExpensesDashboard } from './components/dashboard/ExpensesDashboard';
 import { GlobalDrawer } from './components/layout/GlobalDrawer';
 import { ContactList } from './components/contacts/ContactList';
@@ -17,7 +17,7 @@ const AccountingDashboard = lazy(() => import('./components/accounting/Accountin
 const UserDashboard = lazy(() => import('./components/users/UserDashboard').then(m => ({ default: m.UserDashboard })));
 import { UserProfilePage } from './components/users/UserProfilePage';
 import { PurchasesPage } from './components/purchases/PurchasesPage';
-import { SalesPage } from './components/sales/SalesPage';
+const SalesPage = lazy(() => import('./components/sales/SalesPage').then(m => ({ default: m.SalesPage })));
 const RentalDashboard = lazy(() => import('./components/rentals/RentalDashboard').then(m => ({ default: m.RentalDashboard })));
 import { NewRentalBooking } from './components/rentals/NewRentalBooking';
 import { PaymentFooterDemo } from './components/demo/PaymentFooterDemo';
@@ -34,13 +34,13 @@ import { RentalProvider } from './context/RentalContext';
 import { ExpenseProvider } from './context/ExpenseContext';
 import { ProductionProvider } from './context/ProductionContext';
 import { ModuleSettings } from './components/settings/ModuleSettings';
-import { ReportsDashboard } from './components/reports/ReportsDashboard';
+const ReportsDashboard = lazy(() => import('./components/reports/ReportsDashboard').then(m => ({ default: m.ReportsDashboard })));
 const ReportsDashboardEnhanced = lazy(() => import('./components/reports/ReportsDashboardEnhanced').then(m => ({ default: m.ReportsDashboardEnhanced })));
 import { ViewContactProfile } from './components/contacts/ViewContactProfile';
 import { ItemLifecycleReport } from './components/reports/ItemLifecycleReport';
 import { ProductionOrderDetail } from './components/production/ProductionOrderDetail';
 import { CustomerOrderTracking } from './components/tracking/CustomerOrderTracking';
-import { InventoryDashboard } from './components/inventory/InventoryDashboard';
+const InventoryDashboard = lazy(() => import('./components/inventory/InventoryDashboard').then(m => ({ default: m.InventoryDashboard })));
 const InventoryDashboardNew = lazy(() => import('./components/inventory/InventoryDashboardNew').then(m => ({ default: m.InventoryDashboardNew })));
 const InventoryDesignTestPage = lazy(() => import('./components/inventory/InventoryDesignTestPage').then(m => ({ default: m.InventoryDesignTestPage })));
 const InventoryAnalyticsTestPage = lazy(() => import('./components/inventory/InventoryAnalyticsTestPage').then(m => ({ default: m.InventoryAnalyticsTestPage })));
@@ -187,16 +187,28 @@ const AppContent = () => {
 
   return (
     <Layout>
-      {currentView === 'dashboard' && <Dashboard />}
+      {currentView === 'dashboard' && (
+        <Suspense fallback={<div className="flex items-center justify-center p-12"><div className="animate-pulse text-gray-500">Loading...</div></div>}>
+          <Dashboard />
+        </Suspense>
+      )}
       {currentView === 'products' && <ProductsPage />}
-      {currentView === 'sales' && <SalesPage />}
+      {currentView === 'sales' && (
+        <Suspense fallback={<div className="flex items-center justify-center p-12"><div className="animate-pulse text-gray-500">Loading...</div></div>}>
+          <SalesPage />
+        </Suspense>
+      )}
       {currentView === 'rentals' && (
         <Suspense fallback={<div className="flex items-center justify-center p-12"><div className="animate-pulse text-gray-500">Loading...</div></div>}>
           <RentalDashboard />
         </Suspense>
       )}
       {currentView === 'rental-booking' && <NewRentalBooking />}
-      {currentView === 'stock' && <StockDashboard />}
+      {currentView === 'stock' && (
+        <Suspense fallback={<div className="flex items-center justify-center p-12"><div className="animate-pulse text-gray-500">Loading...</div></div>}>
+          <StockDashboard />
+        </Suspense>
+      )}
       {currentView === 'inventory' && (
         <Suspense fallback={<div className="flex items-center justify-center p-12"><div className="animate-pulse text-gray-500">Loading...</div></div>}>
           <InventoryDesignTestPage />

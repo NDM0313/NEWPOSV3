@@ -1,9 +1,8 @@
 -- ============================================================================
 -- WHOLESALE: courier_shipments (Step 5 — Courier Shipment Workflow)
 -- ============================================================================
+-- Run after: wholesale_packing_lists_and_items.sql (packing_lists must exist).
 -- Flow: Packing List → Create Shipment → courier_shipments (courier, tracking, cost)
--- Links to packing_lists; courier from couriers table. Print: CourierSlipTemplate.
--- Safe to run multiple times.
 -- ============================================================================
 
 CREATE TABLE IF NOT EXISTS courier_shipments (

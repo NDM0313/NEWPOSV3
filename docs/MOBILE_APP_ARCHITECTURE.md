@@ -1,83 +1,70 @@
-# ERP Mobile App — Architecture & Steps
+# Mobile App Architecture
 
-**Scope:** `erp-mobile-app/` only. Do not modify web ERP code.
+**Project:** `erp-mobile-app` (Capacitor + React + Vite).  
+**Backend:** Supabase (same as web ERP).
 
 ---
 
-## Structure
+## Modules
+
+| Module | Path / entry | Purpose |
+|--------|----------------|--------|
+| **barcode** | `src/features/barcode/` | Scan (camera + external), product lookup, inventory scan. |
+| **sales** | `SalesModule`, `SalesHome`, `AddProducts`, `SaleConfirmation`, `MobileReceivePayment` | Create sale, add products, receive payment. |
+| **products** | `ProductsModule`, `AddProductFlow` | List/add products; variations. |
+| **inventory** | `InventoryModule`, `InventoryReports` | Stock view; reports. |
+| **customers** | `ContactsModule`, `AddContactFlow`, `EditContactFlow` | Contacts (customer/supplier). |
+| **offline sync** | `SyncStatusBar`, `useNetworkStatus`, (future: queue + sync) | Network status; planned offline queue and sync. |
+
+Additional: **purchase**, **accounting**, **studio**, **rental**, **reports**, **settings**, **dashboard**, **pos** (POSModule).
+
+---
+
+## Flow: Barcode → Product → Cart → Payment → Sync
 
 ```
-erp-mobile-app/
-  src/
-    api/           # Supabase / backend calls
-    lib/           # supabase, offlineStore, syncEngine
-    context/       # Permission, auth
-    hooks/
-    features/
-      barcode/     # Barcode scanner (ML Kit)
-    components/
-      pos/         # POS (cart, payment, scan)
-      sales/
-      settings/
-      ...
+1. Barcode
+   - Camera: BarcodeScanner / BarcodeCameraModal → scanBarcode() → code.
+   - External: (optional) keyboard/scanner input as barcode.
+   - Product lookup: getProductBySkuOrBarcode(code) → product.
+
+2. Add to cart
+   - Sales flow: AddProducts or sale line items; add product + qty.
+   - Cart state: local state or context (e.g. sale form state).
+
+3. Payment
+   - MobileReceivePayment: amount, method; call record_customer_payment or equivalent.
+   - Sale finalization: mark sale final; post accounting if applicable.
+
+4. Sync
+   - Online: direct Supabase; SyncStatusBar shows “Synced”.
+   - Offline (future): queue mutation; on reconnect run sync job (upload queue, resolve conflicts).
 ```
 
 ---
 
-## Implementation Order
+## Key Files
 
-| Step | Focus | Status |
-|------|--------|--------|
-| **1** | **Barcode scanning** | ✅ Done |
-| **2** | **Thermal printer (POS)** | ⏳ Settings done; hardware plugin optional |
-| **3** | **Mobile POS screens** | ✅ Done (POSHome, Cart, Payment, Receipt in POSModule) |
-| **4** | **Offline sync** | ✅ Done (IndexedDB queue, syncEngine) |
-
----
-
-## Step 1 — Barcode Scanning ✅
-
-- **Folder:** `src/features/barcode/`
-- **Files:** `BarcodeScanner.tsx`, `barcodeService.ts`, `useBarcodeScanner.ts`, `index.ts`
-- **Plugin:** `@capacitor-mlkit/barcode-scanning`
-- **Flow:** Scan → return code → POS calls `getProductByBarcodeOrSku(companyId, code)` → add to cart.
-- **Permissions:** Android `CAMERA`; iOS `NSCameraUsageDescription`.
-- **Product API:** `api/products.ts` → `getProductByBarcodeOrSku(companyId, code)` (barcode first, then SKU).
+| Layer | Files |
+|-------|--------|
+| **Barcode** | `features/barcode/index.ts`, `useBarcodeScanner.ts`, `barcodeService.ts`, `BarcodeScanner.tsx`; `BarcodeCameraModal.tsx` in sales. |
+| **Sales** | `api/sales.ts`, `SalesHome.tsx`, `AddProducts.tsx`, `SaleConfirmation.tsx`, `MobileReceivePayment.tsx`. |
+| **Products** | `api/products.ts`, `AddProductFlow.tsx`, `ProductsModule.tsx`. |
+| **Inventory** | `InventoryModule.tsx`, `InventoryReports.tsx`. |
+| **Customers** | `api/contacts.ts`, `AddContactFlow.tsx`, `EditContactFlow.tsx`. |
+| **Offline** | `SyncStatusBar.tsx`, `hooks/useNetworkStatus.ts`; secure storage: `lib/secureStorage.ts`. |
 
 ---
 
-## Step 2 — Thermal Printer (POS)
+## Data & Auth
 
-- **Settings:** Already in Settings → Printer: mode (A4 / thermal), paper size (58mm / 80mm), auto-print receipt. Stored via `settingsApi.getMobilePrinterSettings` / `setMobilePrinterSettings`.
-- **Hardware (optional):** For actual device printing use a Capacitor plugin (e.g. `@capacitor-community/bluetooth-le` or thermal printer plugin). Not required for app to function; receipt can be viewed/shared without hardware.
-
----
-
-## Step 3 — Mobile POS Screens ✅
-
-- **POSModule** provides: product grid, search, **Scan** button (barcode), cart drawer, checkout, payment dialog, success (invoice no).
-- **Screens in one flow:** POS home (grid + scan) → Cart (drawer) → Payment (dialog) → Receipt (success message with invoice no).
+- **API:** Supabase client (shared with web); env via `sync-mobile-env.js`.
+- **Auth:** Login screen → session; branch selection.
+- **Storage:** `secureStorage` for tokens/sensitive data; no full offline DB yet.
 
 ---
 
-## Step 4 — Offline Sync ✅
+## Platform
 
-- **IndexedDB** queue in `lib/offlineStore.ts`.
-- **Sync engine** in `lib/syncEngine.ts`.
-- **Supported entities:** sale, expense, journal_entry, payment (and related).
-- **Settings:** Sync now, unsynced count, clear cache in Settings.
-
----
-
-## Auto-Apply (CI / Local)
-
-- **Web ERP migrations:** From repo root run `npm run migrate` (or `npm run dev` which can run migrate with `--allow-fail`). Uses `scripts/run-migrations.js`; applies `supabase-extract/migrations/` then `migrations/`.
-- **Mobile:** No DB migrations. After code changes: `cd erp-mobile-app && npm run build:mobile && npx cap sync` then open Android/iOS.
-
----
-
-## Summary
-
-- **Done:** Barcode, POS (with scan), offline sync, printer/barcode settings UI.
-- **Optional:** Thermal printer hardware plugin when a device is chosen.
-- **Do not:** Add features outside this order; do not modify web ERP from mobile app tasks.
+- **Capacitor:** iOS/Android; native camera for barcode.
+- **Build:** `npm run build` (Vite); then Capacitor sync and native build (see `CAPACITOR.md`, `README_BUILD.md` in erp-mobile-app).

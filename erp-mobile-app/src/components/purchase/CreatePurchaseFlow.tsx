@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { ArrowLeft, Plus, Minus, Trash2, Search, Loader2, Package } from 'lucide-react';
 import { useResponsive } from '../../hooks/useResponsive';
 import { SelectSupplierTablet, type Supplier } from './SelectSupplierTablet';
@@ -12,6 +12,7 @@ import { getBranches } from '../../api/branches';
 import type { ProductVariationRow } from '../../api/products';
 import { TransactionSuccessModal, type TransactionSuccessData } from '../shared/TransactionSuccessModal';
 import { PaymentDialog, type PaymentResult } from '../sales/PaymentDialog';
+import { MobileActionBar } from '../shared/MobileActionBar';
 import { createPortal } from 'react-dom';
 
 interface PurchaseItem {
@@ -77,6 +78,7 @@ export function CreatePurchaseFlow({ companyId, branchId, userId, onBack, onDone
   const [showAddModal, setShowAddModal] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<ProductForPurchase | null>(null);
   const [confirmationData, setConfirmationData] = useState<TransactionSuccessData | null>(null);
+  const lastItemRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     if (step === 'vendor') {
@@ -160,7 +162,21 @@ export function CreatePurchaseFlow({ companyId, branchId, userId, onBack, onDone
     i.productId === productId && (i.variationId ?? '') === (variationId ?? '');
 
   const updatePacking = (productId: string, details: PackingDetails, variationId?: string) => {
-    setItems(items.map((i) => (matchItem(i, productId, variationId) ? { ...i, packingDetails: details } : i)));
+    setItems(items.map((i) => {
+      if (!matchItem(i, productId, variationId)) return i;
+      const meters = details.total_meters ?? 0;
+      const packs = details.packs ?? 0;
+      const unitsPerPack = details.units_per_pack ?? 0;
+      const qtyFromMeters = meters > 0 ? meters : i.quantity;
+      const qtyFromPacks = packs > 0 && unitsPerPack > 0 ? packs * unitsPerPack : i.quantity;
+      const newQty = meters > 0 ? qtyFromMeters : (packs > 0 && unitsPerPack > 0 ? qtyFromPacks : i.quantity);
+      return {
+        ...i,
+        packingDetails: details,
+        quantity: newQty,
+        total: newQty * i.unitPrice,
+      };
+    }));
   };
 
   const updateQty = (productId: string, delta: number, variationId?: string) => {
@@ -204,10 +220,10 @@ export function CreatePurchaseFlow({ companyId, branchId, userId, onBack, onDone
         unitPrice: i.unitPrice,
         total: i.total,
         packingDetails:
-          i.packingDetails && (i.packingDetails.total_meters ?? 0) > 0
+          i.packingDetails && ((i.packingDetails.total_meters ?? 0) > 0 || ((i.packingDetails.packs ?? 0) > 0 && (i.packingDetails.units_per_pack ?? 0) > 0))
             ? {
-                total_boxes: i.packingDetails.total_boxes,
-                total_pieces: i.packingDetails.total_pieces,
+                total_boxes: i.packingDetails.total_boxes ?? i.packingDetails.packs,
+                total_pieces: i.packingDetails.total_pieces ?? (i.packingDetails.packs != null && i.packingDetails.units_per_pack != null ? i.packingDetails.packs * i.packingDetails.units_per_pack : undefined),
               }
             : undefined,
       })),
@@ -334,7 +350,80 @@ export function CreatePurchaseFlow({ companyId, branchId, userId, onBack, onDone
               <p className="text-xs text-[#9CA3AF]">{vendor.name}</p>
             </div>
           </div>
-          <div className="relative px-4 pb-3">
+        </div>
+        <div className="p-4 space-y-4">
+          {/* 1. CART ITEMS — top, always visible (Figma pattern) */}
+          <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">
+            <h2 className="text-sm font-medium text-[#9CA3AF] mb-3">CART ({items.length} items)</h2>
+            {items.length === 0 ? (
+              <p className="text-xs text-[#6B7280] py-2">No items yet. Search and add below.</p>
+            ) : (
+              <div className="space-y-3">
+          {items.map((i, index) => {
+            const hasSimplePacking = i.packingDetails && (i.packingDetails.packs != null && i.packingDetails.units_per_pack != null) && i.packingDetails.packs > 0 && (i.packingDetails.units_per_pack ?? 0) > 0;
+            const packingQty = hasSimplePacking ? (i.packingDetails!.packs! * (i.packingDetails!.units_per_pack ?? 0)) : null;
+            const showPackingFormula = hasSimplePacking && packingQty != null && packingQty > 0;
+            const qtyLockedByPacking = showPackingFormula;
+            const isLast = index === items.length - 1;
+            return (
+            <div key={i.id} ref={isLast ? lastItemRef : undefined} className="bg-[#1F2937] border border-[#374151] rounded-xl p-4 space-y-3 min-w-0">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0 flex-1">
+                  <p className="font-medium text-white break-words">{i.name}</p>
+                  {i.variation && <p className="text-xs text-[#9CA3AF] break-words">{i.variation}</p>}
+                  <p className="text-sm text-[#9CA3AF]">
+                    {i.quantity} × Rs. {i.unitPrice.toLocaleString()} = Rs. {i.total.toLocaleString()}
+                  </p>
+                  {showPackingFormula && (
+                    <p className="text-xs text-[#10B981] mt-0.5">
+                      {i.packingDetails!.packs} packs × {i.packingDetails!.units_per_pack} = {i.quantity} units
+                    </p>
+                  )}
+                </div>
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  {!qtyLockedByPacking && (
+                    <>
+                      <button
+                        onClick={() => updateQty(i.productId, -1, i.variationId)}
+                        className="p-2 hover:bg-[#374151] rounded-lg text-white"
+                      >
+                        <Minus className="w-4 h-4" />
+                      </button>
+                      <span className="text-white font-medium min-w-[2.5rem] text-center">{i.quantity}</span>
+                      <button
+                        onClick={() => updateQty(i.productId, 1, i.variationId)}
+                        className="p-2 hover:bg-[#374151] rounded-lg text-white"
+                      >
+                        <Plus className="w-4 h-4" />
+                      </button>
+                    </>
+                  )}
+                  {qtyLockedByPacking && <span className="text-white font-medium min-w-[2.5rem] text-center">{i.quantity}</span>}
+                  <button
+                    onClick={() => removeItem(i.productId, i.variationId)}
+                    className="p-2 text-[#EF4444] hover:bg-[#EF4444]/20 rounded-lg"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+              <div className="pt-3 border-t border-[#374151] w-full">
+                <p className="text-xs text-[#9CA3AF] mb-2">Packing (optional)</p>
+                <PackingInputButton
+                  packingDetails={i.packingDetails}
+                  onPackingChange={(d) => updatePacking(i.productId, d, i.variationId)}
+                  productName={i.name}
+                  className="w-full justify-center sm:justify-start"
+                />
+              </div>
+            </div>
+          );})}
+              </div>
+            )}
+          </div>
+
+          {/* 2. SEARCH */}
+          <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#6B7280]" />
             <input
               type="text"
@@ -344,13 +433,8 @@ export function CreatePurchaseFlow({ companyId, branchId, userId, onBack, onDone
               className="w-full h-11 bg-[#111827] border border-[#374151] rounded-lg pl-10 pr-4 text-sm text-white placeholder-[#6B7280] focus:outline-none focus:border-[#10B981]"
             />
           </div>
-        </div>
-        <div className="p-4 space-y-4">
-          {items.length > 0 && (
-            <div className="bg-[#1F2937] border-b border-[#374151] rounded-xl p-4 mb-4">
-              <h3 className="text-sm font-medium text-[#9CA3AF] mb-3">CART ({items.length} items)</h3>
-            </div>
-          )}
+
+          {/* 3. PRODUCT GRID */}
           <h2 className="text-sm font-medium text-[#9CA3AF]">Add from list</h2>
           {loading ? (
             <div className="flex justify-center py-8">
@@ -383,50 +467,6 @@ export function CreatePurchaseFlow({ companyId, branchId, userId, onBack, onDone
               ))}
             </div>
           )}
-          <h2 className="text-sm font-medium text-[#9CA3AF] pt-4">Order items ({items.length})</h2>
-          {items.map((i) => (
-            <div key={i.id} className="bg-[#1F2937] border border-[#374151] rounded-xl p-4 space-y-3 min-w-0">
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0 flex-1">
-                  <p className="font-medium text-white break-words">{i.name}</p>
-                  {i.variation && <p className="text-xs text-[#9CA3AF] break-words">{i.variation}</p>}
-                  <p className="text-sm text-[#9CA3AF]">
-                    {i.quantity} × Rs. {i.unitPrice.toLocaleString()} = Rs. {i.total.toLocaleString()}
-                  </p>
-                </div>
-                <div className="flex items-center gap-2 flex-shrink-0">
-                  <button
-                    onClick={() => updateQty(i.productId, -1, i.variationId)}
-                    className="p-2 hover:bg-[#374151] rounded-lg text-white"
-                  >
-                    <Minus className="w-4 h-4" />
-                  </button>
-                  <span className="text-white font-medium w-8 text-center">{i.quantity}</span>
-                  <button
-                    onClick={() => updateQty(i.productId, 1, i.variationId)}
-                    className="p-2 hover:bg-[#374151] rounded-lg text-white"
-                  >
-                    <Plus className="w-4 h-4" />
-                  </button>
-                  <button
-                    onClick={() => removeItem(i.productId, i.variationId)}
-                    className="p-2 text-[#EF4444] hover:bg-[#EF4444]/20 rounded-lg"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </div>
-              </div>
-              <div className="pt-3 border-t border-[#374151] w-full">
-                <p className="text-xs text-[#9CA3AF] mb-2">Packing (optional)</p>
-                <PackingInputButton
-                  packingDetails={i.packingDetails}
-                  onPackingChange={(d) => updatePacking(i.productId, d, i.variationId)}
-                  productName={i.name}
-                  className="w-full justify-center sm:justify-start"
-                />
-              </div>
-            </div>
-          ))}
         </div>
         <div className="fixed left-0 right-0 bg-[#1F2937] border-t border-[#374151] p-4 safe-area-bottom fixed-bottom-above-nav z-40">
           <div className="flex justify-between items-center mb-3">
@@ -453,6 +493,7 @@ export function CreatePurchaseFlow({ companyId, branchId, userId, onBack, onDone
               addItem(selectedProduct, qty, { unitPrice, variationId, variation, sku, packingDetails });
               setShowAddModal(false);
               setSelectedProduct(null);
+              setTimeout(() => lastItemRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 150);
             }}
           />
         )}
@@ -535,18 +576,14 @@ export function CreatePurchaseFlow({ companyId, branchId, userId, onBack, onDone
           </div>
         </div>
         {error && <p className="text-sm text-red-400 px-4">{error}</p>}
-        <div className="fixed left-0 right-0 bg-[#1F2937] border-t border-[#374151] p-4 safe-area-bottom fixed-bottom-above-nav z-40">
-          <button
-            type="button"
-            onClick={() => {
-              setError('');
-              setStep('payment');
-            }}
-            className="w-full h-12 bg-[#10B981] hover:bg-[#059669] rounded-lg font-medium text-white"
-          >
-            Proceed to Payment →
-          </button>
-        </div>
+        <MobileActionBar
+          buttonLabel="Proceed to Payment →"
+          onButtonClick={() => {
+            setError('');
+            setStep('payment');
+          }}
+          variant="success"
+        />
       </div>
     );
   }
@@ -563,6 +600,7 @@ export function CreatePurchaseFlow({ companyId, branchId, userId, onBack, onDone
           onComplete={(result) => handleSaveWithPayment(result)}
           saving={saving}
           saveError={error}
+          showCreditOption={true}
         />
       </div>,
       paymentRoot
@@ -594,6 +632,7 @@ function AddToPurchaseModal({ product, onClose, onAdd }: AddToPurchaseModalProps
   const [showPacking, setShowPacking] = useState(false);
 
   const hasVariations = product.hasVariations && (product.variations?.length ?? 0) > 0;
+  const usePackingQty = packingDetails != null && (packingDetails.total_meters ?? 0) > 0;
   const total = unitPrice * quantity;
 
   const handleQtyChange = (raw: string) => {
@@ -653,8 +692,8 @@ function AddToPurchaseModal({ product, onClose, onAdd }: AddToPurchaseModalProps
                     >
                       <p className="text-sm font-medium truncate">{label || v.sku}</p>
                       <p className="text-xs text-[#9CA3AF] mt-0.5">Rs. {(v.price || 0).toLocaleString()}</p>
-                      {v.stock != null && v.stock < 10 && (
-                        <p className="text-xs text-[#F59E0B] mt-0.5">Stock: {v.stock}</p>
+                      {typeof v.stock === 'number' && (
+                        <p className={`text-xs mt-0.5 ${v.stock < 10 ? 'text-[#F59E0B]' : 'text-[#9CA3AF]'}`}>Stock: {v.stock}</p>
                       )}
                     </button>
                   );
@@ -666,40 +705,33 @@ function AddToPurchaseModal({ product, onClose, onAdd }: AddToPurchaseModalProps
             </div>
           )}
 
-          {/* Packing Entry - same as Sale */}
-          <div className="bg-[#111827] border border-[#10B981]/30 rounded-xl p-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Package size={18} className="text-[#10B981]" />
-                <span className="text-sm font-medium text-[#F9FAFB]">Packing Entry</span>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowPacking(true)}
-                className="px-3 py-1.5 bg-[#10B981] hover:bg-[#059669] text-[#F9FAFB] text-xs rounded-lg font-medium"
-              >
-                {packingDetails && (packingDetails.total_meters ?? 0) > 0 ? 'Edit Packing' : 'Add Packing'}
-              </button>
-            </div>
-            {packingDetails && (packingDetails.total_meters ?? 0) > 0 && (
-              <p className="text-xs text-[#9CA3AF] mt-2">
-                {packingDetails.total_boxes ?? 0} Box • {packingDetails.total_pieces ?? 0} Pc • {(packingDetails.total_meters ?? 0).toFixed(1)} M
-              </p>
-            )}
+          {/* Packing (optional): single button opens PackingEntryModal → Boxes / Pieces / Meters; quantity = meters */}
+          <div className="bg-[#111827] border border-[#374151] rounded-xl p-4">
+            <p className="text-sm font-medium text-[#9CA3AF] mb-3">Packing (optional)</p>
+            <button
+              type="button"
+              onClick={() => setShowPacking(true)}
+              className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-lg border border-[#10B981]/50 bg-[#10B981]/10 text-[#10B981] font-medium hover:bg-[#10B981]/20 transition-colors"
+            >
+              <Package className="w-4 h-4" />
+              {packingDetails && (packingDetails.total_meters ?? 0) > 0
+                ? `${packingDetails.total_boxes ?? 0} Box / ${packingDetails.total_pieces ?? 0} Pc / ${(packingDetails.total_meters ?? 0).toFixed(1)} M — Edit`
+                : 'Add Packing'}
+            </button>
           </div>
 
           <div>
             <label className="block text-sm font-medium text-[#9CA3AF] mb-3">
-              Quantity{packingDetails && (packingDetails.total_meters ?? 0) > 0 ? ' (M)' : allowDecimal ? ' (decimals allowed)' : ''}
+              Quantity{usePackingQty ? ' (from packing)' : allowDecimal ? ' (decimals allowed)' : ''}
             </label>
             <div className="flex items-center gap-4">
               <button
                 type="button"
                 onClick={() => {
-                  if (packingDetails && (packingDetails.total_meters ?? 0) > 0) return;
+                  if (usePackingQty) return;
                   setQuantity((q) => Math.max(allowDecimal ? 0.01 : 1, allowDecimal ? q - 0.01 : q - 1));
                 }}
-                disabled={!!(packingDetails && (packingDetails.total_meters ?? 0) > 0)}
+                disabled={usePackingQty}
                 className="w-12 h-12 bg-[#111827] border border-[#374151] rounded-lg flex items-center justify-center hover:bg-[#374151] disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <Minus className="w-5 h-5 text-[#F9FAFB]" />
@@ -707,24 +739,24 @@ function AddToPurchaseModal({ product, onClose, onAdd }: AddToPurchaseModalProps
               <input
                 type="number"
                 min={allowDecimal ? 0.01 : 1}
-                step={packingDetails && (packingDetails.total_meters ?? 0) > 0 ? 0.1 : allowDecimal ? 0.01 : 1}
+                step={usePackingQty ? 1 : allowDecimal ? 0.01 : 1}
                 inputMode={allowDecimal ? 'decimal' : 'numeric'}
                 pattern={allowDecimal ? '[0-9.]*' : '[0-9]*'}
                 value={quantity}
                 onChange={(e) => {
-                  if (packingDetails && (packingDetails.total_meters ?? 0) > 0) return;
+                  if (usePackingQty) return;
                   handleQtyChange(e.target.value);
                 }}
-                readOnly={!!(packingDetails && (packingDetails.total_meters ?? 0) > 0)}
+                readOnly={usePackingQty}
                 className="flex-1 h-12 bg-[#111827] border border-[#374151] rounded-lg text-center text-lg font-semibold text-[#F9FAFB] focus:outline-none focus:border-[#10B981] disabled:opacity-70 disabled:cursor-not-allowed"
               />
               <button
                 type="button"
                 onClick={() => {
-                  if (packingDetails && (packingDetails.total_meters ?? 0) > 0) return;
+                  if (usePackingQty) return;
                   setQuantity((q) => allowDecimal ? q + 0.01 : q + 1);
                 }}
-                disabled={!!(packingDetails && (packingDetails.total_meters ?? 0) > 0)}
+                disabled={usePackingQty}
                 className="w-12 h-12 bg-[#111827] border border-[#374151] rounded-lg flex items-center justify-center hover:bg-[#374151] disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <Plus className="w-5 h-5 text-[#F9FAFB]" />

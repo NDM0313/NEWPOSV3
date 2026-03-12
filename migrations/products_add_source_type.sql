@@ -12,12 +12,20 @@ CREATE INDEX IF NOT EXISTS idx_products_source_type
   ON products (company_id, source_type)
   WHERE is_active = true;
 
--- Backfill: products already created via Studio production (product_type = 'production')
--- are retroactively marked as studio-sourced
-UPDATE products
-SET source_type = 'studio'
-WHERE product_type = 'production'
-  AND source_type = 'manual';
+-- Backfill: if product_type column exists, mark Studio production products as studio-sourced
+-- (product_type is added in products_product_type_production.sql which may run after this file)
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'products' AND column_name = 'product_type'
+  ) THEN
+    UPDATE products
+    SET source_type = 'studio'
+    WHERE product_type = 'production'
+      AND source_type = 'manual';
+  END IF;
+END $$;
 
 COMMENT ON COLUMN products.source_type IS
   'Origin module that created this product.

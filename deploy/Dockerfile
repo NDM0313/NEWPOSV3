@@ -6,9 +6,10 @@ COPY package.json package-lock.json* pnpm-lock.yaml* yarn.lock* ./
 RUN if [ -f package-lock.json ]; then npm ci; elif [ -f pnpm-lock.yaml ]; then corepack enable pnpm && pnpm install --frozen-lockfile; else npm install; fi
 
 COPY . .
-ARG VITE_SUPABASE_URL
-ARG VITE_SUPABASE_ANON_KEY
-ARG VITE_DISABLE_REALTIME
+# Build args with defaults so Docker build succeeds even when .env.production not loaded (production should pass real values)
+ARG VITE_SUPABASE_URL=https://placeholder.supabase.co
+ARG VITE_SUPABASE_ANON_KEY=placeholder-key
+ARG VITE_DISABLE_REALTIME=true
 ENV VITE_SUPABASE_URL=$VITE_SUPABASE_URL
 ENV VITE_SUPABASE_ANON_KEY=$VITE_SUPABASE_ANON_KEY
 ENV VITE_DISABLE_REALTIME=$VITE_DISABLE_REALTIME
@@ -22,8 +23,8 @@ RUN npm ci
 # CACHEBUST forces fresh copy on every deploy (no stale mobile build)
 ARG CACHEBUST=
 COPY erp-mobile-app/ .
-ARG VITE_SUPABASE_URL
-ARG VITE_SUPABASE_ANON_KEY
+ARG VITE_SUPABASE_URL=https://placeholder.supabase.co
+ARG VITE_SUPABASE_ANON_KEY=placeholder-key
 ENV VITE_SUPABASE_URL=$VITE_SUPABASE_URL
 ENV VITE_SUPABASE_ANON_KEY=$VITE_SUPABASE_ANON_KEY
 RUN npm run build:mobile:pwa

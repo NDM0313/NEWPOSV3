@@ -2,6 +2,7 @@ import { supabase } from '@/lib/supabase';
 import { documentNumberService } from '@/app/services/documentNumberService';
 import { calculateStockFromMovements } from '@/app/utils/stockCalculation';
 import type { StockMovement } from '@/app/utils/stockCalculation';
+import { inventoryService } from '@/app/services/inventoryService';
 
 /** normal = catalog product; production = manufactured from studio (STD-PROD, inventory + cost). */
 export type ProductType = 'normal' | 'production';
@@ -48,125 +49,81 @@ function ensureProductIds(payload: Record<string, unknown>): Record<string, unkn
   return out;
 }
 
+// Explicit select lists: never request current_stock (column may not exist). Stock from stock_movements/inventory overview.
+const PRODUCT_SELECT_SAFE =
+  'id, company_id, category_id, brand_id, unit_id, name, sku, barcode, description, cost_price, retail_price, wholesale_price, min_stock, max_stock, has_variations, is_rentable, is_sellable, track_stock, is_active, image_urls, product_type, source_type, created_at, updated_at';
+const VARIATION_SELECT_SAFE = 'id, product_id, sku, attributes';
+
 export const productService = {
-  // Get all products
+  // Get all products (no current_stock: use inventory overview for stock)
   async getAllProducts(companyId: string) {
-    // Note: company_id and is_active columns may not exist in all databases
     let query = supabase
       .from('products')
       .select(`
-        *,
+        ${PRODUCT_SELECT_SAFE},
         category:product_categories(id, name),
-        variations:product_variations(*)
+        variations:product_variations(${VARIATION_SELECT_SAFE})
       `)
       .eq('company_id', companyId)
       .eq('is_active', true)
       .order('name');
-    
+
     const { data, error } = await query;
-    
-    // If error is about foreign key relationship, try without explicit foreign key name
+
     if (error && (error.code === '42703' || error.code === '42P01')) {
       const retryQuery = supabase
         .from('products')
         .select(`
-          *,
+          ${PRODUCT_SELECT_SAFE},
           category:product_categories(id, name),
-          variations:product_variations(*)
+          variations:product_variations(${VARIATION_SELECT_SAFE})
         `)
         .eq('company_id', companyId)
         .eq('is_active', true)
         .order('name', { ascending: true });
-      
       const { data: retryData, error: retryError } = await retryQuery;
-      
-      // If still error, try without relationships
       if (retryError) {
-        const simpleQuery = supabase
+        const { data: simpleData, error: simpleError } = await supabase
           .from('products')
-          .select('*')
+          .select(PRODUCT_SELECT_SAFE)
           .eq('company_id', companyId)
           .eq('is_active', true)
           .order('name');
-        
-        const { data: simpleData, error: simpleError } = await simpleQuery;
         if (simpleError) throw simpleError;
         return simpleData;
       }
-      
       return retryData;
     }
-    
-    // If error is about is_active column not existing, retry without it
     if (error && error.code === '42703' && error.message?.includes('is_active')) {
       const { data: retryData, error: retryError } = await supabase
         .from('products')
-        .select(`
-          *,
-          category:product_categories(id, name),
-          variations:product_variations(*)
-        `)
+        .select(`${PRODUCT_SELECT_SAFE}, category:product_categories(id, name), variations:product_variations(${VARIATION_SELECT_SAFE})`)
         .eq('company_id', companyId)
         .order('name');
-      
-      if (retryError) {
-        // If company_id also doesn't exist, retry without both
-        const { data: finalData, error: finalError } = await supabase
-          .from('products')
-          .select(`
-            *,
-            category:product_categories(id, name),
-            variations:product_variations(*)
-          `)
-          .order('name');
-        
-        if (finalError) throw finalError;
-        return finalData;
-      }
+      if (retryError) throw retryError;
       return retryData;
     }
-    
-    // If error is about company_id column not existing, retry without it
     if (error && error.code === '42703' && error.message?.includes('company_id')) {
       const { data: retryData, error: retryError } = await supabase
         .from('products')
-        .select(`
-          *,
-          category:product_categories(id, name),
-          variations:product_variations(*)
-        `)
+        .select(`${PRODUCT_SELECT_SAFE}, category:product_categories(id, name), variations:product_variations(${VARIATION_SELECT_SAFE})`)
         .eq('is_active', true)
         .order('name');
-      
-      if (retryError) {
-        // If is_active also doesn't exist, retry without both
-        const { data: finalData, error: finalError } = await supabase
-          .from('products')
-          .select(`
-            *,
-            category:product_categories(id, name),
-            variations:product_variations(*)
-          `)
-          .order('name');
-        
-        if (finalError) throw finalError;
-        return finalData;
-      }
+      if (retryError) throw retryError;
       return retryData;
     }
-
     if (error) throw error;
     return data;
   },
 
-  // Get single product
+  // Get single product (no current_stock; stock from stock_movements)
   async getProduct(id: string) {
     const { data, error } = await supabase
       .from('products')
       .select(`
-        *,
-        category:product_categories(*),
-        variations:product_variations(*)
+        ${PRODUCT_SELECT_SAFE},
+        category:product_categories(id, name),
+        variations:product_variations(${VARIATION_SELECT_SAFE})
       `)
       .eq('id', id)
       .single();
@@ -175,9 +132,11 @@ export const productService = {
     return data;
   },
 
-  // Create product (uses ERP numbering engine for SKU; auto-retry once on duplicate SKU)
+  // Create product (uses ERP numbering engine for SKU; auto-retry once on duplicate SKU).
+  // Never send current_stock to DB (column may not exist; stock is movement-based).
   async createProduct(product: Partial<Product>) {
-    const payload = ensureProductIds(product as Record<string, unknown>);
+    const raw = ensureProductIds(product as Record<string, unknown>);
+    const { current_stock: _cs, ...payload } = raw as Record<string, unknown>;
     const companyId = (payload.company_id as string) || (product as any).company_id;
     let lastError: unknown = null;
 
@@ -273,11 +232,13 @@ export const productService = {
     return data;
   },
 
-  // Update product (form sends unit_id, category_id, brand_id in updates)
+  // Update product (form sends unit_id, category_id, brand_id in updates).
+  // Never send current_stock to DB (column may not exist; stock is movement-based).
   async updateProduct(id: string, updates: Partial<Product>) {
+    const { current_stock: _cs, ...safe } = updates as Record<string, unknown>;
     const { data, error } = await supabase
       .from('products')
-      .update(updates)
+      .update(safe)
       .eq('id', id)
       .select()
       .single();
@@ -296,29 +257,26 @@ export const productService = {
     if (error) throw error;
   },
 
-  // Search products
+  // Search products (explicit columns; no current_stock)
   async searchProducts(companyId: string, query: string) {
     const { data, error } = await supabase
       .from('products')
-      .select('*')
+      .select(PRODUCT_SELECT_SAFE)
       .eq('company_id', companyId)
       .eq('is_active', true)
       .or(`name.ilike.%${query}%,sku.ilike.%${query}%,barcode.ilike.%${query}%`)
       .limit(20);
 
-    // If error is about is_active column not existing, retry without it
     if (error && error.message?.includes('is_active')) {
       const { data: retryData, error: retryError } = await supabase
         .from('products')
-        .select('*')
+        .select(PRODUCT_SELECT_SAFE)
         .eq('company_id', companyId)
         .or(`name.ilike.%${query}%,sku.ilike.%${query}%,barcode.ilike.%${query}%`)
         .limit(20);
-      
       if (retryError) throw retryError;
       return retryData;
     }
-    
     if (error) throw error;
     return data;
   },
@@ -368,31 +326,21 @@ export const productService = {
     throw error;
   },
 
-  // Get low stock products
-  async getLowStockProducts(companyId: string) {
-    const { data, error } = await supabase
-      .from('products')
-      .select('*')
-      .eq('company_id', companyId)
-      .eq('is_active', true)
-      .lt('current_stock', 'min_stock')
-      .order('current_stock');
-
-    // If error is about is_active column not existing, retry without it
-    if (error && error.message?.includes('is_active')) {
-      const { data: retryData, error: retryError } = await supabase
-        .from('products')
-        .select('*')
-        .eq('company_id', companyId)
-        .lt('current_stock', 'min_stock')
-        .order('current_stock');
-      
-      if (retryError) throw retryError;
-      return retryData;
+  // Get low stock products. Movement-based only (stock_movements). Never queries current_stock.
+  async getLowStockProducts(companyId: string, branchId?: string | null) {
+    try {
+      const rows = await inventoryService.getInventoryOverview(companyId, branchId ?? undefined);
+      const low = (rows || []).filter((r) => r.minStock > 0 && r.stock < r.minStock);
+      return low.map((r) => ({
+        id: r.id,
+        name: r.name,
+        sku: r.sku,
+        current_stock: r.stock,
+        min_stock: r.minStock,
+      }));
+    } catch {
+      return [];
     }
-    
-    if (error) throw error;
-    return data;
   },
 
   // Get stock movements for a product (optionally filtered by variation_id and branch_id)

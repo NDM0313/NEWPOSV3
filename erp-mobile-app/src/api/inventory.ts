@@ -10,21 +10,39 @@ export interface InventoryItem {
   retailPrice: number;
 }
 
+/** Stock from stock_movements (no current_stock column dependency). */
 export async function getInventory(companyId: string): Promise<{ data: InventoryItem[]; error: string | null }> {
   if (!isSupabaseConfigured) return { data: [], error: 'App not configured.' };
-  const { data, error } = await supabase
+
+  const { data: products, error: productsError } = await supabase
     .from('products')
-    .select('id, name, sku, current_stock, min_stock, retail_price')
+    .select('id, name, sku, min_stock, retail_price')
     .eq('company_id', companyId)
     .eq('is_active', true)
-    .order('current_stock', { ascending: true });
+    .order('name');
 
-  if (error) return { data: [], error: error.message };
-  const list: InventoryItem[] = (data || []).map((r: Record<string, unknown>) => {
-    const stock = Number(r.current_stock) ?? 0;
+  if (productsError) return { data: [], error: productsError.message };
+  if (!products?.length) return { data: [], error: null };
+
+  const productIds = products.map((p: { id: string }) => p.id);
+  const { data: movements } = await supabase
+    .from('stock_movements')
+    .select('product_id, quantity')
+    .eq('company_id', companyId)
+    .in('product_id', productIds);
+
+  const stockByProductId: Record<string, number> = {};
+  (movements || []).forEach((m: { product_id: string; quantity: number }) => {
+    const id = m.product_id;
+    stockByProductId[id] = (stockByProductId[id] ?? 0) + Number(m.quantity ?? 0);
+  });
+
+  const list: InventoryItem[] = products.map((r: Record<string, unknown>) => {
+    const id = String(r.id ?? '');
+    const stock = stockByProductId[id] ?? 0;
     const minStock = Number(r.min_stock) ?? 0;
     return {
-      id: String(r.id ?? ''),
+      id,
       sku: String(r.sku ?? '—'),
       name: String(r.name ?? '—'),
       stock,

@@ -625,50 +625,32 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                 const unitsData = await unitService.getAll(companyId);
                 const unitsMap = new Map(unitsData.map(u => [u.id, u]));
                 
-                // Calculate stock for each product from movements (async batch)
+                // Calculate stock for each product from movements only (no current_stock; stock_movements is source of truth)
                 const productsList = await Promise.all(
                   productsData.map(async (p) => {
-                    let calculatedStock = p.current_stock || 0; // Fallback to current_stock
-                    
+                    let calculatedStock = 0;
                     try {
-                      // Get stock movements for this product (branch-aware)
-                      // For products with variations, calculate total stock across all variations
                       const movements = await productService.getStockMovements(
                         p.id,
                         companyId,
-                        undefined, // No variation filter for product search - get all variations
-                        contextBranchId || undefined // Use current branch if available
+                        undefined,
+                        contextBranchId || undefined
                       );
-                      
-                      // Calculate stock from movements using unified calculation
                       if (movements && movements.length > 0) {
                         const { calculateStockFromMovements } = await import('@/app/utils/stockCalculation');
                         const stockCalc = calculateStockFromMovements(movements);
-                        calculatedStock = Math.max(0, stockCalc.currentBalance); // Ensure non-negative
-                      } else {
-                        // If no movements found, use current_stock if available
-                        // Don't default to 0 if current_stock exists
-                        if (p.current_stock !== null && p.current_stock !== undefined) {
-                          calculatedStock = Math.max(0, p.current_stock);
-                        }
+                        calculatedStock = Math.max(0, stockCalc.currentBalance);
                       }
-                    } catch (stockError) {
-                      console.warn(`[SALE FORM] Could not calculate stock for product ${p.id}, using current_stock:`, stockError);
-                      // Use current_stock as fallback, but don't default to 0 if it's null
-                      if (p.current_stock !== null && p.current_stock !== undefined) {
-                        calculatedStock = Math.max(0, p.current_stock);
-                      }
+                    } catch {
+                      calculatedStock = 0;
                     }
-                    
-                    // Get unit data for decimal validation
                     const unit = p.unit_id ? unitsMap.get(p.unit_id) : null;
-                    
                     return {
                       id: p.id || p.uuid || '',
                       name: p.name || '',
                       sku: p.sku || '',
                       price: (p.retail_price ?? p.sellingPrice ?? p.salePrice ?? p.price) || 0,
-                      stock: calculatedStock, // This will show actual stock or current_stock, not forced 0
+                      stock: calculatedStock,
                       lastPurchasePrice: (p.cost_price ?? p.costPrice) ?? undefined,
                       lastSupplier: undefined, // Can be enhanced later
                       hasVariations: (p.variations && p.variations.length > 0) || false,

@@ -3,6 +3,7 @@ import { ArrowLeft, CreditCard, Plus, Minus, Trash2, Search, User as UserIcon, L
 import type { User } from '../../types';
 import * as productsApi from '../../api/products';
 import * as salesApi from '../../api/sales';
+import { addPending } from '../../lib/offlineStore';
 import { supabase } from '../../lib/supabase';
 import { balanceFromMovements } from '../../utils/stockBalance';
 import { PaymentDialog, type PaymentResult } from '../sales/PaymentDialog';
@@ -51,6 +52,7 @@ export function POSModule({ onBack, user, companyId, branchId }: POSModuleProps)
   const [variationModalProduct, setVariationModalProduct] = useState<POSProduct | null>(null);
   const [showPaymentStep, setShowPaymentStep] = useState(false);
   const [scanMessage, setScanMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [scannerInput, setScannerInput] = useState(''); // keyboard wedge (Speed-X, Sunmi, CS60)
 
   useEffect(() => {
     if (!scanMessage) return;
@@ -227,9 +229,16 @@ export function POSModule({ onBack, user, companyId, branchId }: POSModuleProps)
         addToCart(posProduct);
       }
       setScanMessage({ type: 'success', text: `Added ${product.name}` });
+      setScannerInput('');
     },
     [companyId]
   );
+
+  const handleScannerInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key !== 'Enter') return;
+    const code = scannerInput.trim();
+    if (code.length >= 1) handleBarcodeScanned(code);
+  };
 
   const subtotal = cart.reduce((sum, item) => sum + item.total, 0);
   const tax = 0;
@@ -273,7 +282,7 @@ export function POSModule({ onBack, user, companyId, branchId }: POSModuleProps)
       unitPrice: item.price,
       total: item.total,
     }));
-    const { data, error } = await salesApi.createSale({
+    const salePayload = {
       companyId,
       branchId,
       customerId: null,
@@ -290,7 +299,22 @@ export function POSModule({ onBack, user, companyId, branchId }: POSModuleProps)
       paymentAccountId: result.accountId ?? null,
       isStudio: false,
       userId: user.id,
-    });
+    };
+
+    if (!navigator.onLine) {
+      try {
+        await addPending('sale', salePayload, companyId, branchId);
+        setLastInvoiceNo('Pending sync');
+        setCart([]);
+        setShowPaymentStep(false);
+      } catch (e) {
+        setCheckoutError(e instanceof Error ? e.message : 'Failed to save offline.');
+      }
+      setCheckoutLoading(false);
+      return;
+    }
+
+    const { data, error } = await salesApi.createSale(salePayload);
     setCheckoutLoading(false);
     if (error) {
       setCheckoutError(error);
@@ -319,11 +343,13 @@ export function POSModule({ onBack, user, companyId, branchId }: POSModuleProps)
 
       <div className="p-4">
         {lastInvoiceNo && (
-          <div className="mb-4 flex items-center gap-3 bg-[#10B981]/20 border border-[#10B981]/50 rounded-xl p-3">
-            <CheckCircle2 className="w-6 h-6 text-[#10B981] flex-shrink-0" />
+          <div className={`mb-4 flex items-center gap-3 rounded-xl p-3 ${lastInvoiceNo === 'Pending sync' ? 'bg-amber-500/20 border border-amber-500/50' : 'bg-[#10B981]/20 border border-[#10B981]/50'}`}>
+            <CheckCircle2 className={`w-6 h-6 flex-shrink-0 ${lastInvoiceNo === 'Pending sync' ? 'text-amber-400' : 'text-[#10B981]'}`} />
             <div>
-              <p className="font-medium text-[#10B981]">Sale complete</p>
-              <p className="text-sm text-[#9CA3AF]">Invoice {lastInvoiceNo}</p>
+              <p className={`font-medium ${lastInvoiceNo === 'Pending sync' ? 'text-amber-400' : 'text-[#10B981]'}`}>
+                {lastInvoiceNo === 'Pending sync' ? 'Queued for sync' : 'Sale complete'}
+              </p>
+              <p className="text-sm text-[#9CA3AF]">{lastInvoiceNo === 'Pending sync' ? 'Will upload when online' : `Invoice ${lastInvoiceNo}`}</p>
             </div>
           </div>
         )}
@@ -349,18 +375,39 @@ export function POSModule({ onBack, user, companyId, branchId }: POSModuleProps)
           </div>
         ) : (
         <>
-        <div className="flex gap-2 mb-4">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-[#6B7280]" size={18} />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search products..."
-              className="w-full h-12 bg-[#1F2937] border border-[#374151] rounded-lg pl-10 pr-4 text-sm text-white placeholder-[#6B7280] focus:outline-none focus:border-[#3B82F6]"
-            />
+        <div className="space-y-2 mb-4">
+          <div className="flex gap-2">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-[#6B7280]" size={18} />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search products..."
+                className="w-full h-12 bg-[#1F2937] border border-[#374151] rounded-lg pl-10 pr-4 text-sm text-white placeholder-[#6B7280] focus:outline-none focus:border-[#3B82F6]"
+              />
+            </div>
+            <BarcodeScanner onScan={handleBarcodeScanned} buttonLabel="Scan" checkOnMount={true} />
           </div>
-          <BarcodeScanner onScan={handleBarcodeScanned} buttonLabel="Scan" checkOnMount={true} />
+          {/* Keyboard wedge: hardware scanners (Speed-X, Sunmi, CS60) inject barcode + Enter here */}
+          <input
+            type="text"
+            value={scannerInput}
+            onChange={(e) => setScannerInput(e.target.value)}
+            onKeyDown={handleScannerInputKeyDown}
+            placeholder="Or scan barcode here (Speed-X, Sunmi, CS60)..."
+            className="w-full h-11 bg-[#1F2937] border border-[#374151] rounded-lg px-4 text-sm text-white placeholder-[#6B7280] focus:outline-none focus:border-[#3B82F6]"
+            autoComplete="off"
+          />
+          {scanMessage && (
+            <div
+              className={`px-3 py-2 rounded-lg text-sm ${
+                scanMessage.type === 'success' ? 'bg-[#064E3B] text-[#6EE7B7]' : 'bg-[#7F1D1D] text-[#FCA5A5]'
+              }`}
+            >
+              {scanMessage.text}
+            </div>
+          )}
         </div>
 
         <div className="grid grid-cols-2 gap-3">

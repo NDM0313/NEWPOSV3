@@ -94,6 +94,7 @@ export async function getPurchasesForReport(
 /** Day Book (Roznamcha) – flattened journal entries for date range, chronological order */
 export interface DayBookEntry {
   id: string;
+  date: string;
   time: string;
   voucher: string;
   account: string;
@@ -142,6 +143,8 @@ export async function getDayBookEntries(
   for (const je of data || []) {
     const lines = (je.lines as Array<{ id?: string; debit?: number; credit?: number; description?: string; account?: { name?: string } | null }>) ?? [];
     const createdAt = je.created_at ? new Date(je.created_at as string) : new Date();
+    const entryDate = je.entry_date ? new Date(je.entry_date as string) : createdAt;
+    const dateStr = entryDate.toISOString().slice(0, 10);
     const timeStr = createdAt.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
     const voucher = String(je.entry_no ?? `JE-${String(je.id ?? '').slice(0, 8)}`);
     const desc = String(je.description ?? '');
@@ -156,6 +159,7 @@ export async function getDayBookEntries(
       const accountNameStr = accountName ?? 'Unknown Account';
       entries.push({
         id: `${je.id}-${line.id ?? Math.random()}`,
+        date: dateStr,
         time: timeStr,
         voucher,
         account: accountNameStr,

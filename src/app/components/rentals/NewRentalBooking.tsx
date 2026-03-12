@@ -119,7 +119,7 @@ export const NewRentalBooking = () => {
           retailValue: p.retail_price || 0,
           rentPrice: p.rental_price_daily ? p.rental_price_daily * 3 : 0,
           perDayPrice: p.rental_price_daily || 0,
-          stock: p.current_stock || 0,
+          stock: (p as any).stock ?? 0,
           bookings: [] // Will be loaded from rentals if needed
         }));
       setProducts(rentableProducts);

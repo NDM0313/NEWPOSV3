@@ -321,7 +321,7 @@ export const POS = () => {
         .map((p: any) => {
           const variations = (p.variations || []).filter((v: any) => v && v.id);
           const hasVariations = variations.length > 0;
-          const baseStock = p.current_stock || 0;
+          const baseStock = p.stock ?? 0;
           return {
             id: p.id,
             name: p.name || '',
@@ -334,7 +334,7 @@ export const POS = () => {
               id: v.id,
               name: v.name || v.sku,
               sku: v.sku,
-              current_stock: v.current_stock ?? 0,
+              current_stock: (v as any).stock ?? 0,
               retail_price: v.retail_price ?? v.price ?? p.retail_price ?? 0,
               wholesale_price: v.wholesale_price ?? v.retail_price ?? p.wholesale_price ?? 0,
             })) : undefined,
@@ -367,7 +367,7 @@ export const POS = () => {
                   ...p,
                   variations: p.variations.map(v => ({
                     ...v,
-                    current_stock: balanceByKey.get(`${p.id}_${v.id}`) ?? v.current_stock ?? 0,
+                    current_stock: balanceByKey.get(`${p.id}_${v.id}`) ?? (v as any).stock ?? 0,
                   })),
                 };
               }
@@ -544,7 +544,7 @@ export const POS = () => {
         let stock: number;
         if (vid && product.variations?.length) {
           const v = product.variations.find((vr: POSVariation) => vr.id === vid);
-          stock = v?.current_stock ?? 0;
+          stock = (v as any)?.current_stock ?? (v as any)?.stock ?? 0;
         } else {
           stock = product.stock;
         }
@@ -1258,7 +1258,7 @@ export const POS = () => {
             </div>
             <div className="overflow-y-auto p-4 space-y-2">
               {variationModalProduct.variations?.map((v) => {
-                const stock = v.current_stock ?? 0;
+                const stock = (v as any).current_stock ?? (v as any).stock ?? 0;
                 const disabled = !allowNegativeStock && stock <= 0;
                 return (
                   <button

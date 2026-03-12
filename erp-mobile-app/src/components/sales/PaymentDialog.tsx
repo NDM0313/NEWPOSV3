@@ -20,6 +20,8 @@ interface PaymentDialogProps {
   saveError?: string | null;
   /** When true, show Credit option (customer due balance). */
   hasCustomer?: boolean;
+  /** When true, show Credit option (purchase/supplier payable – same UI as hasCustomer). */
+  showCreditOption?: boolean;
 }
 
 type PaymentMethod = 'cash' | 'bank' | 'wallet' | 'card' | 'credit';
@@ -40,12 +42,13 @@ const METHOD_TO_TYPE: Record<Exclude<PaymentMethod, 'credit'>, string[]> = {
   card: ['bank'], // Card terminals typically use bank accounts
 };
 
-export function PaymentDialog({ onBack, totalAmount, companyId, onComplete, saving, saveError, hasCustomer }: PaymentDialogProps) {
+export function PaymentDialog({ onBack, totalAmount, companyId, onComplete, saving, saveError, hasCustomer, showCreditOption }: PaymentDialogProps) {
+  const showCredit = showCreditOption ?? hasCustomer;
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod | null>(null);
   const [selectedAccount, setSelectedAccount] = useState<Account | null>(null);
   const [paymentMode, setPaymentMode] = useState<PaymentMode>('full');
-  const [amount, setAmount] = useState(totalAmount.toString());
+  const [amount, setAmount] = useState('');
   const [showAccountError, setShowAccountError] = useState(false);
   const [allAccounts, setAllAccounts] = useState<Account[]>([]);
   const [accountsLoading, setAccountsLoading] = useState(true);
@@ -286,7 +289,7 @@ export function PaymentDialog({ onBack, totalAmount, companyId, onComplete, savi
             </div>
           </button>
 
-          {hasCustomer && (
+          {(showCredit) && (
             <button
               onClick={() => handleMethodSelect('credit')}
               className="w-full bg-[#1F2937] border border-[#374151] rounded-xl p-6 hover:border-[#F59E0B] transition-all active:scale-[0.98] text-left"
@@ -297,7 +300,7 @@ export function PaymentDialog({ onBack, totalAmount, companyId, onComplete, savi
                 </div>
                 <div className="flex-1">
                   <h3 className="font-semibold text-lg mb-1 text-white">CREDIT</h3>
-                  <p className="text-sm text-[#9CA3AF]">Customer due balance</p>
+                  <p className="text-sm text-[#9CA3AF]">{showCreditOption ? 'Pay later (supplier payable)' : 'Customer due balance'}</p>
                 </div>
               </div>
             </button>

@@ -10,6 +10,7 @@
     "migrate": "node scripts/run-migrations.js",
     "ensure-accounting": "node scripts/ensure-accounting-accounts.js",
     "health": "node scripts/run-health-check.js",
+    "health-report": "node scripts/erp-health-report.js",
     "apply-storage-rls": "node scripts/apply-storage-rls.js",
     "dev:with-migrate": "node scripts/run-migrations.js && vite",
     "seed": "node scripts/run-seed.js",
@@ -17,7 +18,9 @@
     "seed:full": "node scripts/run-phases.js",
     "link-auth": "node scripts/run-link-auth.js",
     "sync:mobile-env": "node scripts/sync-mobile-env.js",
-    "mobile:dev": "node scripts/sync-mobile-env.js && cd erp-mobile-app && npm run dev"
+    "mobile:dev": "node scripts/sync-mobile-env.js && cd erp-mobile-app && npm run dev",
+    "deploy:prepare": "node scripts/run-migrations.js --allow-fail && vite build",
+    "deploy:prepare:mobile": "node scripts/sync-mobile-env.js && cd erp-mobile-app && npx vite build"
   },
   "dependencies": {
     "@emotion/react": "11.14.0",

@@ -6,6 +6,9 @@ export interface PackingDetails {
   total_boxes?: number;
   total_pieces?: number;
   total_meters?: number;
+  /** Simple packing: packs × units_per_pack = quantity */
+  packs?: number;
+  units_per_pack?: number;
   boxes?: { box_no: number; pieces: number[] }[];
   loose_pieces?: number[];
   entry_mode?: 'detailed' | 'quick';

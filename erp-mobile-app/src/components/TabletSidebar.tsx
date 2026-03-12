@@ -1,6 +1,6 @@
 import {
   ShoppingCart, ShoppingBag, Shirt, Camera, Receipt, Package, Archive,
-  CreditCard, Users, Home, LogOut, ChevronRight, TrendingUp, Settings, Calculator,
+  CreditCard, Users, Home, LogOut, ChevronRight, TrendingUp, Settings, Calculator, ListChecks,
 } from 'lucide-react';
 import type { User, Branch, Screen } from '../types';
 import { FEATURE_MOBILE_PERMISSION_V2 } from '../config/featureFlags';
@@ -47,6 +47,8 @@ export function TabletSidebar({ user, branch, currentScreen, onNavigate, onLogou
     { id: 'pos', title: 'Point of Sale', icon: <CreditCard size={20} />, color: '#3B82F6', enabled: true },
     { id: 'contacts', title: 'Contacts', icon: <Users size={20} />, color: '#6366F1', enabled: true },
     { id: 'reports', title: 'Reports', icon: <TrendingUp size={20} />, color: '#8B5CF6', enabled: true },
+    { id: 'packing', title: 'Packing List', icon: <ListChecks size={20} />, color: '#0EA5E9', enabled: true },
+    { id: 'ledger', title: 'Ledger', icon: <Receipt size={20} />, color: '#84CC16', enabled: true },
     { id: 'settings', title: 'Settings', icon: <Settings size={20} />, color: '#6B7280', enabled: true },
   ];
 

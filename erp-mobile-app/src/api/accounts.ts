@@ -632,7 +632,7 @@ export async function recordWorkerPayment(params: {
       worker_id: params.workerId,
       amount: -params.amount,
       reference_type: 'payment',
-      reference_id: null,
+      reference_id: ref,
       document_no: ref,
       notes: params.notes ?? params.workPeriod ?? 'Worker payment',
       status: 'paid',

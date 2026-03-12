@@ -227,8 +227,8 @@ export const saleService = {
         customer:contacts(*),
         items:sales_items(
           *,
-          product:products(*),
-          variation:product_variations(*)
+          product:products(id, name, sku, cost_price, retail_price, has_variations),
+          variation:product_variations(id, product_id, sku, attributes)
         )
       `)
       .eq('id', saleData.id)
@@ -244,8 +244,8 @@ export const saleService = {
             customer:contacts(*),
             items:sale_items(
               *,
-              product:products(*),
-              variation:product_variations(*)
+              product:products(id, name, sku, cost_price, retail_price, has_variations),
+              variation:product_variations(id, product_id, sku, attributes)
             )
           `)
           .eq('id', saleData.id)
@@ -281,8 +281,8 @@ export const saleService = {
       branch:branches(id, name, code),
       items:${table}(
         *,
-        product:products(*),
-        variation:product_variations(*)
+        product:products(id, name, sku, cost_price, retail_price, has_variations),
+        variation:product_variations(id, product_id, sku, attributes)
       )
     `;
     let data: any = null;
@@ -302,10 +302,10 @@ export const saleService = {
 
     // If items missing (wrong table or RLS), fetch line items directly
     if (!data.items || data.items.length === 0) {
-      const { data: rows } = await supabase.from('sale_items').select('*, product:products(*), variation:product_variations(*)').eq('sale_id', saleId);
+      const { data: rows } = await supabase.from('sale_items').select('*, product:products(id, name, sku, cost_price, retail_price, has_variations), variation:product_variations(id, product_id, sku, attributes)').eq('sale_id', saleId);
       if (rows && rows.length > 0) data.items = rows;
       else {
-        const { data: rows2 } = await supabase.from('sales_items').select('*, product:products(*), variation:product_variations(*)').eq('sale_id', saleId);
+        const { data: rows2 } = await supabase.from('sales_items').select('*, product:products(id, name, sku, cost_price, retail_price, has_variations), variation:product_variations(id, product_id, sku, attributes)').eq('sale_id', saleId);
         if (rows2 && rows2.length > 0) data.items = rows2;
       }
     }
@@ -362,7 +362,7 @@ export const saleService = {
     branchId?: string,
     opts?: { limit?: number; offset?: number }
   ): Promise<any[] | { data: any[]; total: number }> {
-    const selectWithoutCreator = `*, customer:contacts(*), branch:branches(id, name, code), items:sales_items(*, product:products(*), variation:product_variations(*))`;
+    const selectWithoutCreator = `*, customer:contacts(*), branch:branches(id, name, code), items:sales_items(*, product:products(id, name, sku, cost_price, retail_price, has_variations), variation:product_variations(id, product_id, sku, attributes))`;
     const limit = opts?.limit ?? 50;
     const offset = opts?.offset ?? 0;
     let query = supabase
@@ -383,7 +383,7 @@ export const saleService = {
 
     if (error && (error.code === '42P01' || error.message?.includes('sales_items'))) {
       if (opts) throw error;
-      const altSelect = `*, customer:contacts(*), branch:branches(id, name, code), items:sale_items(*, product:products(*), variation:product_variations(*))`;
+      const altSelect = `*, customer:contacts(*), branch:branches(id, name, code), items:sale_items(*, product:products(id, name, sku, cost_price, retail_price, has_variations), variation:product_variations(id, product_id, sku, attributes))`;
       let retryQuery = supabase.from('sales').select(altSelect).eq('company_id', companyId).order('invoice_date', { ascending: false });
       if (branchId) retryQuery = retryQuery.eq('branch_id', branchId);
       const { data: retryData, error: retryError } = await retryQuery;
@@ -539,8 +539,8 @@ export const saleService = {
       customer:contacts(*),
       items:sales_items(
         *,
-        product:products(*),
-        variation:product_variations(*)
+        product:products(id, name, sku, cost_price, retail_price, has_variations),
+        variation:product_variations(id, product_id, sku, attributes)
       ),
       sale_charges(*)
     `;

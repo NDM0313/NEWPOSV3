@@ -934,7 +934,7 @@ export const rentalService = {
         branch:branches(id, name, code),
         items:rental_items(
           *,
-          product:products(*)
+          product:products(id, name, sku, cost_price, retail_price, has_variations)
         )
       `)
       .eq('id', id)

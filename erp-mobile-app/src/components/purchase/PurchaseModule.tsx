@@ -3,9 +3,11 @@ import { ArrowLeft, ShoppingBag, Plus, Search, Package, Calendar, Loader2, MapPi
 import type { User } from '../../types';
 import * as purchasesApi from '../../api/purchases';
 import * as branchesApi from '../../api/branches';
+import { supabase } from '../../lib/supabase';
 import { CreatePurchaseFlow } from './CreatePurchaseFlow';
 import { MobilePaySupplier } from './MobilePaySupplier';
 import { AttachmentPreviewModal } from '../sales/AttachmentPreviewModal';
+import { MobileActionBar } from '../shared/MobileActionBar';
 
 interface PurchaseModuleProps {
   onBack: () => void;
@@ -28,6 +30,8 @@ export function PurchaseModule({ onBack, user, companyId, branchId }: PurchaseMo
   const [addPaymentOrder, setAddPaymentOrder] = useState<purchasesApi.PurchaseListItem | null>(null);
   const [paymentHistory, setPaymentHistory] = useState<purchasesApi.PurchasePaymentRow[]>([]);
   const [attachmentPreviewList, setAttachmentPreviewList] = useState<Array<{ url: string; name: string }> | null>(null);
+  const [markAsFinalError, setMarkAsFinalError] = useState<string | null>(null);
+  const [markAsFinalLoading, setMarkAsFinalLoading] = useState(false);
 
   const effectiveBranchId = branchId && branchId !== 'all' ? branchId : undefined;
 
@@ -47,21 +51,40 @@ export function PurchaseModule({ onBack, user, companyId, branchId }: PurchaseMo
   const canAddDirect = !!companyId && !!effectiveBranchId;
   const canAddWithPicker = !!companyId && branchId === 'all' && !branchesLoading && branches.length > 0;
 
+  const loadOrders = useCallback(() => {
+    if (!companyId) {
+      setOrders([]);
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    purchasesApi.getPurchases(companyId, effectiveBranchId ?? null).then(({ data, error }) => {
+      setLoading(false);
+      setOrders(error ? [] : data);
+    });
+  }, [companyId, effectiveBranchId]);
+
   useEffect(() => {
     if (!companyId) {
       setOrders([]);
       setLoading(false);
       return;
     }
-    let cancelled = false;
-    setLoading(true);
-    purchasesApi.getPurchases(companyId, effectiveBranchId ?? null).then(({ data, error }) => {
-      if (cancelled) return;
-      setLoading(false);
-      setOrders(error ? [] : data);
-    });
-    return () => { cancelled = true; };
-  }, [companyId, effectiveBranchId]);
+    loadOrders();
+  }, [companyId, effectiveBranchId, loadOrders]);
+
+  useEffect(() => {
+    if (!companyId || import.meta.env.VITE_DISABLE_REALTIME === 'true') return;
+    const channel = supabase
+      .channel('purchases-list')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'purchases' }, () => {
+        loadOrders();
+      })
+      .subscribe();
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [companyId, loadOrders]);
 
   useEffect(() => {
     if (companyId && branchId === 'all') {
@@ -166,9 +189,10 @@ export function PurchaseModule({ onBack, user, companyId, branchId }: PurchaseMo
   }
 
   if (view === 'details' && selectedOrder) {
+    const showMarkAsFinal = ['ordered', 'draft', 'sent', 'confirmed'].includes(selectedOrder.status);
     return (
-      <div className="min-h-screen pb-24 bg-[#111827]">
-        <div className="bg-[#1F2937] border-b border-[#374151] p-4 sticky top-0 z-10">
+      <div className="min-h-screen bg-[#111827] flex flex-col">
+        <div className="bg-[#1F2937] border-b border-[#374151] p-4 sticky top-0 z-10 shrink-0">
           <div className="flex items-center gap-3">
             <button
               onClick={() => {
@@ -189,7 +213,7 @@ export function PurchaseModule({ onBack, user, companyId, branchId }: PurchaseMo
           </div>
         </div>
 
-        <div className="p-4 space-y-4">
+        <div className="p-4 space-y-4 flex-1 overflow-y-auto pb-28">
           <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">
             <h3 className="text-sm font-medium text-white mb-3">Supplier Information</h3>
             <div className="space-y-2 text-sm">
@@ -221,6 +245,22 @@ export function PurchaseModule({ onBack, user, companyId, branchId }: PurchaseMo
                     <span>Qty: {item.quantity}</span>
                     <span>@ Rs. {item.unitPrice.toLocaleString()}</span>
                   </div>
+                  {item.packingDetails && (() => {
+                    const pd = item.packingDetails;
+                    const boxes = pd.total_boxes ?? 0;
+                    const pieces = pd.total_pieces ?? 0;
+                    const meters = (pd as { total_meters?: number }).total_meters ?? 0;
+                    const hasBoxPcM = boxes > 0 || pieces > 0 || meters > 0;
+                    const packs = pd.packs ?? 0;
+                    const unitsPerPack = pd.units_per_pack ?? 0;
+                    if (hasBoxPcM) {
+                      return <p className="text-xs text-[#10B981] mt-0.5">{boxes} Box / {pieces} Pc / {meters.toFixed(0)} M</p>;
+                    }
+                    if (packs > 0 && unitsPerPack > 0) {
+                      return <p className="text-xs text-[#10B981] mt-0.5">{packs} packs × {unitsPerPack} = {item.quantity} units</p>;
+                    }
+                    return null;
+                  })()}
                 </div>
               ))}
             </div>
@@ -242,23 +282,6 @@ export function PurchaseModule({ onBack, user, companyId, branchId }: PurchaseMo
               <span className="text-[#10B981]">Rs. {selectedOrder.total.toLocaleString()}</span>
             </div>
           </div>
-
-          {['ordered', 'draft', 'sent', 'confirmed'].includes(selectedOrder.status) && (
-            <button
-              onClick={async () => {
-                const { error } = await purchasesApi.updatePurchaseStatus(companyId!, selectedOrder.id, 'final');
-                if (error) return;
-                const { data } = await purchasesApi.getPurchaseById(companyId!, selectedOrder.id);
-                if (data) setSelectedOrder(data);
-                purchasesApi.getPurchases(companyId!, effectiveBranchId ?? null).then(({ data: list }) => {
-                  if (list?.length) setOrders(list);
-                });
-              }}
-              className="w-full py-3 bg-[#10B981] hover:bg-[#059669] text-white rounded-xl font-medium"
-            >
-              Mark as Final
-            </button>
-          )}
 
           {paymentHistory.length > 0 && (
             <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">
@@ -296,6 +319,33 @@ export function PurchaseModule({ onBack, user, companyId, branchId }: PurchaseMo
             />
           )}
         </div>
+
+        {showMarkAsFinal && (
+          <MobileActionBar
+            label="Total"
+            value={`Rs. ${selectedOrder.total.toLocaleString()}`}
+            buttonLabel="Mark as Final"
+            onButtonClick={async () => {
+              setMarkAsFinalError(null);
+              setMarkAsFinalLoading(true);
+              const { error } = await purchasesApi.updatePurchaseStatus(companyId!, selectedOrder.id, 'final');
+              setMarkAsFinalLoading(false);
+              if (error) {
+                setMarkAsFinalError(error);
+                return;
+              }
+              const { data } = await purchasesApi.getPurchaseById(companyId!, selectedOrder.id);
+              if (data) setSelectedOrder(data);
+              purchasesApi.getPurchases(companyId!, effectiveBranchId ?? null).then(({ data: list }) => {
+                if (list?.length) setOrders(list);
+              });
+            }}
+            loading={markAsFinalLoading}
+            error={markAsFinalError}
+            variant="success"
+            aboveNav={true}
+          />
+        )}
       </div>
     );
   }

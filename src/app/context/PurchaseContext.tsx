@@ -672,27 +672,8 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
                 quantity: movement.quantity
               });
               
-              // CRITICAL: Also update products.current_stock directly to ensure immediate sync
-              try {
-                const { data: product } = await supabase
-                  .from('products')
-                  .select('current_stock')
-                  .eq('id', item.productId)
-                  .single();
-                
-                if (product) {
-                  const newStock = (product.current_stock || 0) + qtyToAdd;
-                  await supabase
-                    .from('products')
-                    .update({ current_stock: newStock })
-                    .eq('id', item.productId);
-                  
-                  console.log(`[PURCHASE CONTEXT] ✅ Updated product ${item.productId} stock: ${product.current_stock} → ${newStock}`);
-                }
-              } catch (stockUpdateError: any) {
-                console.error('[PURCHASE CONTEXT] ❌ Direct stock update error (non-blocking):', stockUpdateError);
-                // Continue even if direct update fails - stock_movements is the source of truth
-              }
+              // Stock is source-of-truth via stock_movements only. Do NOT update products.current_stock
+              // (column may not exist; would cause "column current_stock does not exist").
             } catch (movementError: any) {
               const errorMsg = `Failed to create stock movement for product ${item.productId} (${item.productName}): ${movementError.message || movementError}`;
               console.error('[PURCHASE CONTEXT] ❌ Stock movement creation failed:', errorMsg);
@@ -1512,20 +1493,9 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
 
       // Update stock for the received item
       const receivedItem = purchase.items.find(item => item.id === itemId);
+      // Stock is maintained via stock_movements; do not update products.current_stock (column may not exist).
       if (receivedItem && receivedItem.productId && quantity > 0) {
-        try {
-          // Get current product stock
-          const { data: product } = await productService.getProduct(receivedItem.productId);
-          if (product) {
-            // Increment stock
-            await productService.updateProduct(receivedItem.productId, {
-              current_stock: (product.current_stock || 0) + quantity
-            });
-          }
-        } catch (stockError) {
-          console.warn('[PURCHASE CONTEXT] Stock update warning (non-blocking):', stockError);
-          // Don't block if stock update fails
-        }
+        // Optionally create stock_movement here if needed; otherwise rely on trigger/finalize flow.
       }
 
       // Update local state

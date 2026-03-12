@@ -483,7 +483,7 @@ export const EnhancedProductForm = ({
       setValue('sellingPrice', source.retail_price ?? (source as any).sellingPrice ?? 0);
       setValue('wholesalePrice', source.wholesale_price ?? source.retail_price ?? 0);
       setValue('rentalPrice', source.rental_price_daily ?? 0);
-      setValue('initialStock', source.current_stock ?? (source as any).stock ?? 0);
+      setValue('initialStock', (source as any).stock ?? 0);
       setValue('alertQty', source.min_stock ?? (source as any).lowStockThreshold ?? 0);
       setValue('maxStock', source.max_stock ?? 1000);
       setValue('description', source.description || '');

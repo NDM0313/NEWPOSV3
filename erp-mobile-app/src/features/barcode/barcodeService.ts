@@ -1,6 +1,8 @@
 /**
- * Barcode scanning service using @capacitor-mlkit/barcode-scanning.
+ * Barcode scanning service using @capacitor-mlkit/barcode-scanning (optional).
  * On native: opens camera, scans, returns code. On web: returns error (no camera plugin).
+ * For web/dev the package is aliased to mlkit-stub in vite.config so the build does not require it.
+ * For Capacitor native build: set VITE_TARGET=capacitor so the real package is used.
  */
 
 export type BarcodeScanResult = { code: string; format?: string } | null;

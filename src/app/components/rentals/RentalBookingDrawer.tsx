@@ -248,7 +248,7 @@ export const RentalBookingDrawer = ({ isOpen, onClose, editRental }: RentalBooki
     // Check if product is rentable
     const isRentable = p.is_rentable !== false;
     const isSellable = p.is_sellable !== false;
-    const currentStock = p.current_stock || 0;
+    const currentStock = (p as any).stock ?? 0;
 
     if (!isRentable && isSellable) {
         status = 'retail_only';

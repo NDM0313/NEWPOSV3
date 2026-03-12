@@ -117,7 +117,7 @@ export function DayBookReport({ onBack, user: _user, companyId, branchId }: DayB
                         i % 2 === 0 ? 'bg-[#111827]' : 'bg-[#1F2937]/80'
                       }`}
                     >
-                      <span className="text-white text-xs">{e.time}</span>
+                      <span className="text-white text-xs" title={`${e.date} ${e.time}`}>{e.date} {e.time}</span>
                       <span className="text-white font-mono text-xs truncate" title={e.voucher}>{e.voucher}</span>
                       <div className="min-w-0">
                         <p className="text-white text-xs truncate" title={e.account}>{e.account}</p>

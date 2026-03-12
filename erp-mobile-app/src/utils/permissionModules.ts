@@ -16,6 +16,8 @@ const SCREEN_TO_MODULE: Record<string, string> = {
   inventory: 'inventory',
   contacts: 'contacts',
   reports: 'reports',
+  packing: 'sales',    // packing list is part of sales/wholesale workflow
+  ledger: 'ledger',    // customer ledger read-only
   settings: 'settings',
   dashboard: 'reports', // dashboard uses reports permission
   home: 'reports',     // home always shown; "More" grid still filtered

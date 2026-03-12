@@ -807,7 +807,7 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                         name: p.name || '',
                         sku: p.sku || '',
                         price: (p.cost_price ?? p.costPrice ?? p.price) || 0,
-                        stock: (p.current_stock ?? p.stock) ?? 0,
+                        stock: Number(p.stock) ?? 0,
                         lastPurchasePrice: (p.cost_price ?? p.costPrice) ?? undefined,
                         lastSupplier: undefined, // Can be enhanced later
                         hasVariations: (p.variations && p.variations.length > 0) || false,

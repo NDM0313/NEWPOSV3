@@ -109,7 +109,7 @@ export const ProductsPage = () => {
         unit: (p.unit_id && unitLabelById[p.unit_id]) ? unitLabelById[p.unit_id] : 'Piece',
         purchasePrice: p.cost_price || 0,
         sellingPrice: p.retail_price || 0,
-        stock: stockByProductId[p.id] ?? p.current_stock ?? 0,
+        stock: stockByProductId[p.id] ?? 0,
         type: p.is_combo_product ? 'combo' : (p.has_variations ? 'variable' : 'simple'),
         category: p.category?.name || 'Uncategorized',
         brand: p.brand || '',
@@ -1067,6 +1067,7 @@ export const ProductsPage = () => {
             setSelectedProduct(null);
           }}
           product={selectedProduct}
+          onOpenStockHistory={() => setStockHistoryOpen(true)}
         />
       )}
 

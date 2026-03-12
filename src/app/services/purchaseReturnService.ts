@@ -462,7 +462,7 @@ export const purchaseReturnService = {
         packing_quantity,
         packing_unit,
         packing_details,
-        variation:product_variations(*)
+        variation:product_variations(id, product_id, sku, attributes)
       `)
       .eq('purchase_id', purchaseId);
 

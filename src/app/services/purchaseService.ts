@@ -390,6 +390,7 @@ export const purchaseService = {
   },
 
   // Get single purchase (include attachments + purchase_charges for line-level extra expenses on edit)
+  // Use explicit column lists for product/variation to avoid requesting current_stock (column may not exist).
   async getPurchase(id: string) {
     const { data, error } = await supabase
       .from('purchases')
@@ -399,8 +400,8 @@ export const purchaseService = {
         supplier:contacts(*),
         items:purchase_items(
           *,
-          product:products(*),
-          variation:product_variations(*)
+          product:products(id, name, sku, cost_price, has_variations, unit_id, category_id, min_stock, max_stock),
+          variation:product_variations(id, product_id, sku, attributes)
         ),
         purchase_charges(*)
       `)
@@ -520,6 +521,20 @@ export const purchaseService = {
       .eq('id', id)
       .select()
       .single();
+
+    // Auto-fix: if update failed and we sent 'final', try all common enum casings (DB may use final/FINAL/Final).
+    if (error && status === 'final') {
+      const variants: Array<'final' | 'FINAL' | 'Final'> = ['final', 'FINAL', 'Final'];
+      for (const value of variants) {
+        const { data: retryData, error: retryError } = await supabase
+          .from('purchases')
+          .update({ status: value })
+          .eq('id', id)
+          .select()
+          .single();
+        if (!retryError && retryData) return retryData;
+      }
+    }
     if (error) throw error;
     return data;
   },

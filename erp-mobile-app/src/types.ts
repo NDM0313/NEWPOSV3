@@ -13,7 +13,9 @@ export type Screen =
   | 'products'
   | 'pos'
   | 'contacts'
-  | 'reports'
+  |   'reports'
+  | 'packing'
+  | 'ledger'
   | 'settings';
 
 export interface User {

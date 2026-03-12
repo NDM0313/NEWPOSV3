@@ -594,7 +594,7 @@ export const saleReturnService = {
       .from('sales_items')
       .select(`
         *,
-        variation:product_variations(*)
+        variation:product_variations(id, product_id, sku, attributes)
       `)
       .eq('sale_id', saleId)
       .order('created_at');
@@ -606,7 +606,7 @@ export const saleReturnService = {
           .from('sale_items')
           .select(`
             *,
-            variation:product_variations(*)
+            variation:product_variations(id, product_id, sku, attributes)
           `)
           .eq('sale_id', saleId)
           .order('created_at');

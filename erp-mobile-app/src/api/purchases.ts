@@ -165,13 +165,14 @@ export async function createPurchase(
   };
 }
 
-/** Update purchase status (e.g. ordered → final) */
+/** Update purchase status (e.g. ordered → final). Uses DB enum value (lowercase 'final'). */
 export async function updatePurchaseStatus(
   companyId: string,
   purchaseId: string,
   status: PurchaseStatus
 ): Promise<{ error: string | null }> {
   if (!isSupabaseConfigured) return { error: 'App not configured.' };
+  // purchase_status enum: typically 'draft'|'ordered'|'received'|'final' (lowercase). Send only status to avoid 400 from missing columns.
   const { error } = await supabase
     .from('purchases')
     .update({ status })
@@ -284,7 +285,7 @@ export interface PurchaseDetail {
   vendor: string;
   vendorPhone: string;
   branchId?: string | null;
-  items: { id: string; productName: string; quantity: number; unitPrice: number; total: number }[];
+  items: { id: string; productName: string; quantity: number; unitPrice: number; total: number; packingDetails?: { total_boxes?: number; total_pieces?: number; total_meters?: number; packs?: number; units_per_pack?: number } }[];
   subtotal: number;
   discount: number;
   total: number;
@@ -311,7 +312,7 @@ export async function getPurchaseById(
 
   const { data: items, error: itemsError } = await supabase
     .from('purchase_items')
-    .select('id, product_name, quantity, unit_price, total')
+    .select('id, product_name, quantity, unit_price, total, packing_details')
     .eq('purchase_id', purchaseId);
   if (itemsError) return { data: null, error: itemsError.message };
 
@@ -322,13 +323,21 @@ export async function getPurchaseById(
       poNo: (p.po_no as string) || '—',
       vendor: (p.supplier_name as string) || '—',
       vendorPhone: (p.contact_number as string) || '—',
-      items: (items || []).map((i: Record<string, unknown>) => ({
-        id: i.id as string,
-        productName: (i.product_name as string) || '—',
-        quantity: Number(i.quantity) || 0,
-        unitPrice: Number(i.unit_price) || 0,
-        total: Number(i.total) || 0,
-      })),
+      items: (items || []).map((i: Record<string, unknown>) => {
+        const pd = i.packing_details as Record<string, unknown> | null | undefined;
+        const packs = pd && (pd.packs ?? pd.total_boxes) != null ? Number(pd.packs ?? pd.total_boxes) : undefined;
+        const unitsPerPack = pd && (pd.units_per_pack != null || (pd.total_pieces != null && (pd.total_boxes ?? pd.packs) != null))
+          ? (pd.units_per_pack != null ? Number(pd.units_per_pack) : (Number(pd.total_boxes ?? pd.packs) || 0) > 0 ? Math.round(Number(pd.total_pieces) / Number(pd.total_boxes ?? pd.packs)) : undefined)
+          : undefined;
+        return {
+          id: i.id as string,
+          productName: (i.product_name as string) || '—',
+          quantity: Number(i.quantity) || 0,
+          unitPrice: Number(i.unit_price) || 0,
+          total: Number(i.total) || 0,
+          packingDetails: pd ? { total_boxes: pd.total_boxes as number | undefined, total_pieces: pd.total_pieces as number | undefined, total_meters: pd.total_meters as number | undefined, packs, units_per_pack: unitsPerPack } : undefined,
+        };
+      }),
       branchId: (p.branch_id as string) ?? null,
       subtotal: Number(p.subtotal) || 0,
       discount: Number(p.discount_amount) || 0,

@@ -11,7 +11,19 @@ export default defineConfig({
     hmr: true,  // Explicitly enable Hot Module Replacement
   },
   build: {
-    sourcemap: true, // Enable source maps for debugging
+    sourcemap: true,
+    rollupOptions: {
+      output: {
+        manualChunks: (id) => {
+          if (id.includes('node_modules')) {
+            if (id.includes('recharts')) return 'vendor-recharts';
+            if (id.includes('jspdf') || id.includes('html2canvas')) return 'vendor-pdf';
+          }
+        },
+        chunkFileNames: 'assets/[name]-[hash].js',
+      },
+    },
+    chunkSizeWarningLimit: 600,
   },
   plugins: [
     react(),
@@ -30,6 +42,7 @@ export default defineConfig({
         start_url: '/',
       },
       workbox: {
+        maximumFileSizeToCacheInBytes: 8 * 1024 * 1024, // 8 MiB (main chunk ~4 MB; Workbox default 2 MiB too low)
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
         runtimeCaching: [
           {

@@ -194,7 +194,7 @@ export async function getStudioProductions(
   try {
     let q = supabase
       .from('studio_productions')
-      .select('id, sale_id, production_no, production_date, status, product_id, product:products(id, name, sku), sale:sales(id, invoice_no, customer_name, total, invoice_date, deadline)')
+      .select('id, sale_id, production_no, production_date, status, product_id, product:products!product_id(id, name, sku), sale:sales(id, invoice_no, customer_name, total, invoice_date, deadline)')
       .eq('company_id', companyId)
       .order('created_at', { ascending: false })
       .limit(100);

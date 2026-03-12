@@ -3,11 +3,17 @@ import react from '@vitejs/plugin-react';
 import path from 'path';
 
 const base = process.env.VITE_BASE || '/';
+const useMlKitStub = process.env.VITE_TARGET !== 'capacitor';
 
 export default defineConfig({
   base,
   resolve: {
-    alias: { '@': path.resolve(__dirname, './src') },
+    alias: {
+      '@': path.resolve(__dirname, './src'),
+      ...(useMlKitStub && {
+        '@capacitor-mlkit/barcode-scanning': path.resolve(__dirname, './src/features/barcode/mlkit-stub.ts'),
+      }),
+    },
   },
   server: {
     port: 5174,

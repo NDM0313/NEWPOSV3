@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { X, Package, DollarSign, TrendingUp, AlertTriangle, CheckCircle, Tag, Box, Building2, FileText } from 'lucide-react';
+import { X, Package, DollarSign, TrendingUp, AlertTriangle, CheckCircle, Tag, Box, Building2, FileText, History } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
 import { ScrollArea } from '../ui/scroll-area';
@@ -31,6 +31,8 @@ interface ViewProductDetailsDrawerProps {
   isOpen: boolean;
   onClose: () => void;
   product: Product | null;
+  /** When set, show "View Stock History" button that opens stock history (purchase/sale/adjustment/production). */
+  onOpenStockHistory?: () => void;
 }
 
 export const ViewProductDetailsDrawer: React.FC<ViewProductDetailsDrawerProps> = ({
@@ -222,10 +224,23 @@ export const ViewProductDetailsDrawer: React.FC<ViewProductDetailsDrawerProps> =
 
                 {/* Stock Information */}
                 <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-6">
-                  <h4 className="text-sm font-semibold text-white mb-4 flex items-center gap-2">
-                    <Box size={16} />
-                    Stock Information
-                  </h4>
+                  <div className="flex items-center justify-between mb-4">
+                    <h4 className="text-sm font-semibold text-white flex items-center gap-2">
+                      <Box size={16} />
+                      Stock Information
+                    </h4>
+                    {onOpenStockHistory && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={onOpenStockHistory}
+                        className="border-gray-600 text-gray-300 hover:bg-gray-800 hover:text-white flex items-center gap-1.5"
+                      >
+                        <History size={14} />
+                        Stock History
+                      </Button>
+                    )}
+                  </div>
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <p className="text-xs text-gray-500 mb-1">Current Stock</p>

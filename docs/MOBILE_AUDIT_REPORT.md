@@ -1,120 +1,85 @@
-# Mobile ERP Audit Report — GO-LIVE READINESS
+# Mobile Parity Audit Report
 
-**Generated:** 2025-02-23  
-**Scope:** erp-mobile-app (Capacitor 8.1.0, Android & iOS)
-
----
-
-## 1. Executive Summary
-
-| Area | Status | Notes |
-|------|--------|-------|
-| Supabase URL | ✅ Pass | Same as Web (supabase.dincouture.pk) |
-| company_id Behavior | ✅ Pass | Same tenant isolation |
-| Branch Lock | ✅ Pass | user.branchLocked; selector disabled when locked |
-| PIN Login | ✅ Pass | SHA-256 hash, AES-GCM; 5-attempt lockout |
-| Offline Queue | ✅ Pass | IndexedDB; sale, expense, journal_entry, payment |
-| Sync Conflict | ⚠️ Review | Last-write-wins; no explicit conflict UI |
-| Storage Security | ✅ Pass | Secure storage for tokens |
-| Printer Integration | ❌ Missing | No Bluetooth/thermal |
-| Barcode Scanner | ❌ Missing | No camera-based scanning |
-| Camera Permissions | ❌ Missing | No CAMERA in AndroidManifest |
+**Scope:** `erp-mobile-app` vs web ERP (`src/app`).  
+**Date:** Generated from codebase scan.
 
 ---
 
-## 2. Supabase Configuration
+## Implemented (Mobile has feature)
 
-- **URL:** `VITE_SUPABASE_URL` = https://supabase.dincouture.pk
-- **Key:** `VITE_SUPABASE_ANON_KEY` (same as Web)
-- **Source:** `erp-mobile-app/src/lib/supabase.ts`
-- **Status:** ✅ Aligned with Web ERP.
-
----
-
-## 3. company_id & Branch Lock
-
-- **company_id:** From auth session; all API calls scoped by company.
-- **Branch lock:** `user.branchLocked` flag; when true, branch selector disabled, forced to `user.branchId`.
-- **Admin:** Can select "All Branches" or specific branch.
-- **Status:** ✅ Same behavior as Web.
-
----
-
-## 4. PIN Login Security
-
-- **Storage:** `secureStorage.ts` — encrypted payload (AES-GCM)
-- **PIN:** SHA-256 hashed with salt `erp_mobile_pin_salt_v1`
-- **Max attempts:** 5 → 15-minute lockout
-- **Session expiry:** 7 days max
-- **Fallback:** crypto-js when Web Crypto unavailable
-- **Status:** ✅ Secure implementation.
+| Feature | Mobile location | Web equivalent | Notes |
+|---------|-----------------|----------------|-------|
+| **Sales** | `SalesModule`, `SalesHome`, `AddProducts`, `SaleConfirmation`, `MobileReceivePayment` | SalesPage, SaleForm, ViewPaymentsModal | Create sale, add products, receive payment. |
+| **Purchases** | `PurchaseModule`, `CreatePurchaseFlow`, `MobilePaySupplier` | PurchasesPage, PurchaseForm | Create purchase; pay supplier. |
+| **Contacts** | `ContactsModule`, `AddContactFlow`, `EditContactFlow`, `ContactDetailView` | ContactsPage, ContactList | Add/edit contacts (customer/supplier). |
+| **Products** | `ProductsModule`, `AddProductFlow`, `VariationSelector` | ProductsPage, EnhancedProductForm | Add product; variations. |
+| **Inventory** | `InventoryModule`, `InventoryReports` | InventoryDashboardNew, reports | View inventory; reports. |
+| **Accounting** | `AccountingModule`, `AccountsDashboard`, `AccountTransferFlow`, `ExpenseEntryFlow`, `WorkerPaymentFlow`, `SupplierPaymentFlow` | AccountingDashboard, ledger, expenses | Accounts, transfers, expenses, worker/supplier payments. |
+| **Studio** | `StudioModule`, `StudioDashboard`, `StudioStageSelection` | StudioPipelinePage, StudioDashboardNew | Studio orders; stage selection. |
+| **Rental** | `RentalModule`, `RentalPickupModal`, `RentalReturnModal`, `RentalAddPaymentModal` | RentalsPage, PickupModal | Rental flows; pickup/return; payments. |
+| **Reports** | `SalesReports`, `AccountReports`, `InventoryReports`, `RentalReports`, `StudioReports`, `WorkerReports`, `ExpenseReports`, `DayBookReport` | ReportsDashboardEnhanced | Multiple report types. |
+| **Settings** | `SettingsModule`, `ChangePinModal`, `SetPinModal`, `EmployeesSection`, `UserPermissionsScreen` | SettingsPageNew | PIN, employees, permissions. |
+| **Barcode** | `features/barcode` (BarcodeScanner, useBarcodeScanner, barcodeService), `BarcodeCameraModal` | POS, product lookup | Camera scan; hook; service; modal in sales. |
+| **Auth** | `LoginScreen`, `BranchSelection` | Auth + branch selection | Login; branch. |
+| **Sync** | `SyncStatusBar`, `useNetworkStatus` | N/A (web always online) | Sync status; network awareness. |
 
 ---
 
-## 5. Offline Queue & Sync
+## Missing (Web has; mobile does not)
 
-- **Storage:** IndexedDB `erp_mobile_offline`, store `pending`
-- **Types:** sale, expense, journal_entry, payment
-- **Auto-sync:** Every 60 seconds when online
-- **Event:** Triggers on `online` event
-- **UI:** SyncStatusBar — "Offline" | "X pending" | "Syncing..." | "Sync Error"
-- **Status:** ✅ Working for supported types.
-
----
-
-## 6. Sync Conflict Handling
-
-- **Strategy:** Last-write-wins (no explicit merge)
-- **Risk:** Concurrent edits may overwrite
-- **Recommendation:** Document for users; consider conflict UI for critical flows
-- **Status:** ⚠️ Acceptable for MVP; improve post go-live.
+| Feature | Web location | Notes |
+|---------|-------------|-------|
+| **POS (full)** | `POS.tsx` | Web has full POS; mobile has Sales flow but not full POS UI. |
+| **Document numbering rules UI** | Settings → Numbering | Maintenance of sequences/rules. |
+| **Printing settings** | PrintingSettingsPanel, PrintingPreviewPanel | Paper size, templates. |
+| **Courier management** | CourierManagementPanel, ShipmentModal (full) | Courier master; shipment modal parity. |
+| **Bulk invoice (wholesale)** | bulkInvoiceService, bulk invoice UI | Create bulk invoice from packing lists. |
+| **Packing list generation** | packingListService, packing list UI | Generate packing list from sale. |
+| **Manufacturing (BOM / production orders)** | BillOfMaterialsPage, ProductionWorkflow, ProductionOrdersPage | Full BOM and production workflow. |
+| **Customer ledger (full)** | CustomerLedgerPage, modern ledger views | Full ledger with filters, print, export. |
+| **Rental availability** | RentalDashboard, availability | Rental availability calendar. |
 
 ---
 
-## 7. Secure Token Storage
+## Needs API
 
-- **Tokens:** Stored in encrypted vault (secureStorage)
-- **Clear on:** Sign-out
-- **Status:** ✅ Secure.
-
----
-
-## 8. Missing: Printer Integration
-
-- **Current:** Browser print dialog only (`window.print()`)
-- **Needed:** Bluetooth/thermal printer for receipts
-- **Plugins:** None installed (e.g. @capacitor-community/bluetooth-le)
-- **Status:** ❌ Not implemented. Required for POS-on-mobile.
+| Feature | Required API / RPC | Notes |
+|---------|--------------------|-------|
+| Barcode → product lookup | Product by SKU/barcode (existing products API may support filter) | Mobile uses barcode; need fast lookup by code. |
+| Offline sale submit | Batch submit sales when back online | If offline support added. |
+| Sync conflicts | Conflict resolution endpoint | For offline sync. |
+| Packing list create | Create packing list from sale (if added to mobile) | Backend may exist; mobile needs endpoint. |
+| Bulk invoice create | Bulk invoice from packing lists (if added) | Same. |
 
 ---
 
-## 9. Missing: Barcode Scanner
+## Needs UI
 
-- **Current:** Manual barcode entry in product forms
-- **Needed:** Camera-based scanning
-- **Plugins:** None
-- **Status:** ❌ Not implemented.
-
----
-
-## 10. Missing: Camera Permissions
-
-- **Android:** Only INTERNET in AndroidManifest.xml
-- **iOS:** No NSCameraUsageDescription in Info.plist
-- **Status:** ❌ Required for barcode scanner.
+| Feature | Current state | Needed |
+|---------|---------------|--------|
+| Barcode in sales | BarcodeCameraModal in sales | Ensure “Scan” prominent; optional external scanner support. |
+| Shipment on sale | Partial | Full shipment modal (courier, tracking) on mobile. |
+| Packing list | Missing | Screen to generate/view packing list from sale. |
+| Manufacturing | Missing | BOM list; production order list/detail (simplified). |
+| Customer ledger | Missing | Read-only ledger view with filters. |
 
 ---
 
-## 11. Recommendations
+## Needs Offline
 
-| Priority | Item | Action |
-|----------|------|--------|
-| High | Printer configuration | Add Settings → Printer (Bluetooth/USB/Network, 58mm/80mm) |
-| High | Thermal printer | Add Capacitor plugin for Bluetooth printing |
-| Medium | Barcode scanner | Add camera + barcode plugin |
+| Area | Current | Needed |
+|------|---------|--------|
+| **Data** | Likely online-only (Supabase) | Cache products, contacts, recent sales for offline. |
+| **Queue** | None | Queue sales/payments when offline; sync on reconnect. |
+| **Sync** | SyncStatusBar shows status | Actual sync logic (upload queue, conflict handling). |
+| **Auth** | Online login | Optional: cached session + re-auth when online. |
 
 ---
 
-## 12. Verdict
+## Summary
 
-**Mobile ERP is GO-LIVE READY for core flows** (sales, expenses, sync, PIN, branch lock). Printer and barcode scanner are not implemented; acceptable if POS-on-mobile is not required at go-live.
+- **Implemented:** Sales, purchases, contacts, products, inventory, accounting (core), studio, rental, reports, settings, barcode (camera + hook), auth, sync status.
+- **Missing:** Full POS, numbering UI, printing settings, courier management, bulk invoice, packing list UI, manufacturing, full customer ledger, rental availability.
+- **Needs API:** Barcode product lookup (verify), offline submit/conflict if offline added.
+- **Needs UI:** Barcode prominence, shipment modal, packing list, manufacturing (simplified), customer ledger.
+- **Needs offline:** Caching, queue, sync implementation, optional cached auth.

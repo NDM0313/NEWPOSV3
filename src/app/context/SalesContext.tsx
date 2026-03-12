@@ -485,15 +485,15 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
         const productIds = [...new Set(saleData.items.map((i) => i.productId))];
         const [stockMap, { data: prods }] = await Promise.all([
           productService.getStockForProducts(productIds, companyId, effectiveBranchId ?? undefined),
-          supabase.from('products').select('id, current_stock, has_variations').in('id', productIds),
+          supabase.from('products').select('id, has_variations').in('id', productIds),
         ]);
         const productMap = new Map((prods || []).map((p: any) => [p.id, p]));
 
         for (const item of saleData.items) {
-          const p = productMap.get(item.productId) as { current_stock?: number; has_variations?: boolean } | undefined;
+          const p = productMap.get(item.productId) as { has_variations?: boolean } | undefined;
           if (!p) continue;
           const key = (item as any).variationId ? `${item.productId}:${(item as any).variationId}` : `${item.productId}:`;
-          const stock = stockMap.get(key) ?? Number(p.current_stock || 0);
+          const stock = stockMap.get(key) ?? 0;
           if (stock < item.quantity) {
             throw new Error(
               `${item.productName}: quantity (${item.quantity}) exceeds available stock (${stock}). ` +
@@ -824,27 +824,7 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
                       quantity: movement.quantity
                     });
                     
-                    // Update component product stock
-                    try {
-                      const { supabase: sb } = await import('@/lib/supabase');
-                      const { data: componentProduct } = await sb
-                        .from('products')
-                        .select('current_stock')
-                        .eq('id', comboItem.product_id)
-                        .single();
-                      
-                      if (componentProduct) {
-                        const newStock = Math.max(0, (componentProduct.current_stock || 0) - componentQty);
-                        await sb
-                          .from('products')
-                          .update({ current_stock: newStock })
-                          .eq('id', comboItem.product_id);
-                        
-                        console.log(`[SALES CONTEXT] ✅ Updated combo component ${comboItem.product_id} stock: ${componentProduct.current_stock} → ${newStock}`);
-                      }
-                    } catch (stockUpdateError: any) {
-                      console.error('[SALES CONTEXT] ❌ Direct stock update error for combo component (non-blocking):', stockUpdateError);
-                    }
+                    // Stock is source-of-truth via stock_movements only. Do not update products.current_stock (column may not exist).
                   }
                   
                   // Skip creating stock movement for combo product itself (virtual bundle - no stock)
@@ -894,28 +874,7 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
                 quantity: movement.quantity
               });
               
-              // CRITICAL: Also update products.current_stock directly to ensure immediate sync
-              try {
-                const { supabase: sb } = await import('@/lib/supabase');
-                const { data: product } = await sb
-                  .from('products')
-                  .select('current_stock')
-                  .eq('id', item.productId)
-                  .single();
-                
-                if (product) {
-                  const newStock = Math.max(0, (product.current_stock || 0) - item.quantity);
-                  await sb
-                    .from('products')
-                    .update({ current_stock: newStock })
-                    .eq('id', item.productId);
-                  
-                  console.log(`[SALES CONTEXT] ✅ Updated product ${item.productId} stock: ${product.current_stock} → ${newStock}`);
-                }
-              } catch (stockUpdateError: any) {
-                console.error('[SALES CONTEXT] ❌ Direct stock update error (non-blocking):', stockUpdateError);
-                // Continue even if direct update fails - stock_movements is the source of truth
-              }
+              // Stock is source-of-truth via stock_movements only. Do not update products.current_stock (column may not exist).
             } catch (movementError: any) {
               const errorMsg = `Failed to create stock movement for product ${item.productId} (${item.productName}): ${movementError.message || movementError}`;
               console.error('[SALES CONTEXT] ❌ Stock movement creation failed:', errorMsg);
@@ -1365,15 +1324,15 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
         const productIds = [...new Set(reducingDeltas.map((d) => d.productId))];
         const [stockMap, { data: prods }] = await Promise.all([
           productService.getStockForProducts(productIds, companyId, effectiveBranchId ?? undefined),
-          supabase.from('products').select('id, current_stock, has_variations').in('id', productIds),
+          supabase.from('products').select('id, has_variations').in('id', productIds),
         ]);
         const productMap = new Map((prods || []).map((p: any) => [p.id, p]));
 
         for (const delta of reducingDeltas) {
-          const p = productMap.get(delta.productId) as { current_stock?: number; has_variations?: boolean } | undefined;
+          const p = productMap.get(delta.productId) as { has_variations?: boolean } | undefined;
           if (!p) continue;
           const key = delta.variationId ? `${delta.productId}:${delta.variationId}` : `${delta.productId}:`;
-          const stock = stockMap.get(key) ?? Number(p.current_stock || 0);
+          const stock = stockMap.get(key) ?? 0;
           const qtyNeeded = Math.abs(delta.deltaQty);
           if (stock < qtyNeeded) {
             throw new Error(

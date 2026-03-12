@@ -1,5 +1,4 @@
-import { useState, useEffect } from 'react';
-import { createPortal } from 'react-dom';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { ArrowLeft, Search, Plus, Minus, Package, Edit2, Trash2, Scan } from 'lucide-react';
 import type { Customer, Product } from './SalesModule';
 import type { PackingDetails } from '../transactions/PackingEntryModal';
@@ -8,6 +7,7 @@ import * as productsApi from '../../api/products';
 import * as settingsApi from '../../api/settings';
 import type { ProductVariationRow } from '../../api/products';
 import { BarcodeCameraModal } from './BarcodeCameraModal';
+import { MobileActionBar } from '../shared/MobileActionBar';
 
 interface AddProductsProps {
   companyId: string | null;
@@ -45,6 +45,52 @@ function findProductByBarcode(available: AvailableProduct[], code: string): Avai
   return null;
 }
 
+/** Map API Product to AvailableProduct for cart/add modal. */
+function mapApiProductToAvailable(p: productsApi.Product): AvailableProduct {
+  return {
+    id: p.id,
+    name: p.name,
+    price: p.retailPrice ?? 0,
+    wholesalePrice: p.wholesalePrice ?? p.retailPrice ?? 0,
+    sku: p.sku,
+    barcode: p.barcode,
+    unit: p.unit ?? 'Piece',
+    hasVariations: p.hasVariations ?? false,
+    variations: p.variations,
+    unitAllowDecimal: p.unitAllowDecimal ?? false,
+  };
+}
+
+/** Add a product to cart with quantity 1 (or increment if same id+variation). */
+function addProductToCart(
+  product: AvailableProduct,
+  existingProducts: Product[],
+  onUpdate: (next: Product[]) => void
+): void {
+  const existing = existingProducts.find(
+    (pr) => pr.id === product.id && (pr.variationId ?? '') === ''
+  );
+  if (existing) {
+    const newQty = existing.quantity + 1;
+    const next = existingProducts.map((pr) =>
+      pr.id === product.id && (pr.variationId ?? '') === ''
+        ? { ...pr, quantity: newQty, total: pr.price * newQty }
+        : pr
+    );
+    onUpdate(next);
+  } else {
+    const line: Product = {
+      id: product.id,
+      name: product.name,
+      sku: product.sku,
+      price: product.price,
+      quantity: 1,
+      total: product.price,
+    };
+    onUpdate([...existingProducts, line]);
+  }
+}
+
 export function AddProducts({
   companyId,
   onBack,
@@ -62,6 +108,10 @@ export function AddProducts({
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [barcodeMethod, setBarcodeMethod] = useState<settingsApi.BarcodeScannerMethod>('keyboard_wedge');
   const [cameraScanOpen, setCameraScanOpen] = useState(false);
+  const [scanMessage, setScanMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [scannerInput, setScannerInput] = useState(''); // dedicated field for keyboard wedge (Speed-X, Sunmi, CS60)
+  const [barcodeLookupLoading, setBarcodeLookupLoading] = useState(false);
+  const scannerInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!companyId) {
@@ -110,21 +160,73 @@ export function AddProducts({
     return false;
   });
 
-  const handleBarcodeDetected = (code: string) => {
-    const match = findProductByBarcode(available, code);
-    if (match) {
+  useEffect(() => {
+    if (!scanMessage) return;
+    const t = setTimeout(() => setScanMessage(null), 2800);
+    return () => clearTimeout(t);
+  }, [scanMessage]);
+
+  const processBarcode = useCallback(
+    async (code: string) => {
+      const trimmed = (code || '').trim();
+      if (!trimmed) return;
+      const match = findProductByBarcode(available, trimmed);
+      if (match) {
+        if (match.hasVariations && (match.variations?.length ?? 0) > 0) {
+          openAddModal(match);
+        } else {
+          addProductToCart(match, products, (next) => {
+            setProducts(next);
+            onProductsUpdate(next);
+          });
+          setScanMessage({ type: 'success', text: `Added ${match.name}` });
+        }
+        setSearch('');
+        setScannerInput('');
+        return;
+      }
+      if (!companyId) {
+        setScanMessage({ type: 'error', text: 'Product not found.' });
+        return;
+      }
+      setBarcodeLookupLoading(true);
+      const { data, error } = await productsApi.getProductByBarcodeOrSku(companyId, trimmed);
+      setBarcodeLookupLoading(false);
+      if (error || !data) {
+        setScanMessage({ type: 'error', text: `Product not found for: ${trimmed}` });
+        return;
+      }
+      const ap = mapApiProductToAvailable(data);
+      setAvailable((prev) => (prev.some((x) => x.id === ap.id) ? prev : [...prev, ap]));
+      if (ap.hasVariations && (ap.variations?.length ?? 0) > 0) {
+        openAddModal(ap);
+      } else {
+        addProductToCart(ap, products, (next) => {
+          setProducts(next);
+          onProductsUpdate(next);
+        });
+        setScanMessage({ type: 'success', text: `Added ${ap.name}` });
+      }
       setSearch('');
-      openAddModal(match);
-    }
+      setScannerInput('');
+    },
+    [companyId, available, products, onProductsUpdate]
+  );
+
+  const handleBarcodeDetected = (code: string) => {
+    processBarcode(code);
   };
 
   const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key !== 'Enter') return;
-    const match = findProductByBarcode(available, search);
-    if (match) {
-      setSearch('');
-      openAddModal(match);
-    }
+    const raw = search.trim();
+    if (raw.length >= 1) processBarcode(raw);
+  };
+
+  const handleScannerInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key !== 'Enter') return;
+    const raw = scannerInput.trim();
+    if (raw.length >= 1) processBarcode(raw);
   };
   const subtotal = products.reduce((sum, p) => sum + p.total, 0);
 
@@ -180,7 +282,7 @@ export function AddProducts({
 
   return (
     <div className="min-h-screen bg-[#111827] pb-32">
-      {/* Header - Figma style */}
+      {/* Header */}
       <div className="bg-[#1F2937] border-b border-[#374151] px-4 py-3 sticky top-0 z-20">
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-3">
@@ -197,15 +299,74 @@ export function AddProducts({
             Next
           </button>
         </div>
-
-        {/* Customer card - Figma style */}
-        <div className="bg-[#111827] rounded-lg p-3 mb-3">
+        <div className="bg-[#111827] rounded-lg p-3">
           <p className="text-xs text-[#9CA3AF] mb-1">Customer</p>
           <p className="font-medium text-[#F9FAFB]">{customer.name}</p>
           <p className="text-sm text-[#9CA3AF]">Items: {products.length}</p>
         </div>
+      </div>
 
-        {/* Search + Barcode (standard: keyboard wedge or camera) */}
+      <BarcodeCameraModal
+        open={cameraScanOpen}
+        onClose={() => setCameraScanOpen(false)}
+        onDetected={handleBarcodeDetected}
+      />
+
+      <div className="p-4 space-y-4">
+        {/* 1. CART ITEMS — top, always visible (Figma pattern) */}
+        <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">
+          <h2 className="text-sm font-medium text-[#9CA3AF] mb-3">CART ({products.length} items)</h2>
+          {products.length === 0 ? (
+            <p className="text-xs text-[#6B7280] py-2">No items yet. Search and add below.</p>
+          ) : (
+            <div className="space-y-2">
+              {products.map((p, i) => (
+                <div
+                  key={`${p.id}-${i}`}
+                  className="bg-[#111827] border border-[#374151] rounded-xl p-4"
+                >
+                  <div className="flex items-start justify-between mb-2">
+                    <div className="flex-1">
+                      <h3 className="font-medium text-[#F9FAFB] mb-1">{p.name}</h3>
+                      {(p.variation || p.variationId) && (
+                        <p className="text-xs text-[#9CA3AF]">{p.variation || 'Variant'}</p>
+                      )}
+                      {p.packingDetails && (p.packingDetails.total_meters ?? 0) > 0 && (
+                        <p className="text-xs text-[#3B82F6] mt-1">
+                          {p.packingDetails.total_boxes ?? 0} Box • {p.packingDetails.total_pieces ?? 0} Pc • {(p.packingDetails.total_meters ?? 0).toFixed(1)} M
+                        </p>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => openEditModal(i)}
+                        className="p-2 hover:bg-[#374151] rounded-lg"
+                      >
+                        <Edit2 className="w-4 h-4 text-[#3B82F6]" />
+                      </button>
+                      <button
+                        onClick={() => remove(i)}
+                        className="p-2 hover:bg-[#374151] rounded-lg"
+                      >
+                        <Trash2 className="w-4 h-4 text-[#EF4444]" />
+                      </button>
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <div className="text-sm text-[#9CA3AF]">
+                      Qty: {p.quantity} × Rs. {p.price.toLocaleString()}
+                    </div>
+                    <div className="font-semibold text-[#10B981]">
+                      Rs. {p.total.toLocaleString()}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* 2. SEARCH */}
         <div className="flex gap-2">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#6B7280]" />
@@ -214,7 +375,7 @@ export function AddProducts({
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               onKeyDown={handleSearchKeyDown}
-              placeholder={barcodeMethod === 'camera' ? 'Search or type barcode...' : 'Search or scan barcode...'}
+              placeholder={barcodeMethod === 'camera' ? 'Search or type barcode...' : 'Search products...'}
               className="w-full h-11 bg-[#111827] border border-[#374151] rounded-lg pl-11 pr-4 text-sm text-[#F9FAFB] placeholder-[#6B7280] focus:outline-none focus:border-[#3B82F6]"
             />
           </div>
@@ -230,68 +391,36 @@ export function AddProducts({
             </button>
           )}
         </div>
-      </div>
-
-      <BarcodeCameraModal
-        open={cameraScanOpen}
-        onClose={() => setCameraScanOpen(false)}
-        onDetected={handleBarcodeDetected}
-      />
-
-      {/* Cart - when has items */}
-      {products.length > 0 && (
-        <div className="p-4">
-          <h2 className="text-sm font-medium text-[#9CA3AF] mb-3">CART ({products.length} items)</h2>
-          <div className="space-y-2">
-            {products.map((p, i) => (
-              <div
-                key={`${p.id}-${i}`}
-                className="bg-[#1F2937] border border-[#374151] rounded-xl p-4"
-              >
-                <div className="flex items-start justify-between mb-2">
-                  <div className="flex-1">
-                    <h3 className="font-medium text-[#F9FAFB] mb-1">{p.name}</h3>
-                    {(p.variation || p.variationId) && (
-                      <p className="text-xs text-[#9CA3AF]">{p.variation || 'Variant'}</p>
-                    )}
-                    {p.packingDetails && (p.packingDetails.total_meters ?? 0) > 0 && (
-                      <p className="text-xs text-[#3B82F6] mt-1">
-                        {p.packingDetails.total_boxes ?? 0} Box • {p.packingDetails.total_pieces ?? 0} Pc • {(p.packingDetails.total_meters ?? 0).toFixed(1)} M
-                      </p>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => openEditModal(i)}
-                      className="p-2 hover:bg-[#374151] rounded-lg"
-                    >
-                      <Edit2 className="w-4 h-4 text-[#3B82F6]" />
-                    </button>
-                    <button
-                      onClick={() => remove(i)}
-                      className="p-2 hover:bg-[#374151] rounded-lg"
-                    >
-                      <Trash2 className="w-4 h-4 text-[#EF4444]" />
-                    </button>
-                  </div>
-                </div>
-                <div className="flex items-center justify-between">
-                  <div className="text-sm text-[#9CA3AF]">
-                    Qty: {p.quantity} × Rs. {p.price.toLocaleString()}
-                  </div>
-                  <div className="font-semibold text-[#10B981]">
-                    Rs. {p.total.toLocaleString()}
-                  </div>
-                </div>
-              </div>
-            ))}
+        {barcodeMethod === 'keyboard_wedge' && (
+          <input
+            ref={scannerInputRef}
+            type="text"
+            value={scannerInput}
+            onChange={(e) => setScannerInput(e.target.value)}
+            onKeyDown={handleScannerInputKeyDown}
+            placeholder="Scan barcode (Speed-X, Sunmi, CS60)..."
+            className="w-full h-11 bg-[#111827] border border-[#374151] rounded-lg px-4 text-sm text-[#F9FAFB] placeholder-[#6B7280] focus:outline-none focus:border-[#3B82F6]"
+            autoComplete="off"
+          />
+        )}
+        {scanMessage && (
+          <div
+            className={`px-3 py-2 rounded-lg text-sm ${
+              scanMessage.type === 'success' ? 'bg-[#064E3B] text-[#6EE7B7]' : 'bg-[#7F1D1D] text-[#FCA5A5]'
+            }`}
+          >
+            {scanMessage.text}
           </div>
-        </div>
-      )}
+        )}
+        {barcodeLookupLoading && (
+          <div className="flex items-center gap-2 text-sm text-[#9CA3AF]">
+            <div className="w-4 h-4 border-2 border-[#3B82F6] border-t-transparent rounded-full animate-spin" />
+            Looking up product...
+          </div>
+        )}
 
-      {/* Available Products - Grid layout Figma style */}
-      <div className="p-4">
-        <h2 className="text-sm font-medium text-[#9CA3AF] mb-3">AVAILABLE PRODUCTS</h2>
+        {/* 3. PRODUCT GRID */}
+        <h2 className="text-sm font-medium text-[#9CA3AF]">AVAILABLE PRODUCTS</h2>
         {loading ? (
           <div className="flex justify-center py-12">
             <div className="w-8 h-8 border-2 border-[#3B82F6] border-t-transparent rounded-full animate-spin" />
@@ -325,7 +454,6 @@ export function AddProducts({
         )}
       </div>
 
-      {/* Empty state */}
       {products.length === 0 && !search && !loading && (
         <div className="text-center py-12 px-4">
           <div className="w-16 h-16 bg-[#374151] rounded-full flex items-center justify-center mx-auto mb-4">
@@ -336,23 +464,15 @@ export function AddProducts({
         </div>
       )}
 
-      {/* Bottom bar – portal to body so fixed bottom works (avoids transform/overflow ancestors) */}
-      {products.length > 0 &&
-        createPortal(
-          <div className="fixed left-0 right-0 bottom-0 bg-[#1F2937] border-t border-[#374151] p-4 pb-[calc(1rem+env(safe-area-inset-bottom,0))] z-[60]">
-            <div className="flex justify-between items-center mb-3">
-              <span className="text-[#9CA3AF]">Subtotal</span>
-              <span className="text-xl font-bold text-[#F9FAFB]">Rs. {subtotal.toLocaleString()}</span>
-            </div>
-            <button
-              onClick={onNext}
-              className="w-full h-12 bg-[#3B82F6] hover:bg-[#2563EB] rounded-lg font-medium text-[#F9FAFB] transition-colors"
-            >
-              Continue to Summary →
-            </button>
-          </div>,
-          document.body
-        )}
+      {products.length > 0 && (
+        <MobileActionBar
+          label="Subtotal"
+          value={`Rs. ${subtotal.toLocaleString()}`}
+          buttonLabel="Continue to Summary →"
+          onButtonClick={onNext}
+          variant="primary"
+        />
+      )}
 
       {/* Add to Cart Modal */}
       {showModal && selectedProduct && (
@@ -530,7 +650,6 @@ function AddToCartModal({
                   pattern={allowDecimal ? '[0-9.]*' : '[0-9]*'}
                   min={allowDecimal ? 0 : 1}
                   step={packingDetails && (packingDetails.total_meters ?? 0) > 0 ? 0.1 : allowDecimal ? 0.01 : 1}
-                  inputMode={allowDecimal ? 'decimal' : 'numeric'}
                   value={quantity}
                   onChange={(e) => {
                     if (packingDetails && (packingDetails.total_meters ?? 0) > 0) return;

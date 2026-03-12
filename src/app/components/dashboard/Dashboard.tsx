@@ -22,12 +22,12 @@ const DashboardRevenueChart = lazy(() =>
 
 const CHART_COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#8B5CF6', '#EC4899', '#06B6D4'];
 
-interface Product {
+interface LowStockItem {
   id: string;
-  name: string;
-  sku: string;
-  current_stock: number;
-  min_stock: number;
+  name?: string;
+  sku?: string;
+  current_stock?: number;
+  min_stock?: number;
 }
 
 export const Dashboard = () => {
@@ -47,7 +47,7 @@ export const Dashboard = () => {
     setCurrentModule('dashboard');
   }, [setCurrentModule]);
 
-  const [products, setProducts] = useState<Product[]>([]);
+  const [lowStockProducts, setLowStockProducts] = useState<LowStockItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [salesByCategory, setSalesByCategory] = useState<Array<{ categoryName: string; total: number }>>([]);
   const [loadingCategory, setLoadingCategory] = useState(true);
@@ -74,7 +74,7 @@ export const Dashboard = () => {
       .finally(() => setLoadingFinancial(false));
   }, [companyId]);
 
-  // Load products for low stock items
+  // Load low stock items (movement-based; no current_stock column)
   const loadProducts = useCallback(async () => {
     if (!companyId) {
       setLoading(false);
@@ -82,10 +82,11 @@ export const Dashboard = () => {
     }
     try {
       setLoading(true);
-      const productsData = await productService.getAllProducts(companyId);
-      setProducts(productsData as Product[]);
+      const low = await productService.getLowStockProducts(companyId);
+      setLowStockProducts(Array.isArray(low) ? low : []);
     } catch (error) {
-      console.error('[DASHBOARD] Error loading products:', error);
+      console.error('[DASHBOARD] Error loading low stock:', error);
+      setLowStockProducts([]);
     } finally {
       setLoading(false);
     }
@@ -153,19 +154,15 @@ export const Dashboard = () => {
     };
   }, [sales.sales, purchases.purchases, expenses.expenses, filterByDateRange]);
 
-  // Get low stock items
   const lowStockItems = useMemo(() => {
-    return products
-      .filter(p => p.current_stock < p.min_stock)
-      .slice(0, 5)
-      .map(p => ({
-        id: p.id,
-        name: p.name,
-        sku: p.sku,
-        stock: p.current_stock,
-        min: p.min_stock,
-      }));
-  }, [products]);
+    return lowStockProducts.slice(0, 5).map(p => ({
+      id: p.id,
+      name: p.name,
+      sku: p.sku,
+      stock: p.current_stock ?? 0,
+      min: p.min_stock ?? 0,
+    }));
+  }, [lowStockProducts]);
 
   // Executive summary: use API metrics when available and non-empty; otherwise compute from context so it's always functional
   const todayStr = useMemo(() => new Date().toISOString().slice(0, 10), []);

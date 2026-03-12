@@ -1,0 +1,39 @@
+# Dependencies and build outputs (rebuilt inside container)
+node_modules
+**/node_modules
+dist
+**/dist
+.next
+.turbo
+
+# Git and IDE
+.git
+.gitignore
+.cursor
+.vscode
+*.md
+!deploy/*.md
+
+# Env (build args passed explicitly; avoid copying host secrets)
+.env
+.env.*
+!.env.example
+
+# Logs and temp
+*.log
+npm-debug.log*
+.DS_Store
+Thumbs.db
+
+# Test and misc
+coverage
+.nyc_output
+*.test.*
+*.spec.*
+__tests__
+**/__tests__
+*.tsbuildinfo
+
+# Optional: large or non-essential folders to speed up build
+# erp-mobile-app/node_modules
+# figma-extract

@@ -7,6 +7,10 @@ export async function getNextProductSKU(companyId: string, branchId: string | nu
   return getNextDocumentNumber(companyId, branchId, 'product');
 }
 
+/** Products table select: omit current_stock so query works when column is missing. Stock from variations or 0. */
+const PRODUCTS_SELECT =
+  'id, company_id, name, sku, barcode, description, cost_price, retail_price, wholesale_price, min_stock, category_id, brand_id, unit_id, is_active, has_variations, product_categories(name), units(name, allow_decimal)';
+
 export interface ProductRow {
   id: string;
   company_id: string;
@@ -15,7 +19,6 @@ export interface ProductRow {
   cost_price: number;
   retail_price: number;
   wholesale_price?: number;
-  current_stock: number;
   category_id?: string | null;
   unit_id?: string | null;
   is_active: boolean;
@@ -64,7 +67,7 @@ export async function getProductByBarcodeOrSku(
 
   const { data: byBarcode, error: errBarcode } = await supabase
     .from('products')
-    .select('id, company_id, name, sku, barcode, description, cost_price, retail_price, wholesale_price, current_stock, min_stock, category_id, brand_id, unit_id, is_active, has_variations, product_categories(name), units(name, allow_decimal)')
+    .select(PRODUCTS_SELECT)
     .eq('company_id', companyId)
     .eq('barcode', trimmed)
     .maybeSingle();
@@ -81,7 +84,7 @@ export async function getProductByBarcodeOrSku(
       unitId: row.unit_id ?? undefined,
       costPrice: Number(row.cost_price) || 0,
       retailPrice: Number(row.retail_price) || 0,
-      stock: Number(row.current_stock) ?? 0,
+      stock: 0,
       unit: row.units?.name || 'Piece',
       unitAllowDecimal: row.units?.allow_decimal ?? false,
       status: row.is_active !== false ? 'active' : 'inactive',
@@ -96,7 +99,7 @@ export async function getProductByBarcodeOrSku(
 
   const { data: bySku, error: errSku } = await supabase
     .from('products')
-    .select('id, company_id, name, sku, barcode, description, cost_price, retail_price, wholesale_price, current_stock, min_stock, category_id, brand_id, unit_id, is_active, has_variations, product_categories(name), units(name, allow_decimal)')
+    .select(PRODUCTS_SELECT)
     .eq('company_id', companyId)
     .eq('sku', trimmed)
     .maybeSingle();
@@ -114,7 +117,7 @@ export async function getProductByBarcodeOrSku(
     unitId: row.unit_id ?? undefined,
     costPrice: Number(row.cost_price) || 0,
     retailPrice: Number(row.retail_price) || 0,
-    stock: Number(row.current_stock) ?? 0,
+    stock: 0,
     unit: row.units?.name || 'Piece',
     unitAllowDecimal: row.units?.allow_decimal ?? false,
     status: row.is_active !== false ? 'active' : 'inactive',
@@ -131,7 +134,7 @@ export async function getProducts(companyId: string): Promise<{ data: Product[];
   if (!isSupabaseConfigured) return { data: [], error: 'App not configured.' };
   const { data, error } = await supabase
     .from('products')
-    .select('id, company_id, name, sku, barcode, description, cost_price, retail_price, wholesale_price, current_stock, min_stock, category_id, brand_id, unit_id, is_active, has_variations, product_categories(name), units(name, allow_decimal)')
+    .select(PRODUCTS_SELECT)
     .eq('company_id', companyId)
     .order('name');
 
@@ -141,7 +144,6 @@ export async function getProducts(companyId: string): Promise<{ data: Product[];
   const varProductIds = withVariations.map((r: { id: string }) => r.id);
   let varMap: Record<string, ProductVariationRow[]> = {};
   if (varProductIds.length > 0) {
-    // Fetch variations without stock first so we never fail on column name (stock vs current_stock)
     const { data: varData } = await supabase
       .from('product_variations')
       .select('id, product_id, sku, attributes, price')
@@ -158,29 +160,43 @@ export async function getProducts(companyId: string): Promise<{ data: Product[];
         stock: 0,
       });
     }
-    // Best-effort: fetch variation stock (DB may have 'current_stock' or 'stock')
     const varIds = (varData || []).map((x: { id: string }) => x.id);
+    const mergeStock = (rows: { id: string; qty: number }[]) => {
+      const byId: Record<string, number> = {};
+      for (const s of rows) byId[s.id] = s.qty;
+      for (const pid of Object.keys(varMap)) {
+        varMap[pid] = varMap[pid].map((vr) => ({ ...vr, stock: byId[vr.id] ?? vr.stock }));
+      }
+    };
     if (varIds.length > 0) {
+      // Priority: product_variations.stock → stock_quantity → aggregate from stock_movements. Do NOT use current_stock (column may not exist).
       const { data: stockData, error: stockErr } = await supabase
         .from('product_variations')
-        .select('id, current_stock')
+        .select('id, stock')
         .in('id', varIds);
-      const mergeStock = (rows: { id: string; qty: number }[]) => {
-        const byId: Record<string, number> = {};
-        for (const s of rows) byId[s.id] = s.qty;
-        for (const pid of Object.keys(varMap)) {
-          varMap[pid] = varMap[pid].map((vr) => ({ ...vr, stock: byId[vr.id] ?? vr.stock }));
-        }
-      };
       if (!stockErr && stockData?.length) {
-        mergeStock((stockData as { id: string; current_stock?: number }[]).map((s) => ({ id: s.id, qty: Number(s.current_stock) ?? 0 })));
+        mergeStock((stockData as { id: string; stock?: number }[]).map((s) => ({ id: s.id, qty: Number(s.stock) ?? 0 })));
       } else {
         const { data: stockData2 } = await supabase
           .from('product_variations')
-          .select('id, stock')
+          .select('id, stock_quantity')
           .in('id', varIds);
         if (stockData2?.length) {
-          mergeStock((stockData2 as { id: string; stock?: number }[]).map((s) => ({ id: s.id, qty: Number(s.stock) ?? 0 })));
+          mergeStock((stockData2 as { id: string; stock_quantity?: number }[]).map((s) => ({ id: s.id, qty: Number(s.stock_quantity) ?? 0 })));
+        } else {
+          const { data: movData } = await supabase
+            .from('stock_movements')
+            .select('variation_id, quantity')
+            .in('variation_id', varIds);
+          if (movData?.length) {
+            const sumByVarId: Record<string, number> = {};
+            for (const m of movData as { variation_id: string | null; quantity: number }[]) {
+              if (m.variation_id) {
+                sumByVarId[m.variation_id] = (sumByVarId[m.variation_id] ?? 0) + Number(m.quantity) || 0;
+              }
+            }
+            mergeStock(varIds.map((id) => ({ id, qty: sumByVarId[id] ?? 0 })));
+          }
         }
       }
     }
@@ -201,7 +217,7 @@ export async function getProducts(companyId: string): Promise<{ data: Product[];
       unitId: row.unit_id ?? undefined,
       costPrice: Number(row.cost_price) || 0,
       retailPrice: Number(row.retail_price) || 0,
-      stock: Number(row.current_stock) ?? 0,
+      stock: 0,
       unit: unitName,
       unitAllowDecimal,
       status: row.is_active !== false ? 'active' : 'inactive',
@@ -306,7 +322,6 @@ export async function createProduct(
     cost_price: p.costPrice,
     retail_price: p.retailPrice,
     wholesale_price: p.wholesalePrice ?? p.retailPrice,
-    current_stock: p.stock,
     min_stock: p.minStock ?? 0,
     max_stock: 99999,
     has_variations: p.hasVariations ?? false,
@@ -318,7 +333,7 @@ export async function createProduct(
     brand_id: p.brandId || null,
     unit_id: p.unitId || null,
   };
-  const { data, error } = await supabase.from('products').insert(payload).select('id, name, sku, cost_price, retail_price, current_stock, is_active').single();
+  const { data, error } = await supabase.from('products').insert(payload).select('id, name, sku, cost_price, retail_price, is_active').single();
   if (error) {
     const msg = error.code === '23505' || /duplicate|unique/i.test(error.message || '') ? 'SKU already in use.' : error.message;
     return { data: null, error: msg };
@@ -343,7 +358,7 @@ export async function createProduct(
       category: p.category || 'Other',
       costPrice: Number(row.cost_price) || 0,
       retailPrice: Number(row.retail_price) || 0,
-      stock: Number(row.current_stock) ?? 0,
+      stock: 0,
       unit: p.unit,
       status: row.is_active !== false ? 'active' : 'inactive',
       description: p.description,
@@ -370,7 +385,6 @@ export async function updateProduct(
   if (p.costPrice != null) payload.cost_price = p.costPrice;
   if (p.retailPrice != null) payload.retail_price = p.retailPrice;
   if (p.wholesalePrice != null) payload.wholesale_price = p.wholesalePrice;
-  if (p.stock != null) payload.current_stock = p.stock;
   if (p.minStock != null) payload.min_stock = p.minStock;
   if (p.status != null) payload.is_active = p.status !== 'inactive';
   if (p.categoryId !== undefined) payload.category_id = p.categoryId;
@@ -382,7 +396,7 @@ export async function updateProduct(
     .update(payload)
     .eq('id', productId)
     .eq('company_id', companyId)
-    .select('id, name, sku, cost_price, retail_price, current_stock, is_active')
+    .select('id, name, sku, cost_price, retail_price, is_active')
     .single();
   if (error) return { data: null, error: error.message };
   const row = data as ProductRow;
@@ -394,7 +408,7 @@ export async function updateProduct(
       category: p.category || 'Other',
       costPrice: Number(row.cost_price) || 0,
       retailPrice: Number(row.retail_price) || 0,
-      stock: Number(row.current_stock) ?? 0,
+      stock: 0,
       unit: p.unit || 'Piece',
       status: row.is_active !== false ? 'active' : 'inactive',
     },

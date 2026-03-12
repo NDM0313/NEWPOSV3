@@ -31,6 +31,8 @@ import { AccountsModule } from './components/accounts/AccountsModule';
 import { ExpenseModule } from './components/expense/ExpenseModule';
 import { InventoryModule } from './components/inventory/InventoryModule';
 import { DashboardModule } from './components/dashboard/DashboardModule';
+import { PackingListModule } from './components/packing/PackingListModule';
+import { LedgerModule } from './components/ledger/LedgerModule';
 import { SyncStatusBar } from './components/SyncStatusBar';
 import { useNetworkStatus } from './hooks/useNetworkStatus';
 import { runSync, getUnsyncedCount } from './lib/syncEngine';
@@ -51,6 +53,8 @@ const MODULE_TITLES: Record<Screen, string> = {
   pos: 'POS',
   contacts: 'Contacts',
   reports: 'Reports',
+  packing: 'Packing List',
+  ledger: 'Ledger',
   settings: 'Settings',
 };
 
@@ -456,6 +460,16 @@ export default function App() {
           ? <AccessDenied onBack={navigateHome} />
           : <InventoryModule onBack={navigateHome} user={user} companyId={companyId} branch={selectedBranch} />
       )}
+      {currentScreen === 'packing' && user && (
+        !canAccessScreen('sales', selectedBranch?.id)
+          ? <AccessDenied onBack={navigateHome} />
+          : <PackingListModule onBack={navigateHome} user={user} companyId={companyId} branchId={selectedBranch?.id ?? null} />
+      )}
+      {currentScreen === 'ledger' && user && (
+        !canAccessScreen('accounts', selectedBranch?.id)
+          ? <AccessDenied onBack={navigateHome} />
+          : <LedgerModule onBack={navigateHome} user={user} companyId={companyId} />
+      )}
       {currentScreen === 'dashboard' && user && (
         !canAccessScreen('dashboard', selectedBranch?.id)
           ? <AccessDenied onBack={navigateHome} />
@@ -468,7 +482,7 @@ export default function App() {
               onNewPurchase={() => navigateToModule('purchase')}
             />
       )}
-      {currentScreen !== 'home' && currentScreen !== 'dashboard' && currentScreen !== 'sales' && currentScreen !== 'pos' && currentScreen !== 'contacts' && currentScreen !== 'settings' && currentScreen !== 'products' && currentScreen !== 'purchase' && currentScreen !== 'reports' && currentScreen !== 'rental' && currentScreen !== 'studio' && currentScreen !== 'accounts' && currentScreen !== 'expense' && currentScreen !== 'inventory' && user && (
+      {currentScreen !== 'home' && currentScreen !== 'dashboard' && currentScreen !== 'sales' && currentScreen !== 'pos' && currentScreen !== 'contacts' && currentScreen !== 'settings' && currentScreen !== 'products' && currentScreen !== 'purchase' && currentScreen !== 'reports' && currentScreen !== 'rental' && currentScreen !== 'studio' && currentScreen !== 'accounts' && currentScreen !== 'expense' && currentScreen !== 'inventory' && currentScreen !== 'packing' && currentScreen !== 'ledger' && user && (
         <PlaceholderModule title={MODULE_TITLES[currentScreen] || currentScreen} onBack={navigateHome} />
       )}
     </>
@@ -476,7 +490,14 @@ export default function App() {
 
   const syncBar = user && selectedBranch ? (
     <div className="flex justify-end p-2 border-b border-[#374151]/50 bg-[#111827]">
-      <SyncStatusBar status={status} />
+      <SyncStatusBar
+        status={status}
+        onSyncClick={() => {
+          if (!online) return;
+          setStatus('syncing');
+          runSync().then(({ errors }) => setStatus(errors > 0 ? 'sync_error' : 'online')).catch(() => setStatus('sync_error'));
+        }}
+      />
     </div>
   ) : null;
 
