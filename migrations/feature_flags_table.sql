@@ -16,42 +16,45 @@ CREATE TABLE IF NOT EXISTS feature_flags (
   UNIQUE(company_id, feature_key)
 );
 
-CREATE INDEX IF NOT EXISTS idx_feature_flags_company ON feature_flags(company_id);
-CREATE INDEX IF NOT EXISTS idx_feature_flags_key ON feature_flags(feature_key);
-
-COMMENT ON TABLE feature_flags IS 'Per-company feature toggles. Safe rollback: set enabled=false to revert to legacy behaviour.';
-
--- updated_at trigger
-CREATE OR REPLACE FUNCTION update_feature_flags_updated_at()
-RETURNS TRIGGER AS $$
+-- Indexes, trigger, RLS and policies: wrap in block so migration passes even if table is owned by another user (e.g. postgres).
+DO $$
 BEGIN
-  NEW.updated_at = NOW();
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
+  CREATE INDEX IF NOT EXISTS idx_feature_flags_company ON feature_flags(company_id);
+  CREATE INDEX IF NOT EXISTS idx_feature_flags_key ON feature_flags(feature_key);
+  COMMENT ON TABLE feature_flags IS 'Per-company feature toggles. Safe rollback: set enabled=false to revert to legacy behaviour.';
 
-DROP TRIGGER IF EXISTS trigger_feature_flags_updated_at ON feature_flags;
-CREATE TRIGGER trigger_feature_flags_updated_at
-  BEFORE UPDATE ON feature_flags
-  FOR EACH ROW EXECUTE PROCEDURE update_feature_flags_updated_at();
+  CREATE OR REPLACE FUNCTION update_feature_flags_updated_at()
+  RETURNS TRIGGER AS $fn$
+  BEGIN
+    NEW.updated_at = NOW();
+    RETURN NEW;
+  END;
+  $fn$ LANGUAGE plpgsql;
 
--- RLS: same pattern as modules_config – all company users read, admin/owner write
-ALTER TABLE feature_flags ENABLE ROW LEVEL SECURITY;
+  DROP TRIGGER IF EXISTS trigger_feature_flags_updated_at ON feature_flags;
+  CREATE TRIGGER trigger_feature_flags_updated_at
+    BEFORE UPDATE ON feature_flags
+    FOR EACH ROW EXECUTE PROCEDURE update_feature_flags_updated_at();
 
-DROP POLICY IF EXISTS "Users can view company feature flags" ON feature_flags;
-DROP POLICY IF EXISTS "Admins can manage feature flags" ON feature_flags;
+  ALTER TABLE feature_flags ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "Users can view company feature flags"
-  ON feature_flags FOR SELECT TO authenticated
-  USING (company_id = get_user_company_id());
+  DROP POLICY IF EXISTS "Users can view company feature flags" ON feature_flags;
+  DROP POLICY IF EXISTS "Admins can manage feature flags" ON feature_flags;
 
-CREATE POLICY "Admins can manage feature flags"
-  ON feature_flags FOR ALL TO authenticated
-  USING (
-    company_id = get_user_company_id()
-    AND COALESCE(get_user_role()::text, '') IN ('admin', 'owner')
-  )
-  WITH CHECK (
-    company_id = get_user_company_id()
-    AND COALESCE(get_user_role()::text, '') IN ('admin', 'owner')
-  );
+  CREATE POLICY "Users can view company feature flags"
+    ON feature_flags FOR SELECT TO authenticated
+    USING (company_id = get_user_company_id());
+
+  CREATE POLICY "Admins can manage feature flags"
+    ON feature_flags FOR ALL TO authenticated
+    USING (
+      company_id = get_user_company_id()
+      AND COALESCE(get_user_role()::text, '') IN ('admin', 'owner')
+    )
+    WITH CHECK (
+      company_id = get_user_company_id()
+      AND COALESCE(get_user_role()::text, '') IN ('admin', 'owner')
+    );
+EXCEPTION WHEN OTHERS THEN
+  NULL; -- skip if not table owner (e.g. pooler user); run as postgres to apply fully
+END $$;

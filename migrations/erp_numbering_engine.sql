@@ -15,30 +15,31 @@
 -- ============================================================================
 
 -- Sentinel UUID for company-level sequence (when branch_id is null from caller)
--- So we get exactly one row per (company, document_type, year) when no branch.
-CREATE OR REPLACE FUNCTION public.erp_numbering_global_branch_sentinel()
-RETURNS UUID LANGUAGE sql IMMUTABLE AS $$ SELECT '00000000-0000-0000-0000-000000000000'::UUID; $$;
+DO $$
+BEGIN
+  CREATE OR REPLACE FUNCTION public.erp_numbering_global_branch_sentinel()
+  RETURNS UUID LANGUAGE sql IMMUTABLE AS $fn$ SELECT '00000000-0000-0000-0000-000000000000'::UUID; $fn$;
+EXCEPTION WHEN OTHERS THEN
+  RAISE NOTICE 'erp_numbering_engine: Could not replace erp_numbering_global_branch_sentinel: %', SQLERRM;
+END $$;
 
 -- Table: one row per (company, branch, document_type, year). branch_id uses sentinel for company-level.
-CREATE TABLE IF NOT EXISTS public.erp_document_sequences (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  company_id UUID NOT NULL REFERENCES public.companies(id) ON DELETE CASCADE,
-  branch_id UUID NOT NULL DEFAULT public.erp_numbering_global_branch_sentinel(), -- no FK: sentinel UUID used for company-level
-  document_type TEXT NOT NULL,
-  prefix TEXT NOT NULL,
-  year INTEGER NOT NULL,
-  last_number INTEGER NOT NULL DEFAULT 0,
-  padding INTEGER NOT NULL DEFAULT 4,
-  created_at TIMESTAMPTZ DEFAULT now(),
-  updated_at TIMESTAMPTZ DEFAULT now(),
-  UNIQUE(company_id, branch_id, document_type, year)
-);
-
-COMMENT ON TABLE public.erp_document_sequences IS 'ERP Numbering Engine: atomic sequences per company/branch/type/year. Used by generate_document_number().';
-
--- RLS
-DO $rls$
+DO $$
 BEGIN
+  CREATE TABLE IF NOT EXISTS public.erp_document_sequences (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    company_id UUID NOT NULL REFERENCES public.companies(id) ON DELETE CASCADE,
+    branch_id UUID NOT NULL DEFAULT public.erp_numbering_global_branch_sentinel(),
+    document_type TEXT NOT NULL,
+    prefix TEXT NOT NULL,
+    year INTEGER NOT NULL,
+    last_number INTEGER NOT NULL DEFAULT 0,
+    padding INTEGER NOT NULL DEFAULT 4,
+    created_at TIMESTAMPTZ DEFAULT now(),
+    updated_at TIMESTAMPTZ DEFAULT now(),
+    UNIQUE(company_id, branch_id, document_type, year)
+  );
+  COMMENT ON TABLE public.erp_document_sequences IS 'ERP Numbering Engine: atomic sequences per company/branch/type/year. Used by generate_document_number().';
   ALTER TABLE public.erp_document_sequences ENABLE ROW LEVEL SECURITY;
   DROP POLICY IF EXISTS "erp_document_sequences_select" ON public.erp_document_sequences;
   DROP POLICY IF EXISTS "erp_document_sequences_insert" ON public.erp_document_sequences;
@@ -50,12 +51,15 @@ BEGIN
   CREATE POLICY "erp_document_sequences_update" ON public.erp_document_sequences
     FOR UPDATE TO authenticated USING (company_id = (SELECT get_user_company_id()));
 EXCEPTION WHEN OTHERS THEN
-  RAISE NOTICE 'erp_document_sequences RLS: %', SQLERRM;
-END $rls$;
+  RAISE NOTICE 'erp_numbering_engine: table/RLS erp_document_sequences: %', SQLERRM;
+END $$;
 
 -- Default prefixes per document type (used when row is created)
+DO $$
+BEGIN
+  EXECUTE $exec$
 CREATE OR REPLACE FUNCTION public.erp_document_default_prefix(p_document_type TEXT)
-RETURNS TEXT LANGUAGE sql IMMUTABLE AS $$
+RETURNS TEXT LANGUAGE sql IMMUTABLE AS $body$
   SELECT CASE UPPER(TRIM(p_document_type))
     WHEN 'SALE' THEN 'SL'
     WHEN 'PURCHASE' THEN 'PUR'
@@ -71,10 +75,16 @@ RETURNS TEXT LANGUAGE sql IMMUTABLE AS $$
     WHEN 'POS' THEN 'POS'
     ELSE UPPER(TRIM(p_document_type))
   END;
-$$;
+$body$;
+$exec$;
+EXCEPTION WHEN OTHERS THEN
+  RAISE NOTICE 'erp_numbering_engine: Could not replace erp_document_default_prefix: %', SQLERRM;
+END $$;
 
 -- Generate next document number (atomic, multi-user safe).
--- p_include_year: if true, format is PREFIX-YY-NNNN (e.g. SL-26-0001); else PREFIX-NNNN.
+DO $$
+BEGIN
+  EXECUTE $exec$
 CREATE OR REPLACE FUNCTION public.generate_document_number(
   p_company_id UUID,
   p_branch_id UUID DEFAULT NULL,
@@ -85,7 +95,7 @@ RETURNS TEXT
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public
-AS $$
+AS $body$
 DECLARE
   v_prefix TEXT;
   v_next INTEGER;
@@ -95,8 +105,6 @@ DECLARE
 BEGIN
   v_year := EXTRACT(YEAR FROM now())::INTEGER;
   v_doc_type := UPPER(TRIM(p_document_type));
-
-  -- Atomic: insert row if missing, then increment and return (use sentinel for company-level when branch is null)
   INSERT INTO public.erp_document_sequences (company_id, branch_id, document_type, prefix, year, last_number, padding, updated_at)
   VALUES (
     p_company_id,
@@ -114,18 +122,18 @@ BEGIN
     updated_at = now()
   RETURNING prefix, last_number, padding
   INTO v_prefix, v_next, v_padding;
-
   IF v_prefix IS NULL OR v_next IS NULL THEN
     RAISE EXCEPTION 'erp_document_sequences: failed to get next number for company=%, type=%', p_company_id, v_doc_type;
   END IF;
-
   IF p_include_year THEN
     RETURN v_prefix || '-' || RIGHT(v_year::TEXT, 2) || '-' || LPAD(v_next::TEXT, GREATEST(COALESCE(v_padding, 4), 1), '0');
   ELSE
     RETURN v_prefix || '-' || LPAD(v_next::TEXT, GREATEST(COALESCE(v_padding, 4), 1), '0');
   END IF;
 END;
-$$;
-
-COMMENT ON FUNCTION public.generate_document_number(UUID, UUID, TEXT, BOOLEAN) IS
-  'ERP Numbering Engine: returns next number (e.g. PAY-0001 or SL-26-0001). Atomic, duplicate-free, multi-user safe.';
+$body$;
+$exec$;
+  EXECUTE 'COMMENT ON FUNCTION public.generate_document_number(UUID, UUID, TEXT, BOOLEAN) IS ''ERP Numbering Engine: returns next number (e.g. PAY-0001 or SL-26-0001). Atomic, duplicate-free, multi-user safe.''';
+EXCEPTION WHEN OTHERS THEN
+  RAISE NOTICE 'erp_numbering_engine: Could not replace generate_document_number: %', SQLERRM;
+END $$;

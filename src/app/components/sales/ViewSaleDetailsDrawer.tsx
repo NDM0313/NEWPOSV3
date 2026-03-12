@@ -9,7 +9,9 @@ import { saleReturnService } from '@/app/services/saleReturnService';
 import { activityLogService } from '@/app/services/activityLogService';
 import { studioProductionService } from '@/app/services/studioProductionService';
 import { supabase } from '@/lib/supabase';
-import { InvoiceDocumentView } from '../shared/invoice/InvoiceDocumentView';
+import { UnifiedSalesInvoiceView } from '@/app/documents';
+import { PackingListWorkflow } from '@/app/wholesale/PackingListWorkflow';
+import { WorkflowNextStepBanner } from '@/app/workflows';
 import type { InvoiceTemplateType } from '@/app/types/invoiceDocument';
 import { PaymentDeleteConfirmationModal } from '../shared/PaymentDeleteConfirmationModal';
 import { UnifiedPaymentDialog } from '../shared/UnifiedPaymentDialog';
@@ -40,7 +42,7 @@ import {
   RotateCcw,
   ChevronDown,
   ChevronUp,
-  Scissors
+  Scissors,
 } from 'lucide-react';
 import { Button } from "../ui/button";
 import { Badge } from "../ui/badge";
@@ -157,13 +159,14 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
   const [activeTab, setActiveTab] = useState<'details' | 'payments' | 'history'>('details');
   const { getSaleById } = useSales();
   const { companyId, user } = useSupabase();
-  const { inventorySettings } = useSettings();
+  const { company, inventorySettings } = useSettings();
   const { formatCurrency } = useFormatCurrency();
   const enablePacking = inventorySettings.enablePacking;
   const [sale, setSale] = useState<Sale | null>(null);
   const [loading, setLoading] = useState(true);
   const [showPrintLayout, setShowPrintLayout] = useState(false);
   const [printLayoutType, setPrintLayoutType] = useState<InvoiceTemplateType>('A4');
+  const [showPackingListWorkflow, setShowPackingListWorkflow] = useState(false);
   const [branchMap, setBranchMap] = useState<Map<string, string>>(new Map());
   const [customerCode, setCustomerCode] = useState<string | null>(null);
   const [payments, setPayments] = useState<any[]>([]);
@@ -668,6 +671,12 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
                   <Download size={14} className="mr-2" />
                   Download PDF
                 </DropdownMenuItem>
+                {!isCancelled && companyId && (
+                  <DropdownMenuItem className="hover:bg-gray-800 cursor-pointer" onClick={() => setShowPackingListWorkflow(true)}>
+                    <Package size={14} className="mr-2" />
+                    Packing List
+                  </DropdownMenuItem>
+                )}
                 <DropdownMenuSeparator className="bg-gray-700" />
                 {!isCancelled && (
                   <DropdownMenuItem className="hover:bg-gray-800 cursor-pointer text-red-400" onClick={() => onDelete?.(sale.id)}>
@@ -688,6 +697,13 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
             </Button>
           </div>
         </div>
+
+        {/* Workflow: next step (e.g. Retail: Sale → Payment → Receipt) */}
+        {sale && !isCancelled && (
+          <div className="px-6 py-2 border-b border-gray-800/80 bg-gray-900/30 flex items-center gap-2">
+            <WorkflowNextStepBanner currentStepId="sale" compact />
+          </div>
+        )}
 
         {/* Tabs */}
         <div className="bg-gray-900/50 border-b border-gray-800 px-6 shrink-0">
@@ -1631,7 +1647,7 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
       {showPrintLayout && sale && companyId && (
         <div className="fixed inset-0 z-[100] bg-black/80 flex items-center justify-center p-4">
           <div className="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-auto">
-            <InvoiceDocumentView
+            <UnifiedSalesInvoiceView
               saleId={sale.id}
               companyId={companyId}
               templateType={printLayoutType}
@@ -1641,6 +1657,23 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
             />
           </div>
         </div>
+      )}
+
+      {/* Wholesale: Packing List workflow */}
+      {sale && companyId && (
+        <PackingListWorkflow
+          saleId={sale.id}
+          saleInvoiceNo={sale.invoiceNo}
+          saleDate={sale.date}
+          companyId={companyId}
+          companyName={company?.businessName ?? ''}
+          companyAddress={company?.businessAddress ?? null}
+          customerName={sale.customerName}
+          customerAddress={sale.location || null}
+          customerPhone={sale.contactNumber || null}
+          isOpen={showPackingListWorkflow}
+          onClose={() => setShowPackingListWorkflow(false)}
+        />
       )}
 
       {/* Payment Delete Confirmation Modal */}

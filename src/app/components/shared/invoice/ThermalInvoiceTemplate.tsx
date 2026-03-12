@@ -16,6 +16,8 @@ export interface ThermalInvoiceTemplateProps {
   onPrint?: () => void;
   onClose?: () => void;
   actionChildren?: React.ReactNode;
+  /** Ref for PDF export (attached to root printable element). */
+  contentRef?: React.RefObject<HTMLDivElement | null>;
 }
 
 export const ThermalInvoiceTemplate: React.FC<ThermalInvoiceTemplateProps> = ({
@@ -26,6 +28,7 @@ export const ThermalInvoiceTemplate: React.FC<ThermalInvoiceTemplateProps> = ({
   onPrint,
   onClose,
   actionChildren,
+  contentRef,
 }) => {
   const { inventorySettings } = useSettings();
   const enablePacking = inventorySettings.enablePacking ?? false;
@@ -47,6 +50,7 @@ export const ThermalInvoiceTemplate: React.FC<ThermalInvoiceTemplateProps> = ({
       paperSize={paperSize}
       showActions={true}
       actionChildren={actionChildren}
+      contentRef={contentRef}
     >
       <div className="classic-print-section" style={{ marginBottom: '12px' }}>
         <p style={{ fontSize: '10px', fontWeight: 600, marginBottom: '4px' }}>Bill To:</p>

@@ -7,8 +7,11 @@
 -- ============================================================================
 
 -- Extend default prefix function to include master types (CUS, SUP, WRK; PRD/JOB already exist)
+DO $$
+BEGIN
+  EXECUTE $exec$
 CREATE OR REPLACE FUNCTION public.erp_document_default_prefix(p_document_type TEXT)
-RETURNS TEXT LANGUAGE sql IMMUTABLE AS $$
+RETURNS TEXT LANGUAGE sql IMMUTABLE AS $body$
   SELECT CASE UPPER(TRIM(p_document_type))
     WHEN 'SALE' THEN 'SL'
     WHEN 'PURCHASE' THEN 'PUR'
@@ -27,7 +30,9 @@ RETURNS TEXT LANGUAGE sql IMMUTABLE AS $$
     WHEN 'WORKER' THEN 'WRK'
     ELSE UPPER(TRIM(p_document_type))
   END;
-$$;
-
-COMMENT ON FUNCTION public.erp_document_default_prefix(TEXT) IS
-  'Default prefix per document/master type. Documents: SL, PUR, PAY, etc. Masters: PRD, CUS, SUP, WRK, JOB.';
+$body$;
+$exec$;
+  EXECUTE 'COMMENT ON FUNCTION public.erp_document_default_prefix(TEXT) IS ''Default prefix per document/master type. Documents: SL, PUR, PAY, etc. Masters: PRD, CUS, SUP, WRK, JOB.''';
+EXCEPTION WHEN OTHERS THEN
+  RAISE NOTICE 'erp_numbering_master_types: Could not replace erp_document_default_prefix: %', SQLERRM;
+END $$;

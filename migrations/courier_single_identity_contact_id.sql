@@ -8,13 +8,16 @@
 -- ============================================================================
 
 -- ----------------------------------------------------------------------------
--- 1. Add contact_id to couriers
+-- 1. Add contact_id to couriers (wrap so migration succeeds when not table owner)
 -- ----------------------------------------------------------------------------
-ALTER TABLE couriers
-  ADD COLUMN IF NOT EXISTS contact_id UUID REFERENCES contacts(id) ON DELETE SET NULL;
-
-CREATE INDEX IF NOT EXISTS idx_couriers_contact_id ON couriers(contact_id) WHERE contact_id IS NOT NULL;
-COMMENT ON COLUMN couriers.contact_id IS 'Single courier identity; same as accounts.contact_id for ledger. Filter/dropdown value = contact_id.';
+DO $$
+BEGIN
+  ALTER TABLE couriers ADD COLUMN IF NOT EXISTS contact_id UUID REFERENCES contacts(id) ON DELETE SET NULL;
+  CREATE INDEX IF NOT EXISTS idx_couriers_contact_id ON couriers(contact_id) WHERE contact_id IS NOT NULL;
+  COMMENT ON COLUMN couriers.contact_id IS 'Single courier identity; same as accounts.contact_id for ledger. Filter/dropdown value = contact_id.';
+EXCEPTION WHEN OTHERS THEN
+  RAISE NOTICE 'courier_single_identity_contact_id: Could not alter couriers: %', SQLERRM;
+END $$;
 
 -- ----------------------------------------------------------------------------
 -- 2. Allow type = 'courier' on contacts (enum)

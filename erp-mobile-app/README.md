@@ -35,7 +35,7 @@ Mobile app aur **web app dono ko ek hi database** use karna hai (same users, sam
 3. **Home** → Dashboard + module grid. Bottom nav: Home, Sales, POS, Contacts, More (module drawer).
 4. **Modules implemented:**
    - **Sales** – Home → New Sale → Select Customer → Add Products → Summary → Payment → Confirmation.
-   - **POS** – Product grid, cart drawer, checkout (tax 16%).
+   - **POS** – Product grid, cart drawer, checkout (tax 16%). **Barcode:** Tap "Scan" to open camera, scan product barcode → product is looked up by barcode/SKU and added to cart (native Android/iOS only; uses `@capacitor-mlkit/barcode-scanning`).
    - **Contacts** – List, search, filter (all/customer/supplier/worker), stats, Add Contact, view detail.
    - **Settings** – User info, app version, Logout.
    - **Rest** (Purchase, Rental, Studio, Accounts, Expense, Products, Inventory, Reports) → Placeholder "Coming soon".

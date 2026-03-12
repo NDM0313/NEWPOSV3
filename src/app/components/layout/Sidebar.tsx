@@ -79,6 +79,17 @@ export const Sidebar = () => {
         { id: 'studio-workflow', label: 'Workers' },
       ]
     },
+    {
+      id: 'manufacturing-group',
+      label: 'Manufacturing',
+      icon: Box,
+      isHidden: !settingsModules.studioModuleEnabled || !hasPermission('studio.view'),
+      children: [
+        { id: 'manufacturing-bom', label: 'Bill of Materials' },
+        { id: 'manufacturing-orders', label: 'Production Orders' },
+        { id: 'manufacturing-workflow', label: 'Production Workflow' },
+      ]
+    },
     { id: 'expenses', label: 'Expenses', icon: Receipt, isHidden: !hasPermission('expenses.view') },
     { id: 'accounting', label: 'Accounting', icon: Calculator, isHidden: !settingsModules.accountingModuleEnabled || !hasPermission('accounting.view') },
     { id: 'reports', label: 'Reports', icon: PieChart, isHidden: !hasPermission('reports.view') },

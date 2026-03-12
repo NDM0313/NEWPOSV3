@@ -112,7 +112,7 @@ import { productService } from '@/app/services/productService';
 import { inventoryService } from '@/app/services/inventoryService';
 import { branchService, Branch } from '@/app/services/branchService';
 import { useSales, convertFromSupabaseSale, Sale } from '@/app/context/SalesContext';
-import { InvoicePrintLayout } from '@/app/components/shared/InvoicePrintLayout';
+import { UnifiedSalesInvoiceView } from '@/app/documents';
 import { useNavigation } from '@/app/context/NavigationContext';
 import { Loader2 } from 'lucide-react';
 import { useDocumentNumbering } from '@/app/hooks/useDocumentNumbering';
@@ -3374,16 +3374,19 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
             </div>
 
             {/* Print Layout Modal - after Save & Print */}
-            {showPrintLayout && saleForPrint && (
+            {showPrintLayout && saleForPrint && companyId && (
                 <div className="fixed inset-0 z-[100] bg-black/80 flex items-center justify-center p-4">
                     <div className="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-auto">
-                        <InvoicePrintLayout
-                            sale={saleForPrint}
+                        <UnifiedSalesInvoiceView
+                            saleId={saleForPrint.id}
+                            companyId={companyId}
+                            templateType="A4"
                             onClose={() => {
                                 setShowPrintLayout(false);
                                 setSaleForPrint(null);
                                 onClose();
                             }}
+                            showPrintAction={true}
                         />
                     </div>
                 </div>

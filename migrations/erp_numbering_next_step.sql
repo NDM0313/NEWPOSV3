@@ -9,13 +9,21 @@
 -- ============================================================================
 
 -- Ensure columns exist (idempotent)
-ALTER TABLE public.erp_document_sequences
-  ADD COLUMN IF NOT EXISTS year_reset boolean DEFAULT true,
-  ADD COLUMN IF NOT EXISTS branch_based boolean DEFAULT false;
+DO $$
+BEGIN
+  ALTER TABLE public.erp_document_sequences
+    ADD COLUMN IF NOT EXISTS year_reset boolean DEFAULT true,
+    ADD COLUMN IF NOT EXISTS branch_based boolean DEFAULT false;
+EXCEPTION WHEN OTHERS THEN
+  RAISE NOTICE 'erp_numbering_next_step: ALTER erp_document_sequences: %', SQLERRM;
+END $$;
 
 -- ----------------------------------------------------------------------------
 -- Generate next document number (v2: respects rule row year_reset & branch_based)
 -- ----------------------------------------------------------------------------
+DO $$
+BEGIN
+  EXECUTE $exec$
 CREATE OR REPLACE FUNCTION public.generate_document_number(
   p_company_id UUID,
   p_branch_id UUID DEFAULT NULL,
@@ -26,7 +34,7 @@ RETURNS TEXT
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public
-AS $$
+AS $body$
 DECLARE
   v_rule RECORD;
   v_prefix TEXT;
@@ -115,49 +123,45 @@ BEGIN
     RETURN v_prefix || '-' || LPAD(v_next::TEXT, GREATEST(COALESCE(v_padding, 4), 1), '0');
   END IF;
 END;
-$$;
-
-COMMENT ON FUNCTION public.generate_document_number(UUID, UUID, TEXT, BOOLEAN) IS
-  'ERP Numbering: next number. Respects year_reset (year=0 = no reset) and branch_based from rule row.';
+$body$;
+$exec$;
+  EXECUTE 'COMMENT ON FUNCTION public.generate_document_number(UUID, UUID, TEXT, BOOLEAN) IS ''ERP Numbering: next number. Respects year_reset and branch_based from rule row.''';
+EXCEPTION WHEN OTHERS THEN
+  RAISE NOTICE 'erp_numbering_next_step: generate_document_number: %', SQLERRM;
+END $$;
 
 -- ============================================================================
 -- DELETED DOCUMENT NUMBER AUDIT
 -- ============================================================================
-CREATE TABLE IF NOT EXISTS public.erp_document_number_audit (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  company_id UUID NOT NULL REFERENCES public.companies(id) ON DELETE CASCADE,
-  document_type TEXT NOT NULL,
-  document_number TEXT NOT NULL,
-  reference_type TEXT NOT NULL,
-  reference_id UUID NOT NULL,
-  reason TEXT,
-  deleted_at TIMESTAMPTZ DEFAULT now(),
-  created_by UUID,
-  created_at TIMESTAMPTZ DEFAULT now()
-);
-
-CREATE INDEX IF NOT EXISTS idx_erp_doc_audit_company_type
-  ON public.erp_document_number_audit(company_id, document_type);
-CREATE INDEX IF NOT EXISTS idx_erp_doc_audit_deleted_at
-  ON public.erp_document_number_audit(deleted_at);
-
-COMMENT ON TABLE public.erp_document_number_audit IS 'Audit of cancelled/deleted document numbers (invoice_no, po_no, etc.) – numbers are never reused.';
-
--- RLS
-DO $rls$
+DO $$
 BEGIN
+  CREATE TABLE IF NOT EXISTS public.erp_document_number_audit (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    company_id UUID NOT NULL REFERENCES public.companies(id) ON DELETE CASCADE,
+    document_type TEXT NOT NULL,
+    document_number TEXT NOT NULL,
+    reference_type TEXT NOT NULL,
+    reference_id UUID NOT NULL,
+    reason TEXT,
+    deleted_at TIMESTAMPTZ DEFAULT now(),
+    created_by UUID,
+    created_at TIMESTAMPTZ DEFAULT now()
+  );
+  CREATE INDEX IF NOT EXISTS idx_erp_doc_audit_company_type ON public.erp_document_number_audit(company_id, document_type);
+  CREATE INDEX IF NOT EXISTS idx_erp_doc_audit_deleted_at ON public.erp_document_number_audit(deleted_at);
+  COMMENT ON TABLE public.erp_document_number_audit IS 'Audit of cancelled/deleted document numbers – numbers are never reused.';
   ALTER TABLE public.erp_document_number_audit ENABLE ROW LEVEL SECURITY;
   DROP POLICY IF EXISTS "erp_doc_audit_select" ON public.erp_document_number_audit;
   DROP POLICY IF EXISTS "erp_doc_audit_insert" ON public.erp_document_number_audit;
-  CREATE POLICY "erp_doc_audit_select" ON public.erp_document_number_audit
-    FOR SELECT TO authenticated USING (company_id = (SELECT get_user_company_id()));
-  CREATE POLICY "erp_doc_audit_insert" ON public.erp_document_number_audit
-    FOR INSERT TO authenticated WITH CHECK (company_id = (SELECT get_user_company_id()));
+  CREATE POLICY "erp_doc_audit_select" ON public.erp_document_number_audit FOR SELECT TO authenticated USING (company_id = (SELECT get_user_company_id()));
+  CREATE POLICY "erp_doc_audit_insert" ON public.erp_document_number_audit FOR INSERT TO authenticated WITH CHECK (company_id = (SELECT get_user_company_id()));
 EXCEPTION WHEN OTHERS THEN
-  RAISE NOTICE 'erp_document_number_audit RLS: %', SQLERRM;
-END $rls$;
+  RAISE NOTICE 'erp_numbering_next_step: erp_document_number_audit: %', SQLERRM;
+END $$;
 
--- RPC: log a deleted/cancelled document number (call from app on cancel/delete)
+DO $$
+BEGIN
+  EXECUTE $exec$
 CREATE OR REPLACE FUNCTION public.log_deleted_document_number(
   p_company_id UUID,
   p_document_type TEXT,
@@ -171,26 +175,18 @@ RETURNS UUID
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public
-AS $$
+AS $body$
 DECLARE
   v_id UUID;
 BEGIN
-  INSERT INTO public.erp_document_number_audit (
-    company_id, document_type, document_number, reference_type, reference_id, reason, created_by
-  )
-  VALUES (
-    p_company_id,
-    UPPER(TRIM(p_document_type)),
-    NULLIF(TRIM(p_document_number), ''),
-    p_reference_type,
-    p_reference_id,
-    p_reason,
-    p_created_by
-  )
+  INSERT INTO public.erp_document_number_audit (company_id, document_type, document_number, reference_type, reference_id, reason, created_by)
+  VALUES (p_company_id, UPPER(TRIM(p_document_type)), NULLIF(TRIM(p_document_number), ''), p_reference_type, p_reference_id, p_reason, p_created_by)
   RETURNING id INTO v_id;
   RETURN v_id;
 END;
-$$;
-
-COMMENT ON FUNCTION public.log_deleted_document_number(UUID, TEXT, TEXT, TEXT, UUID, TEXT, UUID) IS
-  'Log a cancelled/deleted document number for audit; numbers are never reused.';
+$body$;
+$exec$;
+  EXECUTE 'COMMENT ON FUNCTION public.log_deleted_document_number(UUID, TEXT, TEXT, TEXT, UUID, TEXT, UUID) IS ''Log a cancelled/deleted document number for audit.''';
+EXCEPTION WHEN OTHERS THEN
+  RAISE NOTICE 'erp_numbering_next_step: log_deleted_document_number: %', SQLERRM;
+END $$;

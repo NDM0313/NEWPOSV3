@@ -42,6 +42,8 @@ import { toast } from 'sonner';
 import { UserProfilePage } from '../users/UserProfilePage';
 import { ChangePasswordDialog } from '../auth/ChangePasswordDialog';
 import { useFormatCurrency } from '../../hooks/useFormatCurrency';
+import { productService } from '../../services/productService';
+import { shipmentAccountingService } from '../../services/shipmentAccountingService';
 
 export const TopHeader = () => {
   const { toggleSidebar, openDrawer, setCurrentView, setMobileNavOpen } = useNavigation();
@@ -57,6 +59,8 @@ export const TopHeader = () => {
   const [loadingBranches, setLoadingBranches] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const [showCustomDatePicker, setShowCustomDatePicker] = useState(false);
+  const [lowStockProducts, setLowStockProducts] = useState<{ id: string; name?: string; sku?: string; current_stock?: number }[]>([]);
+  const [courierBalances, setCourierBalances] = useState<{ courier_name: string; balance: number }[]>([]);
 
   // Load branches (cached) for header dropdown; global rule: hide when single branch
   const loadBranches = useCallback(async () => {
@@ -77,6 +81,27 @@ export const TopHeader = () => {
     loadBranches();
   }, [loadBranches]);
 
+  // Step 7 — Notifications: low stock + courier balance
+  useEffect(() => {
+    if (!companyId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const [lowStock, couriers] = await Promise.all([
+          productService.getLowStockProducts(companyId).catch(() => []),
+          shipmentAccountingService.getCourierBalances(companyId).catch(() => []),
+        ]);
+        if (cancelled) return;
+        setLowStockProducts(Array.isArray(lowStock) ? lowStock : []);
+        setCourierBalances((couriers ?? []).filter((c: { balance: number }) => c.balance > 0).map((c: any) => ({ courier_name: c.courier_name, balance: c.balance })));
+      } catch {
+        if (!cancelled) setLowStockProducts([]);
+        if (!cancelled) setCourierBalances([]);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [companyId]);
+
   // If business has only one branch, auto-select it (persist in global filter + Supabase)
   useEffect(() => {
     if (branches.length === 1 && (!branchId || branchId === 'all')) {
@@ -92,27 +117,19 @@ export const TopHeader = () => {
     return branch?.name || 'Select Branch';
   }, [branchId, branches]);
 
-  // Calculate notification count from real data
+  // Calculate notification count from real data (Step 7: low stock, courier balance, payment due)
   const notificationCount = useMemo(() => {
     let count = 0;
-    
-    // Low stock items (if we had products context, we'd check here)
-    // For now, we'll use sales/purchases/expenses notifications
-    
-    // Unpaid sales (receivables)
+    if (lowStockProducts.length > 0) count += Math.min(lowStockProducts.length, 5);
+    if (courierBalances.length > 0) count += courierBalances.length;
     const unpaidSales = sales.sales.filter(s => s.type === 'invoice' && s.due > 0).length;
     if (unpaidSales > 0) count += unpaidSales;
-    
-    // Unpaid purchases (payables)
     const unpaidPurchases = purchases.purchases.filter(p => p.due > 0).length;
     if (unpaidPurchases > 0) count += unpaidPurchases;
-    
-    // Pending expenses
     const pendingExpenses = expenses.expenses.filter(e => e.status === 'pending').length;
     if (pendingExpenses > 0) count += pendingExpenses;
-    
     return count;
-  }, [sales.sales, purchases.purchases, expenses.expenses]);
+  }, [sales.sales, purchases.purchases, expenses.expenses, lowStockProducts.length, courierBalances.length]);
 
   // Handle branch change — update global filter (persists + syncs to Supabase)
   const handleBranchChange = (newBranchId: string) => {
@@ -153,27 +170,39 @@ export const TopHeader = () => {
     // Show notifications dropdown
   };
 
-  // Get notifications list
+  // Get notifications list (Step 7: low stock, courier balance, payment due)
   const notifications = useMemo(() => {
     const notifs: Array<{ id: string; type: string; message: string; time: string }> = [];
-    
-    // Unpaid sales
+    lowStockProducts.slice(0, 3).forEach((p: any) => {
+      notifs.push({
+        id: `lowstock-${p.id}`,
+        type: 'low_stock',
+        message: `Low stock: ${p.name || p.sku || 'Product'} - ${Number(p.current_stock) ?? 0} left`,
+        time: '',
+      });
+    });
+    courierBalances.slice(0, 3).forEach((c, i) => {
+      notifs.push({
+        id: `courier-${i}`,
+        type: 'courier_balance',
+        message: `Courier due: ${c.courier_name} - ${formatCurrency(c.balance)}`,
+        time: '',
+      });
+    });
     sales.sales
       .filter(s => s.type === 'invoice' && s.due > 0)
-      .slice(0, 5)
+      .slice(0, 3)
       .forEach(sale => {
         notifs.push({
           id: `sale-${sale.id}`,
           type: 'receivable',
-          message: `Unpaid invoice: ${sale.invoiceNo} - ${formatCurrency(sale.due)}`,
+          message: `Payment due: ${sale.invoiceNo} - ${formatCurrency(sale.due)}`,
           time: sale.date || new Date().toISOString().split('T')[0],
         });
       });
-    
-    // Unpaid purchases
     purchases.purchases
       .filter(p => p.due > 0)
-      .slice(0, 5)
+      .slice(0, 2)
       .forEach(purchase => {
         notifs.push({
           id: `purchase-${purchase.id}`,
@@ -182,11 +211,9 @@ export const TopHeader = () => {
           time: purchase.date || new Date().toISOString().split('T')[0],
         });
       });
-    
-    // Pending expenses
     expenses.expenses
       .filter(e => e.status === 'pending')
-      .slice(0, 5)
+      .slice(0, 2)
       .forEach(expense => {
         notifs.push({
           id: `expense-${expense.id}`,
@@ -195,9 +222,8 @@ export const TopHeader = () => {
           time: expense.date || new Date().toISOString().split('T')[0],
         });
       });
-    
-    return notifs.slice(0, 10); // Limit to 10 notifications
-  }, [sales.sales, purchases.purchases, expenses.expenses, formatCurrency]);
+    return notifs.slice(0, 10);
+  }, [sales.sales, purchases.purchases, expenses.expenses, lowStockProducts, courierBalances, formatCurrency]);
 
   // Get user display info
   const userDisplayName = user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Admin';

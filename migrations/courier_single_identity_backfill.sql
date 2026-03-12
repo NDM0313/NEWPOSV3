@@ -7,9 +7,13 @@
 -- ============================================================================
 
 -- 1. Ensure column exists (in case first migration was skipped)
-ALTER TABLE couriers
-  ADD COLUMN IF NOT EXISTS contact_id UUID REFERENCES contacts(id) ON DELETE SET NULL;
-CREATE INDEX IF NOT EXISTS idx_couriers_contact_id ON couriers(contact_id) WHERE contact_id IS NOT NULL;
+DO $$
+BEGIN
+  ALTER TABLE couriers ADD COLUMN IF NOT EXISTS contact_id UUID REFERENCES contacts(id) ON DELETE SET NULL;
+  CREATE INDEX IF NOT EXISTS idx_couriers_contact_id ON couriers(contact_id) WHERE contact_id IS NOT NULL;
+EXCEPTION WHEN OTHERS THEN
+  RAISE NOTICE 'courier_single_identity_backfill: Could not alter couriers: %', SQLERRM;
+END $$;
 
 -- Backfill: couriers with account_id get contact_id from account or new contact
 -- Use type = 'supplier' for new contacts so this runs without needing 'courier' in the enum yet
@@ -40,10 +44,17 @@ BEGIN
       END IF;
     END IF;
   END LOOP;
+EXCEPTION WHEN OTHERS THEN
+  RAISE NOTICE 'courier_single_identity_backfill: Backfill loop: %', SQLERRM;
 END $$;
 
 -- Set courier.contact_id from account.contact_id where account exists and courier.contact_id is null
-UPDATE couriers c
-SET contact_id = a.contact_id
-FROM accounts a
-WHERE c.account_id = a.id AND a.contact_id IS NOT NULL AND c.contact_id IS NULL;
+DO $$
+BEGIN
+  UPDATE couriers c
+  SET contact_id = a.contact_id
+  FROM accounts a
+  WHERE c.account_id = a.id AND a.contact_id IS NOT NULL AND c.contact_id IS NULL;
+EXCEPTION WHEN OTHERS THEN
+  RAISE NOTICE 'courier_single_identity_backfill: Final update: %', SQLERRM;
+END $$;

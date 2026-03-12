@@ -15,6 +15,10 @@ export interface A4InvoiceTemplateProps {
   onPrint?: () => void;
   onClose?: () => void;
   actionChildren?: React.ReactNode;
+  /** Default "INVOICE". Use "PROFORMA INVOICE" for proforma. */
+  documentTitle?: string;
+  /** Ref for PDF export (attached to root printable element). */
+  contentRef?: React.RefObject<HTMLDivElement | null>;
 }
 
 export const A4InvoiceTemplate: React.FC<A4InvoiceTemplateProps> = ({
@@ -24,6 +28,8 @@ export const A4InvoiceTemplate: React.FC<A4InvoiceTemplateProps> = ({
   onPrint,
   onClose,
   actionChildren,
+  documentTitle = 'INVOICE',
+  contentRef,
 }) => {
   const { inventorySettings } = useSettings();
   const enablePacking = inventorySettings.enablePacking ?? false;
@@ -31,13 +37,13 @@ export const A4InvoiceTemplate: React.FC<A4InvoiceTemplateProps> = ({
   const headerMeta = [
     { label: 'Invoice No', value: doc.meta.invoice_no },
     { label: 'Date', value: new Date(doc.meta.invoice_date).toLocaleDateString() },
-    { label: 'Type', value: doc.meta.type === 'quotation' ? 'Quotation' : 'Invoice' },
+    { label: 'Type', value: doc.meta.type === 'quotation' ? 'Quotation' : doc.meta.type === 'proforma' ? 'Proforma' : 'Invoice' },
     ...(doc.meta.fiscal_period ? [{ label: 'Fiscal Period', value: doc.meta.fiscal_period }] : []),
   ];
 
   return (
     <ClassicPrintBase
-      documentTitle="INVOICE"
+      documentTitle={documentTitle}
       companyName={doc.company.name}
       logoUrl={template.logo_url ?? undefined}
       headerMeta={headerMeta}
@@ -46,6 +52,7 @@ export const A4InvoiceTemplate: React.FC<A4InvoiceTemplateProps> = ({
       printerMode="a4"
       showActions={true}
       actionChildren={actionChildren}
+      contentRef={contentRef}
     >
       <div className="classic-print-section">
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '32px', marginBottom: '24px' }}>

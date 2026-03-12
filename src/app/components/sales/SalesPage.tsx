@@ -53,6 +53,9 @@ import { cn } from "@/app/components/ui/utils";
 import { useNavigation } from '@/app/context/NavigationContext';
 import { useSales, Sale, convertFromSupabaseSale } from '@/app/context/SalesContext';
 import { useSupabase } from '@/app/context/SupabaseContext';
+import { useSettings } from '@/app/context/SettingsContext';
+import { BulkInvoiceWorkflow } from '@/app/wholesale';
+import { QuotationWorkflow } from './QuotationWorkflow';
 import { useGlobalFilter } from '@/app/context/GlobalFilterContext';
 import { saleService } from '@/app/services/saleService';
 import { branchService, Branch } from '@/app/services/branchService';
@@ -87,6 +90,7 @@ export const SalesPage = () => {
   const { formatCurrency } = useFormatCurrency();
   const { sales, deleteSale, updateSale, recordPayment, updateShippingStatus, refreshSales, loading, totalCount, page, pageSize: contextPageSize, setPage } = useSales();
   const { companyId, branchId, user } = useSupabase();
+  const { company } = useSettings();
   const globalFilter = useGlobalFilter();
   const { startDate, endDate, setCurrentModule } = globalFilter;
 
@@ -104,6 +108,8 @@ export const SalesPage = () => {
   
   // Store branch_id mapping for sales (for location resolution when location is empty)
   const [salesBranchIdMap, setSalesBranchIdMap] = useState<Map<string, string>>(new Map());
+  const [showBulkInvoiceWorkflow, setShowBulkInvoiceWorkflow] = useState(false);
+  const [showQuotationWorkflow, setShowQuotationWorkflow] = useState(false);
   
   // Load branches for location display
   useEffect(() => {
@@ -1278,6 +1284,28 @@ export const SalesPage = () => {
             >
               Design test
             </Button>
+            {companyId && (
+              <>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowQuotationWorkflow(true)}
+                  className="h-10 text-gray-400 border-gray-700 hover:bg-gray-800 hover:text-white gap-2"
+                >
+                  <FileText size={16} />
+                  Quotation
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowBulkInvoiceWorkflow(true)}
+                  className="h-10 text-gray-400 border-gray-700 hover:bg-gray-800 hover:text-white gap-2"
+                >
+                  <FileText size={16} />
+                  Bulk Invoice
+                </Button>
+              </>
+            )}
           {canCreateSale && (
           <Button 
             onClick={() => openDrawer('addSale')}
@@ -2350,6 +2378,40 @@ export const SalesPage = () => {
             setViewDetailsOpen(false);
             handleSaleAction('receive_payment', selectedSale);
           }}
+        />
+      )}
+
+      {/* Step 6: Quotations + Proforma */}
+      {companyId && (
+        <QuotationWorkflow
+          companyId={companyId}
+          companyName={company?.businessName ?? ''}
+          companyAddress={company?.businessAddress ?? null}
+          isOpen={showQuotationWorkflow}
+          onClose={() => setShowQuotationWorkflow(false)}
+          onConvertToSale={async (saleId) => {
+            setShowQuotationWorkflow(false);
+            await refreshSales();
+            const raw = await saleService.getSaleById(saleId).catch(() => null);
+            if (raw) {
+              const sale = convertFromSupabaseSale(raw);
+              setSelectedSale(sale);
+              setViewDetailsOpen(true);
+            } else {
+              toast.success('Quotation converted to sale. Open it from the sales list.');
+            }
+          }}
+        />
+      )}
+
+      {/* Wholesale: Bulk Invoice (select packing lists → one invoice) */}
+      {companyId && (
+        <BulkInvoiceWorkflow
+          companyId={companyId}
+          companyName={company?.businessName ?? ''}
+          companyAddress={company?.businessAddress ?? null}
+          isOpen={showBulkInvoiceWorkflow}
+          onClose={() => setShowBulkInvoiceWorkflow(false)}
         />
       )}
 

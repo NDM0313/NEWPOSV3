@@ -51,6 +51,15 @@ const BUSINESS_TYPES = [
   { value: 'mixed', label: 'Mixed' },
 ];
 
+/** Default modules per business type (wizard module ids). User can change in Step 4. */
+const BUSINESS_TYPE_MODULES: Record<string, string[]> = {
+  retail: ['sales', 'pos', 'accounting', 'reports'],
+  wholesale: ['sales', 'purchases', 'accounting', 'reports'],
+  manufacturing: ['purchases', 'studio', 'sales', 'accounting', 'reports'],
+  rental: ['rentals', 'sales', 'accounting', 'reports'],
+  mixed: ['sales', 'purchases', 'rentals', 'pos', 'studio', 'accounting', 'expenses', 'payroll', 'reports'],
+};
+
 const FISCAL_MONTHS = [
   { value: '1', label: 'January' },
   { value: '4', label: 'April' },
@@ -107,7 +116,7 @@ export const CreateBusinessWizard: React.FC<CreateBusinessWizardProps> = ({ onSu
   const [formData, setFormData] = useState({
     // Step 1
     businessName: '',
-    businessType: 'retail',
+    businessType: 'mixed',
     logoUrl: '',
     phone: '',
     email: '',
@@ -130,8 +139,8 @@ export const CreateBusinessWizard: React.FC<CreateBusinessWizardProps> = ({ onSu
     allowNegativeStock: false,
     defaultUnit: 'pcs',
     baseUnits: ['pcs'] as string[],
-    // Step 4
-    modules: ['sales', 'purchases', 'accounting', 'expenses', 'reports'] as string[],
+    // Step 4 (default from mixed template; synced when businessType changes)
+    modules: [...BUSINESS_TYPE_MODULES.mixed] as string[],
     // Step 5
     branchName: 'Main Branch',
     branchCode: 'HQ',
@@ -214,6 +223,8 @@ export const CreateBusinessWizard: React.FC<CreateBusinessWizardProps> = ({ onSu
         address: formData.address || undefined,
         country: formData.country || undefined,
         timezone: formData.timezone || undefined,
+        businessType: formData.businessType,
+        modules: formData.modules,
       });
       if (!result.success) throw new Error(result.error || 'Failed to create business');
       onSuccess(formData.email, formData.password);
@@ -296,7 +307,13 @@ export const CreateBusinessWizard: React.FC<CreateBusinessWizardProps> = ({ onSu
                   </div>
                   <div>
                     <Label className="text-gray-400">Business Type</Label>
-                    <Select value={formData.businessType} onValueChange={(v) => setFormData({ ...formData, businessType: v })}>
+                    <Select
+                      value={formData.businessType}
+                      onValueChange={(v) => {
+                        const templateModules = BUSINESS_TYPE_MODULES[v] ?? BUSINESS_TYPE_MODULES.mixed;
+                        setFormData({ ...formData, businessType: v, modules: [...templateModules] });
+                      }}
+                    >
                       <SelectTrigger className="bg-gray-800 border-gray-700 text-white mt-1">
                         <SelectValue />
                       </SelectTrigger>
@@ -537,7 +554,7 @@ export const CreateBusinessWizard: React.FC<CreateBusinessWizardProps> = ({ onSu
           {step === 4 && (
             <div className="space-y-6">
               <h3 className="text-sm font-medium text-gray-400 uppercase tracking-wide">Module Selection</h3>
-              <p className="text-sm text-gray-400">Only enabled modules appear in the sidebar. Select at least one.</p>
+              <p className="text-sm text-gray-400">Pre-selected by business type. You can change them. At least one required.</p>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 {MODULES.map((m) => {
                   const Icon = m.icon;

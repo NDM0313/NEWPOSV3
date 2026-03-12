@@ -81,7 +81,9 @@ export type DocumentTemplateId =
   | 'payment_receipt'
   | 'packing_list'
   | 'delivery_note'
-  | 'courier_slip';
+  | 'courier_slip'
+  | 'quotation'
+  | 'proforma_invoice';
 
 export interface CompanyPrintingSettings {
   pageSetup?: PageSetup;

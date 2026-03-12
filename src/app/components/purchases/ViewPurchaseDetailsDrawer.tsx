@@ -6,7 +6,7 @@ import { branchService, Branch } from '@/app/services/branchService';
 import { contactService } from '@/app/services/contactService';
 import { purchaseService } from '@/app/services/purchaseService';
 import { activityLogService } from '@/app/services/activityLogService';
-import { PurchaseOrderPrintLayout } from '../shared/PurchaseOrderPrintLayout';
+import { UnifiedPurchaseInvoiceView } from '@/app/documents';
 import { PaymentDeleteConfirmationModal } from '../shared/PaymentDeleteConfirmationModal';
 import { UnifiedPaymentDialog } from '../shared/UnifiedPaymentDialog';
 import { ViewPaymentsModal, type InvoiceDetails, type Payment } from '@/app/components/sales/ViewPaymentsModal';
@@ -1759,15 +1759,18 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
       </div>
 
       {/* Print Layout Modal */}
-      {showPrintLayout && purchase && (
+      {showPrintLayout && purchase && companyId && (
         <div className="fixed inset-0 z-[100] bg-black/80 flex items-center justify-center p-4">
           <div className="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-auto">
-            <PurchaseOrderPrintLayout 
-              purchase={purchase} 
+            <UnifiedPurchaseInvoiceView
+              purchaseId={purchase.id}
+              companyId={companyId}
+              templateType="A4"
               onClose={() => setShowPrintLayout(false)}
+              showPrintAction={true}
             />
-      </div>
-    </div>
+          </div>
+        </div>
       )}
 
       {/* Payment Delete Confirmation Modal */}

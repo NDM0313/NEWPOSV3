@@ -104,6 +104,8 @@ export interface CompanySettings {
   timeFormat?: '12h' | '24h';
   /** IANA timezone e.g. Asia/Karachi */
   timezone?: string;
+  /** Business type from Create Business wizard: retail, wholesale, manufacturing, rental, mixed */
+  businessType?: string;
 }
 
 export interface BranchSettings {
@@ -271,7 +273,7 @@ function getDefaultSettingsStub(): SettingsContextType {
   return {
     loading: false,
     isPermissionLoaded: true,
-    company: { businessName: '', businessAddress: '', businessPhone: '', businessEmail: '', taxId: '', currency: 'PKR', decimalPrecision: 2, logoUrl: undefined, dateFormat: 'DD/MM/YYYY', timeFormat: '12h', timezone: 'Asia/Karachi' },
+    company: { businessName: '', businessAddress: '', businessPhone: '', businessEmail: '', taxId: '', currency: 'PKR', decimalPrecision: 2, logoUrl: undefined, dateFormat: 'DD/MM/YYYY', timeFormat: '12h', timezone: 'Asia/Karachi', businessType: undefined },
     updateCompanySettings: noop,
     branches: [],
     updateBranches: noopSync,
@@ -329,6 +331,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
     dateFormat: 'DD/MM/YYYY',
     timeFormat: '12h',
     timezone: 'Asia/Karachi',
+    businessType: undefined,
   });
 
   // Branch Management
@@ -539,6 +542,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
           dateFormat: c.date_format || 'DD/MM/YYYY',
           timeFormat: (c.time_format === '24h' ? '24h' : '12h') as '12h' | '24h',
           timezone: c.timezone || 'Asia/Karachi',
+          businessType: c.business_type || undefined,
         });
       }
 

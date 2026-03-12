@@ -2,6 +2,7 @@ import { defineConfig } from 'vite'
 import path from 'path'
 import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
+import { VitePWA } from 'vite-plugin-pwa'
 import { applyStorageRlsPlugin } from './vite-plugin-apply-storage-rls'
 
 export default defineConfig({
@@ -16,6 +17,29 @@ export default defineConfig({
     react(),
     tailwindcss(),
     applyStorageRlsPlugin(),
+    VitePWA({
+      registerType: 'autoUpdate',
+      includeAssets: ['favicon.ico', 'robots.txt'],
+      manifest: {
+        name: 'ERP',
+        short_name: 'ERP',
+        description: 'Enterprise ERP',
+        theme_color: '#0f172a',
+        background_color: '#ffffff',
+        display: 'standalone',
+        start_url: '/',
+      },
+      workbox: {
+        globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
+        runtimeCaching: [
+          {
+            urlPattern: /^https:\/\/.*\.(?:png|jpg|jpeg|svg|gif|webp)$/i,
+            handler: 'CacheFirst',
+            options: { cacheName: 'images', expiration: { maxEntries: 64 } },
+          },
+        ],
+      },
+    }),
   ],
   resolve: {
     alias: {

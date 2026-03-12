@@ -110,15 +110,42 @@ BEGIN
 EXCEPTION WHEN OTHERS THEN NULL;
 END $$;
 
--- One-time backfill: users with no branches get company default (public.users.id variant)
-INSERT INTO public.user_branches (user_id, branch_id, is_default)
-SELECT u.id, b.id, true
-FROM public.users u
-CROSS JOIN LATERAL (
-  SELECT id FROM public.branches
-  WHERE company_id = u.company_id AND (is_active IS NULL OR is_active = true)
-  ORDER BY id ASC
-  LIMIT 1
-) b
-WHERE u.role IS NOT NULL AND LOWER(TRIM(u.role::text)) NOT IN ('owner', 'admin')
-AND NOT EXISTS (SELECT 1 FROM public.user_branches ub WHERE ub.user_id = u.id);
+-- One-time backfill: use user_id that matches user_branches FK (auth.users.id or public.users.id)
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.table_constraints c
+    JOIN information_schema.constraint_column_usage u ON u.constraint_name = c.constraint_name
+    WHERE c.table_schema = 'public' AND c.table_name = 'user_branches'
+    AND c.constraint_type = 'FOREIGN KEY' AND u.column_name = 'user_id'
+    AND u.table_schema = 'auth' AND u.table_name = 'users'
+  ) THEN
+    -- FK to auth.users: only backfill rows where auth_user_id is set
+    INSERT INTO public.user_branches (user_id, branch_id, is_default)
+    SELECT u.auth_user_id, b.id, true
+    FROM public.users u
+    CROSS JOIN LATERAL (
+      SELECT id FROM public.branches
+      WHERE company_id = u.company_id AND (is_active IS NULL OR is_active = true)
+      ORDER BY id ASC
+      LIMIT 1
+    ) b
+    WHERE u.role IS NOT NULL AND LOWER(TRIM(u.role::text)) NOT IN ('owner', 'admin')
+    AND u.auth_user_id IS NOT NULL
+    AND NOT EXISTS (SELECT 1 FROM public.user_branches ub WHERE ub.user_id = u.auth_user_id);
+  ELSE
+    INSERT INTO public.user_branches (user_id, branch_id, is_default)
+    SELECT u.id, b.id, true
+    FROM public.users u
+    CROSS JOIN LATERAL (
+      SELECT id FROM public.branches
+      WHERE company_id = u.company_id AND (is_active IS NULL OR is_active = true)
+      ORDER BY id ASC
+      LIMIT 1
+    ) b
+    WHERE u.role IS NOT NULL AND LOWER(TRIM(u.role::text)) NOT IN ('owner', 'admin')
+    AND NOT EXISTS (SELECT 1 FROM public.user_branches ub WHERE ub.user_id = u.id);
+  END IF;
+EXCEPTION WHEN OTHERS THEN
+  RAISE NOTICE 'auto_assign_default_branch backfill skipped: %', SQLERRM;
+END $$;

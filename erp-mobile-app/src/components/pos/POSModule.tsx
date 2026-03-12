@@ -6,6 +6,7 @@ import * as salesApi from '../../api/sales';
 import { supabase } from '../../lib/supabase';
 import { balanceFromMovements } from '../../utils/stockBalance';
 import { PaymentDialog, type PaymentResult } from '../sales/PaymentDialog';
+import { BarcodeScanner } from '../../features/barcode';
 
 interface POSModuleProps {
   onBack: () => void;
@@ -49,6 +50,13 @@ export function POSModule({ onBack, user, companyId, branchId }: POSModuleProps)
   const [lastInvoiceNo, setLastInvoiceNo] = useState<string | null>(null);
   const [variationModalProduct, setVariationModalProduct] = useState<POSProduct | null>(null);
   const [showPaymentStep, setShowPaymentStep] = useState(false);
+  const [scanMessage, setScanMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  useEffect(() => {
+    if (!scanMessage) return;
+    const t = setTimeout(() => setScanMessage(null), 3000);
+    return () => clearTimeout(t);
+  }, [scanMessage]);
 
   const loadProducts = useCallback(async () => {
     if (!companyId) return;
@@ -185,6 +193,44 @@ export function POSModule({ onBack, user, companyId, branchId }: POSModuleProps)
 
   const remove = (id: string) => setCart(cart.filter((item) => item.id !== id));
 
+  /** Map API Product to POSProduct for cart. */
+  const productToPOS = (p: productsApi.Product): POSProduct => ({
+    id: p.id,
+    name: p.name,
+    price: p.retailPrice ?? 0,
+    sku: p.sku ?? '—',
+    stock: p.stock ?? 0,
+    variations: p.variations?.length
+      ? p.variations.map((v) => ({
+          id: v.id,
+          sku: v.sku,
+          attributes: v.attributes ?? {},
+          price: v.price ?? p.retailPrice ?? 0,
+          stock: v.stock ?? 0,
+        }))
+      : undefined,
+  });
+
+  const handleBarcodeScanned = useCallback(
+    async (code: string) => {
+      if (!companyId) return;
+      setScanMessage(null);
+      const { data: product, error } = await productsApi.getProductByBarcodeOrSku(companyId, code);
+      if (error || !product) {
+        setScanMessage({ type: 'error', text: 'Product not found' });
+        return;
+      }
+      const posProduct = productToPOS(product);
+      if (posProduct.variations && posProduct.variations.length > 0) {
+        addToCart(posProduct, posProduct.variations[0]);
+      } else {
+        addToCart(posProduct);
+      }
+      setScanMessage({ type: 'success', text: `Added ${product.name}` });
+    },
+    [companyId]
+  );
+
   const subtotal = cart.reduce((sum, item) => sum + item.total, 0);
   const tax = 0;
   const total = subtotal;
@@ -287,21 +333,34 @@ export function POSModule({ onBack, user, companyId, branchId }: POSModuleProps)
           <span className="text-white font-medium">{customer}</span>
         </div>
 
+        {scanMessage && (
+          <div
+            className={`mb-4 rounded-lg px-4 py-2 text-sm ${
+              scanMessage.type === 'success' ? 'bg-[#10B981]/20 text-[#10B981]' : 'bg-[#EF4444]/20 text-[#EF4444]'
+            }`}
+          >
+            {scanMessage.text}
+          </div>
+        )}
+
         {loading ? (
           <div className="flex justify-center py-12">
             <Loader2 className="w-8 h-8 text-[#10B981] animate-spin" />
           </div>
         ) : (
         <>
-        <div className="relative mb-4">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-[#6B7280]" size={18} />
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search products..."
-            className="w-full h-12 bg-[#1F2937] border border-[#374151] rounded-lg pl-10 pr-4 text-sm text-white placeholder-[#6B7280] focus:outline-none focus:border-[#3B82F6]"
-          />
+        <div className="flex gap-2 mb-4">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-[#6B7280]" size={18} />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search products..."
+              className="w-full h-12 bg-[#1F2937] border border-[#374151] rounded-lg pl-10 pr-4 text-sm text-white placeholder-[#6B7280] focus:outline-none focus:border-[#3B82F6]"
+            />
+          </div>
+          <BarcodeScanner onScan={handleBarcodeScanned} buttonLabel="Scan" checkOnMount={true} />
         </div>
 
         <div className="grid grid-cols-2 gap-3">

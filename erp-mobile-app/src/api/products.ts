@@ -53,6 +53,80 @@ export interface ProductVariationRow {
   stock: number;
 }
 
+/** Get a single product by barcode or SKU (barcode first, then SKU). For POS barcode scan. */
+export async function getProductByBarcodeOrSku(
+  companyId: string,
+  code: string
+): Promise<{ data: Product | null; error: string | null }> {
+  if (!isSupabaseConfigured) return { data: null, error: 'App not configured.' };
+  const trimmed = (code || '').trim();
+  if (!trimmed) return { data: null, error: 'No barcode or SKU provided.' };
+
+  const { data: byBarcode, error: errBarcode } = await supabase
+    .from('products')
+    .select('id, company_id, name, sku, barcode, description, cost_price, retail_price, wholesale_price, current_stock, min_stock, category_id, brand_id, unit_id, is_active, has_variations, product_categories(name), units(name, allow_decimal)')
+    .eq('company_id', companyId)
+    .eq('barcode', trimmed)
+    .maybeSingle();
+
+  if (!errBarcode && byBarcode) {
+    const row = byBarcode as ProductRow & { has_variations?: boolean; min_stock?: number; description?: string; barcode?: string; brand_id?: string; product_categories?: { name: string }; units?: { name?: string; allow_decimal?: boolean } };
+    const product: Product = {
+      id: row.id,
+      sku: row.sku || '—',
+      name: row.name,
+      category: row.product_categories?.name || 'Other',
+      categoryId: row.category_id ?? undefined,
+      brandId: row.brand_id ?? undefined,
+      unitId: row.unit_id ?? undefined,
+      costPrice: Number(row.cost_price) || 0,
+      retailPrice: Number(row.retail_price) || 0,
+      stock: Number(row.current_stock) ?? 0,
+      unit: row.units?.name || 'Piece',
+      unitAllowDecimal: row.units?.allow_decimal ?? false,
+      status: row.is_active !== false ? 'active' : 'inactive',
+      description: row.description ?? undefined,
+      barcode: row.barcode ?? undefined,
+      minStock: row.min_stock ?? 0,
+      wholesalePrice: row.wholesale_price != null ? Number(row.wholesale_price) : undefined,
+      hasVariations: row.has_variations ?? false,
+    };
+    return { data: product, error: null };
+  }
+
+  const { data: bySku, error: errSku } = await supabase
+    .from('products')
+    .select('id, company_id, name, sku, barcode, description, cost_price, retail_price, wholesale_price, current_stock, min_stock, category_id, brand_id, unit_id, is_active, has_variations, product_categories(name), units(name, allow_decimal)')
+    .eq('company_id', companyId)
+    .eq('sku', trimmed)
+    .maybeSingle();
+
+  if (errSku || !bySku) return { data: null, error: errSku?.message ?? 'Product not found.' };
+
+  const row = bySku as ProductRow & { has_variations?: boolean; min_stock?: number; description?: string; barcode?: string; brand_id?: string; product_categories?: { name: string }; units?: { name?: string; allow_decimal?: boolean } };
+  const product: Product = {
+    id: row.id,
+    sku: row.sku || '—',
+    name: row.name,
+    category: row.product_categories?.name || 'Other',
+    categoryId: row.category_id ?? undefined,
+    brandId: row.brand_id ?? undefined,
+    unitId: row.unit_id ?? undefined,
+    costPrice: Number(row.cost_price) || 0,
+    retailPrice: Number(row.retail_price) || 0,
+    stock: Number(row.current_stock) ?? 0,
+    unit: row.units?.name || 'Piece',
+    unitAllowDecimal: row.units?.allow_decimal ?? false,
+    status: row.is_active !== false ? 'active' : 'inactive',
+    description: row.description ?? undefined,
+    barcode: row.barcode ?? undefined,
+    minStock: row.min_stock ?? 0,
+    wholesalePrice: row.wholesale_price != null ? Number(row.wholesale_price) : undefined,
+    hasVariations: row.has_variations ?? false,
+  };
+  return { data: product, error: null };
+}
+
 export async function getProducts(companyId: string): Promise<{ data: Product[]; error: string | null }> {
   if (!isSupabaseConfigured) return { data: [], error: 'App not configured.' };
   const { data, error } = await supabase

@@ -14,6 +14,10 @@ export interface CreateBusinessRequest {
   address?: string;
   country?: string;
   timezone?: string;
+  /** Business type template (retail, wholesale, manufacturing, rental, mixed) */
+  businessType?: string;
+  /** Module ids to enable (sales, purchases, pos, studio, etc.); applied to modules_config */
+  modules?: string[];
 }
 
 export interface CreateBusinessResponse {
@@ -67,6 +71,8 @@ export const businessService = {
           p_address: data.address || null,
           p_country: data.country || null,
           p_timezone: data.timezone || null,
+          p_business_type: data.businessType || null,
+          p_modules: data.modules && data.modules.length > 0 ? data.modules : null,
         }
       );
 

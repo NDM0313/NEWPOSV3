@@ -39,6 +39,8 @@ export interface ClassicPrintBaseProps {
   printerMode?: PrinterMode;
   /** Paper size for thermal mode - 58mm or 80mm */
   paperSize?: PaperSize;
+  /** Optional ref for the root printable element (e.g. for PDF export). */
+  contentRef?: React.RefObject<HTMLDivElement | null>;
 }
 
 export const ClassicPrintBase: React.FC<ClassicPrintBaseProps> = ({
@@ -53,6 +55,7 @@ export const ClassicPrintBase: React.FC<ClassicPrintBaseProps> = ({
   actionChildren,
   printerMode = 'a4',
   paperSize = '80mm',
+  contentRef,
 }) => {
   const thermalWidth = paperSize === '58mm' ? '58mm' : '80mm';
   const handlePrint = () => {
@@ -62,6 +65,7 @@ export const ClassicPrintBase: React.FC<ClassicPrintBaseProps> = ({
 
   return (
     <div
+      ref={contentRef}
       className={`classic-print-base ${printerMode === 'thermal' ? 'classic-print-thermal' : ''}`}
       style={printerMode === 'thermal' ? { ['--thermal-width' as string]: thermalWidth } : undefined}
     >

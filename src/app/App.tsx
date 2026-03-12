@@ -100,6 +100,9 @@ const StudioProductionV2Pipeline = lazy(() => import('./components/studio/Studio
 const StudioProductionV3Dashboard = lazy(() => import('./components/studio/StudioProductionV3Dashboard').then(m => ({ default: m.StudioProductionV3Dashboard })));
 const StudioProductionV3Pipeline = lazy(() => import('./components/studio/StudioProductionV3Pipeline').then(m => ({ default: m.StudioProductionV3Pipeline })));
 const StudioProductionV3OrderDetail = lazy(() => import('./components/studio/StudioProductionV3OrderDetail').then(m => ({ default: m.StudioProductionV3OrderDetail })));
+const BillOfMaterialsPage = lazy(() => import('./manufacturing/BillOfMaterialsPage').then(m => ({ default: m.BillOfMaterialsPage })));
+const ProductionOrdersPage = lazy(() => import('./manufacturing/ProductionOrdersPage').then(m => ({ default: m.ProductionOrdersPage })));
+const ProductionWorkflow = lazy(() => import('./manufacturing/ProductionWorkflow').then(m => ({ default: m.ProductionWorkflow })));
 
 const AppContent = () => {
   const { currentView } = useNavigation();
@@ -148,7 +151,7 @@ const AppContent = () => {
     );
   }
 
-  if ((currentView === 'studio' || currentView === 'studio-dashboard-new' || currentView === 'studio-sales-list-new' || currentView === 'studio-pipeline' || currentView === 'studio-sale-detail' || currentView === 'studio-sale-detail-new' || currentView === 'studio-workflow' || currentView === 'worker-detail' || currentView === 'studio-order-detail-v3') && !modules.studioModuleEnabled) {
+  if ((currentView === 'studio' || currentView === 'studio-dashboard-new' || currentView === 'studio-sales-list-new' || currentView === 'studio-pipeline' || currentView === 'studio-sale-detail' || currentView === 'studio-sale-detail-new' || currentView === 'studio-workflow' || currentView === 'worker-detail' || currentView === 'studio-order-detail-v3' || currentView === 'manufacturing-bom' || currentView === 'manufacturing-orders' || currentView === 'manufacturing-workflow') && !modules.studioModuleEnabled) {
     return (
       <Layout>
         <div className="flex items-center justify-center h-full">
@@ -232,6 +235,21 @@ const AppContent = () => {
       )}
       {currentView === 'studio-job' && <StudioJobCard />}
       {currentView === 'studio-workflow' && <StudioWorkflowPage />}
+      {currentView === 'manufacturing-bom' && (
+        <Suspense fallback={<div className="flex items-center justify-center p-12"><div className="animate-pulse text-gray-500">Loading...</div></div>}>
+          <BillOfMaterialsPage />
+        </Suspense>
+      )}
+      {currentView === 'manufacturing-orders' && (
+        <Suspense fallback={<div className="flex items-center justify-center p-12"><div className="animate-pulse text-gray-500">Loading...</div></div>}>
+          <ProductionOrdersPage />
+        </Suspense>
+      )}
+      {currentView === 'manufacturing-workflow' && (
+        <Suspense fallback={<div className="flex items-center justify-center p-12"><div className="animate-pulse text-gray-500">Loading...</div></div>}>
+          <ProductionWorkflow />
+        </Suspense>
+      )}
       {currentView === 'worker-detail' && <WorkerDetailPage />}
       {currentView === 'expenses' && <ExpensesDashboard />}
       {currentView === 'customers' && <ContactList />}

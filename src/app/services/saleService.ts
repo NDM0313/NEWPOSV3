@@ -6,6 +6,7 @@ import { activityLogService } from '@/app/services/activityLogService';
 import { settingsService } from '@/app/services/settingsService';
 import { productService } from '@/app/services/productService';
 import { saleAccountingService } from './saleAccountingService';
+import { auditLogService } from './auditLogService';
 
 /** Enrich sales with creator full_name. sales.created_by stores auth.users.id; resolve via users.auth_user_id. */
 async function enrichSalesWithCreatorNames(sales: any[]): Promise<void> {
@@ -210,6 +211,8 @@ export const saleService = {
       await supabase.from('sales').delete().eq('id', saleData.id);
       throw new Error(`Failed to create sale items: ${itemsError.message}. Sale rolled back.`);
     }
+
+    void auditLogService.logSaleAction(sale.company_id, saleData.id, 'created', { invoice_no: saleData.invoice_no });
 
     // CRITICAL FIX: Fetch the complete sale with items to return
     // This ensures items are included in the response

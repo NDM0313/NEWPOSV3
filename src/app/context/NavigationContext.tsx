@@ -60,7 +60,10 @@ type View =
   | 'test-account-entry'
   | 'erp-permissions'
   | 'permission-inspector'
-  | 'studio-order-detail-v3';
+  | 'studio-order-detail-v3'
+  | 'manufacturing-bom'
+  | 'manufacturing-orders'
+  | 'manufacturing-workflow';
 
 type DrawerType = 'none' | 'addUser' | 'addProduct' | 'edit-product' | 'addSale' | 'edit-sale' | 'addPurchase' | 'edit-purchase' | 'addContact';
 
@@ -84,6 +87,8 @@ interface NavigationContextType {
   setSelectedProductionId?: (id: string) => void;
   selectedStudioOrderIdV3?: string | null;
   setSelectedStudioOrderIdV3?: (id: string | null) => void;
+  selectedManufacturingOrderId?: string | null;
+  setSelectedManufacturingOrderId?: (id: string | null) => void;
   drawerContactType?: 'customer' | 'supplier' | 'worker';
   drawerData?: any; // For passing data to drawers (e.g., product for edit)
   drawerPrefillName?: string; // Prefill name when opening contact form
@@ -131,6 +136,7 @@ export const NavigationProvider = ({ children }: { children: ReactNode }) => {
   const [selectedWorkerId, setSelectedWorkerId] = useState<string | undefined>(undefined);
   const [selectedProductionId, setSelectedProductionId] = useState<string | undefined>(undefined);
   const [selectedStudioOrderIdV3, setSelectedStudioOrderIdV3] = useState<string | null>(null);
+  const [selectedManufacturingOrderId, setSelectedManufacturingOrderId] = useState<string | null>(null);
   const [drawerContactType, setDrawerContactType] = useState<'customer' | 'supplier' | 'worker' | undefined>(undefined);
   const [drawerData, setDrawerData] = useState<any>(undefined);
   const [drawerPrefillName, setDrawerPrefillName] = useState<string | undefined>(undefined);
@@ -258,6 +264,8 @@ export const NavigationProvider = ({ children }: { children: ReactNode }) => {
     setSelectedProductionId,
     selectedStudioOrderIdV3,
     setSelectedStudioOrderIdV3,
+    selectedManufacturingOrderId,
+    setSelectedManufacturingOrderId,
     drawerContactType,
     drawerData,
     drawerPrefillName,
@@ -272,7 +280,7 @@ export const NavigationProvider = ({ children }: { children: ReactNode }) => {
   }), [
     currentView, isSidebarOpen, mobileNavOpen, activeDrawer, parentDrawer,
     selectedStudioSaleId, openSaleIdForView, selectedWorkerId, selectedProductionId,
-    selectedStudioOrderIdV3, drawerContactType, drawerData, drawerPrefillName,
+    selectedStudioOrderIdV3, selectedManufacturingOrderId, drawerContactType, drawerData, drawerPrefillName,
     drawerPrefillPhone, createdContactId, createdContactType, packingModalOpen,
     packingModalData, toggleSidebar, openDrawer, closeDrawer, setCreatedContactId,
     openPackingModal, closePackingModal
