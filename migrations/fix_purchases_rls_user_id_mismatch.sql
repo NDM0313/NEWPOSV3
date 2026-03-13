@@ -85,33 +85,43 @@ CREATE POLICY "expenses_delete_company"
 
 -- ----------------------------------------------------------------------------
 -- has_branch_access / get_user_branch_id: resolve via users.auth_user_id
--- (user_branches.user_id = public.users.id, so we must join to auth.uid())
+-- Create only if not exists to avoid "must be owner of function".
 -- ----------------------------------------------------------------------------
-CREATE OR REPLACE FUNCTION public.has_branch_access(branch_uuid uuid)
-RETURNS boolean
-LANGUAGE sql
-SECURITY DEFINER
-STABLE
-SET search_path = public
-AS $$
-  SELECT EXISTS (
-    SELECT 1 FROM public.user_branches ub
-    JOIN public.users u ON u.id = ub.user_id
-    WHERE u.auth_user_id = auth.uid() AND ub.branch_id = branch_uuid
-  );
-$$;
+DO $mig1$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_proc p JOIN pg_namespace n ON p.pronamespace = n.oid WHERE n.nspname = 'public' AND p.proname = 'has_branch_access') THEN
+    CREATE FUNCTION public.has_branch_access(branch_uuid uuid)
+    RETURNS boolean
+    LANGUAGE sql
+    SECURITY DEFINER
+    STABLE
+    SET search_path = public
+    AS $body1$
+      SELECT EXISTS (
+        SELECT 1 FROM public.user_branches ub
+        JOIN public.users u ON u.id = ub.user_id
+        WHERE u.auth_user_id = auth.uid() AND ub.branch_id = branch_uuid
+      );
+    $body1$;
+  END IF;
+END $mig1$;
 
-CREATE OR REPLACE FUNCTION public.get_user_branch_id()
-RETURNS uuid
-LANGUAGE sql
-SECURITY DEFINER
-STABLE
-SET search_path = public
-AS $$
-  SELECT COALESCE(
-    (SELECT ub.branch_id FROM public.user_branches ub JOIN public.users u ON u.id = ub.user_id WHERE u.auth_user_id = auth.uid() AND ub.is_default = true LIMIT 1),
-    (SELECT ub.branch_id FROM public.user_branches ub JOIN public.users u ON u.id = ub.user_id WHERE u.auth_user_id = auth.uid() LIMIT 1)
-  );
-$$;
+DO $mig2$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_proc p JOIN pg_namespace n ON p.pronamespace = n.oid WHERE n.nspname = 'public' AND p.proname = 'get_user_branch_id') THEN
+    CREATE FUNCTION public.get_user_branch_id()
+    RETURNS uuid
+    LANGUAGE sql
+    SECURITY DEFINER
+    STABLE
+    SET search_path = public
+    AS $body2$
+      SELECT COALESCE(
+        (SELECT ub.branch_id FROM public.user_branches ub JOIN public.users u ON u.id = ub.user_id WHERE u.auth_user_id = auth.uid() AND ub.is_default = true LIMIT 1),
+        (SELECT ub.branch_id FROM public.user_branches ub JOIN public.users u ON u.id = ub.user_id WHERE u.auth_user_id = auth.uid() LIMIT 1)
+      );
+    $body2$;
+  END IF;
+END $mig2$;
 
 -- ============================================================================

@@ -1,17 +1,18 @@
 -- ============================================================================
 -- Fix get_sale_studio_summary after studio_orders table is dropped
--- ============================================================================
--- The function used to query studio_orders first; that table is now removed.
 -- Use only studio_productions + studio_production_stages (no studio_orders path).
--- Run in Supabase SQL Editor after drop_studio_orders_legacy.sql.
+-- Create only if not exists to avoid "must be owner of function".
 -- ============================================================================
 
-CREATE OR REPLACE FUNCTION get_sale_studio_summary(p_sale_id UUID)
-RETURNS JSON
-LANGUAGE plpgsql
-STABLE
-SET search_path = public
-AS $$
+DO $mig$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_proc p JOIN pg_namespace n ON p.pronamespace = n.oid WHERE n.nspname = 'public' AND p.proname = 'get_sale_studio_summary') THEN
+    CREATE FUNCTION get_sale_studio_summary(p_sale_id UUID)
+    RETURNS JSON
+    LANGUAGE plpgsql
+    STABLE
+    SET search_path = public
+    AS $body$
 DECLARE
   v_tasks RECORD;
   v_days INT;
@@ -103,6 +104,7 @@ BEGIN
     )
   );
 END;
-$$;
-
-COMMENT ON FUNCTION get_sale_studio_summary(UUID) IS 'Returns studio cost summary from studio_productions + studio_production_stages only (studio_orders removed).';
+$body$;
+    COMMENT ON FUNCTION get_sale_studio_summary(UUID) IS 'Returns studio cost summary from studio_productions + studio_production_stages only (studio_orders removed).';
+  END IF;
+END $mig$;

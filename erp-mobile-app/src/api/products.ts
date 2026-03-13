@@ -56,10 +56,28 @@ export interface ProductVariationRow {
   stock: number;
 }
 
-/** Get a single product by barcode or SKU (barcode first, then SKU). For POS barcode scan. */
+/** Get stock for one product from stock_movements (single source of truth). Optional branchId for branch-scoped balance. */
+async function getProductStockFromMovements(
+  companyId: string,
+  productId: string,
+  branchId?: string | null
+): Promise<number> {
+  let q = supabase
+    .from('stock_movements')
+    .select('quantity')
+    .eq('company_id', companyId)
+    .eq('product_id', productId);
+  if (branchId && branchId !== 'all') q = q.eq('branch_id', branchId);
+  const { data } = await q;
+  const sum = (data || []).reduce((s, r) => s + Number((r as { quantity: number }).quantity) || 0, 0);
+  return sum;
+}
+
+/** Get a single product by barcode or SKU (barcode first, then SKU). For POS barcode scan. Stock from stock_movements. */
 export async function getProductByBarcodeOrSku(
   companyId: string,
-  code: string
+  code: string,
+  options?: { branchId?: string | null }
 ): Promise<{ data: Product | null; error: string | null }> {
   if (!isSupabaseConfigured) return { data: null, error: 'App not configured.' };
   const trimmed = (code || '').trim();
@@ -74,6 +92,7 @@ export async function getProductByBarcodeOrSku(
 
   if (!errBarcode && byBarcode) {
     const row = byBarcode as ProductRow & { has_variations?: boolean; min_stock?: number; description?: string; barcode?: string; brand_id?: string; product_categories?: { name: string }; units?: { name?: string; allow_decimal?: boolean } };
+    const stock = await getProductStockFromMovements(companyId, row.id, options?.branchId);
     const product: Product = {
       id: row.id,
       sku: row.sku || '—',
@@ -84,7 +103,7 @@ export async function getProductByBarcodeOrSku(
       unitId: row.unit_id ?? undefined,
       costPrice: Number(row.cost_price) || 0,
       retailPrice: Number(row.retail_price) || 0,
-      stock: 0,
+      stock,
       unit: row.units?.name || 'Piece',
       unitAllowDecimal: row.units?.allow_decimal ?? false,
       status: row.is_active !== false ? 'active' : 'inactive',
@@ -107,6 +126,7 @@ export async function getProductByBarcodeOrSku(
   if (errSku || !bySku) return { data: null, error: errSku?.message ?? 'Product not found.' };
 
   const row = bySku as ProductRow & { has_variations?: boolean; min_stock?: number; description?: string; barcode?: string; brand_id?: string; product_categories?: { name: string }; units?: { name?: string; allow_decimal?: boolean } };
+  const stock = await getProductStockFromMovements(companyId, row.id, options?.branchId);
   const product: Product = {
     id: row.id,
     sku: row.sku || '—',
@@ -117,7 +137,7 @@ export async function getProductByBarcodeOrSku(
     unitId: row.unit_id ?? undefined,
     costPrice: Number(row.cost_price) || 0,
     retailPrice: Number(row.retail_price) || 0,
-    stock: 0,
+    stock,
     unit: row.units?.name || 'Piece',
     unitAllowDecimal: row.units?.allow_decimal ?? false,
     status: row.is_active !== false ? 'active' : 'inactive',
@@ -130,6 +150,18 @@ export async function getProductByBarcodeOrSku(
   return { data: product, error: null };
 }
 
+/** Stock from stock_movements only (single source of truth). Key: product_id or product_id_variationId. */
+function stockMapFromMovements(
+  movements: { product_id: string; variation_id: string | null; quantity: number }[]
+): Record<string, number> {
+  const map: Record<string, number> = {};
+  for (const m of movements) {
+    const key = m.variation_id ? `${m.product_id}_${m.variation_id}` : m.product_id;
+    map[key] = (map[key] ?? 0) + Number(m.quantity) || 0;
+  }
+  return map;
+}
+
 export async function getProducts(companyId: string): Promise<{ data: Product[]; error: string | null }> {
   if (!isSupabaseConfigured) return { data: [], error: 'App not configured.' };
   const { data, error } = await supabase
@@ -140,9 +172,18 @@ export async function getProducts(companyId: string): Promise<{ data: Product[];
 
   if (error) return { data: [], error: error.message };
   const rows = data || [];
+  const productIds = rows.map((r: { id: string }) => r.id);
   const withVariations = rows.filter((r: { has_variations?: boolean }) => r.has_variations);
   const varProductIds = withVariations.map((r: { id: string }) => r.id);
   let varMap: Record<string, ProductVariationRow[]> = {};
+
+  const { data: movData } = await supabase
+    .from('stock_movements')
+    .select('product_id, variation_id, quantity')
+    .eq('company_id', companyId)
+    .in('product_id', productIds);
+  const stockByKey = stockMapFromMovements((movData || []) as { product_id: string; variation_id: string | null; quantity: number }[]);
+
   if (varProductIds.length > 0) {
     const { data: varData } = await supabase
       .from('product_variations')
@@ -152,61 +193,24 @@ export async function getProducts(companyId: string): Promise<{ data: Product[];
     for (const v of varData || []) {
       const pv = v as { product_id: string } & { id: string; sku: string; attributes: Record<string, string>; price: number };
       if (!varMap[pv.product_id]) varMap[pv.product_id] = [];
+      const varStock = stockByKey[`${pv.product_id}_${pv.id}`] ?? 0;
       varMap[pv.product_id].push({
         id: pv.id,
         sku: pv.sku,
         attributes: pv.attributes || {},
         price: Number(pv.price) || 0,
-        stock: 0,
+        stock: varStock,
       });
     }
-    const varIds = (varData || []).map((x: { id: string }) => x.id);
-    const mergeStock = (rows: { id: string; qty: number }[]) => {
-      const byId: Record<string, number> = {};
-      for (const s of rows) byId[s.id] = s.qty;
-      for (const pid of Object.keys(varMap)) {
-        varMap[pid] = varMap[pid].map((vr) => ({ ...vr, stock: byId[vr.id] ?? vr.stock }));
-      }
-    };
-    if (varIds.length > 0) {
-      // Priority: product_variations.stock → stock_quantity → aggregate from stock_movements. Do NOT use current_stock (column may not exist).
-      const { data: stockData, error: stockErr } = await supabase
-        .from('product_variations')
-        .select('id, stock')
-        .in('id', varIds);
-      if (!stockErr && stockData?.length) {
-        mergeStock((stockData as { id: string; stock?: number }[]).map((s) => ({ id: s.id, qty: Number(s.stock) ?? 0 })));
-      } else {
-        const { data: stockData2 } = await supabase
-          .from('product_variations')
-          .select('id, stock_quantity')
-          .in('id', varIds);
-        if (stockData2?.length) {
-          mergeStock((stockData2 as { id: string; stock_quantity?: number }[]).map((s) => ({ id: s.id, qty: Number(s.stock_quantity) ?? 0 })));
-        } else {
-          const { data: movData } = await supabase
-            .from('stock_movements')
-            .select('variation_id, quantity')
-            .in('variation_id', varIds);
-          if (movData?.length) {
-            const sumByVarId: Record<string, number> = {};
-            for (const m of movData as { variation_id: string | null; quantity: number }[]) {
-              if (m.variation_id) {
-                sumByVarId[m.variation_id] = (sumByVarId[m.variation_id] ?? 0) + Number(m.quantity) || 0;
-              }
-            }
-            mergeStock(varIds.map((id) => ({ id, qty: sumByVarId[id] ?? 0 })));
-          }
-        }
-      }
-    }
   }
+
   const list: Product[] = [];
   for (const row of rows as (ProductRow & { has_variations?: boolean; min_stock?: number; description?: string; barcode?: string; brand_id?: string; id: string })[]) {
     const variations = row.has_variations ? varMap[row.id] : undefined;
     const r = row as { product_categories?: { name: string }; unit_id?: string; units?: { name?: string; allow_decimal?: boolean } | null };
     const unitName = r.units?.name || 'Piece';
     const unitAllowDecimal = r.units?.allow_decimal ?? false;
+    const productStock = row.has_variations ? 0 : (stockByKey[row.id] ?? 0);
     list.push({
       id: row.id,
       sku: row.sku || '—',
@@ -217,7 +221,7 @@ export async function getProducts(companyId: string): Promise<{ data: Product[];
       unitId: row.unit_id ?? undefined,
       costPrice: Number(row.cost_price) || 0,
       retailPrice: Number(row.retail_price) || 0,
-      stock: 0,
+      stock: productStock,
       unit: unitName,
       unitAllowDecimal,
       status: row.is_active !== false ? 'active' : 'inactive',

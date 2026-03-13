@@ -156,6 +156,7 @@ DO $$
 BEGIN
   IF EXISTS (SELECT 1 FROM pg_tables WHERE schemaname = 'public' AND tablename = 'expenses') THEN
     ALTER TABLE public.expenses ENABLE ROW LEVEL SECURITY;
+    DROP POLICY IF EXISTS "expenses_select_policy" ON public.expenses;
     DROP POLICY IF EXISTS "expenses_select_company" ON public.expenses;
     CREATE POLICY "expenses_select_policy" ON public.expenses FOR SELECT TO authenticated
       USING (

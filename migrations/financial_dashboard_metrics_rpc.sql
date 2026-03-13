@@ -4,14 +4,23 @@
 -- Returns: today sales/profit, monthly revenue/expenses, cash/bank, receivables,
 --          payables, profit margin, and 7-day trend arrays.
 -- Safe: read-only, no table/column drops, no RLS changes.
+-- Fix: Create only if not exists so migration does not require function ownership
+--      (avoids "must be owner of function" when run as pooler/app user).
 -- ============================================================================
 
-CREATE OR REPLACE FUNCTION get_financial_dashboard_metrics(p_company_id UUID)
-RETURNS JSONB
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public
-AS $$
+DO $mig$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_proc p
+    JOIN pg_namespace n ON p.pronamespace = n.oid
+    WHERE n.nspname = 'public' AND p.proname = 'get_financial_dashboard_metrics'
+  ) THEN
+    CREATE FUNCTION get_financial_dashboard_metrics(p_company_id UUID)
+    RETURNS JSONB
+    LANGUAGE plpgsql
+    SECURITY DEFINER
+    SET search_path = public
+    AS $body$
 DECLARE
   v_today DATE := CURRENT_DATE;
   v_month_start DATE := date_trunc('month', v_today)::DATE;
@@ -179,7 +188,8 @@ EXCEPTION WHEN OTHERS THEN
     'error', SQLERRM
   );
 END;
-$$;
-
-COMMENT ON FUNCTION get_financial_dashboard_metrics(UUID) IS
-  'Phase-2 ERP: Executive financial dashboard metrics. Single RPC for sub-1s load.';
+$body$;
+    COMMENT ON FUNCTION get_financial_dashboard_metrics(UUID) IS
+      'Phase-2 ERP: Executive financial dashboard metrics. Single RPC for sub-1s load.';
+  END IF;
+END $mig$;

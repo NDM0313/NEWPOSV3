@@ -10,6 +10,7 @@
 |------|--------|--------|
 | **Web ERP** | Production ready | PDF export, document share, audit logs, PWA, performance indexes |
 | **Mobile app** | Barcode + POS + offline done | `erp-mobile-app/` — Scan, cart, payment, sync |
+| **Inventory engine** | Complete | Single source of truth = stock_movements; see `docs/ERP_INVENTORY_FINAL_REPORT.md`, `npm run inventory-validate` |
 | **Migrations** | Auto-apply in place | `npm run migrate` or `npm run migrate -- --allow-fail` |
 | **feature_flags** | Fixed & applied | Migration now resilient (skips if not table owner) |
 | **final_web_erp_performance_indexes** | Applied | sales_items, sales, production_orders (if table exists) |
@@ -22,7 +23,7 @@
 ```bash
 npm run migrate
 # or if one migration may fail (e.g. ownership):
-npm run migrate -- --allow-fail
+289876
 ```
 
 **Env:** Set in `.env.local`:
@@ -70,6 +71,7 @@ npm run migrate -- --allow-fail
 | Doc | Purpose |
 |-----|--------|
 | `docs/ERP_DEVELOPMENT_ROADMAP.md` | Full roadmap, order of steps, migration safety, mobile priority |
+| `docs/ERP_INVENTORY_FINAL_REPORT.md` | Inventory engine status, schema, triggers, health, web/mobile sync |
 | `docs/MOBILE_APP_ARCHITECTURE.md` | Mobile structure, barcode, POS, offline, printer |
 | `docs/REMAINING_TASKS.md` | This file — what’s left for office |
 

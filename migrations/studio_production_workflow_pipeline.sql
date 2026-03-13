@@ -41,12 +41,35 @@ BEGIN
   END IF;
 END $$;
 
--- Unique per production + stage_order
+-- Unique per production + stage_order: drop first so backfill UPDATE can run, then re-add if no duplicates
 ALTER TABLE studio_production_stages
   DROP CONSTRAINT IF EXISTS studio_production_stages_production_order_key;
-ALTER TABLE studio_production_stages
-  ADD CONSTRAINT studio_production_stages_production_order_key
-  UNIQUE (production_id, stage_order);
+
+WITH ordered AS (
+  SELECT id, production_id,
+         ROW_NUMBER() OVER (PARTITION BY production_id ORDER BY stage_order ASC NULLS LAST, created_at, id) AS rn
+  FROM studio_production_stages
+)
+UPDATE studio_production_stages s
+SET stage_order = ordered.rn
+FROM ordered
+WHERE s.id = ordered.id;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM (
+      SELECT production_id, stage_order
+      FROM studio_production_stages
+      GROUP BY production_id, stage_order
+      HAVING COUNT(*) > 1
+    ) dup
+  ) THEN
+    ALTER TABLE studio_production_stages
+      ADD CONSTRAINT studio_production_stages_production_order_key
+      UNIQUE (production_id, stage_order);
+  END IF;
+END $$;
 
 COMMENT ON COLUMN studio_production_stages.stage_order IS 'Execution order: 1 = first, 2 = second, etc.';
 

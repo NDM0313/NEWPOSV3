@@ -153,27 +153,19 @@ export const AdjustStockDialog: React.FC<AdjustStockDialogProps> = ({
           created_by: user?.id || undefined,
         });
       } else {
-        // Simple product: update product row + create movement (existing behavior)
-        await productService.updateProduct(product.uuid, {
-          current_stock: newStock,
+        // Simple product: stock only via stock_movements (trigger updates products.current_stock)
+        await productService.createStockMovement({
+          company_id: companyId,
+          branch_id: branchId || undefined,
+          product_id: product.uuid,
+          movement_type: 'adjustment',
+          quantity: adjustmentQuantity,
+          unit_cost: 0,
+          total_cost: 0,
+          reference_type: 'adjustment',
+          notes: reason || `Stock ${adjustmentType === 'increase' ? 'increase' : adjustmentType === 'decrease' ? 'decrease' : 'set'} - ${adjustmentType === 'set' ? `Set to ${newStock}` : `${adjustmentType === 'increase' ? '+' : '-'}${qty}`}`,
+          created_by: user?.id || undefined,
         });
-        try {
-          await productService.createStockMovement({
-            company_id: companyId,
-            branch_id: branchId || undefined,
-            product_id: product.uuid,
-            movement_type: 'adjustment',
-            quantity: adjustmentQuantity,
-            unit_cost: 0,
-            total_cost: 0,
-            reference_type: 'adjustment',
-            notes: reason || `Stock ${adjustmentType === 'increase' ? 'increase' : adjustmentType === 'decrease' ? 'decrease' : 'set'} - ${adjustmentType === 'set' ? `Set to ${newStock}` : `${adjustmentType === 'increase' ? '+' : '-'}${qty}`}`,
-            created_by: user?.id || undefined,
-          });
-        } catch (movementError: any) {
-          console.error('[ADJUST STOCK] Movement record failed:', movementError);
-          toast.error('Stock updated but movement record failed.');
-        }
       }
 
       toast.success(`Stock ${adjustmentType === 'increase' ? 'increased' : adjustmentType === 'decrease' ? 'decreased' : 'set'} successfully`);

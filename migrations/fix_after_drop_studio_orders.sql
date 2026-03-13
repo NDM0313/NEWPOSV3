@@ -2,20 +2,19 @@
 -- Run AFTER drop_studio_orders_legacy.sql – fixes "relation studio_orders does not exist"
 -- and makes get_sale_studio_charges_batch never touch studio_orders.
 -- Optionally ensures studio_production_stages table exists (fixes 404 if missing).
--- Run in Supabase SQL Editor.
---
--- IMPORTANT: Run the ENTIRE file from LINE 1. Do not run only the bottom part.
--- The two CREATE OR REPLACE FUNCTION blocks at the top (get_sale_studio_summary
--- and get_sale_studio_charges_batch) must run so the DB stops referencing studio_orders.
+-- Fix: Create functions only if not exists to avoid "must be owner of function" when run as pooler/app user.
 -- ============================================================================
 
 -- 1. get_sale_studio_summary: use only studio_productions + studio_production_stages (no studio_orders)
-CREATE OR REPLACE FUNCTION get_sale_studio_summary(p_sale_id UUID)
-RETURNS JSON
-LANGUAGE plpgsql
-STABLE
-SET search_path = public
-AS $$
+DO $mig1$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_proc p JOIN pg_namespace n ON p.pronamespace = n.oid WHERE n.nspname = 'public' AND p.proname = 'get_sale_studio_summary') THEN
+    CREATE FUNCTION get_sale_studio_summary(p_sale_id UUID)
+    RETURNS JSON
+    LANGUAGE plpgsql
+    STABLE
+    SET search_path = public
+    AS $body1$
 DECLARE
   v_tasks RECORD;
   v_days INT;
@@ -106,14 +105,19 @@ BEGIN
     )
   );
 END;
-$$;
+$body1$;
+  END IF;
+END $mig1$;
 
 -- 2. get_sale_studio_charges_batch: only studio_production_stages path (no studio_orders)
-CREATE OR REPLACE FUNCTION get_sale_studio_charges_batch(p_sale_ids UUID[])
-RETURNS TABLE(sale_id UUID, studio_cost NUMERIC(15,2))
-LANGUAGE plpgsql STABLE
-SET search_path = public
-AS $$
+DO $mig2$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_proc p JOIN pg_namespace n ON p.pronamespace = n.oid WHERE n.nspname = 'public' AND p.proname = 'get_sale_studio_charges_batch') THEN
+    CREATE FUNCTION get_sale_studio_charges_batch(p_sale_ids UUID[])
+    RETURNS TABLE(sale_id UUID, studio_cost NUMERIC(15,2))
+    LANGUAGE plpgsql STABLE
+    SET search_path = public
+    AS $body2$
 BEGIN
   IF p_sale_ids IS NULL OR array_length(p_sale_ids, 1) IS NULL OR array_length(p_sale_ids, 1) = 0 THEN
     RETURN;
@@ -128,7 +132,9 @@ BEGIN
     GROUP BY p.sale_id;
   END IF;
 END;
-$$;
+$body2$;
+  END IF;
+END $mig2$;
 
 -- 3. Ensure studio_production_stages table exists (fixes 404 if it was missing)
 -- assigned_worker_id → contacts(id) so it works without a workers table (app uses contact IDs for workers).

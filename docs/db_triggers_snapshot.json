@@ -1,0 +1,610 @@
+{
+  "timestamp": "2026-03-12T22:33:02.873Z",
+  "triggers": [
+    {
+      "trigger_name": "trigger_update_balance",
+      "event_manipulation": "INSERT",
+      "event_object_table": "account_transactions"
+    },
+    {
+      "trigger_name": "update_automation_rules_updated_at",
+      "event_manipulation": "UPDATE",
+      "event_object_table": "automation_rules"
+    },
+    {
+      "trigger_name": "trigger_create_default_walking_customer",
+      "event_manipulation": "INSERT",
+      "event_object_table": "branches"
+    },
+    {
+      "trigger_name": "enforce_bucket_name_length_trigger",
+      "event_manipulation": "UPDATE",
+      "event_object_table": "buckets"
+    },
+    {
+      "trigger_name": "enforce_bucket_name_length_trigger",
+      "event_manipulation": "INSERT",
+      "event_object_table": "buckets"
+    },
+    {
+      "trigger_name": "protect_buckets_delete",
+      "event_manipulation": "DELETE",
+      "event_object_table": "buckets"
+    },
+    {
+      "trigger_name": "update_chart_accounts_updated_at",
+      "event_manipulation": "UPDATE",
+      "event_object_table": "chart_accounts"
+    },
+    {
+      "trigger_name": "trg_after_company_insert_defaults",
+      "event_manipulation": "INSERT",
+      "event_object_table": "companies"
+    },
+    {
+      "trigger_name": "contacts_protect_default_customer_trigger",
+      "event_manipulation": "UPDATE",
+      "event_object_table": "contacts"
+    },
+    {
+      "trigger_name": "enforce_contacts_created_by_immutable",
+      "event_manipulation": "UPDATE",
+      "event_object_table": "contacts"
+    },
+    {
+      "trigger_name": "set_contacts_created_by",
+      "event_manipulation": "INSERT",
+      "event_object_table": "contacts"
+    },
+    {
+      "trigger_name": "trg_contacts_prevent_delete_default",
+      "event_manipulation": "DELETE",
+      "event_object_table": "contacts"
+    },
+    {
+      "trigger_name": "trigger_delete_worker_on_contact_delete",
+      "event_manipulation": "DELETE",
+      "event_object_table": "contacts"
+    },
+    {
+      "trigger_name": "trigger_sync_worker_contact_to_workers",
+      "event_manipulation": "UPDATE",
+      "event_object_table": "contacts"
+    },
+    {
+      "trigger_name": "trigger_sync_worker_contact_to_workers",
+      "event_manipulation": "INSERT",
+      "event_object_table": "contacts"
+    },
+    {
+      "trigger_name": "audit_expenses",
+      "event_manipulation": "DELETE",
+      "event_object_table": "expenses"
+    },
+    {
+      "trigger_name": "audit_expenses",
+      "event_manipulation": "INSERT",
+      "event_object_table": "expenses"
+    },
+    {
+      "trigger_name": "audit_expenses",
+      "event_manipulation": "UPDATE",
+      "event_object_table": "expenses"
+    },
+    {
+      "trigger_name": "set_expenses_created_by",
+      "event_manipulation": "INSERT",
+      "event_object_table": "expenses"
+    },
+    {
+      "trigger_name": "trigger_set_expense_number",
+      "event_manipulation": "INSERT",
+      "event_object_table": "expenses"
+    },
+    {
+      "trigger_name": "trigger_feature_flags_updated_at",
+      "event_manipulation": "UPDATE",
+      "event_object_table": "feature_flags"
+    },
+    {
+      "trigger_name": "audit_journal_entries",
+      "event_manipulation": "UPDATE",
+      "event_object_table": "journal_entries"
+    },
+    {
+      "trigger_name": "audit_journal_entries",
+      "event_manipulation": "INSERT",
+      "event_object_table": "journal_entries"
+    },
+    {
+      "trigger_name": "audit_journal_entries",
+      "event_manipulation": "DELETE",
+      "event_object_table": "journal_entries"
+    },
+    {
+      "trigger_name": "set_journal_entries_created_by",
+      "event_manipulation": "INSERT",
+      "event_object_table": "journal_entries"
+    },
+    {
+      "trigger_name": "trigger_set_journal_entry_reference",
+      "event_manipulation": "INSERT",
+      "event_object_table": "journal_entries"
+    },
+    {
+      "trigger_name": "trigger_update_account_balance",
+      "event_manipulation": "UPDATE",
+      "event_object_table": "journal_entry_lines"
+    },
+    {
+      "trigger_name": "trigger_update_account_balance",
+      "event_manipulation": "DELETE",
+      "event_object_table": "journal_entry_lines"
+    },
+    {
+      "trigger_name": "trigger_update_account_balance",
+      "event_manipulation": "INSERT",
+      "event_object_table": "journal_entry_lines"
+    },
+    {
+      "trigger_name": "protect_objects_delete",
+      "event_manipulation": "DELETE",
+      "event_object_table": "objects"
+    },
+    {
+      "trigger_name": "update_objects_updated_at",
+      "event_manipulation": "UPDATE",
+      "event_object_table": "objects"
+    },
+    {
+      "trigger_name": "audit_payments",
+      "event_manipulation": "INSERT",
+      "event_object_table": "payments"
+    },
+    {
+      "trigger_name": "audit_payments",
+      "event_manipulation": "DELETE",
+      "event_object_table": "payments"
+    },
+    {
+      "trigger_name": "audit_payments",
+      "event_manipulation": "UPDATE",
+      "event_object_table": "payments"
+    },
+    {
+      "trigger_name": "set_payments_created_by",
+      "event_manipulation": "INSERT",
+      "event_object_table": "payments"
+    },
+    {
+      "trigger_name": "trigger_auto_create_payment_journal",
+      "event_manipulation": "INSERT",
+      "event_object_table": "payments"
+    },
+    {
+      "trigger_name": "trigger_create_payment_reverse_entry",
+      "event_manipulation": "DELETE",
+      "event_object_table": "payments"
+    },
+    {
+      "trigger_name": "trigger_log_payment_activity",
+      "event_manipulation": "DELETE",
+      "event_object_table": "payments"
+    },
+    {
+      "trigger_name": "trigger_log_payment_activity",
+      "event_manipulation": "INSERT",
+      "event_object_table": "payments"
+    },
+    {
+      "trigger_name": "trigger_set_payment_reference",
+      "event_manipulation": "INSERT",
+      "event_object_table": "payments"
+    },
+    {
+      "trigger_name": "trigger_update_purchase_totals_delete",
+      "event_manipulation": "DELETE",
+      "event_object_table": "payments"
+    },
+    {
+      "trigger_name": "trigger_update_purchase_totals_insert",
+      "event_manipulation": "INSERT",
+      "event_object_table": "payments"
+    },
+    {
+      "trigger_name": "trigger_update_purchase_totals_update",
+      "event_manipulation": "UPDATE",
+      "event_object_table": "payments"
+    },
+    {
+      "trigger_name": "trigger_update_sale_totals",
+      "event_manipulation": "INSERT",
+      "event_object_table": "payments"
+    },
+    {
+      "trigger_name": "trigger_update_sale_totals",
+      "event_manipulation": "UPDATE",
+      "event_object_table": "payments"
+    },
+    {
+      "trigger_name": "trigger_update_sale_totals",
+      "event_manipulation": "DELETE",
+      "event_object_table": "payments"
+    },
+    {
+      "trigger_name": "trigger_update_sale_totals_delete",
+      "event_manipulation": "DELETE",
+      "event_object_table": "payments"
+    },
+    {
+      "trigger_name": "trigger_update_sale_totals_insert",
+      "event_manipulation": "INSERT",
+      "event_object_table": "payments"
+    },
+    {
+      "trigger_name": "trigger_update_sale_totals_update",
+      "event_manipulation": "UPDATE",
+      "event_object_table": "payments"
+    },
+    {
+      "trigger_name": "update_payments_updated_at",
+      "event_manipulation": "UPDATE",
+      "event_object_table": "payments"
+    },
+    {
+      "trigger_name": "trigger_update_product_combos_updated_at",
+      "event_manipulation": "UPDATE",
+      "event_object_table": "product_combos"
+    },
+    {
+      "trigger_name": "trigger_calculate_purchase_totals",
+      "event_manipulation": "UPDATE",
+      "event_object_table": "purchase_items"
+    },
+    {
+      "trigger_name": "trigger_calculate_purchase_totals",
+      "event_manipulation": "INSERT",
+      "event_object_table": "purchase_items"
+    },
+    {
+      "trigger_name": "set_purchase_returns_created_by",
+      "event_manipulation": "INSERT",
+      "event_object_table": "purchase_returns"
+    },
+    {
+      "trigger_name": "audit_purchases",
+      "event_manipulation": "UPDATE",
+      "event_object_table": "purchases"
+    },
+    {
+      "trigger_name": "audit_purchases",
+      "event_manipulation": "INSERT",
+      "event_object_table": "purchases"
+    },
+    {
+      "trigger_name": "audit_purchases",
+      "event_manipulation": "DELETE",
+      "event_object_table": "purchases"
+    },
+    {
+      "trigger_name": "purchase_final_stock_movement_trigger",
+      "event_manipulation": "INSERT",
+      "event_object_table": "purchases"
+    },
+    {
+      "trigger_name": "purchase_final_stock_movement_trigger",
+      "event_manipulation": "UPDATE",
+      "event_object_table": "purchases"
+    },
+    {
+      "trigger_name": "set_purchases_created_by",
+      "event_manipulation": "INSERT",
+      "event_object_table": "purchases"
+    },
+    {
+      "trigger_name": "trigger_log_purchase_activity",
+      "event_manipulation": "UPDATE",
+      "event_object_table": "purchases"
+    },
+    {
+      "trigger_name": "trigger_log_purchase_activity",
+      "event_manipulation": "DELETE",
+      "event_object_table": "purchases"
+    },
+    {
+      "trigger_name": "trigger_log_purchase_activity",
+      "event_manipulation": "INSERT",
+      "event_object_table": "purchases"
+    },
+    {
+      "trigger_name": "trigger_prevent_purchase_delete_if_returns",
+      "event_manipulation": "DELETE",
+      "event_object_table": "purchases"
+    },
+    {
+      "trigger_name": "trigger_set_purchase_po_number",
+      "event_manipulation": "INSERT",
+      "event_object_table": "purchases"
+    },
+    {
+      "trigger_name": "trigger_update_contact_balance_on_purchase",
+      "event_manipulation": "UPDATE",
+      "event_object_table": "purchases"
+    },
+    {
+      "trigger_name": "trigger_update_contact_balance_on_purchase",
+      "event_manipulation": "INSERT",
+      "event_object_table": "purchases"
+    },
+    {
+      "trigger_name": "trigger_update_stock_on_purchase",
+      "event_manipulation": "INSERT",
+      "event_object_table": "purchases"
+    },
+    {
+      "trigger_name": "trigger_update_stock_on_purchase",
+      "event_manipulation": "UPDATE",
+      "event_object_table": "purchases"
+    },
+    {
+      "trigger_name": "trigger_set_rental_booking_number",
+      "event_manipulation": "INSERT",
+      "event_object_table": "rentals"
+    },
+    {
+      "trigger_name": "update_rentals_updated_at",
+      "event_manipulation": "UPDATE",
+      "event_object_table": "rentals"
+    },
+    {
+      "trigger_name": "trigger_calculate_sale_totals",
+      "event_manipulation": "UPDATE",
+      "event_object_table": "sale_items"
+    },
+    {
+      "trigger_name": "trigger_calculate_sale_totals",
+      "event_manipulation": "INSERT",
+      "event_object_table": "sale_items"
+    },
+    {
+      "trigger_name": "set_sale_returns_created_by",
+      "event_manipulation": "INSERT",
+      "event_object_table": "sale_returns"
+    },
+    {
+      "trigger_name": "trigger_after_sale_shipment_sync",
+      "event_manipulation": "DELETE",
+      "event_object_table": "sale_shipments"
+    },
+    {
+      "trigger_name": "trigger_after_sale_shipment_sync",
+      "event_manipulation": "UPDATE",
+      "event_object_table": "sale_shipments"
+    },
+    {
+      "trigger_name": "trigger_after_sale_shipment_sync",
+      "event_manipulation": "INSERT",
+      "event_object_table": "sale_shipments"
+    },
+    {
+      "trigger_name": "audit_sales",
+      "event_manipulation": "INSERT",
+      "event_object_table": "sales"
+    },
+    {
+      "trigger_name": "audit_sales",
+      "event_manipulation": "DELETE",
+      "event_object_table": "sales"
+    },
+    {
+      "trigger_name": "audit_sales",
+      "event_manipulation": "UPDATE",
+      "event_object_table": "sales"
+    },
+    {
+      "trigger_name": "enforce_sales_created_by_immutable",
+      "event_manipulation": "UPDATE",
+      "event_object_table": "sales"
+    },
+    {
+      "trigger_name": "sale_final_stock_movement_trigger",
+      "event_manipulation": "UPDATE",
+      "event_object_table": "sales"
+    },
+    {
+      "trigger_name": "sales_protect_created_by_trigger",
+      "event_manipulation": "UPDATE",
+      "event_object_table": "sales"
+    },
+    {
+      "trigger_name": "set_sales_created_by",
+      "event_manipulation": "INSERT",
+      "event_object_table": "sales"
+    },
+    {
+      "trigger_name": "trigger_auto_post_sale_to_accounting",
+      "event_manipulation": "INSERT",
+      "event_object_table": "sales"
+    },
+    {
+      "trigger_name": "trigger_auto_post_sale_to_accounting",
+      "event_manipulation": "UPDATE",
+      "event_object_table": "sales"
+    },
+    {
+      "trigger_name": "trigger_log_sale_activity",
+      "event_manipulation": "UPDATE",
+      "event_object_table": "sales"
+    },
+    {
+      "trigger_name": "trigger_log_sale_activity",
+      "event_manipulation": "DELETE",
+      "event_object_table": "sales"
+    },
+    {
+      "trigger_name": "trigger_log_sale_activity",
+      "event_manipulation": "INSERT",
+      "event_object_table": "sales"
+    },
+    {
+      "trigger_name": "trigger_prevent_sale_delete_if_returns",
+      "event_manipulation": "DELETE",
+      "event_object_table": "sales"
+    },
+    {
+      "trigger_name": "trigger_record_initial_payment",
+      "event_manipulation": "INSERT",
+      "event_object_table": "sales"
+    },
+    {
+      "trigger_name": "trigger_set_sale_invoice_number",
+      "event_manipulation": "INSERT",
+      "event_object_table": "sales"
+    },
+    {
+      "trigger_name": "trigger_update_contact_balance_on_sale",
+      "event_manipulation": "UPDATE",
+      "event_object_table": "sales"
+    },
+    {
+      "trigger_name": "trigger_update_contact_balance_on_sale",
+      "event_manipulation": "INSERT",
+      "event_object_table": "sales"
+    },
+    {
+      "trigger_name": "trigger_update_stock_on_sale",
+      "event_manipulation": "UPDATE",
+      "event_object_table": "sales"
+    },
+    {
+      "trigger_name": "trigger_update_stock_on_sale",
+      "event_manipulation": "INSERT",
+      "event_object_table": "sales"
+    },
+    {
+      "trigger_name": "trigger_sync_inventory_balance_from_movement",
+      "event_manipulation": "INSERT",
+      "event_object_table": "stock_movements"
+    },
+    {
+      "trigger_name": "trigger_update_stock_from_movement",
+      "event_manipulation": "INSERT",
+      "event_object_table": "stock_movements"
+    },
+    {
+      "trigger_name": "update_stock_movements_updated_at",
+      "event_manipulation": "UPDATE",
+      "event_object_table": "stock_movements"
+    },
+    {
+      "trigger_name": "trigger_studio_production_orders_v2_updated_at",
+      "event_manipulation": "UPDATE",
+      "event_object_table": "studio_production_orders_v2"
+    },
+    {
+      "trigger_name": "trigger_after_studio_stage_sync_sale",
+      "event_manipulation": "INSERT",
+      "event_object_table": "studio_production_stages"
+    },
+    {
+      "trigger_name": "trigger_after_studio_stage_sync_sale",
+      "event_manipulation": "UPDATE",
+      "event_object_table": "studio_production_stages"
+    },
+    {
+      "trigger_name": "trigger_after_studio_stage_sync_sale",
+      "event_manipulation": "DELETE",
+      "event_object_table": "studio_production_stages"
+    },
+    {
+      "trigger_name": "trigger_studio_production_set_current_on_insert",
+      "event_manipulation": "INSERT",
+      "event_object_table": "studio_production_stages"
+    },
+    {
+      "trigger_name": "trigger_studio_production_set_current_stage",
+      "event_manipulation": "UPDATE",
+      "event_object_table": "studio_production_stages"
+    },
+    {
+      "trigger_name": "trigger_studio_production_stages_force_clean_insert",
+      "event_manipulation": "INSERT",
+      "event_object_table": "studio_production_stages"
+    },
+    {
+      "trigger_name": "trigger_studio_production_stages_updated_at",
+      "event_manipulation": "UPDATE",
+      "event_object_table": "studio_production_stages"
+    },
+    {
+      "trigger_name": "trigger_studio_production_stages_v2_updated_at",
+      "event_manipulation": "UPDATE",
+      "event_object_table": "studio_production_stages_v2"
+    },
+    {
+      "trigger_name": "trigger_studio_generate_invoice_inventory_journal_test",
+      "event_manipulation": "UPDATE",
+      "event_object_table": "studio_productions"
+    },
+    {
+      "trigger_name": "trigger_studio_productions_updated_at",
+      "event_manipulation": "UPDATE",
+      "event_object_table": "studio_productions"
+    },
+    {
+      "trigger_name": "trigger_studio_stage_assignments_v2_updated_at",
+      "event_manipulation": "UPDATE",
+      "event_object_table": "studio_stage_assignments_v2"
+    },
+    {
+      "trigger_name": "trigger_after_studio_task_sync",
+      "event_manipulation": "UPDATE",
+      "event_object_table": "studio_tasks"
+    },
+    {
+      "trigger_name": "trigger_after_studio_task_sync",
+      "event_manipulation": "INSERT",
+      "event_object_table": "studio_tasks"
+    },
+    {
+      "trigger_name": "trigger_after_studio_task_sync",
+      "event_manipulation": "DELETE",
+      "event_object_table": "studio_tasks"
+    },
+    {
+      "trigger_name": "tr_check_filters",
+      "event_manipulation": "INSERT",
+      "event_object_table": "subscription"
+    },
+    {
+      "trigger_name": "tr_check_filters",
+      "event_manipulation": "UPDATE",
+      "event_object_table": "subscription"
+    },
+    {
+      "trigger_name": "auto_assign_default_branch_on_user_insert",
+      "event_manipulation": "INSERT",
+      "event_object_table": "users"
+    },
+    {
+      "trigger_name": "trigger_owner_protection",
+      "event_manipulation": "DELETE",
+      "event_object_table": "users"
+    },
+    {
+      "trigger_name": "trigger_owner_protection",
+      "event_manipulation": "UPDATE",
+      "event_object_table": "users"
+    },
+    {
+      "trigger_name": "trigger_set_user_code_on_insert",
+      "event_manipulation": "INSERT",
+      "event_object_table": "users"
+    },
+    {
+      "trigger_name": "update_users_updated_at",
+      "event_manipulation": "UPDATE",
+      "event_object_table": "users"
+    }
+  ]
+}

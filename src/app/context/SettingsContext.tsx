@@ -831,17 +831,19 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
     
     try {
       // Update companies table
+      const updatePayload: Record<string, unknown> = {
+        name: settings.businessName,
+        address: settings.businessAddress,
+        phone: settings.businessPhone,
+        email: settings.businessEmail,
+        tax_number: settings.taxId,
+        currency: settings.currency,
+        logo_url: settings.logoUrl,
+      };
+      if (settings.timezone !== undefined) updatePayload.timezone = settings.timezone;
       await supabase
         .from('companies')
-        .update({
-          name: settings.businessName,
-          address: settings.businessAddress,
-          phone: settings.businessPhone,
-          email: settings.businessEmail,
-          tax_number: settings.taxId,
-          currency: settings.currency,
-          logo_url: settings.logoUrl,
-        })
+        .update(updatePayload)
         .eq('id', companyId);
       
       toast.success('Company settings saved');

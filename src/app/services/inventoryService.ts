@@ -410,6 +410,36 @@ export const inventoryService = {
   },
 
   /**
+   * Single stock API — Phase 3 Implementation Log.
+   * Returns SUM(quantity) FROM stock_movements for the given product/variation/branch.
+   * Use this instead of products.current_stock or product_variations.stock.
+   */
+  async getStock(
+    companyId: string,
+    productId: string,
+    variationId?: string | null,
+    branchId?: string | null
+  ): Promise<number> {
+    let q = supabase
+      .from('stock_movements')
+      .select('quantity')
+      .eq('company_id', companyId)
+      .eq('product_id', productId);
+    if (variationId != null) {
+      q = q.eq('variation_id', variationId);
+    } else {
+      q = q.is('variation_id', null);
+    }
+    if (branchId && branchId !== 'all') {
+      q = q.eq('branch_id', branchId);
+    }
+    const { data, error } = await q;
+    if (error) throw error;
+    const total = (data || []).reduce((sum: number, row: any) => sum + (Number(row.quantity) || 0), 0);
+    return total;
+  },
+
+  /**
    * Returns the number of stock_movements rows for a product (used to decide if we need opening balance).
    */
   async getMovementCountForProduct(productId: string): Promise<number> {

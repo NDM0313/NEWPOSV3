@@ -217,7 +217,7 @@ export function POSModule({ onBack, user, companyId, branchId }: POSModuleProps)
     async (code: string) => {
       if (!companyId) return;
       setScanMessage(null);
-      const { data: product, error } = await productsApi.getProductByBarcodeOrSku(companyId, code);
+      const { data: product, error } = await productsApi.getProductByBarcodeOrSku(companyId, code, { branchId: branchId ?? undefined });
       if (error || !product) {
         setScanMessage({ type: 'error', text: 'Product not found' });
         return;

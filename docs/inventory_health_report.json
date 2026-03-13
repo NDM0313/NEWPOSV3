@@ -1,0 +1,167 @@
+{
+  "timestamp": "2026-03-12T22:37:54.484Z",
+  "connected": true,
+  "error": null,
+  "negative_stock": {
+    "by_product": [
+      {
+        "product_id": "7b06c9e2-46c5-4231-86aa-3f8412dbdeca",
+        "total": "-2.00"
+      },
+      {
+        "product_id": "9e85d26f-9721-483f-885c-34c3570e5420",
+        "total": "-37.70"
+      },
+      {
+        "product_id": "4cf9c577-c403-4148-98ed-097371409f0a",
+        "total": "-23.00"
+      },
+      {
+        "product_id": "15094689-4917-4a19-a444-469e4c764cad",
+        "total": "-1.00"
+      },
+      {
+        "product_id": "dab220be-9676-4986-9fdf-0540e6712d79",
+        "total": "-1.00"
+      }
+    ],
+    "by_variation": [
+      {
+        "variation_id": "f557fff5-6f5d-48ac-a6fe-2ba2948f84ae",
+        "product_id": "7b06c9e2-46c5-4231-86aa-3f8412dbdeca",
+        "total": "-1.00"
+      },
+      {
+        "variation_id": "0e6f453d-8808-450c-aec3-5d4d36b64629",
+        "product_id": "bed22344-d1d6-4bab-bba4-a330f6962b11",
+        "total": "-1.00"
+      },
+      {
+        "variation_id": "6c011b4b-2f7c-46d0-891f-bee4e3108b10",
+        "product_id": "4cf9c577-c403-4148-98ed-097371409f0a",
+        "total": "-25.00"
+      },
+      {
+        "variation_id": "20d2e77a-c4ec-461c-8202-a61f4ffac94a",
+        "product_id": "dab220be-9676-4986-9fdf-0540e6712d79",
+        "total": "-1.00"
+      },
+      {
+        "variation_id": "b2794d2b-a260-4053-be86-0cfab49bebf7",
+        "product_id": "fd0125e8-5c72-4b84-994f-3778d28722df",
+        "total": "-2.00"
+      },
+      {
+        "variation_id": "f7a7a3c2-0455-4548-a786-07bc19426c11",
+        "product_id": "7b06c9e2-46c5-4231-86aa-3f8412dbdeca",
+        "total": "-1.00"
+      },
+      {
+        "variation_id": "69070ed1-4a75-493b-a2d8-c735d5cef6a3",
+        "product_id": "bed22344-d1d6-4bab-bba4-a330f6962b11",
+        "total": "-1.00"
+      }
+    ],
+    "product_count": 5,
+    "variation_count": 7
+  },
+  "missing_movements": {
+    "products_with_zero_movements": [
+      {
+        "id": "c490da7e-0128-4acb-9041-8136883c53d8",
+        "name": "Studio – STD-0028",
+        "sku": "STD-PROD-00004"
+      },
+      {
+        "id": "a3cff4d0-e55e-4343-8a63-b96be0eac77e",
+        "name": "Farah Tailb Aziz",
+        "sku": "PRD-8091"
+      },
+      {
+        "id": "fa2a75e2-0664-4f5e-99f7-48ec8c6ff524",
+        "name": "Pure Atlas banarsi ",
+        "sku": "PRD-0000"
+      },
+      {
+        "id": "8b5bc763-6469-45bc-b200-1adb32b2c08f",
+        "name": "Raw Silk White G80",
+        "sku": "PRD-8102"
+      },
+      {
+        "id": "23de4e2d-a3fa-4306-a64b-3b3c835b3544",
+        "name": "CUSTOMISE 01",
+        "sku": "PRD-8074"
+      },
+      {
+        "id": "75cb62e5-e4b8-43c5-8f32-a417dd7ff4fe",
+        "name": "Boski ",
+        "sku": "PRD-0009"
+      }
+    ],
+    "count": 6
+  },
+  "invalid_variations": {
+    "movement_variation_not_found": [],
+    "count": 0
+  },
+  "movement_mismatch": {
+    "products_where_stock_differs_from_column": [
+      {
+        "id": "dab220be-9676-4986-9fdf-0540e6712d79",
+        "column_stock": "0.00",
+        "movement_stock": "-1.00"
+      },
+      {
+        "id": "4cf9c577-c403-4148-98ed-097371409f0a",
+        "column_stock": "0.00",
+        "movement_stock": "-23.00"
+      },
+      {
+        "id": "70db3b0d-7040-45e1-85bb-c09db21fe2b9",
+        "column_stock": "1.00",
+        "movement_stock": "8.00"
+      },
+      {
+        "id": "75cb62e5-e4b8-43c5-8f32-a417dd7ff4fe",
+        "column_stock": "14.00",
+        "movement_stock": "0"
+      },
+      {
+        "id": "bed22344-d1d6-4bab-bba4-a330f6962b11",
+        "column_stock": "0.00",
+        "movement_stock": "1.00"
+      },
+      {
+        "id": "e9a8e83e-dd90-46c7-821a-769ae5dc21bf",
+        "column_stock": "0.00",
+        "movement_stock": "93.00"
+      },
+      {
+        "id": "7b06c9e2-46c5-4231-86aa-3f8412dbdeca",
+        "column_stock": "0.00",
+        "movement_stock": "-2.00"
+      },
+      {
+        "id": "9e85d26f-9721-483f-885c-34c3570e5420",
+        "column_stock": "-13.00",
+        "movement_stock": "-37.70"
+      },
+      {
+        "id": "6199b033-7387-44e6-a7f8-e5689fc6e029",
+        "column_stock": "0.00",
+        "movement_stock": "20.00"
+      },
+      {
+        "id": "1f017a44-e09f-4d6b-8dd5-99237fc9ee67",
+        "column_stock": "155.90",
+        "movement_stock": "145.90"
+      },
+      {
+        "id": "fd0125e8-5c72-4b84-994f-3778d28722df",
+        "column_stock": "0.00",
+        "movement_stock": "1.00"
+      }
+    ],
+    "count": 11
+  }
+}

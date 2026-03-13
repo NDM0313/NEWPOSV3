@@ -1,0 +1,809 @@
+{
+  "timestamp": "2026-03-12T22:33:01.559Z",
+  "tables": {
+    "products": [
+      {
+        "column_name": "id",
+        "data_type": "uuid"
+      },
+      {
+        "column_name": "company_id",
+        "data_type": "uuid"
+      },
+      {
+        "column_name": "category_id",
+        "data_type": "uuid"
+      },
+      {
+        "column_name": "name",
+        "data_type": "character varying"
+      },
+      {
+        "column_name": "sku",
+        "data_type": "character varying"
+      },
+      {
+        "column_name": "barcode",
+        "data_type": "character varying"
+      },
+      {
+        "column_name": "description",
+        "data_type": "text"
+      },
+      {
+        "column_name": "cost_price",
+        "data_type": "numeric"
+      },
+      {
+        "column_name": "retail_price",
+        "data_type": "numeric"
+      },
+      {
+        "column_name": "wholesale_price",
+        "data_type": "numeric"
+      },
+      {
+        "column_name": "rental_price_daily",
+        "data_type": "numeric"
+      },
+      {
+        "column_name": "current_stock",
+        "data_type": "numeric"
+      },
+      {
+        "column_name": "min_stock",
+        "data_type": "numeric"
+      },
+      {
+        "column_name": "max_stock",
+        "data_type": "numeric"
+      },
+      {
+        "column_name": "has_variations",
+        "data_type": "boolean"
+      },
+      {
+        "column_name": "is_rentable",
+        "data_type": "boolean"
+      },
+      {
+        "column_name": "is_sellable",
+        "data_type": "boolean"
+      },
+      {
+        "column_name": "track_stock",
+        "data_type": "boolean"
+      },
+      {
+        "column_name": "is_active",
+        "data_type": "boolean"
+      },
+      {
+        "column_name": "created_at",
+        "data_type": "timestamp with time zone"
+      },
+      {
+        "column_name": "updated_at",
+        "data_type": "timestamp with time zone"
+      },
+      {
+        "column_name": "brand_id",
+        "data_type": "uuid"
+      },
+      {
+        "column_name": "unit_id",
+        "data_type": "uuid"
+      },
+      {
+        "column_name": "image_urls",
+        "data_type": "jsonb"
+      },
+      {
+        "column_name": "is_combo_product",
+        "data_type": "boolean"
+      },
+      {
+        "column_name": "product_type",
+        "data_type": "text"
+      },
+      {
+        "column_name": "source_type",
+        "data_type": "text"
+      }
+    ],
+    "product_variations": [
+      {
+        "column_name": "id",
+        "data_type": "uuid"
+      },
+      {
+        "column_name": "product_id",
+        "data_type": "uuid"
+      },
+      {
+        "column_name": "sku",
+        "data_type": "character varying"
+      },
+      {
+        "column_name": "barcode",
+        "data_type": "character varying"
+      },
+      {
+        "column_name": "attributes",
+        "data_type": "jsonb"
+      },
+      {
+        "column_name": "price",
+        "data_type": "numeric"
+      },
+      {
+        "column_name": "stock",
+        "data_type": "numeric"
+      },
+      {
+        "column_name": "is_active",
+        "data_type": "boolean"
+      },
+      {
+        "column_name": "created_at",
+        "data_type": "timestamp with time zone"
+      },
+      {
+        "column_name": "updated_at",
+        "data_type": "timestamp with time zone"
+      }
+    ],
+    "stock_movements": [
+      {
+        "column_name": "id",
+        "data_type": "uuid"
+      },
+      {
+        "column_name": "company_id",
+        "data_type": "uuid"
+      },
+      {
+        "column_name": "branch_id",
+        "data_type": "uuid"
+      },
+      {
+        "column_name": "product_id",
+        "data_type": "uuid"
+      },
+      {
+        "column_name": "movement_type",
+        "data_type": "character varying"
+      },
+      {
+        "column_name": "quantity",
+        "data_type": "numeric"
+      },
+      {
+        "column_name": "unit_cost",
+        "data_type": "numeric"
+      },
+      {
+        "column_name": "total_cost",
+        "data_type": "numeric"
+      },
+      {
+        "column_name": "reference_type",
+        "data_type": "character varying"
+      },
+      {
+        "column_name": "reference_id",
+        "data_type": "uuid"
+      },
+      {
+        "column_name": "source_location",
+        "data_type": "uuid"
+      },
+      {
+        "column_name": "destination_location",
+        "data_type": "uuid"
+      },
+      {
+        "column_name": "notes",
+        "data_type": "text"
+      },
+      {
+        "column_name": "created_by",
+        "data_type": "uuid"
+      },
+      {
+        "column_name": "created_at",
+        "data_type": "timestamp with time zone"
+      },
+      {
+        "column_name": "variation_id",
+        "data_type": "uuid"
+      },
+      {
+        "column_name": "box_change",
+        "data_type": "numeric"
+      },
+      {
+        "column_name": "piece_change",
+        "data_type": "numeric"
+      },
+      {
+        "column_name": "before_qty",
+        "data_type": "numeric"
+      },
+      {
+        "column_name": "after_qty",
+        "data_type": "numeric"
+      },
+      {
+        "column_name": "unit",
+        "data_type": "text"
+      },
+      {
+        "column_name": "updated_at",
+        "data_type": "timestamp with time zone"
+      }
+    ],
+    "inventory_balance": [
+      {
+        "column_name": "id",
+        "data_type": "uuid"
+      },
+      {
+        "column_name": "company_id",
+        "data_type": "uuid"
+      },
+      {
+        "column_name": "product_id",
+        "data_type": "uuid"
+      },
+      {
+        "column_name": "branch_id",
+        "data_type": "uuid"
+      },
+      {
+        "column_name": "qty",
+        "data_type": "numeric"
+      },
+      {
+        "column_name": "boxes",
+        "data_type": "numeric"
+      },
+      {
+        "column_name": "pieces",
+        "data_type": "numeric"
+      },
+      {
+        "column_name": "unit",
+        "data_type": "text"
+      },
+      {
+        "column_name": "updated_at",
+        "data_type": "timestamp with time zone"
+      }
+    ],
+    "purchases": [
+      {
+        "column_name": "id",
+        "data_type": "uuid"
+      },
+      {
+        "column_name": "company_id",
+        "data_type": "uuid"
+      },
+      {
+        "column_name": "branch_id",
+        "data_type": "uuid"
+      },
+      {
+        "column_name": "po_no",
+        "data_type": "character varying"
+      },
+      {
+        "column_name": "po_date",
+        "data_type": "timestamp with time zone"
+      },
+      {
+        "column_name": "supplier_id",
+        "data_type": "uuid"
+      },
+      {
+        "column_name": "supplier_name",
+        "data_type": "character varying"
+      },
+      {
+        "column_name": "contact_number",
+        "data_type": "character varying"
+      },
+      {
+        "column_name": "status",
+        "data_type": "USER-DEFINED"
+      },
+      {
+        "column_name": "payment_status",
+        "data_type": "USER-DEFINED"
+      },
+      {
+        "column_name": "payment_method",
+        "data_type": "character varying"
+      },
+      {
+        "column_name": "subtotal",
+        "data_type": "numeric"
+      },
+      {
+        "column_name": "discount_amount",
+        "data_type": "numeric"
+      },
+      {
+        "column_name": "tax_amount",
+        "data_type": "numeric"
+      },
+      {
+        "column_name": "shipping_cost",
+        "data_type": "numeric"
+      },
+      {
+        "column_name": "total",
+        "data_type": "numeric"
+      },
+      {
+        "column_name": "paid_amount",
+        "data_type": "numeric"
+      },
+      {
+        "column_name": "due_amount",
+        "data_type": "numeric"
+      },
+      {
+        "column_name": "notes",
+        "data_type": "text"
+      },
+      {
+        "column_name": "created_by",
+        "data_type": "uuid"
+      },
+      {
+        "column_name": "created_at",
+        "data_type": "timestamp with time zone"
+      },
+      {
+        "column_name": "updated_at",
+        "data_type": "timestamp with time zone"
+      },
+      {
+        "column_name": "attachments",
+        "data_type": "jsonb"
+      },
+      {
+        "column_name": "cancelled_at",
+        "data_type": "timestamp with time zone"
+      },
+      {
+        "column_name": "cancelled_by",
+        "data_type": "uuid"
+      },
+      {
+        "column_name": "cancel_reason",
+        "data_type": "text"
+      }
+    ],
+    "purchase_items": [
+      {
+        "column_name": "id",
+        "data_type": "uuid"
+      },
+      {
+        "column_name": "purchase_id",
+        "data_type": "uuid"
+      },
+      {
+        "column_name": "product_id",
+        "data_type": "uuid"
+      },
+      {
+        "column_name": "variation_id",
+        "data_type": "uuid"
+      },
+      {
+        "column_name": "product_name",
+        "data_type": "character varying"
+      },
+      {
+        "column_name": "sku",
+        "data_type": "character varying"
+      },
+      {
+        "column_name": "quantity",
+        "data_type": "numeric"
+      },
+      {
+        "column_name": "unit",
+        "data_type": "character varying"
+      },
+      {
+        "column_name": "unit_price",
+        "data_type": "numeric"
+      },
+      {
+        "column_name": "discount_percentage",
+        "data_type": "numeric"
+      },
+      {
+        "column_name": "discount_amount",
+        "data_type": "numeric"
+      },
+      {
+        "column_name": "tax_percentage",
+        "data_type": "numeric"
+      },
+      {
+        "column_name": "tax_amount",
+        "data_type": "numeric"
+      },
+      {
+        "column_name": "total",
+        "data_type": "numeric"
+      },
+      {
+        "column_name": "packing_type",
+        "data_type": "character varying"
+      },
+      {
+        "column_name": "packing_quantity",
+        "data_type": "numeric"
+      },
+      {
+        "column_name": "packing_unit",
+        "data_type": "character varying"
+      },
+      {
+        "column_name": "packing_details",
+        "data_type": "jsonb"
+      },
+      {
+        "column_name": "notes",
+        "data_type": "text"
+      },
+      {
+        "column_name": "created_at",
+        "data_type": "timestamp with time zone"
+      }
+    ],
+    "sales": [
+      {
+        "column_name": "id",
+        "data_type": "uuid"
+      },
+      {
+        "column_name": "company_id",
+        "data_type": "uuid"
+      },
+      {
+        "column_name": "branch_id",
+        "data_type": "uuid"
+      },
+      {
+        "column_name": "invoice_no",
+        "data_type": "character varying"
+      },
+      {
+        "column_name": "invoice_date",
+        "data_type": "timestamp with time zone"
+      },
+      {
+        "column_name": "customer_id",
+        "data_type": "uuid"
+      },
+      {
+        "column_name": "customer_name",
+        "data_type": "character varying"
+      },
+      {
+        "column_name": "contact_number",
+        "data_type": "character varying"
+      },
+      {
+        "column_name": "type",
+        "data_type": "USER-DEFINED"
+      },
+      {
+        "column_name": "status",
+        "data_type": "USER-DEFINED"
+      },
+      {
+        "column_name": "payment_status",
+        "data_type": "USER-DEFINED"
+      },
+      {
+        "column_name": "payment_method",
+        "data_type": "character varying"
+      },
+      {
+        "column_name": "shipping_status",
+        "data_type": "USER-DEFINED"
+      },
+      {
+        "column_name": "subtotal",
+        "data_type": "numeric"
+      },
+      {
+        "column_name": "discount_amount",
+        "data_type": "numeric"
+      },
+      {
+        "column_name": "tax_amount",
+        "data_type": "numeric"
+      },
+      {
+        "column_name": "expenses",
+        "data_type": "numeric"
+      },
+      {
+        "column_name": "total",
+        "data_type": "numeric"
+      },
+      {
+        "column_name": "paid_amount",
+        "data_type": "numeric"
+      },
+      {
+        "column_name": "due_amount",
+        "data_type": "numeric"
+      },
+      {
+        "column_name": "return_due",
+        "data_type": "numeric"
+      },
+      {
+        "column_name": "notes",
+        "data_type": "text"
+      },
+      {
+        "column_name": "created_by",
+        "data_type": "uuid"
+      },
+      {
+        "column_name": "created_at",
+        "data_type": "timestamp with time zone"
+      },
+      {
+        "column_name": "updated_at",
+        "data_type": "timestamp with time zone"
+      },
+      {
+        "column_name": "studio_charges",
+        "data_type": "numeric"
+      },
+      {
+        "column_name": "is_studio",
+        "data_type": "boolean"
+      },
+      {
+        "column_name": "attachments",
+        "data_type": "jsonb"
+      },
+      {
+        "column_name": "cancelled_at",
+        "data_type": "timestamp with time zone"
+      },
+      {
+        "column_name": "cancelled_by",
+        "data_type": "uuid"
+      },
+      {
+        "column_name": "cancel_reason",
+        "data_type": "text"
+      },
+      {
+        "column_name": "deadline",
+        "data_type": "date"
+      },
+      {
+        "column_name": "source",
+        "data_type": "character varying"
+      },
+      {
+        "column_name": "source_id",
+        "data_type": "uuid"
+      },
+      {
+        "column_name": "show_studio_breakdown",
+        "data_type": "boolean"
+      },
+      {
+        "column_name": "shipment_charges",
+        "data_type": "numeric"
+      },
+      {
+        "column_name": "extra_expenses",
+        "data_type": "numeric"
+      }
+    ],
+    "sale_items": [
+      {
+        "column_name": "id",
+        "data_type": "uuid"
+      },
+      {
+        "column_name": "sale_id",
+        "data_type": "uuid"
+      },
+      {
+        "column_name": "product_id",
+        "data_type": "uuid"
+      },
+      {
+        "column_name": "variation_id",
+        "data_type": "uuid"
+      },
+      {
+        "column_name": "product_name",
+        "data_type": "character varying"
+      },
+      {
+        "column_name": "sku",
+        "data_type": "character varying"
+      },
+      {
+        "column_name": "quantity",
+        "data_type": "numeric"
+      },
+      {
+        "column_name": "unit",
+        "data_type": "character varying"
+      },
+      {
+        "column_name": "unit_price",
+        "data_type": "numeric"
+      },
+      {
+        "column_name": "discount_percentage",
+        "data_type": "numeric"
+      },
+      {
+        "column_name": "discount_amount",
+        "data_type": "numeric"
+      },
+      {
+        "column_name": "tax_percentage",
+        "data_type": "numeric"
+      },
+      {
+        "column_name": "tax_amount",
+        "data_type": "numeric"
+      },
+      {
+        "column_name": "total",
+        "data_type": "numeric"
+      },
+      {
+        "column_name": "packing_type",
+        "data_type": "character varying"
+      },
+      {
+        "column_name": "packing_quantity",
+        "data_type": "numeric"
+      },
+      {
+        "column_name": "packing_unit",
+        "data_type": "character varying"
+      },
+      {
+        "column_name": "packing_details",
+        "data_type": "jsonb"
+      },
+      {
+        "column_name": "notes",
+        "data_type": "text"
+      },
+      {
+        "column_name": "created_at",
+        "data_type": "timestamp with time zone"
+      },
+      {
+        "column_name": "is_studio_product",
+        "data_type": "boolean"
+      }
+    ]
+  },
+  "table_list": [
+    "account_transactions",
+    "accounting_audit_logs",
+    "accounting_settings",
+    "accounts",
+    "activity_logs",
+    "audit_logs",
+    "automation_rules",
+    "branches",
+    "brands",
+    "bulk_invoice_items",
+    "bulk_invoice_packing_lists",
+    "bulk_invoices",
+    "chart_accounts",
+    "companies",
+    "contact_groups",
+    "contacts",
+    "courier_ledger",
+    "courier_shipments",
+    "courier_summary",
+    "couriers",
+    "credit_notes",
+    "document_sequences",
+    "document_sequences_global",
+    "employee_ledger",
+    "employees",
+    "erp_document_number_audit",
+    "erp_document_sequences",
+    "erp_health_dashboard",
+    "erp_production_mode",
+    "expense_categories",
+    "expenses",
+    "feature_flags",
+    "fiscal_calendar",
+    "inventory_balance",
+    "invoice_templates",
+    "job_cards",
+    "journal_entries",
+    "journal_entry_lines",
+    "ledger_entries",
+    "ledger_master",
+    "migration_history",
+    "modules_config",
+    "packing_list_items",
+    "packing_lists",
+    "payments",
+    "print_logs",
+    "product_categories",
+    "product_combo_items",
+    "product_combos",
+    "product_variations",
+    "products",
+    "public_contact_rate_limit",
+    "public_registration_config",
+    "purchase_charges",
+    "purchase_items",
+    "purchase_return_items",
+    "purchase_returns",
+    "purchases",
+    "quotation_items",
+    "quotations",
+    "refunds",
+    "rental_items",
+    "rental_payments",
+    "rentals",
+    "role_permissions",
+    "roles",
+    "sale_charges",
+    "sale_items",
+    "sale_return_items",
+    "sale_returns",
+    "sale_shipments",
+    "sales",
+    "sales_items",
+    "sales_with_shipping",
+    "schema_migrations",
+    "settings",
+    "share_logs",
+    "shipment_history",
+    "shipment_ledger",
+    "stock_movements",
+    "studio_production_cost_breakdown_v3",
+    "studio_production_logs",
+    "studio_production_orders_v2",
+    "studio_production_orders_v3",
+    "studio_production_stages",
+    "studio_production_stages_v2",
+    "studio_production_stages_v3",
+    "studio_productions",
+    "studio_stage_assignments_v2",
+    "studio_stage_receipts_v2",
+    "studio_tasks",
+    "units",
+    "user_account_access",
+    "user_branches",
+    "users",
+    "worker_ledger_entries",
+    "worker_payments",
+    "workers"
+  ]
+}

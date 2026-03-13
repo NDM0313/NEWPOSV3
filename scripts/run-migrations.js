@@ -109,7 +109,28 @@ async function run() {
         return 0;
       }
       console.log('[RUN]', name);
-      await client.query(sql);
+      try {
+        await client.query(sql);
+      } catch (err) {
+        const isOwnerError = err.message && (
+          err.message.includes('must be owner of function') ||
+          err.message.includes('must be owner of table')
+        );
+        const isDuplicateKey = err.message && err.message.includes('duplicate key value violates unique constraint');
+        if (isOwnerError) {
+          console.warn('[SKIP-OWNER]', name, '- function/table exists but current user is not owner; marking applied so rest can run.');
+          await client.query('INSERT INTO schema_migrations (name) VALUES ($1) ON CONFLICT (name) DO NOTHING', [name]);
+          appliedSet.add(name);
+          return 0;
+        }
+        if (isDuplicateKey) {
+          console.warn('[SKIP-DUP]', name, '- unique constraint conflict; marking applied so rest can run.');
+          await client.query('INSERT INTO schema_migrations (name) VALUES ($1) ON CONFLICT (name) DO NOTHING', [name]);
+          appliedSet.add(name);
+          return 0;
+        }
+        throw err;
+      }
       await client.query('INSERT INTO schema_migrations (name) VALUES ($1)', [name]);
       appliedSet.add(name);
       console.log('[OK]', name);

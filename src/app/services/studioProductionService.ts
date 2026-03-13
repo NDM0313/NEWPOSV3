@@ -448,11 +448,7 @@ export const studioProductionService = {
       console.warn('[studio_production] Backfill stock movement for generated product failed:', movErr.message);
       return;
     }
-    const product = await productService.getProduct(generatedProductId);
-    if (product?.id) {
-      const newStock = (Number(product.current_stock) || 0) + qty;
-      await productService.updateProduct(generatedProductId, { current_stock: newStock });
-    }
+    // Stock is updated by trigger_update_stock_from_movement; do not update products.current_stock here.
     if (fabricProductId && fabricProductId !== generatedProductId) {
       const reversePayload: Record<string, unknown> = {
         company_id: existing.company_id,
@@ -468,11 +464,7 @@ export const studioProductionService = {
         created_by: null,
       };
       await supabase.from('stock_movements').insert(reversePayload);
-      const fabricProduct = await productService.getProduct(fabricProductId);
-      if (fabricProduct?.id) {
-        const fabricStock = Math.max(0, (Number(fabricProduct.current_stock) || 0) - qty);
-        await productService.updateProduct(fabricProductId, { current_stock: fabricStock });
-      }
+      // Trigger updates products.current_stock; no direct update.
     }
   },
 
@@ -759,11 +751,7 @@ export const studioProductionService = {
         };
         const { error: movErr } = await supabase.from('stock_movements').insert(insertPayload);
         if (movErr) throw new Error(`Inventory update failed: ${movErr.message}`);
-        const product = await productService.getProduct(productIdForStock);
-        if (product?.id) {
-          const newStock = (Number(product.current_stock) || 0) + qty;
-          await productService.updateProduct(productIdForStock, { current_stock: newStock });
-        }
+        // Stock is updated by trigger_update_stock_from_movement; do not update products.current_stock here.
       }
 
       // 3. Sale: studio_charges and due_amount (do NOT merge into total; balance_due = total + studio_charges - paid_amount)

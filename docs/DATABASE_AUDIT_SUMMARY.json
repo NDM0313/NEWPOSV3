@@ -1,0 +1,126 @@
+{
+  "audit_meta": {
+    "project": "NEWPOSV3 ERP",
+    "audit_type": "read_only",
+    "date": "2026-03-13",
+    "sources": ["db_schema_snapshot.json", "db_triggers_snapshot.json", "migrations", "src/ and erp-mobile-app/ codebase"]
+  },
+  "total_tables": 116,
+  "note": "table_list includes some views (e.g. sales_with_shipping, courier_ledger, courier_summary, shipment_ledger, erp_health_dashboard). Row counts not collected (read-only audit).",
+  "core_tables": [
+    "companies",
+    "branches",
+    "users",
+    "user_branches",
+    "contacts",
+    "roles",
+    "product_categories",
+    "products",
+    "product_variations",
+    "sales",
+    "sale_items",
+    "purchases",
+    "purchase_items",
+    "stock_movements",
+    "accounts",
+    "journal_entries",
+    "journal_entry_lines",
+    "payments",
+    "expenses",
+    "settings",
+    "modules_config",
+    "document_sequences",
+    "erp_document_sequences"
+  ],
+  "module_tables": {
+    "sales": ["sales", "sale_items", "sales_items", "sale_charges", "sale_returns", "sale_return_items", "quotations", "quotation_items", "credit_notes", "refunds"],
+    "purchases": ["purchases", "purchase_items", "purchase_charges", "purchase_returns", "purchase_return_items"],
+    "inventory": ["stock_movements", "inventory_balance", "products", "product_variations", "product_categories", "brands", "units", "product_combos", "product_combo_items"],
+    "accounting": ["accounts", "journal_entries", "journal_entry_lines", "payments", "expenses", "chart_accounts", "account_transactions", "accounting_audit_logs", "accounting_settings", "automation_rules", "ledger_master", "ledger_entries"],
+    "studio_production": ["studio_productions", "studio_production_stages", "studio_production_logs", "studio_production_orders_v2", "studio_production_stages_v2", "studio_production_orders_v3", "studio_production_stages_v3", "studio_production_cost_breakdown_v3", "studio_stage_assignments_v2", "studio_stage_receipts_v2", "studio_tasks", "workers", "worker_ledger_entries", "worker_payments"],
+    "rentals": ["rentals", "rental_items", "rental_payments"],
+    "reporting": [],
+    "permissions": ["roles", "role_permissions", "user_branches", "user_account_access"],
+    "mobile_support": [],
+    "automation": ["automation_rules", "feature_flags"],
+    "shipping_courier": ["sale_shipments", "couriers", "courier_shipments", "packing_lists", "packing_list_items", "bulk_invoices", "bulk_invoice_packing_lists", "bulk_invoice_items"],
+    "invoicing_templates": ["invoice_templates", "fiscal_calendar"],
+    "other": ["contact_groups", "expense_categories", "employees", "employee_ledger", "job_cards", "print_logs", "share_logs", "audit_logs", "activity_logs", "erp_document_number_audit"]
+  },
+  "views_in_table_list": ["courier_ledger", "courier_summary", "erp_health_dashboard", "sales_with_shipping", "shipment_ledger", "shipment_history"],
+  "system_tables": [
+    "schema_migrations",
+    "migration_history",
+    "erp_production_mode",
+    "public_contact_rate_limit",
+    "public_registration_config",
+    "feature_flags"
+  ],
+  "possible_unused_tables": [
+    "studio_production_orders_v2",
+    "studio_production_stages_v2",
+    "studio_stage_assignments_v2",
+    "studio_stage_receipts_v2",
+    "studio_production_orders_v3",
+    "studio_production_stages_v3",
+    "studio_production_cost_breakdown_v3",
+    "studio_tasks",
+    "chart_accounts",
+    "account_transactions",
+    "sales_items",
+    "document_sequences_global",
+    "employees",
+    "employee_ledger",
+    "job_cards"
+  ],
+  "duplicate_candidates": [
+    {
+      "group": "sale line items",
+      "tables": ["sale_items", "sales_items"],
+      "note": "sale_items has triggers; code uses both names; confirm canonical table vs view/alias"
+    },
+    {
+      "group": "chart of accounts",
+      "tables": ["accounts", "chart_accounts"],
+      "note": "accounts used by journal_entry_lines; chart_accounts from 16_chart_of_accounts; clarify which is canonical"
+    },
+    {
+      "group": "ledger",
+      "tables": ["journal_entries + journal_entry_lines", "ledger_master + ledger_entries"],
+      "note": "Journal is main double-entry; ledger_master/ledger_entries used for supplier/user ledgers"
+    },
+    {
+      "group": "document sequences",
+      "tables": ["document_sequences", "erp_document_sequences"],
+      "note": "Both used in code; erp_document_sequences is company/branch scoped"
+    }
+  ],
+  "accounting_tables": [
+    "accounts",
+    "journal_entries",
+    "journal_entry_lines",
+    "payments",
+    "expenses",
+    "chart_accounts",
+    "account_transactions",
+    "accounting_audit_logs",
+    "accounting_settings",
+    "ledger_master",
+    "ledger_entries"
+  ],
+  "accounting_primary_path": ["accounts", "journal_entries", "journal_entry_lines"],
+  "performance_risks": [
+    "Ensure company_id + date composite indexes on sales, purchases, journal_entries, payments, stock_movements",
+    "Studio production stages and triggers may add load on high-volume updates",
+    "Verify report_performance_indexes and journal_entry_lines_performance_indexes applied"
+  ],
+  "recommended_next_steps": [
+    "Confirm sales_items vs sale_items (\\d in psql or information_schema); standardize app to one name",
+    "Clarify chart_accounts vs accounts usage; deprecate or document dual path",
+    "Review studio v2/v3 tables for deprecation; keep studio_productions and studio_production_stages as canonical",
+    "Unify document_sequences vs erp_document_sequences per document type",
+    "Document ledger_master/ledger_entries vs journal-based ledgers; consolidate if possible",
+    "Run read-only row counts and FK reference check to list zero-row and orphan tables",
+    "Audit indexes (pg_indexes) vs migrations; add missing composites for company_id + date and reference lookups"
+  ]
+}

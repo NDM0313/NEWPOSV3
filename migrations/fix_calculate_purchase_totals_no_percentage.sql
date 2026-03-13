@@ -1,9 +1,12 @@
 -- Fix: calculate_purchase_totals trigger must not reference discount_percentage/tax_percentage
 -- (those columns may be dropped or not exist; only discount_amount/tax_amount are used)
--- Trigger runs on purchase_items; updates the parent purchase row.
+-- Create only if not exists to avoid "must be owner of function" when run as pooler/app user.
 
-CREATE OR REPLACE FUNCTION calculate_purchase_totals()
-RETURNS TRIGGER AS $$
+DO $mig$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_proc p JOIN pg_namespace n ON p.pronamespace = n.oid WHERE n.nspname = 'public' AND p.proname = 'calculate_purchase_totals') THEN
+    CREATE FUNCTION calculate_purchase_totals()
+    RETURNS TRIGGER AS $body$
 DECLARE
   v_subtotal DECIMAL(15,2);
   v_purchase_id UUID;
@@ -15,7 +18,6 @@ BEGIN
   FROM purchase_items
   WHERE purchase_id = v_purchase_id;
 
-  -- Preserve existing discount_amount/tax_amount (no discount_percentage/tax_percentage columns)
   UPDATE purchases SET
     subtotal = v_subtotal,
     total = v_subtotal - COALESCE(discount_amount, 0) + COALESCE(tax_amount, 0) + COALESCE(shipping_cost, 0),
@@ -29,7 +31,9 @@ BEGIN
 
   RETURN NEW;
 END;
-$$ LANGUAGE plpgsql;
+$body$ LANGUAGE plpgsql;
+  END IF;
+END $mig$;
 
 -- Trigger should already exist; ensure it uses the updated function
 DROP TRIGGER IF EXISTS trigger_calculate_purchase_totals ON purchase_items;

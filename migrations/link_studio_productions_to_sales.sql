@@ -16,16 +16,33 @@ WHERE p.sale_id IS NULL
   AND p.production_no = 'PRD-' || COALESCE(s.invoice_no, '');
 
 -- 1b. Ensure every linked production has the three stages (fixes productions that had no stages before link)
-INSERT INTO studio_production_stages (production_id, stage_type, cost, status)
-SELECT p.id, v.stage_type::studio_production_stage_type, 0, 'pending'
-FROM studio_productions p
-CROSS JOIN (VALUES ('dyer'), ('handwork'), ('stitching')) AS v(stage_type)
-WHERE p.sale_id IS NOT NULL
-  AND NOT EXISTS (
-    SELECT 1 FROM studio_production_stages s
-    WHERE s.production_id = p.id AND s.stage_type = v.stage_type::studio_production_stage_type
-  )
-ON CONFLICT (production_id, stage_type) DO NOTHING;
+DO $$
+DECLARE
+  pr RECORD;
+  st TEXT;
+  nxt INT;
+  has_stage_order BOOLEAN;
+BEGIN
+  SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='studio_production_stages' AND column_name='stage_order') INTO has_stage_order;
+  FOR pr IN SELECT id FROM studio_productions WHERE sale_id IS NOT NULL
+  LOOP
+    nxt := 1;
+    FOR st IN SELECT unnest(ARRAY['dyer', 'handwork', 'stitching'])
+    LOOP
+      IF NOT EXISTS (SELECT 1 FROM studio_production_stages s WHERE s.production_id = pr.id AND s.stage_type::text = st) THEN
+        IF has_stage_order THEN
+          SELECT COALESCE(MAX(stage_order), 0) + 1 INTO nxt FROM studio_production_stages WHERE production_id = pr.id;
+          IF nxt IS NULL THEN nxt := 1; END IF;
+          INSERT INTO studio_production_stages (production_id, stage_type, cost, status, stage_order)
+          VALUES (pr.id, st::studio_production_stage_type, 0, 'pending', nxt);
+        ELSE
+          INSERT INTO studio_production_stages (production_id, stage_type, cost, status)
+          VALUES (pr.id, st::studio_production_stage_type, 0, 'pending');
+        END IF;
+      END IF;
+    END LOOP;
+  END LOOP;
+END $$;
 
 -- 2. Backfill: create production + stages for studio sales that still have none
 DO $$
@@ -34,6 +51,7 @@ DECLARE
   v_prod_id UUID;
   v_first_item RECORD;
   v_items_table TEXT := 'sales_items';
+  v_stage TEXT;
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'sales_items') THEN
     v_items_table := 'sale_items';
@@ -53,31 +71,38 @@ BEGIN
     ) INTO v_first_item USING r.id;
 
     IF v_first_item.product_id IS NOT NULL THEN
-      INSERT INTO studio_productions (
-        company_id, branch_id, sale_id, production_no, production_date,
-        product_id, variation_id, quantity, unit, status, created_by
-      )
-      VALUES (
-        r.company_id, r.branch_id, r.id,
-        'PRD-' || COALESCE(r.invoice_no, r.id::text),
-        COALESCE(r.invoice_date::date, CURRENT_DATE),
-        v_first_item.product_id,
-        v_first_item.variation_id,
-        GREATEST(COALESCE(v_first_item.quantity, 1), 0.01),
-        COALESCE(NULLIF(TRIM(v_first_item.unit), ''), 'piece'),
-        'draft',
-        r.created_by
-      )
-      ON CONFLICT (company_id, production_no) DO UPDATE SET sale_id = EXCLUDED.sale_id
-      RETURNING id INTO v_prod_id;
+      SELECT id INTO v_prod_id FROM studio_productions sp
+      WHERE sp.company_id = r.company_id AND sp.production_no = 'PRD-' || COALESCE(r.invoice_no, r.id::text)
+      LIMIT 1;
+      IF v_prod_id IS NULL THEN
+        INSERT INTO studio_productions (
+          company_id, branch_id, sale_id, production_no, production_date,
+          product_id, variation_id, quantity, unit, status, created_by
+        )
+        VALUES (
+          r.company_id, r.branch_id, r.id,
+          'PRD-' || COALESCE(r.invoice_no, r.id::text),
+          COALESCE(r.invoice_date::date, CURRENT_DATE),
+          v_first_item.product_id,
+          v_first_item.variation_id,
+          GREATEST(COALESCE(v_first_item.quantity, 1), 0.01),
+          COALESCE(NULLIF(TRIM(v_first_item.unit), ''), 'piece'),
+          'draft',
+          r.created_by
+        )
+        RETURNING id INTO v_prod_id;
+      ELSE
+        UPDATE studio_productions SET sale_id = r.id WHERE id = v_prod_id;
+      END IF;
 
       IF v_prod_id IS NOT NULL THEN
-        INSERT INTO studio_production_stages (production_id, stage_type, cost, status)
-        VALUES
-          (v_prod_id, 'dyer', 0, 'pending'),
-          (v_prod_id, 'handwork', 0, 'pending'),
-          (v_prod_id, 'stitching', 0, 'pending')
-        ON CONFLICT (production_id, stage_type) DO NOTHING;
+        FOR v_stage IN SELECT unnest(ARRAY['dyer', 'handwork', 'stitching']::text[])
+        LOOP
+          IF NOT EXISTS (SELECT 1 FROM studio_production_stages s WHERE s.production_id = v_prod_id AND s.stage_type::text = v_stage) THEN
+            INSERT INTO studio_production_stages (production_id, stage_type, cost, status)
+            VALUES (v_prod_id, v_stage::studio_production_stage_type, 0, 'pending');
+          END IF;
+        END LOOP;
       END IF;
     END IF;
   END LOOP;
