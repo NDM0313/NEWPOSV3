@@ -54,7 +54,7 @@ git commit -m "Bug fix: Purchase service FK issue"
 
 On current machine:
 git add .
-git commit -m "Work completed"
+git commit -m "perfanmace better full sysytem"
 git push origin main
 
 On new machine:

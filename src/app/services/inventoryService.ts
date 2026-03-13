@@ -17,6 +17,9 @@ import { supabase } from '@/lib/supabase';
 // Dedupe negative-stock warnings per product so console isn't flooded when multiple forms call getInventoryOverview
 const negativeStockWarnedIds = new Set<string>();
 
+/** In-flight guard: reuse same promise for overlapping getInventoryOverview(companyId, branchId) to avoid duplicate timers. */
+const inventoryOverviewInFlight = new Map<string, Promise<InventoryOverviewRow[]>>();
+
 export interface InventoryOverviewRow {
   id: string;
   productId: string;
@@ -88,6 +91,26 @@ export const inventoryService = {
    * Formula: SUM(quantity) FROM stock_movements WHERE product_id = X GROUP BY product_id, variation_id
    */
   async getInventoryOverview(
+    companyId: string,
+    branchId?: string | null
+  ): Promise<InventoryOverviewRow[]> {
+    const key = `${companyId}:${branchId ?? 'all'}`;
+    const existing = inventoryOverviewInFlight.get(key);
+    if (existing) return existing;
+
+    const run = async (): Promise<InventoryOverviewRow[]> => {
+      try {
+        return await this._getInventoryOverviewInner(companyId, branchId);
+      } finally {
+        inventoryOverviewInFlight.delete(key);
+      }
+    };
+    const promise = run.call(this);
+    inventoryOverviewInFlight.set(key, promise);
+    return promise;
+  },
+
+  async _getInventoryOverviewInner(
     companyId: string,
     branchId?: string | null
   ): Promise<InventoryOverviewRow[]> {

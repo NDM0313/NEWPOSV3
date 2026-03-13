@@ -369,12 +369,12 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
 
   const labels = getContextLabels();
 
-  // 🎯 Validation - Account ALWAYS required
+  // 🎯 Validation - Account ALWAYS required. On-account (no referenceId): any positive amount; document-linked: cap by outstanding
   const canSubmit = 
     amount > 0 && 
-    amount <= effectiveOutstanding && 
     selectedAccount !== '' &&
-    !isProcessing;
+    !isProcessing &&
+    (referenceId ? amount <= effectiveOutstanding : true);
 
   // Handle payment submission
   const handleSubmit = async () => {
@@ -389,7 +389,7 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
       return;
     }
     
-    if (amount > effectiveOutstanding) {
+    if (referenceId && amount > effectiveOutstanding) {
       toast.error(`Payment amount cannot exceed outstanding amount of ${effectiveOutstanding.toLocaleString()}`);
       return;
     }
@@ -469,13 +469,8 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
         // ADD MODE: Create new payment
         // Route to appropriate accounting function based on context
         switch (context) {
-          case 'supplier':
-          // STEP 2 FIX: Create payment record first (like customer payments)
-          if (!referenceId) {
-            toast.error('Purchase ID is required for payment recording');
-            setIsProcessing(false);
-            return;
-          }
+          case 'supplier': {
+          const isOnAccount = !referenceId;
           if (!selectedAccount) {
             toast.error('Please select an account for payment');
             setIsProcessing(false);
@@ -486,17 +481,14 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
             setIsProcessing(false);
             return;
           }
-          
-          // CRITICAL FIX: branchId can be "all" from context, but purchaseService will get actual branch_id from purchase record
-          // So we pass it as optional - purchaseService will use purchase's branch_id instead
-          // Let DB generate reference_number to avoid duplicate key (payments_reference_number_unique)
           try {
             let attachmentPayload: { url: string; name: string }[] = [];
+            const storagePrefixRef = referenceId || entityId || 'on-account';
             if (attachments.length > 0 && companyId) {
               let anyUploadFailed = false;
               try {
                 const bucket = 'payment-attachments';
-                const prefix = `${companyId}/${referenceId}/${Date.now()}`;
+                const prefix = `${companyId}/${storagePrefixRef}/${Date.now()}`;
                 for (let i = 0; i < attachments.length; i++) {
                   const file = attachments[i];
                   if (file.size > MAX_FILE_SIZE_BYTES) {
@@ -534,25 +526,64 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
               }
             }
             const { purchaseService } = await import('@/app/services/purchaseService');
-            const recordedPayment = await purchaseService.recordPayment(
-              referenceId,
-              amount,
-              paymentMethod,
-              selectedAccount,
-              companyId,
-              branchId && branchId !== 'all' ? branchId : undefined,
-              undefined,
-              { notes: notes.trim() || undefined, attachments: attachmentPayload.length ? attachmentPayload : undefined }
-            );
-            const paymentRefNo = (recordedPayment as any)?.reference_number || referenceNo || `PUR-${Date.now()}`;
-            success = await accounting.recordSupplierPayment({
-              purchaseId: referenceId,
-              supplierName: entityName,
-              supplierId: entityId,
-              amount,
-              paymentMethod,
-              referenceNo: paymentRefNo
-            });
+            let paymentRefNo: string;
+            if (isOnAccount) {
+              if (!entityId) {
+                toast.error('Contact is required for on-account payment');
+                setIsProcessing(false);
+                return;
+              }
+              let effectiveBranchId = branchId && branchId !== 'all' ? branchId : null;
+              if (!effectiveBranchId && companyId) {
+                const { branchService } = await import('@/app/services/branchService');
+                const branches = await branchService.getAllBranches(companyId);
+                effectiveBranchId = branches?.[0]?.id ?? null;
+              }
+              if (!effectiveBranchId) {
+                toast.error('Branch is required. Please create at least one branch.');
+                setIsProcessing(false);
+                return;
+              }
+              const onAccountData = await purchaseService.recordOnAccountPayment(
+                entityId,
+                entityName,
+                amount,
+                paymentMethod,
+                selectedAccount,
+                companyId,
+                effectiveBranchId,
+                paymentDateTime.split('T')[0],
+                { notes: notes.trim() || undefined, attachments: attachmentPayload.length ? attachmentPayload : undefined }
+              );
+              paymentRefNo = onAccountData?.reference_number || `PAY-${Date.now()}`;
+              success = await accounting.recordSupplierPayment({
+                supplierName: entityName,
+                supplierId: entityId,
+                amount,
+                paymentMethod,
+                referenceNo: paymentRefNo
+              });
+            } else {
+              const recordedPayment = await purchaseService.recordPayment(
+                referenceId,
+                amount,
+                paymentMethod,
+                selectedAccount,
+                companyId,
+                branchId && branchId !== 'all' ? branchId : undefined,
+                undefined,
+                { notes: notes.trim() || undefined, attachments: attachmentPayload.length ? attachmentPayload : undefined }
+              );
+              paymentRefNo = (recordedPayment as any)?.reference_number || referenceNo || `PUR-${Date.now()}`;
+              success = await accounting.recordSupplierPayment({
+                purchaseId: referenceId,
+                supplierName: entityName,
+                supplierId: entityId,
+                amount,
+                paymentMethod,
+                referenceNo: paymentRefNo
+              });
+            }
           } catch (paymentError: any) {
             console.error('[UNIFIED PAYMENT] Error recording purchase payment:', paymentError);
             toast.error('Payment failed', {
@@ -561,32 +592,44 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
             setIsProcessing(false);
             return;
           }
+          }
           break;
 
-        case 'customer':
-          if (!referenceId) {
-            toast.error('Sale ID is required for payment recording');
-            setIsProcessing(false);
-            return;
-          }
+        case 'customer': {
+          const customerOnAccount = !referenceId;
           if (!selectedAccount) {
             toast.error('Please select an account for payment');
             setIsProcessing(false);
             return;
           }
-          if (!companyId || !branchId) {
-            toast.error('Company ID and Branch ID are required');
+          if (!companyId) {
+            toast.error('Company ID is required');
             setIsProcessing(false);
             return;
           }
-          
+          let effectiveBranchId = branchId && branchId !== 'all' ? branchId : null;
+          if (!effectiveBranchId && companyId) {
+            try {
+              const { branchService } = await import('@/app/services/branchService');
+              const branches = await branchService.getAllBranches(companyId);
+              effectiveBranchId = branches?.[0]?.id ?? null;
+            } catch {
+              effectiveBranchId = null;
+            }
+          }
+          if (!customerOnAccount && !effectiveBranchId) {
+            toast.error('Branch ID is required');
+            setIsProcessing(false);
+            return;
+          }
           try {
             let attachmentPayload: { url: string; name: string }[] = [];
+            const storagePrefixRef = referenceId || entityId || 'on-account';
             if (attachments.length > 0 && companyId) {
               let anyUploadFailed = false;
               try {
                 const bucket = 'payment-attachments';
-                const prefix = `${companyId}/${referenceId}/${Date.now()}`;
+                const prefix = `${companyId}/${storagePrefixRef}/${Date.now()}`;
                 for (let i = 0; i < attachments.length; i++) {
                   const file = attachments[i];
                   if (file.size > MAX_FILE_SIZE_BYTES) {
@@ -624,27 +667,65 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
               }
             }
             const { saleService } = await import('@/app/services/saleService');
-            // Let saleService get reference_number from DB (get_next_document_number_global) to avoid duplicate key
-            await saleService.recordPayment(
-              referenceId,
-              amount,
-              paymentMethod,
-              selectedAccount,
-              companyId,
-              branchId,
-              paymentDateTime.split('T')[0],
-              undefined,
-              { notes: notes.trim() || undefined, attachments: attachmentPayload.length ? attachmentPayload : undefined }
-            );
-            success = await accounting.recordSalePayment({
-              saleId: referenceId,
-              invoiceNo: referenceNo || `INV-${Date.now()}`,
-              customerName: entityName,
-              customerId: entityId,
-              amount,
-              paymentMethod,
-              accountId: selectedAccount
-            });
+            if (customerOnAccount) {
+              if (!entityId) {
+                toast.error('Contact is required for on-account payment');
+                setIsProcessing(false);
+                return;
+              }
+              let branchForPayment = effectiveBranchId;
+              if (!branchForPayment && companyId) {
+                const { branchService } = await import('@/app/services/branchService');
+                const branches = await branchService.getAllBranches(companyId);
+                branchForPayment = branches?.[0]?.id ?? null;
+              }
+              if (!branchForPayment) {
+                toast.error('Branch is required. Please create at least one branch.');
+                setIsProcessing(false);
+                return;
+              }
+              const onAccountData = await saleService.recordOnAccountPayment(
+                entityId,
+                entityName,
+                amount,
+                paymentMethod,
+                selectedAccount,
+                companyId,
+                branchForPayment,
+                paymentDateTime.split('T')[0],
+                { notes: notes.trim() || undefined, attachments: attachmentPayload.length ? attachmentPayload : undefined }
+              );
+              const paymentRefNo = onAccountData?.reference_number || `PAY-${Date.now()}`;
+              success = await accounting.recordOnAccountCustomerPayment({
+                customerId: entityId,
+                customerName: entityName,
+                amount,
+                paymentMethod,
+                accountId: selectedAccount,
+                referenceNo: paymentRefNo
+              });
+            } else {
+              await saleService.recordPayment(
+                referenceId,
+                amount,
+                paymentMethod,
+                selectedAccount,
+                companyId,
+                effectiveBranchId || branchId || '',
+                paymentDateTime.split('T')[0],
+                undefined,
+                { notes: notes.trim() || undefined, attachments: attachmentPayload.length ? attachmentPayload : undefined }
+              );
+              success = await accounting.recordSalePayment({
+                saleId: referenceId,
+                invoiceNo: referenceNo || `INV-${Date.now()}`,
+                customerName: entityName,
+                customerId: entityId,
+                amount,
+                paymentMethod,
+                accountId: selectedAccount
+              });
+            }
           } catch (paymentError: any) {
             console.error('[UNIFIED PAYMENT] Error recording payment:', paymentError);
             toast.error('Payment failed', {
@@ -654,6 +735,7 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
             return;
           }
           break;
+        }
 
         case 'worker': {
           const paymentRef = generateDocumentNumber('payment');

@@ -106,6 +106,8 @@ interface AccountingContextType {
   recordExpense: (params: ExpenseParams) => Promise<boolean>;
   recordPurchase: (params: PurchaseParams) => Promise<boolean>;
   recordSupplierPayment: (params: SupplierPaymentParams) => Promise<boolean>;
+  /** On-account customer payment (no invoice): Dr Cash/Bank, Cr AR; ledger by customerId */
+  recordOnAccountCustomerPayment: (params: OnAccountCustomerPaymentParams) => Promise<boolean>;
   
   // Account management
   accounts: Account[];
@@ -217,6 +219,15 @@ export interface SupplierPaymentParams {
   supplierId?: string;
   amount: number;
   paymentMethod: PaymentMethod;
+  referenceNo: string;
+}
+
+export interface OnAccountCustomerPaymentParams {
+  customerId?: string;
+  customerName: string;
+  amount: number;
+  paymentMethod: PaymentMethod;
+  accountId?: string;
   referenceNo: string;
 }
 
@@ -537,6 +548,12 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
       const entryDate = new Date().toISOString().split('T')[0];
 
       // Find account IDs for debit and credit (case-insensitive)
+      // When metadata.debitAccountId is set (e.g. on-account payment), use that for debit
+      const debitAccountIdFromMeta = (entry.metadata as any)?.debitAccountId;
+      if (debitAccountIdFromMeta) {
+        debitAccountObj = accounts.find(acc => acc.id === debitAccountIdFromMeta);
+      }
+      if (!debitAccountObj) {
       // CRITICAL FIX: accountType might not exist, use type, name, and code for lookup
       debitAccountObj = accounts.find(acc => {
         const accType = acc.accountType || acc.type || '';
@@ -556,6 +573,7 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
           (normalizedDebitAccount === 'Worker Payable' && (accCode === '2010' || accName.toLowerCase().includes('worker')))
         );
       });
+      }
       creditAccountObj = accounts.find(acc => {
         const accType = acc.accountType || acc.type || '';
         const accName = acc.name || '';
@@ -1337,6 +1355,25 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
     });
   };
 
+  /** On-account customer payment: no sale; Dr Cash/Bank, Cr AR. Ledger by metadata.customerId */
+  const recordOnAccountCustomerPayment = async (params: OnAccountCustomerPaymentParams): Promise<boolean> => {
+    const { customerId, customerName, amount, paymentMethod, accountId, referenceNo } = params;
+    if (!accountId) {
+      toast.error('Payment account is required for on-account payment.');
+      return false;
+    }
+    return await createEntry({
+      source: 'Payment',
+      referenceNo,
+      debitAccount: paymentMethod as AccountType,
+      creditAccount: 'Accounts Receivable',
+      amount,
+      description: `On-account payment from ${customerName}`,
+      module: 'Sales',
+      metadata: { customerId, customerName, debitAccountId: accountId }
+    });
+  };
+
   // ============================================
   // 🎯 CONTEXT VALUE
   // ============================================
@@ -1376,6 +1413,7 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
     recordExpense,
     recordPurchase,
     recordSupplierPayment,
+    recordOnAccountCustomerPayment,
     accounts,
     getAccountsByType,
     getAccountById,
@@ -1387,7 +1425,7 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
     recordSale, recordSalePayment, recordRentalBooking, recordRentalDelivery,
     recordRentalCreditDelivery, recordRentalReturn, recordStudioSale,
     recordWorkerJobCompletion, recordWorkerPayment, recordExpense, recordPurchase,
-    recordSupplierPayment, getAccountsByType, getAccountById,
+    recordSupplierPayment, recordOnAccountCustomerPayment, getAccountsByType, getAccountById,
   ]);
 
   return (

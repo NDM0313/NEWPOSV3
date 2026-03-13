@@ -354,9 +354,10 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
     // Document state: only Final enables shipping/shipment/attachments/extra expenses
     const isFinal = saleStatus === 'final';
 
-    // PART 2: grand_total = items_total + extra_expenses + shipping_charges - discount (shipping_charges = shipment.charged_to_customer)
+    // PART 2: grand_total = items_total + extra_expenses + shipping_charges - discount (shipping_charges = shipment.charged_to_customer or input for new sale)
     const afterDiscountTotal = subtotal - discountAmount + expensesTotal;
-    const totalAmount = afterDiscountTotal + (initialSale?.id ? shipmentChargesFromApi : 0);
+    const effectiveShippingCharges = initialSale?.id ? shipmentChargesFromApi : (shippingChargeInput || 0);
+    const totalAmount = afterDiscountTotal + effectiveShippingCharges;
     
     // Calculate salesman commission
     const commissionAmount = commissionType === 'percentage'
@@ -2020,7 +2021,7 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                 subtotal: subtotal,
                 discount: discountAmount,
                 tax: 0, // Can be enhanced later
-                expenses: expensesTotal,
+                expenses: expensesTotal + (initialSale?.id ? 0 : (shippingChargeInput || 0)),
                 total: totalAmount,
                 paid: finalPaid,
                 due: finalDue,
@@ -2039,9 +2040,9 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                     }
                     return value;
                 })(),
-                // CRITICAL: Include extra expenses; shipping from sale_shipments (synced by trigger)
+                // CRITICAL: Include extra expenses; shipping from sale_shipments when editing, or shippingChargeInput when new
                 extraExpenses: extraExpenses,
-                shippingCharges: initialSale?.id ? shipmentChargesFromApi : 0,
+                shippingCharges: effectiveShippingCharges,
                 commissionAmount: commissionAmount,
                 salesmanId: (salesmanId && salesmanId !== "1" && salesmanId !== "none") ? salesmanId : null,
                 // CRITICAL FIX: Pass partialPayments array for splitting into separate payment records
@@ -2104,6 +2105,27 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
             } else {
                 // NEW SALE: Create new sale
                 const created = await createSale(saleData);
+                // If user entered a shipping charge, create a sale_shipments row so ledger and shipment list stay correct
+                if (created?.id && (shippingChargeInput || 0) > 0 && companyId && finalBranchId) {
+                    try {
+                        await shipmentService.create(
+                            created.id,
+                            companyId,
+                            finalBranchId,
+                            {
+                                shipment_type: 'Courier',
+                                charged_to_customer: shippingChargeInput,
+                                actual_cost: 0,
+                                currency: 'PKR',
+                                shipment_status: 'Pending',
+                            },
+                            undefined,
+                            documentNumber
+                        );
+                    } catch (shipErr: any) {
+                        console.warn('[SALE FORM] Shipment record for shipping charge could not be created:', shipErr?.message);
+                    }
+                }
                 if (created?.id && saleAttachmentFiles.length > 0 && companyId) {
                     try {
                         const uploaded = await uploadSaleAttachments(companyId, created.id, saleAttachmentFiles);

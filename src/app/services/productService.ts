@@ -54,6 +54,9 @@ const PRODUCT_SELECT_SAFE =
   'id, company_id, category_id, brand_id, unit_id, name, sku, barcode, description, cost_price, retail_price, wholesale_price, min_stock, max_stock, has_variations, is_rentable, is_sellable, track_stock, is_active, image_urls, product_type, source_type, created_at, updated_at';
 const VARIATION_SELECT_SAFE = 'id, product_id, sku, attributes';
 
+/** In-flight guard: reuse same promise for overlapping getStockMovements(productId) to avoid "Timer 'stockMovements:id' already exists". */
+const stockMovementsInFlight = new Map<string, Promise<any[]>>();
+
 export const productService = {
   // Get all products (no current_stock: use inventory overview for stock)
   async getAllProducts(companyId: string) {
@@ -346,6 +349,23 @@ export const productService = {
   // Get stock movements for a product (optionally filtered by variation_id and branch_id)
   // Consolidated to a single query with relationships — removed all debug probe queries
   async getStockMovements(productId: string, companyId: string, variationId?: string, branchId?: string) {
+    const key = `${productId}:${companyId}:${variationId ?? ''}:${branchId ?? ''}`;
+    const existing = stockMovementsInFlight.get(key);
+    if (existing) return existing;
+
+    const run = async (): Promise<any[]> => {
+      try {
+        return await this._getStockMovementsInner(productId, companyId, variationId, branchId);
+      } finally {
+        stockMovementsInFlight.delete(key);
+      }
+    };
+    const promise = run.call(this);
+    stockMovementsInFlight.set(key, promise);
+    return promise;
+  },
+
+  async _getStockMovementsInner(productId: string, companyId: string, variationId?: string, branchId?: string): Promise<any[]> {
     console.time(`stockMovements:${productId}`);
     try {
       let query = supabase

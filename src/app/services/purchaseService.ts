@@ -997,6 +997,64 @@ export const purchaseService = {
     return data;
   },
 
+  /**
+   * Record on-account payment (direct supplier payment without bill).
+   * Uses reference_type = 'on_account', reference_id = null, contact_id for ledger.
+   */
+  async recordOnAccountPayment(
+    contactId: string,
+    contactName: string,
+    amount: number,
+    paymentMethod: string,
+    accountId: string,
+    companyId: string,
+    branchId: string,
+    paymentDate?: string,
+    options?: { notes?: string; attachments?: any }
+  ) {
+    if (!accountId || !companyId || !branchId) {
+      throw new Error('Account, company and branch are required for on-account payment.');
+    }
+    const normalizedPaymentMethod = (paymentMethod || 'cash').toLowerCase().trim();
+    const paymentMethodMap: Record<string, string> = {
+      cash: 'cash', Cash: 'cash', bank: 'bank', Bank: 'bank', card: 'card', Card: 'card',
+      cheque: 'other', Cheque: 'other', 'mobile wallet': 'other', 'Mobile Wallet': 'other',
+      mobile_wallet: 'other', wallet: 'other', Wallet: 'other',
+    };
+    const enumPaymentMethod = paymentMethodMap[paymentMethod] || paymentMethodMap[normalizedPaymentMethod] || 'cash';
+    const paymentDateValue = paymentDate || new Date().toISOString().split('T')[0];
+    const { data: { user: authUser } } = await supabase.auth.getUser();
+    const authUserId = authUser?.id ?? null;
+    let uniqueRef: string;
+    try {
+      uniqueRef = await documentNumberService.getNextDocumentNumber(companyId, branchId ?? null, 'payment');
+    } catch {
+      uniqueRef = generatePaymentReference(null);
+    }
+    const insertPayload: any = {
+      company_id: companyId,
+      branch_id: branchId,
+      payment_type: 'paid',
+      reference_type: 'on_account',
+      reference_id: null,
+      contact_id: contactId,
+      amount,
+      payment_method: enumPaymentMethod,
+      payment_account_id: accountId,
+      payment_date: paymentDateValue,
+      reference_number: uniqueRef,
+      received_by: authUserId,
+    };
+    if (options?.notes !== undefined && options.notes !== '') insertPayload.notes = options.notes;
+    if (options?.attachments !== undefined && options.attachments != null) {
+      insertPayload.attachments = Array.isArray(options.attachments) ? options.attachments : (options.attachments ? [options.attachments] : null);
+    }
+    const { data, error } = await supabase.from('payments').insert(insertPayload).select('id, reference_number').single();
+    if (error) throw error;
+    // Journal entry for on-account supplier payment: Dr AP, Cr Cash/Bank (createEntry from dialog)
+    return data as { id: string; reference_number: string };
+  },
+
   // Update payment
   async updatePayment(
     paymentId: string,

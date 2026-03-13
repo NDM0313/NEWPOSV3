@@ -10,9 +10,7 @@ import { useSupabase } from '../../context/SupabaseContext';
 import { useGlobalFilter } from '../../context/GlobalFilterContext';
 import { useSettings } from '../../context/SettingsContext';
 import { useCheckPermission } from '../../hooks/useCheckPermission';
-import { productService } from '../../services/productService';
-import { getSalesByCategory } from '../../services/dashboardService';
-import { getFinancialDashboardMetrics, type FinancialDashboardMetrics } from '../../services/financialDashboardService';
+import { getDashboardMetrics, type FinancialDashboardMetrics } from '../../services/financialDashboardService';
 import { getBusinessAlerts, type BusinessAlert } from '../../services/businessAlertsService';
 import { useFormatCurrency } from '../../hooks/useFormatCurrency';
 
@@ -50,69 +48,46 @@ export const Dashboard = () => {
   const [lowStockProducts, setLowStockProducts] = useState<LowStockItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [salesByCategory, setSalesByCategory] = useState<Array<{ categoryName: string; total: number }>>([]);
-  const [loadingCategory, setLoadingCategory] = useState(true);
   const [financialMetrics, setFinancialMetrics] = useState<FinancialDashboardMetrics | null>(null);
-  const [loadingFinancial, setLoadingFinancial] = useState(true);
   const [alerts, setAlerts] = useState<BusinessAlert[]>([]);
 
-  // Business alerts (Phase-2)
+  // Business alerts (separate lightweight call)
   useEffect(() => {
     if (!companyId) return;
     getBusinessAlerts(companyId).then(setAlerts).catch(() => setAlerts([]));
   }, [companyId]);
 
-  // Executive financial metrics (single RPC, sub-1s)
+  // Consolidated dashboard: 1 RPC (get_dashboard_metrics) → metrics + sales_by_category + low_stock; fallback to separate calls
   useEffect(() => {
-    if (!companyId) {
-      setLoadingFinancial(false);
-      return;
-    }
-    setLoadingFinancial(true);
-    getFinancialDashboardMetrics(companyId)
-      .then(setFinancialMetrics)
-      .catch(() => setFinancialMetrics(null))
-      .finally(() => setLoadingFinancial(false));
-  }, [companyId]);
-
-  // Load low stock items (movement-based; no current_stock column)
-  const loadProducts = useCallback(async () => {
     if (!companyId) {
       setLoading(false);
       return;
     }
-    try {
-      setLoading(true);
-      const low = await productService.getLowStockProducts(companyId);
-      setLowStockProducts(Array.isArray(low) ? low : []);
-    } catch (error) {
-      console.error('[DASHBOARD] Error loading low stock:', error);
-      setLowStockProducts([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [companyId]);
-
-  useEffect(() => {
-    loadProducts();
-  }, [loadProducts]);
-
-  // Load sales by category from backend (global date range applied)
-  useEffect(() => {
-    if (!companyId) {
-      setLoadingCategory(false);
-      return;
-    }
-    setLoadingCategory(true);
+    setLoading(true);
     const start = startDate ? startDate.slice(0, 10) : null;
     const end = endDate ? endDate.slice(0, 10) : null;
-    getSalesByCategory(companyId, start, end)
-      .then(setSalesByCategory)
-      .catch((err) => {
-        console.error('[DASHBOARD] Sales by category error:', err);
-        setSalesByCategory([]);
+    const branchId = globalFilter.branchId ?? null;
+    getDashboardMetrics(companyId, branchId, start, end)
+      .then((payload) => {
+        setFinancialMetrics(payload.metrics);
+        setSalesByCategory(payload.sales_by_category ?? []);
+        setLowStockProducts(
+          (payload.low_stock_items ?? []).map((r) => ({
+            id: r.id,
+            name: r.name ?? undefined,
+            sku: r.sku ?? undefined,
+            current_stock: r.current_stock,
+            min_stock: r.min_stock,
+          }))
+        );
       })
-      .finally(() => setLoadingCategory(false));
-  }, [companyId, startDate, endDate]);
+      .catch(() => {
+        setFinancialMetrics(null);
+        setSalesByCategory([]);
+        setLowStockProducts([]);
+      })
+      .finally(() => setLoading(false));
+  }, [companyId, startDate, endDate, globalFilter.branchId]);
 
   // Filter data by global date range
   const filterByDateRange = useCallback((dateStr: string | undefined): boolean => {
@@ -184,7 +159,7 @@ export const Dashboard = () => {
     const paidExpenses = expenses.expenses.filter((e: any) => e.status === 'paid');
 
     const todaySales = finalSales
-      .filter((s: any) => (s.date || s.sale_date || '').toString().slice(0, 10) === todayStr)
+      .filter((s: any) => (s.date || s.sale_date || s.invoice_date || '').toString().slice(0, 10) === todayStr)
       .reduce((sum, s) => sum + (Number(s.total) || 0), 0);
     const todayPurchases = finalPurchases
       .filter((p: any) => (p.poDate || p.po_date || '').toString().slice(0, 10) === todayStr)
@@ -195,7 +170,7 @@ export const Dashboard = () => {
 
     const monthlyRevenue = finalSales
       .filter((s: any) => {
-        const d = (s.date || s.sale_date || '').toString().slice(0, 10);
+        const d = (s.date || s.sale_date || s.invoice_date || '').toString().slice(0, 10);
         return d >= monthStartStr && d <= monthEndStr;
       })
       .reduce((sum, s) => sum + (Number(s.total) || 0), 0);
@@ -225,7 +200,7 @@ export const Dashboard = () => {
       d.setDate(d.getDate() - i);
       const ds = d.toISOString().slice(0, 10);
       const daySales = finalSales
-        .filter((s: any) => (s.date || s.sale_date || '').toString().slice(0, 10) === ds)
+        .filter((s: any) => (s.date || s.sale_date || s.invoice_date || '').toString().slice(0, 10) === ds)
         .reduce((sum, s) => sum + (Number(s.total) || 0), 0);
       const dayPurch = finalPurchases
         .filter((p: any) => (p.poDate || p.po_date || '').toString().slice(0, 10) === ds)
@@ -235,7 +210,7 @@ export const Dashboard = () => {
         .reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
       last7.push({ date: ds, value: daySales - dayPurch - dayExp });
     }
-    const sales_trend = last7.map((t) => ({ date: t.date, value: finalSales.filter((s: any) => (s.date || s.sale_date || '').toString().slice(0, 10) === t.date).reduce((sum, s) => sum + (Number(s.total) || 0), 0) }));
+    const sales_trend = last7.map((t) => ({ date: t.date, value: finalSales.filter((s: any) => (s.date || s.sale_date || s.invoice_date || '').toString().slice(0, 10) === t.date).reduce((sum, s) => sum + (Number(s.total) || 0), 0) }));
     const expense_trend = last7.map((t) => ({
       date: t.date,
       value: finalPurchases.filter((p: any) => (p.poDate || p.po_date || '').toString().slice(0, 10) === t.date).reduce((sum, p) => sum + (Number(p.total) || 0), 0)
@@ -387,7 +362,7 @@ export const Dashboard = () => {
       {/* Executive financial summary (Phase-2 Intelligence) */}
       <div className="bg-[#111827]/50 border border-[#374151] p-6 rounded-xl">
         <h3 className="text-lg font-bold text-white mb-4">Executive summary</h3>
-        {loadingFinancial ? (
+        {loading ? (
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 h-24 items-center justify-center">
             <Loader2 className="w-8 h-8 animate-spin text-[#3B82F6] col-span-2 md:col-span-3 lg:col-span-5 justify-self-center" />
           </div>
@@ -566,7 +541,7 @@ export const Dashboard = () => {
 
           <div className="bg-[#111827]/50 border border-[#374151] p-6 rounded-xl">
              <h3 className="text-lg font-bold text-white mb-6">Sales by Category</h3>
-             {loadingCategory ? (
+             {loading ? (
                <div className="h-40 flex items-center justify-center">
                  <Loader2 className="w-8 h-8 animate-spin text-[#3B82F6]" />
                </div>

@@ -609,88 +609,10 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
         }
       }
       
-      // CRITICAL: Stock update ONLY on 'received' or 'final' status (NOT on 'pending' or 'draft')
-      // Rule: Stock sirf Received/Final par update ho, Pending par kabhi nahi
-      // STEP 1 RULE: Silent fail NOT allowed - throw error if stock movement fails
-      console.log('[PURCHASE CONTEXT] 🔍 Stock movement check:', {
-        status: newPurchase.status,
-        hasItems: !!newPurchase.items,
-        itemsCount: newPurchase.items?.length || 0,
-        items: newPurchase.items
-      });
-      
+      // Stock movements for purchase: created by DB trigger purchase_final_stock_movement_trigger
+      // when purchase status is 'final' (AFTER INSERT/UPDATE). Do NOT create here to avoid double posting.
       if ((newPurchase.status === 'received' || newPurchase.status === 'final') && newPurchase.items && newPurchase.items.length > 0) {
-        console.log('[PURCHASE CONTEXT] 🔄 Creating stock movements for purchase:', newPurchase.id, 'Items:', newPurchase.items.length);
-        
-        const purchaseBranchId = newPurchase.branchId || branchId;
-        const stockMovementErrors: string[] = [];
-        
-        for (const item of newPurchase.items) {
-          if (item.productId && item.quantity > 0) {
-            try {
-              const qtyToAdd = item.receivedQty > 0 ? item.receivedQty : item.quantity;
-              
-              console.log('[PURCHASE CONTEXT] Creating stock movement for item:', {
-                product_id: item.productId,
-                variation_id: item.variationId,
-                quantity: qtyToAdd,
-                purchase_id: newPurchase.id
-              });
-              
-              // Create stock movement via productService (proper audit trail)
-              // Packing: packingDetails or packing_details; support total_boxes/boxes and total_pieces/pieces
-              const packing = (item as any).packingDetails || (item as any).packing_details;
-              const boxChange = packing && (packing.total_boxes != null || packing.boxes != null)
-                ? Math.round(Number(packing.total_boxes ?? packing.boxes ?? 0)) : 0;
-              const pieceChange = packing && (packing.total_pieces != null || packing.pieces != null)
-                ? Math.round(Number(packing.total_pieces ?? packing.pieces ?? 0)) : 0;
-              const movement = await productService.createStockMovement({
-                company_id: companyId,
-                branch_id: purchaseBranchId === 'all' ? undefined : purchaseBranchId,
-                product_id: item.productId,
-                variation_id: item.variationId || undefined,
-                movement_type: 'purchase',
-                quantity: qtyToAdd,
-                unit_cost: item.price || 0,
-                total_cost: (item.price || 0) * qtyToAdd,
-                reference_type: 'purchase',
-                reference_id: newPurchase.id,
-                notes: `Purchase ${newPurchase.purchaseNo} - ${item.productName}${item.variationId ? ' (Variation)' : ''}`,
-                created_by: user?.id,
-                box_change: boxChange,
-                piece_change: pieceChange,
-              });
-              
-              if (!movement || !movement.id) {
-                throw new Error(`Stock movement creation returned null/undefined for product ${item.productId}`);
-              }
-              
-              console.log('[PURCHASE CONTEXT] ✅ Stock movement created:', {
-                movement_id: movement.id,
-                product_id: item.productId,
-                variation_id: item.variationId,
-                quantity: movement.quantity
-              });
-              
-              // Stock is source-of-truth via stock_movements only. Do NOT update products.current_stock
-              // (column may not exist; would cause "column current_stock does not exist").
-            } catch (movementError: any) {
-              const errorMsg = `Failed to create stock movement for product ${item.productId} (${item.productName}): ${movementError.message || movementError}`;
-              console.error('[PURCHASE CONTEXT] ❌ Stock movement creation failed:', errorMsg);
-              console.error('[PURCHASE CONTEXT] Error details:', movementError);
-              stockMovementErrors.push(errorMsg);
-            }
-          }
-        }
-        
-        // CRITICAL: If any stock movement failed, throw error (no silent failures)
-        if (stockMovementErrors.length > 0) {
-          const errorMessage = `Stock movement creation failed for ${stockMovementErrors.length} item(s):\n${stockMovementErrors.join('\n')}`;
-          console.error('[PURCHASE CONTEXT] ❌ CRITICAL: Stock movements not created:', errorMessage);
-          throw new Error(errorMessage);
-        }
-        
-        console.log('[PURCHASE CONTEXT] ✅ All stock movements created successfully for purchase:', newPurchase.id);
+        console.log('[PURCHASE CONTEXT] Stock for purchase', newPurchase.id, 'handled by DB trigger (single posting).');
       }
       
       // Extra expenses and discount are now in the single line-by-line journal above (from purchase_charges).
@@ -1415,50 +1337,9 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
       }
 
       // STEP 3: Update purchase status in database
-      // Database trigger will handle stock_movements creation when status = 'final'
+      // DB trigger purchase_final_stock_movement_trigger creates stock_movements when status = 'final'.
+      // Do NOT create stock movements here — would duplicate (trigger already runs on UPDATE).
       await updatePurchase(purchaseId, { status: dbStatus });
-      
-      // STEP 4: If status is 'received' or 'final' and stock not already updated,
-      // create stock movements via productService (database trigger might not exist)
-      if (isMovingToStockUpdateStatus && purchase.items && purchase.items.length > 0) {
-        try {
-          // Get purchase branch_id from purchase data
-          const purchaseBranchId = purchase.branchId || branchId;
-          
-          for (const item of purchase.items) {
-            if (item.productId && item.quantity > 0) {
-              const qtyToAdd = item.receivedQty > 0 ? item.receivedQty : item.quantity;
-              const packing = (item as any).packingDetails || (item as any).packing_details;
-              const boxChange = packing && (packing.total_boxes != null || packing.boxes != null)
-                ? Math.round(Number(packing.total_boxes ?? packing.boxes ?? 0)) : 0;
-              const pieceChange = packing && (packing.total_pieces != null || packing.pieces != null)
-                ? Math.round(Number(packing.total_pieces ?? packing.pieces ?? 0)) : 0;
-              await productService.createStockMovement({
-                company_id: companyId,
-                branch_id: purchaseBranchId === 'all' ? undefined : purchaseBranchId,
-                product_id: item.productId,
-                variation_id: (item as any).variationId || undefined,
-                movement_type: 'purchase',
-                quantity: qtyToAdd,
-                unit_cost: item.price || 0,
-                total_cost: (item.price || 0) * qtyToAdd,
-                reference_type: 'purchase',
-                reference_id: purchaseId,
-                notes: `Purchase ${purchase.purchaseNo} - ${item.productName}`,
-                created_by: user?.id,
-                box_change: boxChange,
-                piece_change: pieceChange,
-              });
-            }
-          }
-          
-          console.log('[PURCHASE CONTEXT] ✅ Stock movements created for purchase:', purchaseId);
-        } catch (stockError) {
-          console.warn('[PURCHASE CONTEXT] Stock movement creation warning (non-blocking):', stockError);
-          // Don't block status update if stock movement creation fails
-          // Database trigger might handle it, or it can be fixed later
-        }
-      }
       
       toast.success(`Purchase status updated to ${status}!`);
       

@@ -1,9 +1,24 @@
 /**
  * Accounting Reports Service
  * Trial Balance, P&L, Balance Sheet, Account Ledger, Sales Profit, Inventory Valuation
+ * Canonical sale line table: sales_items; fallback: sale_items (legacy).
  */
 
 import { supabase } from '@/lib/supabase';
+
+/** Fetch sale line items: sales_items first (canonical), fallback to sale_items for backward compatibility. */
+async function getSaleLineItems<T = any>(selectColumns: string, saleIds: string[]): Promise<T[]> {
+  const { data: fromSalesItems, error: err1 } = await supabase
+    .from('sales_items')
+    .select(selectColumns)
+    .in('sale_id', saleIds);
+  if (!err1 && fromSalesItems != null) return fromSalesItems as T[];
+  const { data: fromSaleItems } = await supabase
+    .from('sale_items')
+    .select(selectColumns)
+    .in('sale_id', saleIds);
+  return (fromSaleItems || []) as T[];
+}
 
 export interface TrialBalanceRow {
   account_id: string;
@@ -333,7 +348,7 @@ export const accountingReportsService = {
   },
 
   /**
-   * Sales Profit: per-sale revenue, cost (from sale_items/product cost or unit_cost), profit.
+   * Sales Profit: per-sale revenue, cost (from sales_items/sale_items + product cost or unit_cost), profit.
    */
   async getSalesProfit(
     companyId: string,
@@ -344,29 +359,26 @@ export const accountingReportsService = {
   ): Promise<SalesProfitResult> {
     let saleQuery = supabase
       .from('sales')
-      .select('id, invoice_no, sale_date, total, customer_id, customer:contacts(name), branch_id')
+      .select('id, invoice_no, invoice_date, total, customer_id, customer:contacts(name), branch_id')
       .eq('company_id', companyId)
       .eq('status', 'final')
-      .gte('sale_date', startDate.slice(0, 10))
-      .lte('sale_date', endDate.slice(0, 10));
+      .gte('invoice_date', startDate.slice(0, 10))
+      .lte('invoice_date', endDate.slice(0, 10));
     if (branchId) saleQuery = saleQuery.eq('branch_id', branchId);
     if (customerId) saleQuery = saleQuery.eq('customer_id', customerId);
-    const { data: sales } = await saleQuery.order('sale_date', { ascending: false });
+    const { data: sales } = await saleQuery.order('invoice_date', { ascending: false });
     if (!sales?.length) {
       return { rows: [], totalRevenue: 0, totalCost: 0, totalProfit: 0, startDate, endDate };
     }
     const saleIds = sales.map((s: any) => s.id);
-    const { data: items } = await supabase
-      .from('sale_items')
-      .select('sale_id, quantity, unit_price, total, product_id, product:products(cost_price, cost)')
-      .in('sale_id', saleIds);
+    const items = await getSaleLineItems('sale_id, quantity, unit_price, total, product_id, product:products(cost_price, cost)', saleIds);
     const costBySale: Record<string, number> = {};
     const revenueBySale: Record<string, number> = {};
     saleIds.forEach((id) => {
       costBySale[id] = 0;
       revenueBySale[id] = 0;
     });
-    (items || []).forEach((item: any) => {
+    items.forEach((item: any) => {
       const saleId = item.sale_id;
       const rev = Number(item.total) || Number(item.unit_price) * Number(item.quantity) || 0;
       revenueBySale[saleId] = (revenueBySale[saleId] || 0) + rev;
@@ -383,7 +395,7 @@ export const accountingReportsService = {
       return {
         sale_id: s.id,
         invoice_no: s.invoice_no || `S-${s.id?.slice(0, 8)}`,
-        sale_date: s.sale_date || '',
+        sale_date: s.invoice_date || '',
         customer_name: s.customer?.name || '—',
         revenue,
         cost,
@@ -603,7 +615,7 @@ export const accountingReportsService = {
   },
 
   /**
-   * Profit by Product: aggregate getSalesProfit at product level from sale_items.
+   * Profit by Product: aggregate at product level from sales_items (fallback sale_items).
    */
   async getProfitByProduct(
     companyId: string,
@@ -616,18 +628,15 @@ export const accountingReportsService = {
       .select('id')
       .eq('company_id', companyId)
       .eq('status', 'final')
-      .gte('sale_date', startDate.slice(0, 10))
-      .lte('sale_date', endDate.slice(0, 10));
+      .gte('invoice_date', startDate.slice(0, 10))
+      .lte('invoice_date', endDate.slice(0, 10));
     if (branchId) (saleQuery as any).eq('branch_id', branchId);
     const { data: sales } = await saleQuery;
     if (!sales?.length) return [];
     const saleIds = sales.map((s: any) => s.id);
-    const { data: items } = await supabase
-      .from('sale_items')
-      .select('sale_id, product_id, quantity, unit_price, total, product:products(id, name, sku, cost_price, cost)')
-      .in('sale_id', saleIds);
+    const items = await getSaleLineItems('sale_id, product_id, quantity, unit_price, total, product:products(id, name, sku, cost_price, cost)', saleIds);
     const byProduct: Record<string, { revenue: number; cost: number }> = {};
-    (items || []).forEach((item: any) => {
+    items.forEach((item: any) => {
       const pid = item.product_id || (item.product as any)?.id;
       if (!pid) return;
       if (!byProduct[pid]) byProduct[pid] = { revenue: 0, cost: 0 };
@@ -658,7 +667,7 @@ export const accountingReportsService = {
   },
 
   /**
-   * Profit by Category: same as product but grouped by product category.
+   * Profit by Category: same as product but grouped by product category (sales_items / sale_items fallback).
    */
   async getProfitByCategory(
     companyId: string,
@@ -671,18 +680,15 @@ export const accountingReportsService = {
       .select('id')
       .eq('company_id', companyId)
       .eq('status', 'final')
-      .gte('sale_date', startDate.slice(0, 10))
-      .lte('sale_date', endDate.slice(0, 10));
+      .gte('invoice_date', startDate.slice(0, 10))
+      .lte('invoice_date', endDate.slice(0, 10));
     if (branchId) (saleQuery as any).eq('branch_id', branchId);
     const { data: sales } = await saleQuery;
     if (!sales?.length) return [];
     const saleIds = sales.map((s: any) => s.id);
-    const { data: items } = await supabase
-      .from('sale_items')
-      .select('sale_id, product_id, quantity, unit_price, total, product:products(id, category_id, cost_price, cost, category:product_categories(id, name))')
-      .in('sale_id', saleIds);
+    const items = await getSaleLineItems('sale_id, product_id, quantity, unit_price, total, product:products(id, category_id, cost_price, cost, category:product_categories(id, name))', saleIds);
     const byCategory: Record<string, { revenue: number; cost: number; name: string }> = {};
-    (items || []).forEach((item: any) => {
+    items.forEach((item: any) => {
       const cat = item.product?.category;
       const cid = cat?.id || 'uncategorized';
       const cname = cat?.name || 'Uncategorized';
@@ -707,7 +713,7 @@ export const accountingReportsService = {
   },
 
   /**
-   * Profit by Customer: aggregate sales + sale_items by customer_id.
+   * Profit by Customer: aggregate sales + sales_items (fallback sale_items) by customer_id.
    */
   async getProfitByCustomer(
     companyId: string,
@@ -720,18 +726,15 @@ export const accountingReportsService = {
       .select('id, customer_id, customer:contacts(id, name)')
       .eq('company_id', companyId)
       .eq('status', 'final')
-      .gte('sale_date', startDate.slice(0, 10))
-      .lte('sale_date', endDate.slice(0, 10));
+      .gte('invoice_date', startDate.slice(0, 10))
+      .lte('invoice_date', endDate.slice(0, 10));
     if (branchId) (saleQuery as any).eq('branch_id', branchId);
     const { data: sales } = await saleQuery;
     if (!sales?.length) return [];
     const saleIds = sales.map((s: any) => s.id);
-    const { data: items } = await supabase
-      .from('sale_items')
-      .select('sale_id, quantity, unit_price, total, product:products(cost_price, cost)')
-      .in('sale_id', saleIds);
+    const items = await getSaleLineItems('sale_id, quantity, unit_price, total, product:products(cost_price, cost)', saleIds);
     const byCustomer: Record<string, { revenue: number; cost: number; name: string }> = {};
-    (items || []).forEach((item: any) => {
+    items.forEach((item: any) => {
       const sale = sales.find((s: any) => s.id === item.sale_id);
       const cid = sale?.customer_id ?? 'walk-in';
       const cname = (sale?.customer as any)?.name || 'Walk-in';

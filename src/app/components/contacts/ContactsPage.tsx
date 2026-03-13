@@ -103,6 +103,7 @@ export const ContactsPage = () => {
   const [importModalOpen, setImportModalOpen] = useState(false);
   const filterRef = useRef<HTMLDivElement>(null);
   const filterTriggerRef = useRef<HTMLButtonElement>(null);
+  const loadContactsInProgressRef = useRef(false);
   const [filterPosition, setFilterPosition] = useState({ top: 0, left: 0 });
 
   // Convert Supabase contact to app format (receivables = due from customer, payables = due to supplier/worker)
@@ -181,6 +182,8 @@ export const ContactsPage = () => {
       setLoading(false);
       return;
     }
+    if (loadContactsInProgressRef.current) return;
+    loadContactsInProgressRef.current = true;
 
     const timeoutMs = 25000;
     let timeoutId: ReturnType<typeof setTimeout> | null = null;
@@ -242,6 +245,7 @@ export const ContactsPage = () => {
     } finally {
       if (timeoutId) clearTimeout(timeoutId);
       setLoading(false);
+      loadContactsInProgressRef.current = false;
     }
   }, [companyId, branchId, convertFromSupabaseContact]);
 
@@ -1282,7 +1286,7 @@ export const ContactsPage = () => {
           }}
           context={selectedContact.type === 'supplier' ? 'supplier' : 'customer'}
           entityName={selectedContact.name}
-          entityId={selectedContact.id.toString()}
+          entityId={selectedContact.uuid ?? selectedContact.id?.toString() ?? ''}
           outstandingAmount={
             selectedContact.type === 'supplier'
               ? selectedContact.payables

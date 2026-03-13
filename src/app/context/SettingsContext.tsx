@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef, ReactNode } from 'react';
 import { useSupabase } from './SupabaseContext';
 import { settingsService } from '@/app/services/settingsService';
 import { featureFlagsService } from '@/app/services/featureFlagsService';
@@ -479,14 +479,20 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
   // Feature Flags (Safe Zone – studio_production_v2, etc.)
   const [featureFlags, setFeatureFlags] = useState<Record<string, boolean>>({});
 
+  /** In-flight guard: prevent overlapping loadAllSettings (avoids "Timer 'loadAllSettings' already exists"). */
+  const loadAllSettingsInProgressRef = useRef(false);
+
   // ============================================
   // 🎯 LOAD SETTINGS FROM DATABASE
   // ============================================
 
   const loadAllSettings = useCallback(async () => {
+    if (loadAllSettingsInProgressRef.current) return;
+    loadAllSettingsInProgressRef.current = true;
     if (import.meta.env?.DEV) console.log('[PERM_DEBUG] loadAllSettings started; loading=true → isPermissionLoaded=false');
     if (!companyId) {
       setLoading(false);
+      loadAllSettingsInProgressRef.current = false;
       return;
     }
 
@@ -811,6 +817,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
       toast.error('Failed to load settings');
     } finally {
       setLoading(false);
+      loadAllSettingsInProgressRef.current = false;
       if (import.meta.env?.DEV) console.log('[PERM_DEBUG] loadAllSettings finished; loading=false → isPermissionLoaded=true');
     }
   }, [companyId, branchId, user?.id]);
