@@ -117,6 +117,12 @@ export interface Sale {
   salesmanId?: string | null;
   /** Commission amount stored on sale (for period reporting) */
   commissionAmount?: number;
+  /** pending | posted — only batch posting sets posted */
+  commissionStatus?: 'pending' | 'posted';
+  /** Set when posted via Commission Report */
+  commissionBatchId?: string | null;
+  /** Commission rate at time of sale (audit) */
+  commissionPercent?: number | null;
 }
 
 interface SalesContextType {
@@ -368,6 +374,9 @@ export const convertFromSupabaseSale = (supabaseSale: any): Sale => {
     show_studio_breakdown: !!(supabaseSale as any).show_studio_breakdown,
     salesmanId: supabaseSale.salesman_id ?? undefined,
     commissionAmount: supabaseSale.commission_amount != null ? Number(supabaseSale.commission_amount) : undefined,
+    commissionStatus: (supabaseSale as any).commission_status ?? undefined,
+    commissionBatchId: (supabaseSale as any).commission_batch_id ?? undefined,
+    commissionPercent: (supabaseSale as any).commission_percent != null ? Number((supabaseSale as any).commission_percent) : undefined,
   };
 };
 
@@ -385,7 +394,8 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
   const { modules, inventorySettings } = useSettings();
   const { formatCurrency } = useFormatCurrency();
 
-  // Load sales from database (paginated: 50 per page)
+  // Load sales from database (all up to cap for client-side filter/sort/pagination)
+  const SALES_LOAD_CAP = 5000;
   const loadSales = useCallback(async () => {
     if (!companyId) return;
     try {
@@ -393,7 +403,7 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
       const result = await saleService.getAllSales(
         companyId,
         branchId === 'all' ? undefined : branchId || undefined,
-        { offset: page * pageSize, limit: pageSize }
+        { offset: 0, limit: SALES_LOAD_CAP }
       );
       const isPaginated = result && typeof result === 'object' && 'data' in result && 'total' in result;
       const data = isPaginated ? (result as { data: any[]; total: number }).data : (result as any[]);
@@ -408,7 +418,7 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
     } finally {
       setLoading(false);
     }
-  }, [companyId, branchId, page, pageSize]);
+  }, [companyId, branchId]);
 
   const setPage = useCallback((p: number) => {
     setPageState(Math.max(0, p));
@@ -418,6 +428,8 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
     if (companyId) loadSales();
     else setLoading(false);
   }, [companyId, loadSales]);
+
+  // When page changes we do not refetch; SalesPage slices the loaded sales for display
 
   // Get sale by ID
   const getSaleById = (id: string): Sale | undefined => {
@@ -461,8 +473,8 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
       } else if (saleData.type === 'invoice' || saleData.status === 'final') {
         docType = 'invoice';
       }
-      // Global document number from DB: separate sequence per type (DRAFT, QT, SO, SL)
-      const sequenceType = docType === 'draft' ? 'DRAFT' : docType === 'quotation' ? 'QT' : docType === 'order' ? 'SO' : docType === 'studio' ? 'STD' : 'SL';
+      // Global document number from DB: separate sequence per type (DRAFT, QT, SO, SL, PS for POS)
+      const sequenceType = docType === 'draft' ? 'DRAFT' : docType === 'quotation' ? 'QT' : docType === 'order' ? 'SO' : docType === 'studio' ? 'STD' : docType === 'pos' ? 'PS' : 'SL';
       let invoiceNo: string;
       try {
         invoiceNo = await documentNumberService.getNextDocumentNumberGlobal(companyId, sequenceType);
@@ -541,6 +553,9 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
         salesman_id: salesmanIdVal,
         commission_amount: commissionAmountVal,
         commission_eligible_amount: saleData.subtotal ?? null,
+        commission_status: 'pending',
+        commission_batch_id: null,
+        commission_percent: (saleData as any).commissionPercent != null ? Number((saleData as any).commissionPercent) : null,
         // Do not send is_studio in insert – column may not exist yet; set via update after create
       };
 
@@ -926,51 +941,8 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
             }
           }
           
-          // Handle commission (if provided in saleData) - ONLY if accounting enabled
-          const commissionAmount = (saleData as any).commissionAmount || 0;
-          if (commissionAmount > 0) {
-            const salesmanId = (saleData as any).salesmanId || null;
-            const { error: commissionError } = await supabase.rpc('create_commission_journal_entry', {
-              p_sale_id: newSale.id,
-              p_company_id: companyId,
-              p_branch_id: effectiveBranchId,
-              p_commission_amount: commissionAmount,
-              p_salesperson_id: salesmanId,
-              p_invoice_no: newSale.invoiceNo
-            });
-            if (commissionError) {
-              console.error('[SALES CONTEXT] Error creating commission journal entry:', commissionError);
-            } else if (salesmanId && salesmanId !== 'none' && salesmanId !== '1' && UUID_REGEX.test(salesmanId)) {
-              // Sync to user ledger so commission shows in agent's ledger (only for valid user IDs)
-              try {
-                const { data: userRow } = await supabase
-                  .from('users')
-                  .select('full_name, email')
-                  .eq('id', salesmanId)
-                  .maybeSingle();
-                const salesmanName = (userRow as any)?.full_name || (userRow as any)?.email || 'Agent';
-                const ledger = await getOrCreateLedger(companyId, 'user', salesmanId, salesmanName);
-                if (ledger) {
-                  await addLedgerEntry({
-                    companyId,
-                    ledgerId: ledger.id,
-                    entryDate: newSale.date || new Date().toISOString().split('T')[0],
-                    debit: commissionAmount,
-                    credit: 0,
-                    source: 'commission',
-                    referenceNo: newSale.invoiceNo,
-                    referenceId: newSale.id,
-                    remarks: `Commission - ${newSale.invoiceNo}`,
-                  });
-                  if (typeof window !== 'undefined') {
-                    window.dispatchEvent(new CustomEvent('ledgerUpdated', { detail: { ledgerType: 'user', entityId: salesmanId } }));
-                  }
-                }
-              } catch (ledgerErr: any) {
-                console.warn('[SALES CONTEXT] User ledger commission entry failed:', ledgerErr?.message);
-              }
-            }
-          }
+          // Commission: NOT posted per sale. Stored on sale (commission_status=pending).
+          // Admin posts via Commission Report → "Post Commission" (batch) only.
           
           // Handle extra expenses - ONLY if accounting enabled
           const extraExpenses = (saleData as any).extraExpenses || [];
@@ -1183,6 +1155,13 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
       if ((updates as any).is_studio === true && typeof (updates as any).invoiceNo === 'string' && (updates as any).invoiceNo) {
         supabaseUpdates.invoice_no = (updates as any).invoiceNo;
       }
+      // When converting draft/quotation/order to final in edit mode, form sends new SL- invoice number – persist it
+      else if ((updates.status === 'final' || updates.type === 'invoice') && typeof (updates as any).invoiceNo === 'string' && (updates as any).invoiceNo) {
+        const inv = (updates as any).invoiceNo as string;
+        if (inv.startsWith('SL-') || inv.startsWith('INV-')) {
+          supabaseUpdates.invoice_no = inv;
+        }
+      }
       // Otherwise preserve invoice_no when editing (no change)
 
       if (updates.status !== undefined) supabaseUpdates.status = updates.status === 'invoice' ? 'final' : (updates.status as string);
@@ -1223,6 +1202,7 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
       }
       if ((updates as any).commissionAmount !== undefined) supabaseUpdates.commission_amount = Number((updates as any).commissionAmount) || 0;
       if ((updates as any).commissionEligibleAmount !== undefined) supabaseUpdates.commission_eligible_amount = (updates as any).commissionEligibleAmount;
+      if ((updates as any).commissionPercent !== undefined) supabaseUpdates.commission_percent = (updates as any).commissionPercent != null ? Number((updates as any).commissionPercent) : null;
 
       // 🔒 CRITICAL FIX: Calculate stock movement DELTA BEFORE updating sale_items
       // This must happen BEFORE sale_items are deleted/updated so we can fetch old items
@@ -1628,66 +1608,7 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
         await saleService.replaceSaleCharges(id, charges, user?.id ?? undefined);
       }
 
-      // Handle commission when updating to final (draft→final or edit with commission)
-      if (isFinalStatus && companyId) {
-        const commissionAmount = (updates as any).commissionAmount || 0;
-        const salesmanId = (updates as any).salesmanId || null;
-        if (commissionAmount > 0 && salesmanId && salesmanId !== 'none' && salesmanId !== '1' && UUID_REGEX.test(salesmanId)) {
-          try {
-            const { supabase } = await import('@/lib/supabase');
-            let effectiveBranchId = isValidBranchId(branchId) ? branchId : null;
-            if (!effectiveBranchId) {
-              const branches = await branchService.getAllBranches(companyId);
-              effectiveBranchId = branches?.length ? branches[0].id : null;
-            }
-            const saleForComm = sale || (await saleService.getSaleById(id));
-            const invoiceNo = saleForComm?.invoiceNo || id;
-            const { data: existingCommission } = await supabase
-              .from('journal_entries')
-              .select('id')
-              .eq('reference_type', 'sale')
-              .eq('reference_id', id)
-              .ilike('description', '%commission%')
-              .limit(1)
-              .maybeSingle();
-            if (!existingCommission) {
-              const { error: commissionError } = await supabase.rpc('create_commission_journal_entry', {
-                p_sale_id: id,
-                p_company_id: companyId,
-                p_branch_id: effectiveBranchId,
-                p_commission_amount: commissionAmount,
-                p_salesperson_id: salesmanId,
-                p_invoice_no: invoiceNo,
-              });
-              if (commissionError) {
-                console.error('[SALES CONTEXT] Error creating commission journal entry (update):', commissionError);
-              } else {
-                const { data: userRow } = await supabase.from('users').select('full_name, email').eq('id', salesmanId).maybeSingle();
-                const salesmanName = (userRow as any)?.full_name || (userRow as any)?.email || 'Agent';
-                const ledger = await getOrCreateLedger(companyId, 'user', salesmanId, salesmanName);
-                if (ledger) {
-                  await addLedgerEntry({
-                    companyId,
-                    ledgerId: ledger.id,
-                    entryDate: saleForComm?.date || new Date().toISOString().split('T')[0],
-                    debit: commissionAmount,
-                    credit: 0,
-                    source: 'commission',
-                    referenceNo: invoiceNo,
-                    referenceId: id,
-                    remarks: `Commission - ${invoiceNo}`,
-                  });
-                  if (typeof window !== 'undefined') {
-                    window.dispatchEvent(new CustomEvent('ledgerUpdated', { detail: { ledgerType: 'user', entityId: salesmanId } }));
-                  }
-                }
-              }
-            }
-          } catch (commErr: any) {
-            console.warn('[SALES CONTEXT] Commission handling in update failed:', commErr?.message);
-          }
-        }
-      }
+      // Commission: NOT posted per sale on update. Batch posting only via Commission Report.
 
       // 🔒 GOLDEN RULE: Payment MUST go to payments table, NEVER directly update sale.paid_amount
       // If updates.paid is provided, create/update payment record in payments table

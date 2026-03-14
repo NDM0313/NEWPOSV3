@@ -131,7 +131,27 @@ export const DayBookReport = ({ onVoucherClick, globalStartDate, globalEndDate }
 
   const totalDebit = entries.reduce((s, e) => s + e.debit, 0);
   const totalCredit = entries.reduce((s, e) => s + e.credit, 0);
-  const isBalanced = Math.abs(totalDebit - totalCredit) < 0.01;
+  const difference = totalDebit - totalCredit;
+  const ROUNDING_TOLERANCE = 0.02;
+  const isBalanced = Math.abs(difference) < ROUNDING_TOLERANCE;
+
+  // Analyse: which vouchers are unbalanced (sum of debit - sum of credit per voucher)
+  const byVoucher = new Map<string, { debit: number; credit: number }>();
+  for (const e of entries) {
+    const cur = byVoucher.get(e.voucher) ?? { debit: 0, credit: 0 };
+    cur.debit += e.debit;
+    cur.credit += e.credit;
+    byVoucher.set(e.voucher, cur);
+  }
+  const unbalancedVouchers = [...byVoucher.entries()]
+    .filter(([, v]) => Math.abs(v.debit - v.credit) >= ROUNDING_TOLERANCE)
+    .map(([voucher]) => voucher);
+
+  // Display-only adjustment: one row so totals show balanced (standard practice for rounding)
+  const adjustmentDebit = difference < -ROUNDING_TOLERANCE ? Math.abs(difference) : 0;
+  const adjustmentCredit = difference > ROUNDING_TOLERANCE ? difference : 0;
+  const displayTotalDebit = totalDebit + adjustmentDebit;
+  const displayTotalCredit = totalCredit + adjustmentCredit;
 
   const exportData = {
     headers: ['Date & Time', 'Voucher #', 'Account', 'Description', 'Debit (₨)', 'Credit (₨)', 'Type'],
@@ -196,7 +216,7 @@ export const DayBookReport = ({ onVoucherClick, globalStartDate, globalEndDate }
                 {entries.map((e, i) => (
                   <tr key={e.id} className={cn('hover:bg-gray-800/30', i % 2 === 0 ? 'bg-gray-950/30' : 'bg-gray-900/20')}>
                     <td className="px-4 py-3 text-gray-300 whitespace-nowrap">
-                      <DateTimeDisplay date={e.createdAt} />
+                      <DateTimeDisplay date={e.createdAt} className="flex flex-col leading-tight" />
                     </td>
                     <td className="px-4 py-3 font-mono text-gray-300">
                       {onVoucherClick ? (
@@ -236,6 +256,23 @@ export const DayBookReport = ({ onVoucherClick, globalStartDate, globalEndDate }
                     </td>
                   </tr>
                 ))}
+                {!isBalanced && (adjustmentDebit > 0 || adjustmentCredit > 0) && (
+                  <tr className="bg-amber-950/30 border-t border-amber-700/50">
+                    <td className="px-4 py-3 text-gray-500 italic">—</td>
+                    <td className="px-4 py-3 font-mono text-amber-400">—</td>
+                    <td className="px-4 py-3 text-amber-400/90 italic">Rounding / Unbalanced difference</td>
+                    <td className="px-4 py-3 text-amber-500/80 italic text-xs">Display-only adjustment so totals balance</td>
+                    <td className="px-4 py-3 text-right font-mono text-green-400">
+                      {adjustmentDebit > 0 ? adjustmentDebit.toLocaleString() : '—'}
+                    </td>
+                    <td className="px-4 py-3 text-right font-mono text-red-400">
+                      {adjustmentCredit > 0 ? adjustmentCredit.toLocaleString() : '—'}
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      <span className="px-2 py-0.5 rounded text-xs font-medium bg-amber-500/20 text-amber-400">Journal</span>
+                    </td>
+                  </tr>
+                )}
               </tbody>
               <tfoot className="bg-gray-900 border-t-2 border-gray-700">
                 <tr>
@@ -243,10 +280,10 @@ export const DayBookReport = ({ onVoucherClick, globalStartDate, globalEndDate }
                     Totals
                   </td>
                   <td className="px-4 py-3 text-right font-bold text-green-400">
-                    ₨ {totalDebit.toLocaleString()}
+                    ₨ {displayTotalDebit.toLocaleString()}
                   </td>
                   <td className="px-4 py-3 text-right font-bold text-red-400">
-                    ₨ {totalCredit.toLocaleString()}
+                    ₨ {displayTotalCredit.toLocaleString()}
                   </td>
                   <td />
                 </tr>
@@ -259,9 +296,18 @@ export const DayBookReport = ({ onVoucherClick, globalStartDate, globalEndDate }
               <p className="text-green-400 text-center font-medium">✓ Debit = Credit – Balanced Day Book</p>
             </div>
           ) : (
-            <div className="p-4 bg-red-900/20 border border-red-500/30 rounded-xl">
+            <div className="p-4 bg-red-900/20 border border-red-500/30 rounded-xl space-y-2">
               <p className="text-red-400 text-center font-medium">
-                ⚠ Unbalanced! Difference: ₨ {Math.abs(totalDebit - totalCredit).toLocaleString()}
+                ⚠ Unbalanced! Difference: ₨ {Math.abs(difference).toLocaleString()}
+                {unbalancedVouchers.length > 0 && (
+                  <span className="block text-amber-300/90 text-sm mt-1">
+                    Unbalanced voucher(s): {unbalancedVouchers.slice(0, 10).join(', ')}
+                    {unbalancedVouchers.length > 10 ? ` +${unbalancedVouchers.length - 10} more` : ''}
+                  </span>
+                )}
+              </p>
+              <p className="text-gray-400 text-center text-xs">
+                A &quot;Rounding / Unbalanced difference&quot; row has been added above so totals display balanced. Correct the journal entries for the voucher(s) above to fix the underlying data.
               </p>
             </div>
           )}

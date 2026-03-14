@@ -53,14 +53,27 @@ function safeStorage(): Storage {
     return memoryFallback();
   }
 }
+// Never throw – avoids "SecurityError: The request was denied" when storage is blocked (iframe, strict privacy)
 function memoryFallback(): Storage {
   return {
-    getItem: (key: string) => memoryStore[key] ?? null,
-    setItem: (key: string, value: string) => { memoryStore[key] = value; },
-    removeItem: (key: string) => { delete memoryStore[key]; },
-    key: (i: number) => Object.keys(memoryStore)[i] ?? null,
-    length: Object.keys(memoryStore).length,
-    clear: () => { for (const k of Object.keys(memoryStore)) delete memoryStore[k]; },
+    getItem: (key: string) => {
+      try { return memoryStore[key] ?? null; } catch { return null; }
+    },
+    setItem: (key: string, value: string) => {
+      try { memoryStore[key] = value; } catch { /* no-op */ }
+    },
+    removeItem: (key: string) => {
+      try { delete memoryStore[key]; } catch { /* no-op */ }
+    },
+    key: (i: number) => {
+      try { return Object.keys(memoryStore)[i] ?? null; } catch { return null; }
+    },
+    get length() {
+      try { return Object.keys(memoryStore).length; } catch { return 0; }
+    },
+    clear: () => {
+      try { for (const k of Object.keys(memoryStore)) delete memoryStore[k]; } catch { /* no-op */ }
+    },
   };
 }
 

@@ -64,6 +64,8 @@ export interface AccountingEntry {
     attachments?: { url: string; name: string }[];
     /** Optional user reference (e.g. voucher no); saved with description, primary reference is always entry_no. */
     optionalReference?: string;
+    /** Journal entry created_at for date+time display (ISO string). */
+    createdAt?: string;
   };
 }
 
@@ -327,6 +329,7 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
       referenceType: journalEntry.reference_type,
       paymentId: journalEntry.payment_id,
       paymentMethod: paymentMethod,
+      createdAt: (journalEntry as { created_at?: string }).created_at ?? undefined,
     };
     
     if (journalEntry.reference_id) {

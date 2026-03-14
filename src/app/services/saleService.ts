@@ -67,8 +67,14 @@ export interface Sale {
   salesman_id?: string | null;
   /** Commission amount stored on sale for period reporting. */
   commission_amount?: number;
-  /** Base amount used for commission calculation (e.g. subtotal). */
+  /** Base amount used for commission calculation (e.g. subtotal, excludes shipping/freight). */
   commission_eligible_amount?: number | null;
+  /** pending = not posted to ledger; posted = included in a commission batch */
+  commission_status?: 'pending' | 'posted';
+  /** Set when commission is posted via Generate to Ledger */
+  commission_batch_id?: string | null;
+  /** Commission rate at time of sale (for audit). */
+  commission_percent?: number | null;
 }
 
 export interface SaleItem {
@@ -675,20 +681,8 @@ export const saleService = {
       );
     }
 
-    // Integration: Commission Calculation
-    if (status === 'final' && data.salesman_id) {
-      employeeService.getEmployeeByUser(data.salesman_id).then(emp => {
-        if (emp && emp.commission_rate > 0) {
-          const commissionAmount = (Number(data.total) * Number(emp.commission_rate)) / 100;
-          if (commissionAmount > 0) {
-            employeeService.addLedgerEntry(
-              emp.id, 'commission', commissionAmount, 
-              `Commission for Invoice ${data.invoice_no}`, data.id
-            );
-          }
-        }
-      });
-    }
+    // Commission: NOT posted here. Stored on sale (commission_amount, commission_status=pending).
+    // Admin posts via Commission Report → "Post Commission" (batch) only.
 
     return data;
   },
@@ -1361,7 +1355,7 @@ export const saleService = {
     }
 
     // FALLBACK: If no payments found by reference_id, check if sale has paid_amount > 0
-    // This handles cases where paid_amount was set but payment records are missing
+    // This handles cases where paid_amount was set but payment records are missing (e.g. legacy data)
     try {
       const { data: saleData } = await supabase
         .from('sales')
@@ -1370,13 +1364,14 @@ export const saleService = {
         .single();
 
       if (saleData && saleData.paid_amount > 0) {
-        console.warn('[SALE SERVICE] ⚠️ Sale has paid_amount > 0 but no payment records found!', {
-          saleId,
-          invoiceNo: saleData.invoice_no,
-          paidAmount: saleData.paid_amount
-        });
-        // Return empty array - payments are missing, need to be created
-        // TODO: Could auto-create payment record here, but that's risky without user confirmation
+        // Warn only once per sale per session to avoid console spam when SalesPage loads many sales
+        if (!(saleService as any)._paidAmountWarningIds) (saleService as any)._paidAmountWarningIds = new Set<string>();
+        const warned = (saleService as any)._paidAmountWarningIds as Set<string>;
+        if (!warned.has(saleId)) {
+          warned.add(saleId);
+          console.warn('[SALE SERVICE] Sale has paid_amount > 0 but no payment rows in payments table (legacy or missing sync). Sale:', saleData.invoice_no, 'Paid:', saleData.paid_amount);
+        }
+        // Return empty array - UI will show paid_amount from sale; consider creating payment records via Accounting or repair script
       }
     } catch (saleError) {
       console.error('[SALE SERVICE] Error checking sale paid_amount:', saleError);

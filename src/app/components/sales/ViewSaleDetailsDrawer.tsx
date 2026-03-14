@@ -186,6 +186,7 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
   const [showStudioBreakdown, setShowStudioBreakdown] = useState(true);
   const [studioV3Breakdown, setStudioV3Breakdown] = useState<{ stage_name: string; worker_name: string | null; worker_cost: number; type: string }[]>([]);
   const [loadingStudioV3Breakdown, setLoadingStudioV3Breakdown] = useState(false);
+  const [salesmanName, setSalesmanName] = useState<string | null>(null);
 
   const handleShareWhatsApp = useCallback(() => {
     if (!sale) return;
@@ -500,6 +501,23 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
       .catch(() => setSaleReturns([]))
       .finally(() => setLoadingSaleReturns(false));
   }, [companyId, saleId, sale?.id, (sale as any)?.status]);
+
+  const salesmanId = (sale as any)?.salesmanId ?? (sale as any)?.salesman_id;
+  useEffect(() => {
+    if (!salesmanId || salesmanId === 'none' || salesmanId === '1') {
+      setSalesmanName(null);
+      return;
+    }
+    setSalesmanName(null);
+    supabase
+      .from('users')
+      .select('full_name, email')
+      .eq('id', salesmanId)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (data) setSalesmanName((data as any).full_name || (data as any).email || 'Unknown');
+      });
+  }, [salesmanId]);
 
   if (!isOpen || !saleId) return null;
 
@@ -819,6 +837,39 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
                   </div>
                 </div>
               </div>
+
+              {/* Salesman & Commission (when applicable) — Salesman = commission/report ownership; Created By = who created the record */}
+              {(salesmanId || (sale as any).commissionAmount > 0) && (
+                <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-5">
+                  <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-4 flex items-center gap-2">
+                    <UserCheck size={16} />
+                    Salesman & Commission
+                  </h3>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+                    <div>
+                      <p className="text-xs text-gray-500 mb-1">Salesman (commission/report)</p>
+                      <p className="text-white font-medium">{salesmanName ?? (salesmanId ? '…' : '—')}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-gray-500 mb-1">Commission %</p>
+                      <p className="text-white">{(sale as any).commissionPercent != null ? `${Number((sale as any).commissionPercent)}%` : '—'}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-gray-500 mb-1">Commission Amount</p>
+                      <p className="text-white font-medium text-green-400">{formatCurrency(Number((sale as any).commissionAmount) || 0)}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-gray-500 mb-1">Commission Status</p>
+                      <span className={cn(
+                        'text-sm font-medium',
+                        (sale as any).commissionStatus === 'posted' ? 'text-blue-400' : 'text-amber-400'
+                      )}>
+                        {(sale as any).commissionStatus === 'posted' ? 'Posted' : 'Pending'}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* Status Cards */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

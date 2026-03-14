@@ -26,15 +26,17 @@ else
   echo "[fix-supabase-kong] Supabase .env not found at $SUPABASE_ENV, skipping."
 fi
 
-# 2a. Ensure SITE_URL and redirect allow-list for Auth (GoTrue) before restart
+# 2a. Ensure SITE_URL and redirect allow-list for Auth (GoTrue) so login persists
 if [ -f "$SUPABASE_ENV" ]; then
   SITE_URL_VAL="https://erp.dincouture.pk"
   REDIRECT_LIST="https://erp.dincouture.pk,https://erp.dincouture.pk/,https://erp.dincouture.pk/**"
-  if grep -q "^SITE_URL=" "$SUPABASE_ENV" 2>/dev/null; then
-    sed -i "s|^SITE_URL=.*|SITE_URL=$SITE_URL_VAL|" "$SUPABASE_ENV"
-  else
-    echo "SITE_URL=$SITE_URL_VAL" >> "$SUPABASE_ENV"
-  fi
+  for key in SITE_URL GOTRUE_SITE_URL; do
+    if grep -q "^${key}=" "$SUPABASE_ENV" 2>/dev/null; then
+      sed -i "s|^${key}=.*|${key}=$SITE_URL_VAL|" "$SUPABASE_ENV"
+    else
+      echo "${key}=$SITE_URL_VAL" >> "$SUPABASE_ENV"
+    fi
+  done
   if grep -q "^ADDITIONAL_REDIRECT_URLS=" "$SUPABASE_ENV" 2>/dev/null; then
     sed -i "s|^ADDITIONAL_REDIRECT_URLS=.*|ADDITIONAL_REDIRECT_URLS=$REDIRECT_LIST|" "$SUPABASE_ENV"
   else
@@ -45,7 +47,7 @@ if [ -f "$SUPABASE_ENV" ]; then
   else
     echo "GOTRUE_URI_ALLOW_LIST=$REDIRECT_LIST" >> "$SUPABASE_ENV"
   fi
-  echo "[fix-supabase-kong] SITE_URL and redirect allow-list set for erp.dincouture.pk"
+  echo "[fix-supabase-kong] SITE_URL, GOTRUE_SITE_URL and redirect allow-list set for erp.dincouture.pk"
 fi
 
 # 2. Sync Kong anon key to ERP .env.production only (do NOT write back to Supabase .env - JWT fix owns ANON_KEY there)
@@ -70,14 +72,15 @@ else
   echo "[fix-supabase-kong] Kong container not found, skip key sync and restart."
 fi
 
-# 3. Ensure ERP .env has correct Supabase URL (not erp.dincouture.pk)
+# 3. Ensure ERP .env uses same-origin (erp.dincouture.pk) so browser only hits ERP; nginx in container proxies /auth/, /rest/ to Kong
+ERP_ORIGIN="https://erp.dincouture.pk"
 if [ -f "$ERP_ENV" ]; then
   if grep -q '^VITE_SUPABASE_URL=' "$ERP_ENV"; then
-    sed -i "s|^VITE_SUPABASE_URL=.*|VITE_SUPABASE_URL=$DOMAIN_URL|" "$ERP_ENV"
+    sed -i "s|^VITE_SUPABASE_URL=.*|VITE_SUPABASE_URL=$ERP_ORIGIN|" "$ERP_ENV"
   else
-    echo "VITE_SUPABASE_URL=$DOMAIN_URL" >> "$ERP_ENV"
+    echo "VITE_SUPABASE_URL=$ERP_ORIGIN" >> "$ERP_ENV"
   fi
-  echo "[fix-supabase-kong] VITE_SUPABASE_URL=$DOMAIN_URL in .env.production"
+  echo "[fix-supabase-kong] VITE_SUPABASE_URL=$ERP_ORIGIN (same-origin) in .env.production"
 fi
 
 echo "[fix-supabase-kong] Done. Rebuild ERP if needed; test: curl -sI -H 'apikey: YOUR_ANON_KEY' $DOMAIN_URL/auth/v1/health"

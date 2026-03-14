@@ -169,13 +169,12 @@ fi
 # --- Storage JWT fix (Studio "Failed to retrieve buckets") before .env so Kong gets new keys ---
 [ -f deploy/fix-supabase-storage-jwt.sh ] && bash deploy/fix-supabase-storage-jwt.sh || true
 
-# --- Auto-fix .env.production (VPS: use Supabase API URL + Kong anon key) ---
-SUPABASE_API_URL="https://supabase.dincouture.pk"
+# --- Auto-fix .env.production (VPS: same-origin so app calls erp.dincouture.pk → nginx proxies /auth|rest to Kong; no CORS) ---
+ERP_ORIGIN="https://erp.dincouture.pk"
 ANON_KEY=""
 [ -f .env.production ] && source .env.production 2>/dev/null || true
-# Correct URL: app must call Supabase API (Kong), not the ERP app URL
-if [ -z "$VITE_SUPABASE_URL" ] || [ "$VITE_SUPABASE_URL" = "https://erp.dincouture.pk" ] || [ "$VITE_SUPABASE_URL" = "https://your-supabase-api-url" ]; then
-  VITE_SUPABASE_URL="$SUPABASE_API_URL"
+if [ -z "$VITE_SUPABASE_URL" ] || [ "$VITE_SUPABASE_URL" = "https://supabase.dincouture.pk" ] || [ "$VITE_SUPABASE_URL" = "https://your-supabase-api-url" ]; then
+  VITE_SUPABASE_URL="$ERP_ORIGIN"
 fi
 # Get anon key from Kong (same VPS) or Supabase docker .env
 if docker ps --format '{{.Names}}' | grep -q 'supabase-kong'; then
@@ -196,6 +195,8 @@ echo "[deploy] Using VITE_SUPABASE_URL=$VITE_SUPABASE_URL"
 
 # Kong fix BEFORE build so app image gets correct anon key (avoids "Invalid authentication credentials")
 [ -f deploy/fix-supabase-kong-domain.sh ] && bash deploy/fix-supabase-kong-domain.sh || true
+# CORS: allow https://erp.dincouture.pk so auth returns JSON (no "request was denied" / "is not valid JSON")
+[ -f deploy/add-kong-cors-erp-origin.sh ] && bash deploy/add-kong-cors-erp-origin.sh || true
 source .env.production
 # Ensure mobile source has latest login UI (4 buttons, "auto-fills"); fail so user runs git pull
 if ! grep -q "auto-fills and signs in" erp-mobile-app/src/components/LoginScreen.tsx 2>/dev/null; then

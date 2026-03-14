@@ -172,16 +172,18 @@ interface ExtraExpense {
 
 interface SaleFormProps {
   sale?: any; // Sale data for edit mode
+  /** When true (Convert to Final flow): on Save, create new sale with new invoice number and delete the draft. */
+  convertToFinal?: boolean;
   onClose: () => void;
 }
 
-export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
+export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFormProps) => {
     // Supabase & Context
     const { companyId, branchId: contextBranchId, user, userRole, accessibleBranchIds, requiresBranchSelection } = useSupabase();
     const { canManageSettings } = useCheckPermission();
     const { inventorySettings, loading: settingsLoading, company } = useSettings();
     const enablePacking = inventorySettings.enablePacking;
-    const { createSale, updateSale } = useSales();
+    const { createSale, updateSale, deleteSale } = useSales();
     const { openDrawer, closeDrawer, activeDrawer, createdContactId, createdContactType, setCreatedContactId, openPackingModal, setCurrentView, setSelectedStudioSaleId } = useNavigation();
     
     // Permission-based: settings access allows branch selection and full branch list (was role === 'admin')
@@ -193,8 +195,8 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     
-    // Salesmen - Load from userService
-    const [salesmen, setSalesmen] = useState<Array<{ id: string; name: string; code?: string }>>([
+    // Salesmen - Load from userService (default_commission_percent used when salesman selected for new sale)
+    const [salesmen, setSalesmen] = useState<Array<{ id: string; name: string; code?: string; defaultCommissionPercent?: number | null }>>([
         { id: 'none', name: "No Salesman" }
     ]);
     
@@ -301,20 +303,34 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
     const [commissionType, setCommissionType] = useState<'percentage' | 'fixed'>('percentage');
     const [commissionValue, setCommissionValue] = useState<number>(0);
     
-    // TASK 4 FIX - Auto-assign salesman for normal users on mount
+    // TASK 4 FIX - Auto-assign salesman for non-admin when creating sale: match by user id first, then by name
     useEffect(() => {
-      if (!isAdmin && user && salesmanId === "1") {
-        // Try to find user in salesmen list
-        const userSalesman = salesmen.find(s => 
-          s.name === user.email || 
-          s.name === (user.user_metadata?.full_name || '') ||
-          s.name === (user.user_metadata?.name || '')
+      if (!isAdmin && user && (salesmanId === "1" || salesmanId === "none")) {
+        const byId = salesmen.find(s => s.id === (user as any).id);
+        const byName = !byId && salesmen.find(s =>
+          s.name === (user as any).email ||
+          s.name === ((user as any).user_metadata?.full_name || '') ||
+          s.name === ((user as any).user_metadata?.name || '')
         );
+        const userSalesman = byId || byName;
         if (userSalesman) {
           setSalesmanId(userSalesman.id.toString());
         }
       }
-    }, [isAdmin, user, salesmanId]);
+    }, [isAdmin, user, salesmanId, salesmen]);
+
+    // When a salesman is selected on a NEW sale, auto-fill commission from their default % (admin can override per invoice)
+    // On edit we do not overwrite: saved commission stays until user changes it
+    useEffect(() => {
+      if (initialSale?.id || !salesmanId || salesmanId === '1' || salesmanId === 'none') return;
+      const sm = salesmen.find(s => s.id === salesmanId);
+      const pct = sm?.defaultCommissionPercent;
+      // Include 0 so default 0% shows clearly in the field
+      if (pct != null) {
+        setCommissionType('percentage');
+        setCommissionValue(Number(pct));
+      }
+    }, [salesmanId, salesmen, initialSale?.id]);
 
     // Shipping Charge – amount charged to customer (saved in sale_shipments.charged_to_customer when shipment exists)
     const [shippingChargeInput, setShippingChargeInput] = useState<number>(0);
@@ -792,7 +808,8 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                     ...users.map((user: UserType) => ({
                         id: user.id,
                         name: user.full_name || user.email,
-                        code: user.user_code || ''
+                        code: user.user_code || '',
+                        defaultCommissionPercent: user.default_commission_percent != null ? Number(user.default_commission_percent) : null
                     }))
                 ];
                 setSalesmen(salesmenList);
@@ -1079,7 +1096,7 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
             }
             setSavedSaleAttachments(Array.isArray((initialSale as any)?.attachments) ? (initialSale as any).attachments : []);
             setInvoiceNumber(initialSale.invoiceNo || '');
-            setRefNumber('');
+            setRefNumber((initialSale as any).reference ?? (initialSale as any).ref_no ?? '');
             // Load notes; for studio sales set studioDeadline and Studio Notes input (studioNotes) so full note shows
             const { deadline, notesWithoutDeadline } = parseStudioDeadlineFromNotes(initialSale.notes);
             const loadedNotes = notesWithoutDeadline || '';
@@ -1312,8 +1329,11 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                 setDiscountType('fixed'); // Default to fixed, can be enhanced
             }
             
-            // Pre-fill status
-            if (initialSale.type === 'quotation') {
+            // Pre-fill status from DB so draft stays draft when reopening (draft lifecycle fix)
+            const savedStatus = (initialSale as any).status ?? initialSale.type;
+            if (savedStatus === 'draft' || savedStatus === 'quotation' || savedStatus === 'order' || savedStatus === 'final') {
+                setSaleStatus(savedStatus);
+            } else if (initialSale.type === 'quotation') {
                 setSaleStatus('quotation');
             } else {
                 setSaleStatus('final');
@@ -1451,9 +1471,17 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
         return 'text-gray-500'; // Zero
     };
 
-    // Display invoice number: actual when editing, preview when new (draft/final/studio)
+    // Display invoice number: when editing draft/qt/order and user selected Final → show next SL- (preview); else actual or new preview
     const displayInvoiceNumber = useMemo(() => {
-        if (initialSale?.invoiceNo) return initialSale.invoiceNo;
+        if (initialSale?.invoiceNo) {
+            const inv = initialSale.invoiceNo;
+            // User selected Final in edit mode: show the SL- number they will get on save (not DRAFT-0005)
+            if (saleStatus === 'final' && (inv.startsWith('DRAFT-') || inv.startsWith('QT-') || inv.startsWith('SO-'))) {
+                if (typeof generateDocumentNumber === 'function') return generateDocumentNumber('invoice');
+                return 'SL-0001';
+            }
+            return inv;
+        }
         if (typeof generateDocumentNumber !== 'function') return 'SL-0001';
         if (isStudioSale) return generateDocumentNumber('studio');
         const docType = saleStatus === 'final' ? 'invoice' : saleStatus === 'quotation' ? 'quotation' : saleStatus === 'order' ? 'order' : 'draft';
@@ -1933,22 +1961,28 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                     documentType = 'studio';
                     documentNumber = generateDocumentNumber('studio');
                 } else {
-                    documentNumber = initialSale.invoiceNo;
-                    // Determine document type from existing invoice number prefix
-                    if (documentNumber.startsWith('DRAFT-')) {
-                        documentType = 'draft';
-                    } else if (documentNumber.startsWith('QT-')) {
-                        documentType = 'quotation';
-                    } else if (documentNumber.startsWith('SO-')) {
-                        documentType = 'order';
-                    } else if (documentNumber.startsWith('SL-') || documentNumber.startsWith('INV-')) {
+                    // When user changed status to Final in edit mode, use new SL- number (don't keep DRAFT-)
+                    if (saleStatus === 'final' && (initialSale.invoiceNo?.startsWith('DRAFT-') || initialSale.invoiceNo?.startsWith('QT-') || initialSale.invoiceNo?.startsWith('SO-'))) {
+                        documentNumber = generateDocumentNumber('invoice');
                         documentType = 'invoice';
-                    } else if (documentNumber.startsWith('STD-') || documentNumber.startsWith('ST-')) {
-                        documentType = 'studio'; // STD is canonical; ST- for legacy
                     } else {
-                        documentType = saleStatus === 'final' ? (isStudioSale ? 'studio' : 'invoice') : 
-                                      saleStatus === 'quotation' ? 'quotation' :
-                                      saleStatus === 'order' ? 'order' : 'draft';
+                        documentNumber = initialSale.invoiceNo;
+                        // Determine document type from existing invoice number prefix
+                        if (documentNumber.startsWith('DRAFT-')) {
+                            documentType = 'draft';
+                        } else if (documentNumber.startsWith('QT-')) {
+                            documentType = 'quotation';
+                        } else if (documentNumber.startsWith('SO-')) {
+                            documentType = 'order';
+                        } else if (documentNumber.startsWith('SL-') || documentNumber.startsWith('INV-')) {
+                            documentType = 'invoice';
+                        } else if (documentNumber.startsWith('STD-') || documentNumber.startsWith('ST-')) {
+                            documentType = 'studio'; // STD is canonical; ST- for legacy
+                        } else {
+                            documentType = saleStatus === 'final' ? (isStudioSale ? 'studio' : 'invoice') : 
+                                          saleStatus === 'quotation' ? 'quotation' :
+                                          saleStatus === 'order' ? 'order' : 'draft';
+                        }
                     }
                 }
             } else {
@@ -1997,8 +2031,9 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
             const branchSelectionRequired = accessibleBranches.length > 1;
             if (branchSelectionRequired && !isValidBranch) {
                 toast.error('Please select a branch before saving');
+                saveInProgressRef.current = false;
                 setSaving(false);
-                return;
+                return null;
             }
             // Only show "no branch" error when we truly have no valid branch (e.g. single-branch context may have set contextBranchId before branches list loaded)
             if (!isValidBranch && (requiresBranchSelection || (accessibleBranches.length === 0 && !isAdmin))) {
@@ -2007,8 +2042,9 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                         ? 'Your user is not assigned to any branch. Ask admin to assign a branch.'
                         : 'No branch available. Please contact admin.'
                 );
+                saveInProgressRef.current = false;
                 setSaving(false);
-                return;
+                return null;
             }
             
             // Create sale data
@@ -2050,6 +2086,7 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                 shippingCharges: effectiveShippingCharges,
                 commissionAmount: commissionAmount,
                 salesmanId: (salesmanId && salesmanId !== "1" && salesmanId !== "none") ? salesmanId : null,
+                commissionPercent: commissionType === 'percentage' ? commissionValue : null,
                 // CRITICAL FIX: Pass partialPayments array for splitting into separate payment records
                 partialPayments: (effectiveFinal && partialPayments.length > 0) ? partialPayments : [],
                 // Studio sale: show on Studio page and use studio invoice numbering
@@ -2057,6 +2094,73 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                 is_studio: isStudioSale
             };
             
+            // Convert to Final flow: create new sale (new invoice number) then delete the draft
+            if (convertToFinal && initialSale?.id) {
+                const draftIdToDelete = initialSale.id;
+                // Force next invoice number (SL-xxxx); do not reuse draft number
+                const nextInvoiceNo = generateDocumentNumber('invoice');
+                const saleDataForNew = { ...saleData, invoiceNo: nextInvoiceNo };
+                const created = await createSale(saleDataForNew);
+                if (!created?.id) {
+                    toast.error('Failed to create final sale.');
+                    return null;
+                }
+                try {
+                    await deleteSale(draftIdToDelete);
+                } catch (delErr: any) {
+                    console.warn('[SALE FORM] Draft could not be deleted after creating final sale:', delErr);
+                    toast.warning('Final sale created but draft could not be removed. You may delete it manually.');
+                }
+                // Post-create: shipment, attachments, increment, toast
+                if (created.id && (shippingChargeInput || 0) > 0 && companyId && finalBranchId) {
+                    try {
+                        await shipmentService.create(
+                            created.id,
+                            companyId,
+                            finalBranchId,
+                            { shipment_type: 'Courier', charged_to_customer: shippingChargeInput, actual_cost: 0, currency: 'PKR', shipment_status: 'Pending' },
+                            undefined,
+                            nextInvoiceNo
+                        );
+                    } catch (shipErr: any) {
+                        console.warn('[SALE FORM] Shipment record for shipping charge could not be created:', shipErr?.message);
+                    }
+                }
+                if (created.id && saleAttachmentFiles.length > 0 && companyId) {
+                    try {
+                        const uploaded = await uploadSaleAttachments(companyId, created.id, saleAttachmentFiles);
+                        if (uploaded.length > 0) await updateSale(created.id, { attachments: uploaded } as any);
+                        setSaleAttachmentFiles([]);
+                        setSavedSaleAttachments(uploaded);
+                    } catch (e) {
+                        console.warn('[SALE FORM] Attachment upload failed:', e);
+                        toast.warning('Sale created but some attachments could not be uploaded.');
+                    }
+                }
+                incrementNextNumber('invoice');
+                toast.success(`Draft converted to final. New invoice ${nextInvoiceNo} created; draft removed.`);
+                setSavedSaleId(created.id);
+                setSavedSaleInvoiceNo(nextInvoiceNo);
+                if (print) {
+                    try {
+                        const full = await saleService.getSaleById(created.id);
+                        const saleToPrint = full ? convertFromSupabaseSale(full) : null;
+                        if (saleToPrint) {
+                            setSaleForPrint(saleToPrint);
+                            setShowPrintLayout(true);
+                        }
+                    } catch (e) {
+                        toast.warning('Sale saved. Open it from the list to print.');
+                    }
+                    return { saleId: created.id, invoiceNo: nextInvoiceNo };
+                }
+                if (shouldOpenPaymentDialog) {
+                    return { saleId: created.id, invoiceNo: nextInvoiceNo };
+                }
+                onClose();
+                return { saleId: created.id, invoiceNo: nextInvoiceNo };
+            }
+
             // CRITICAL FIX: Check if editing existing sale
             if (initialSale && initialSale.id) {
                 // EDIT MODE: Update existing sale (invoice number updated when converting to Studio)
@@ -2077,6 +2181,10 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                 // If we regenerated invoice for Studio conversion, consume studio number so next studio sale gets next STD
                 if (isStudioSale && !initialSale.invoiceNo.startsWith('STD-') && !initialSale.invoiceNo.startsWith('ST-')) {
                     incrementNextNumber('studio');
+                }
+                // If we converted draft/quotation/order to final, we used a new SL- number – consume it so next sale gets next number
+                if (documentType === 'invoice' && (initialSale.invoiceNo?.startsWith('DRAFT-') || initialSale.invoiceNo?.startsWith('QT-') || initialSale.invoiceNo?.startsWith('SO-'))) {
+                    incrementNextNumber('invoice');
                 }
                 toast.success(`Sale ${documentNumber} updated successfully!`);
                 
@@ -2258,8 +2366,47 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                                     ? (settingsLoading ? 'Loading...' : '...')
                                     : displayInvoiceNumber}
                             </span>
+                        </div>
+                        {/* Type (Regular / Studio) - in header row */}
+                        <Popover open={typeDropdownOpen} onOpenChange={setTypeDropdownOpen}>
+                            <PopoverTrigger asChild>
+                                <button
+                                    type="button"
+                                    className="flex items-center gap-2 bg-gray-900/50 border border-gray-800 rounded-lg px-2.5 py-1 hover:bg-gray-800 transition-colors cursor-pointer h-8"
+                                >
+                                    <Tag size={14} className="text-gray-500 shrink-0" />
+                                    <span className="text-xs text-white capitalize">{isStudioSale ? 'Studio' : 'Regular'}</span>
+                                    <ChevronRight size={12} className="text-gray-500 rotate-90 shrink-0" />
+                                </button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-48 bg-gray-900 border-gray-800 text-white p-2" align="start">
+                                <div className="space-y-1">
+                                    {(['regular', 'studio'] as const).map((t) => (
+                                        <button
+                                            key={t}
+                                            type="button"
+                                            onClick={() => {
+                                                setIsStudioSale(t === 'studio');
+                                                if (t === 'studio') setShippingEnabled(false);
+                                                setTypeDropdownOpen(false);
+                                            }}
+                                            className={cn(
+                                                'w-full text-left px-3 py-2 rounded-md text-sm transition-all flex items-center gap-2',
+                                                (isStudioSale ? 'studio' : 'regular') === t
+                                                    ? 'bg-gray-800 text-white'
+                                                    : 'text-gray-400 hover:bg-gray-800 hover:text-white'
+                                            )}
+                                        >
+                                            <Tag size={16} className={cn(
+                                                (isStudioSale ? 'studio' : 'regular') === t ? 'text-blue-400' : 'text-gray-500'
+                                            )} />
+                                            <span className="capitalize">{t}</span>
+                                        </button>
+                                    ))}
+                                </div>
+                            </PopoverContent>
+                        </Popover>
                     </div>
-                </div>
 
                     {/* Right side: Status, Salesman, Branch */}
                     <div className="flex items-center gap-4">
@@ -2554,51 +2701,18 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                                         />
                                     </div>
                                 </div>
-                                {/* Type – same slot as Purchase Ref # */}
-                                <div className="flex flex-col absolute left-[987px] w-[132px]">
-                                    <Label className="text-gray-500 font-medium text-xs uppercase tracking-wide h-[14px] mb-1.5" style={{ position: 'absolute', top: '-59px', left: '30px' }}>Type</Label>
-                                    <Popover open={typeDropdownOpen} onOpenChange={setTypeDropdownOpen}>
-                                        <PopoverTrigger asChild>
-                                            <button
-                                                type="button"
-                                                className="flex items-center gap-2 bg-gray-900/50 border border-gray-800 rounded-lg px-2.5 py-1 hover:bg-gray-800 transition-colors cursor-pointer w-full h-10 min-h-[40px] justify-start text-sm"
-                                                style={{ position: 'absolute', top: '-41px', left: '26px', width: '107px', height: '40px' }}
-                                            >
-                                                <Tag size={14} className="text-gray-500 shrink-0" />
-                                                <span className="text-xs text-white capitalize">{isStudioSale ? 'studio' : 'regular'}</span>
-                                                <ChevronRight size={12} className="text-gray-500 rotate-90 shrink-0 ml-auto" />
-                                            </button>
-                                        </PopoverTrigger>
-                                <PopoverContent 
-                                    className="w-48 bg-gray-900 border-gray-800 text-white p-2"
-                                    align="start"
-                                >
-                                    <div className="space-y-1">
-                                        {(['regular', 'studio'] as const).map((t) => (
-                                            <button
-                                                key={t}
-                                                type="button"
-                                                onClick={() => {
-                                                    setIsStudioSale(t === 'studio');
-                                                    if (t === 'studio') setShippingEnabled(false);
-                                                    setTypeDropdownOpen(false);
-                                                }}
-                                                className={cn(
-                                                    "w-full text-left px-3 py-2 rounded-md text-sm transition-all flex items-center gap-2",
-                                                    (isStudioSale ? 'studio' : 'regular') === t
-                                                        ? "bg-gray-800 text-white"
-                                                        : "text-gray-400 hover:bg-gray-800 hover:text-white"
-                                                )}
-                                            >
-                                                <Tag size={16} className={cn(
-                                                    (isStudioSale ? 'studio' : 'regular') === t ? "text-blue-400" : "text-gray-500"
-                                                )} />
-                                                <span className="capitalize">{t}</span>
-                                            </button>
-                                        ))}
+                                {/* REF # – same as PurchaseForm */}
+                                <div className="flex flex-col w-[132px] shrink-0">
+                                    <Label className="text-gray-500 font-medium text-xs uppercase tracking-wide h-[14px] mb-1.5">REF #</Label>
+                                    <div className="relative">
+                                        <FileText className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={14} />
+                                        <Input
+                                            value={refNumber}
+                                            onChange={(e) => setRefNumber(e.target.value)}
+                                            className="pl-9 bg-gray-900/50 border-gray-800 h-10 text-sm text-white placeholder:text-gray-500"
+                                            placeholder="Optional"
+                                        />
                                     </div>
-                                </PopoverContent>
-                            </Popover>
                                 </div>
 
                             </div>
@@ -3081,7 +3195,11 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                                                     <span className="text-xs text-gray-400">Commission</span>
                                                 </div>
                                                 <div className="flex items-center gap-1.5">
-                                                    <Select value={commissionType} onValueChange={(v: any) => setCommissionType(v)}>
+                                                    <Select
+                                                        value={commissionType}
+                                                        onValueChange={(v: any) => setCommissionType(v)}
+                                                        disabled={!!(salesmanId && salesmanId !== '1' && salesmanId !== 'none')}
+                                                    >
                                                         <SelectTrigger className="w-12 h-6 bg-gray-950 border-gray-700 text-white text-[10px] px-1">
                                                             <SelectValue />
                                                         </SelectTrigger>
@@ -3090,12 +3208,14 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
                                                             <SelectItem value="fixed">{getCurrencySymbol(company?.currency)}</SelectItem>
                                                         </SelectContent>
                                                     </Select>
-                                                    <Input 
-                                                        type="number" 
+                                                    <Input
+                                                        type="number"
                                                         placeholder="0"
+                                                        min={0}
                                                         className="w-16 h-6 bg-gray-950 border-gray-700 text-white text-xs text-right px-2"
-                                                        value={commissionValue > 0 ? commissionValue : ''}
+                                                        value={commissionValue === 0 ? 0 : commissionValue}
                                                         onChange={(e) => setCommissionValue(parseFloat(e.target.value) || 0)}
+                                                        disabled={!!(salesmanId && salesmanId !== '1' && salesmanId !== 'none')}
                                                     />
                                                 </div>
                                             </div>

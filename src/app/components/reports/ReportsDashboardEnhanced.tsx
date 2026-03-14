@@ -688,7 +688,11 @@ export const ReportsDashboardEnhanced = () => {
         )}
 
         {reportType === 'commission' && (
-          <CommissionReportPage startDate={reportStartDate} endDate={reportEndDate} />
+          <CommissionReportPage
+            startDate={reportStartDate}
+            endDate={reportEndDate}
+            branchId={branchId === 'all' ? null : branchId}
+          />
         )}
 
       </div>

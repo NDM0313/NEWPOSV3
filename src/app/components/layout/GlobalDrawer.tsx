@@ -131,7 +131,7 @@ export const GlobalDrawer = () => {
 
         {/* Sale Form - Edit */}
         <div style={{ display: shouldShowParentDrawer('edit-sale') ? 'block' : 'none' }}>
-          <SaleForm key={`edit-sale-${drawerData?.sale?.id ?? 'none'}`} sale={drawerData?.sale} onClose={() => closeDrawer()} />
+          <SaleForm key={`edit-sale-${drawerData?.sale?.id ?? 'none'}`} sale={drawerData?.sale} convertToFinal={drawerData?.convertToFinal} onClose={() => closeDrawer()} />
         </div>
 
         {/* Purchase Form - Add */}
@@ -159,7 +159,7 @@ export const GlobalDrawer = () => {
 
         {/* Sale Form - Edit */}
         <div style={{ display: shouldShowParentDrawer('edit-sale') ? 'block' : 'none' }}>
-          <SaleForm key={`edit-sale-${drawerData?.sale?.id ?? 'none'}`} sale={drawerData?.sale} onClose={() => closeDrawer()} />
+          <SaleForm key={`edit-sale-${drawerData?.sale?.id ?? 'none'}`} sale={drawerData?.sale} convertToFinal={drawerData?.convertToFinal} onClose={() => closeDrawer()} />
         </div>
 
         {/* Purchase Form - Add */}

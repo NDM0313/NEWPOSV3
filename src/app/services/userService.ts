@@ -31,6 +31,8 @@ export interface User {
   user_code?: string; // Same as code; kept for compatibility.
   is_active: boolean;
   can_be_assigned_as_salesman?: boolean;
+  /** Default commission % when this user is assigned as salesman (SaleForm uses for new sales). */
+  default_commission_percent?: number | null;
   auth_user_id?: string | null; // Links to auth.users.id. Null = no login yet.
   last_login_at?: string | null;
   permissions?: {
@@ -242,12 +244,32 @@ export const userService = {
     return data;
   },
 
-  // Get users who can be assigned as salesman
+  // Get users who can be assigned as salesman.
+  // Commission: use users.default_commission_percent; if null, fall back to employees.commission_rate so Edit User (employees) and SaleForm stay in sync.
   async getSalesmen(companyId: string) {
-    return this.getAllUsers(companyId, {
+    const users = await this.getAllUsers(companyId, {
       includeInactive: false,
       canBeSalesman: true
     });
+    if (!users?.length) return users || [];
+    const userIds = users.map((u: any) => u.id);
+    const { data: employees } = await supabase
+      .from('employees')
+      .select('user_id, commission_rate')
+      .in('user_id', userIds);
+    const commissionByUserId = new Map<string, number>();
+    (employees || []).forEach((emp: any) => {
+      if (emp.user_id != null && emp.commission_rate != null) {
+        commissionByUserId.set(emp.user_id, Number(emp.commission_rate));
+      }
+    });
+    return users.map((u: any) => ({
+      ...u,
+      default_commission_percent:
+        u.default_commission_percent != null
+          ? Number(u.default_commission_percent)
+          : (commissionByUserId.get(u.id) ?? null)
+    }));
   },
 
   /** Admin: Send password reset email to user */

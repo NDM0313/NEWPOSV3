@@ -31,6 +31,7 @@ export default defineConfig({
     applyStorageRlsPlugin(),
     VitePWA({
       registerType: 'autoUpdate',
+      injectRegister: false, // we register in main.tsx with onRegisterError so app loads when user denies SW
       includeAssets: ['favicon.ico', 'robots.txt'],
       manifest: {
         name: 'ERP',

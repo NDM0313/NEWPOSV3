@@ -182,18 +182,18 @@ export const SalesListDesignTestPage = () => {
         </div>
       </div>
 
-      {/* Status tabs: All | Draft | Order | Quotation | Final */}
+      {/* Status tabs: All | Draft | Order | Quotation | Final – same style as SOURCE (SalesPage) */}
       <div className="shrink-0 px-6 py-3 border-b border-gray-800 bg-[#0F1419]">
         <p className="text-xs text-gray-500 uppercase tracking-wider mb-2 font-medium">Status</p>
-        <div className="flex gap-2 flex-wrap">
+        <div className="flex gap-2 flex-wrap items-center">
           {statusTabs.map(({ id, label }) => (
             <button
               key={id}
               onClick={() => setStatusTab(id)}
               className={cn(
-                'px-4 py-2 rounded-lg text-sm font-medium transition-all border',
+                'flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all border',
                 statusTab === id
-                  ? 'bg-green-600 text-white border-green-500 shadow-lg shadow-green-900/30'
+                  ? 'bg-blue-600 text-white border-blue-500 shadow-lg shadow-blue-900/30'
                   : 'bg-gray-800/50 text-gray-400 border-gray-700 hover:bg-gray-800 hover:text-white'
               )}
             >

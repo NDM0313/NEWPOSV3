@@ -75,7 +75,7 @@ interface NavigationContextType {
   mobileNavOpen: boolean;
   setMobileNavOpen: (open: boolean) => void;
   activeDrawer: DrawerType;
-  openDrawer: (drawer: DrawerType, parentDrawer?: DrawerType, options?: { contactType?: 'customer' | 'supplier' | 'worker'; product?: any; sale?: any; purchase?: any; contact?: any; prefillName?: string; prefillPhone?: string }) => void;
+  openDrawer: (drawer: DrawerType, parentDrawer?: DrawerType, options?: { contactType?: 'customer' | 'supplier' | 'worker'; product?: any; sale?: any; purchase?: any; contact?: any; prefillName?: string; prefillPhone?: string; convertToFinal?: boolean }) => void;
   closeDrawer: () => void;
   parentDrawer: DrawerType | null;
   selectedStudioSaleId?: string;
@@ -177,7 +177,7 @@ export const NavigationProvider = ({ children }: { children: ReactNode }) => {
   const toggleSidebar = useCallback(() => setIsSidebarOpen(prev => !prev), []);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   
-  const openDrawer = useCallback((drawer: DrawerType, parent?: DrawerType, options?: { contactType?: 'customer' | 'supplier' | 'worker'; product?: any; sale?: any; purchase?: any; contact?: any; prefillName?: string; prefillPhone?: string }) => {
+  const openDrawer = useCallback((drawer: DrawerType, parent?: DrawerType, options?: { contactType?: 'customer' | 'supplier' | 'worker'; product?: any; sale?: any; purchase?: any; contact?: any; prefillName?: string; prefillPhone?: string; convertToFinal?: boolean }) => {
     // Set contact type if provided (or from contact when editing)
     if (options?.contactType) {
       setDrawerContactType(options.contactType);
@@ -203,7 +203,7 @@ export const NavigationProvider = ({ children }: { children: ReactNode }) => {
     
     // Set drawer data if provided (TASK 3 FIX - Support sale, purchase, product for edit)
     if (options?.sale) {
-      setDrawerData({ sale: options.sale });
+      setDrawerData({ sale: options.sale, convertToFinal: options?.convertToFinal });
     } else if (options?.purchase) {
       setDrawerData({ purchase: options.purchase });
     } else if (options?.product) {

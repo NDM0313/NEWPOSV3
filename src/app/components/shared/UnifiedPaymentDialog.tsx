@@ -176,7 +176,7 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
         const minutes = String(paymentDate.getMinutes() || 0).padStart(2, '0');
         setPaymentDateTime(`${year}-${month}-${day}T${hours}:${minutes}`);
       } else {
-        setAmount(0);
+        setAmount(Math.max(0, effectiveOutstanding));
         setPaymentMethod('Cash');
         setSelectedAccount('');
         setNotes('');
@@ -195,7 +195,7 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
     } else {
       prevOpenRef.current = false;
     }
-  }, [isOpen, editMode, paymentToEdit, initialAttachmentFiles]);
+  }, [isOpen, editMode, paymentToEdit, initialAttachmentFiles, effectiveOutstanding]);
 
   // Refresh accounts when dialog opens so user-assigned accounts (user_account_access) are visible after RLS
   React.useEffect(() => {

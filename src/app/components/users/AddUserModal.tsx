@@ -378,6 +378,8 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
                 .eq('id', existingEmp.id);
             }
           }
+          // Keep users.default_commission_percent in sync so SaleForm auto-fills commission when this user is selected as salesman
+          await userService.updateUser(savedUserId, { default_commission_percent: formData.commission_rate });
         } catch (empErr) {
           console.error('[AddUserModal] Employee sync failed (silent):', empErr);
         }

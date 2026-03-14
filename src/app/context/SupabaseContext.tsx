@@ -72,29 +72,40 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const fetchedRef = useRef<Set<string>>(new Set());
   const lastFetchedUserIdRef = useRef<string | null>(null);
 
-  // Initialize user session
+  // Initialize user session (catch SecurityError / CORS so app shows login instead of stuck "Loading...")
   useEffect(() => {
-    // Get initial session
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      if (session?.user && import.meta.env?.DEV) {
-        const { data: authData } = await supabase.auth.getUser();
-        console.log('[AUTH] AUTH USER (after getSession):', {
-          user_id: authData?.user?.id,
-          email: authData?.user?.email,
-          has_session: !!session,
-          auth_uid: authData?.user?.id,
-        });
-      }
-      if (session?.user) {
-        fetchUserData(session.user.id);
-      }
-      setLoading(false);
-    });
+    supabase.auth
+      .getSession()
+      .then(async ({ data: { session } }) => {
+        setSession(session);
+        setUser(session?.user ?? null);
+        if (session?.user && import.meta.env?.DEV) {
+          try {
+            const { data: authData } = await supabase.auth.getUser();
+            console.log('[AUTH] AUTH USER (after getSession):', {
+              user_id: authData?.user?.id,
+              email: authData?.user?.email,
+              has_session: !!session,
+              auth_uid: authData?.user?.id,
+            });
+          } catch {
+            // SecurityError / storage denied – ignore
+          }
+        }
+        if (session?.user) {
+          fetchUserData(session.user.id);
+        }
+        setLoading(false);
+      })
+      .catch(() => {
+        setSession(null);
+        setUser(null);
+        setLoading(false);
+      });
 
-    // Listen for auth changes
+    // Listen for auth changes (guard against thrown errors in listener)
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      try {
       setSession(session);
       const newUser = session?.user ?? null;
       setUser(newUser);
@@ -122,6 +133,9 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         fetchingRef.current.clear();
         fetchedRef.current.clear();
         lastFetchedUserIdRef.current = null;
+      }
+      } catch {
+        setLoading(false);
       }
     });
 

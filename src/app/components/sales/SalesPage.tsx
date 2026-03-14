@@ -234,8 +234,8 @@ export const SalesPage = () => {
   // State for viewing attachments
   const [attachmentsDialogList, setAttachmentsDialogList] = useState<{ url: string; name: string }[] | null>(null);
   
-  // Tab state - All, POS, Regular, Returns
-  const [activeTab, setActiveTab] = useState<'all' | 'pos' | 'regular' | 'returns'>('all');
+  // Tab state - All, POS, Regular, Returns, Quotation, Final
+  const [activeTab, setActiveTab] = useState<'all' | 'pos' | 'regular' | 'returns' | 'quotation' | 'final'>('all');
   
   // Return details dialog state
   const [selectedReturn, setSelectedReturn] = useState<any | null>(null);
@@ -454,13 +454,18 @@ export const SalesPage = () => {
           toast.error('Cannot finalize a cancelled sale.');
           return;
         }
+        // Open sale form with draft data; on Save → new invoice is created and draft is deleted (correct flow)
         try {
-          await updateSale(sale.id, { status: 'final' });
-          toast.success(`Sale ${sale.invoiceNo} marked as Final. Stock movements created.`);
-          setSelectedSale(null);
-          await refreshSales();
+          const full = await saleService.getSaleById(sale.id);
+          if (full.hasReturn) {
+            toast.error('Cannot convert: this sale has a return and is locked.');
+            return;
+          }
+          const saleWithItems = convertFromSupabaseSale(full);
+          openDrawer('edit-sale', undefined, { sale: saleWithItems, convertToFinal: true });
         } catch (e: any) {
-          toast.error(e?.message || 'Failed to convert to Final');
+          console.error('[SalesPage] Error loading sale for convert to final:', e);
+          toast.error(e?.message || 'Could not open sale form');
         }
         break;
         
@@ -542,6 +547,7 @@ export const SalesPage = () => {
     actions: true,
     date: true,
     invoiceNo: true,
+    type: true, // POS vs Regular (same as SalesListDesignTestPage)
     customer: true,
     contact: false, // REMOVED from default view
     location: true,
@@ -566,6 +572,7 @@ export const SalesPage = () => {
     'actions', // Action column first for easier access
     'date',
     'invoiceNo',
+    'type', // POS vs Regular (same as SalesListDesignTestPage)
     'customer',
     'location',
     'saleStatus', // Sale status (draft/quotation/order only)
@@ -586,6 +593,7 @@ export const SalesPage = () => {
       actions: 'Actions',
       date: 'Date',
       invoiceNo: 'Invoice No.',
+      type: 'Type',
       customer: 'Customer',
       contact: 'Contact',
       location: 'Location',
@@ -634,6 +642,7 @@ export const SalesPage = () => {
       actions: '60px',
       date: '100px',
       invoiceNo: '110px',
+      type: '100px',
       customer: '200px',
       contact: '140px',
       location: '150px',
@@ -657,6 +666,7 @@ export const SalesPage = () => {
     actions: 'text-center',
     date: 'text-left',
     invoiceNo: 'text-left',
+    type: 'text-left',
     customer: 'text-left',
     contact: 'text-left',
     location: 'text-left',
@@ -689,6 +699,24 @@ export const SalesPage = () => {
     return !!(walkIn && final);
   };
 
+  const getSourceBadge = (sale: Sale) => {
+    const pos = isLikelyPOS(sale);
+    if (pos) {
+      return (
+        <Badge className="gap-1 h-6 px-2 text-xs font-medium bg-amber-500/20 text-amber-400 border border-amber-500/40">
+          <Zap size={12} />
+          POS
+        </Badge>
+      );
+    }
+    return (
+      <Badge className="gap-1 h-6 px-2 text-xs font-medium bg-blue-500/20 text-blue-400 border border-blue-500/40">
+        <Store size={12} />
+        Regular
+      </Badge>
+    );
+  };
+
   // Load sale returns for Returns tab
   const [saleReturnsList, setSaleReturnsList] = useState<any[]>([]);
   const [loadingReturnsList, setLoadingReturnsList] = useState(false);
@@ -716,11 +744,15 @@ export const SalesPage = () => {
     if (activeTab === 'returns') return [];
     
     return sales.filter((sale: Sale) => {
-      // Tab filter - POS vs Regular
+      // Tab filter - POS vs Regular vs Quotation vs Final
       if (activeTab === 'pos') {
         if (!isLikelyPOS(sale)) return false;
       } else if (activeTab === 'regular') {
         if (isLikelyPOS(sale)) return false;
+      } else if (activeTab === 'quotation') {
+        if (getEffectiveSaleStatus(sale) !== 'quotation') return false;
+      } else if (activeTab === 'final') {
+        if (getEffectiveSaleStatus(sale) !== 'final') return false;
       }
       // activeTab === 'all' shows all
 
@@ -770,15 +802,16 @@ export const SalesPage = () => {
 
       return true;
     });
-  }, [sales, startDate, endDate, searchTerm, dateFilter, customerFilter, paymentStatusFilter, saleStatusFilter, shippingStatusFilter, branchFilter, paymentMethodFilter]);
+  }, [sales, activeTab, startDate, endDate, searchTerm, dateFilter, customerFilter, paymentStatusFilter, saleStatusFilter, shippingStatusFilter, branchFilter, paymentMethodFilter]);
 
-  // Sort state: default date descending (latest first)
-  type SaleSortKey = 'date' | 'invoiceNo' | 'customer' | 'location' | 'saleStatus' | 'paymentStatus' | 'total' | 'paid' | 'due' | 'returnDue' | 'return' | 'shipping' | 'items' | 'createdBy';
-  const [sortKey, setSortKey] = useState<SaleSortKey>('date');
+  // Sort state: default createdAt descending so newest-created sales appear first
+  type SaleSortKey = 'date' | 'createdAt' | 'invoiceNo' | 'customer' | 'location' | 'saleStatus' | 'paymentStatus' | 'total' | 'paid' | 'due' | 'returnDue' | 'return' | 'shipping' | 'items' | 'createdBy';
+  const [sortKey, setSortKey] = useState<SaleSortKey>('createdAt');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
 
   const getSaleSortValue = (s: Sale, key: SaleSortKey): string | number => {
     if (key === 'date') return new Date(s.date).getTime();
+    if (key === 'createdAt') return new Date((s as any).createdAt || s.date || 0).getTime();
     if (key === 'customer') return s.customerName || s.customer || '';
     if (key === 'shipping') return s.shippingStatus || '';
     if (key === 'items') return s.itemsCount ?? s.items?.length ?? 0;
@@ -825,13 +858,16 @@ export const SalesPage = () => {
     invoiceCount: finalSalesForSummary.length,
   }), [finalSalesForSummary, getEffectiveDue]);
 
-  // Server-side pagination (context loads one page at a time; default 50)
+  // Client-side pagination: context loads all sales (capped); we filter, sort, then slice for current page
   const pageSize = contextPageSize ?? 50;
-  const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
-  const currentPage = page + 1;
+  const totalFilteredCount = sortedSales.length;
+  const totalPages = Math.max(1, Math.ceil(totalFilteredCount / pageSize));
+  const currentPage = Math.min(page + 1, totalPages);
 
-  // Paginated sales = current page from context (already filtered/sorted from server page)
-  const paginatedSales = useMemo(() => sortedSales, [sortedSales]);
+  const paginatedSales = useMemo(
+    () => sortedSales.slice(page * pageSize, (page + 1) * pageSize),
+    [sortedSales, page, pageSize]
+  );
 
   // Paid amount from payment records (fixes wrong sales.paid_amount in table - same as ViewSaleDetailsDrawer)
   const [paidBySaleId, setPaidBySaleId] = useState<Map<string, number>>(new Map());
@@ -873,6 +909,11 @@ export const SalesPage = () => {
   React.useEffect(() => {
     setPage(0);
   }, [searchTerm, dateFilter, customerFilter, paymentStatusFilter, saleStatusFilter, shippingStatusFilter, branchFilter, paymentMethodFilter, setPage]);
+
+  // Clamp page when total pages shrinks (e.g. filter leaves fewer pages)
+  React.useEffect(() => {
+    if (totalPages >= 1 && page >= totalPages) setPage(totalPages - 1);
+  }, [totalPages, page, setPage]);
 
   const handlePageChange = (p: number) => {
     setPage(Math.max(0, p - 1));
@@ -974,7 +1015,10 @@ export const SalesPage = () => {
       
       case 'invoiceNo':
         return <div className="text-sm text-blue-400 font-mono font-semibold">{sale.invoiceNo}</div>;
-      
+
+      case 'type':
+        return getSourceBadge(sale);
+
       case 'customer':
         // Customer column: Name + Phone (if exists)
         // Same UX pattern as Supplier list
@@ -1613,7 +1657,7 @@ export const SalesPage = () => {
         }}
       />
 
-      {/* Source Tabs: All | POS | Regular | Returns */}
+      {/* Source Tabs: All | POS | Regular | Returns | Quotation | Final */}
       <div className="shrink-0 px-6 py-3 border-b border-gray-800 bg-[#0F1419]">
         <p className="text-xs text-gray-500 uppercase tracking-wider mb-2 font-medium">Source</p>
         <div className="flex gap-2 flex-wrap items-center">
@@ -1622,6 +1666,8 @@ export const SalesPage = () => {
             { id: 'pos' as const, label: 'POS', icon: Zap },
             { id: 'regular' as const, label: 'Regular', icon: Store },
             { id: 'returns' as const, label: 'Returns', icon: RotateCcw },
+            { id: 'quotation' as const, label: 'Quotation', icon: FileText },
+            { id: 'final' as const, label: 'Final', icon: CheckCircle2 },
           ].map(({ id, label, icon: Icon }) => (
             <button
               key={id}
@@ -1689,6 +1735,7 @@ export const SalesPage = () => {
                       const labels: Record<string, string> = {
                         date: 'Date',
                         invoiceNo: 'Invoice No.',
+                        type: 'Type',
                         customer: 'Customer',
                         contact: 'Contact',
                         location: 'Location',
@@ -2144,7 +2191,7 @@ export const SalesPage = () => {
         currentPage={currentPage}
         totalPages={totalPages}
         pageSize={pageSize}
-        totalItems={totalCount}
+        totalItems={totalFilteredCount}
         onPageChange={handlePageChange}
         onPageSizeChange={handlePageSizeChange}
       />

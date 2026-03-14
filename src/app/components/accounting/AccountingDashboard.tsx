@@ -62,6 +62,7 @@ const RoznamchaReport = lazy(() => import('@/app/components/reports/RoznamchaRep
 const AccountLedgerReportPage = lazy(() => import('@/app/components/reports/AccountLedgerReportPage').then((m) => ({ default: m.AccountLedgerReportPage })));
 import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
 import { useCheckPermission } from '@/app/hooks/useCheckPermission';
+import { DateTimeDisplay } from '@/app/components/ui/DateTimeDisplay';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -507,12 +508,15 @@ export const AccountingDashboard = () => {
                             className="border-b border-gray-800 hover:bg-gray-800/30 transition-colors cursor-pointer"
                             onClick={() => setTransactionReference(referenceNumber)}
                           >
-                            <td className="px-4 py-3 text-sm text-gray-300">
-                              {entry.date ? new Date(entry.date).toLocaleDateString('en-GB', {
-                                day: '2-digit',
-                                month: 'short',
-                                year: 'numeric'
-                              }) : 'N/A'}
+                            <td className="px-4 py-3 text-sm text-gray-300 whitespace-nowrap">
+                              {entry.date ? (
+                                <DateTimeDisplay
+                                  date={(entry.metadata as { createdAt?: string } | undefined)?.createdAt ?? entry.date}
+                                  className="flex flex-col leading-tight"
+                                />
+                              ) : (
+                                'N/A'
+                              )}
                             </td>
                             <td className="px-4 py-3">
                               <button

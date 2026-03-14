@@ -147,6 +147,8 @@ export const POS = () => {
   const [paymentDialogSaleId, setPaymentDialogSaleId] = useState<string | null>(null);
   const [paymentDialogInvoiceNo, setPaymentDialogInvoiceNo] = useState<string | null>(null);
   const [paymentDialogTotal, setPaymentDialogTotal] = useState(0);
+  const [posSaveInProgress, setPosSaveInProgress] = useState(false);
+  const posSaveInProgressRef = React.useRef(false);
 
   const isViewMode = selectedSaleIndex >= 0 && !editMode;
   const isEditable = editMode || selectedSaleIndex === -1;
@@ -518,6 +520,7 @@ export const POS = () => {
 
   // Proceed to Payment: create sale (unpaid), then open payment dialog (same flow as Sales)
   const handleProceedToPayment = async () => {
+    if (posSaveInProgressRef.current) return;
     if (!companyId || !user || cart.length === 0) {
       toast.error('Missing required information');
       return;
@@ -526,6 +529,8 @@ export const POS = () => {
       toast.error('Please select a branch. POS requires a specific branch.');
       return;
     }
+    posSaveInProgressRef.current = true;
+    setPosSaveInProgress(true);
 
     // Company-level setting from DB: block only when negative stock not allowed
     if (!allowNegativeStock) {
@@ -550,6 +555,8 @@ export const POS = () => {
         }
         if (totalQty > stock) {
           toast.error(`${product.name}: total quantity (${totalQty}) exceeds available stock (${stock})`);
+          posSaveInProgressRef.current = false;
+          setPosSaveInProgress(false);
           return;
         }
       }
@@ -589,6 +596,9 @@ export const POS = () => {
         due: total,
         returnDue: 0,
         items: saleItems,
+        salesmanId: (user as any)?.id ?? null,
+        commissionAmount: 0,
+        commissionPercent: null,
       };
 
       const newSale = await createSale(saleData);
@@ -599,6 +609,9 @@ export const POS = () => {
     } catch (error: any) {
       console.error('[POS] Error creating sale for payment:', error);
       toast.error('Failed to create sale: ' + (error.message || 'Unknown error'));
+    } finally {
+      posSaveInProgressRef.current = false;
+      setPosSaveInProgress(false);
     }
   };
 
@@ -1237,10 +1250,19 @@ export const POS = () => {
                 <Button
                   className="col-span-2 bg-blue-600 hover:bg-blue-500 text-white font-semibold h-12 rounded-xl shadow-lg shadow-blue-900/30"
                   onClick={handleProceedToPayment}
-                  disabled={loading || !companyId || !user || !branchId || branchId === 'all'}
+                  disabled={loading || posSaveInProgress || !companyId || !user || !branchId || branchId === 'all' || cart.length === 0}
                 >
-                  <CreditCard size={18} className="mr-2" />
-                  Proceed to Payment
+                  {posSaveInProgress ? (
+                    <>
+                      <Loader2 size={18} className="mr-2 animate-spin" />
+                      Creating sale...
+                    </>
+                  ) : (
+                    <>
+                      <CreditCard size={18} className="mr-2" />
+                      Proceed to Payment
+                    </>
+                  )}
                 </Button>
               )}
             </div>
