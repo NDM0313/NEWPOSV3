@@ -63,6 +63,12 @@ export interface Sale {
   attachments?: { url: string; name: string }[] | null;
   created_by: string;
   is_studio?: boolean;
+  /** Salesperson for commission (user id). */
+  salesman_id?: string | null;
+  /** Commission amount stored on sale for period reporting. */
+  commission_amount?: number;
+  /** Base amount used for commission calculation (e.g. subtotal). */
+  commission_eligible_amount?: number | null;
 }
 
 export interface SaleItem {

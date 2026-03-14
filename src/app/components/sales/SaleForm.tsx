@@ -1811,10 +1811,17 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
         await proceedWithSave(print);
     };
 
+    // Guard against double submit (one click = one save)
+    const saveInProgressRef = useRef(false);
+
     // Actual save logic (extracted from handleSave)
     // Returns the created/updated sale ID and invoice number if payment dialog should open
     const proceedWithSave = async (print: boolean = false, shouldOpenPaymentDialog: boolean = false): Promise<{ saleId: string | null; invoiceNo: string | null }> => {
+        if (saveInProgressRef.current) {
+            return null;
+        }
         try {
+            saveInProgressRef.current = true;
             setSaving(true);
             
             const selectedCustomer = customers.find(c => c.id.toString() === customerId);
@@ -2179,6 +2186,7 @@ export const SaleForm = ({ sale: initialSale, onClose }: SaleFormProps) => {
             toast.error(`Failed to save sale: ${error.message || 'Unknown error'}`);
             return null;
         } finally {
+            saveInProgressRef.current = false;
             setSaving(false);
         }
     };

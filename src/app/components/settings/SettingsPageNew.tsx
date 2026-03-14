@@ -917,6 +917,41 @@ export const SettingsPageNew = () => {
                       <option value="EUR">EUR - Euro</option>
                     </select>
                   </div>
+
+                  <div>
+                    <Label className="text-gray-300 mb-2 block">Company timezone</Label>
+                    <select 
+                      value={companyForm.timezone ?? 'Asia/Karachi'}
+                      onChange={(e) => {
+                        setCompanyForm({ ...companyForm, timezone: e.target.value });
+                        setHasUnsavedChanges(true);
+                      }}
+                      className="w-full bg-gray-950 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm"
+                    >
+                      <option value="Asia/Karachi">Asia/Karachi</option>
+                      <option value="UTC">UTC</option>
+                      <option value="Asia/Dubai">Asia/Dubai</option>
+                      <option value="Asia/Riyadh">Asia/Riyadh</option>
+                      <option value="Europe/London">Europe/London</option>
+                      <option value="America/New_York">America/New_York</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <Label className="text-gray-300 mb-2 block">Date format</Label>
+                    <select 
+                      value={companyForm.dateFormat ?? 'DD/MM/YYYY'}
+                      onChange={(e) => {
+                        setCompanyForm({ ...companyForm, dateFormat: e.target.value });
+                        setHasUnsavedChanges(true);
+                      }}
+                      className="w-full bg-gray-950 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm"
+                    >
+                      <option value="DD/MM/YYYY">DD/MM/YYYY</option>
+                      <option value="MM/DD/YYYY">MM/DD/YYYY</option>
+                      <option value="YYYY-MM-DD">YYYY-MM-DD</option>
+                    </select>
+                  </div>
                 </div>
               </div>
             )}

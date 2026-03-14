@@ -40,6 +40,29 @@ export const formatDate = (
 };
 
 /**
+ * Format time only - use company settings (for two-line date+time display).
+ */
+export const formatTime = (
+  date: Date | string | number,
+  timeFormat: '12h' | '24h' = '12h',
+  timezone: string = 'Asia/Karachi'
+): string => {
+  const d = typeof date === 'object' && date instanceof Date ? date : new Date(date);
+  if (Number.isNaN(d.getTime())) return '—';
+  try {
+    const timeOpts: Intl.DateTimeFormatOptions = {
+      timeZone: timezone,
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: timeFormat === '12h',
+    };
+    return d.toLocaleTimeString('en-US', timeOpts);
+  } catch {
+    return d.toLocaleTimeString();
+  }
+};
+
+/**
  * Format date and time - use company settings.
  *
  * @param date - Date to format
@@ -57,13 +80,7 @@ export const formatDateTime = (
   if (Number.isNaN(d.getTime())) return '—';
   try {
     const dateStr = formatDate(d, dateFormat, timezone);
-    const timeOpts: Intl.DateTimeFormatOptions = {
-      timeZone: timezone,
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: timeFormat === '12h',
-    };
-    const timeStr = d.toLocaleTimeString('en-US', timeOpts);
+    const timeStr = formatTime(d, timeFormat, timezone);
     return `${dateStr} ${timeStr}`;
   } catch {
     return d.toLocaleString();

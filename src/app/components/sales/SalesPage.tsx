@@ -539,6 +539,7 @@ export const SalesPage = () => {
   // Column visibility state
   // REMOVED: contact and paymentMethod columns per UX requirements
   const [visibleColumns, setVisibleColumns] = useState({
+    actions: true,
     date: true,
     invoiceNo: true,
     customer: true,
@@ -562,6 +563,7 @@ export const SalesPage = () => {
   // Column order state - defines the order of columns
   // REMOVED: contact and paymentMethod from default order
   const [columnOrder, setColumnOrder] = useState([
+    'actions', // Action column first for easier access
     'date',
     'invoiceNo',
     'customer',
@@ -581,6 +583,7 @@ export const SalesPage = () => {
   // Columns configuration for Column Manager - ordered based on columnOrder
   const columns = columnOrder.map(key => {
     const labels: Record<string, string> = {
+      actions: 'Actions',
       date: 'Date',
       invoiceNo: 'Invoice No.',
       customer: 'Customer',
@@ -628,6 +631,7 @@ export const SalesPage = () => {
   // Get column widths based on column key
   const getColumnWidth = (key: string): string => {
     const widths: Record<string, string> = {
+      actions: '60px',
       date: '100px',
       invoiceNo: '110px',
       customer: '200px',
@@ -650,6 +654,7 @@ export const SalesPage = () => {
 
   // Column alignments - shared between header and data cells
   const alignments: Record<string, string> = {
+    actions: 'text-center',
     date: 'text-left',
     invoiceNo: 'text-left',
     customer: 'text-left',
@@ -674,7 +679,7 @@ export const SalesPage = () => {
       .filter(key => visibleColumns[key as keyof typeof visibleColumns])
       .map(key => getColumnWidth(key))
       .join(' ');
-    return `${columns} 60px`.trim(); // 60px for Actions column (checkbox removed)
+    return columns.trim();
   }, [columnOrder, visibleColumns]);
 
   // Helper function to detect if sale is POS (Walk-in Customer + Final)
@@ -954,6 +959,7 @@ export const SalesPage = () => {
   // Render column cell based on column key (try/catch prevents "Cannot destructure property 'bg'" in production)
   const renderColumnCell = (columnKey: string, sale: Sale) => {
     try {
+      if (columnKey === 'actions') return null;
       switch (columnKey) {
       case 'date':
         // Show date on one line, time on next line (smaller)
@@ -1677,7 +1683,9 @@ export const SalesPage = () => {
                   >
                     {columnOrder.map(key => {
                       if (!visibleColumns[key as keyof typeof visibleColumns]) return null;
-                      
+                      if (key === 'actions') {
+                        return <div key="actions" className="text-center">Actions</div>;
+                      }
                       const labels: Record<string, string> = {
                         date: 'Date',
                         invoiceNo: 'Invoice No.',
@@ -1696,7 +1704,6 @@ export const SalesPage = () => {
                         items: 'Items',
                         createdBy: 'Created By',
                       };
-                      
                       const isSortable = (['date', 'invoiceNo', 'customer', 'location', 'saleStatus', 'paymentStatus', 'total', 'paid', 'due', 'returnDue', 'return', 'shipping', 'items', 'createdBy'] as SaleSortKey[]).includes(key as SaleSortKey);
                       const isActive = sortKey === key;
                       
@@ -1722,7 +1729,6 @@ export const SalesPage = () => {
                         </div>
                       );
                     })}
-                    <div className="text-center">Actions</div>
                   </div>
                 )}
               </div>
@@ -1929,31 +1935,13 @@ export const SalesPage = () => {
                         gridTemplateColumns: gridTemplateColumns
                       }}
                     >
-                      {/* Render columns in order */}
+                      {/* Render columns in order (Actions first when visible) */}
                       {columnOrder.map(key => {
                         if (!visibleColumns[key as keyof typeof visibleColumns]) return null;
-                        // Apply same alignment classes as headers
-                        const alignment = alignments[key] || 'text-left';
-                        return (
-                          <div 
-                            key={key} 
-                            className={cn(
-                              alignment,
-                              'flex items-center',
-                              // Match header alignment with justify classes
-                              alignment === 'text-right' && 'justify-end',
-                              alignment === 'text-center' && 'justify-center',
-                              alignment === 'text-left' && 'justify-start'
-                            )}
-                          >
-                            {renderColumnCell(key, sale)}
-                          </div>
-                        );
-                      })}
-
-                      {/* Actions */}
-                      <div className="flex justify-center">
-                        <DropdownMenu>
+                        if (key === 'actions') {
+                          return (
+                            <div key="actions" className="flex justify-center">
+                              <DropdownMenu>
                           <DropdownMenuTrigger asChild>
                             <button 
                               className={cn(
@@ -2139,7 +2127,25 @@ export const SalesPage = () => {
                             )}
                           </DropdownMenuContent>
                         </DropdownMenu>
-                      </div>
+                            </div>
+                          );
+                        }
+                        const alignment = alignments[key] || 'text-left';
+                        return (
+                          <div
+                            key={key}
+                            className={cn(
+                              alignment,
+                              'flex items-center',
+                              alignment === 'text-right' && 'justify-end',
+                              alignment === 'text-center' && 'justify-center',
+                              alignment === 'text-left' && 'justify-start'
+                            )}
+                          >
+                            {renderColumnCell(key, sale)}
+                          </div>
+                        );
+                      })}
                     </div>
                   ))
                 )}

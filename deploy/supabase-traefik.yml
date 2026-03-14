@@ -1,9 +1,29 @@
-# Supabase Kong API + Studio
+# Supabase Kong API + Studio (CORS for auth refresh from localhost + ERP)
 http:
+  middlewares:
+    supabase-cors:
+      headers:
+        accessControlAllowOriginList:
+          - "http://localhost:5173"
+          - "https://erp.dincouture.pk"
+        accessControlAllowMethods:
+          - GET
+          - POST
+          - OPTIONS
+          - PUT
+          - PATCH
+          - DELETE
+        accessControlAllowHeaders:
+          - "*"
+        accessControlAllowCredentials: true
+        accessControlMaxAge: 86400
+        addVaryHeader: true
   routers:
     supabase-dincouture:
       rule: Host(`supabase.dincouture.pk`)
       service: supabase-dincouture
+      middlewares:
+        - supabase-cors
       entryPoints:
         - websecure
       tls:

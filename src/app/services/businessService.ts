@@ -35,7 +35,7 @@ export interface CreateBusinessResponse {
 export const businessService = {
   async createBusiness(data: CreateBusinessRequest): Promise<CreateBusinessResponse> {
     try {
-      // Step 1: Create auth user with the main Supabase client (no admin API)
+      // Step 1: Create auth user (or use existing if email already registered)
       const { data: signUpData, error: authError } = await supabase.auth.signUp({
         email: data.email,
         password: data.password,
@@ -45,11 +45,31 @@ export const businessService = {
         },
       });
 
-      if (authError) {
+      let user = signUpData?.user;
+
+      // If signUp fails with 422 / "already registered", try sign in and use existing user to add this business
+      const isAlreadyRegistered =
+        authError?.message?.toLowerCase().includes('already registered') ||
+        authError?.message?.toLowerCase().includes('already exists') ||
+        authError?.message?.toLowerCase().includes('user already exists') ||
+        (authError as any)?.status === 422;
+
+      if (authError && isAlreadyRegistered) {
+        const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
+          email: data.email,
+          password: data.password,
+        });
+        if (signInError) {
+          return {
+            success: false,
+            error: 'This email is already registered. Sign in with your password above, or use a different email to create a new business.',
+          };
+        }
+        user = signInData?.user ?? null;
+      } else if (authError) {
         return { success: false, error: authError.message };
       }
 
-      const user = signUpData?.user;
       if (!user?.id) {
         return { success: false, error: 'Failed to create user' };
       }

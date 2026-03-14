@@ -848,6 +848,8 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
         logo_url: settings.logoUrl,
       };
       if (settings.timezone !== undefined) updatePayload.timezone = settings.timezone;
+      if (settings.dateFormat !== undefined) updatePayload.date_format = settings.dateFormat;
+      if (settings.timeFormat !== undefined) updatePayload.time_format = settings.timeFormat;
       await supabase
         .from('companies')
         .update(updatePayload)

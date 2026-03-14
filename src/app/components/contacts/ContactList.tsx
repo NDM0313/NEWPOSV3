@@ -283,13 +283,13 @@ export const ContactList = () => {
           <table className="w-full text-left text-sm">
             <thead className="bg-gray-950/50 text-gray-400 font-medium border-b border-gray-800">
               <tr>
+                <th className="px-6 py-4 w-20"></th>
                 <th className="px-6 py-4">Name</th>
                 <th className="px-6 py-4">Type</th>
                 <th className="px-6 py-4">Contact Info</th>
                 <th className="px-6 py-4 text-right">Receivables</th>
                 <th className="px-6 py-4 text-right">Payables</th>
                 <th className="px-6 py-4 text-center">Status</th>
-                <th className="px-6 py-4"></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-800">
@@ -314,6 +314,53 @@ export const ContactList = () => {
                 
                 return (
                   <tr key={contact.id} className="hover:bg-gray-800/50 transition-colors group">
+                    <td className="px-6 py-4 text-right">
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="icon" className="text-gray-500 hover:text-white opacity-0 group-hover:opacity-100 transition-opacity">
+                            <MoreVertical size={16} />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent className="w-56 bg-gray-900 border-gray-800 text-white" align="end">
+                          <DropdownMenuItem 
+                            className="flex items-center gap-2 hover:bg-gray-800 cursor-pointer"
+                            onClick={() => handleViewLedger(contact)}
+                          >
+                            <Receipt size={16} />
+                            View Ledger
+                          </DropdownMenuItem>
+                          {hasOutstanding && (
+                            <DropdownMenuItem 
+                              className="flex items-center gap-2 hover:bg-gray-800 cursor-pointer"
+                              onClick={() => handleMakePayment(contact)}
+                            >
+                              <DollarSign size={16} />
+                              {contact.type === 'Supplier' ? 'Make Payment' : 'Receive Payment'}
+                            </DropdownMenuItem>
+                          )}
+                          <DropdownMenuSeparator className="bg-gray-800" />
+                          <DropdownMenuItem className="flex items-center gap-2 hover:bg-gray-800 cursor-pointer">
+                            <Eye size={16} />
+                            View Details
+                          </DropdownMenuItem>
+                          <DropdownMenuItem 
+                            className="flex items-center gap-2 hover:bg-gray-800 cursor-pointer"
+                            onClick={() => handleEdit(contact)}
+                          >
+                            <Edit size={16} />
+                            Edit Contact
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator className="bg-gray-800" />
+                          <DropdownMenuItem 
+                            className="flex items-center gap-2 text-red-500 hover:bg-red-900/10 hover:text-red-400 cursor-pointer"
+                            onClick={() => handleDeleteClick(contact)}
+                          >
+                            <Trash2 size={16} />
+                            Delete Contact
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </td>
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-3">
                         <Avatar className="h-9 w-9 border border-gray-700">
@@ -363,62 +410,6 @@ export const ContactList = () => {
                       )}>
                         {contact.status}
                       </span>
-                    </td>
-                    <td className="px-6 py-4 text-right">
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon" className="text-gray-500 hover:text-white opacity-0 group-hover:opacity-100 transition-opacity">
-                            <MoreVertical size={16} />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent className="w-56 bg-gray-900 border-gray-800 text-white" align="end">
-                          {/* View Ledger - ALWAYS AVAILABLE */}
-                          <DropdownMenuItem 
-                            className="flex items-center gap-2 hover:bg-gray-800 cursor-pointer"
-                            onClick={() => handleViewLedger(contact)}
-                          >
-                            <Receipt size={16} />
-                            View Ledger
-                          </DropdownMenuItem>
-
-                          {/* Payment Option - ONLY if outstanding balance */}
-                          {hasOutstanding && (
-                            <DropdownMenuItem 
-                              className="flex items-center gap-2 hover:bg-gray-800 cursor-pointer"
-                              onClick={() => handleMakePayment(contact)}
-                            >
-                              <DollarSign size={16} />
-                              {contact.type === 'Supplier' ? 'Make Payment' : 'Receive Payment'}
-                            </DropdownMenuItem>
-                          )}
-
-                          <DropdownMenuSeparator className="bg-gray-800" />
-
-                          {/* Standard Actions */}
-                          <DropdownMenuItem className="flex items-center gap-2 hover:bg-gray-800 cursor-pointer">
-                            <Eye size={16} />
-                            View Details
-                          </DropdownMenuItem>
-                          
-                          <DropdownMenuItem 
-                            className="flex items-center gap-2 hover:bg-gray-800 cursor-pointer"
-                            onClick={() => handleEdit(contact)}
-                          >
-                            <Edit size={16} />
-                            Edit Contact
-                          </DropdownMenuItem>
-
-                          <DropdownMenuSeparator className="bg-gray-800" />
-                          
-                          <DropdownMenuItem 
-                            className="flex items-center gap-2 text-red-500 hover:bg-red-900/10 hover:text-red-400 cursor-pointer"
-                            onClick={() => handleDeleteClick(contact)}
-                          >
-                            <Trash2 size={16} />
-                            Delete Contact
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
                     </td>
                   </tr>
                 );

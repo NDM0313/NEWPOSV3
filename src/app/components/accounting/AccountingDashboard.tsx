@@ -102,7 +102,7 @@ export const AccountingDashboard = () => {
   const expenses = useExpenses();
   const { openDrawer } = useNavigation();
   const { companyId, branchId } = useSupabase();
-  const { setCurrentModule } = useGlobalFilter();
+  const { setCurrentModule, startDate: globalStartDate, endDate: globalEndDate } = useGlobalFilter();
   const { formatCurrency } = useFormatCurrency();
 
   useEffect(() => {
@@ -615,7 +615,11 @@ export const AccountingDashboard = () => {
             <h3 className="text-lg font-bold text-white">Day Book (Journal)</h3>
             <p className="text-sm text-gray-400 mb-4">Click voucher number to open transaction detail</p>
             <Suspense fallback={<div className="flex items-center justify-center py-12 text-gray-400">Loading…</div>}>
-              <DayBookReport onVoucherClick={(voucher) => setTransactionReference(voucher)} />
+              <DayBookReport
+                onVoucherClick={(voucher) => setTransactionReference(voucher)}
+                globalStartDate={globalStartDate}
+                globalEndDate={globalEndDate}
+              />
             </Suspense>
           </div>
         )}
@@ -624,7 +628,10 @@ export const AccountingDashboard = () => {
           <div className="space-y-4">
             <h3 className="text-lg font-bold text-white">Roznamcha (Daily Cash Book)</h3>
             <Suspense fallback={<div className="flex items-center justify-center py-12 text-gray-400">Loading…</div>}>
-              <RoznamchaReport />
+              <RoznamchaReport
+                globalStartDate={globalStartDate}
+                globalEndDate={globalEndDate}
+              />
             </Suspense>
           </div>
         )}

@@ -213,7 +213,7 @@ export const InventoryDashboard = () => {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="min-h-full bg-[#0B0F19] text-white space-y-6 p-6">
       {/* Header */}
       <div className="flex justify-between items-center">
         <div>
@@ -338,6 +338,7 @@ export const InventoryDashboard = () => {
           <table className="w-full text-left text-sm">
             <thead className="bg-gray-800/50 border-b border-gray-800">
               <tr>
+                <th className="px-6 py-4 font-semibold text-gray-200 text-center">Actions</th>
                 <th className="px-6 py-4 font-semibold text-gray-200">Product</th>
                 <th className="px-6 py-4 font-semibold text-gray-200">SKU</th>
                 <th className="px-6 py-4 font-semibold text-gray-200">Category</th>
@@ -345,7 +346,6 @@ export const InventoryDashboard = () => {
                 <th className="px-6 py-4 font-semibold text-gray-200">Current Stock</th>
                 <th className="px-6 py-4 font-semibold text-gray-200">Status</th>
                 <th className="px-6 py-4 font-semibold text-gray-200 text-right">Stock Value</th>
-                <th className="px-6 py-4 font-semibold text-gray-200 text-center">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-800">
@@ -357,6 +357,34 @@ export const InventoryDashboard = () => {
 
                 return (
                   <tr key={item.id} className="hover:bg-gray-800/30 transition-colors">
+                    <td className="px-6 py-4">
+                      <div className="flex items-center justify-center gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-8 px-3 bg-blue-500/10 border-blue-500/20 text-blue-400 hover:bg-blue-500/20"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleAdjustStock(item);
+                          }}
+                        >
+                          <Settings size={14} className="mr-1" />
+                          Adjust
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-8 px-3 bg-purple-500/10 border-purple-500/20 text-purple-400 hover:bg-purple-500/20"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleTransferStock(item);
+                          }}
+                        >
+                          <MoveHorizontal size={14} className="mr-1" />
+                          Transfer
+                        </Button>
+                      </div>
+                    </td>
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-3">
                         {item.image && (
@@ -402,34 +430,6 @@ export const InventoryDashboard = () => {
                       <div className="font-bold text-white">${stockValue.toLocaleString()}</div>
                       <div className="text-xs text-gray-500">
                         Sale: ${(item.currentStock * item.salePrice).toLocaleString()}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="flex items-center justify-center gap-2">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="h-8 px-3 bg-blue-500/10 border-blue-500/20 text-blue-400 hover:bg-blue-500/20"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleAdjustStock(item);
-                          }}
-                        >
-                          <Settings size={14} className="mr-1" />
-                          Adjust
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="h-8 px-3 bg-purple-500/10 border-purple-500/20 text-purple-400 hover:bg-purple-500/20"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleTransferStock(item);
-                          }}
-                        >
-                          <MoveHorizontal size={14} className="mr-1" />
-                          Transfer
-                        </Button>
                       </div>
                     </td>
                   </tr>

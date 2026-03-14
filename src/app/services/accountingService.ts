@@ -785,6 +785,31 @@ export const accountingService = {
       }
       // Normalize to include reference_type for downstream (RPC does not return it)
       customerPayments = customerPayments.map((p: any) => ({ ...p, reference_type: 'sale' }));
+
+      // On-account payments: same contact, not linked to a sale — must be included for correct ledger
+      let onAccountPayments: any[] = [];
+      const { data: onAccountData } = await supabase
+        .from('payments')
+        .select('id, reference_number, payment_date, amount, payment_method, notes, reference_id, payment_account_id')
+        .eq('company_id', companyId)
+        .eq('contact_id', customerId)
+        .eq('reference_type', 'on_account');
+      if (onAccountData?.length) {
+        const dateFiltered = (onAccountData as any[]).filter((p: any) => {
+          const d = (p.payment_date || '').toString().slice(0, 10);
+          if (startDate && d < startDate) return false;
+          if (endDate && d > endDate) return false;
+          return true;
+        });
+        onAccountPayments = dateFiltered.map((p: any) => ({ ...p, reference_type: 'on_account', reference_id: p.reference_id ?? null }));
+      }
+      const existingPaymentIds = new Set(customerPayments.map((p: any) => p.id));
+      onAccountPayments.forEach((p: any) => {
+        if (!existingPaymentIds.has(p.id)) {
+          customerPayments.push(p);
+          existingPaymentIds.add(p.id);
+        }
+      });
       
       const accountMap = new Map<string, string>();
 

@@ -185,6 +185,7 @@ export const PurchasesPage = () => {
 
   // Column visibility state
   const [visibleColumns, setVisibleColumns] = useState({
+    actions: true,
     date: true,
     poNo: true,
     reference: true,
@@ -517,6 +518,7 @@ export const PurchasesPage = () => {
 
   // Column alignments - shared between header and data cells
   const alignments: Record<string, string> = {
+    actions: 'text-center',
     date: 'text-left',
     poNo: 'text-left',
     reference: 'text-left',
@@ -532,12 +534,14 @@ export const PurchasesPage = () => {
 
   // Column order state - defines order of columns (same as Sale/Products; reorder in Columns dropdown)
   const [columnOrder, setColumnOrder] = useState([
+    'actions',
     'date', 'poNo', 'reference', 'supplier', 'location', 'status', 'items',
     'grandTotal', 'paymentDue', 'paymentStatus', 'addedBy',
   ]);
 
   // Columns configuration for Column Manager - ordered by columnOrder (reorder via Move Up/Down)
   const columnLabels: Record<string, string> = {
+    actions: 'Actions',
     date: 'Date',
     poNo: 'PO Number',
     reference: 'Reference',
@@ -576,6 +580,7 @@ export const PurchasesPage = () => {
 
   const getColumnWidth = (key: string): string => {
     const widths: Record<string, string> = {
+      actions: '60px',
       date: '100px', poNo: '110px', reference: '110px', supplier: '200px', location: '150px',
       status: '130px', items: '80px', grandTotal: '120px', paymentDue: '120px',
       paymentStatus: '130px', addedBy: '130px',
@@ -587,7 +592,7 @@ export const PurchasesPage = () => {
     const parts = columnOrder
       .filter(key => visibleColumns[key as keyof typeof visibleColumns])
       .map(key => getColumnWidth(key));
-    return `${parts.join(' ')} 60px`.trim();
+    return parts.join(' ').trim();
   }, [columnOrder, visibleColumns]);
 
   // Filter data by date range (TASK 1 FIX - "All" means no date filter)
@@ -1424,6 +1429,9 @@ export const PurchasesPage = () => {
                 >
                   {columnOrder.map(key => {
                     if (!visibleColumns[key as keyof typeof visibleColumns]) return null;
+                    if (key === 'actions') {
+                      return <div key="actions" className="text-center">Actions</div>;
+                    }
                     const isSortable = columnLabels[key] != null;
                     const isActive = sortKey === key;
                     return (
@@ -1432,13 +1440,9 @@ export const PurchasesPage = () => {
                         className={cn(
                           alignments[key] || 'text-left',
                           isSortable && 'cursor-pointer select-none hover:text-gray-300',
-                          // Use flex for all sortable headers to align icon consistently
                           isSortable && 'flex items-center gap-0.5',
-                          // For right-aligned, use justify-end to keep text right
                           alignments[key] === 'text-right' && 'justify-end',
-                          // For center-aligned, use justify-center
                           alignments[key] === 'text-center' && 'justify-center',
-                          // For left-aligned, use justify-start (default)
                           alignments[key] === 'text-left' && 'justify-start'
                         )}
                         onClick={() => isSortable && handleSort(key as PurchaseSortKey)}
@@ -1448,7 +1452,6 @@ export const PurchasesPage = () => {
                       </div>
                     );
                   })}
-                  <div className="text-center">Actions</div>
                 </div>
               </div>
 
@@ -1471,37 +1474,20 @@ export const PurchasesPage = () => {
                     >
                       {columnOrder.map(key => {
                         if (!visibleColumns[key as keyof typeof visibleColumns]) return null;
-                        // Apply same alignment classes as headers
-                        const alignment = alignments[key] || 'text-left';
-                        return (
-                          <div 
-                            key={key} 
-                            className={cn(
-                              alignment,
-                              'flex items-center',
-                              // Match header alignment with justify classes
-                              alignment === 'text-right' && 'justify-end',
-                              alignment === 'text-center' && 'justify-center',
-                              alignment === 'text-left' && 'justify-start'
-                            )}
-                          >
-                            {renderPurchaseCell(purchase, key)}
-                          </div>
-                        );
-                      })}
-                      {/* Actions - visible delete icon + dropdown (same as Sale) */}
-                      <div className="flex items-center justify-center gap-1">
-                        {canDeletePurchase && (
-                        <button
-                          type="button"
-                          onClick={(e) => { e.stopPropagation(); handleDelete(purchase); }}
-                          className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:text-red-400 hover:bg-gray-800/80 transition-all"
-                          title="Delete"
-                        >
-                          <Trash2 size={16} />
-                        </button>
-                        )}
-                        <DropdownMenu>
+                        if (key === 'actions') {
+                          return (
+                            <div key="actions" className="flex items-center justify-center gap-1">
+                              {canDeletePurchase && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => { e.stopPropagation(); handleDelete(purchase); }}
+                                  className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:text-red-400 hover:bg-gray-800/80 transition-all"
+                                  title="Delete"
+                                >
+                                  <Trash2 size={16} />
+                                </button>
+                              )}
+                              <DropdownMenu>
                           <DropdownMenuTrigger asChild>
                             <button 
                               className={cn(
@@ -1583,7 +1569,25 @@ export const PurchasesPage = () => {
                             )}
                           </DropdownMenuContent>
                         </DropdownMenu>
-                      </div>
+                            </div>
+                          );
+                        }
+                        const alignment = alignments[key] || 'text-left';
+                        return (
+                          <div
+                            key={key}
+                            className={cn(
+                              alignment,
+                              'flex items-center',
+                              alignment === 'text-right' && 'justify-end',
+                              alignment === 'text-center' && 'justify-center',
+                              alignment === 'text-left' && 'justify-start'
+                            )}
+                          >
+                            {renderPurchaseCell(purchase, key)}
+                          </div>
+                        );
+                      })}
                     </div>
                   ))
                 )}

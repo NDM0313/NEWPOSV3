@@ -24,6 +24,8 @@ import {
   type RoznamchaRowWithBalance,
 } from '@/app/services/roznamchaService';
 import { exportToPDF, exportToExcel } from '@/app/utils/exportUtils';
+import { useFormatDate } from '@/app/hooks/useFormatDate';
+import { DateTimeDisplay } from '../ui/DateTimeDisplay';
 import { Loader2, BookOpen, Wallet, Building2, CreditCard } from 'lucide-react';
 import { cn } from '../ui/utils';
 import { format } from 'date-fns';
@@ -45,16 +47,35 @@ function AccountBadge({ accountLabel }: { accountLabel: string }) {
   );
 }
 
-export const RoznamchaReport = () => {
+export interface RoznamchaReportProps {
+  /** When provided, use global filter date range instead of local picker (aligns with TopHeader). */
+  globalStartDate?: string | null;
+  globalEndDate?: string | null;
+}
+
+export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaReportProps = {}) => {
   const { companyId, branchId: contextBranchId } = useSupabase();
+  const { formatDate, formatDateTime } = useFormatDate();
   const today = new Date();
   const [dateRange, setDateRange] = useState<{ from?: Date; to?: Date }>({ from: today, to: today });
   const [accountFilter, setAccountFilter] = useState<AccountFilter>('all');
   const [data, setData] = useState<RoznamchaResult | null>(null);
   const [loading, setLoading] = useState(!!companyId);
 
-  const dateFrom = dateRange.from ? format(dateRange.from, 'yyyy-MM-dd') : '';
-  const dateTo = dateRange.to ? format(dateRange.to, 'yyyy-MM-dd') : dateFrom;
+  const useGlobalRange = Boolean(globalStartDate && globalEndDate);
+  const dateFrom = useGlobalRange ? (globalStartDate ?? '').slice(0, 10) : (dateRange.from ? format(dateRange.from, 'yyyy-MM-dd') : '');
+  const dateTo = useGlobalRange ? (globalEndDate ?? '').slice(0, 10) : (dateRange.to ? format(dateRange.to, 'yyyy-MM-dd') : dateFrom);
+
+  const rowDateTime = (r: RoznamchaRowWithBalance) => {
+    if (!r.date) return r.time || '—';
+    if (!r.time) return formatDate(new Date(r.date));
+    try {
+      const combined = r.date + 'T' + (r.time.length === 5 ? r.time + ':00' : r.time);
+      return formatDateTime(new Date(combined));
+    } catch {
+      return r.date + ' ' + r.time;
+    }
+  };
 
   const effectiveBranchId = contextBranchId === 'all' ? null : (contextBranchId || null);
 
@@ -89,12 +110,12 @@ export const RoznamchaReport = () => {
 
   const exportData = {
     title: `Roznamcha ${dateFrom} to ${dateTo} – ${selectedBranchLabel}`,
-    headers: ['Time', 'Ref', 'Details', 'Account', 'Cash In', 'Cash Out', 'Balance'],
+    headers: ['Date & Time', 'Ref', 'Details', 'Account', 'Cash In', 'Cash Out', 'Balance'],
     rows: data
       ? [
           ['Opening', '—', 'Opening Balance', '—', '', '', data.summary.openingBalance],
           ...data.rows.map((r: RoznamchaRowWithBalance) => [
-            r.time,
+            rowDateTime(r),
             r.ref,
             r.referenceDisplay && r.createdBy
               ? `${r.details}\n${r.referenceDisplay} • by ${r.createdBy}`
@@ -126,14 +147,21 @@ export const RoznamchaReport = () => {
       <div className="rounded-xl border border-gray-800 bg-gray-900/50 p-4">
         <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-3">Filters</h3>
         <div className="flex flex-nowrap justify-start items-start gap-[57px]">
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-gray-400">Date Range</span>
-            <DateRangePicker
-              value={dateRange}
-              onChange={setDateRange}
-              placeholder="Select range"
-            />
-          </div>
+          {useGlobalRange ? (
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-gray-400">Date Range</span>
+              <span className="text-sm text-gray-500">Using global date range from top bar</span>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-gray-400">Date Range</span>
+              <DateRangePicker
+                value={dateRange}
+                onChange={setDateRange}
+                placeholder="Select range"
+              />
+            </div>
+          )}
           {/* Global rule: BranchSelector hides when single branch */}
           <BranchSelector variant="inline" showAllBranchesOption />
           <div className="flex items-center gap-2">
@@ -227,7 +255,7 @@ export const RoznamchaReport = () => {
               <table className="w-full text-sm">
                 <thead className="bg-gray-900/80 text-gray-400 border-b border-gray-800">
                   <tr>
-                    <th className="px-4 py-3 text-left font-medium w-20">Time</th>
+                    <th className="px-4 py-3 text-left font-medium w-40">Date & Time</th>
                     <th className="px-4 py-3 text-left font-medium w-28">Ref</th>
                     <th className="px-4 py-3 text-left font-medium">Details</th>
                     <th className="px-4 py-3 text-left font-medium w-24">Account</th>
@@ -256,7 +284,15 @@ export const RoznamchaReport = () => {
                         i % 2 === 0 ? 'bg-gray-950/30' : 'bg-gray-900/20'
                       )}
                     >
-                      <td className="px-4 py-3 text-gray-300">{r.time}</td>
+                      <td className="px-4 py-3 text-gray-300 whitespace-nowrap">
+                        {r.date && r.time ? (
+                          <DateTimeDisplay
+                            date={new Date(r.date + 'T' + (r.time.length === 5 ? r.time + ':00' : r.time))}
+                          />
+                        ) : (
+                          rowDateTime(r)
+                        )}
+                      </td>
                       <td className="px-4 py-3 font-mono text-gray-300">{r.ref}</td>
                       <td className="px-4 py-3 max-w-xs">
                         <div className="font-medium text-white">{r.details}</div>

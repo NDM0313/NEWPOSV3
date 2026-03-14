@@ -334,12 +334,34 @@ export const customerLedgerAPI = {
           prevRentalPaid = (prevRp || []).reduce((s: number, p: any) => s + (Number(p.amount) || 0), 0);
         }
       } catch (_) {}
-      openingBalance = previousTotal - previousPaid - previousReturnsTotal - prevReturnPaymentsTotal + prevStudioOrderNet + prevRentalTotal - prevRentalPaid;
+      // On-account payments before fromDate (credit to customer, reduce opening balance)
+      const { data: prevOnAccount } = await supabase
+        .from('payments')
+        .select('amount')
+        .eq('company_id', companyId)
+        .eq('contact_id', cId)
+        .eq('reference_type', 'on_account')
+        .lt('payment_date', fromDate);
+      const prevOnAccountTotal = (prevOnAccount || []).reduce((s: number, p: any) => s + (Number(p.amount) || 0), 0);
+      openingBalance = previousTotal - previousPaid - previousReturnsTotal - prevReturnPaymentsTotal + prevStudioOrderNet + prevRentalTotal - prevRentalPaid - prevOnAccountTotal;
     }
 
     // Studio: legacy studio_orders dropped; studio charges are in sales.studio_charges (included in sales above)
     const studioOrderDebit = 0;
     const studioOrderCredit = 0;
+
+    // On-account payments in range (credit)
+    let onAccountCreditInRange = 0;
+    let onAccountQuery = supabase
+      .from('payments')
+      .select('amount')
+      .eq('company_id', companyId)
+      .eq('contact_id', cId)
+      .eq('reference_type', 'on_account');
+    if (fromDate) onAccountQuery = onAccountQuery.gte('payment_date', fromDate);
+    if (toDate) onAccountQuery = onAccountQuery.lte('payment_date', toDate);
+    const { data: onAccountInRange } = await onAccountQuery;
+    onAccountCreditInRange = (onAccountInRange || []).reduce((s: number, p: any) => s + (Number(p.amount) || 0), 0);
 
     // Return payments in range (credit)
     let returnPaymentsInRange = 0;
@@ -385,7 +407,7 @@ export const customerLedgerAPI = {
     } catch (_) {}
 
     const totalDebit = totalInvoiceAmount + studioOrderDebit + rentalDebit;
-    const totalCredit = totalPaymentReceived + returnsInRange + returnPaymentsInRange + studioOrderCredit + rentalCredit;
+    const totalCredit = totalPaymentReceived + returnsInRange + returnPaymentsInRange + studioOrderCredit + rentalCredit + onAccountCreditInRange;
     const closingBalance = openingBalance + totalDebit - totalCredit;
 
     return {
@@ -468,7 +490,7 @@ export const customerLedgerAPI = {
     }
 
     const saleIds = (sales || []).map((s: any) => s.id);
-    let payments: any[] | null = null;
+    let payments: any[] = [];
     if (saleIds.length > 0) {
       const rpcPayments = await supabase.rpc('get_customer_ledger_payments', {
         p_company_id: companyId,
@@ -480,17 +502,13 @@ export const customerLedgerAPI = {
         payments = rpcPayments.data ?? [];
       }
     }
-    if (payments === null) {
+    if (payments.length === 0 && saleIds.length > 0) {
       let paymentsQuery = supabase
         .from('payments')
         .select('id, reference_number, payment_date, amount, payment_method, notes, reference_id')
         .eq('company_id', companyId)
-        .eq('reference_type', 'sale');
-      if (saleIds.length > 0) {
-        paymentsQuery = paymentsQuery.in('reference_id', saleIds);
-      } else {
-        paymentsQuery = paymentsQuery.eq('reference_id', '00000000-0000-0000-0000-000000000000');
-      }
+        .eq('reference_type', 'sale')
+        .in('reference_id', saleIds);
       if (fromDate) paymentsQuery = paymentsQuery.gte('payment_date', fromDate);
       if (toDate) paymentsQuery = paymentsQuery.lte('payment_date', toDate);
       const payResult = await paymentsQuery.order('payment_date', { ascending: false });
@@ -499,6 +517,26 @@ export const customerLedgerAPI = {
         console.error('[CUSTOMER LEDGER API] Error fetching payments:', payResult.error);
       }
     }
+    // On-account payments for this contact (can exist with or without sales)
+    const { data: onAccountPayments } = await supabase
+      .from('payments')
+      .select('id, reference_number, payment_date, amount, payment_method, notes, reference_id')
+      .eq('company_id', companyId)
+      .eq('contact_id', cId)
+      .eq('reference_type', 'on_account');
+    const onAccountList = (onAccountPayments || []).filter((p: any) => {
+      const d = (p.payment_date || '').toString().slice(0, 10);
+      if (fromDate && d < fromDate) return false;
+      if (toDate && d > toDate) return false;
+      return true;
+    });
+    const paymentIdsSet = new Set(payments.map((p: any) => p.id));
+    onAccountList.forEach((p: any) => {
+      if (!paymentIdsSet.has(p.id)) {
+        payments.push({ ...p, reference_type: 'on_account' });
+        paymentIdsSet.add(p.id);
+      }
+    });
 
     // Get sale returns for this customer (CREDIT - reduces balance)
     let returnsQuery = supabase
@@ -697,14 +735,15 @@ export const customerLedgerAPI = {
       });
     });
 
-    // Add payments as credit transactions
+    // Add payments as credit transactions (sale-linked and on-account)
     (payments || []).forEach((payment: any) => {
+      const isOnAccount = (payment.reference_type || '').toString().toLowerCase() === 'on_account';
       transactions.push({
         id: payment.id,
         date: payment.payment_date,
         referenceNo: payment.reference_number || '',
-        documentType: 'Payment' as const,
-        description: `Payment via ${payment.payment_method}`,
+        documentType: isOnAccount ? ('On-account Payment' as const) : ('Payment' as const),
+        description: isOnAccount ? `On-account payment via ${payment.payment_method || 'other'}` : `Payment via ${payment.payment_method}`,
         paymentAccount: payment.payment_method || '',
         notes: payment.notes || '',
         debit: 0,
@@ -802,6 +841,16 @@ export const customerLedgerAPI = {
       // Studio: legacy studio_orders dropped; studio amounts are in sales.studio_charges
       const prevStudioOrderNet = 0;
 
+      // On-account payments before fromDate (credit to customer)
+      const { data: prevOnAcc } = await supabase
+        .from('payments')
+        .select('amount')
+        .eq('company_id', companyId)
+        .eq('contact_id', cId)
+        .eq('reference_type', 'on_account')
+        .lt('payment_date', fromDate);
+      const prevOnAccountPmts = (prevOnAcc || []).reduce((s: number, p: any) => s + (Number(p.amount) || 0), 0);
+
       // Rentals before fromDate: total charges - rental payments
       let prevRentalTotal = 0;
       let prevRentalPaid = 0;
@@ -825,7 +874,7 @@ export const customerLedgerAPI = {
         }
       } catch (_) {}
 
-      runningBalance = prevTotal - prevPaid - prevReturnsTotal - prevReturnPmts + prevStudioOrderNet + prevRentalTotal - prevRentalPaid;
+      runningBalance = prevTotal - prevPaid - prevReturnsTotal - prevReturnPmts + prevStudioOrderNet + prevRentalTotal - prevRentalPaid - prevOnAccountPmts;
     }
     transactions.forEach(t => {
       runningBalance += t.debit - t.credit;
@@ -951,7 +1000,7 @@ export const customerLedgerAPI = {
   },
 
   /**
-   * Get payments for a customer
+   * Get payments for a customer (sale-linked + on-account)
    */
   async getPayments(
     customerId: string,
@@ -959,61 +1008,71 @@ export const customerLedgerAPI = {
     fromDate?: string,
     toDate?: string
   ): Promise<Payment[]> {
-    // First get all final-invoice sales for this customer
+    const result: Payment[] = [];
+    const saleIds: string[] = [];
     const { data: sales } = await supabase
       .from('sales')
       .select('id')
       .eq('company_id', companyId)
       .eq('customer_id', customerId)
       .eq('status', 'final');
+    if (sales?.length) saleIds.push(...sales.map(s => s.id));
 
-    if (!sales || sales.length === 0) return [];
+    if (saleIds.length > 0) {
+      let query = supabase
+        .from('payments')
+        .select('id, reference_number, payment_date, amount, payment_method, notes, reference_id')
+        .eq('company_id', companyId)
+        .eq('reference_type', 'sale')
+        .in('reference_id', saleIds);
+      if (fromDate) query = query.gte('payment_date', fromDate);
+      if (toDate) query = query.lte('payment_date', toDate);
+      const { data: salePayments, error } = await query.order('payment_date', { ascending: false });
+      if (error) throw error;
+      const { data: relatedSales } = await supabase
+        .from('sales')
+        .select('id, invoice_no')
+        .in('id', (salePayments || []).map((p: any) => p.reference_id).filter(Boolean));
+      const invoiceMap = new Map((relatedSales || []).map((s: any) => [s.id, s.invoice_no]));
+      (salePayments || []).forEach((payment: any) => {
+        result.push({
+          id: payment.id,
+          paymentNo: payment.reference_number || '',
+          date: payment.payment_date,
+          amount: payment.amount || 0,
+          method: payment.payment_method || '',
+          referenceNo: payment.reference_number || '',
+          appliedInvoices: invoiceMap.get(payment.reference_id) ? [invoiceMap.get(payment.reference_id)!] : [],
+          status: 'Completed' as const,
+        });
+      });
+    }
 
-    let query = supabase
+    let onAccountQuery = supabase
       .from('payments')
-      .select(`
-        id,
-        reference_number,
-        payment_date,
-        amount,
-        payment_method,
-        notes,
-        reference_id
-      `)
+      .select('id, reference_number, payment_date, amount, payment_method, notes')
       .eq('company_id', companyId)
-      .eq('reference_type', 'sale')
-      .in('reference_id', sales.map(s => s.id));
-
-    if (fromDate) {
-      query = query.gte('payment_date', fromDate);
+      .eq('contact_id', customerId)
+      .eq('reference_type', 'on_account');
+    if (fromDate) onAccountQuery = onAccountQuery.gte('payment_date', fromDate);
+    if (toDate) onAccountQuery = onAccountQuery.lte('payment_date', toDate);
+    const { data: onAccountPayments, error: onAccErr } = await onAccountQuery.order('payment_date', { ascending: false });
+    if (!onAccErr && onAccountPayments?.length) {
+      onAccountPayments.forEach((payment: any) => {
+        result.push({
+          id: payment.id,
+          paymentNo: payment.reference_number || '',
+          date: payment.payment_date,
+          amount: payment.amount || 0,
+          method: payment.payment_method || '',
+          referenceNo: payment.reference_number || '',
+          appliedInvoices: [],
+          status: 'Completed' as const,
+        });
+      });
     }
-    if (toDate) {
-      query = query.lte('payment_date', toDate);
-    }
-
-    const { data, error } = await query.order('payment_date', { ascending: false });
-
-    if (error) throw error;
-
-    // Get invoice numbers for each payment
-    const paymentIds = (data || []).map(p => p.reference_id);
-    const { data: relatedSales } = await supabase
-      .from('sales')
-      .select('id, invoice_no')
-      .in('id', paymentIds);
-
-    const invoiceMap = new Map((relatedSales || []).map(s => [s.id, s.invoice_no]));
-
-    return (data || []).map((payment: any) => ({
-      id: payment.id,
-      paymentNo: payment.reference_number || '',
-      date: payment.payment_date,
-      amount: payment.amount || 0,
-      method: payment.payment_method || '',
-      referenceNo: payment.reference_number || '',
-      appliedInvoices: invoiceMap.get(payment.reference_id) ? [invoiceMap.get(payment.reference_id)!] : [],
-      status: 'Completed' as const,
-    }));
+    result.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    return result;
   },
 
   /**
