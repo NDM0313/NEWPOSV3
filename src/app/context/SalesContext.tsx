@@ -572,15 +572,15 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
         const msg = insertError?.message || '';
         const isDuplicateInvoice = insertError?.code === '23505' || (msg && String(msg).includes('sales_company_branch_invoice_unique'));
         if (isDuplicateInvoice) {
-          // Use next number explicitly (generateDocumentNumber returns same until state updates)
-          const config = getNumberingConfig(docType);
-          const nextNum = (config.nextNumber || 1) + 1;
-          effectiveInvoiceNo = `${config.prefix}${String(nextNum).padStart(config.padding, '0')}`;
-          incrementNextNumber(docType);
-          supabaseSale.invoice_no = effectiveInvoiceNo;
-          result = await saleService.createSale(supabaseSale, supabaseItems, { allowNegativeStock });
-          if (weGeneratedNumber) incrementNextNumber(docType);
-          console.warn('[SALES CONTEXT] Duplicate invoice number; retried with', effectiveInvoiceNo);
+          // Retry with fresh number from DB (single source of truth; avoids race with hook state)
+          try {
+            effectiveInvoiceNo = await documentNumberService.getNextDocumentNumberGlobal(companyId, sequenceType);
+            supabaseSale.invoice_no = effectiveInvoiceNo;
+            result = await saleService.createSale(supabaseSale, supabaseItems, { allowNegativeStock });
+            console.warn('[SALES CONTEXT] Duplicate invoice number; retried with DB number', effectiveInvoiceNo);
+          } catch (retryErr: any) {
+            throw retryErr;
+          }
         } else {
           throw insertError;
         }

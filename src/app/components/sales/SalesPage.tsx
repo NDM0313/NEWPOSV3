@@ -1653,10 +1653,11 @@ export const SalesPage = () => {
               {/* Table Header - full-width background (w-max so it spans full table when scrolling) */}
               <div className="sticky top-0 z-10 min-w-[1400px] w-max bg-gray-900 border-b border-gray-800">
                 {activeTab === 'returns' ? (
-                  // Returns Tab Header - Enhanced with more columns
+                  // Returns Tab Header - Actions first
                   <div className="grid gap-3 px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider"
-                    style={{ gridTemplateColumns: '120px 130px 180px 150px 150px 130px 120px 100px 150px 60px' }}
+                    style={{ gridTemplateColumns: '60px 120px 130px 180px 150px 150px 130px 120px 100px 150px' }}
                   >
+                    <div className="text-center">Actions</div>
                     <div className="text-left">Date & Time</div>
                     <div className="text-left">Return No</div>
                     <div className="text-left">Customer</div>
@@ -1666,7 +1667,6 @@ export const SalesPage = () => {
                     <div className="text-right">Total</div>
                     <div className="text-right">Items</div>
                     <div className="text-left">Reason</div>
-                    <div className="text-center">Actions</div>
                   </div>
                 ) : (
                   // Sales Tab Header
@@ -1755,8 +1755,99 @@ export const SalesPage = () => {
                               setViewReturnDetailsOpen(true);
                             }}
                             className="grid gap-3 px-4 h-auto min-h-[60px] py-3 min-w-[1400px] w-max hover:bg-gray-800/30 transition-colors items-center border-b border-gray-800 last:border-b-0 cursor-pointer"
-                            style={{ gridTemplateColumns: '120px 130px 180px 150px 150px 130px 120px 100px 150px 60px' }}
+                            style={{ gridTemplateColumns: '60px 120px 130px 180px 150px 150px 130px 120px 100px 150px' }}
                           >
+                            <div className="flex justify-center" onClick={(e) => e.stopPropagation()}>
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <button className="w-8 h-8 rounded-lg bg-gray-800/50 hover:bg-gray-700 transition-all flex items-center justify-center text-gray-400 hover:text-white">
+                                    <MoreVertical size={16} />
+                                  </button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end" className="bg-gray-900 border-gray-700 text-white w-56">
+                                  <DropdownMenuItem 
+                                    onClick={() => { setSelectedReturn(ret); setViewReturnDetailsOpen(true); }}
+                                    className="hover:bg-gray-800 cursor-pointer"
+                                  >
+                                    <Eye size={14} className="mr-2 text-blue-400" />
+                                    View Return Details
+                                  </DropdownMenuItem>
+                                  {ret.original_sale_id && originalSale && (
+                                    <DropdownMenuItem 
+                                      onClick={() => { setSelectedSale(originalSale); setViewDetailsOpen(true); }}
+                                      className="hover:bg-gray-800 cursor-pointer"
+                                    >
+                                      <FileText size={14} className="mr-2 text-green-400" />
+                                      View Original Sale
+                                    </DropdownMenuItem>
+                                  )}
+                                  {String(ret?.status).toLowerCase() !== 'final' && (
+                                    <>
+                                      <DropdownMenuSeparator />
+                                      <DropdownMenuItem 
+                                        onClick={() => {
+                                          if (!ret.original_sale_id) {
+                                            toast.info('Standalone return (no invoice) cannot be edited. Delete and create a new return if needed.');
+                                            return;
+                                          }
+                                          setSaleReturnSaleId(ret.original_sale_id);
+                                          setSaleReturnEditId(ret.id);
+                                          setSaleReturnFormOpen(true);
+                                        }}
+                                        className="hover:bg-gray-800 cursor-pointer"
+                                      >
+                                        <Edit size={14} className="mr-2 text-green-400" />
+                                        Edit Sale Return
+                                      </DropdownMenuItem>
+                                      <DropdownMenuItem 
+                                        onClick={() => { setReturnToDelete(ret); setDeleteReturnDialogOpen(true); }}
+                                        className="hover:bg-gray-800 cursor-pointer text-red-400"
+                                      >
+                                        <Trash2 size={14} className="mr-2" />
+                                        Delete Return
+                                      </DropdownMenuItem>
+                                    </>
+                                  )}
+                                  {String(ret?.status).toLowerCase() === 'final' && (
+                                    <>
+                                      <DropdownMenuSeparator />
+                                      <DropdownMenuItem 
+                                        onClick={() => { setReturnToVoid(ret); setVoidReturnDialogOpen(true); }}
+                                        className="hover:bg-gray-800 cursor-pointer text-amber-400"
+                                      >
+                                        <RotateCcw size={14} className="mr-2" />
+                                        Void / Cancel Return
+                                      </DropdownMenuItem>
+                                    </>
+                                  )}
+                                  <DropdownMenuSeparator />
+                                  <DropdownMenuItem 
+                                    onClick={async () => {
+                                      if (!companyId) return;
+                                      try {
+                                        const fullReturn = await saleReturnService.getSaleReturnById(ret.id, companyId);
+                                        setSelectedReturnForPrint(fullReturn);
+                                        setPrintReturnOpen(true);
+                                      } catch (error: any) {
+                                        console.error('[SalesPage] Error loading return for print:', error);
+                                        toast.error('Could not load return details for printing');
+                                      }
+                                    }}
+                                    className="hover:bg-gray-800 cursor-pointer"
+                                  >
+                                    <Printer size={14} className="mr-2 text-purple-400" />
+                                    Print Return
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem 
+                                    onClick={() => { toast.info('Export return functionality coming soon'); }}
+                                    className="hover:bg-gray-800 cursor-pointer"
+                                  >
+                                    <Download size={14} className="mr-2 text-blue-400" />
+                                    Export Return
+                                  </DropdownMenuItem>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            </div>
                             <div className="flex flex-col">
                               <div className="text-sm text-gray-300 font-medium">{dateTime.date}</div>
                               <div className="text-xs text-gray-500">{dateTime.time}</div>
@@ -1795,113 +1886,6 @@ export const SalesPage = () => {
                             </div>
                             <div className="text-right text-sm text-gray-400">{ret.items_count || ret.items?.length || 0} items</div>
                             <div className="text-sm text-gray-400 truncate" title={ret.reason || ''}>{ret.reason || '—'}</div>
-                            <div className="flex justify-center" onClick={(e) => e.stopPropagation()}>
-                              <DropdownMenu>
-                                <DropdownMenuTrigger asChild>
-                                  <button className="w-8 h-8 rounded-lg bg-gray-800/50 hover:bg-gray-700 transition-all flex items-center justify-center text-gray-400 hover:text-white">
-                                    <MoreVertical size={16} />
-                                  </button>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent align="end" className="bg-gray-900 border-gray-700 text-white w-56">
-                                  <DropdownMenuItem 
-                                    onClick={() => {
-                                      setSelectedReturn(ret);
-                                      setViewReturnDetailsOpen(true);
-                                    }}
-                                    className="hover:bg-gray-800 cursor-pointer"
-                                  >
-                                    <Eye size={14} className="mr-2 text-blue-400" />
-                                    View Return Details
-                                  </DropdownMenuItem>
-                                  {ret.original_sale_id && originalSale && (
-                                    <DropdownMenuItem 
-                                      onClick={() => {
-                                        setSelectedSale(originalSale);
-                                        setViewDetailsOpen(true);
-                                      }}
-                                      className="hover:bg-gray-800 cursor-pointer"
-                                    >
-                                      <FileText size={14} className="mr-2 text-green-400" />
-                                      View Original Sale
-                                    </DropdownMenuItem>
-                                  )}
-                                  {/* Edit & Delete only for draft; Void only for final (standard: mistake correction) */}
-                                  {String(ret?.status).toLowerCase() !== 'final' && (
-                                    <>
-                                      <DropdownMenuSeparator />
-                                      <DropdownMenuItem 
-                                        onClick={() => {
-                                          if (!ret.original_sale_id) {
-                                            toast.info('Standalone return (no invoice) cannot be edited. Delete and create a new return if needed.');
-                                            return;
-                                          }
-                                          setSaleReturnSaleId(ret.original_sale_id);
-                                          setSaleReturnEditId(ret.id);
-                                          setSaleReturnFormOpen(true);
-                                        }}
-                                        className="hover:bg-gray-800 cursor-pointer"
-                                      >
-                                        <Edit size={14} className="mr-2 text-green-400" />
-                                        Edit Sale Return
-                                      </DropdownMenuItem>
-                                      <DropdownMenuItem 
-                                        onClick={() => {
-                                          setReturnToDelete(ret);
-                                          setDeleteReturnDialogOpen(true);
-                                        }}
-                                        className="hover:bg-gray-800 cursor-pointer text-red-400"
-                                      >
-                                        <Trash2 size={14} className="mr-2" />
-                                        Delete Return
-                                      </DropdownMenuItem>
-                                    </>
-                                  )}
-                                  {String(ret?.status).toLowerCase() === 'final' && (
-                                    <>
-                                      <DropdownMenuSeparator />
-                                      <DropdownMenuItem 
-                                        onClick={() => {
-                                          setReturnToVoid(ret);
-                                          setVoidReturnDialogOpen(true);
-                                        }}
-                                        className="hover:bg-gray-800 cursor-pointer text-amber-400"
-                                      >
-                                        <RotateCcw size={14} className="mr-2" />
-                                        Void / Cancel Return
-                                      </DropdownMenuItem>
-                                    </>
-                                  )}
-                                  <DropdownMenuSeparator />
-                                  <DropdownMenuItem 
-                                    onClick={async () => {
-                                      if (!companyId) return;
-                                      try {
-                                        const fullReturn = await saleReturnService.getSaleReturnById(ret.id, companyId);
-                                        setSelectedReturnForPrint(fullReturn);
-                                        setPrintReturnOpen(true);
-                                      } catch (error: any) {
-                                        console.error('[SalesPage] Error loading return for print:', error);
-                                        toast.error('Could not load return details for printing');
-                                      }
-                                    }}
-                                    className="hover:bg-gray-800 cursor-pointer"
-                                  >
-                                    <Printer size={14} className="mr-2 text-purple-400" />
-                                    Print Return
-                                  </DropdownMenuItem>
-                                  <DropdownMenuItem 
-                                    onClick={() => {
-                                      // TODO: Implement export return
-                                      toast.info('Export return functionality coming soon');
-                                    }}
-                                    className="hover:bg-gray-800 cursor-pointer"
-                                  >
-                                    <Download size={14} className="mr-2 text-blue-400" />
-                                    Export Return
-                                  </DropdownMenuItem>
-                                </DropdownMenuContent>
-                              </DropdownMenu>
-                            </div>
                           </div>
                         );
                       })}

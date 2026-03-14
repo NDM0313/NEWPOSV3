@@ -310,7 +310,7 @@ export const ReportsDashboardEnhanced = () => {
   }
 
   return (
-    <div className="h-full w-full bg-gray-950 text-white overflow-auto">
+    <div className="h-full w-full min-h-full bg-[#0B0F19] text-white overflow-auto">
       {/* Header */}
       <div className="border-b border-gray-800 bg-gray-900/50 backdrop-blur-sm sticky top-0 z-10">
         <div className="px-6 py-4">

@@ -413,6 +413,7 @@ export const ProductsPage = () => {
   // Column Visibility State
   const [columnVisibilityOpen, setColumnVisibilityOpen] = useState(false);
   const [visibleColumns, setVisibleColumns] = useState({
+    actions: true,
     sku: true,
     image: true,
     name: true,
@@ -431,10 +432,11 @@ export const ProductsPage = () => {
   };
 
   const [columnOrder, setColumnOrder] = useState([
-    'sku', 'image', 'name', 'branch', 'unit', 'purchase', 'selling', 'margin', 'stock', 'type', 'category',
+    'actions', 'sku', 'image', 'name', 'branch', 'unit', 'purchase', 'selling', 'margin', 'stock', 'type', 'category',
   ]);
 
   const columnLabels: Record<string, string> = {
+    actions: 'Actions',
     sku: 'SKU',
     image: 'Image',
     name: 'Product Name',
@@ -469,6 +471,7 @@ export const ProductsPage = () => {
 
   const getColumnWidth = (key: string): string => {
     const widths: Record<string, string> = {
+      actions: '60px',
       sku: '80px', image: '60px', name: '1fr', branch: '140px', unit: '80px',
       purchase: '110px', selling: '110px', margin: '100px', stock: '100px',
       type: '120px', category: '120px',
@@ -480,10 +483,11 @@ export const ProductsPage = () => {
     const parts = columnOrder
       .filter(key => visibleColumns[key as keyof typeof visibleColumns])
       .map(key => getColumnWidth(key));
-    return `${parts.join(' ')} 60px`.trim();
+    return parts.join(' ').trim();
   }, [columnOrder, visibleColumns]);
 
   const renderProductCell = (product: Product, key: string): React.ReactNode => {
+    if (key === 'actions') return null;
     switch (key) {
       case 'sku':
         return <div className="text-sm text-blue-400 font-mono">{product.sku}</div>;
@@ -909,6 +913,7 @@ export const ProductsPage = () => {
                 >
                   {columnOrder.map(key => {
                     if (!visibleColumns[key as keyof typeof visibleColumns]) return null;
+                    if (key === 'actions') return <div key="actions" className="text-center">Actions</div>;
                     const align = (key === 'image' || key === 'stock') ? 'text-center' : (key === 'purchase' || key === 'selling' || key === 'margin') ? 'text-right' : 'text-left';
                     const isSortable = columnKeyToSortKey(key) != null;
                     const isActive = sortKeyToColumnKey(sortKey) === key;
@@ -923,7 +928,6 @@ export const ProductsPage = () => {
                       </div>
                     );
                   })}
-                  <div className="text-center">Actions</div>
                 </div>
               </div>
 
@@ -970,68 +974,71 @@ export const ProductsPage = () => {
                       >
                         {columnOrder.map(key => {
                           if (!visibleColumns[key as keyof typeof visibleColumns]) return null;
+                          if (key === 'actions') {
+                            return (
+                              <div key="actions" className="flex justify-center">
+                                <DropdownMenu>
+                                  <DropdownMenuTrigger asChild>
+                                    <button 
+                                      className={cn(
+                                        "w-8 h-8 rounded-lg bg-gray-800/50 hover:bg-gray-700 transition-all flex items-center justify-center text-gray-400 hover:text-white",
+                                        hoveredRow === product.id ? "opacity-100" : "opacity-0"
+                                      )}
+                                    >
+                                      <MoreVertical size={16} />
+                                    </button>
+                                  </DropdownMenuTrigger>
+                                  <DropdownMenuContent align="end" className="bg-gray-900 border-gray-700 text-white w-52">
+                                    <DropdownMenuItem 
+                                      onClick={() => handleAction(product, 'view')}
+                                      className="hover:bg-gray-800 cursor-pointer"
+                                    >
+                                      <Eye size={14} className="mr-2 text-blue-400" />
+                                      View Details
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem 
+                                      onClick={() => handleAction(product, 'edit')}
+                                      className="hover:bg-gray-800 cursor-pointer"
+                                    >
+                                      <Edit size={14} className="mr-2 text-green-400" />
+                                      Edit Product
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem 
+                                      onClick={() => handleAction(product, 'stock-history')}
+                                      className="hover:bg-gray-800 cursor-pointer"
+                                    >
+                                      <FileText size={14} className="mr-2 text-purple-400" />
+                                      Stock History
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem 
+                                      onClick={() => handleAction(product, 'adjust-price')}
+                                      className="hover:bg-gray-800 cursor-pointer"
+                                    >
+                                      <Tag size={14} className="mr-2 text-yellow-400" />
+                                      Adjust Price
+                                    </DropdownMenuItem>
+                                    <DropdownMenuSeparator className="bg-gray-700" />
+                                    <DropdownMenuItem 
+                                      onClick={() => handleAction(product, 'adjust-stock')}
+                                      className="hover:bg-gray-800 cursor-pointer"
+                                    >
+                                      <Box size={14} className="mr-2 text-orange-400" />
+                                      Adjust Stock
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem 
+                                      onClick={() => handleAction(product, 'delete')}
+                                      className="hover:bg-gray-800 cursor-pointer text-red-400"
+                                    >
+                                      <Trash2 size={14} className="mr-2" />
+                                      Delete
+                                    </DropdownMenuItem>
+                                  </DropdownMenuContent>
+                                </DropdownMenu>
+                              </div>
+                            );
+                          }
                           return <div key={key}>{renderProductCell(product, key)}</div>;
                         })}
-                        {/* Actions */}
-                        <div className="flex justify-center">
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <button 
-                                className={cn(
-                                  "w-8 h-8 rounded-lg bg-gray-800/50 hover:bg-gray-700 transition-all flex items-center justify-center text-gray-400 hover:text-white",
-                                  hoveredRow === product.id ? "opacity-100" : "opacity-0"
-                                )}
-                              >
-                                <MoreVertical size={16} />
-                              </button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end" className="bg-gray-900 border-gray-700 text-white w-52">
-                              <DropdownMenuItem 
-                                onClick={() => handleAction(product, 'view')}
-                                className="hover:bg-gray-800 cursor-pointer"
-                              >
-                                <Eye size={14} className="mr-2 text-blue-400" />
-                                View Details
-                              </DropdownMenuItem>
-                              <DropdownMenuItem 
-                                onClick={() => handleAction(product, 'edit')}
-                                className="hover:bg-gray-800 cursor-pointer"
-                              >
-                                <Edit size={14} className="mr-2 text-green-400" />
-                                Edit Product
-                              </DropdownMenuItem>
-                              <DropdownMenuItem 
-                                onClick={() => handleAction(product, 'stock-history')}
-                                className="hover:bg-gray-800 cursor-pointer"
-                              >
-                                <FileText size={14} className="mr-2 text-purple-400" />
-                                Stock History
-                              </DropdownMenuItem>
-                              <DropdownMenuItem 
-                                onClick={() => handleAction(product, 'adjust-price')}
-                                className="hover:bg-gray-800 cursor-pointer"
-                              >
-                                <Tag size={14} className="mr-2 text-yellow-400" />
-                                Adjust Price
-                              </DropdownMenuItem>
-                              <DropdownMenuSeparator className="bg-gray-700" />
-                              <DropdownMenuItem 
-                                onClick={() => handleAction(product, 'adjust-stock')}
-                                className="hover:bg-gray-800 cursor-pointer"
-                              >
-                                <Box size={14} className="mr-2 text-orange-400" />
-                                Adjust Stock
-                              </DropdownMenuItem>
-                              <DropdownMenuItem 
-                                onClick={() => handleAction(product, 'delete')}
-                                className="hover:bg-gray-800 cursor-pointer text-red-400"
-                              >
-                                <Trash2 size={14} className="mr-2" />
-                                Delete
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        </div>
                       </div>
                   ))
                 )}

@@ -130,10 +130,11 @@ export const InventoryDesignTestPage = () => {
   const columnKeys = useMemo(() => {
     const base = ['product', 'sku', 'category', 'stockQty'];
     const packingCols = enablePacking ? (['boxes', 'pieces', 'unit'] as const) : [];
-    return [...base, ...packingCols, 'avgCost', 'sellingPrice', 'stockValue', 'movement', 'status', 'actions'] as const;
+    return ['actions', ...base, ...packingCols, 'avgCost', 'sellingPrice', 'stockValue', 'movement', 'status'] as const;
   }, [enablePacking]);
 
   const columnsList = useMemo(() => [
+    { key: 'actions', label: 'Actions' },
     { key: 'product', label: 'Product' },
     { key: 'sku', label: 'SKU' },
     { key: 'category', label: 'Category' },
@@ -144,7 +145,6 @@ export const InventoryDesignTestPage = () => {
     { key: 'stockValue', label: 'Stock Value' },
     { key: 'movement', label: 'Movement' },
     { key: 'status', label: 'Status' },
-    { key: 'actions', label: 'Actions' },
   ], [enablePacking]);
 
   const toggleExpand = (id: string) => {
@@ -332,6 +332,21 @@ export const InventoryDesignTestPage = () => {
 
                   rows.push(
                     <tr key={product.id} className="hover:bg-gray-800/30 transition-colors">
+                      {visibleCols.includes('actions') && (
+                        <td className="px-4 py-3 text-center print:hidden">
+                          <div className="flex items-center justify-center gap-1">
+                            <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-blue-400 hover:bg-blue-500/10" onClick={() => setLedgerProduct(product)} title="Ledger">
+                              <ExternalLink size={16} />
+                            </Button>
+                            <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-gray-400 hover:bg-gray-500/10" onClick={() => openDrawer?.('edit-product', undefined, { product: { id: product.productId, uuid: product.productId, name: product.name, sku: product.sku } })} title="Edit">
+                              <Pencil size={16} />
+                            </Button>
+                            <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-amber-400 hover:bg-amber-500/10" onClick={() => setAdjustmentProduct(product)} title="Adjust">
+                              <SlidersHorizontal size={16} />
+                            </Button>
+                          </div>
+                        </td>
+                      )}
                       {visibleCols.includes('product') && (
                         <td className="px-4 py-3 min-w-[220px] w-[220px]">
                           <div className="flex items-center gap-2">
@@ -400,21 +415,6 @@ export const InventoryDesignTestPage = () => {
                           )}
                         </td>
                       )}
-                      {visibleCols.includes('actions') && (
-                        <td className="px-4 py-3 text-center print:hidden">
-                          <div className="flex items-center justify-center gap-1">
-                            <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-blue-400 hover:bg-blue-500/10" onClick={() => setLedgerProduct(product)} title="Ledger">
-                              <ExternalLink size={16} />
-                            </Button>
-                            <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-gray-400 hover:bg-gray-500/10" onClick={() => openDrawer?.('edit-product', undefined, { product: { id: product.productId, uuid: product.productId, name: product.name, sku: product.sku } })} title="Edit">
-                              <Pencil size={16} />
-                            </Button>
-                            <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-amber-400 hover:bg-amber-500/10" onClick={() => setAdjustmentProduct(product)} title="Adjust">
-                              <SlidersHorizontal size={16} />
-                            </Button>
-                          </div>
-                        </td>
-                      )}
                     </tr>
                   );
 
@@ -447,6 +447,7 @@ export const InventoryDesignTestPage = () => {
                         : (v.sku || '—');
                       rows.push(
                         <tr key={`${product.id}-${v.id}`} className="bg-gray-900/60 hover:bg-gray-800/20">
+                          {visibleCols.includes('actions') && <td className="px-4 py-2 text-center text-gray-600">—</td>}
                           {visibleCols.includes('product') && (
                             <td className="px-4 py-2 pl-12 min-w-[220px] w-[220px]">
                               <span className="text-gray-400 text-sm">{variationLabel}</span>
@@ -480,7 +481,6 @@ export const InventoryDesignTestPage = () => {
                               {(v.stock ?? 0) <= 0 ? <Badge className="bg-red-500/20 text-red-400 text-xs">Out</Badge> : <Badge className="bg-green-500/20 text-green-400 text-xs">OK</Badge>}
                             </td>
                           )}
-                          {visibleCols.includes('actions') && <td className="px-4 py-2 text-center text-gray-600">—</td>}
                         </tr>
                       );
                     });

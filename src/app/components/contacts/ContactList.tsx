@@ -217,7 +217,7 @@ export const ContactList = () => {
   };
 
   return (
-    <div className="space-y-6 animate-in fade-in duration-500">
+    <div className="min-h-full bg-[#0B0F19] text-white space-y-6 p-6 animate-in fade-in duration-500">
       {/* Top Action Bar */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>

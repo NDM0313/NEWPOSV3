@@ -750,6 +750,7 @@ export const PurchasesPage = () => {
   };
 
   const renderPurchaseCell = (purchase: Purchase, key: string): React.ReactNode => {
+    if (key === 'actions') return null;
     try {
       switch (key) {
       case 'date': {
