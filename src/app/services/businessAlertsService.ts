@@ -39,7 +39,7 @@ export async function getBusinessAlerts(companyId: string): Promise<BusinessAler
       inventoryIntelligenceService.getLowStockAlerts(companyId),
       inventoryIntelligenceService.getDeadStock(companyId),
       getFinancialDashboardMetrics(companyId),
-      supabase.from('sales').select('id, due_amount, sale_date, invoice_no').eq('company_id', companyId).eq('status', 'final').gt('due_amount', 0),
+      supabase.from('sales').select('id, due_amount, invoice_date, invoice_no').eq('company_id', companyId).eq('status', 'final').gt('due_amount', 0),
       supabase.from('purchases').select('id, due_amount, po_date').eq('company_id', companyId).in('status', ['final', 'received']).gt('due_amount', 0),
     ]);
 
@@ -107,7 +107,7 @@ export async function getBusinessAlerts(companyId: string): Promise<BusinessAler
       return Math.floor((today.getTime() - d.getTime()) / 86400000);
     };
 
-    const overdueSales = (receivables.data || []).filter((s: any) => overdueDays(s.sale_date) > 0);
+    const overdueSales = (receivables.data || []).filter((s: any) => overdueDays(s.invoice_date) > 0);
     const overduePurchases = (payables.data || []).filter((p: any) => overdueDays(p.po_date) > 0);
 
     if (overdueSales.length > 0) {

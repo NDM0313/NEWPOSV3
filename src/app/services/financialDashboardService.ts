@@ -1,6 +1,7 @@
 /**
  * Phase-2 Intelligence: Executive Financial Dashboard
  * Lightweight metrics for sub-1s load. Prefer RPC; fallback to parallel fetches.
+ * ERP Final Stabilization: get_dashboard_metrics RPC returns metrics + sales_by_category + low_stock in one call.
  */
 import { supabase } from '@/lib/supabase';
 
@@ -102,7 +103,7 @@ async function getMetricsFallback(companyId: string): Promise<FinancialDashboard
     .toISOString()
     .slice(0, 10);
 
-  const saleDateCol = 'sale_date'; // or invoice_date - DB may vary
+  const saleDateCol = 'invoice_date';
   const purchDateCol = 'po_date';
   const expDateCol = 'expense_date';
 
@@ -170,4 +171,122 @@ async function getMetricsFallback(companyId: string): Promise<FinancialDashboard
     expense_trend,
     profit_trend,
   };
+}
+
+/** Low stock item shape from get_dashboard_metrics RPC */
+export interface DashboardLowStockItem {
+  id: string;
+  name: string | null;
+  sku: string | null;
+  current_stock: number;
+  min_stock: number;
+}
+
+/** Combined dashboard payload from get_dashboard_metrics RPC (1 call instead of 5–13). */
+export interface DashboardMetricsPayload {
+  metrics: FinancialDashboardMetrics;
+  sales_by_category: Array<{ categoryName: string; total: number }>;
+  low_stock_items: DashboardLowStockItem[];
+  error?: string;
+}
+
+/**
+ * Fetch full dashboard in one RPC: metrics + sales by category + low stock.
+ * Falls back to separate calls if RPC is not available.
+ */
+export async function getDashboardMetrics(
+  companyId: string,
+  branchId?: string | null,
+  startDate?: string | null,
+  endDate?: string | null
+): Promise<DashboardMetricsPayload> {
+  if (!companyId) {
+    return {
+      metrics: getEmptyMetrics(),
+      sales_by_category: [],
+      low_stock_items: [],
+    };
+  }
+  try {
+    const { data, error } = await supabase.rpc('get_dashboard_metrics', {
+      p_company_id: companyId,
+      p_branch_id: branchId || null,
+      p_start_date: startDate ? startDate.slice(0, 10) : null,
+      p_end_date: endDate ? endDate.slice(0, 10) : null,
+    });
+    if (error) throw error;
+    const raw = data as Record<string, unknown> | null;
+    if (!raw) throw new Error('No data');
+    const metricsRaw = raw.metrics as Record<string, unknown> | undefined;
+    return {
+      metrics: metricsRaw ? parseFinancialMetrics(metricsRaw) : getEmptyMetrics(),
+      sales_by_category: Array.isArray(raw.sales_by_category)
+        ? (raw.sales_by_category as Array<{ categoryName: string; total: number }>)
+        : [],
+      low_stock_items: Array.isArray(raw.low_stock_items)
+        ? (raw.low_stock_items as DashboardLowStockItem[])
+        : [],
+      error: raw.error as string | undefined,
+    };
+  } catch (e) {
+    console.warn('[DASHBOARD] get_dashboard_metrics RPC failed, using fallback:', e);
+    return getDashboardMetricsFallback(companyId, startDate, endDate);
+  }
+}
+
+function parseFinancialMetrics(raw: Record<string, unknown>): FinancialDashboardMetrics {
+  return {
+    today_sales: Number(raw.today_sales) ?? 0,
+    today_profit: Number(raw.today_profit) ?? 0,
+    monthly_revenue: Number(raw.monthly_revenue) ?? 0,
+    monthly_expenses: Number(raw.monthly_expenses) ?? 0,
+    monthly_profit: Number(raw.monthly_profit) ?? 0,
+    profit_margin_pct: Number(raw.profit_margin_pct) ?? 0,
+    cash_balance: Number(raw.cash_balance) ?? 0,
+    bank_balance: Number(raw.bank_balance) ?? 0,
+    receivables: Number(raw.receivables) ?? 0,
+    payables: Number(raw.payables) ?? 0,
+    sales_trend: Array.isArray(raw.sales_trend) ? (raw.sales_trend as { date: string; value: number }[]) : [],
+    expense_trend: Array.isArray(raw.expense_trend) ? (raw.expense_trend as { date: string; value: number }[]) : [],
+    profit_trend: Array.isArray(raw.profit_trend) ? (raw.profit_trend as { date: string; value: number }[]) : [],
+    error: raw.error as string | undefined,
+  };
+}
+
+async function getDashboardMetricsFallback(
+  companyId: string,
+  startDate?: string | null,
+  endDate?: string | null
+): Promise<DashboardMetricsPayload> {
+  const [metrics, salesByCategory, lowStock] = await Promise.all([
+    getFinancialDashboardMetrics(companyId),
+    getSalesByCategoryFromService(companyId, startDate, endDate),
+    getLowStockFromService(companyId),
+  ]);
+  return {
+    metrics,
+    sales_by_category: salesByCategory,
+    low_stock_items: lowStock,
+  };
+}
+
+async function getSalesByCategoryFromService(
+  companyId: string,
+  start?: string | null,
+  end?: string | null
+): Promise<Array<{ categoryName: string; total: number }>> {
+  const { getSalesByCategory } = await import('@/app/services/dashboardService');
+  return getSalesByCategory(companyId, start ?? undefined, end ?? undefined);
+}
+
+async function getLowStockFromService(companyId: string): Promise<DashboardLowStockItem[]> {
+  const { productService } = await import('@/app/services/productService');
+  const rows = await productService.getLowStockProducts(companyId);
+  return rows.map((r) => ({
+    id: r.id,
+    name: r.name ?? null,
+    sku: r.sku ?? null,
+    current_stock: r.current_stock ?? 0,
+    min_stock: r.min_stock ?? 0,
+  }));
 }

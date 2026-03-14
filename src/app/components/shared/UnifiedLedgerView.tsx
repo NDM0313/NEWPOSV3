@@ -5,6 +5,7 @@ import { Badge } from '@/app/components/ui/badge';
 import { useAccounting, type AccountingEntry } from '@/app/context/AccountingContext';
 import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
 import { useFormatDate } from '@/app/hooks/useFormatDate';
+import { DateTimeDisplay } from '@/app/components/ui/DateTimeDisplay';
 import { cn } from '@/app/components/ui/utils';
 import { toast } from 'sonner';
 
@@ -543,7 +544,7 @@ export const UnifiedLedgerView: React.FC<LedgerViewProps> = ({
                     <tbody>
                       {shipmentLedgerRows.map((row, i) => (
                         <tr key={row.shipment_id + (row.date || '') + i} className="border-b border-gray-800/50">
-                          <td className="px-4 py-2 text-gray-300">{row.date ? new Date(row.date).toLocaleDateString() : '—'}</td>
+                          <td className="px-4 py-2 text-gray-300">{row.date ? formatDate(new Date(row.date)) : '—'}</td>
                           <td className="px-4 py-2 text-green-400">{formatCurrency(Number(row.shipping_income) || 0)}</td>
                           <td className="px-4 py-2 text-red-400">{formatCurrency(Number(row.shipping_expense) || 0)}</td>
                           <td className="px-4 py-2 text-amber-400">{formatCurrency(Number(row.courier_payable) || 0)}</td>
@@ -585,7 +586,7 @@ export const UnifiedLedgerView: React.FC<LedgerViewProps> = ({
                                 </Badge>
                                 <span className="text-blue-400 font-mono text-sm font-semibold">{entry.referenceNo}</span>
                                 <span className="text-gray-500 text-sm">
-                                  {entry.date.toLocaleDateString('en-GB')} {entry.date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
+                                  <DateTimeDisplay date={entry.date} />
                                 </span>
                               </div>
 
@@ -667,7 +668,7 @@ export const UnifiedLedgerView: React.FC<LedgerViewProps> = ({
                           return (
                             <tr key={entry.id} className="border-b border-gray-800 hover:bg-gray-800/30 transition-colors">
                               <td className="p-4 text-gray-400 text-sm">
-                                {entry.date.toLocaleDateString('en-GB')}
+                                <DateTimeDisplay date={entry.date} />
                               </td>
                               <td className="p-4">
                                 <span className="text-blue-400 font-mono text-sm">{entry.referenceNo}</span>
@@ -763,7 +764,7 @@ export const UnifiedLedgerView: React.FC<LedgerViewProps> = ({
                         {entriesWithBalance.map((entry) => (
                           <tr key={entry.id} className="border-b border-gray-800 hover:bg-gray-800/20 transition-colors">
                             <td className="p-4 text-gray-400 text-sm whitespace-nowrap">
-                              {entry.date.toLocaleDateString('en-GB')}
+                              <DateTimeDisplay date={entry.date} />
                             </td>
                             <td className="p-4 text-gray-300 text-sm">
                               {entry.description}

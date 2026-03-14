@@ -60,11 +60,20 @@ export const contactService = {
     companyId: string,
     branchId?: string | null
   ): Promise<Map<string, { receivables: number; payables: number }> | null> {
+    // RPC expects UUID or null; avoid 400 from empty string or 'all'
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    const safeBranchId =
+      branchId && branchId !== 'all' && typeof branchId === 'string' && uuidRegex.test(branchId.trim())
+        ? branchId.trim()
+        : null;
     const { data, error } = await supabase.rpc('get_contact_balances_summary', {
       p_company_id: companyId,
-      p_branch_id: branchId && branchId !== 'all' ? branchId : null,
+      p_branch_id: safeBranchId,
     });
-    if (error) return null;
+    if (error) {
+      if (import.meta.env?.DEV) console.warn('[CONTACT SERVICE] get_contact_balances_summary RPC error:', error.message);
+      return null;
+    }
     const map = new Map<string, { receivables: number; payables: number }>();
     (data ?? []).forEach((row: { contact_id: string; receivables?: number; payables?: number }) => {
       if (row?.contact_id) {

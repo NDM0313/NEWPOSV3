@@ -4,19 +4,20 @@
 // Complete reports with real data from contexts
 
 import React, { useState, useMemo, useCallback } from 'react';
-import { 
-  TrendingUp, 
-  TrendingDown, 
-  DollarSign, 
-  ShoppingCart, 
-  Package, 
+import {
+  TrendingUp,
+  TrendingDown,
+  DollarSign,
+  ShoppingCart,
+  Package,
   Calendar,
   Download,
   FileText,
   BarChart3,
   PieChart as PieChartIcon,
   Activity,
-  ChevronDown
+  ChevronDown,
+  Users
 } from 'lucide-react';
 import { Card } from '@/app/components/ui/card';
 import { Button } from '@/app/components/ui/button';
@@ -45,6 +46,7 @@ import { ProfitLossPage } from './ProfitLossPage';
 import { BalanceSheetPage } from './BalanceSheetPage';
 import { SalesProfitPage } from './SalesProfitPage';
 import { InventoryValuationPage } from './InventoryValuationPage';
+import { CommissionReportPage } from './CommissionReportPage';
 
 const COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899'];
 const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -85,7 +87,7 @@ export const ReportsDashboardEnhanced = () => {
     setCurrentModule('reports');
   }, [setCurrentModule]);
 
-  const [reportType, setReportType] = useState<'overview' | 'sales' | 'purchases' | 'expenses' | 'financial'>('overview');
+  const [reportType, setReportType] = useState<'overview' | 'sales' | 'purchases' | 'expenses' | 'financial' | 'commission'>('overview');
   const [financialReportType, setFinancialReportType] = useState<'trial-balance' | 'profit-loss' | 'balance-sheet' | 'sales-profit' | 'inventory-valuation'>('trial-balance');
 
   const reportStartDate = globalStart ? globalStart.slice(0, 10) : '1900-01-01';
@@ -361,6 +363,7 @@ export const ReportsDashboardEnhanced = () => {
               { key: 'purchases', label: 'Purchases', icon: ShoppingCart },
               { key: 'expenses', label: 'Expenses', icon: DollarSign },
               { key: 'financial', label: 'Financial', icon: FileText },
+              { key: 'commission', label: 'Commission', icon: Users },
             ].map((tab) => (
               <button
                 key={tab.key}
@@ -682,6 +685,10 @@ export const ReportsDashboardEnhanced = () => {
               <InventoryValuationPage asOfDate={reportEndDate} branchId={branchId} />
             )}
           </>
+        )}
+
+        {reportType === 'commission' && (
+          <CommissionReportPage startDate={reportStartDate} endDate={reportEndDate} />
         )}
 
       </div>

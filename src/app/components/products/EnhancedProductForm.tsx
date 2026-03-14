@@ -1,4 +1,4 @@
-import React, { useCallback, useState, useEffect } from "react";
+import React, { useCallback, useState, useEffect, useRef } from "react";
 import { useDropzone } from "react-dropzone";
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -133,6 +133,8 @@ export const EnhancedProductForm = ({
   const { modules } = settings;
   const { generateDocumentNumber, generateDocumentNumberSafe, incrementNextNumber } = useDocumentNumbering();
   const [saving, setSaving] = useState(false);
+  /** Synchronous guard to prevent double submit (state update is async). */
+  const submitInProgressRef = useRef(false);
   /** Enable Variations toggle: default OFF for new product, from DB for edit. When ON, parent stock locked at 0. */
   const [enableVariations, setEnableVariations] = useState(false);
   const [blockDisableVariationsModalOpen, setBlockDisableVariationsModalOpen] = useState(false);
@@ -932,14 +934,18 @@ export const EnhancedProductForm = ({
     data: ProductFormValues,
     action: "save" | "saveAndAdd",
   ) => {
+    if (submitInProgressRef.current) return;
+    submitInProgressRef.current = true;
     if (!companyId) {
       toast.error('Company ID not found. Please login again.');
+      submitInProgressRef.current = false;
       return;
     }
     const finalCompanyId = companyId;
     
     if (!finalCompanyId) {
       toast.error('Company information required. Please login again.');
+      submitInProgressRef.current = false;
       return;
     }
     
@@ -1026,6 +1032,7 @@ export const EnhancedProductForm = ({
           if (parentLevelCount > 0) {
             setBlockVariationsModalOpen(true);
             setSaving(false);
+            submitInProgressRef.current = false;
             return;
           }
         }
@@ -1114,6 +1121,7 @@ export const EnhancedProductForm = ({
           if (generatedVariations.length > MAX_VARIATIONS) {
             toast.error(`Variation limit (${MAX_VARIATIONS}) exceeded. Save without variations or reduce to ${MAX_VARIATIONS} or fewer.`);
             setSaving(false);
+            submitInProgressRef.current = false;
             return;
           }
           try {
@@ -1195,6 +1203,7 @@ export const EnhancedProductForm = ({
       }
     } finally {
       setSaving(false);
+      submitInProgressRef.current = false;
     }
   };
 
@@ -2697,9 +2706,10 @@ export const EnhancedProductForm = ({
             onSubmit(data, "save"),
           )}
           type="button"
-          className="flex-1 bg-gray-700 hover:bg-gray-600 text-white py-3 rounded-xl font-bold transition-colors"
+          disabled={saving}
+          className="flex-1 bg-gray-700 hover:bg-gray-600 text-white py-3 rounded-xl font-bold transition-colors disabled:opacity-50 disabled:pointer-events-none"
         >
-          Save Product
+          {saving ? 'Saving...' : 'Save Product'}
         </button>
         {onSaveAndAdd && (
           <button
@@ -2707,9 +2717,10 @@ export const EnhancedProductForm = ({
               onSubmit(data, "saveAndAdd"),
             )}
             type="button"
-            className="flex-[2] bg-blue-500 hover:bg-blue-600 text-white py-3 rounded-xl font-bold transition-colors shadow-lg shadow-blue-500/20"
+            disabled={saving}
+            className="flex-[2] bg-blue-500 hover:bg-blue-600 text-white py-3 rounded-xl font-bold transition-colors shadow-lg shadow-blue-500/20 disabled:opacity-50 disabled:pointer-events-none"
           >
-            Save & Add to Transaction
+            {saving ? 'Saving...' : 'Save & Add to Transaction'}
           </button>
         )}
       </div>

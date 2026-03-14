@@ -9,6 +9,8 @@ interface SupabaseContextType {
   user: User | null;
   session: Session | null;
   loading: boolean;
+  /** True once we've finished the first profile fetch for the current user (success, no row, or error). Use to avoid showing "no business" while still loading or after a transient error. */
+  profileLoadComplete: boolean;
   signIn: (email: string, password: string) => Promise<any>;
   signOut: () => Promise<void>;
   companyId: string | null;
@@ -44,6 +46,7 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const [branchCount, setBranchCount] = useState<number>(0);
   const [requiresBranchSelection, setRequiresBranchSelection] = useState<boolean>(false);
   const [enablePacking, setEnablePackingState] = useState<boolean>(false);
+  const [profileLoadComplete, setProfileLoadComplete] = useState<boolean>(false);
 
   const loadEnablePacking = async (cid: string) => {
     try {
@@ -114,6 +117,7 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         setUserRole(null);
         setBranchId(null);
         setDefaultBranchId(null);
+        setProfileLoadComplete(false);
         // Clear fetch tracking on sign out
         fetchingRef.current.clear();
         fetchedRef.current.clear();
@@ -124,8 +128,8 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     return () => subscription.unsubscribe();
   }, []);
 
-  // Fetch user data (company, role)
-  const fetchUserData = async (userId: string) => {
+  // Fetch user data (company, role). Retries once on transient errors so we don't show "no business" on a single network/CORS blip.
+  const fetchUserData = async (userId: string, isRetry = false) => {
     // Prevent duplicate concurrent calls for the same userId
     if (fetchingRef.current.has(userId)) {
       if (process.env.NODE_ENV === 'development') {
@@ -139,11 +143,13 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       if (process.env.NODE_ENV === 'development') {
         console.log('[FETCH USER DATA] Already fetched, using cached data:', { userId, companyId });
       }
+      setProfileLoadComplete(true);
       return;
     }
     
     try {
       fetchingRef.current.add(userId);
+      if (!isRetry) setProfileLoadComplete(false);
       
       if (import.meta.env?.DEV) {
         console.log('[FETCH USER DATA] Looking for ERP profile with auth_user_id or id:', userId);
@@ -171,25 +177,35 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           setUserRole(null);
           setBranchId(null);
           setDefaultBranchId(null);
+          setProfileLoadComplete(true);
+          return;
+        }
+        // Transient/network/CORS: retry once so we don't falsely show "no business"
+        if (!isRetry) {
+          console.warn('[FETCH USER DATA] Transient error, retrying once in 1.5s:', { code: error.code, message: error.message });
+          fetchingRef.current.delete(userId);
+          setTimeout(() => fetchUserData(userId, true), 1500);
           return;
         }
         console.error('[FETCH USER DATA ERROR]', { message: error.message, code: error.code, userId });
+        setProfileLoadComplete(true);
         return;
       }
 
       if (!data) {
-        if (process.env.NODE_ENV === 'development') {
+        if (import.meta.env?.DEV) {
           console.warn('[FETCH USER DATA] User not found in public.users. User must create a business first.');
         }
         setCompanyId(null);
         setUserRole(null);
         setBranchId(null);
         setDefaultBranchId(null);
+        setProfileLoadComplete(true);
         return;
       }
 
       if (data.is_active === false) {
-        if (process.env.NODE_ENV === 'development') {
+        if (import.meta.env?.DEV) {
           console.warn('[FETCH USER DATA] User account is inactive. Blocking access.');
         }
         await supabase.auth.signOut();
@@ -197,12 +213,14 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         setUserRole(null);
         setBranchId(null);
         setDefaultBranchId(null);
+        setProfileLoadComplete(true);
         return;
       }
 
       if (import.meta.env?.DEV) console.log('[FETCH USER DATA SUCCESS]', { companyId: data.company_id, role: data.role });
       setCompanyId(data.company_id);
       setUserRole(data.role);
+      setProfileLoadComplete(true);
       fetchedRef.current.add(userId);
       lastFetchedUserIdRef.current = userId;
 
@@ -225,6 +243,12 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       }
     } catch (error) {
       console.error('[FETCH USER DATA EXCEPTION]', error);
+      if (!isRetry) {
+        fetchingRef.current.delete(userId);
+        setTimeout(() => fetchUserData(userId, true), 1500);
+        return;
+      }
+      setProfileLoadComplete(true);
     } finally {
       fetchingRef.current.delete(userId);
     }
@@ -399,6 +423,7 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     user,
     session,
     loading,
+    profileLoadComplete,
     signIn,
     signOut,
     companyId,
@@ -415,7 +440,7 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     refreshEnablePacking,
     supabaseClient: supabase,
   }), [
-    user, session, loading, companyId, userRole, branchId, defaultBranchId,
+    user, session, loading, profileLoadComplete, companyId, userRole, branchId, defaultBranchId,
     accessibleBranchIds, branchCount, requiresBranchSelection, enablePacking,
     signIn, signOut, setBranchId, setAccessibleBranchIds, setEnablePacking, refreshEnablePacking,
   ]);
@@ -432,6 +457,7 @@ const defaultSupabaseContext: SupabaseContextType = {
   user: null,
   session: null,
   loading: true,
+  profileLoadComplete: false,
   signIn: async () => {},
   signOut: async () => {},
   companyId: null,

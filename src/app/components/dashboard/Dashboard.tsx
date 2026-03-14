@@ -10,9 +10,7 @@ import { useSupabase } from '../../context/SupabaseContext';
 import { useGlobalFilter } from '../../context/GlobalFilterContext';
 import { useSettings } from '../../context/SettingsContext';
 import { useCheckPermission } from '../../hooks/useCheckPermission';
-import { productService } from '../../services/productService';
-import { getSalesByCategory } from '../../services/dashboardService';
-import { getFinancialDashboardMetrics, type FinancialDashboardMetrics } from '../../services/financialDashboardService';
+import { getDashboardMetrics, type FinancialDashboardMetrics } from '../../services/financialDashboardService';
 import { getBusinessAlerts, type BusinessAlert } from '../../services/businessAlertsService';
 import { useFormatCurrency } from '../../hooks/useFormatCurrency';
 
@@ -36,7 +34,7 @@ export const Dashboard = () => {
   const purchases = usePurchases();
   const expenses = useExpenses();
   const accounting = useAccounting();
-  const { companyId, signOut } = useSupabase();
+  const { companyId, signOut, profileLoadComplete } = useSupabase();
   const { modules: settingsModules } = useSettings();
   const { hasPermission } = useCheckPermission();
   const { formatCurrency } = useFormatCurrency();
@@ -50,69 +48,46 @@ export const Dashboard = () => {
   const [lowStockProducts, setLowStockProducts] = useState<LowStockItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [salesByCategory, setSalesByCategory] = useState<Array<{ categoryName: string; total: number }>>([]);
-  const [loadingCategory, setLoadingCategory] = useState(true);
   const [financialMetrics, setFinancialMetrics] = useState<FinancialDashboardMetrics | null>(null);
-  const [loadingFinancial, setLoadingFinancial] = useState(true);
   const [alerts, setAlerts] = useState<BusinessAlert[]>([]);
 
-  // Business alerts (Phase-2)
+  // Business alerts (separate lightweight call)
   useEffect(() => {
     if (!companyId) return;
     getBusinessAlerts(companyId).then(setAlerts).catch(() => setAlerts([]));
   }, [companyId]);
 
-  // Executive financial metrics (single RPC, sub-1s)
+  // Consolidated dashboard: 1 RPC (get_dashboard_metrics) → metrics + sales_by_category + low_stock; fallback to separate calls
   useEffect(() => {
-    if (!companyId) {
-      setLoadingFinancial(false);
-      return;
-    }
-    setLoadingFinancial(true);
-    getFinancialDashboardMetrics(companyId)
-      .then(setFinancialMetrics)
-      .catch(() => setFinancialMetrics(null))
-      .finally(() => setLoadingFinancial(false));
-  }, [companyId]);
-
-  // Load low stock items (movement-based; no current_stock column)
-  const loadProducts = useCallback(async () => {
     if (!companyId) {
       setLoading(false);
       return;
     }
-    try {
-      setLoading(true);
-      const low = await productService.getLowStockProducts(companyId);
-      setLowStockProducts(Array.isArray(low) ? low : []);
-    } catch (error) {
-      console.error('[DASHBOARD] Error loading low stock:', error);
-      setLowStockProducts([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [companyId]);
-
-  useEffect(() => {
-    loadProducts();
-  }, [loadProducts]);
-
-  // Load sales by category from backend (global date range applied)
-  useEffect(() => {
-    if (!companyId) {
-      setLoadingCategory(false);
-      return;
-    }
-    setLoadingCategory(true);
+    setLoading(true);
     const start = startDate ? startDate.slice(0, 10) : null;
     const end = endDate ? endDate.slice(0, 10) : null;
-    getSalesByCategory(companyId, start, end)
-      .then(setSalesByCategory)
-      .catch((err) => {
-        console.error('[DASHBOARD] Sales by category error:', err);
-        setSalesByCategory([]);
+    const branchId = globalFilter.branchId ?? null;
+    getDashboardMetrics(companyId, branchId, start, end)
+      .then((payload) => {
+        setFinancialMetrics(payload.metrics);
+        setSalesByCategory(payload.sales_by_category ?? []);
+        setLowStockProducts(
+          (payload.low_stock_items ?? []).map((r) => ({
+            id: r.id,
+            name: r.name ?? undefined,
+            sku: r.sku ?? undefined,
+            current_stock: r.current_stock,
+            min_stock: r.min_stock,
+          }))
+        );
       })
-      .finally(() => setLoadingCategory(false));
-  }, [companyId, startDate, endDate]);
+      .catch(() => {
+        setFinancialMetrics(null);
+        setSalesByCategory([]);
+        setLowStockProducts([]);
+      })
+      .finally(() => setLoading(false));
+  }, [companyId, startDate, endDate, globalFilter.branchId]);
 
   // Filter data by global date range
   const filterByDateRange = useCallback((dateStr: string | undefined): boolean => {
@@ -164,68 +139,47 @@ export const Dashboard = () => {
     }));
   }, [lowStockProducts]);
 
-  // Executive summary: use API metrics when available and non-empty; otherwise compute from context so it's always functional
-  const todayStr = useMemo(() => new Date().toISOString().slice(0, 10), []);
-  const monthStartStr = useMemo(() => {
-    const d = new Date();
-    d.setDate(1);
-    return d.toISOString().slice(0, 10);
-  }, []);
-  const monthEndStr = useMemo(() => {
-    const d = new Date();
-    d.setMonth(d.getMonth() + 1);
-    d.setDate(0);
-    return d.toISOString().slice(0, 10);
-  }, []);
+  // Executive summary fallback: when RPC fails, compute from context using global date range
+  const periodStart = useMemo(() => (startDate ? startDate.slice(0, 10) : null), [startDate]);
+  const periodEnd = useMemo(() => (endDate ? endDate.slice(0, 10) : null), [endDate]);
 
   const executiveFromContext = useMemo((): FinancialDashboardMetrics => {
     const finalSales = sales.sales.filter((s: any) => s.status === 'final');
     const finalPurchases = purchases.purchases.filter((p: any) => p.status === 'final' || p.status === 'received');
     const paidExpenses = expenses.expenses.filter((e: any) => e.status === 'paid');
 
-    const todaySales = finalSales
-      .filter((s: any) => (s.date || s.sale_date || '').toString().slice(0, 10) === todayStr)
-      .reduce((sum, s) => sum + (Number(s.total) || 0), 0);
-    const todayPurchases = finalPurchases
-      .filter((p: any) => (p.poDate || p.po_date || '').toString().slice(0, 10) === todayStr)
-      .reduce((sum, p) => sum + (Number(p.total) || 0), 0);
-    const todayExpenses = paidExpenses
-      .filter((e: any) => (e.expenseDate || e.expense_date || '').toString().slice(0, 10) === todayStr)
-      .reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
+    const inRange = (d: string) => {
+      if (!periodStart || !periodEnd) return true;
+      const ds = (d || '').toString().slice(0, 10);
+      return ds >= periodStart && ds <= periodEnd;
+    };
 
-    const monthlyRevenue = finalSales
-      .filter((s: any) => {
-        const d = (s.date || s.sale_date || '').toString().slice(0, 10);
-        return d >= monthStartStr && d <= monthEndStr;
-      })
+    const periodSales = finalSales
+      .filter((s: any) => inRange((s.date || s.sale_date || s.invoice_date || '').toString()))
       .reduce((sum, s) => sum + (Number(s.total) || 0), 0);
-    const monthlyPurchases = finalPurchases
-      .filter((p: any) => {
-        const d = (p.poDate || p.po_date || '').toString().slice(0, 10);
-        return d >= monthStartStr && d <= monthEndStr;
-      })
+    const periodPurchases = finalPurchases
+      .filter((p: any) => inRange((p.poDate || p.po_date || '').toString()))
       .reduce((sum, p) => sum + (Number(p.total) || 0), 0);
-    const monthlyExpensesOnly = paidExpenses
-      .filter((e: any) => {
-        const d = (e.expenseDate || e.expense_date || '').toString().slice(0, 10);
-        return d >= monthStartStr && d <= monthEndStr;
-      })
+    const periodExpensesOnly = paidExpenses
+      .filter((e: any) => inRange((e.expenseDate || e.expense_date || '').toString()))
       .reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
-    const monthlyExpenses = monthlyPurchases + monthlyExpensesOnly;
+    const periodExpenses = periodPurchases + periodExpensesOnly;
 
     const receivables = finalSales.reduce((sum, s) => sum + (Number((s as any).due ?? (s as any).due_amount) || 0), 0);
     const payables = finalPurchases.reduce((sum, p) => sum + (Number((p as any).due ?? (p as any).due_amount) || 0), 0);
 
-    const monthlyProfit = monthlyRevenue - monthlyExpenses;
-    const profit_margin_pct = monthlyRevenue > 0 ? Math.round((monthlyProfit / monthlyRevenue) * 10000) / 100 : 0;
+    const periodProfit = periodSales - periodExpenses;
+    const profit_margin_pct = periodSales > 0 ? Math.round((periodProfit / periodSales) * 10000) / 100 : 0;
 
     const last7: { date: string; value: number }[] = [];
-    for (let i = 6; i >= 0; i--) {
-      const d = new Date();
-      d.setDate(d.getDate() - i);
-      const ds = d.toISOString().slice(0, 10);
+    const rangeStart = periodStart ? new Date(periodStart) : new Date();
+    const rangeEnd = periodEnd ? new Date(periodEnd) : new Date();
+    const start = periodStart && periodEnd ? rangeStart : new Date(Date.now() - 6 * 24 * 60 * 60 * 1000);
+    const end = periodStart && periodEnd ? rangeEnd : new Date();
+    for (let t = new Date(start); t <= end; t.setDate(t.getDate() + 1)) {
+      const ds = t.toISOString().slice(0, 10);
       const daySales = finalSales
-        .filter((s: any) => (s.date || s.sale_date || '').toString().slice(0, 10) === ds)
+        .filter((s: any) => (s.date || s.sale_date || s.invoice_date || '').toString().slice(0, 10) === ds)
         .reduce((sum, s) => sum + (Number(s.total) || 0), 0);
       const dayPurch = finalPurchases
         .filter((p: any) => (p.poDate || p.po_date || '').toString().slice(0, 10) === ds)
@@ -235,7 +189,7 @@ export const Dashboard = () => {
         .reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
       last7.push({ date: ds, value: daySales - dayPurch - dayExp });
     }
-    const sales_trend = last7.map((t) => ({ date: t.date, value: finalSales.filter((s: any) => (s.date || s.sale_date || '').toString().slice(0, 10) === t.date).reduce((sum, s) => sum + (Number(s.total) || 0), 0) }));
+    const sales_trend = last7.map((t) => ({ date: t.date, value: finalSales.filter((s: any) => (s.date || s.sale_date || s.invoice_date || '').toString().slice(0, 10) === t.date).reduce((sum, s) => sum + (Number(s.total) || 0), 0) }));
     const expense_trend = last7.map((t) => ({
       date: t.date,
       value: finalPurchases.filter((p: any) => (p.poDate || p.po_date || '').toString().slice(0, 10) === t.date).reduce((sum, p) => sum + (Number(p.total) || 0), 0)
@@ -244,11 +198,11 @@ export const Dashboard = () => {
     const profit_trend = last7;
 
     return {
-      today_sales: todaySales,
-      today_profit: todaySales - todayPurchases - todayExpenses,
-      monthly_revenue: monthlyRevenue,
-      monthly_expenses: monthlyExpenses,
-      monthly_profit: monthlyProfit,
+      today_sales: periodSales,
+      today_profit: periodProfit,
+      monthly_revenue: periodSales,
+      monthly_expenses: periodExpenses,
+      monthly_profit: periodProfit,
       profit_margin_pct,
       cash_balance: 0,
       bank_balance: 0,
@@ -258,23 +212,20 @@ export const Dashboard = () => {
       expense_trend,
       profit_trend,
     };
-  }, [sales.sales, purchases.purchases, expenses.expenses, todayStr, monthStartStr, monthEndStr]);
+  }, [sales.sales, purchases.purchases, expenses.expenses, periodStart, periodEnd]);
 
-  const hasNonZeroMetrics = financialMetrics && (
-    (financialMetrics.today_sales !== 0) || (financialMetrics.monthly_revenue !== 0) ||
-    (financialMetrics.cash_balance !== 0) || (financialMetrics.bank_balance !== 0) ||
-    (financialMetrics.receivables !== 0) || (financialMetrics.payables !== 0)
-  );
-  const displayMetrics = (financialMetrics && hasNonZeroMetrics) ? financialMetrics : executiveFromContext;
+  // Prefer RPC metrics whenever we have a successful response (even if all zeros for selected range).
+  // Only fall back to context when RPC failed or returned null.
+  const displayMetrics = financialMetrics ?? executiveFromContext;
   const displayMetricsWithCashBank = useMemo(() => {
-    if ((financialMetrics && hasNonZeroMetrics) && (financialMetrics.cash_balance !== 0 || financialMetrics.bank_balance !== 0)) {
+    if (financialMetrics && (financialMetrics.cash_balance !== 0 || financialMetrics.bank_balance !== 0)) {
       return displayMetrics;
     }
     const cash = accounting.getAccountBalance ? accounting.getAccountBalance('Cash' as any) : 0;
     const bank = accounting.getAccountBalance ? accounting.getAccountBalance('Bank' as any) : 0;
     if (cash === 0 && bank === 0) return displayMetrics;
     return { ...displayMetrics, cash_balance: cash, bank_balance: bank };
-  }, [displayMetrics, financialMetrics, hasNonZeroMetrics, accounting]);
+  }, [displayMetrics, financialMetrics, accounting]);
 
   // Generate chart data from date range (or last 7 days if no range)
   const chartData = useMemo(() => {
@@ -330,8 +281,18 @@ export const Dashboard = () => {
 
   // No full-page loading: render shell immediately for sub-1s first paint (staged loading)
 
-  // Logged in but no company (user not in public.users) — show create-business CTA
+  // Logged in but no company: show "Create your business" only after profile load complete (avoids false state on transient errors)
   if (!companyId) {
+    if (!profileLoadComplete) {
+      return (
+        <div className="flex items-center justify-center min-h-[400px]">
+          <div className="flex flex-col items-center gap-3 text-[#9CA3AF]">
+            <Loader2 className="w-8 h-8 animate-spin text-[#3B82F6]" />
+            <span>Loading your profile…</span>
+          </div>
+        </div>
+      );
+    }
     return (
       <div className="flex items-center justify-center min-h-[400px]">
         <div className="text-center max-w-md p-8 rounded-xl bg-[#1F2937] border border-[#374151]">
@@ -387,7 +348,7 @@ export const Dashboard = () => {
       {/* Executive financial summary (Phase-2 Intelligence) */}
       <div className="bg-[#111827]/50 border border-[#374151] p-6 rounded-xl">
         <h3 className="text-lg font-bold text-white mb-4">Executive summary</h3>
-        {loadingFinancial ? (
+        {loading ? (
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 h-24 items-center justify-center">
             <Loader2 className="w-8 h-8 animate-spin text-[#3B82F6] col-span-2 md:col-span-3 lg:col-span-5 justify-self-center" />
           </div>
@@ -566,7 +527,7 @@ export const Dashboard = () => {
 
           <div className="bg-[#111827]/50 border border-[#374151] p-6 rounded-xl">
              <h3 className="text-lg font-bold text-white mb-6">Sales by Category</h3>
-             {loadingCategory ? (
+             {loading ? (
                <div className="h-40 flex items-center justify-center">
                  <Loader2 className="w-8 h-8 animate-spin text-[#3B82F6]" />
                </div>

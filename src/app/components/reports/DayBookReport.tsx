@@ -1,14 +1,20 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useSupabase } from '@/app/context/SupabaseContext';
+import { useFormatDate } from '@/app/hooks/useFormatDate';
 import { ReportActions } from './ReportActions';
 import { DateRangePicker } from '../ui/DateRangePicker';
+import { DateTimeDisplay } from '../ui/DateTimeDisplay';
 import { Loader2, BookOpen } from 'lucide-react';
 import { cn } from '../ui/utils';
 import { exportToPDF, exportToExcel } from '@/app/utils/exportUtils';
 
 export interface DayBookEntry {
   id: string;
+  /** For two-line display (date + time) */
+  createdAt: Date;
+  /** Display: date + time string (for export) */
+  dateTime: string;
   time: string;
   voucher: string;
   account: string;
@@ -34,10 +40,14 @@ function refTypeToDisplayType(ref: string): DayBookEntry['type'] {
 export interface DayBookReportProps {
   /** When provided, voucher number is clickable and opens transaction detail (e.g. in Accounting module). */
   onVoucherClick?: (voucher: string) => void;
+  /** When provided, use global filter date range instead of local picker (aligns with TopHeader). */
+  globalStartDate?: string | null;
+  globalEndDate?: string | null;
 }
 
-export const DayBookReport = ({ onVoucherClick }: DayBookReportProps) => {
+export const DayBookReport = ({ onVoucherClick, globalStartDate, globalEndDate }: DayBookReportProps) => {
   const { companyId } = useSupabase();
+  const { formatDateTime } = useFormatDate();
   const today = new Date();
   const [dateRange, setDateRange] = useState<{ from?: Date; to?: Date }>({
     from: today,
@@ -46,8 +56,13 @@ export const DayBookReport = ({ onVoucherClick }: DayBookReportProps) => {
   const [entries, setEntries] = useState<DayBookEntry[]>([]);
   const [loading, setLoading] = useState(!!companyId);
 
-  const dateFrom = dateRange.from ? dateRange.from.toISOString().split('T')[0] : '';
-  const dateTo = dateRange.to ? dateRange.to.toISOString().split('T')[0] : dateFrom;
+  const useGlobalRange = Boolean(globalStartDate && globalEndDate);
+  const dateFrom = useGlobalRange
+    ? (globalStartDate ?? '').slice(0, 10)
+    : (dateRange.from ? dateRange.from.toISOString().split('T')[0] : '');
+  const dateTo = useGlobalRange
+    ? (globalEndDate ?? '').slice(0, 10)
+    : (dateRange.to ? dateRange.to.toISOString().split('T')[0] : dateFrom);
 
   useEffect(() => {
     if (!companyId || !dateFrom || !dateTo) {
@@ -82,6 +97,7 @@ export const DayBookReport = ({ onVoucherClick }: DayBookReportProps) => {
       for (const je of data || []) {
         const lines = (je.lines as Array<{ id?: string; debit?: number; credit?: number; description?: string; account?: { name?: string } | null }>) ?? [];
         const createdAt = je.created_at ? new Date(je.created_at as string) : new Date();
+        const dateTimeStr = formatDateTime(createdAt);
         const timeStr = createdAt.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
         const voucher = String(je.entry_no ?? `JE-${String(je.id ?? '').slice(0, 8)}`);
         const desc = String(je.description ?? '');
@@ -96,6 +112,8 @@ export const DayBookReport = ({ onVoucherClick }: DayBookReportProps) => {
           const accountNameStr = accountName ?? 'Unknown Account';
           list.push({
             id: `${je.id}-${line.id ?? Math.random()}`,
+            createdAt,
+            dateTime: dateTimeStr,
             time: timeStr,
             voucher,
             account: accountNameStr,
@@ -116,9 +134,9 @@ export const DayBookReport = ({ onVoucherClick }: DayBookReportProps) => {
   const isBalanced = Math.abs(totalDebit - totalCredit) < 0.01;
 
   const exportData = {
-    headers: ['Time', 'Voucher #', 'Account', 'Description', 'Debit (₨)', 'Credit (₨)', 'Type'],
+    headers: ['Date & Time', 'Voucher #', 'Account', 'Description', 'Debit (₨)', 'Credit (₨)', 'Type'],
     rows: entries.map((e) => [
-      e.time,
+      e.dateTime,
       e.voucher,
       e.account,
       e.description,
@@ -139,16 +157,21 @@ export const DayBookReport = ({ onVoucherClick }: DayBookReportProps) => {
         onWhatsapp={() => {}}
       />
 
-      <div className="flex flex-wrap items-center gap-4">
-        <div className="flex items-center gap-2">
-          <span className="text-sm text-gray-400">Date Range:</span>
-          <DateRangePicker
-            value={dateRange}
-            onChange={setDateRange}
-            placeholder="Select range"
-          />
+      {!useGlobalRange && (
+        <div className="flex flex-wrap items-center gap-4">
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-gray-400">Date Range:</span>
+            <DateRangePicker
+              value={dateRange}
+              onChange={setDateRange}
+              placeholder="Select range"
+            />
+          </div>
         </div>
-      </div>
+      )}
+      {useGlobalRange && (
+        <p className="text-sm text-gray-400">Using global date range from top bar</p>
+      )}
 
       {loading ? (
         <div className="flex justify-center py-16">
@@ -160,7 +183,7 @@ export const DayBookReport = ({ onVoucherClick }: DayBookReportProps) => {
             <table className="w-full text-sm">
               <thead className="bg-gray-900/80 text-gray-400 border-b border-gray-800">
                 <tr>
-                  <th className="px-4 py-3 text-left font-medium w-20">Time</th>
+                  <th className="px-4 py-3 text-left font-medium w-40">Date & Time</th>
                   <th className="px-4 py-3 text-left font-medium w-24">Voucher #</th>
                   <th className="px-4 py-3 text-left font-medium">Account</th>
                   <th className="px-4 py-3 text-left font-medium">Description</th>
@@ -172,7 +195,9 @@ export const DayBookReport = ({ onVoucherClick }: DayBookReportProps) => {
               <tbody className="divide-y divide-gray-800">
                 {entries.map((e, i) => (
                   <tr key={e.id} className={cn('hover:bg-gray-800/30', i % 2 === 0 ? 'bg-gray-950/30' : 'bg-gray-900/20')}>
-                    <td className="px-4 py-3 text-gray-300">{e.time}</td>
+                    <td className="px-4 py-3 text-gray-300 whitespace-nowrap">
+                      <DateTimeDisplay date={e.createdAt} />
+                    </td>
                     <td className="px-4 py-3 font-mono text-gray-300">
                       {onVoucherClick ? (
                         <button

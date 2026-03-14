@@ -63,6 +63,12 @@ export interface Sale {
   attachments?: { url: string; name: string }[] | null;
   created_by: string;
   is_studio?: boolean;
+  /** Salesperson for commission (user id). */
+  salesman_id?: string | null;
+  /** Commission amount stored on sale for period reporting. */
+  commission_amount?: number;
+  /** Base amount used for commission calculation (e.g. subtotal). */
+  commission_eligible_amount?: number | null;
 }
 
 export interface SaleItem {
@@ -1070,6 +1076,70 @@ export const saleService = {
       description: `Payment of Rs ${Number(amount).toLocaleString()} via ${paymentMethod} recorded`,
     }).catch((err) => console.warn('[SALE SERVICE] Activity log payment_added failed:', err));
     return result.data;
+  },
+
+  /**
+   * Record on-account payment (direct customer payment without invoice).
+   * Uses reference_type = 'on_account', reference_id = null, contact_id for ledger.
+   */
+  async recordOnAccountPayment(
+    contactId: string,
+    contactName: string,
+    amount: number,
+    paymentMethod: string,
+    accountId: string,
+    companyId: string,
+    branchId: string,
+    paymentDate?: string,
+    options?: { notes?: string; attachments?: any }
+  ) {
+    if (!accountId || !companyId || !branchId) {
+      throw new Error('Account, company and branch are required for on-account payment.');
+    }
+    const normalizedPaymentMethod = (paymentMethod || 'cash').toLowerCase().trim();
+    const paymentMethodMap: Record<string, string> = {
+      cash: 'cash', Cash: 'cash', bank: 'bank', Bank: 'bank', card: 'card', Card: 'card',
+      cheque: 'other', Cheque: 'other', 'mobile wallet': 'other', 'Mobile Wallet': 'other',
+      mobile_wallet: 'other', wallet: 'other', Wallet: 'other',
+    };
+    const enumPaymentMethod = paymentMethodMap[paymentMethod] || paymentMethodMap[normalizedPaymentMethod] || 'cash';
+    const paymentDateValue = paymentDate || new Date().toISOString().split('T')[0];
+    const { data: { user: authUser } } = await supabase.auth.getUser();
+    const authUserId = authUser?.id ?? null;
+    let uniqueRef: string;
+    try {
+      uniqueRef = await documentNumberService.getNextDocumentNumber(companyId, branchId ?? null, 'payment');
+    } catch {
+      uniqueRef = generatePaymentReference(null);
+    }
+    const paymentData: any = {
+      company_id: companyId,
+      branch_id: branchId,
+      payment_type: 'received',
+      reference_type: 'on_account',
+      reference_id: null,
+      contact_id: contactId,
+      amount,
+      payment_method: enumPaymentMethod,
+      payment_date: paymentDateValue,
+      payment_account_id: accountId,
+      received_by: authUserId,
+      created_by: authUserId,
+      reference_number: uniqueRef,
+    };
+    if (options?.notes !== undefined && options.notes !== '') paymentData.notes = options.notes;
+    if (options?.attachments !== undefined && options.attachments != null) {
+      const arr = Array.isArray(options.attachments) ? options.attachments : [options.attachments];
+      if (arr.length > 0) paymentData.attachments = JSON.parse(JSON.stringify(arr));
+    }
+    const doInsert = (data: typeof paymentData) => supabase.from('payments').insert(data).select().single();
+    let result = await doInsert(paymentData);
+    if (result.error && result.error.code === 'PGRST204' && result.error.message?.includes('attachments')) {
+      delete paymentData.attachments;
+      result = await doInsert(paymentData);
+    }
+    if (result.error) throw result.error;
+    return result.data as { id: string; reference_number: string };
   },
 
   // Update payment

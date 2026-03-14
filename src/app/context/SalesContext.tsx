@@ -113,6 +113,10 @@ export interface Sale {
   source_id?: string;
   /** Show production breakdown on invoice (Studio V3) */
   show_studio_breakdown?: boolean;
+  /** Salesperson (user id) for commission */
+  salesmanId?: string | null;
+  /** Commission amount stored on sale (for period reporting) */
+  commissionAmount?: number;
 }
 
 interface SalesContextType {
@@ -362,6 +366,8 @@ export const convertFromSupabaseSale = (supabaseSale: any): Sale => {
     source: (supabaseSale as any).source ?? undefined,
     source_id: (supabaseSale as any).source_id ?? undefined,
     show_studio_breakdown: !!(supabaseSale as any).show_studio_breakdown,
+    salesmanId: supabaseSale.salesman_id ?? undefined,
+    commissionAmount: supabaseSale.commission_amount != null ? Number(supabaseSale.commission_amount) : undefined,
   };
 };
 
@@ -508,6 +514,8 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
       const createdByAuthId = authUser?.id ?? user?.auth_user_id ?? user?.id;
 
       // Convert to Supabase format (use effectiveBranchId – valid UUID for DB)
+      const salesmanIdVal = (saleData as any).salesmanId && (saleData as any).salesmanId !== 'none' && (saleData as any).salesmanId !== '1' ? (saleData as any).salesmanId : null;
+      const commissionAmountVal = Number((saleData as any).commissionAmount) || 0;
       const supabaseSale: SupabaseSale = {
         company_id: companyId,
         branch_id: effectiveBranchId,
@@ -530,6 +538,9 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
         notes: saleData.notes,
         deadline: (saleData as any).deadline ?? null,
         created_by: createdByAuthId,
+        salesman_id: salesmanIdVal,
+        commission_amount: commissionAmountVal,
+        commission_eligible_amount: saleData.subtotal ?? null,
         // Do not send is_studio in insert – column may not exist yet; set via update after create
       };
 
@@ -1206,6 +1217,12 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
         supabaseUpdates.is_studio = updates.is_studio;
       }
       if ((updates as any).attachments !== undefined) supabaseUpdates.attachments = (updates as any).attachments;
+      if ((updates as any).salesmanId !== undefined) {
+        const sid = (updates as any).salesmanId;
+        supabaseUpdates.salesman_id = (sid === '' || sid === 'none' || sid === '1') ? null : sid;
+      }
+      if ((updates as any).commissionAmount !== undefined) supabaseUpdates.commission_amount = Number((updates as any).commissionAmount) || 0;
+      if ((updates as any).commissionEligibleAmount !== undefined) supabaseUpdates.commission_eligible_amount = (updates as any).commissionEligibleAmount;
 
       // 🔒 CRITICAL FIX: Calculate stock movement DELTA BEFORE updating sale_items
       // This must happen BEFORE sale_items are deleted/updated so we can fetch old items
