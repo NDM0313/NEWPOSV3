@@ -16,10 +16,14 @@ if [ ! -f "$KONG_YML" ]; then
   exit 1
 fi
 
-# Only apply fix when Kong is failing with "failed parsing declarative configuration" (misplaced CORS).
-# If Kong is healthy or fails for another reason (e.g. hide_credentials), do not modify kong.yml.
+# Only apply fix when Kong is failing with "failed parsing declarative configuration" (misplaced CORS),
+# or when FORCE_FIX=1 (use after running deploy/kong-logs.sh if Kong is in a restart loop and you suspect CORS).
+# If Kong is healthy or fails for another reason (e.g. hide_credentials), do not modify kong.yml unless FORCE_FIX=1.
 NEED_FIX=false
-if command -v docker &>/dev/null; then
+if [ -n "${FORCE_FIX}" ] && [ "${FORCE_FIX}" != "0" ]; then
+  NEED_FIX=true
+  echo "[fix-kong-502] FORCE_FIX=1: Applying CORS fix without checking logs."
+elif command -v docker &>/dev/null; then
   docker ps --format "table {{.Names}}\t{{.Status}}" 2>/dev/null | grep -E "kong|auth" || true
   if docker logs supabase-kong --tail 80 2>/dev/null | grep -q "failed parsing declarative configuration"; then
     NEED_FIX=true
@@ -29,6 +33,8 @@ fi
 
 if [ "$NEED_FIX" != "true" ]; then
   echo "[fix-kong-502] Kong is not in 'failed parsing declarative configuration' state. Skipping config change (runbook: fix kong.yml only when logs show that error)."
+  echo "[fix-kong-502] To see why Kong is restarting: bash deploy/kong-logs.sh"
+  echo "[fix-kong-502] To force-apply CORS fix (only if logs suggest config parse): FORCE_FIX=1 bash deploy/fix-kong-502-auth.sh"
   echo "[fix-kong-502] To test auth: curl -sS -o /dev/null -w '%{http_code}' -H \"apikey: \$ANON_KEY\" https://supabase.dincouture.pk/auth/v1/health"
   exit 0
 fi
