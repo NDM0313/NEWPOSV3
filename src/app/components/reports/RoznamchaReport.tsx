@@ -4,7 +4,7 @@
  * Structure: Filters → Summary Cards → Cash Split → Roznamcha Table.
  */
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { ReportActions } from './ReportActions';
 import { DateRangePicker } from '../ui/DateRangePicker';
@@ -61,6 +61,15 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
   const [accountFilter, setAccountFilter] = useState<AccountFilter>('all');
   const [data, setData] = useState<RoznamchaResult | null>(null);
   const [loading, setLoading] = useState(!!companyId);
+  const PAGE_SIZE = 50;
+  const [currentPage, setCurrentPage] = useState(1);
+  const totalRows = data?.rows?.length ?? 0;
+  const totalPages = Math.max(1, Math.ceil(totalRows / PAGE_SIZE));
+  const paginatedRows = useMemo(() => {
+    if (!data?.rows?.length) return [];
+    const start = (currentPage - 1) * PAGE_SIZE;
+    return data.rows.slice(start, start + PAGE_SIZE);
+  }, [data?.rows, currentPage, PAGE_SIZE]);
 
   const useGlobalRange = Boolean(globalStartDate && globalEndDate);
   const dateFrom = useGlobalRange ? (globalStartDate ?? '').slice(0, 10) : (dateRange.from ? format(dateRange.from, 'yyyy-MM-dd') : '');
@@ -105,6 +114,12 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
   useEffect(() => {
     load();
   }, [load]);
+  useEffect(() => {
+    if (currentPage > totalPages && totalPages >= 1) setCurrentPage(1);
+  }, [currentPage, totalPages]);
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [dateFrom, dateTo, accountFilter]);
 
   const selectedBranchLabel = contextBranchId === 'all' || !contextBranchId ? 'All Branches' : 'Selected branch';
 
@@ -247,7 +262,7 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
           </div>
 
           {/* 4. ROZNAMCHA TABLE */}
-          <div className="rounded-xl border border-gray-800 overflow-hidden">
+          <div className="rounded-xl border border-gray-800 overflow-hidden bg-gray-900/50">
             <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wider p-4 border-b border-gray-800">
               Roznamcha Table
             </h3>
@@ -276,7 +291,7 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
                       {data.summary.openingBalance.toLocaleString()}
                     </td>
                   </tr>
-                  {data.rows.map((r: RoznamchaRowWithBalance, i: number) => (
+                  {paginatedRows.map((r: RoznamchaRowWithBalance, i: number) => (
                     <tr
                       key={r.id}
                       className={cn(
@@ -339,6 +354,50 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
                 </tfoot>
               </table>
             </div>
+            {totalPages > 1 && (
+              <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 border-t border-gray-800 bg-gray-900/80">
+                <p className="text-xs text-gray-400">
+                  Showing {(currentPage - 1) * PAGE_SIZE + 1}–{Math.min(currentPage * PAGE_SIZE, totalRows)} of {totalRows}
+                </p>
+                <div className="flex items-center gap-1">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-8 border-gray-700 text-gray-300"
+                    disabled={currentPage <= 1}
+                    onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                  >
+                    Previous
+                  </Button>
+                  {Array.from({ length: totalPages }, (_, i) => i + 1)
+                    .filter((p) => p === 1 || p === totalPages || Math.abs(p - currentPage) <= 2)
+                    .map((p, idx, arr) => (
+                      <React.Fragment key={p}>
+                        {idx > 0 && arr[idx - 1] !== p - 1 && <span className="px-1 text-gray-500">…</span>}
+                        <button
+                          type="button"
+                          className={cn(
+                            'h-8 min-w-[2rem] rounded px-2 text-sm font-medium',
+                            p === currentPage ? 'bg-blue-600 text-white' : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
+                          )}
+                          onClick={() => setCurrentPage(p)}
+                        >
+                          {p}
+                        </button>
+                      </React.Fragment>
+                    ))}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-8 border-gray-700 text-gray-300"
+                    disabled={currentPage >= totalPages}
+                    onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                  >
+                    Next
+                  </Button>
+                </div>
+              </div>
+            )}
           </div>
         </>
       ) : null}

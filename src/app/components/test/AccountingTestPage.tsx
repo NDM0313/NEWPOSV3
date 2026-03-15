@@ -550,7 +550,7 @@ function ManualEntryModal({
   companyId,
   branchId,
   createdBy,
-  accounts,
+  accounts: accountsProp,
   onClose,
   onBack,
   onSuccess,
@@ -563,6 +563,16 @@ function ManualEntryModal({
   onBack?: () => void;
   onSuccess: () => void;
 }) {
+  const [localAccounts, setLocalAccounts] = useState<{ id: string; name: string }[]>([]);
+  const accounts = accountsProp.length > 0 ? accountsProp : localAccounts;
+  useEffect(() => {
+    if (companyId && accountsProp.length === 0) {
+      accountService.getAllAccounts(companyId, branchId === 'all' ? undefined : branchId || undefined).then((acc: any[]) => {
+        setLocalAccounts((acc || []).map((a: any) => ({ id: a.id, name: `${a.code || ''} ${a.name}`.trim() || a.name })));
+      });
+    }
+  }, [companyId, branchId, accountsProp.length]);
+
   const [date, setDate] = useState(today);
   const [optionalRef, setOptionalRef] = useState('');
   const [description, setDescription] = useState('');
@@ -670,11 +680,11 @@ function ManualEntryModal({
                 </div>
                 <div className="bg-gray-950/50 border border-gray-800 rounded-xl p-4">
                   <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">DEBIT ENTRY</p>
-                  <SearchableSelect value={debitId} onValueChange={setDebitId} options={accounts} placeholder="Search or Select Account" className="bg-gray-900" />
+                  <SearchableSelect value={debitId} onValueChange={setDebitId} options={accounts} placeholder="Search or Select Account" searchPlaceholder="Search accounts..." emptyText={accounts.length === 0 ? 'Loading accounts...' : 'No account found.'} className="bg-gray-900" />
                 </div>
                 <div className="bg-gray-950/50 border border-gray-800 rounded-xl p-4">
                   <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">CREDIT ENTRY</p>
-                  <SearchableSelect value={creditId} onValueChange={setCreditId} options={accounts} placeholder="Search or Select Account" className="bg-gray-900" />
+                  <SearchableSelect value={creditId} onValueChange={setCreditId} options={accounts} placeholder="Search or Select Account" searchPlaceholder="Search accounts..." emptyText={accounts.length === 0 ? 'Loading accounts...' : 'No account found.'} className="bg-gray-900" />
                 </div>
                 <p className="text-xs text-amber-400">⚠️ Debit & Credit account cannot be same</p>
                 <div className="bg-gray-950/50 border border-gray-800 rounded-xl p-4">
@@ -741,7 +751,7 @@ function TransferModal({
   companyId,
   branchId,
   createdBy,
-  accounts,
+  accounts: accountsProp,
   onClose,
   onSuccess,
   onBack,
@@ -754,6 +764,16 @@ function TransferModal({
   onSuccess: () => void;
   onBack?: () => void;
 }) {
+  const [localAccounts, setLocalAccounts] = useState<{ id: string; name: string }[]>([]);
+  const accounts = accountsProp.length > 0 ? accountsProp : localAccounts;
+  useEffect(() => {
+    if (companyId && accountsProp.length === 0) {
+      accountService.getAllAccounts(companyId, branchId === 'all' ? undefined : branchId || undefined).then((acc: any[]) => {
+        setLocalAccounts((acc || []).map((a: any) => ({ id: a.id, name: `${a.code || ''} ${a.name}`.trim() || a.name })));
+      });
+    }
+  }, [companyId, branchId, accountsProp.length]);
+
   const [date, setDate] = useState(today);
   const [fromId, setFromId] = useState('');
   const [toId, setToId] = useState('');
@@ -835,11 +855,13 @@ function TransferModal({
                 </div>
                 <div className="bg-gray-950/50 border border-gray-800 rounded-xl p-4">
                   <Label className="block text-sm font-semibold text-gray-300 mb-2">From Account <span className="text-red-400">*</span></Label>
-                  <SearchableSelect value={fromId} onValueChange={setFromId} options={accounts} placeholder="Select source account" />
+                  <SearchableSelect value={fromId} onValueChange={setFromId} options={accounts} placeholder="Select source account" searchPlaceholder="Search accounts..." emptyText={accounts.length === 0 ? 'Loading accounts...' : 'No account found.'} />
+                  {accounts.length > 0 && <p className="text-xs text-gray-500 mt-1">All company accounts ({accounts.length})</p>}
                 </div>
                 <div className="bg-gray-950/50 border border-gray-800 rounded-xl p-4">
                   <Label className="block text-sm font-semibold text-gray-300 mb-2">To Account <span className="text-red-400">*</span></Label>
-                  <SearchableSelect value={toId} onValueChange={setToId} options={accounts} placeholder="Select destination account" />
+                  <SearchableSelect value={toId} onValueChange={setToId} options={accounts} placeholder="Select destination account" searchPlaceholder="Search accounts..." emptyText={accounts.length === 0 ? 'Loading accounts...' : 'No account found.'} />
+                  {accounts.length > 0 && <p className="text-xs text-gray-500 mt-1">All company accounts ({accounts.length})</p>}
                 </div>
                 <div className="bg-gray-950/50 border border-gray-800 rounded-xl p-4">
                   <Label className="block text-sm font-semibold text-gray-300 mb-2">Amount <span className="text-red-400">*</span></Label>
@@ -992,7 +1014,7 @@ function SupplierPaymentModal({
                 <div className="bg-gradient-to-br from-gray-950/80 to-gray-900/50 border border-gray-800 rounded-xl p-4">
                   <span className="text-xs font-medium text-gray-400">Supplier Details</span>
                   <div className="mt-2">
-                    <SearchableSelect value={supplierId} onValueChange={setSupplierId} options={suppliers} placeholder="Select supplier" badgeColor="orange" />
+                    <SearchableSelect value={supplierId} onValueChange={setSupplierId} options={suppliers} placeholder="Select supplier" searchPlaceholder="Search supplier..." emptyText="No supplier found." badgeColor="orange" />
                   </div>
                 </div>
                 <div className="bg-gray-950/50 border border-gray-800 rounded-xl p-4">
@@ -1004,7 +1026,7 @@ function SupplierPaymentModal({
                 </div>
                 <div className="bg-gray-950/50 border border-gray-800 rounded-xl p-4">
                   <Label className="block text-sm font-semibold text-gray-300 mb-2">Payment Account <span className="text-red-400">*</span></Label>
-                  <SearchableSelect value={paymentAccountId} onValueChange={setPaymentAccountId} options={paymentAccounts} placeholder="Select account" />
+                  <SearchableSelect value={paymentAccountId} onValueChange={setPaymentAccountId} options={paymentAccounts} placeholder="Select account" searchPlaceholder="Search accounts..." emptyText="No account found." />
                 </div>
                 <div className="bg-gray-950/50 border border-gray-800 rounded-xl p-4">
                   <Label className="block text-sm font-semibold text-gray-300 mb-2">Amount <span className="text-red-400">*</span></Label>
@@ -1174,7 +1196,7 @@ function WorkerPaymentModal({
                 <div className="bg-gradient-to-br from-gray-950/80 to-gray-900/50 border border-gray-800 rounded-xl p-4">
                   <span className="text-xs font-medium text-gray-400">Worker Details</span>
                   <div className="mt-2">
-                    <SearchableSelect value={workerId} onValueChange={setWorkerId} options={workers} placeholder="Select worker" badgeColor="orange" />
+                    <SearchableSelect value={workerId} onValueChange={setWorkerId} options={workers} placeholder="Select worker" searchPlaceholder="Search worker..." emptyText="No worker found." badgeColor="orange" />
                   </div>
                 </div>
                 <div className="bg-gray-950/50 border border-gray-800 rounded-xl p-4">
@@ -1186,7 +1208,7 @@ function WorkerPaymentModal({
                 </div>
                 <div className="bg-gray-950/50 border border-gray-800 rounded-xl p-4">
                   <Label className="block text-sm font-semibold text-gray-300 mb-2">Payment Account <span className="text-red-400">*</span></Label>
-                  <SearchableSelect value={paymentAccountId} onValueChange={setPaymentAccountId} options={paymentAccounts} placeholder="Select account" />
+                  <SearchableSelect value={paymentAccountId} onValueChange={setPaymentAccountId} options={paymentAccounts} placeholder="Select account" searchPlaceholder="Search accounts..." emptyText="No account found." />
                 </div>
                 <div className="bg-gray-950/50 border border-gray-800 rounded-xl p-4">
                   <Label className="block text-sm font-semibold text-gray-300 mb-2">Amount <span className="text-red-400">*</span></Label>
@@ -1348,7 +1370,7 @@ function ExpenseEntryModal({
                 </div>
                 <div className="bg-gray-950/50 border border-gray-800 rounded-xl p-4">
                   <Label className="block text-sm font-semibold text-gray-300 mb-2">Payment Account <span className="text-red-400">*</span></Label>
-                  <SearchableSelect value={paymentAccountId} onValueChange={setPaymentAccountId} options={paymentAccounts} placeholder="Select account" />
+                  <SearchableSelect value={paymentAccountId} onValueChange={setPaymentAccountId} options={paymentAccounts} placeholder="Select account" searchPlaceholder="Search accounts..." emptyText="No account found." />
                 </div>
                 <div className="bg-gray-950/50 border border-gray-800 rounded-xl p-4">
                   <Label className="block text-sm font-semibold text-gray-300 mb-2">Amount <span className="text-red-400">*</span></Label>
@@ -1508,11 +1530,11 @@ function CustomerReceiptModal({
                 </div>
                 <div className="bg-gray-950/50 border border-gray-800 rounded-xl p-4">
                   <Label className="block text-sm font-semibold text-gray-300 mb-2">Customer <span className="text-red-400">*</span></Label>
-                  <SearchableSelect value={customerId} onValueChange={setCustomerId} options={customers} placeholder="Search or Select Customer" />
+                  <SearchableSelect value={customerId} onValueChange={setCustomerId} options={customers} placeholder="Search or Select Customer" searchPlaceholder="Search customer..." emptyText="No customer found." />
                 </div>
                 <div className="bg-gray-950/50 border border-gray-800 rounded-xl p-4">
                   <Label className="block text-sm font-semibold text-gray-300 mb-2">Payment Account <span className="text-red-400">*</span></Label>
-                  <SearchableSelect value={paymentAccountId} onValueChange={setPaymentAccountId} options={paymentAccounts} placeholder="Select account (Cash/Bank)" />
+                  <SearchableSelect value={paymentAccountId} onValueChange={setPaymentAccountId} options={paymentAccounts} placeholder="Select account (Cash/Bank)" searchPlaceholder="Search accounts..." emptyText="No account found." />
                 </div>
                 <div className="bg-gray-950/50 border border-gray-800 rounded-xl p-4">
                   <Label className="block text-sm font-semibold text-gray-300 mb-2">Amount <span className="text-red-400">*</span></Label>

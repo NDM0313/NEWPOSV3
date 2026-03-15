@@ -1,7 +1,6 @@
 import { supabase } from '@/lib/supabase';
 import { activityLogService } from '@/app/services/activityLogService';
-import { documentNumberService } from '@/app/services/documentNumberService';
-import { generatePaymentReference } from '@/app/utils/paymentUtils';
+import { createSupplierPayment } from '@/app/services/supplierPaymentService';
 
 /** Enrich purchases with creator full_name. purchases.created_by = auth.users.id; resolve via users.auth_user_id. */
 async function enrichPurchasesWithCreatorNames(purchases: any[]): Promise<void> {
@@ -799,9 +798,9 @@ export const purchaseService = {
     }
   },
 
-  // Record payment – allowed only when purchase status is final/completed (ERP rule). referenceNumber = PAY-xxxx from Numbering.
-  async recordPayment(purchaseId: string, amount: number, paymentMethod: string, accountId: string, companyId: string, branchId?: string | null, referenceNumber?: string | null, options?: { notes?: string; attachments?: any }) {
-    // CRITICAL FIX: Get branch_id from purchase record, not from context (context can be "all")
+  // Record payment – allowed only when purchase status is final/completed (ERP rule).
+  // Uses canonical supplierPaymentService: one payments row + one journal entry (no duplicate JE).
+  async recordPayment(purchaseId: string, amount: number, paymentMethod: string, accountId: string, companyId: string, branchId?: string | null, _referenceNumber?: string | null, options?: { notes?: string; attachments?: any }) {
     const { data: purchase, error: fetchError } = await supabase
       .from('purchases')
       .select('id, status, branch_id')
@@ -811,8 +810,6 @@ export const purchaseService = {
     if (fetchError || !purchase) {
       throw new Error('Purchase not found');
     }
-    
-    // STEP 2 FIX: Allow payment for 'received' and 'final' status; block cancelled
     const status = (purchase as any).status;
     if (status === 'cancelled') {
       throw new Error('Cannot record payment on a cancelled purchase order.');
@@ -820,83 +817,24 @@ export const purchaseService = {
     if (status !== 'final' && status !== 'completed' && status !== 'received') {
       throw new Error('Payment not allowed until purchase is Received or Final. Current status: ' + (status || 'unknown'));
     }
-
-    // CRITICAL FIX: Use purchase's branch_id, not context branchId (which can be "all")
     const purchaseBranchId = (purchase as any).branch_id;
-    
-    // Validate branchId - must be UUID or null, not "all"
-    const validBranchId = (purchaseBranchId && purchaseBranchId !== 'all') ? purchaseBranchId : 
-                          (branchId && branchId !== 'all') ? branchId : null;
-
-    // CRITICAL FIX: Normalize payment method to lowercase enum values
-    // Enum expects: 'cash', 'bank', 'card', 'other' (lowercase)
-    // PaymentMethod type uses: 'Cash', 'Bank', 'Mobile Wallet' (capitalized)
-    const normalizedPaymentMethod = paymentMethod.toLowerCase().trim();
-    const paymentMethodMap: Record<string, string> = {
-      'cash': 'cash',
-      'Cash': 'cash',
-      'bank': 'bank',
-      'Bank': 'bank',
-      'card': 'card',
-      'Card': 'card',
-      'cheque': 'other',
-      'Cheque': 'other',
-      'mobile wallet': 'other',
-      'Mobile Wallet': 'other',
-      'mobile_wallet': 'other',
-      'wallet': 'other',
-      'Wallet': 'other',
-    };
-    // Try exact match first, then normalized match, then default to 'cash'
-    const enumPaymentMethod = paymentMethodMap[paymentMethod] || paymentMethodMap[normalizedPaymentMethod] || 'cash';
-    
-    console.log('[PURCHASE SERVICE] Payment method normalization:', {
-      original: paymentMethod,
-      normalized: normalizedPaymentMethod,
-      enumValue: enumPaymentMethod
-    });
-
-    // 🔧 FIX 4: PAYMENT ACCOUNT VALIDATION (MANDATORY)
+    const validBranchId = (purchaseBranchId && purchaseBranchId !== 'all') ? purchaseBranchId : (branchId && branchId !== 'all') ? branchId : null;
     if (!accountId) {
       throw new Error('Payment account is required. Please select an account.');
     }
 
-    let uniqueRef: string;
-    try {
-      uniqueRef = await documentNumberService.getNextDocumentNumber(companyId, validBranchId ?? null, 'payment');
-    } catch {
-      uniqueRef = generatePaymentReference(referenceNumber);
-    }
-    // Identity: same as sale payments – set received_by so Roznamcha shows "by [user]"
-    const { data: { user: authUser } } = await supabase.auth.getUser();
-    const authUserId = authUser?.id ?? null;
-
-    const insertPayload: any = {
-      company_id: companyId,
-      branch_id: validBranchId,
-      payment_type: 'paid',
-      reference_type: 'purchase',
-      reference_id: purchaseId,
+    const result = await createSupplierPayment({
+      companyId,
+      branchId: validBranchId,
       amount,
-      payment_method: enumPaymentMethod,
-      payment_account_id: accountId,
-      payment_date: new Date().toISOString().split('T')[0],
-      reference_number: uniqueRef,
-      received_by: authUserId,
-    };
-    if (options?.notes !== undefined && options.notes !== '') insertPayload.notes = options.notes;
-    if (options?.attachments !== undefined && options.attachments != null) {
-      insertPayload.attachments = Array.isArray(options.attachments) ? options.attachments : (options.attachments ? [options.attachments] : null);
-    }
-    const { data, error } = await supabase
-      .from('payments')
-      .insert(insertPayload)
-      .select('*')
-      .single();
+      paymentMethod,
+      paymentAccountId: accountId,
+      purchaseId,
+      paymentDate: new Date().toISOString().split('T')[0],
+      notes: options?.notes,
+      attachments: options?.attachments,
+    });
 
-    if (error) throw error;
-
-    // Activity log for purchase timeline
     activityLogService.logActivity({
       companyId,
       module: 'purchase',
@@ -907,99 +845,12 @@ export const purchaseService = {
       description: `Payment of Rs ${Number(amount).toLocaleString()} recorded for purchase`,
     }).catch((err) => console.warn('[PURCHASE SERVICE] Activity log failed:', err));
 
-    // 🔧 FIX 3: PURCHASE PAYMENT JOURNAL ENTRY (MANDATORY)
-    // CRITICAL: ALWAYS create journal entry for purchase payment
-    // Rule: Accounts Payable Dr, Cash/Bank Cr
-    try {
-      // Get Accounts Payable account
-      const { data: apAccounts } = await supabase
-        .from('accounts')
-        .select('id')
-        .eq('company_id', companyId)
-        .or('name.ilike.Accounts Payable,code.eq.2000')
-        .limit(1);
-      
-      const apAccountId = apAccounts?.[0]?.id;
-      
-      // Get payment account (Cash/Bank)
-      const { data: paymentAccount } = await supabase
-        .from('accounts')
-        .select('id, name')
-        .eq('id', accountId)
-        .single();
-      
-      if (!apAccountId || !paymentAccount) {
-        console.error('[PURCHASE SERVICE] ❌ CRITICAL: Missing accounts for payment journal entry');
-        throw new Error('Missing required accounts for payment journal entry');
-      }
-      
-      // Create journal entry for payment
-      const { data: journalEntry, error: journalError } = await supabase
-        .from('journal_entries')
-        .insert({
-          company_id: companyId,
-          branch_id: validBranchId,
-          entry_date: new Date().toISOString().split('T')[0],
-          description: `Payment for purchase ${purchaseId}`,
-          reference_type: 'payment',
-          reference_id: data.id, // Payment ID
-          payment_id: data.id,
-          created_by: (await supabase.auth.getUser()).data.user?.id,
-        })
-        .select()
-        .single();
-      
-      if (journalError || !journalEntry) {
-        console.error('[PURCHASE SERVICE] ❌ CRITICAL: Failed to create payment journal entry:', journalError);
-        throw new Error(`Failed to create payment journal entry: ${journalError?.message || 'Unknown error'}`);
-      }
-      
-      // Debit: Accounts Payable (we paid supplier, reduces what we owe)
-      const { error: debitError } = await supabase
-        .from('journal_entry_lines')
-        .insert({
-          journal_entry_id: journalEntry.id,
-          account_id: apAccountId,
-          debit: amount,
-          credit: 0,
-          description: `Payment to supplier for purchase ${purchaseId}`,
-        });
-      
-      if (debitError) {
-        console.error('[PURCHASE SERVICE] ❌ CRITICAL: Failed to create AP debit line:', debitError);
-        throw debitError;
-      }
-      
-      // Credit: Cash/Bank (money went out)
-      const { error: creditError } = await supabase
-        .from('journal_entry_lines')
-        .insert({
-          journal_entry_id: journalEntry.id,
-          account_id: accountId,
-          debit: 0,
-          credit: amount,
-          description: `Payment from ${paymentAccount.name}`,
-        });
-      
-      if (creditError) {
-        console.error('[PURCHASE SERVICE] ❌ CRITICAL: Failed to create payment account credit line:', creditError);
-        throw creditError;
-      }
-      
-      console.log('[PURCHASE SERVICE] ✅ Created payment journal entry:', journalEntry.id);
-    } catch (journalErr: any) {
-      console.error('[PURCHASE SERVICE] ❌ CRITICAL: Payment journal entry failed:', journalErr);
-      // Don't delete payment if journal fails - payment is already created
-      // But log error for manual correction
-      throw new Error(`Payment recorded but journal entry failed: ${journalErr.message}`);
-    }
-    
-    return data;
+    return { id: result.paymentId, reference_number: result.referenceNumber };
   },
 
   /**
    * Record on-account payment (direct supplier payment without bill).
-   * Uses reference_type = 'on_account', reference_id = null, contact_id for ledger.
+   * Uses canonical supplierPaymentService: one payments row + one journal entry (Dr AP, Cr Cash/Bank).
    */
   async recordOnAccountPayment(
     contactId: string,
@@ -1015,44 +866,20 @@ export const purchaseService = {
     if (!accountId || !companyId || !branchId) {
       throw new Error('Account, company and branch are required for on-account payment.');
     }
-    const normalizedPaymentMethod = (paymentMethod || 'cash').toLowerCase().trim();
-    const paymentMethodMap: Record<string, string> = {
-      cash: 'cash', Cash: 'cash', bank: 'bank', Bank: 'bank', card: 'card', Card: 'card',
-      cheque: 'other', Cheque: 'other', 'mobile wallet': 'other', 'Mobile Wallet': 'other',
-      mobile_wallet: 'other', wallet: 'other', Wallet: 'other',
-    };
-    const enumPaymentMethod = paymentMethodMap[paymentMethod] || paymentMethodMap[normalizedPaymentMethod] || 'cash';
-    const paymentDateValue = paymentDate || new Date().toISOString().split('T')[0];
-    const { data: { user: authUser } } = await supabase.auth.getUser();
-    const authUserId = authUser?.id ?? null;
-    let uniqueRef: string;
-    try {
-      uniqueRef = await documentNumberService.getNextDocumentNumber(companyId, branchId ?? null, 'payment');
-    } catch {
-      uniqueRef = generatePaymentReference(null);
-    }
-    const insertPayload: any = {
-      company_id: companyId,
-      branch_id: branchId,
-      payment_type: 'paid',
-      reference_type: 'on_account',
-      reference_id: null,
-      contact_id: contactId,
+    const validBranchId = (branchId && branchId !== 'all') ? branchId : null;
+    const result = await createSupplierPayment({
+      companyId,
+      branchId: validBranchId,
       amount,
-      payment_method: enumPaymentMethod,
-      payment_account_id: accountId,
-      payment_date: paymentDateValue,
-      reference_number: uniqueRef,
-      received_by: authUserId,
-    };
-    if (options?.notes !== undefined && options.notes !== '') insertPayload.notes = options.notes;
-    if (options?.attachments !== undefined && options.attachments != null) {
-      insertPayload.attachments = Array.isArray(options.attachments) ? options.attachments : (options.attachments ? [options.attachments] : null);
-    }
-    const { data, error } = await supabase.from('payments').insert(insertPayload).select('id, reference_number').single();
-    if (error) throw error;
-    // Journal entry for on-account supplier payment: Dr AP, Cr Cash/Bank (createEntry from dialog)
-    return data as { id: string; reference_number: string };
+      paymentMethod,
+      paymentAccountId: accountId,
+      contactId,
+      supplierName: contactName,
+      paymentDate: paymentDate || new Date().toISOString().split('T')[0],
+      notes: options?.notes,
+      attachments: options?.attachments,
+    });
+    return { id: result.paymentId, reference_number: result.referenceNumber };
   },
 
   // Update payment

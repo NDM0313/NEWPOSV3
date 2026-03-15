@@ -110,7 +110,7 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
   const settings = useSettings();
   const { formatCurrency } = useFormatCurrency();
   const { branchId, companyId, user } = useSupabase();
-  const { generateDocumentNumber, incrementNextNumber, getNumberingConfig } = useDocumentNumbering();
+  const { getNumberingConfig } = useDocumentNumbering();
   const [amount, setAmount] = useState<number>(0);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('Cash');
   const [selectedAccount, setSelectedAccount] = useState<string>('');
@@ -545,6 +545,7 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
                 setIsProcessing(false);
                 return;
               }
+              // Canonical path: recordOnAccountPayment creates 1 payment + 1 JE (no second JE)
               const onAccountData = await purchaseService.recordOnAccountPayment(
                 entityId,
                 entityName,
@@ -557,14 +558,9 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
                 { notes: notes.trim() || undefined, attachments: attachmentPayload.length ? attachmentPayload : undefined }
               );
               paymentRefNo = onAccountData?.reference_number || `PAY-${Date.now()}`;
-              success = await accounting.recordSupplierPayment({
-                supplierName: entityName,
-                supplierId: entityId,
-                amount,
-                paymentMethod,
-                referenceNo: paymentRefNo
-              });
+              success = true;
             } else {
+              // Canonical path: recordPayment creates 1 payment + 1 JE (do not call recordSupplierPayment – would create duplicate JE)
               const recordedPayment = await purchaseService.recordPayment(
                 referenceId,
                 amount,
@@ -576,14 +572,7 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
                 { notes: notes.trim() || undefined, attachments: attachmentPayload.length ? attachmentPayload : undefined }
               );
               paymentRefNo = (recordedPayment as any)?.reference_number || referenceNo || `PUR-${Date.now()}`;
-              success = await accounting.recordSupplierPayment({
-                purchaseId: referenceId,
-                supplierName: entityName,
-                supplierId: entityId,
-                amount,
-                paymentMethod,
-                referenceNo: paymentRefNo
-              });
+              success = true;
             }
           } catch (paymentError: any) {
             console.error('[UNIFIED PAYMENT] Error recording purchase payment:', paymentError);
@@ -739,27 +728,18 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
         }
 
         case 'worker': {
-          const paymentRef = generateDocumentNumber('payment');
-          if (typeof window !== 'undefined' && workerStageId) {
-            console.log('[PAY NOW DEBUG] Complete+PayNow flow', {
-              jobAmount: effectiveOutstanding,
-              paymentAmountEntered: amount,
-              stageId: workerStageId,
-              workerId: entityId,
-              referenceNo: paymentRef,
-            });
-          }
-          success = await accounting.recordWorkerPayment({
+          // Canonical path: workerPaymentService creates payment + journal + ledger (Roznamcha shows via payments)
+          const result = await accounting.recordWorkerPayment({
             workerName: entityName,
             workerId: entityId,
             amount,
             paymentMethod,
-            referenceNo: paymentRef,
+            paymentAccountId: selectedAccount,
             stageId: workerStageId,
             stageAmount: workerStageId ? effectiveOutstanding : undefined,
           });
-          incrementNextNumber('payment');
-          if (success) workerPaymentRef = paymentRef;
+          success = Boolean(result);
+          if (result && typeof result === 'object' && result.referenceNumber) workerPaymentRef = result.referenceNumber;
           break;
         }
 

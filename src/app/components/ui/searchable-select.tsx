@@ -126,7 +126,11 @@ export const SearchableSelect: React.FC<SearchableSelectProps> = ({
           e.stopPropagation();
         }}
       >
-        <Command className="bg-gray-950 text-white">
+        <Command
+          className="bg-gray-950 text-white"
+          shouldFilter={false}
+          filter={() => 1}
+        >
           <CommandInput
             placeholder={searchPlaceholder}
             className="h-9"
@@ -161,7 +165,7 @@ export const SearchableSelect: React.FC<SearchableSelectProps> = ({
                 {filteredOptions.map((option) => (
                   <CommandItem
                     key={option.id}
-                    value={option.name}
+                    value={`${option.name}__${option.id}`}
                     onSelect={() => {
                       onValueChange(option.id);
                       setOpen(false);

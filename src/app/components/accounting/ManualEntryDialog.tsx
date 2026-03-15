@@ -271,6 +271,9 @@ export const ManualEntryDialog: React.FC<ManualEntryDialogProps> = ({ isOpen, on
                 <p className="text-blue-400/80">
                   Every transaction must have equal debit and credit. This entry will DR {debitAccount || '___'} and CR {creditAccount || '___'} for Rs {amount.toLocaleString()}.
                 </p>
+                <p className="text-blue-400/80 mt-1">
+                  If one side is Cash, Bank, or Mobile Wallet, this will appear in Roznamcha as a payment/receipt. Otherwise it is a journal-only adjustment (no Roznamcha).
+                </p>
               </div>
             </div>
           </div>

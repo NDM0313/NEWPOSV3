@@ -1041,6 +1041,7 @@ export const saleService = {
       }
     }
 
+    // Guardrail: On duplicate reference_number (unique constraint), do NOT retry with same uniqueRef—call getNextDocumentNumber again for a new ref.
     const doInsert = (data: typeof paymentData) => supabase.from('payments').insert(data).select().single();
     let result = await doInsert(paymentData);
 

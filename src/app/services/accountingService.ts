@@ -1413,13 +1413,26 @@ export const accountingService = {
     }
   },
 
-  // Create journal entry with lines
+  /**
+   * Create journal entry with lines.
+   * Canonical rule: when the entry touches Cash/Bank/Wallet (payment account), callers must create
+   * a payments row first and pass paymentId so Roznamcha shows the transaction.
+   */
   async createEntry(entry: JournalEntry, lines: JournalEntryLine[], paymentId?: string) {
     // Validate double-entry: total_debit must equal total_credit
     const totalDebit = lines.reduce((sum, line) => sum + (line.debit || 0), 0);
     const totalCredit = lines.reduce((sum, line) => sum + (line.credit || 0), 0);
 
     if (Math.abs(totalDebit - totalCredit) > 0.01) {
+      const isExpense = entry.reference_type === 'expense' || entry.reference_type === 'extra_expense';
+      if (typeof window !== 'undefined' && isExpense) {
+        console.error('[ACCOUNTING] Unbalanced expense entry blocked:', {
+          reference_type: entry.reference_type,
+          totalDebit,
+          totalCredit,
+          lineCount: lines.length,
+        });
+      }
       throw new Error(`Double-entry validation failed: Debit (${totalDebit}) must equal Credit (${totalCredit})`);
     }
 

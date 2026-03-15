@@ -66,8 +66,12 @@ function getTypeLabel(referenceType: string): string {
     sale_return: 'Return Refund',
     expense: 'Shop Expense',
     purchase: 'Supplier Payment',
+    on_account: 'On-Account Supplier Payment',
     rental: 'Rental Payment',
     studio_order: 'Studio Payment',
+    worker_payment: 'Worker Payment',
+    manual_receipt: 'Manual Receipt',
+    manual_payment: 'Manual Payment',
   };
   return m[(referenceType || '').toLowerCase()] || referenceType || 'Payment';
 }

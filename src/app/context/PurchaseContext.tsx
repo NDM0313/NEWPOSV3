@@ -1266,16 +1266,7 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
         paymentMethod: method,
       });
 
-      // Auto-post to accounting
-      accounting.recordSupplierPayment({
-        supplierId: purchase.supplier,
-        supplierName: purchase.supplierName,
-        purchaseNo: purchase.purchaseNo,
-        amount,
-        paymentMethod: method as any,
-        date: new Date().toISOString(),
-        notes: `Payment for ${purchase.purchaseNo}`,
-      });
+      // Accounting: purchaseService.recordPayment already creates 1 payment + 1 JE via canonical supplierPaymentService (do not call recordSupplierPayment – would create duplicate JE)
 
       toast.success(`Payment of ${formatCurrency(amount)} recorded!`);
     } catch (error: any) {

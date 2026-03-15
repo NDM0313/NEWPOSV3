@@ -2216,7 +2216,8 @@ export const SalesPage = () => {
             paymentStatus: selectedSale.paymentStatus,
             payments: [], // Will be fetched dynamically in modal
             referenceType: 'sale',
-            status: selectedSale.status, // Only 'final' allows Add Payment
+            // When user can add payment (e.g. opened via Unpaid/Partial badge), ensure Add Payment shows in modal
+            status: canAddPaymentToSale(selectedSale, getEffectiveDue(selectedSale)) ? 'final' : selectedSale.status,
           }}
           onAddPayment={() => {
             setViewPaymentsOpen(false);

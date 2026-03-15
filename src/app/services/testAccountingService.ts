@@ -1,13 +1,18 @@
 /**
- * Test Accounting Service – parallel structured accounting for Test Pages only.
- * Uses same journal_entries + journal_entry_lines. reference_type: test_* to distinguish.
- * Does NOT modify existing accounting logic. Respects company_id, branch_id.
+ * Test Accounting Service – Accounting Test Page.
+ * Canonical rule: any money movement (Cash/Bank/Wallet) creates payments row + JE with payment_id.
+ * Uses canonical reference_type: manual_payment, manual_receipt, expense, worker_payment, purchase, on_account.
+ * No production use of test_transfer / test_worker_payment / test_supplier_payment.
  */
 
 import { supabase } from '@/lib/supabase';
 import { accountingService, JournalEntry, JournalEntryLine } from '@/app/services/accountingService';
 import { documentNumberService } from '@/app/services/documentNumberService';
+import { createSupplierPayment } from '@/app/services/supplierPaymentService';
+import { createWorkerPayment } from '@/app/services/workerPaymentService';
+import { generatePaymentReference } from '@/app/utils/paymentUtils';
 
+/** Legacy test_* types – only for reading existing DB rows (getTestEntries). New posts use canonical types. */
 const REF = {
   manual: 'test_manual',
   transfer: 'test_transfer',
@@ -19,9 +24,34 @@ const REF = {
 
 const REF_LIST = Object.values(REF);
 
+/** Canonical reference types used when posting from Test page (so list shows new entries too). */
+const CANONICAL_LIST = [
+  'manual_payment', 'manual_receipt', 'expense', 'worker_payment', 'purchase', 'on_account',
+];
+
+/** True if account is Cash/Bank/Wallet (payment account). */
+async function isPaymentAccountId(accountId: string): Promise<boolean> {
+  const { data } = await supabase.from('accounts').select('id, code, name').eq('id', accountId).single();
+  if (!data) return false;
+  const code = (data.code || '').trim();
+  const name = (data.name || '').toLowerCase();
+  if (['1000', '1010', '1020'].includes(code)) return true;
+  if (/cash|bank|wallet|jazz|easypaisa/.test(name)) return true;
+  return false;
+}
+
+async function getNextPaymentRef(companyId: string, branchId: string | null | undefined): Promise<string> {
+  const validBranchId = (branchId && branchId !== 'all') ? branchId : null;
+  try {
+    return await documentNumberService.getNextDocumentNumber(companyId, validBranchId, 'payment');
+  } catch {
+    return generatePaymentReference(null);
+  }
+}
+
 export type TestEntryType = keyof typeof REF;
 
-/** Human-readable label for reference_type */
+/** Human-readable label for reference_type (legacy test_* and canonical types) */
 export function getTestEntryTypeLabel(ref: string): string {
   const map: Record<string, string> = {
     [REF.manual]: 'Journal Voucher',
@@ -30,6 +60,12 @@ export function getTestEntryTypeLabel(ref: string): string {
     [REF.worker_payment]: 'Worker Payment',
     [REF.expense]: 'Expense',
     [REF.customer_receipt]: 'Customer Receipt',
+    manual_payment: 'Manual Payment',
+    manual_receipt: 'Manual Receipt',
+    expense: 'Expense',
+    worker_payment: 'Worker Payment',
+    purchase: 'Purchase',
+    on_account: 'Customer Receipt (On Account)',
   };
   return map[ref] || ref;
 }
@@ -170,7 +206,7 @@ export const testAccountingService = {
       `
       )
       .eq('company_id', companyId)
-      .in('reference_type', REF_LIST)
+      .in('reference_type', [...REF_LIST, ...CANONICAL_LIST])
       .order('entry_date', { ascending: false })
       .order('created_at', { ascending: false });
 
@@ -248,13 +284,57 @@ export const testAccountingService = {
 
   async createManualEntry(params: ManualEntryParams): Promise<{ id: string; entry_no: string }> {
     const entryNo = await getNextEntryNo(params.companyId);
+    const validBranchId = (params.branchId && params.branchId !== 'all') ? params.branchId : null;
+    const debitIsPayment = await isPaymentAccountId(params.debitAccountId);
+    const creditIsPayment = await isPaymentAccountId(params.creditAccountId);
+
+    let paymentId: string | null = null;
+    let refType: string = REF.manual;
+    if (debitIsPayment && !creditIsPayment) {
+      const refNo = await getNextPaymentRef(params.companyId, params.branchId);
+      const { data: { user } } = await supabase.auth.getUser();
+      const { data: row, error } = await supabase.from('payments').insert({
+        company_id: params.companyId,
+        branch_id: validBranchId,
+        payment_type: 'received',
+        reference_type: 'manual_receipt',
+        reference_id: null,
+        amount: params.amount,
+        payment_method: 'other',
+        payment_account_id: params.debitAccountId,
+        payment_date: toDateStr(params.date),
+        reference_number: refNo,
+        received_by: (user as any)?.id ?? null,
+        created_by: params.createdBy ?? null,
+      }).select('id').single();
+      if (!error && row) { paymentId = (row as { id: string }).id; refType = 'manual_receipt'; }
+    } else if (!debitIsPayment && creditIsPayment) {
+      const refNo = await getNextPaymentRef(params.companyId, params.branchId);
+      const { data: { user } } = await supabase.auth.getUser();
+      const { data: row, error } = await supabase.from('payments').insert({
+        company_id: params.companyId,
+        branch_id: validBranchId,
+        payment_type: 'paid',
+        reference_type: 'manual_payment',
+        reference_id: null,
+        amount: params.amount,
+        payment_method: 'other',
+        payment_account_id: params.creditAccountId,
+        payment_date: toDateStr(params.date),
+        reference_number: refNo,
+        received_by: (user as any)?.id ?? null,
+        created_by: params.createdBy ?? null,
+      }).select('id').single();
+      if (!error && row) { paymentId = (row as { id: string }).id; refType = 'manual_payment'; }
+    }
+
     const entry: JournalEntry = {
       company_id: params.companyId,
-      branch_id: params.branchId && params.branchId !== 'all' ? params.branchId : undefined,
+      branch_id: validBranchId ?? undefined,
       entry_no: entryNo,
       entry_date: toDateStr(params.date),
       description: params.description,
-      reference_type: REF.manual,
+      reference_type: refType,
       created_by: params.createdBy ?? undefined,
       attachments: params.attachments?.length ? params.attachments : undefined,
     };
@@ -262,115 +342,110 @@ export const testAccountingService = {
       { account_id: params.debitAccountId, debit: params.amount, credit: 0, description: params.description },
       { account_id: params.creditAccountId, debit: 0, credit: params.amount, description: params.description },
     ];
-    const result = await accountingService.createEntry(entry, lines);
+    const result = await accountingService.createEntry(entry, lines, paymentId ?? undefined);
     return { id: result.id, entry_no: entryNo };
   },
 
   async createTransfer(params: TransferParams): Promise<{ id: string; entry_no: string }> {
     const entryNo = await getNextEntryNo(params.companyId);
+    const validBranchId = (params.branchId && params.branchId !== 'all') ? params.branchId : null;
+    const refNo = await getNextPaymentRef(params.companyId, params.branchId);
+    const { data: { user } } = await supabase.auth.getUser();
+    const { data: paymentRow, error: payErr } = await supabase.from('payments').insert({
+      company_id: params.companyId,
+      branch_id: validBranchId,
+      payment_type: 'paid',
+      reference_type: 'manual_payment',
+      reference_id: null,
+      amount: params.amount,
+      payment_method: 'other',
+      payment_account_id: params.fromAccountId,
+      payment_date: toDateStr(params.date),
+      reference_number: refNo,
+      received_by: (user as any)?.id ?? null,
+      created_by: params.createdBy ?? null,
+    }).select('id').single();
+    if (payErr) throw new Error(`Transfer payment row failed: ${payErr.message}`);
+    const paymentId = (paymentRow as { id: string }).id;
+
     const entry: JournalEntry = {
       company_id: params.companyId,
-      branch_id: params.branchId && params.branchId !== 'all' ? params.branchId : undefined,
+      branch_id: validBranchId ?? undefined,
       entry_no: entryNo,
       entry_date: toDateStr(params.date),
       description: params.description,
-      reference_type: REF.transfer,
+      reference_type: 'manual_payment',
       created_by: params.createdBy ?? undefined,
       attachments: params.attachments?.length ? params.attachments : undefined,
     };
-    // Dr To Account, Cr From Account
     const lines: JournalEntryLine[] = [
       { account_id: params.toAccountId, debit: params.amount, credit: 0, description: params.description },
       { account_id: params.fromAccountId, debit: 0, credit: params.amount, description: params.description },
     ];
-    const result = await accountingService.createEntry(entry, lines);
+    const result = await accountingService.createEntry(entry, lines, paymentId);
     return { id: result.id, entry_no: entryNo };
   },
 
   async createSupplierPayment(params: SupplierPaymentParams): Promise<{ id: string; entry_no: string }> {
-    const { data: apAccounts } = await supabase
-      .from('accounts')
-      .select('id')
-      .eq('company_id', params.companyId)
-      .or('code.eq.2000,name.ilike.%Accounts Payable%')
-      .limit(1);
-    const apId = apAccounts?.[0]?.id;
-    if (!apId) throw new Error('Accounts Payable account not found. Add it in Chart of Accounts.');
-
-    const entryNo = await getNextEntryNo(params.companyId);
-    const entry: JournalEntry = {
-      company_id: params.companyId,
-      branch_id: params.branchId && params.branchId !== 'all' ? params.branchId : undefined,
-      entry_no: entryNo,
-      entry_date: toDateStr(params.date),
-      description: params.description,
-      reference_type: REF.supplier_payment,
-      reference_id: params.supplierId,
-      created_by: params.createdBy ?? undefined,
-      attachments: params.attachments?.length ? params.attachments : undefined,
-    };
-    const lines: JournalEntryLine[] = [
-      { account_id: apId, debit: params.amount, credit: 0, description: `Supplier: ${params.supplierName}. ${params.description}` },
-      { account_id: params.paymentAccountId, debit: 0, credit: params.amount, description: params.description },
-    ];
-    const result = await accountingService.createEntry(entry, lines);
-    return { id: result.id, entry_no: entryNo };
+    const validBranchId = (params.branchId && params.branchId !== 'all') ? params.branchId : null;
+    const { journalEntryId, referenceNumber } = await createSupplierPayment({
+      companyId: params.companyId,
+      branchId: validBranchId,
+      amount: params.amount,
+      paymentMethod: 'cash',
+      paymentAccountId: params.paymentAccountId,
+      contactId: params.supplierId,
+      supplierName: params.supplierName,
+      paymentDate: toDateStr(params.date),
+      notes: params.description,
+    });
+    return { id: journalEntryId, entry_no: referenceNumber };
   },
 
   async createWorkerPayment(params: WorkerPaymentParams): Promise<{ id: string; entry_no: string }> {
-    const { data: wpAccounts } = await supabase
-      .from('accounts')
-      .select('id')
-      .eq('company_id', params.companyId)
-      .or('name.ilike.%Worker Payable%,name.ilike.%Salary Expense%,code.eq.2100')
-      .limit(1);
-    const wpId = wpAccounts?.[0]?.id;
-    if (!wpId) throw new Error('Worker Payable / Salary Expense account not found. Add it in Chart of Accounts.');
-
-    const entryNo = await getNextEntryNo(params.companyId);
-    const entry: JournalEntry = {
-      company_id: params.companyId,
-      branch_id: params.branchId && params.branchId !== 'all' ? params.branchId : undefined,
-      entry_no: entryNo,
-      entry_date: toDateStr(params.date),
-      description: params.description,
-      reference_type: REF.worker_payment,
-      reference_id: params.workerId,
-      created_by: params.createdBy ?? undefined,
-      attachments: params.attachments?.length ? params.attachments : undefined,
-    };
-    const lines: JournalEntryLine[] = [
-      { account_id: wpId, debit: params.amount, credit: 0, description: `Worker: ${params.workerName}. ${params.description}` },
-      { account_id: params.paymentAccountId, debit: 0, credit: params.amount, description: params.description },
-    ];
-    const result = await accountingService.createEntry(entry, lines);
-
-    // Sync to worker_ledger_entries so Worker Detail page shows the payment
-    await import('@/app/services/studioProductionService').then(({ studioProductionService }) =>
-      studioProductionService.recordAccountingPaymentToLedger({
-        companyId: params.companyId,
-        workerId: params.workerId,
-        amount: params.amount,
-        paymentReference: entryNo,
-        journalEntryId: result.id,
-        notes: params.description || `Payment to worker ${params.workerName}`,
-      })
-    ).catch((e) => {
-      console.warn('[testAccountingService] Worker ledger sync failed (journal saved):', e);
+    const validBranchId = (params.branchId && params.branchId !== 'all') ? params.branchId : null;
+    const { journalEntryId, referenceNumber } = await createWorkerPayment({
+      companyId: params.companyId,
+      branchId: validBranchId,
+      workerId: params.workerId,
+      workerName: params.workerName,
+      amount: params.amount,
+      paymentMethod: 'cash',
+      paymentAccountId: params.paymentAccountId,
+      notes: params.description,
     });
-
-    return { id: result.id, entry_no: entryNo };
+    return { id: journalEntryId, entry_no: referenceNumber };
   },
 
   async createExpenseEntry(params: ExpenseEntryParams): Promise<{ id: string; entry_no: string }> {
     const entryNo = await getNextEntryNo(params.companyId);
+    const validBranchId = (params.branchId && params.branchId !== 'all') ? params.branchId : null;
+    const refNo = await getNextPaymentRef(params.companyId, params.branchId);
+    const { data: { user } } = await supabase.auth.getUser();
+    const { data: paymentRow, error: payErr } = await supabase.from('payments').insert({
+      company_id: params.companyId,
+      branch_id: validBranchId,
+      payment_type: 'paid',
+      reference_type: 'expense',
+      reference_id: null,
+      amount: params.amount,
+      payment_method: 'other',
+      payment_account_id: params.paymentAccountId,
+      payment_date: toDateStr(params.date),
+      reference_number: refNo,
+      received_by: (user as any)?.id ?? null,
+      created_by: params.createdBy ?? null,
+    }).select('id').single();
+    if (payErr) throw new Error(`Expense payment row failed: ${payErr.message}`);
+    const paymentId = (paymentRow as { id: string }).id;
+
     const entry: JournalEntry = {
       company_id: params.companyId,
-      branch_id: params.branchId && params.branchId !== 'all' ? params.branchId : undefined,
+      branch_id: validBranchId ?? undefined,
       entry_no: entryNo,
       entry_date: toDateStr(params.date),
       description: params.description,
-      reference_type: REF.expense,
+      reference_type: 'expense',
       created_by: params.createdBy ?? undefined,
       attachments: params.attachments?.length ? params.attachments : undefined,
     };
@@ -378,7 +453,7 @@ export const testAccountingService = {
       { account_id: params.expenseAccountId, debit: params.amount, credit: 0, description: params.description },
       { account_id: params.paymentAccountId, debit: 0, credit: params.amount, description: params.description },
     ];
-    const result = await accountingService.createEntry(entry, lines);
+    const result = await accountingService.createEntry(entry, lines, paymentId);
     return { id: result.id, entry_no: entryNo };
   },
 
@@ -393,23 +468,44 @@ export const testAccountingService = {
     if (!arId) throw new Error('Accounts Receivable account not found. Add it in Chart of Accounts.');
 
     const entryNo = await getNextEntryNo(params.companyId);
+    const validBranchId = (params.branchId && params.branchId !== 'all') ? params.branchId : null;
+    const refNo = await getNextPaymentRef(params.companyId, params.branchId);
+    const { data: { user } } = await supabase.auth.getUser();
+    const insertPayload: Record<string, unknown> = {
+      company_id: params.companyId,
+      branch_id: validBranchId,
+      payment_type: 'received',
+      reference_type: 'on_account',
+      reference_id: null,
+      contact_id: params.customerId,
+      amount: params.amount,
+      payment_method: 'other',
+      payment_account_id: params.paymentAccountId,
+      payment_date: toDateStr(params.date),
+      reference_number: refNo,
+      received_by: (user as any)?.id ?? null,
+      created_by: params.createdBy ?? null,
+    };
+    const { data: paymentRow, error: payErr } = await supabase.from('payments').insert(insertPayload).select('id').single();
+    if (payErr) throw new Error(`Customer receipt payment row failed: ${payErr.message}`);
+    const paymentId = (paymentRow as { id: string }).id;
+
     const entry: JournalEntry = {
       company_id: params.companyId,
-      branch_id: params.branchId && params.branchId !== 'all' ? params.branchId : undefined,
+      branch_id: validBranchId ?? undefined,
       entry_no: entryNo,
       entry_date: toDateStr(params.date),
       description: params.description,
-      reference_type: REF.customer_receipt,
+      reference_type: 'on_account',
       reference_id: params.customerId,
       created_by: params.createdBy ?? undefined,
       attachments: params.attachments?.length ? params.attachments : undefined,
     };
-    // Dr Payment Account (Cash/Bank), Cr Accounts Receivable
     const lines: JournalEntryLine[] = [
       { account_id: params.paymentAccountId, debit: params.amount, credit: 0, description: `Customer: ${params.customerName}. ${params.description}` },
       { account_id: arId, debit: 0, credit: params.amount, description: params.description },
     ];
-    const result = await accountingService.createEntry(entry, lines);
+    const result = await accountingService.createEntry(entry, lines, paymentId);
     return { id: result.id, entry_no: entryNo };
   },
 };

@@ -1,6 +1,7 @@
 /**
- * Generate a unique payment reference to avoid duplicate key (payments_reference_number_unique).
- * Uses timestamp + random so concurrent requests never collide; no DB sequence needed.
+ * FALLBACK ONLY: Prefer documentNumberService.getNextDocumentNumber(companyId, branchId, 'payment')
+ * which uses erp_document_sequences (canonical). Use this only when RPC fails to avoid blocking the user.
+ * Do not use for new payment flows; canonical path = generate_document_number → erp_document_sequences.
  */
 export function generatePaymentReference(existing?: string | null): string {
   if (existing != null && String(existing).trim() !== '') return String(existing).trim();

@@ -3,7 +3,31 @@ import { useSupabase } from '@/app/context/SupabaseContext';
 import { useGlobalFilterOptional } from '@/app/context/GlobalFilterContext';
 import { accountService, Account as SupabaseAccount } from '@/app/services/accountService';
 import { accountingService, JournalEntryWithLines, JournalEntryLine } from '@/app/services/accountingService';
+import { documentNumberService } from '@/app/services/documentNumberService';
+import { generatePaymentReference } from '@/app/utils/paymentUtils';
+import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
+
+/** True if account is a payment account (Cash/Bank/Mobile Wallet) – used for Manual Entry → Roznamcha rule */
+function isPaymentAccount(acc: { code?: string; type?: string; name?: string } | null): boolean {
+  if (!acc) return false;
+  const code = (acc.code || '').trim();
+  const type = (acc.type || acc.accountType || '').toLowerCase();
+  const name = (acc.name || '').toLowerCase();
+  if (['1000', '1010', '1020'].includes(code)) return true;
+  if (['cash', 'bank'].includes(type)) return true;
+  if (/cash|bank|mobile wallet|wallet|jazz|easypaisa/.test(name)) return true;
+  return false;
+}
+
+/** Infer payments.payment_method from payment account (for manual payment/receipt) */
+function paymentMethodFromAccount(acc: { code?: string; type?: string; name?: string }): string {
+  const code = (acc.code || '').trim();
+  const name = (acc.name || '').toLowerCase();
+  if (code === '1000' || name.includes('cash')) return 'cash';
+  if (code === '1010' || name.includes('bank')) return 'bank';
+  return 'other';
+}
 
 // ============================================
 // 🎯 TYPES & INTERFACES
@@ -104,7 +128,7 @@ interface AccountingContextType {
   recordRentalReturn: (params: RentalReturnParams) => Promise<boolean>;
   recordStudioSale: (params: StudioSaleParams) => Promise<boolean>;
   recordWorkerJobCompletion: (params: WorkerJobParams) => Promise<boolean>;
-  recordWorkerPayment: (params: WorkerPaymentParams) => Promise<boolean>;
+  recordWorkerPayment: (params: WorkerPaymentParams) => Promise<boolean | { referenceNumber: string }>;
   recordExpense: (params: ExpenseParams) => Promise<boolean>;
   recordPurchase: (params: PurchaseParams) => Promise<boolean>;
   recordSupplierPayment: (params: SupplierPaymentParams) => Promise<boolean>;
@@ -191,7 +215,10 @@ export interface WorkerPaymentParams {
   workerId?: string;
   amount: number;
   paymentMethod: PaymentMethod;
-  referenceNo: string;
+  /** Payment account (Cash/Bank) ID – required for canonical flow (payments row → Roznamcha). */
+  paymentAccountId?: string;
+  /** Ignored when using canonical worker payment service (ref generated there). */
+  referenceNo?: string;
   /** When paying for a specific stage (Pay Now), pass stageId and optionally stageAmount (job amount) so full payment skips extra ledger row */
   stageId?: string;
   /** Job amount for this stage; when amount >= stageAmount we skip recordAccountingPaymentToLedger and rely on markStageLedgerPaid */
@@ -772,6 +799,74 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
         return false;
       }
 
+      // Canonical rule: if a transaction touches Cash/Bank/Wallet, create payments row so Roznamcha shows it
+      let manualPaymentId: string | null = null;
+      let manualRefType: string | null = null;
+      const debitIsPayment = debitAccountObj ? isPaymentAccount(debitAccountObj) : false;
+      const creditIsPayment = creditAccountObj ? isPaymentAccount(creditAccountObj) : false;
+
+      if (entry.source === 'Manual' && debitAccountObj && creditAccountObj) {
+        if (debitIsPayment && !creditIsPayment) {
+          const refNo = await documentNumberService.getNextDocumentNumber(companyId, validBranchId, 'payment').catch(() => generatePaymentReference(null));
+          const { data: { user } } = await supabase.auth.getUser();
+          const { data: row, error } = await supabase.from('payments').insert({
+            company_id: companyId,
+            branch_id: validBranchId,
+            payment_type: 'received',
+            reference_type: 'manual_receipt',
+            reference_id: null,
+            amount: entry.amount,
+            payment_method: paymentMethodFromAccount(debitAccountObj),
+            payment_account_id: debitAccountObj.id,
+            payment_date: entryDate,
+            reference_number: refNo,
+            received_by: (user as any)?.id ?? null,
+            created_by: currentUserId ?? null,
+          }).select('id').single();
+          if (!error && row) { manualPaymentId = (row as { id: string }).id; manualRefType = 'manual_receipt'; }
+        } else if (!debitIsPayment && creditIsPayment) {
+          const refNo = await documentNumberService.getNextDocumentNumber(companyId, validBranchId, 'payment').catch(() => generatePaymentReference(null));
+          const { data: { user } } = await supabase.auth.getUser();
+          const { data: row, error } = await supabase.from('payments').insert({
+            company_id: companyId,
+            branch_id: validBranchId,
+            payment_type: 'paid',
+            reference_type: 'manual_payment',
+            reference_id: null,
+            amount: entry.amount,
+            payment_method: paymentMethodFromAccount(creditAccountObj),
+            payment_account_id: creditAccountObj.id,
+            payment_date: entryDate,
+            reference_number: refNo,
+            received_by: (user as any)?.id ?? null,
+            created_by: currentUserId ?? null,
+          }).select('id').single();
+          if (!error && row) { manualPaymentId = (row as { id: string }).id; manualRefType = 'manual_payment'; }
+        }
+      }
+
+      // Expense: Dr Expense Cr Cash/Bank → must create payments row (reference_type = expense) so Roznamcha shows it
+      if (entry.source === 'Expense' && creditAccountObj && debitAccountObj && creditIsPayment) {
+        const refNo = await documentNumberService.getNextDocumentNumber(companyId, validBranchId, 'payment').catch(() => generatePaymentReference(null));
+        const { data: { user } } = await supabase.auth.getUser();
+        const expenseId = (entry.metadata as any)?.expenseId ?? null;
+        const { data: row, error } = await supabase.from('payments').insert({
+          company_id: companyId,
+          branch_id: validBranchId,
+          payment_type: 'paid',
+          reference_type: 'expense',
+          reference_id: expenseId,
+          amount: entry.amount,
+          payment_method: paymentMethodFromAccount(creditAccountObj),
+          payment_account_id: creditAccountObj.id,
+          payment_date: entryDate,
+          reference_number: refNo,
+          received_by: (user as any)?.id ?? null,
+          created_by: currentUserId ?? null,
+        }).select('id').single();
+        if (!error && row) { manualPaymentId = (row as { id: string }).id; manualRefType = 'expense'; }
+      }
+
       // Primary reference is always auto (entry_no). Optional user reference saved in description.
       let descriptionToSave = entry.description || '';
       if (entry.metadata?.optionalReference?.trim()) {
@@ -798,7 +893,7 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
         entry_no: entryNo,
         entry_date: entryDate,
         description: descriptionToSave || undefined,
-        reference_type: isWorkerPayment ? 'worker_payment' : entry.source.toLowerCase(),
+        reference_type: manualRefType || (isWorkerPayment ? 'worker_payment' : entry.source.toLowerCase()),
         reference_id: isWorkerPayment ? entry.metadata.workerId : (entry.metadata?.saleId || entry.metadata?.purchaseId || entry.metadata?.expenseId || entry.metadata?.bookingId || null),
         created_by: currentUserId || null,
         attachments: entry.metadata?.attachments && entry.metadata.attachments.length > 0 ? entry.metadata.attachments : undefined,
@@ -820,8 +915,9 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
         },
       ];
 
-      // Save to database
-      const savedEntry = await accountingService.createEntry(journalEntry, lines);
+      // Save to database (link to payment when Manual entry involves payment account)
+      const paymentIdToLink = manualPaymentId || (entry.metadata as any)?.paymentId;
+      const savedEntry = await accountingService.createEntry(journalEntry, lines, paymentIdToLink);
       if (typeof window !== 'undefined' && entry.debitAccount === 'Worker Payable') {
         console.log('[WORKER LEDGER DEBUG] journal insert result', {
           journalEntryId: (savedEntry as any)?.id ?? null,
@@ -1337,19 +1433,48 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
     });
   };
 
-  const recordWorkerPayment = async (params: WorkerPaymentParams): Promise<boolean> => {
-    const { workerName, workerId, amount, paymentMethod, referenceNo, stageId, stageAmount } = params;
+  const recordWorkerPayment = async (params: WorkerPaymentParams): Promise<boolean | { referenceNumber: string }> => {
+    const { workerName, workerId, amount, paymentMethod, paymentAccountId, referenceNo, stageId, stageAmount } = params;
+    const effectiveWorkerId = workerId ?? null;
+    const workerPaymentBranchId = (branchId && branchId !== 'all') ? branchId : null;
 
-    // createEntry syncs to worker_ledger when Worker Payable; for Pay Now (stageId) full payment skips extra row (markStageLedgerPaid used)
+    // Canonical path: one payments row (Roznamcha) + journal + worker_ledger_entries (Phase-2)
+    if (companyId && effectiveWorkerId && paymentAccountId) {
+      try {
+        const { createWorkerPayment } = await import('@/app/services/workerPaymentService');
+        const result = await createWorkerPayment({
+          companyId,
+          branchId: workerPaymentBranchId,
+          workerId: effectiveWorkerId,
+          workerName,
+          amount,
+          paymentMethod: paymentMethod as string,
+          paymentAccountId,
+          stageId: stageId ?? null,
+          stageAmount: stageAmount ?? null,
+        });
+        if (typeof window !== 'undefined' && effectiveWorkerId) {
+          window.dispatchEvent(new CustomEvent('ledgerUpdated', { detail: { ledgerType: 'worker', entityId: effectiveWorkerId } }));
+        }
+        return { referenceNumber: result.referenceNumber };
+      } catch (e: any) {
+        console.error('[AccountingContext] recordWorkerPayment (canonical) failed:', e);
+        toast.error(e?.message || 'Worker payment failed');
+        return false;
+      }
+    }
+
+    // Fallback: journal + worker_ledger only (no payments row – will not show in Roznamcha)
+    const fallbackRef = referenceNo || `PAY-${Date.now()}`;
     const success = await createEntry({
       source: 'Payment',
-      referenceNo: referenceNo,
+      referenceNo: fallbackRef,
       debitAccount: 'Worker Payable',
       creditAccount: paymentMethod as AccountType,
       amount: amount,
       description: `Payment to worker ${workerName}`,
       module: 'Accounting',
-      metadata: { workerId, workerName, stageId, stageAmount }
+      metadata: { workerId: effectiveWorkerId, workerName, stageId, stageAmount }
     });
     return success;
   };
@@ -1369,7 +1494,7 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
       amount: amount,
       description: `${category} - ${description}`,
       module: 'Expenses',
-      metadata: {}
+      metadata: { expenseId }
     });
   };
 

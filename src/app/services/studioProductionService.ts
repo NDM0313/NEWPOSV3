@@ -1574,8 +1574,10 @@ export const studioProductionService = {
   /**
    * Mark worker ledger entry for a stage as paid (after user records payment via Pay Now or Accounting).
    * Updates ledger status and decrements worker current_balance.
+   * Phase-2: Job rows (studio_production_stage) must NOT carry PAY ref; only accounting_payment rows may.
+   * We always set payment_reference to null here so job rows are not contaminated.
    */
-  async markStageLedgerPaid(stageId: string, paymentReference?: string | null): Promise<void> {
+  async markStageLedgerPaid(stageId: string, _paymentReference?: string | null): Promise<void> {
     const { data: ledgerRow, error: ledgerFindErr } = await supabase
       .from('worker_ledger_entries')
       .select('id, worker_id, amount, status')
@@ -1592,7 +1594,7 @@ export const studioProductionService = {
       .update({
         status: 'paid',
         paid_at: new Date().toISOString(),
-        ...(paymentReference != null && paymentReference !== '' ? { payment_reference: paymentReference } : {}),
+        payment_reference: null, // Job rows must NOT carry PAY ref (canonical: only accounting_payment rows may)
       })
       .eq('id', entry.id);
     if (updateErr) throw new Error(`Ledger update failed: ${updateErr.message}`);

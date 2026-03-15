@@ -1,10 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { useFormatDate } from '@/app/hooks/useFormatDate';
 import { ReportActions } from './ReportActions';
 import { DateRangePicker } from '../ui/DateRangePicker';
 import { DateTimeDisplay } from '../ui/DateTimeDisplay';
+import { Button } from '../ui/button';
 import { Loader2, BookOpen } from 'lucide-react';
 import { cn } from '../ui/utils';
 import { exportToPDF, exportToExcel } from '@/app/utils/exportUtils';
@@ -135,6 +136,20 @@ export const DayBookReport = ({ onVoucherClick, globalStartDate, globalEndDate }
   const ROUNDING_TOLERANCE = 0.02;
   const isBalanced = Math.abs(difference) < ROUNDING_TOLERANCE;
 
+  const PAGE_SIZE = 50;
+  const [currentPage, setCurrentPage] = useState(1);
+  const totalPages = Math.max(1, Math.ceil(entries.length / PAGE_SIZE));
+  const paginatedEntries = useMemo(() => {
+    const start = (currentPage - 1) * PAGE_SIZE;
+    return entries.slice(start, start + PAGE_SIZE);
+  }, [entries, currentPage, PAGE_SIZE]);
+  useEffect(() => {
+    if (currentPage > totalPages && totalPages >= 1) setCurrentPage(1);
+  }, [currentPage, totalPages]);
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [dateFrom, dateTo]);
+
   // Analyse: which vouchers are unbalanced (sum of debit - sum of credit per voucher)
   const byVoucher = new Map<string, { debit: number; credit: number }>();
   for (const e of entries) {
@@ -199,21 +214,22 @@ export const DayBookReport = ({ onVoucherClick, globalStartDate, globalEndDate }
         </div>
       ) : (
         <>
-          <div className="overflow-x-auto rounded-xl border border-gray-800">
-            <table className="w-full text-sm">
-              <thead className="bg-gray-900/80 text-gray-400 border-b border-gray-800">
-                <tr>
-                  <th className="px-4 py-3 text-left font-medium w-40">Date & Time</th>
-                  <th className="px-4 py-3 text-left font-medium w-24">Voucher #</th>
-                  <th className="px-4 py-3 text-left font-medium">Account</th>
-                  <th className="px-4 py-3 text-left font-medium">Description</th>
-                  <th className="px-4 py-3 text-right font-medium w-28">Debit (₨)</th>
-                  <th className="px-4 py-3 text-right font-medium w-28">Credit (₨)</th>
-                  <th className="px-4 py-3 text-center font-medium w-24">Type</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-800">
-                {entries.map((e, i) => (
+          <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-900/80 text-gray-400 border-b border-gray-800">
+                  <tr>
+                    <th className="px-4 py-3 text-left font-medium w-40">Date & Time</th>
+                    <th className="px-4 py-3 text-left font-medium w-24">Voucher #</th>
+                    <th className="px-4 py-3 text-left font-medium">Account</th>
+                    <th className="px-4 py-3 text-left font-medium">Description</th>
+                    <th className="px-4 py-3 text-right font-medium w-28">Debit (₨)</th>
+                    <th className="px-4 py-3 text-right font-medium w-28">Credit (₨)</th>
+                    <th className="px-4 py-3 text-center font-medium w-24">Type</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-800">
+                  {paginatedEntries.map((e, i) => (
                   <tr key={e.id} className={cn('hover:bg-gray-800/30', i % 2 === 0 ? 'bg-gray-950/30' : 'bg-gray-900/20')}>
                     <td className="px-4 py-3 text-gray-300 whitespace-nowrap">
                       <DateTimeDisplay date={e.createdAt} className="flex flex-col leading-tight" />
@@ -289,6 +305,51 @@ export const DayBookReport = ({ onVoucherClick, globalStartDate, globalEndDate }
                 </tr>
               </tfoot>
             </table>
+            </div>
+            {totalPages > 1 && (
+              <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 border-t border-gray-800 bg-gray-900/80">
+                <p className="text-xs text-gray-400">
+                  Showing {(currentPage - 1) * PAGE_SIZE + 1}–{Math.min(currentPage * PAGE_SIZE, entries.length)} of {entries.length}
+                </p>
+                <div className="flex items-center gap-1">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-8 border-gray-700 text-gray-300"
+                    disabled={currentPage <= 1}
+                    onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                  >
+                    Previous
+                  </Button>
+                  {Array.from({ length: totalPages }, (_, i) => i + 1)
+                    .filter((p) => p === 1 || p === totalPages || Math.abs(p - currentPage) <= 2)
+                    .map((p, idx, arr) => (
+                      <React.Fragment key={p}>
+                        {idx > 0 && arr[idx - 1] !== p - 1 && <span className="px-1 text-gray-500">…</span>}
+                        <button
+                          type="button"
+                          className={cn(
+                            'h-8 min-w-[2rem] rounded px-2 text-sm font-medium',
+                            p === currentPage ? 'bg-blue-600 text-white' : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
+                          )}
+                          onClick={() => setCurrentPage(p)}
+                        >
+                          {p}
+                        </button>
+                      </React.Fragment>
+                    ))}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-8 border-gray-700 text-gray-300"
+                    disabled={currentPage >= totalPages}
+                    onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                  >
+                    Next
+                  </Button>
+                </div>
+              </div>
+            )}
           </div>
 
           {isBalanced ? (
