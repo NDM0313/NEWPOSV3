@@ -5,12 +5,37 @@ import { settingsService } from '@/app/services/settingsService';
 import { permissionEngine } from '@/app/services/permissionEngine';
 import { branchService } from '@/app/services/branchService';
 
+/** True when Supabase returned 502/503/504 and retries are exhausted; show "Service temporarily unavailable" and offer retry. */
+const CONNECTION_ERROR_MAX_RETRIES = 2;
+const RETRY_DELAY_MS = 2000;
+
+function isServerError(err: any): boolean {
+  if (!err) return false;
+  const msg = String(err?.message ?? err ?? '');
+  const code = err?.code ?? err?.status;
+  const name = err?.name ?? '';
+  return (
+    name === 'AuthRetryableFetchError' ||
+    code === 502 || code === 503 || code === 504 ||
+    msg.includes('502') || msg.includes('503') || msg.includes('504') ||
+    msg.includes('Bad Gateway') || msg.includes('Service Unavailable') || msg.includes('Gateway Timeout')
+  );
+}
+
+function isAbortError(err: any): boolean {
+  return err?.name === 'AbortError' || String(err?.message ?? '').toLowerCase().includes('aborted');
+}
+
 interface SupabaseContextType {
   user: User | null;
   session: Session | null;
   loading: boolean;
   /** True once we've finished the first profile fetch for the current user (success, no row, or error). Use to avoid showing "no business" while still loading or after a transient error. */
   profileLoadComplete: boolean;
+  /** True when Supabase returned 502/5xx and retries exhausted; UI can show "Service temporarily unavailable" and retry button. */
+  connectionError: boolean;
+  /** Call after connectionError to retry loading profile (getSession + fetchUserData). */
+  retryConnection: () => void;
   signIn: (email: string, password: string) => Promise<any>;
   signOut: () => Promise<void>;
   companyId: string | null;
@@ -47,6 +72,7 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const [requiresBranchSelection, setRequiresBranchSelection] = useState<boolean>(false);
   const [enablePacking, setEnablePackingState] = useState<boolean>(false);
   const [profileLoadComplete, setProfileLoadComplete] = useState<boolean>(false);
+  const [connectionError, setConnectionError] = useState<boolean>(false);
 
   const loadEnablePacking = async (cid: string) => {
     try {
@@ -72,36 +98,51 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const fetchedRef = useRef<Set<string>>(new Set());
   const lastFetchedUserIdRef = useRef<string | null>(null);
 
-  // Initialize user session (catch SecurityError / CORS so app shows login instead of stuck "Loading...")
+  // Initialize user session. Retry getSession on 502/5xx so transient gateway errors don't immediately show login.
+  const attemptSessionLoad = async (attempt = 0): Promise<void> => {
+    setConnectionError(false);
+    try {
+      const { data: { session }, error } = await supabase.auth.getSession();
+      if (error && isServerError(error)) {
+        if (attempt < CONNECTION_ERROR_MAX_RETRIES) {
+          if (import.meta.env?.DEV) console.warn('[AUTH] getSession 5xx, retrying in', RETRY_DELAY_MS, 'ms', { attempt: attempt + 1 });
+          setTimeout(() => attemptSessionLoad(attempt + 1), RETRY_DELAY_MS);
+          return;
+        }
+        setConnectionError(true);
+      }
+      setSession(session);
+      setUser(session?.user ?? null);
+      if (session?.user && import.meta.env?.DEV) {
+        console.log('[AUTH] AUTH USER (after getSession):', {
+          user_id: session.user.id,
+          email: session.user.email,
+          has_session: !!session,
+        });
+      }
+      if (session?.user) {
+        fetchUserData(session.user.id, false, 0);
+      }
+      setLoading(false);
+    } catch (e: any) {
+      if (isAbortError(e)) {
+        setLoading(false);
+        return;
+      }
+      if (isServerError(e) && attempt < CONNECTION_ERROR_MAX_RETRIES) {
+        if (import.meta.env?.DEV) console.warn('[AUTH] getSession threw 5xx, retrying in', RETRY_DELAY_MS, 'ms', { attempt: attempt + 1 });
+        setTimeout(() => attemptSessionLoad(attempt + 1), RETRY_DELAY_MS);
+        return;
+      }
+      if (isServerError(e)) setConnectionError(true);
+      setSession(null);
+      setUser(null);
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
-    supabase.auth
-      .getSession()
-      .then(async ({ data: { session } }) => {
-        setSession(session);
-        setUser(session?.user ?? null);
-        if (session?.user && import.meta.env?.DEV) {
-          try {
-            const { data: authData } = await supabase.auth.getUser();
-            console.log('[AUTH] AUTH USER (after getSession):', {
-              user_id: authData?.user?.id,
-              email: authData?.user?.email,
-              has_session: !!session,
-              auth_uid: authData?.user?.id,
-            });
-          } catch {
-            // SecurityError / storage denied – ignore
-          }
-        }
-        if (session?.user) {
-          fetchUserData(session.user.id);
-        }
-        setLoading(false);
-      })
-      .catch(() => {
-        setSession(null);
-        setUser(null);
-        setLoading(false);
-      });
+    attemptSessionLoad();
 
     // Listen for auth changes (guard against thrown errors in listener)
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
@@ -122,7 +163,7 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           fetchedRef.current.clear();
           fetchingRef.current.clear();
         }
-        fetchUserData(newUser.id);
+        fetchUserData(newUser.id, false, 0);
       } else {
         setCompanyId(null);
         setUserRole(null);
@@ -142,8 +183,8 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     return () => subscription.unsubscribe();
   }, []);
 
-  // Fetch user data (company, role). Retries once on transient errors so we don't show "no business" on a single network/CORS blip.
-  const fetchUserData = async (userId: string, isRetry = false) => {
+  // Fetch user data (company, role). Retries on transient/502 errors so we don't show "no business" on a single gateway blip.
+  const fetchUserData = async (userId: string, isRetry = false, retryCount = 0) => {
     // Prevent duplicate concurrent calls for the same userId
     if (fetchingRef.current.has(userId)) {
       if (process.env.NODE_ENV === 'development') {
@@ -164,6 +205,7 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     try {
       fetchingRef.current.add(userId);
       if (!isRetry) setProfileLoadComplete(false);
+      setConnectionError(false);
       
       if (import.meta.env?.DEV) {
         console.log('[FETCH USER DATA] Looking for ERP profile with auth_user_id or id:', userId);
@@ -194,11 +236,23 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           setProfileLoadComplete(true);
           return;
         }
-        // Transient/network/CORS: retry once so we don't falsely show "no business"
-        if (!isRetry) {
+        // 502/503/504 or message containing 502: retry with backoff, then set connectionError if exhausted
+        const serverErr = isServerError(error);
+        if (serverErr && retryCount < CONNECTION_ERROR_MAX_RETRIES) {
+          const delay = RETRY_DELAY_MS * (retryCount + 1);
+          console.warn('[FETCH USER DATA] Server error (502/5xx), retrying in', delay, 'ms', { attempt: retryCount + 1 });
+          fetchingRef.current.delete(userId);
+          setTimeout(() => fetchUserData(userId, true, retryCount + 1), delay);
+          return;
+        }
+        if (serverErr && retryCount >= CONNECTION_ERROR_MAX_RETRIES) {
+          setConnectionError(true);
+        }
+        // Other transient: single retry (existing behavior)
+        if (!serverErr && !isRetry) {
           console.warn('[FETCH USER DATA] Transient error, retrying once in 1.5s:', { code: error.code, message: error.message });
           fetchingRef.current.delete(userId);
-          setTimeout(() => fetchUserData(userId, true), 1500);
+          setTimeout(() => fetchUserData(userId, true, 0), 1500);
           return;
         }
         console.error('[FETCH USER DATA ERROR]', { message: error.message, code: error.code, userId });
@@ -408,9 +462,16 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     return result;
   };
 
+  const retryConnection = () => {
+    setConnectionError(false);
+    setLoading(true);
+    attemptSessionLoad(0);
+  };
+
   // Sign out
   const signOut = async () => {
     await supabase.auth.signOut();
+    setConnectionError(false);
     permissionEngine.clear();
     branchService.clearBranchCache();
     setUser(null);
@@ -438,6 +499,8 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     session,
     loading,
     profileLoadComplete,
+    connectionError,
+    retryConnection,
     signIn,
     signOut,
     companyId,
@@ -454,9 +517,9 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     refreshEnablePacking,
     supabaseClient: supabase,
   }), [
-    user, session, loading, profileLoadComplete, companyId, userRole, branchId, defaultBranchId,
+    user, session, loading, profileLoadComplete, connectionError, companyId, userRole, branchId, defaultBranchId,
     accessibleBranchIds, branchCount, requiresBranchSelection, enablePacking,
-    signIn, signOut, setBranchId, setAccessibleBranchIds, setEnablePacking, refreshEnablePacking,
+    signIn, signOut, retryConnection, setBranchId, setAccessibleBranchIds, setEnablePacking, refreshEnablePacking,
   ]);
 
   return (
@@ -472,6 +535,8 @@ const defaultSupabaseContext: SupabaseContextType = {
   session: null,
   loading: true,
   profileLoadComplete: false,
+  connectionError: false,
+  retryConnection: () => {},
   signIn: async () => {},
   signOut: async () => {},
   companyId: null,

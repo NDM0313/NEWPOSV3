@@ -111,7 +111,15 @@
 
 **Reapplication (2026-03-14):** 502 recurred; Kong was Restarting with same parse error at line 163. The misplaced CORS `config:` blocks had reappeared in kong.yml (e.g. under rest-v1 and auth-v1). Fix re-applied on VPS: backup kong.yml, removed all misplaced `config:` blocks (4-space indent) that followed `- name: cors`, restarted Kong. Auth health returned 200; login works again. If Supabase/Kong config is ever regenerated or CORS is re-added manually, ensure `config:` for CORS is **nested under** `- name: cors` (e.g. 6-space indent for `config:`), not at service level (4-space).
 
-When `POST https://supabase.dincouture.pk/auth/v1/token` returns **502 Bad Gateway**:
+When `POST https://supabase.dincouture.pk/auth/v1/token` or `GET .../auth/v1/user` returns **502 Bad Gateway**:
+
+**One-command fix (from your machine):**
+```bash
+ssh dincouture-vps "cd /root/NEWPOSV3 && bash deploy/fix-kong-502-auth.sh"
+```
+(After pushing the script; or run the runbook steps below on the VPS.)
+
+**Manual runbook:**
 
 1. **SSH to VPS:** `ssh dincouture-vps`
 2. **Check Kong and Auth:**
@@ -136,3 +144,5 @@ When `POST https://supabase.dincouture.pk/auth/v1/token` returns **502 Bad Gatew
    cd /root/supabase/docker && docker compose restart kong
    ```
    Wait ~30 seconds, then test login again at https://erp.dincouture.pk.
+
+**Script:** `deploy/fix-kong-502-auth.sh` backs up kong.yml, removes misplaced CORS `config:` blocks, restarts Kong, and optionally verifies auth health. Push the repo to the VPS then run the one-command fix above.
