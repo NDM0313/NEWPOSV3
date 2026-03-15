@@ -1,7 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X, Check, AlertCircle } from 'lucide-react';
 import { Button } from '@/app/components/ui/button';
 import { useAccounting } from '@/app/context/AccountingContext';
+import { useSupabase } from '@/app/context/SupabaseContext';
+import { studioService } from '@/app/services/studioService';
 import { toast } from 'sonner';
 
 interface ManualEntryDialogProps {
@@ -24,14 +26,41 @@ const ACCOUNT_OPTIONS = [
   'Security Deposits'
 ];
 
+interface WorkerOption {
+  id: string;
+  name: string;
+}
+
 export const ManualEntryDialog: React.FC<ManualEntryDialogProps> = ({ isOpen, onClose }) => {
   const accounting = useAccounting();
+  const { companyId } = useSupabase();
   const [debitAccount, setDebitAccount] = useState('');
   const [creditAccount, setCreditAccount] = useState('');
   const [amount, setAmount] = useState(0);
   const [description, setDescription] = useState('');
   const [referenceNo, setReferenceNo] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
+  const [workerId, setWorkerId] = useState('');
+  const [workerName, setWorkerName] = useState('');
+  const [workers, setWorkers] = useState<WorkerOption[]>([]);
+  const [workersLoading, setWorkersLoading] = useState(false);
+
+  const isWorkerPayableDebit = debitAccount === 'Worker Payable';
+
+  useEffect(() => {
+    if (!isOpen || !companyId) return;
+    if (isWorkerPayableDebit && workers.length === 0) {
+      setWorkersLoading(true);
+      studioService.getAllWorkers(companyId).then((list) => {
+        setWorkers(list.map((w) => ({ id: w.id, name: w.name || '' })));
+        setWorkersLoading(false);
+      }).catch(() => setWorkersLoading(false));
+    }
+    if (!isWorkerPayableDebit) {
+      setWorkerId('');
+      setWorkerName('');
+    }
+  }, [isOpen, companyId, isWorkerPayableDebit, workers.length]);
 
   // Reset form
   const resetForm = () => {
@@ -40,6 +69,8 @@ export const ManualEntryDialog: React.FC<ManualEntryDialogProps> = ({ isOpen, on
     setAmount(0);
     setDescription('');
     setReferenceNo('');
+    setWorkerId('');
+    setWorkerName('');
   };
 
   // Handle submit
@@ -54,9 +85,19 @@ export const ManualEntryDialog: React.FC<ManualEntryDialogProps> = ({ isOpen, on
       return;
     }
 
+    if (isWorkerPayableDebit && (!workerId || !workerName)) {
+      toast.error('When debiting Worker Payable, you must select the worker so the payment appears in their ledger.');
+      return;
+    }
+
     setIsProcessing(true);
 
     try {
+      const metadata: { workerId?: string; workerName?: string } = {};
+      if (isWorkerPayableDebit && workerId && workerName) {
+        metadata.workerId = workerId;
+        metadata.workerName = workerName;
+      }
       const success = await accounting.createEntry({
         date: new Date(),
         debitAccount,
@@ -66,7 +107,7 @@ export const ManualEntryDialog: React.FC<ManualEntryDialogProps> = ({ isOpen, on
         module: 'Accounting',
         source: 'Manual',
         referenceNo: referenceNo || `MAN-${Date.now()}`,
-        metadata: {}
+        metadata,
       });
 
       if (success) {
@@ -161,6 +202,31 @@ export const ManualEntryDialog: React.FC<ManualEntryDialogProps> = ({ isOpen, on
               </select>
             </div>
 
+            {/* Worker (required when Debit = Worker Payable) */}
+            {isWorkerPayableDebit && (
+              <div>
+                <label className="block text-sm font-semibold text-gray-300 mb-2">
+                  Worker <span className="text-red-400">*</span>
+                </label>
+                <select
+                  value={workerId}
+                  onChange={(e) => {
+                    const opt = workers.find((w) => w.id === e.target.value);
+                    setWorkerId(e.target.value);
+                    setWorkerName(opt?.name ?? '');
+                  }}
+                  disabled={workersLoading}
+                  className="w-full bg-gray-950 border-2 border-gray-700 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-blue-500 transition-colors"
+                >
+                  <option value="">Select worker (required for ledger)</option>
+                  {workers.map((w) => (
+                    <option key={w.id} value={w.id}>{w.name || w.id}</option>
+                  ))}
+                </select>
+                <p className="text-xs text-gray-500 mt-1">Required so this payment appears in the worker&apos;s ledger.</p>
+              </div>
+            )}
+
             {/* Amount */}
             <div>
               <label className="block text-sm font-semibold text-gray-300 mb-2">
@@ -221,7 +287,13 @@ export const ManualEntryDialog: React.FC<ManualEntryDialogProps> = ({ isOpen, on
             </Button>
             <Button
               onClick={handleSubmit}
-              disabled={!debitAccount || !creditAccount || amount <= 0 || isProcessing}
+              disabled={
+                !debitAccount ||
+                !creditAccount ||
+                amount <= 0 ||
+                isProcessing ||
+                (isWorkerPayableDebit && (!workerId || workersLoading))
+              }
               className="bg-blue-600 hover:bg-blue-500 text-white min-w-[120px]"
             >
               {isProcessing ? (

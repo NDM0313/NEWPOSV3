@@ -318,7 +318,7 @@ export async function getWorkerLedgerData(
 
   if (error) return emptyLedgerData();
 
-  const allRows = (allEntries || []) as Array<{
+  let allRows = (allEntries || []) as Array<{
     id: string;
     amount: number;
     status?: string;
@@ -329,6 +329,15 @@ export async function getWorkerLedgerData(
     reference_type?: string;
     document_no?: string | null;
   }>;
+
+  // ONE REAL PAYMENT = ONE DISPLAY ROW. Dedupe by (reference_type, reference_id) keeping first (already ordered by created_at desc).
+  const seen = new Set<string>();
+  allRows = allRows.filter((r) => {
+    const key = `${r.reference_type ?? ''}\t${r.reference_id ?? ''}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 
   // Enrich job rows with stage_type (job name) and production_no / sale ref
   // Only include reference_ids from studio_production_stage entries (salary uses expense_id)
@@ -376,10 +385,12 @@ export async function getWorkerLedgerData(
     }
   });
 
-  const rows = allRows.filter((r) => {
-    const t = getRowDate(r);
-    return t >= fromTs && t <= toTs;
-  });
+  const rows = allRows
+    .filter((r) => {
+      const t = getRowDate(r);
+      return t >= fromTs && t <= toTs;
+    })
+    .sort((a, b) => getRowDate(a) - getRowDate(b)); // Oldest first so running balance = debit - credit in correct order
 
   const transactions: Transaction[] = [];
   const invoices: Invoice[] = [];

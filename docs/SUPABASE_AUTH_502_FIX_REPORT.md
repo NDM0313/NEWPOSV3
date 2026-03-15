@@ -104,3 +104,35 @@
 | **Fix** | Remove all misplaced CORS config blocks from kong.yml; keep `- name: cors` only. |
 | **Restarted** | Kong only. |
 | **Verification** | Auth health/settings return 200 with JSON when apikey is sent; 401 without apikey. Kong container healthy. |
+
+---
+
+## 9. If 502 returns again (runbook)
+
+**Reapplication (2026-03-14):** 502 recurred; Kong was Restarting with same parse error at line 163. The misplaced CORS `config:` blocks had reappeared in kong.yml (e.g. under rest-v1 and auth-v1). Fix re-applied on VPS: backup kong.yml, removed all misplaced `config:` blocks (4-space indent) that followed `- name: cors`, restarted Kong. Auth health returned 200; login works again. If Supabase/Kong config is ever regenerated or CORS is re-added manually, ensure `config:` for CORS is **nested under** `- name: cors` (e.g. 6-space indent for `config:`), not at service level (4-space).
+
+When `POST https://supabase.dincouture.pk/auth/v1/token` returns **502 Bad Gateway**:
+
+1. **SSH to VPS:** `ssh dincouture-vps`
+2. **Check Kong and Auth:**
+   ```bash
+   cd /root/supabase/docker && docker ps --format "table {{.Names}}\t{{.Status}}" | grep -E "kong|auth"
+   ```
+   - If `supabase-kong` is **Restarting** → Kong is failing; check logs (step 3).
+   - If **Up (healthy)** → 502 may be timeout or Traefik; try step 4.
+3. **Kong logs (if Restarting):**
+   ```bash
+   docker logs supabase-kong --tail 80
+   ```
+   - If you see `failed parsing declarative configuration` or line number in kong.yml → fix kong.yml again (remove any misplaced CORS `config:` blocks under `plugins:`; keep only `- name: cors`). Backup: `cp /root/supabase/docker/volumes/api/kong.yml /root/supabase/docker/volumes/api/kong.yml.bak-$(date +%Y%m%d)` then edit, then `docker compose restart kong`.
+4. **Quick auth health check from VPS** (replace with your anon key if needed):
+   ```bash
+   source /root/supabase/docker/.env 2>/dev/null; curl -sS -o /dev/null -w '%{http_code}' -H "apikey: ${ANON_KEY}" https://supabase.dincouture.pk/auth/v1/health
+   ```
+   - **200** = Kong and GoTrue OK; 502 may be client-side or transient. Retry login.
+   - **502** = Kong/GoTrue not responding to Traefik; restart Kong: `cd /root/supabase/docker && docker compose restart kong`, wait 30s, retry.
+5. **Restart Kong only (safe):**
+   ```bash
+   cd /root/supabase/docker && docker compose restart kong
+   ```
+   Wait ~30 seconds, then test login again at https://erp.dincouture.pk.

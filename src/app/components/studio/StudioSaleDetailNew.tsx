@@ -4555,12 +4555,15 @@ export const StudioSaleDetailNew = () => {
           outstandingAmount={payChoiceAfterReceive.amount}
           referenceNo={saleDetail?.invoiceNo ? `STD-${payChoiceAfterReceive.stageId.slice(0, 8)}` : undefined}
           workerStageId={payChoiceAfterReceive.stageId}
-          onSuccess={async (paymentRef) => {
+          onSuccess={async (paymentRef, amountPaid) => {
             try {
-              await studioProductionService.markStageLedgerPaid(
-                payChoiceAfterReceive.stageId,
-                paymentRef ?? undefined
-              );
+              // Only mark the job row as paid when payment is full (amount >= job amount); partial payments use a separate ledger row
+              if (amountPaid != null && amountPaid >= payChoiceAfterReceive.amount) {
+                await studioProductionService.markStageLedgerPaid(
+                  payChoiceAfterReceive.stageId,
+                  paymentRef ?? undefined
+                );
+              }
               toast.success('Worker payment recorded. Ledger updated.');
               window.dispatchEvent(new CustomEvent('ledgerUpdated', { detail: { ledgerType: 'worker', entityId: payChoiceAfterReceive.workerId } }));
             } catch (e: any) {

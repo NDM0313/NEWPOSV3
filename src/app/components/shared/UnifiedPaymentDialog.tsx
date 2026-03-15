@@ -41,7 +41,7 @@ export interface PaymentDialogProps {
   referenceId?: string; // UUID of sale/purchase/rental (for journal entry reference_id)
   /** When context=worker and paying for specific stage (Pay Now), pass stageId so ledger uses markStageLedgerPaid */
   workerStageId?: string;
-  onSuccess?: (paymentRef?: string) => void;
+  onSuccess?: (paymentRef?: string, amountPaid?: number) => void;
   /** Pre-filled attachment files (e.g. from purchase form Attachments card) – included when recording payment */
   initialAttachmentFiles?: File[];
   // Edit mode props
@@ -176,7 +176,8 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
         const minutes = String(paymentDate.getMinutes() || 0).padStart(2, '0');
         setPaymentDateTime(`${year}-${month}-${day}T${hours}:${minutes}`);
       } else {
-        setAmount(Math.max(0, effectiveOutstanding));
+        // Pay Now (workerStageId): do not pre-fill job amount so we never record job amount as payment by mistake
+        setAmount(workerStageId ? 0 : Math.max(0, effectiveOutstanding));
         setPaymentMethod('Cash');
         setSelectedAccount('');
         setNotes('');
@@ -195,7 +196,7 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
     } else {
       prevOpenRef.current = false;
     }
-  }, [isOpen, editMode, paymentToEdit, initialAttachmentFiles, effectiveOutstanding]);
+  }, [isOpen, editMode, paymentToEdit, initialAttachmentFiles, effectiveOutstanding, workerStageId]);
 
   // Refresh accounts when dialog opens so user-assigned accounts (user_account_access) are visible after RLS
   React.useEffect(() => {
@@ -739,13 +740,23 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
 
         case 'worker': {
           const paymentRef = generateDocumentNumber('payment');
+          if (typeof window !== 'undefined' && workerStageId) {
+            console.log('[PAY NOW DEBUG] Complete+PayNow flow', {
+              jobAmount: effectiveOutstanding,
+              paymentAmountEntered: amount,
+              stageId: workerStageId,
+              workerId: entityId,
+              referenceNo: paymentRef,
+            });
+          }
           success = await accounting.recordWorkerPayment({
             workerName: entityName,
             workerId: entityId,
             amount,
             paymentMethod,
             referenceNo: paymentRef,
-            stageId: workerStageId
+            stageId: workerStageId,
+            stageAmount: workerStageId ? effectiveOutstanding : undefined,
           });
           incrementNextNumber('payment');
           if (success) workerPaymentRef = paymentRef;
@@ -794,7 +805,7 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
         toast.success(labels.successMessage, {
           description: `${formatCurrency(amount)} via ${paymentMethod}${accountInfo} on ${paymentDateTime}`
         });
-        if (context === 'worker') onSuccess?.(workerPaymentRef);
+        if (context === 'worker') onSuccess?.(workerPaymentRef, amount);
         else onSuccess?.();
         onClose();
       } else {

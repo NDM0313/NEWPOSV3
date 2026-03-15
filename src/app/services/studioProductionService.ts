@@ -1619,10 +1619,32 @@ export const studioProductionService = {
     journalEntryId?: string | null;
   }): Promise<void> {
     const { companyId, workerId, amount, paymentReference, notes, journalEntryId } = params;
+    if (typeof window !== 'undefined') {
+      console.log('[WORKER LEDGER DEBUG] recordAccountingPaymentToLedger called', { companyId, workerId, amount, journalEntryId });
+    }
     if (!companyId || !workerId || amount <= 0) throw new Error('companyId, workerId, amount required');
-    // reference_id must be UUID; prefer journalEntryId when available, else generate one
     const refId = journalEntryId || crypto.randomUUID();
-    const { error } = await supabase.from('worker_ledger_entries').insert({
+
+    // ONE REAL PAYMENT = ONE WORKER LEDGER ROW. Skip insert if a row already exists for this journal (idempotent).
+    if (journalEntryId) {
+      const { data: existing } = await supabase
+        .from('worker_ledger_entries')
+        .select('id')
+        .eq('company_id', companyId)
+        .eq('worker_id', workerId)
+        .eq('reference_type', 'accounting_payment')
+        .eq('reference_id', journalEntryId)
+        .limit(1)
+        .maybeSingle();
+      if (existing) {
+        if (typeof window !== 'undefined') {
+          console.log('[WORKER LEDGER DEBUG] worker_ledger_entries skip duplicate (row exists)', { journalEntryId });
+        }
+        return;
+      }
+    }
+
+    const { data: insertData, error } = await supabase.from('worker_ledger_entries').insert({
       company_id: companyId,
       worker_id: workerId,
       amount,
@@ -1632,9 +1654,12 @@ export const studioProductionService = {
       paid_at: new Date().toISOString(),
       payment_reference: paymentReference || null,
       notes: notes || `Payment via Accounting`,
-    });
+    }).select('id').maybeSingle();
+    if (typeof window !== 'undefined') {
+      console.log('[WORKER LEDGER DEBUG] worker_ledger_entries insert result', { id: insertData?.id ?? null, error: error?.message ?? null });
+    }
     if (error) throw new Error(`Worker ledger (accounting payment) failed: ${error.message}`);
-    // Reduce worker's current_balance (amount we owe)
+    // Reduce worker's current_balance (amount we owe) only when we actually inserted
     const { data: workerRow } = await supabase.from('workers').select('current_balance').eq('id', workerId).single();
     const currentBalance = Number((workerRow as any)?.current_balance) || 0;
     const newBalance = Math.max(0, currentBalance - amount);

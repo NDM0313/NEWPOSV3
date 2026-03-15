@@ -633,6 +633,14 @@ export const studioService = {
     } else {
       data = withStatus || [];
     }
+    // ONE REAL PAYMENT = ONE ROW. Dedupe by (reference_type, reference_id) keeping first.
+    const seen = new Set<string>();
+    data = data.filter((r: any) => {
+      const key = `${r.reference_type ?? ''}\t${r.reference_id ?? ''}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
     return data.map((r: any) => ({
       id: r.id,
       amount: Number(r.amount) || 0,

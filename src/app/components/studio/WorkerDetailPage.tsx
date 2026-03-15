@@ -94,6 +94,7 @@ const getDepartmentColor = (dept: DepartmentType) => {
     case 'Dyeing': return 'bg-purple-500/10 text-purple-400 border-purple-500/20';
     case 'Stitching': return 'bg-blue-500/10 text-blue-400 border-blue-500/20';
     case 'Handwork': return 'bg-pink-500/10 text-pink-400 border-pink-500/20';
+    default: return 'bg-gray-500/10 text-gray-400 border-gray-500/20';
   }
 };
 
@@ -102,6 +103,7 @@ const getDepartmentIcon = (dept: DepartmentType) => {
     case 'Dyeing': return Palette;
     case 'Stitching': return Scissors;
     case 'Handwork': return Sparkles;
+    default: return Package;
   }
 };
 
@@ -110,6 +112,7 @@ const getJobStatusColor = (status: JobStatus) => {
     case 'pending': return 'bg-gray-500/10 text-gray-400 border-gray-500/20';
     case 'in_progress': return 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20';
     case 'completed': return 'bg-green-500/10 text-green-400 border-green-500/20';
+    default: return 'bg-gray-500/10 text-gray-400 border-gray-500/20';
   }
 };
 
@@ -118,6 +121,7 @@ const getJobStatusIcon = (status: JobStatus) => {
     case 'pending': return Clock;
     case 'in_progress': return AlertTriangle;
     case 'completed': return CheckCircle2;
+    default: return Clock;
   }
 };
 
@@ -355,7 +359,7 @@ export const WorkerDetailPage: React.FC = () => {
                 </div>
                 <div className="mt-3">
                   <Badge variant="outline" className={getDepartmentColor(worker.department)}>
-                    <DeptIcon size={14} className="mr-1" />
+                    {DeptIcon ? <DeptIcon size={14} className="mr-1" /> : <Package size={14} className="mr-1" />}
                     {worker.department} Department
                   </Badge>
                 </div>
@@ -585,8 +589,8 @@ export const WorkerDetailPage: React.FC = () => {
                       </td>
                       <td className="px-6 py-4 text-center">
                         <Badge variant="outline" className={getJobStatusColor(job.status)}>
-                          <StatusIcon size={12} className="mr-1" />
-                          {job.status.replace('_', ' ')}
+                          {StatusIcon ? <StatusIcon size={12} className="mr-1" /> : <Clock size={12} className="mr-1" />}
+                          {String(job.status).replace('_', ' ')}
                         </Badge>
                       </td>
                       <td className="px-6 py-4 text-center">

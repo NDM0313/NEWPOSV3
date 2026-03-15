@@ -192,8 +192,10 @@ export interface WorkerPaymentParams {
   amount: number;
   paymentMethod: PaymentMethod;
   referenceNo: string;
-  /** When paying for a specific stage (Pay Now), caller handles ledger via markStageLedgerPaid - skip worker_ledger insert */
+  /** When paying for a specific stage (Pay Now), pass stageId and optionally stageAmount (job amount) so full payment skips extra ledger row */
   stageId?: string;
+  /** Job amount for this stage; when amount >= stageAmount we skip recordAccountingPaymentToLedger and rely on markStageLedgerPaid */
+  stageAmount?: number;
 }
 
 export interface ExpenseParams {
@@ -309,6 +311,7 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
       'rental': 'Rental',
       'studio': 'Studio',
       'payment': 'Payment',
+      'worker_payment': 'Payment',
       'manual': 'Manual',
     };
 
@@ -498,6 +501,18 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
   // 🎯 CORE: Create Entry (SAVES TO DATABASE)
   // ============================================
   const createEntry = async (entry: Omit<AccountingEntry, 'id' | 'date' | 'createdBy'>): Promise<boolean> => {
+    // [WORKER LEDGER DEBUG] Log createEntry input
+    if (typeof window !== 'undefined' && (entry.debitAccount === 'Worker Payable' || entry.creditAccount === 'Worker Payable')) {
+      console.log('[WORKER LEDGER DEBUG] createEntry input', {
+        source: entry.source,
+        debitAccount: entry.debitAccount,
+        creditAccount: entry.creditAccount,
+        amount: entry.amount,
+        metadataWorkerId: entry.metadata?.workerId ?? null,
+        metadataWorkerName: entry.metadata?.workerName ?? null,
+      });
+    }
+
     // CRITICAL FIX: Validate branchId - must be valid UUID or null, not "all"
     const validBranchId = (branchId && branchId !== 'all') ? branchId : null;
     
@@ -563,7 +578,7 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
         const accName = acc.name || '';
         const accCode = acc.code || '';
         return (
-          accType.toLowerCase() === normalizedDebitAccount.toLowerCase() || 
+          accType.toLowerCase() === normalizedDebitAccount.toLowerCase() ||
           accType.toLowerCase().replace(/_/g, ' ') === normalizedDebitAccount.toLowerCase() ||
           accName.toLowerCase() === normalizedDebitAccount.toLowerCase() ||
           accName.toLowerCase().includes(normalizedDebitAccount.toLowerCase()) ||
@@ -573,7 +588,8 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
           (normalizedDebitAccount === 'Mobile Wallet' && (accCode === '1020' || accType.toLowerCase().includes('mobile') || accName.toLowerCase().includes('wallet'))) ||
           (normalizedDebitAccount === 'Accounts Receivable' && (accCode === '1100' || accName.toLowerCase().includes('receivable'))) ||
           (normalizedDebitAccount === 'Accounts Payable' && (accCode === '2000' || accName.toLowerCase().includes('payable'))) ||
-          (normalizedDebitAccount === 'Worker Payable' && (accCode === '2010' || accName.toLowerCase().includes('worker')))
+          (normalizedDebitAccount === 'Worker Payable' && (accCode === '2010' || accName.toLowerCase().includes('worker'))) ||
+          (normalizedDebitAccount === 'Expense' && (accCode === '5100' || accCode === '5200' || accCode === '6000' || accType.toLowerCase() === 'expense' || accName.toLowerCase().includes('expense')))
         );
       });
       }
@@ -582,21 +598,26 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
         const accName = acc.name || '';
         const accCode = acc.code || '';
         return (
-          accType.toLowerCase() === normalizedCreditAccount.toLowerCase() || 
+          accType.toLowerCase() === normalizedCreditAccount.toLowerCase() ||
           accName.toLowerCase() === normalizedCreditAccount.toLowerCase() ||
           accName.toLowerCase().includes(normalizedCreditAccount.toLowerCase()) ||
           // Match by code for default accounts
           (normalizedCreditAccount === 'Cash' && (accCode === '1000' || accName.toLowerCase().includes('cash'))) ||
           (normalizedCreditAccount === 'Bank' && (accCode === '1010' || accName.toLowerCase().includes('bank'))) ||
+          (normalizedCreditAccount === 'Mobile Wallet' && (accCode === '1020' || accType.toLowerCase().includes('mobile') || accName.toLowerCase().includes('wallet') || accName.toLowerCase().includes('jazz') || accName.toLowerCase().includes('easypaisa'))) ||
           (normalizedCreditAccount === 'Accounts Receivable' && (accCode === '1100' || accName.toLowerCase().includes('receivable'))) ||
           (normalizedCreditAccount === 'Accounts Payable' && (accCode === '2000' || accName.toLowerCase().includes('payable'))) ||
           (normalizedCreditAccount === 'Worker Payable' && (accCode === '2010' || accName.toLowerCase().includes('worker'))) ||
-          // Rental/Sales revenue fallback: Rental Income, Rental Damage Income, Sales Revenue
+          // Rental/Sales revenue fallback
           (normalizedCreditAccount === 'Rental Income' && (accName.toLowerCase().includes('rental') || accName.toLowerCase().includes('revenue') || accName.toLowerCase().includes('sales'))) ||
           (normalizedCreditAccount === 'Rental Damage Income' && (accName.toLowerCase().includes('rental') || accName.toLowerCase().includes('damage') || accName.toLowerCase().includes('income'))) ||
           (normalizedCreditAccount === 'Sales Revenue' && (accName.toLowerCase().includes('sales') || accName.toLowerCase().includes('revenue') || accName.toLowerCase().includes('income')))
         );
       });
+      // Expense payment fallback: if credit (payment method) not found, use Cash (1000) so double-entry always completes
+      if (!creditAccountObj && entry.debitAccount === 'Expense' && entry.source === 'Expense') {
+        creditAccountObj = accounts.find(acc => acc.code === '1000' || (acc.name || '').toLowerCase().includes('cash'));
+      }
 
       if (!debitAccountObj || !creditAccountObj) {
         console.error('[ACCOUNTING] Account not found:', { 
@@ -679,14 +700,15 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
               if (entry.metadata?.optionalReference?.trim()) {
                 descRetry += (descRetry ? '\n' : '') + 'Ref: ' + entry.metadata.optionalReference.trim();
               }
+      const isWorkerPaymentRetry = entry.debitAccount === 'Worker Payable' && entry.metadata?.workerId;
       const journalEntry: JournalEntry = {
         company_id: companyId,
         branch_id: validBranchId,
         entry_no: `JE-${Date.now()}-${Math.random().toString(36).substr(2, 5).toUpperCase()}`,
         entry_date: new Date().toISOString().split('T')[0],
         description: descRetry || undefined,
-        reference_type: entry.source.toLowerCase(),
-        reference_id: entry.metadata?.saleId || entry.metadata?.purchaseId || entry.metadata?.expenseId || entry.metadata?.bookingId || null,
+        reference_type: isWorkerPaymentRetry ? 'worker_payment' : entry.source.toLowerCase(),
+        reference_id: isWorkerPaymentRetry ? entry.metadata.workerId : (entry.metadata?.saleId || entry.metadata?.purchaseId || entry.metadata?.expenseId || entry.metadata?.bookingId || null),
         created_by: currentUserId || null,
         attachments: entry.metadata?.attachments && entry.metadata.attachments.length > 0 ? entry.metadata.attachments : undefined,
       };
@@ -696,7 +718,18 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
       ];
       const paymentId = entry.metadata?.paymentId;
       const savedEntry = await accountingService.createEntry(journalEntry, lines, paymentId);
-              if (entry.debitAccount === 'Worker Payable' && entry.source === 'Payment' && entry.metadata?.workerId && companyId && !entry.metadata?.stageId) {
+              if (typeof window !== 'undefined' && entry.debitAccount === 'Worker Payable') {
+                console.log('[WORKER LEDGER DEBUG] (retry path) journal insert result', { journalEntryId: (savedEntry as any)?.id ?? null });
+              }
+              const retryPayNowFull =
+                entry.metadata?.stageId != null &&
+                entry.metadata?.stageAmount != null &&
+                typeof entry.metadata.stageAmount === 'number' &&
+                entry.amount >= entry.metadata.stageAmount;
+              if (entry.debitAccount === 'Worker Payable' && entry.metadata?.workerId && companyId && !retryPayNowFull) {
+                if (typeof window !== 'undefined') {
+                  console.log('[WORKER LEDGER DEBUG] (retry path) calling worker ledger sync', { workerId: entry.metadata.workerId });
+                }
                 try {
                   const { studioProductionService } = await import('@/app/services/studioProductionService');
                   await studioProductionService.recordAccountingPaymentToLedger({
@@ -712,6 +745,15 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
                   }
                 } catch (e) {
                   console.warn('[AccountingContext] Worker ledger entry failed (journal saved):', e);
+                }
+              } else if (entry.debitAccount === 'Worker Payable' && (retryPayNowFull || !entry.metadata?.workerId) && typeof window !== 'undefined') {
+                if (retryPayNowFull) {
+                  console.log('[WORKER LEDGER DEBUG] (retry path) Pay Now full payment – skip worker_ledger insert');
+                  if (entry.metadata?.workerId) {
+                    window.dispatchEvent(new CustomEvent('ledgerUpdated', { detail: { ledgerType: 'worker', entityId: entry.metadata.workerId } }));
+                  }
+                } else {
+                  console.warn('[WORKER LEDGER DEBUG] (retry path) Worker Payable debit but no metadata.workerId');
                 }
               }
               const convertedEntry = convertFromJournalEntry(savedEntry as JournalEntryWithLines);
@@ -739,16 +781,25 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
       // Create journal entry (matching database schema)
       // CRITICAL FIX: Use null instead of undefined for optional UUID fields to prevent "undefinedundefined" error
       // CRITICAL FIX: Use validBranchId (not "all") to prevent UUID error
+      // Worker payment: store worker_id in journal so ledger/backfill can trace (reference_type=worker_payment, reference_id=workerId)
+      const isWorkerPayment = entry.debitAccount === 'Worker Payable' && entry.metadata?.workerId;
+      if (typeof window !== 'undefined' && entry.debitAccount === 'Worker Payable') {
+        console.log('[WORKER LEDGER DEBUG] journal payload', {
+          isWorkerPayment,
+          reference_type: isWorkerPayment ? 'worker_payment' : entry.source.toLowerCase(),
+          reference_id: isWorkerPayment ? entry.metadata?.workerId : null,
+          debitAccountId: debitAccountObj?.id,
+          creditAccountId: creditAccountObj?.id,
+        });
+      }
       const journalEntry: JournalEntry = {
         company_id: companyId,
         branch_id: validBranchId,
         entry_no: entryNo,
         entry_date: entryDate,
         description: descriptionToSave || undefined,
-        reference_type: entry.source.toLowerCase(),
-        // CRITICAL FIX: reference_id must be UUID, not invoice number
-        // Use saleId/purchaseId/expenseId from metadata (UUIDs), not invoiceId (string)
-        reference_id: entry.metadata?.saleId || entry.metadata?.purchaseId || entry.metadata?.expenseId || entry.metadata?.bookingId || null,
+        reference_type: isWorkerPayment ? 'worker_payment' : entry.source.toLowerCase(),
+        reference_id: isWorkerPayment ? entry.metadata.workerId : (entry.metadata?.saleId || entry.metadata?.purchaseId || entry.metadata?.expenseId || entry.metadata?.bookingId || null),
         created_by: currentUserId || null,
         attachments: entry.metadata?.attachments && entry.metadata.attachments.length > 0 ? entry.metadata.attachments : undefined,
       };
@@ -771,9 +822,31 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
 
       // Save to database
       const savedEntry = await accountingService.createEntry(journalEntry, lines);
-      
-      // Worker Payable debit = worker payment → sync to worker_ledger_entries (use journal id as reference)
-      if (entry.debitAccount === 'Worker Payable' && entry.source === 'Payment' && entry.metadata?.workerId && companyId && !entry.metadata?.stageId) {
+      if (typeof window !== 'undefined' && entry.debitAccount === 'Worker Payable') {
+        console.log('[WORKER LEDGER DEBUG] journal insert result', {
+          journalEntryId: (savedEntry as any)?.id ?? null,
+          entry_no: (savedEntry as any)?.entry_no ?? null,
+        });
+      }
+
+      // Worker Payable debit = worker payment → sync to worker_ledger_entries so worker ledger shows it (Journal already has reference_type=worker_payment, reference_id=workerId)
+      // Pay Now (stageId): full payment (amount >= stageAmount) → skip ledger insert; caller will markStageLedgerPaid. Partial → add payment row.
+      const isPayNowFullPayment =
+        entry.metadata?.stageId != null &&
+        entry.metadata?.stageAmount != null &&
+        typeof entry.metadata.stageAmount === 'number' &&
+        entry.amount >= entry.metadata.stageAmount;
+      if (entry.debitAccount === 'Worker Payable' && entry.metadata?.workerId && companyId && !isPayNowFullPayment) {
+        if (typeof window !== 'undefined') {
+          console.log('[WORKER LEDGER DEBUG] calling worker ledger sync', {
+            workerId: entry.metadata.workerId,
+            amount: entry.amount,
+            journalEntryId: (savedEntry as any)?.id,
+            stageId: entry.metadata.stageId ?? null,
+            stageAmount: entry.metadata.stageAmount ?? null,
+            isPayNowFullPayment,
+          });
+        }
         try {
           const { studioProductionService } = await import('@/app/services/studioProductionService');
           await studioProductionService.recordAccountingPaymentToLedger({
@@ -785,11 +858,26 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
             notes: entry.description || `Payment to worker`,
           });
           if (typeof window !== 'undefined') {
+            console.log('[WORKER LEDGER DEBUG] worker ledger sync OK', { workerId: entry.metadata.workerId });
             window.dispatchEvent(new CustomEvent('ledgerUpdated', { detail: { ledgerType: 'worker', entityId: entry.metadata.workerId } }));
           }
         } catch (e) {
           console.warn('[AccountingContext] Worker ledger entry failed (journal saved):', e);
+          if (typeof window !== 'undefined') {
+            console.error('[WORKER LEDGER DEBUG] worker ledger sync FAILED', { workerId: entry.metadata.workerId, error: e });
+          }
         }
+      } else if (entry.debitAccount === 'Worker Payable' && isPayNowFullPayment && typeof window !== 'undefined') {
+        console.log('[WORKER LEDGER DEBUG] Pay Now full payment – skip worker_ledger insert; caller will markStageLedgerPaid', {
+          workerId: entry.metadata?.workerId,
+          amount: entry.amount,
+          stageId: entry.metadata?.stageId,
+        });
+        if (entry.metadata?.workerId) {
+          window.dispatchEvent(new CustomEvent('ledgerUpdated', { detail: { ledgerType: 'worker', entityId: entry.metadata.workerId } }));
+        }
+      } else if (entry.debitAccount === 'Worker Payable' && !entry.metadata?.workerId && typeof window !== 'undefined') {
+        console.warn('[WORKER LEDGER DEBUG] Worker Payable debit but no metadata.workerId – entry will NOT appear in worker ledger. Use Pay Worker flow or select worker in Manual Entry.');
       }
 
       // Convert and add to local state
@@ -1250,9 +1338,9 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
   };
 
   const recordWorkerPayment = async (params: WorkerPaymentParams): Promise<boolean> => {
-    const { workerName, workerId, amount, paymentMethod, referenceNo, stageId } = params;
+    const { workerName, workerId, amount, paymentMethod, referenceNo, stageId, stageAmount } = params;
 
-    // createEntry now syncs to worker_ledger_entries when debitAccount=Worker Payable (uses journal id)
+    // createEntry syncs to worker_ledger when Worker Payable; for Pay Now (stageId) full payment skips extra row (markStageLedgerPaid used)
     const success = await createEntry({
       source: 'Payment',
       referenceNo: referenceNo,
@@ -1261,7 +1349,7 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
       amount: amount,
       description: `Payment to worker ${workerName}`,
       module: 'Accounting',
-      metadata: { workerId, workerName, stageId }
+      metadata: { workerId, workerName, stageId, stageAmount }
     });
     return success;
   };
