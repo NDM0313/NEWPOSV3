@@ -120,6 +120,7 @@ export const AccountingDashboard = () => {
   
   // UI-only view mode: Operational (day-to-day accounts) vs Professional (full Chart of Accounts)
   const [accountsViewMode, setAccountsViewMode] = useState<'operational' | 'professional'>('operational');
+  const [showSubAccounts, setShowSubAccounts] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [pageSize, setPageSize] = useState(25);
   const [currentPage, setCurrentPage] = useState(1);
@@ -676,6 +677,17 @@ export const AccountingDashboard = () => {
                   >
                     Professional
                   </button>
+                  {accountsViewMode === 'professional' && (
+                    <label className="flex items-center gap-1.5 text-xs text-gray-400 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={showSubAccounts}
+                        onChange={(e) => setShowSubAccounts(e.target.checked)}
+                        className="rounded border-gray-600 bg-gray-800 text-blue-500"
+                      />
+                      Show sub-accounts
+                    </label>
+                  )}
                 </div>
                 <Button
                   onClick={() => setIsAddAccountOpen(true)}
@@ -719,7 +731,7 @@ export const AccountingDashboard = () => {
                     </thead>
                     <tbody>
                       {/* Operational: Cash, Bank, Wallet, Expense, Income, Payable, Receivable only */}
-                      {/* Professional: All accounts (full Chart of Accounts) */}
+                      {/* Professional: Top-level by default; optional "Show sub-accounts" to include courier children */}
                       {(accountsViewMode === 'operational'
                         ? accounting.accounts.filter(acc => {
                             const t = String(acc.type || acc.accountType || acc.code || '').toLowerCase();
@@ -731,7 +743,9 @@ export const AccountingDashboard = () => {
                               acc.code === '1100' || acc.code === '2000'
                             );
                           })
-                        : accounting.accounts
+                        : showSubAccounts
+                          ? accounting.accounts
+                          : accounting.accounts.filter(acc => !(acc as any).parent_id)
                       ).map((account) => (
                         <tr 
                           key={account.id} 

@@ -4,6 +4,7 @@ import { Button } from '@/app/components/ui/button';
 import { useAccounting } from '@/app/context/AccountingContext';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { studioService } from '@/app/services/studioService';
+import { contactService } from '@/app/services/contactService';
 import { toast } from 'sonner';
 
 interface ManualEntryDialogProps {
@@ -31,6 +32,11 @@ interface WorkerOption {
   name: string;
 }
 
+interface SupplierOption {
+  id: string;
+  name: string;
+}
+
 export const ManualEntryDialog: React.FC<ManualEntryDialogProps> = ({ isOpen, onClose }) => {
   const accounting = useAccounting();
   const { companyId } = useSupabase();
@@ -44,8 +50,13 @@ export const ManualEntryDialog: React.FC<ManualEntryDialogProps> = ({ isOpen, on
   const [workerName, setWorkerName] = useState('');
   const [workers, setWorkers] = useState<WorkerOption[]>([]);
   const [workersLoading, setWorkersLoading] = useState(false);
+  const [supplierId, setSupplierId] = useState('');
+  const [supplierName, setSupplierName] = useState('');
+  const [suppliers, setSuppliers] = useState<SupplierOption[]>([]);
+  const [suppliersLoading, setSuppliersLoading] = useState(false);
 
   const isWorkerPayableDebit = debitAccount === 'Worker Payable';
+  const isAccountsPayableDebit = debitAccount === 'Accounts Payable';
 
   useEffect(() => {
     if (!isOpen || !companyId) return;
@@ -60,7 +71,18 @@ export const ManualEntryDialog: React.FC<ManualEntryDialogProps> = ({ isOpen, on
       setWorkerId('');
       setWorkerName('');
     }
-  }, [isOpen, companyId, isWorkerPayableDebit, workers.length]);
+    if (isAccountsPayableDebit && suppliers.length === 0) {
+      setSuppliersLoading(true);
+      contactService.getAllContacts(companyId, 'supplier').then((list) => {
+        setSuppliers(list.filter((c: any) => c.type === 'supplier' || c.type === 'both').map((c: any) => ({ id: c.id, name: c.name || '' })));
+        setSuppliersLoading(false);
+      }).catch(() => setSuppliersLoading(false));
+    }
+    if (!isAccountsPayableDebit) {
+      setSupplierId('');
+      setSupplierName('');
+    }
+  }, [isOpen, companyId, isWorkerPayableDebit, isAccountsPayableDebit, workers.length, suppliers.length]);
 
   // Reset form
   const resetForm = () => {
@@ -71,6 +93,8 @@ export const ManualEntryDialog: React.FC<ManualEntryDialogProps> = ({ isOpen, on
     setReferenceNo('');
     setWorkerId('');
     setWorkerName('');
+    setSupplierId('');
+    setSupplierName('');
   };
 
   // Handle submit
@@ -89,14 +113,22 @@ export const ManualEntryDialog: React.FC<ManualEntryDialogProps> = ({ isOpen, on
       toast.error('When debiting Worker Payable, you must select the worker so the payment appears in their ledger.');
       return;
     }
+    if (isAccountsPayableDebit && (!supplierId || !supplierName)) {
+      toast.error('When debiting Accounts Payable, you must select the supplier so the payment appears in Supplier Ledger.');
+      return;
+    }
 
     setIsProcessing(true);
 
     try {
-      const metadata: { workerId?: string; workerName?: string } = {};
+      const metadata: { workerId?: string; workerName?: string; contactId?: string; contactName?: string } = {};
       if (isWorkerPayableDebit && workerId && workerName) {
         metadata.workerId = workerId;
         metadata.workerName = workerName;
+      }
+      if (isAccountsPayableDebit && supplierId && supplierName) {
+        metadata.contactId = supplierId;
+        metadata.contactName = supplierName;
       }
       const success = await accounting.createEntry({
         date: new Date(),
@@ -227,6 +259,31 @@ export const ManualEntryDialog: React.FC<ManualEntryDialogProps> = ({ isOpen, on
               </div>
             )}
 
+            {/* Supplier (required when Debit = Accounts Payable) */}
+            {isAccountsPayableDebit && (
+              <div>
+                <label className="block text-sm font-semibold text-gray-300 mb-2">
+                  Supplier <span className="text-red-400">*</span>
+                </label>
+                <select
+                  value={supplierId}
+                  onChange={(e) => {
+                    const opt = suppliers.find((s) => s.id === e.target.value);
+                    setSupplierId(e.target.value);
+                    setSupplierName(opt?.name ?? '');
+                  }}
+                  disabled={suppliersLoading}
+                  className="w-full bg-gray-950 border-2 border-gray-700 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-blue-500 transition-colors"
+                >
+                  <option value="">Select supplier (required for Supplier Ledger)</option>
+                  {suppliers.map((s) => (
+                    <option key={s.id} value={s.id}>{s.name || s.id}</option>
+                  ))}
+                </select>
+                <p className="text-xs text-gray-500 mt-1">Required so this payment appears in the Supplier Ledger.</p>
+              </div>
+            )}
+
             {/* Amount */}
             <div>
               <label className="block text-sm font-semibold text-gray-300 mb-2">
@@ -295,7 +352,8 @@ export const ManualEntryDialog: React.FC<ManualEntryDialogProps> = ({ isOpen, on
                 !creditAccount ||
                 amount <= 0 ||
                 isProcessing ||
-                (isWorkerPayableDebit && (!workerId || workersLoading))
+                (isWorkerPayableDebit && (!workerId || workersLoading)) ||
+                (isAccountsPayableDebit && (!supplierId || suppliersLoading))
               }
               className="bg-blue-600 hover:bg-blue-500 text-white min-w-[120px]"
             >

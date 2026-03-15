@@ -5,6 +5,7 @@ import { accountService, Account as SupabaseAccount } from '@/app/services/accou
 import { accountingService, JournalEntryWithLines, JournalEntryLine } from '@/app/services/accountingService';
 import { documentNumberService } from '@/app/services/documentNumberService';
 import { generatePaymentReference } from '@/app/utils/paymentUtils';
+import { getOrCreateLedger, addLedgerEntry } from '@/app/services/ledgerService';
 import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
 
@@ -827,7 +828,7 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
         } else if (!debitIsPayment && creditIsPayment) {
           const refNo = await documentNumberService.getNextDocumentNumber(companyId, validBranchId, 'payment').catch(() => generatePaymentReference(null));
           const { data: { user } } = await supabase.auth.getUser();
-          const { data: row, error } = await supabase.from('payments').insert({
+          const manualPaymentPayload: Record<string, unknown> = {
             company_id: companyId,
             branch_id: validBranchId,
             payment_type: 'paid',
@@ -840,7 +841,11 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
             reference_number: refNo,
             received_by: (user as any)?.id ?? null,
             created_by: currentUserId ?? null,
-          }).select('id').single();
+          };
+          // Supplier ledger: set contact_id when Dr AP (supplier payment) and supplier selected
+          const manualSupplierContactId = (entry.debitAccount === 'Accounts Payable' && (entry.metadata as any)?.contactId) ? (entry.metadata as any).contactId : null;
+          if (manualSupplierContactId) manualPaymentPayload.contact_id = manualSupplierContactId;
+          const { data: row, error } = await supabase.from('payments').insert(manualPaymentPayload).select('id').single();
           if (!error && row) { manualPaymentId = (row as { id: string }).id; manualRefType = 'manual_payment'; }
         }
       }
@@ -923,6 +928,32 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
           journalEntryId: (savedEntry as any)?.id ?? null,
           entry_no: (savedEntry as any)?.entry_no ?? null,
         });
+      }
+
+      // Manual supplier payment (Dr AP, Cr Cash/Bank): sync to supplier ledger so Supplier Ledger shows it
+      if (manualRefType === 'manual_payment' && manualPaymentId && companyId && entry.debitAccount === 'Accounts Payable') {
+        const supplierContactId = (entry.metadata as any)?.contactId;
+        const supplierName = (entry.metadata as any)?.contactName ?? (entry.metadata as any)?.supplierName ?? 'Supplier';
+        if (supplierContactId) {
+          try {
+            const ledger = await getOrCreateLedger(companyId, 'supplier', supplierContactId, supplierName);
+            if (ledger) {
+              await addLedgerEntry({
+                companyId,
+                ledgerId: ledger.id,
+                entryDate,
+                debit: entry.amount,
+                credit: 0,
+                source: 'payment',
+                referenceNo: (savedEntry as any)?.entry_no ?? manualPaymentId,
+                referenceId: manualPaymentId,
+                remarks: entry.description || `Manual payment to ${supplierName}`,
+              });
+            }
+          } catch (e) {
+            console.warn('[AccountingContext] Supplier ledger sync for manual payment failed:', e);
+          }
+        }
       }
 
       // Worker Payable debit = worker payment → sync to worker_ledger_entries so worker ledger shows it (Journal already has reference_type=worker_payment, reference_id=workerId)

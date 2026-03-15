@@ -73,6 +73,17 @@ export async function createSupplierPayment(params: CreateSupplierPaymentParams)
     throw new Error('Either purchaseId (document-linked) or contactId (on-account) is required');
   }
 
+  // For purchase-linked payments: resolve contact_id from purchase so supplier ledger and reports can link
+  let resolvedContactId: string | null = isOnAccount ? contactId : null;
+  if (purchaseId && !resolvedContactId) {
+    const { data: purchaseRow } = await supabase
+      .from('purchases')
+      .select('supplier_id')
+      .eq('id', purchaseId)
+      .single();
+    if ((purchaseRow as any)?.supplier_id) resolvedContactId = (purchaseRow as any).supplier_id;
+  }
+
   const validBranchId = (branchId && branchId !== 'all') ? branchId : null;
   const enumPaymentMethod = normalizePaymentMethod(paymentMethod);
   const paymentDateValue = paymentDate || new Date().toISOString().split('T')[0];
@@ -88,7 +99,7 @@ export async function createSupplierPayment(params: CreateSupplierPaymentParams)
   const { data: { user: authUser } } = await supabase.auth.getUser();
   const authUserId = authUser?.id ?? null;
 
-  // 2) Insert payments row (Roznamcha shows it)
+  // 2) Insert payments row (Roznamcha shows it). contact_id required for supplier ledger.
   const referenceType: string = isOnAccount ? 'on_account' : 'purchase';
   const insertPayload: Record<string, unknown> = {
     company_id: companyId,
@@ -96,7 +107,7 @@ export async function createSupplierPayment(params: CreateSupplierPaymentParams)
     payment_type: 'paid',
     reference_type: referenceType,
     reference_id: isOnAccount ? null : purchaseId,
-    contact_id: isOnAccount ? contactId : null,
+    contact_id: resolvedContactId,
     amount,
     payment_method: enumPaymentMethod,
     payment_account_id: paymentAccountId,

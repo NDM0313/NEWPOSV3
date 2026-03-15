@@ -54,7 +54,7 @@ git commit -m "Bug fix: Purchase service FK issue"
 
 On current machine:
 git add .
-git commit -m "account audit not compelete"
+git commit -m "SQL DATABASE ADUIT"
 git push origin main
 
 On new machine:

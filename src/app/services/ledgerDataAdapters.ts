@@ -66,57 +66,37 @@ export async function getSupplierLedgerData(
     }
   }
   
-  // Also check payment references for deleted purchases
-  const paymentIds = entries
+  // Payment entries: reference_id = payment_id (manual/on_account) or purchase_id (purchase-linked from PurchaseContext).
+  // Include if: (1) payment.contact_id = supplierId, or (2) reference_id is a purchase_id with purchases.supplier_id = supplierId.
+  const paymentRefIds = entries
     .filter(e => e.source === 'payment' && e.reference_id)
     .map(e => e.reference_id) as string[];
-  
-  let existingPayments: Set<string> = new Set();
-  if (paymentIds.length > 0) {
-    const { data: payments } = await supabase
-      .from('payments')
-      .select('id, reference_id, reference_type')
-      .in('id', paymentIds)
-      .eq('reference_type', 'purchase');
-    
-    if (payments) {
-      // Only include payments where the referenced purchase still exists
-      const paymentPurchaseIds = payments
-        .map((p: any) => p.reference_id)
-        .filter((id: string) => id) as string[];
-      
-      if (paymentPurchaseIds.length > 0) {
-        const { data: paymentPurchases } = await supabase
-          .from('purchases')
-          .select('id')
-          .in('id', paymentPurchaseIds);
-        
-        if (paymentPurchases) {
-          const validPurchaseIds = new Set(paymentPurchases.map((p: any) => p.id));
-          existingPayments = new Set(
-            payments
-              .filter((p: any) => validPurchaseIds.has(p.reference_id))
-              .map((p: any) => p.id)
-          );
-        }
-      }
-    }
+  let validPaymentEntryRefIds: Set<string> = new Set();
+  const { data: paymentsByContact } = await supabase
+    .from('payments')
+    .select('id')
+    .eq('company_id', companyId)
+    .eq('contact_id', supplierId);
+  if (paymentsByContact) {
+    (paymentsByContact as { id: string }[]).forEach((p: { id: string }) => validPaymentEntryRefIds.add(p.id));
+  }
+  const { data: supplierPurchaseIds } = await supabase
+    .from('purchases')
+    .select('id')
+    .eq('company_id', companyId)
+    .eq('supplier_id', supplierId);
+  if (supplierPurchaseIds) {
+    (supplierPurchaseIds as { id: string }[]).forEach((p: { id: string }) => validPaymentEntryRefIds.add(p.id));
   }
 
-  // Filter entries: only include if purchase/payment still exists
+  // Filter entries: only include if purchase still exists or payment is valid for this supplier
   for (const e of entries as LedgerEntryRow[]) {
-    // Skip entries for deleted purchases
     if (e.source === 'purchase' && e.reference_id && !existingPurchases.has(e.reference_id)) {
-      console.log(`[SUPPLIER LEDGER] Skipping entry for deleted purchase: ${e.reference_id}`);
       continue;
     }
-    
-    // Skip payment entries for deleted purchases
-    if (e.source === 'payment' && e.reference_id && !existingPayments.has(e.reference_id)) {
-      console.log(`[SUPPLIER LEDGER] Skipping payment entry for deleted purchase: ${e.reference_id}`);
+    if (e.source === 'payment' && e.reference_id && !validPaymentEntryRefIds.has(e.reference_id)) {
       continue;
     }
-    
     validEntries.push(e);
   }
 
