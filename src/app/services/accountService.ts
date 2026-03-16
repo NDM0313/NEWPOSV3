@@ -83,12 +83,29 @@ export const accountService = {
    * Does NOT depend on module toggle or UI mode. Uses type; if DB has account_role column, it is used first.
    */
   async getAccountsForBranchDefaults(companyId: string) {
+    return this.getPaymentAccountsOnly(companyId);
+  },
+
+  /**
+   * Payment accounts only: Cash, Bank, Mobile Wallet (real money movement).
+   * Use for: Paid From, Payment account (Cr), any dropdown that must show only money accounts.
+   * Excludes: AP, AR, expense, revenue, payable, receivable, production, shipping, control accounts.
+   */
+  async getPaymentAccountsOnly(companyId: string, _branchId?: string) {
     const all = await this.getAllAccounts(companyId);
     const active = (all || []).filter((a: any) => a.is_active !== false);
     const roleOrType = (a: any) =>
       String(a.account_role ?? a.type ?? '').toLowerCase().trim();
+    const name = (a: any) => String(a.name ?? '').toLowerCase();
+    const code = (a: any) => String(a.code ?? '').toLowerCase();
     const operational = active.filter((a: any) => {
       const r = roleOrType(a);
+      const n = name(a);
+      const c = code(a);
+      // Exclude non-payment: payable, receivable, expense, revenue, production, shipping
+      if (n.includes('payable') || n.includes('receivable') || n.includes('ar ') || n.includes(' ap ') || c.startsWith('2') || c === '1100' || c === '2000' || c === '2010') return false;
+      if (n.includes('expense') && !n.includes('payment')) return false;
+      if (n.includes('revenue') || n.includes('income') || n.includes('production') || n.includes('shipping') || n.includes('courier')) return false;
       return (
         r === 'cash' ||
         r === 'bank' ||
@@ -97,7 +114,13 @@ export const accountService = {
         r === 'mobile wallet' ||
         r.includes('cash') ||
         r.includes('bank') ||
-        r.includes('wallet')
+        r.includes('wallet') ||
+        c === '1000' ||
+        c === '1010' ||
+        c === '1020' ||
+        n.includes('cash') ||
+        n.includes('bank') ||
+        n.includes('wallet')
       );
     });
     return operational;

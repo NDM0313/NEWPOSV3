@@ -31,8 +31,8 @@ import { cn } from "../ui/utils";
 import { VirtualNumpad } from "../ui/virtual-numpad";
 import { useExpenses } from "@/app/context/ExpenseContext";
 import { useSupabase } from "@/app/context/SupabaseContext";
-import { useAccounting } from "@/app/context/AccountingContext";
 import { branchService } from "@/app/services/branchService";
+import { accountService } from "@/app/services/accountService";
 import { expenseCategoryService, type ExpenseCategoryTreeItem } from "@/app/services/expenseCategoryService";
 import { userService } from "@/app/services/userService";
 import { toast } from "sonner";
@@ -64,7 +64,6 @@ export const AddExpenseDrawer = ({ isOpen, onClose, onSuccess, expenseToEdit }: 
   const { canManageSettings } = useCheckPermission();
   const { companyId, branchId: contextBranchId, requiresBranchSelection } = useSupabase();
   const { createExpense, updateExpense, refreshExpenses } = useExpenses();
-  const { accounts: accountingAccounts } = useAccounting();
 
   const [date, setDate] = useState<Date | undefined>(new Date());
   const [amount, setAmount] = useState("");
@@ -81,6 +80,7 @@ export const AddExpenseDrawer = ({ isOpen, onClose, onSuccess, expenseToEdit }: 
   const [isNumpadOpen, setIsNumpadOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [branches, setBranches] = useState<Array<{ id: string; name: string; address?: string }>>([]);
+  const [paymentAccounts, setPaymentAccounts] = useState<Array<{ id: string; name: string; balance?: number; icon: typeof Wallet }>>([]);
 
   const userRole = "Admin";
 
@@ -98,6 +98,18 @@ export const AddExpenseDrawer = ({ isOpen, onClose, onSuccess, expenseToEdit }: 
 
   useEffect(() => {
     if (isOpen && companyId) expenseCategoryService.getTree(companyId).then(setCategoryTree).catch(() => setCategoryTree([]));
+  }, [isOpen, companyId]);
+
+  useEffect(() => {
+    if (!isOpen || !companyId) return;
+    accountService.getPaymentAccountsOnly(companyId).then((list) => {
+      setPaymentAccounts((list || []).map((a: any) => ({
+        id: a.id,
+        name: a.name || a.code || '',
+        balance: a.balance ?? 0,
+        icon: Wallet,
+      })));
+    }).catch(() => setPaymentAccounts([]));
   }, [isOpen, companyId]);
 
   // Pre-fill form when editing
@@ -145,13 +157,7 @@ export const AddExpenseDrawer = ({ isOpen, onClose, onSuccess, expenseToEdit }: 
     }
   }, [isOpen, companyId, isSalaryCategory]);
 
-  const accountsList = (accountingAccounts || []).map((acc: { id: string; name: string; balance?: number; type?: string }) => ({
-    id: acc.id,
-    name: acc.name,
-    balance: acc.balance ?? 0,
-    icon: Wallet,
-  }));
-  const accounts = accountsList.length > 0 ? accountsList : [{ id: 'cash', name: 'Cash in Hand', balance: 0, icon: Wallet }];
+  const accounts = paymentAccounts.length > 0 ? paymentAccounts : [{ id: 'cash', name: 'Cash in Hand', balance: 0, icon: Wallet }];
 
   // When editing, set paidFromAccountId and category from expense
   useEffect(() => {

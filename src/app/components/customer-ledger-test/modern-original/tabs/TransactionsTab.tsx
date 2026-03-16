@@ -585,7 +585,7 @@ export function TransactionsTab({ transactions, saleItemsMap = new Map(), studio
                 <tbody>
                   {filteredTransactions.map((transaction, index) => (
                     <tr
-                      key={transaction.id}
+                      key={`tx-${index}-${transaction.id ?? index}`}
                       onClick={() => handleTransactionClick(transaction)}
                       className={`transition-all group cursor-pointer border-b border-gray-800 ${
                         index % 2 === 0 ? 'bg-gray-900/30' : 'bg-transparent'
@@ -764,7 +764,7 @@ export function TransactionsTab({ transactions, saleItemsMap = new Map(), studio
               <div>
                 {filteredTransactions.map((transaction, index) => (
                   <div
-                    key={transaction.id}
+                    key={`tx-${index}-${transaction.id ?? index}`}
                     onClick={() => handleTransactionClick(transaction)}
                     className={`px-6 py-3 cursor-pointer transition-all flex items-center justify-between group border-b border-gray-800 ${
                       index % 2 === 0 ? 'bg-transparent' : 'bg-gray-900/30'

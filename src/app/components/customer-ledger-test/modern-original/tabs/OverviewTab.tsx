@@ -84,7 +84,7 @@ export function OverviewTab({ ledgerData, onTransactionClick }: OverviewTabProps
           <div className="border-t border-gray-800">
             {recentTransactions.map((transaction, index) => (
               <button
-                key={transaction.id}
+                key={`tx-${index}-${transaction.id ?? index}`}
                 onClick={() => onTransactionClick(transaction)}
                 className="w-full px-5 py-4 transition-colors text-left border-b border-gray-800/50 last:border-b-0 hover:bg-gray-800/30"
               >
@@ -120,7 +120,7 @@ export function OverviewTab({ ledgerData, onTransactionClick }: OverviewTabProps
           <div className="border-t border-gray-800">
             {[...overdueInvoices, ...partiallyPaid].slice(0, 5).map((invoice, index) => (
               <div
-                key={invoice.id ?? invoice.invoiceNo}
+                key={`inv-${index}-${invoice.id ?? invoice.invoiceNo ?? index}`}
                 className="px-5 py-4 border-b border-gray-800/50 last:border-b-0"
               >
                 <div className="flex justify-between items-start mb-2">

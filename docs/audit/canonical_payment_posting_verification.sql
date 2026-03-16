@@ -37,5 +37,5 @@ FROM payments
 WHERE company_id = 'eb71d817-b87e-4195-964b-7b5321b480f5'
   AND LOWER(COALESCE(reference_type, '')) NOT IN (
     'sale', 'purchase', 'worker_payment', 'expense',
-    'manual_payment', 'manual_receipt', 'on_account'
+    'manual_payment', 'manual_receipt', 'on_account', 'courier_payment'
   );

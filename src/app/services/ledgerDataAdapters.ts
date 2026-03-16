@@ -80,21 +80,39 @@ export async function getSupplierLedgerData(
   if (paymentsByContact) {
     (paymentsByContact as { id: string }[]).forEach((p: { id: string }) => validPaymentEntryRefIds.add(p.id));
   }
-  const { data: supplierPurchaseIds } = await supabase
+  const { data: supplierPurchaseRows } = await supabase
     .from('purchases')
     .select('id')
     .eq('company_id', companyId)
     .eq('supplier_id', supplierId);
-  if (supplierPurchaseIds) {
-    (supplierPurchaseIds as { id: string }[]).forEach((p: { id: string }) => validPaymentEntryRefIds.add(p.id));
+  const supplierPurchaseIdSet = new Set((supplierPurchaseRows || []).map((p: { id: string }) => p.id));
+  supplierPurchaseIdSet.forEach((id) => validPaymentEntryRefIds.add(id));
+
+  if (supplierPurchaseIdSet.size > 0) {
+    const { data: purchaseLinkedPayments } = await supabase
+      .from('payments')
+      .select('id')
+      .eq('company_id', companyId)
+      .eq('reference_type', 'purchase')
+      .in('reference_id', Array.from(supplierPurchaseIdSet));
+    if (purchaseLinkedPayments) {
+      (purchaseLinkedPayments as { id: string }[]).forEach((p) => validPaymentEntryRefIds.add(p.id));
+    }
   }
+  paymentRefIds.forEach((id) => validPaymentEntryRefIds.add(id));
 
   // Filter entries: only include if purchase still exists or payment is valid for this supplier
   for (const e of entries as LedgerEntryRow[]) {
     if (e.source === 'purchase' && e.reference_id && !existingPurchases.has(e.reference_id)) {
+      if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
+        console.debug('[SupplierLedger] Filtered out purchase entry (purchase missing)', { reference_id: e.reference_id });
+      }
       continue;
     }
     if (e.source === 'payment' && e.reference_id && !validPaymentEntryRefIds.has(e.reference_id)) {
+      if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
+        console.debug('[SupplierLedger] Filtered out payment entry (ref not valid for supplier)', { reference_id: e.reference_id, supplierId });
+      }
       continue;
     }
     validEntries.push(e);
@@ -157,6 +175,21 @@ export async function getSupplierLedgerData(
   const fullyPaid = 0;
   const partiallyPaid = 0;
   const unpaid = invoices.length;
+
+  if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
+    console.debug('[SupplierLedger]', {
+      supplierId,
+      supplierName,
+      ledgerId: ledger.id,
+      fromDate,
+      toDate,
+      rawEntries: entries.length,
+      validEntries: validEntries.length,
+      totalDebit,
+      totalCredit,
+      closingBalance,
+    });
+  }
 
   return {
     openingBalance,

@@ -842,9 +842,12 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
             received_by: (user as any)?.id ?? null,
             created_by: currentUserId ?? null,
           };
-          // Supplier ledger: set contact_id when Dr AP (supplier payment) and supplier selected
+          // Supplier ledger: set contact_id when Dr AP (supplier payment) and supplier selected (real schema: payments.contact_id)
           const manualSupplierContactId = (entry.debitAccount === 'Accounts Payable' && (entry.metadata as any)?.contactId) ? (entry.metadata as any).contactId : null;
           if (manualSupplierContactId) manualPaymentPayload.contact_id = manualSupplierContactId;
+          if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
+            console.debug('[SUPPLIER_LEDGER] Manual payment payload', { contact_id: manualSupplierContactId ?? null, reference_type: 'manual_payment', amount: manualPaymentPayload.amount });
+          }
           const { data: row, error } = await supabase.from('payments').insert(manualPaymentPayload).select('id').single();
           if (!error && row) { manualPaymentId = (row as { id: string }).id; manualRefType = 'manual_payment'; }
         }
@@ -930,29 +933,42 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
         });
       }
 
-      // Manual supplier payment (Dr AP, Cr Cash/Bank): sync to supplier ledger so Supplier Ledger shows it
+      // Manual supplier payment (Dr AP, Cr Cash/Bank): sync to supplier ledger (ledger_master.entity_id = supplier contact id)
       if (manualRefType === 'manual_payment' && manualPaymentId && companyId && entry.debitAccount === 'Accounts Payable') {
         const supplierContactId = (entry.metadata as any)?.contactId;
         const supplierName = (entry.metadata as any)?.contactName ?? (entry.metadata as any)?.supplierName ?? 'Supplier';
         if (supplierContactId) {
           try {
             const ledger = await getOrCreateLedger(companyId, 'supplier', supplierContactId, supplierName);
+            if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
+              console.debug('[SUPPLIER_LEDGER] getOrCreateLedger result', { ledgerId: ledger?.id ?? null, entity_id: ledger?.entity_id ?? null, entity_name: ledger?.entity_name ?? null });
+            }
             if (ledger) {
-              await addLedgerEntry({
+              const addParams = {
                 companyId,
                 ledgerId: ledger.id,
                 entryDate,
                 debit: entry.amount,
                 credit: 0,
-                source: 'payment',
+                source: 'payment' as const,
                 referenceNo: (savedEntry as any)?.entry_no ?? manualPaymentId,
                 referenceId: manualPaymentId,
                 remarks: entry.description || `Manual payment to ${supplierName}`,
-              });
+              };
+              if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
+                console.debug('[SUPPLIER_LEDGER] addLedgerEntry payload', addParams);
+              }
+              const ledgerEntryRow = await addLedgerEntry(addParams);
+              if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
+                console.debug('[SUPPLIER_LEDGER] addLedgerEntry result', { id: (ledgerEntryRow as any)?.id ?? null });
+              }
+              window.dispatchEvent(new CustomEvent('ledgerUpdated', { detail: { ledgerType: 'supplier', entityId: supplierContactId } }));
             }
           } catch (e) {
             console.warn('[AccountingContext] Supplier ledger sync for manual payment failed:', e);
           }
+        } else if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
+          console.warn('[SUPPLIER_LEDGER] Skip supplier ledger sync: no contactId in metadata');
         }
       }
 

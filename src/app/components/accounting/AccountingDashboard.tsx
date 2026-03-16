@@ -49,7 +49,11 @@ import { LedgerHub } from './LedgerHub';
 import { PayCourierModal } from './PayCourierModal';
 import { useSettings } from '@/app/context/SettingsContext';
 import { AccountingTestPage } from '@/app/components/test/AccountingTestPage';
+import { AddEntryV2 } from './AddEntryV2';
 import { useSupabase } from '@/app/context/SupabaseContext';
+
+/** Add Entry: V2 = new default (typed, theme-matched). Set false to use legacy AccountingTestPage. */
+const USE_ADD_ENTRY_V2 = true;
 import { useGlobalFilter } from '@/app/context/GlobalFilterContext';
 import { accountService } from '@/app/services/accountService';
 import { toast } from 'sonner';
@@ -1107,8 +1111,16 @@ export const AccountingDashboard = () => {
         )}
       </div>
       
-      {/* Add Entry flow: type selector + Journal/Transfer/Supplier/Expense/Worker/Customer modals */}
-      {addEntryFlowOpen && (
+      {/* Add Entry flow: V2 (default) or legacy */}
+      {addEntryFlowOpen && USE_ADD_ENTRY_V2 && (
+        <AddEntryV2
+          onClose={() => {
+            setAddEntryFlowOpen(false);
+            accounting.refreshEntries();
+          }}
+        />
+      )}
+      {addEntryFlowOpen && !USE_ADD_ENTRY_V2 && (
         <AccountingTestPage
           embedded
           onClose={() => {

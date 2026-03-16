@@ -343,7 +343,16 @@ export const customerLedgerAPI = {
         .eq('reference_type', 'on_account')
         .lt('payment_date', fromDate);
       const prevOnAccountTotal = (prevOnAccount || []).reduce((s: number, p: any) => s + (Number(p.amount) || 0), 0);
-      openingBalance = previousTotal - previousPaid - previousReturnsTotal - prevReturnPaymentsTotal + prevStudioOrderNet + prevRentalTotal - prevRentalPaid - prevOnAccountTotal;
+      // Manual receipt (Add Entry V2) before fromDate – credit to customer
+      const { data: prevManualReceipt } = await supabase
+        .from('payments')
+        .select('amount')
+        .eq('company_id', companyId)
+        .eq('contact_id', cId)
+        .eq('reference_type', 'manual_receipt')
+        .lt('payment_date', fromDate);
+      const prevManualReceiptTotal = (prevManualReceipt || []).reduce((s: number, p: any) => s + (Number(p.amount) || 0), 0);
+      openingBalance = previousTotal - previousPaid - previousReturnsTotal - prevReturnPaymentsTotal + prevStudioOrderNet + prevRentalTotal - prevRentalPaid - prevOnAccountTotal - prevManualReceiptTotal;
     }
 
     // Studio: legacy studio_orders dropped; studio charges are in sales.studio_charges (included in sales above)
@@ -362,6 +371,19 @@ export const customerLedgerAPI = {
     if (toDate) onAccountQuery = onAccountQuery.lte('payment_date', toDate);
     const { data: onAccountInRange } = await onAccountQuery;
     onAccountCreditInRange = (onAccountInRange || []).reduce((s: number, p: any) => s + (Number(p.amount) || 0), 0);
+
+    // Manual receipt (Add Entry V2) in range – credit
+    let manualReceiptCreditInRange = 0;
+    let manualReceiptQuery = supabase
+      .from('payments')
+      .select('amount')
+      .eq('company_id', companyId)
+      .eq('contact_id', cId)
+      .eq('reference_type', 'manual_receipt');
+    if (fromDate) manualReceiptQuery = manualReceiptQuery.gte('payment_date', fromDate);
+    if (toDate) manualReceiptQuery = manualReceiptQuery.lte('payment_date', toDate);
+    const { data: manualReceiptInRange } = await manualReceiptQuery;
+    manualReceiptCreditInRange = (manualReceiptInRange || []).reduce((s: number, p: any) => s + (Number(p.amount) || 0), 0);
 
     // Return payments in range (credit)
     let returnPaymentsInRange = 0;
@@ -407,7 +429,7 @@ export const customerLedgerAPI = {
     } catch (_) {}
 
     const totalDebit = totalInvoiceAmount + studioOrderDebit + rentalDebit;
-    const totalCredit = totalPaymentReceived + returnsInRange + returnPaymentsInRange + studioOrderCredit + rentalCredit + onAccountCreditInRange;
+    const totalCredit = totalPaymentReceived + returnsInRange + returnPaymentsInRange + studioOrderCredit + rentalCredit + onAccountCreditInRange + manualReceiptCreditInRange;
     const closingBalance = openingBalance + totalDebit - totalCredit;
 
     return {
@@ -534,6 +556,25 @@ export const customerLedgerAPI = {
     onAccountList.forEach((p: any) => {
       if (!paymentIdsSet.has(p.id)) {
         payments.push({ ...p, reference_type: 'on_account' });
+        paymentIdsSet.add(p.id);
+      }
+    });
+    // Add Entry V2: manual_receipt (customer receipt) – must appear in customer ledger
+    const { data: manualReceiptPayments } = await supabase
+      .from('payments')
+      .select('id, reference_number, payment_date, amount, payment_method, notes, reference_id')
+      .eq('company_id', companyId)
+      .eq('contact_id', cId)
+      .eq('reference_type', 'manual_receipt');
+    const manualReceiptList = (manualReceiptPayments || []).filter((p: any) => {
+      const d = (p.payment_date || '').toString().slice(0, 10);
+      if (fromDate && d < fromDate) return false;
+      if (toDate && d > toDate) return false;
+      return true;
+    });
+    manualReceiptList.forEach((p: any) => {
+      if (!paymentIdsSet.has(p.id)) {
+        payments.push({ ...p, reference_type: 'manual_receipt' });
         paymentIdsSet.add(p.id);
       }
     });
@@ -735,15 +776,26 @@ export const customerLedgerAPI = {
       });
     });
 
-    // Add payments as credit transactions (sale-linked and on-account)
+    // Add payments as credit transactions (sale-linked, on-account, manual_receipt)
     (payments || []).forEach((payment: any) => {
-      const isOnAccount = (payment.reference_type || '').toString().toLowerCase() === 'on_account';
+      const refType = (payment.reference_type || '').toString().toLowerCase();
+      const isOnAccount = refType === 'on_account';
+      const isManualReceipt = refType === 'manual_receipt';
+      let documentType: Transaction['documentType'] = 'Payment';
+      let description = `Payment via ${payment.payment_method || 'other'}`;
+      if (isOnAccount) {
+        documentType = 'On-account Payment';
+        description = `On-account payment via ${payment.payment_method || 'other'}`;
+      } else if (isManualReceipt) {
+        documentType = 'Payment';
+        description = payment.notes ? `Receipt – ${payment.notes}` : `Manual receipt via ${payment.payment_method || 'other'}`;
+      }
       transactions.push({
         id: payment.id,
         date: payment.payment_date,
         referenceNo: payment.reference_number || '',
-        documentType: isOnAccount ? ('On-account Payment' as const) : ('Payment' as const),
-        description: isOnAccount ? `On-account payment via ${payment.payment_method || 'other'}` : `Payment via ${payment.payment_method}`,
+        documentType,
+        description,
         paymentAccount: payment.payment_method || '',
         notes: payment.notes || '',
         debit: 0,
@@ -850,6 +902,15 @@ export const customerLedgerAPI = {
         .eq('reference_type', 'on_account')
         .lt('payment_date', fromDate);
       const prevOnAccountPmts = (prevOnAcc || []).reduce((s: number, p: any) => s + (Number(p.amount) || 0), 0);
+      // Manual receipt (Add Entry V2) before fromDate – credit to customer
+      const { data: prevManualRec } = await supabase
+        .from('payments')
+        .select('amount')
+        .eq('company_id', companyId)
+        .eq('contact_id', cId)
+        .eq('reference_type', 'manual_receipt')
+        .lt('payment_date', fromDate);
+      const prevManualReceiptPmts = (prevManualRec || []).reduce((s: number, p: any) => s + (Number(p.amount) || 0), 0);
 
       // Rentals before fromDate: total charges - rental payments
       let prevRentalTotal = 0;
@@ -874,7 +935,7 @@ export const customerLedgerAPI = {
         }
       } catch (_) {}
 
-      runningBalance = prevTotal - prevPaid - prevReturnsTotal - prevReturnPmts + prevStudioOrderNet + prevRentalTotal - prevRentalPaid - prevOnAccountPmts;
+      runningBalance = prevTotal - prevPaid - prevReturnsTotal - prevReturnPmts + prevStudioOrderNet + prevRentalTotal - prevRentalPaid - prevOnAccountPmts - prevManualReceiptPmts;
     }
     transactions.forEach(t => {
       runningBalance += t.debit - t.credit;
@@ -1059,6 +1120,30 @@ export const customerLedgerAPI = {
     const { data: onAccountPayments, error: onAccErr } = await onAccountQuery.order('payment_date', { ascending: false });
     if (!onAccErr && onAccountPayments?.length) {
       onAccountPayments.forEach((payment: any) => {
+        result.push({
+          id: payment.id,
+          paymentNo: payment.reference_number || '',
+          date: payment.payment_date,
+          amount: payment.amount || 0,
+          method: payment.payment_method || '',
+          referenceNo: payment.reference_number || '',
+          appliedInvoices: [],
+          status: 'Completed' as const,
+        });
+      });
+    }
+    // Add Entry V2: manual_receipt (customer receipt)
+    let manualReceiptQuery = supabase
+      .from('payments')
+      .select('id, reference_number, payment_date, amount, payment_method, notes')
+      .eq('company_id', companyId)
+      .eq('contact_id', customerId)
+      .eq('reference_type', 'manual_receipt');
+    if (fromDate) manualReceiptQuery = manualReceiptQuery.gte('payment_date', fromDate);
+    if (toDate) manualReceiptQuery = manualReceiptQuery.lte('payment_date', toDate);
+    const { data: manualReceiptPayments, error: manualRecErr } = await manualReceiptQuery.order('payment_date', { ascending: false });
+    if (!manualRecErr && manualReceiptPayments?.length) {
+      manualReceiptPayments.forEach((payment: any) => {
         result.push({
           id: payment.id,
           paymentNo: payment.reference_number || '',

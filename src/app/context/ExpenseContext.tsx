@@ -223,6 +223,7 @@ export const ExpenseProvider = ({ children }: { children: ReactNode }) => {
         notes: expenseData.notes,
         created_by: user.id,
       };
+      if (options?.payment_account_id) supabaseExpense.payment_account_id = options.payment_account_id;
       if (options?.paidToUserId) (supabaseExpense as any).paid_to_user_id = options.paidToUserId;
 
       // Save to Supabase

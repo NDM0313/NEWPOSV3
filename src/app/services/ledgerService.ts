@@ -132,6 +132,9 @@ export async function addLedgerEntry(params: AddLedgerEntryParams): Promise<Ledg
       console.warn('[ledgerService] addLedgerEntry error:', error.message);
       return null;
     }
+    if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development' && source === 'payment') {
+      console.debug('[SUPPLIER_LEDGER] addLedgerEntry inserted', { id: (inserted as any)?.id, ledger_id: ledgerId, reference_id: referenceId });
+    }
     return inserted as LedgerEntryRow;
   } catch (e) {
     console.warn('[ledgerService] addLedgerEntry exception:', e);

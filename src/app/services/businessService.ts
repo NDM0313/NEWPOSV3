@@ -124,4 +124,26 @@ export const businessService = {
       };
     }
   },
+
+  /**
+   * Link current auth user to existing business by email (for "Create your business" fix).
+   * Call when user is signed in but has no companyId — finds company by auth user email and creates/updates public.users row.
+   */
+  async linkAuthUserToBusiness(): Promise<{ success: boolean; error?: string; email_looked_up?: string }> {
+    try {
+      const { data, error } = await supabase.rpc('link_auth_user_to_business');
+      if (error) return { success: false, error: error.message };
+      const result = data as { success?: boolean; error?: string; email_looked_up?: string } | null;
+      if (!result || result.success !== true) {
+        let msg = (result as any)?.error || 'Could not link account.';
+        if ((result as any)?.email_looked_up) {
+          msg += ` (Logged in as: ${(result as any).email_looked_up})`;
+        }
+        return { success: false, error: msg, email_looked_up: (result as any)?.email_looked_up };
+      }
+      return { success: true };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'Unknown error' };
+    }
+  },
 };

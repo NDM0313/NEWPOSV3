@@ -13,12 +13,66 @@ import { useCheckPermission } from '../../hooks/useCheckPermission';
 import { getDashboardMetrics, type FinancialDashboardMetrics } from '../../services/financialDashboardService';
 import { getBusinessAlerts, type BusinessAlert } from '../../services/businessAlertsService';
 import { useFormatCurrency } from '../../hooks/useFormatCurrency';
+import { businessService } from '../../services/businessService';
 
 const DashboardRevenueChart = lazy(() =>
   import('./DashboardRevenueChart').then((m) => ({ default: m.DashboardRevenueChart }))
 );
 
 const CHART_COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#8B5CF6', '#EC4899', '#06B6D4'];
+
+const CreateYourBusinessCard: React.FC<{ signOut: () => Promise<void> }> = ({ signOut }) => {
+  const [fixing, setFixing] = useState(false);
+  const [fixError, setFixError] = useState<string | null>(null);
+  const handleFixAccount = async () => {
+    setFixError(null);
+    setFixing(true);
+    try {
+      const result = await businessService.linkAuthUserToBusiness();
+      if (result.success) {
+        window.location.reload();
+        return;
+      }
+      setFixError(result.error || 'Could not link account.');
+    } catch {
+      setFixError('Something went wrong.');
+    } finally {
+      setFixing(false);
+    }
+  };
+  return (
+    <div className="flex items-center justify-center min-h-[400px]">
+      <div className="text-center max-w-md p-8 rounded-xl bg-[#1F2937] border border-[#374151]">
+        <h2 className="text-xl font-bold text-white mb-2">Create your business</h2>
+        <p className="text-[#9CA3AF] mb-6">
+          You’re signed in but don’t have a business yet. Sign out and use <strong className="text-white">Create New Business</strong> on the login page to get started.
+        </p>
+        {fixError && <p className="text-red-400 text-sm mb-3">{fixError}</p>}
+        <div className="flex flex-col sm:flex-row gap-2 justify-center">
+          <button
+            type="button"
+            className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-[#10B981] text-white hover:bg-[#059669] disabled:opacity-50"
+            onClick={handleFixAccount}
+            disabled={fixing}
+          >
+            {fixing ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+            I already created a business – fix my account
+          </button>
+          <button
+            type="button"
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-[#3B82F6] text-white hover:bg-[#2563EB]"
+            onClick={async () => {
+              await signOut();
+              window.location.href = '/';
+            }}
+          >
+            Sign out and go to login
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 interface LowStockItem {
   id: string;
@@ -294,24 +348,7 @@ export const Dashboard = () => {
       );
     }
     return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <div className="text-center max-w-md p-8 rounded-xl bg-[#1F2937] border border-[#374151]">
-          <h2 className="text-xl font-bold text-white mb-2">Create your business</h2>
-          <p className="text-[#9CA3AF] mb-6">
-            You’re signed in but don’t have a business yet. Sign out and use <strong className="text-white">Create New Business</strong> on the login page to get started.
-          </p>
-          <button
-            type="button"
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-[#3B82F6] text-white hover:bg-[#2563EB]"
-            onClick={async () => {
-              await signOut();
-              window.location.href = '/';
-            }}
-          >
-            Sign out and go to login
-          </button>
-        </div>
-      </div>
+      <CreateYourBusinessCard signOut={signOut} />
     );
   }
 

@@ -170,7 +170,7 @@ export const documentNumberService = {
 
   /**
    * ERP Numbering Engine: get next document number (atomic, duplicate-free, multi-user safe).
-   * Uses generate_document_number RPC. Use for payments, and optionally sales/purchases/expenses.
+   * Uses generate_document_number RPC → erp_document_sequences. PAY refs: use this only; do not use document_sequences for new payments.
    * @param includeYear - if true, format is PREFIX-YY-NNNN (e.g. SL-26-0001); else PREFIX-NNNN
    */
   async getNextDocumentNumber(

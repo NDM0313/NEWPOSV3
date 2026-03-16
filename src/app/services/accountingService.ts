@@ -803,8 +803,31 @@ export const accountingService = {
         });
         onAccountPayments = dateFiltered.map((p: any) => ({ ...p, reference_type: 'on_account', reference_id: p.reference_id ?? null }));
       }
+      // Add Entry V2: manual_receipt (customer receipt) — same contact, must appear in customer ledger
+      let manualReceiptPayments: any[] = [];
+      const { data: manualReceiptData } = await supabase
+        .from('payments')
+        .select('id, reference_number, payment_date, amount, payment_method, notes, reference_id, payment_account_id')
+        .eq('company_id', companyId)
+        .eq('contact_id', customerId)
+        .eq('reference_type', 'manual_receipt');
+      if (manualReceiptData?.length) {
+        const dateFiltered = (manualReceiptData as any[]).filter((p: any) => {
+          const d = (p.payment_date || '').toString().slice(0, 10);
+          if (startDate && d < startDate) return false;
+          if (endDate && d > endDate) return false;
+          return true;
+        });
+        manualReceiptPayments = dateFiltered.map((p: any) => ({ ...p, reference_type: 'manual_receipt', reference_id: p.reference_id ?? null }));
+      }
       const existingPaymentIds = new Set(customerPayments.map((p: any) => p.id));
       onAccountPayments.forEach((p: any) => {
+        if (!existingPaymentIds.has(p.id)) {
+          customerPayments.push(p);
+          existingPaymentIds.add(p.id);
+        }
+      });
+      manualReceiptPayments.forEach((p: any) => {
         if (!existingPaymentIds.has(p.id)) {
           customerPayments.push(p);
           existingPaymentIds.add(p.id);
@@ -956,6 +979,12 @@ export const accountingService = {
               return true;
             }
           }
+        }
+
+        // Pattern 2b: reference_type='manual_receipt' (Add Entry V2 customer receipt) with payment_id set
+        if (entry.reference_type === 'manual_receipt' && entry.payment_id && paymentIds.includes(entry.payment_id)) {
+          paymentMatchCount++;
+          return true;
         }
 
         // Pattern 3: reference_type='rental' – EXCLUDE from journal path; rentals are shown via synthetic
