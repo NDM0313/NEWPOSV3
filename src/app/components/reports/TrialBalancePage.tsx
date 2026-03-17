@@ -70,7 +70,8 @@ export const TrialBalancePage: React.FC<{
   if (!data) {
     return (
       <div className="rounded-xl border border-gray-800 bg-gray-900/50 p-6 text-center text-gray-400">
-        No data or error loading trial balance.
+        <p className="font-medium">No data for the selected period</p>
+        <p className="text-sm text-gray-500 mt-1">Adjust the date range or ensure journal entries exist.</p>
       </div>
     );
   }

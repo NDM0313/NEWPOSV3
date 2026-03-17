@@ -401,7 +401,7 @@ export const PickupModal = ({ open, onOpenChange, rental, onConfirm, onAddPaymen
         {error && <p className="px-6 py-2 text-sm text-red-400 shrink-0">{error}</p>}
 
         <DialogFooter className="px-6 py-4 border-t border-gray-800 shrink-0">
-          <Button variant="outline" onClick={() => onOpenChange(false)} className="bg-gray-800 text-white border-gray-700">
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving} className="bg-gray-800 text-white border-gray-700">
             Cancel
           </Button>
           <Button
@@ -414,8 +414,8 @@ export const PickupModal = ({ open, onOpenChange, rental, onConfirm, onAddPaymen
         </DialogFooter>
       </DialogContent>
 
-      {/* Credit choice: when remaining > 0 and user clicks Confirm */}
-      <AlertDialog open={creditChoiceOpen} onOpenChange={setCreditChoiceOpen}>
+      {/* Credit choice: when remaining > 0 and user clicks Confirm — buttons disabled while saving to prevent duplicate submit */}
+      <AlertDialog open={creditChoiceOpen} onOpenChange={(open) => !saving && setCreditChoiceOpen(open)}>
         <AlertDialogContent className="bg-gray-900 border-gray-700">
           <AlertDialogHeader>
             <AlertDialogTitle className="text-white">Remaining amount {formatCurrency(remainingAmount)}</AlertDialogTitle>
@@ -424,10 +424,11 @@ export const PickupModal = ({ open, onOpenChange, rental, onConfirm, onAddPaymen
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel className="bg-gray-800 text-white border-gray-700">Cancel</AlertDialogCancel>
+            <AlertDialogCancel className="bg-gray-800 text-white border-gray-700" disabled={saving}>Cancel</AlertDialogCancel>
             <Button
               variant="outline"
               className="bg-amber-500/20 text-amber-400 border-amber-500/50 hover:bg-amber-500/30"
+              disabled={saving}
               onClick={() => {
                 setCreditChoiceOpen(false);
                 onAddPayment?.(rental!);
@@ -438,10 +439,11 @@ export const PickupModal = ({ open, onOpenChange, rental, onConfirm, onAddPaymen
             </Button>
             <Button
               className="bg-blue-500 hover:bg-blue-600 text-white"
+              disabled={saving}
               onClick={() => doConfirm(true)}
             >
               <CreditCard size={16} className="mr-2" />
-              Deliver on Credit
+              {saving ? 'Saving…' : 'Deliver on Credit'}
             </Button>
           </AlertDialogFooter>
         </AlertDialogContent>

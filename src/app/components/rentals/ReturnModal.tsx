@@ -287,13 +287,14 @@ export const ReturnModal = ({ open, onOpenChange, rental, documentInfo, onConfir
         {error && <p className="px-6 text-sm text-red-400">{error}</p>}
 
         <DialogFooter className="px-6 py-4 border-t border-gray-800">
-          <Button variant="outline" onClick={() => onOpenChange(false)} className="bg-gray-800 text-white border-gray-700">
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving} className="bg-gray-800 text-white border-gray-700">
             Cancel
           </Button>
           <Button
             onClick={handleConfirm}
             disabled={saving || !canConfirm}
             className="bg-green-600 hover:bg-green-500 text-white"
+            aria-busy={saving}
           >
             {saving ? 'Saving…' : 'Confirm Return'}
           </Button>

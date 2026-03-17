@@ -27,6 +27,7 @@ import { useSupabase } from '../../context/SupabaseContext';
 import { cn } from '../ui/utils';
 import { studioService } from '../../services/studioService';
 import { studioProductionService } from '../../services/studioProductionService';
+import { studioCostsService, type WorkerLedgerEntry as CostWorkerLedgerEntry } from '../../services/studioCostsService';
 import { WorkerPaymentHistoryModal } from './WorkerPaymentHistoryModal';
 
 // ============================================
@@ -152,12 +153,28 @@ interface LedgerEntry {
   paid_at?: string | null;
 }
 
+/** Map studioCostsService WorkerLedgerEntry to WorkerDetailPage LedgerEntry (same source as Studio Costs tab = COA/journal). */
+function costLedgerToLedgerEntry(e: CostWorkerLedgerEntry): LedgerEntry {
+  return {
+    id: e.id,
+    amount: e.amount,
+    status: e.status,
+    reference_type: e.referenceType,
+    reference_id: e.referenceId,
+    notes: e.documentNo ?? null,
+    created_at: e.createdAt,
+    paid_at: e.paidAt ?? null,
+  };
+}
+
 export const WorkerDetailPage: React.FC = () => {
   const { setCurrentView, setSelectedWorkerId, selectedWorkerId, setSelectedStudioSaleId } = useNavigation();
   const { companyId } = useSupabase();
   const [worker, setWorker] = useState<WorkerDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [ledgerEntries, setLedgerEntries] = useState<LedgerEntry[]>([]);
+  /** Ledger from studioCostsService (journal/COA) — same source as Studio Costs tab; preferred so both UIs match. */
+  const [costLedgerEntries, setCostLedgerEntries] = useState<CostWorkerLedgerEntry[]>([]);
   const [ledgerLoading, setLedgerLoading] = useState(false);
   const [ledgerOpen, setLedgerOpen] = useState(false);
   const [paymentHistoryJob, setPaymentHistoryJob] = useState<WorkerJob | null>(null);
@@ -165,17 +182,23 @@ export const WorkerDetailPage: React.FC = () => {
   const loadDetail = useCallback(async () => {
     if (!companyId || !selectedWorkerId) {
       setWorker(null);
+      setCostLedgerEntries([]);
       setLoading(false);
       return;
     }
     try {
       setLoading(true);
-      const data = await studioService.getWorkerDetail(companyId, selectedWorkerId);
+      const [data, costSummaries] = await Promise.all([
+        studioService.getWorkerDetail(companyId, selectedWorkerId),
+        studioCostsService.getWorkerCostSummaries(companyId, undefined),
+      ]);
       if (!data) {
         setWorker(null);
+        setCostLedgerEntries([]);
         return;
       }
       const w = data.worker;
+      const costForWorker = costSummaries.find((c) => c.workerId === selectedWorkerId);
       const mapDept = (tt?: string) => mapStageTypeToDept(tt || w.worker_type || '');
       const stageIds = [...data.currentStages.map((s) => s.id), ...data.recentCompletedStages.map((s) => s.id)];
       const ledgerStatus = stageIds.length > 0
@@ -207,6 +230,7 @@ export const WorkerDetailPage: React.FC = () => {
         paymentAmount: s.cost,
         paymentStatus: paymentStatus(s.id),
       }));
+      setCostLedgerEntries(costForWorker?.ledgerEntries ?? []);
       setWorker({
         id: w.id!,
         name: w.name,
@@ -217,14 +241,15 @@ export const WorkerDetailPage: React.FC = () => {
         activeJobs: w.activeJobs ?? 0,
         pendingJobs: w.pendingJobs ?? 0,
         completedJobs: w.completedJobs ?? 0,
-        totalEarnings: w.totalEarnings ?? 0,
-        pendingAmount: w.pendingAmount ?? 0,
+        totalEarnings: costForWorker != null ? costForWorker.totalCost : (w.totalEarnings ?? 0),
+        pendingAmount: costForWorker != null ? costForWorker.unpaidAmount : (w.pendingAmount ?? 0),
         currentJobs,
         recentCompletedJobs,
       });
     } catch (e) {
       console.error('[WorkerDetailPage] load error', e);
       setWorker(null);
+      setCostLedgerEntries([]);
     } finally {
       setLoading(false);
     }
@@ -238,6 +263,10 @@ export const WorkerDetailPage: React.FC = () => {
     if (!companyId || !selectedWorkerId) return;
     setLedgerLoading(true);
     try {
+      if (costLedgerEntries.length > 0) {
+        setLedgerEntries(costLedgerEntries.map(costLedgerToLedgerEntry));
+        return;
+      }
       const entries = await studioService.getWorkerLedgerEntries(companyId, selectedWorkerId);
       setLedgerEntries(entries);
     } catch (e) {
@@ -246,7 +275,7 @@ export const WorkerDetailPage: React.FC = () => {
     } finally {
       setLedgerLoading(false);
     }
-  }, [companyId, selectedWorkerId]);
+  }, [companyId, selectedWorkerId, costLedgerEntries]);
 
   useEffect(() => {
     if (ledgerOpen && selectedWorkerId) loadLedger();
@@ -255,6 +284,13 @@ export const WorkerDetailPage: React.FC = () => {
   useEffect(() => {
     if (paymentHistoryJob && selectedWorkerId) loadLedger();
   }, [paymentHistoryJob, selectedWorkerId, loadLedger]);
+
+  // When cost-ledger data arrives (same source as Studio Costs tab), show it in ledger section so both UIs stay in sync
+  useEffect(() => {
+    if (ledgerOpen && costLedgerEntries.length > 0) {
+      setLedgerEntries(costLedgerEntries.map(costLedgerToLedgerEntry));
+    }
+  }, [ledgerOpen, costLedgerEntries]);
 
   const handleGoBack = () => {
     setSelectedWorkerId?.(undefined);
@@ -334,8 +370,9 @@ export const WorkerDetailPage: React.FC = () => {
       {/* Content */}
       <div className="max-w-7xl mx-auto px-6 py-6 space-y-6">
         
-        {/* Worker Summary */}
+        {/* Worker Summary — tasks and cost overview; pay via Accounting */}
         <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-6">
+          <p className="text-xs text-gray-500 mb-4">Tasks & cost overview. To pay this worker, use Accounting → Worker Payments.</p>
           <div className="flex items-start justify-between">
             <div className="flex items-start gap-4">
               <div className="h-20 w-20 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-bold text-3xl">

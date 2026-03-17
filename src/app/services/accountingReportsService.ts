@@ -119,9 +119,11 @@ export interface InventoryValuationResult {
 // P&L: Revenue (Sales Revenue 4000, Shipping Income 4100), Expenses (Cost of Production 5000, Shipping Expense 5100, Discount Allowed 5200, Extra Expense 5300)
 const REVENUE_TYPES = ['revenue', 'income'];
 const EXPENSE_TYPES = ['expense', 'cost of sales', 'cogs'];
-const ASSET_TYPES = ['asset', 'cash', 'bank', 'mobile_wallet', 'receivable'];
+const ASSET_TYPES = ['asset', 'cash', 'bank', 'mobile_wallet', 'receivable', 'inventory'];
 const LIABILITY_TYPES = ['liability'];
 const EQUITY_TYPES = ['equity'];
+/** PF-06: Production/studio cost account codes – P&L shows these under Cost of Sales, not Operating Expenses. */
+const COST_OF_PRODUCTION_CODES = new Set(['5000', '5010', '5100', '5200', '5300']);
 
 function accountTypeCategory(type: string): 'revenue' | 'expense' | 'asset' | 'liability' | 'equity' {
   const t = (type || '').toLowerCase();
@@ -197,16 +199,17 @@ export const accountingReportsService = {
       byAccount[accId].credit += Number(line.credit) || 0;
     });
 
-    let totalDebit = 0;
-    let totalCredit = 0;
+    // Issue 03: Use raw sums for totals so TB difference is 0 when data balances (avoid rounding drift)
+    let rawTotalDebit = 0;
+    let rawTotalCredit = 0;
     const rows: TrialBalanceRow[] = accounts
       .map((a: any) => {
         const d = byAccount[a.id] || { debit: 0, credit: 0 };
+        rawTotalDebit += d.debit;
+        rawTotalCredit += d.credit;
         const debit = Math.round(d.debit * 100) / 100;
         const credit = Math.round(d.credit * 100) / 100;
         const balance = debit - credit;
-        totalDebit += debit;
-        totalCredit += credit;
         return {
           account_id: a.id,
           account_code: a.code || '',
@@ -220,6 +223,8 @@ export const accountingReportsService = {
       .filter((r) => r.debit !== 0 || r.credit !== 0)
       .sort((a, b) => (a.account_code || '').localeCompare(b.account_code || ''));
 
+    const totalDebit = Math.round(rawTotalDebit * 100) / 100;
+    const totalCredit = Math.round(rawTotalCredit * 100) / 100;
     const difference = Math.round((totalDebit - totalCredit) * 100) / 100;
     return { rows, totalDebit, totalCredit, difference };
   },
@@ -252,7 +257,10 @@ export const accountingReportsService = {
         totalRevenue += revenueAmount;
         revenueItems.push({ name: r.account_name, amount: revenueAmount, code: r.account_code });
       } else if (cat === 'expense' && expenseAmount > 0) {
-        if ((r.account_type || '').toLowerCase().includes('cogs') || (r.account_type || '').toLowerCase().includes('cost')) {
+        const code = String(r.account_code ?? '').trim();
+        const typeLower = (r.account_type || '').toLowerCase();
+        const isCostOfProduction = COST_OF_PRODUCTION_CODES.has(code) || typeLower.includes('cogs') || typeLower.includes('cost');
+        if (isCostOfProduction) {
           totalCost += expenseAmount;
           costItems.push({ name: r.account_name, amount: expenseAmount, code: r.account_code });
         } else {
@@ -274,7 +282,10 @@ export const accountingReportsService = {
         const expenseAmount = cat === 'expense' ? r.debit - r.credit : 0;
         if (cat === 'revenue') compRevenue += revenueAmount;
         else if (cat === 'expense' && expenseAmount > 0) {
-          if ((r.account_type || '').toLowerCase().includes('cogs') || (r.account_type || '').toLowerCase().includes('cost')) compCost += expenseAmount;
+          const code = String(r.account_code ?? '').trim();
+          const typeLower = (r.account_type || '').toLowerCase();
+          const isCostOfProduction = COST_OF_PRODUCTION_CODES.has(code) || typeLower.includes('cogs') || typeLower.includes('cost');
+          if (isCostOfProduction) compCost += expenseAmount;
           else compExpenses += expenseAmount;
         }
       });
@@ -304,6 +315,7 @@ export const accountingReportsService = {
   /**
    * Balance Sheet: Assets = Liabilities + Equity (as at a date).
    * Uses trial balance logic but for all time up to asOfDate; filter account types.
+   * Issue 09: Include all asset/liability/equity accounts (including zero balance) so Inventory (1200) etc. appear.
    */
   async getBalanceSheet(
     companyId: string,
@@ -313,6 +325,16 @@ export const accountingReportsService = {
     const start = '1900-01-01';
     const end = asOfDate.slice(0, 10);
     const tb = await this.getTrialBalance(companyId, start, end, branchId);
+
+    const balanceByAccountId = new Map<string, number>();
+    tb.rows.forEach((r) => balanceByAccountId.set(r.account_id, r.balance));
+
+    const { data: accounts } = await supabase
+      .from('accounts')
+      .select('id, code, name, type')
+      .eq('company_id', companyId)
+      .eq('is_active', true);
+
     const assetItems: { name: string; amount: number; code?: string }[] = [];
     const liabilityItems: { name: string; amount: number; code?: string }[] = [];
     const equityItems: { name: string; amount: number; code?: string }[] = [];
@@ -320,20 +342,36 @@ export const accountingReportsService = {
     let totalAssets = 0;
     let totalLiabilities = 0;
     let totalEquity = 0;
-    tb.rows.forEach((r) => {
-      const cat = accountTypeCategory(r.account_type);
-      const amount = r.balance;
+    let revenueExpenseBalanceSum = 0;
+    (accounts || []).forEach((a: any) => {
+      const cat = accountTypeCategory(a.type || '');
+      const amount = balanceByAccountId.get(a.id) ?? 0;
       if (cat === 'asset') {
-        totalAssets += amount > 0 ? amount : -amount;
-        assetItems.push({ name: r.account_name, amount: amount > 0 ? amount : -amount, code: r.account_code });
+        const displayAmount = amount > 0 ? amount : -amount;
+        totalAssets += displayAmount;
+        assetItems.push({ name: a.name || '', amount: displayAmount, code: a.code || '' });
       } else if (cat === 'liability') {
-        totalLiabilities += amount < 0 ? -amount : amount;
-        liabilityItems.push({ name: r.account_name, amount: amount < 0 ? -amount : amount, code: r.account_code });
+        const displayAmount = amount < 0 ? -amount : amount;
+        totalLiabilities += displayAmount;
+        liabilityItems.push({ name: a.name || '', amount: displayAmount, code: a.code || '' });
       } else if (cat === 'equity') {
-        totalEquity += amount < 0 ? -amount : amount;
-        equityItems.push({ name: r.account_name, amount: amount < 0 ? -amount : amount, code: r.account_code });
+        const displayAmount = amount < 0 ? -amount : amount;
+        totalEquity += displayAmount;
+        equityItems.push({ name: a.name || '', amount: displayAmount, code: a.code || '' });
+      } else if (cat === 'revenue' || cat === 'expense') {
+        revenueExpenseBalanceSum += amount;
       }
     });
+    assetItems.sort((a, b) => (a.code || '').localeCompare(b.code || ''));
+    liabilityItems.sort((a, b) => (a.code || '').localeCompare(b.code || ''));
+    equityItems.sort((a, b) => (a.code || '').localeCompare(b.code || ''));
+    // PF-04 / Issue 04: Include net income in equity so Assets = Liabilities + Equity (balance sheet equation).
+    // Derived from P&L accounts (revenue − expense) to date; no closing entries in frozen model.
+    const netIncome = Math.round(-revenueExpenseBalanceSum * 100) / 100;
+    if (netIncome !== 0) {
+      totalEquity += netIncome;
+      equityItems.push({ name: 'Net Income (to date)', amount: netIncome, code: '' });
+    }
     const totalLiabilitiesAndEquity = totalLiabilities + totalEquity;
     const difference = Math.round((totalAssets - totalLiabilitiesAndEquity) * 100) / 100;
     return {
@@ -348,7 +386,8 @@ export const accountingReportsService = {
   },
 
   /**
-   * Sales Profit: per-sale revenue, cost (from sales_items/sale_items + product cost or unit_cost), profit.
+   * Sales Profit: per-sale revenue (canonical sale total), cost (from line items × product cost), profit.
+   * Issue 07: Revenue always from sales.total (includes shipping/correct total); cost from sales_items/sale_items + product cost_price/cost.
    */
   async getSalesProfit(
     companyId: string,
@@ -371,24 +410,19 @@ export const accountingReportsService = {
       return { rows: [], totalRevenue: 0, totalCost: 0, totalProfit: 0, startDate, endDate };
     }
     const saleIds = sales.map((s: any) => s.id);
-    const items = await getSaleLineItems('sale_id, quantity, unit_price, total, product_id, product:products(cost_price, cost)', saleIds);
+    const items = await getSaleLineItems('sale_id, quantity, unit_price, total, product_id, product:products(cost_price)', saleIds);
     const costBySale: Record<string, number> = {};
-    const revenueBySale: Record<string, number> = {};
     saleIds.forEach((id) => {
       costBySale[id] = 0;
-      revenueBySale[id] = 0;
     });
     items.forEach((item: any) => {
       const saleId = item.sale_id;
-      const rev = Number(item.total) || Number(item.unit_price) * Number(item.quantity) || 0;
-      revenueBySale[saleId] = (revenueBySale[saleId] || 0) + rev;
-      const costPerUnit =
-        Number((item.product && (item.product.cost_price ?? item.product.cost)) || 0) || 0;
+      const costPerUnit = Number((item.product && item.product.cost_price) || 0) || 0;
       const cost = costPerUnit * (Number(item.quantity) || 0);
       costBySale[saleId] = (costBySale[saleId] || 0) + cost;
     });
     const rows: SalesProfitRow[] = sales.map((s: any) => {
-      const revenue = revenueBySale[s.id] ?? Number(s.total) ?? 0;
+      const revenue = Number(s.total) ?? 0;
       const cost = costBySale[s.id] ?? 0;
       const profit = revenue - cost;
       const margin_pct = revenue > 0 ? (profit / revenue) * 100 : 0;
@@ -453,6 +487,7 @@ export const accountingReportsService = {
     const { data: products } = await supabase
       .from('products')
       .select('id, name, sku, cost_price, cost')
+      .eq('company_id', companyId)
       .in('id', productIds);
     const productMap = new Map((products || []).map((p: any) => [p.id, p]));
     let totalValue = 0;
@@ -463,10 +498,14 @@ export const accountingReportsService = {
         rec.costQty > 0 ? rec.costSum / rec.costQty : Number(p?.cost_price ?? p?.cost) || 0;
       const total_value = Math.round(rec.qty * avgCost * 100) / 100;
       totalValue += total_value;
+      const product_name =
+        (p?.name != null && String(p.name).trim() !== '') ? String(p.name).trim() : (p ? 'Unnamed product' : `Unknown product (${pid.slice(0, 8)})`);
+      const sku =
+        (p?.sku != null && String(p.sku).trim() !== '') ? String(p.sku).trim() : '—';
       return {
         product_id: pid,
-        product_name: p?.name || '—',
-        sku: p?.sku || '—',
+        product_name,
+        sku,
         quantity: rec.qty,
         unit_cost: Math.round(avgCost * 100) / 100,
         total_value,

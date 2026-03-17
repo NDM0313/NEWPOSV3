@@ -59,7 +59,8 @@ export type TransactionSource =
   | 'Expense' 
   | 'Payment'
   | 'Purchase'
-  | 'Manual';
+  | 'Manual'
+  | 'Reversal';
 
 export type PaymentMethod = 'Cash' | 'Bank' | 'Mobile Wallet';
 
@@ -107,6 +108,7 @@ interface AccountingContextType {
   
   // Core functions
   createEntry: (entry: Omit<AccountingEntry, 'id' | 'date' | 'createdBy'>) => Promise<boolean>;
+  createReversalEntry: (originalJournalEntryId: string, reason?: string) => Promise<boolean>;
   refreshEntries: () => Promise<void>;
   getEntriesByReference: (referenceNo: string) => AccountingEntry[];
   getEntriesBySource: (source: TransactionSource) => AccountingEntry[];
@@ -132,6 +134,7 @@ interface AccountingContextType {
   recordWorkerPayment: (params: WorkerPaymentParams) => Promise<boolean | { referenceNumber: string }>;
   recordExpense: (params: ExpenseParams) => Promise<boolean>;
   recordPurchase: (params: PurchaseParams) => Promise<boolean>;
+  recordPurchaseReturn: (params: PurchaseReturnParams) => Promise<boolean>;
   recordSupplierPayment: (params: SupplierPaymentParams) => Promise<boolean>;
   /** On-account customer payment (no invoice): Dr Cash/Bank, Cr AR; ledger by customerId */
   recordOnAccountCustomerPayment: (params: OnAccountCustomerPaymentParams) => Promise<boolean>;
@@ -245,6 +248,16 @@ export interface PurchaseParams {
   description: string;
 }
 
+export interface PurchaseReturnParams {
+  returnId: string;
+  returnNo: string;
+  supplierName: string;
+  supplierId?: string;
+  amount: number;
+  /** Credit account: reverse of purchase (default Inventory) */
+  creditAccount?: 'Inventory' | 'Purchase Expense';
+}
+
 export interface SupplierPaymentParams {
   purchaseId?: string;
   supplierName: string;
@@ -341,6 +354,7 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
       'payment': 'Payment',
       'worker_payment': 'Payment',
       'manual': 'Manual',
+      'correction_reversal': 'Reversal',
     };
 
     const source = sourceMap[journalEntry.reference_type || 'manual'] || 'Manual';
@@ -736,7 +750,7 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
         entry_date: new Date().toISOString().split('T')[0],
         description: descRetry || undefined,
         reference_type: isWorkerPaymentRetry ? 'worker_payment' : entry.source.toLowerCase(),
-        reference_id: isWorkerPaymentRetry ? entry.metadata.workerId : (entry.metadata?.saleId || entry.metadata?.purchaseId || entry.metadata?.expenseId || entry.metadata?.bookingId || null),
+        reference_id: isWorkerPaymentRetry ? entry.metadata.workerId : (entry.metadata?.purchaseReturnId || entry.metadata?.saleId || entry.metadata?.purchaseId || entry.metadata?.expenseId || entry.metadata?.bookingId || null),
         created_by: currentUserId || null,
         attachments: entry.metadata?.attachments && entry.metadata.attachments.length > 0 ? entry.metadata.attachments : undefined,
       };
@@ -902,7 +916,7 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
         entry_date: entryDate,
         description: descriptionToSave || undefined,
         reference_type: manualRefType || (isWorkerPayment ? 'worker_payment' : entry.source.toLowerCase()),
-        reference_id: isWorkerPayment ? entry.metadata.workerId : (entry.metadata?.saleId || entry.metadata?.purchaseId || entry.metadata?.expenseId || entry.metadata?.bookingId || null),
+        reference_id: isWorkerPayment ? entry.metadata.workerId : (entry.metadata?.purchaseReturnId || entry.metadata?.saleId || entry.metadata?.purchaseId || entry.metadata?.expenseId || entry.metadata?.bookingId || null),
         created_by: currentUserId || null,
         attachments: entry.metadata?.attachments && entry.metadata.attachments.length > 0 ? entry.metadata.attachments : undefined,
       };
@@ -1602,6 +1616,22 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
     });
   };
 
+  /** Issue 12: Purchase return accounting reversal — Dr AP (reduce payable), Cr Inventory/Purchase Expense */
+  const recordPurchaseReturn = async (params: PurchaseReturnParams): Promise<boolean> => {
+    const { returnId, returnNo, supplierName, supplierId, amount, creditAccount = 'Inventory' } = params;
+    if (!amount || amount <= 0) return true;
+    return await createEntry({
+      source: 'Purchase Return',
+      referenceNo: returnNo,
+      debitAccount: 'Accounts Payable',
+      creditAccount,
+      amount,
+      description: `Purchase Return ${returnNo} - ${supplierName}`,
+      module: 'Purchases',
+      metadata: { supplierId, supplierName, purchaseReturnId: returnId }
+    });
+  };
+
   const recordSupplierPayment = async (params: SupplierPaymentParams): Promise<boolean> => {
     const { purchaseId, supplierName, supplierId, amount, paymentMethod, referenceNo } = params;
 
@@ -1646,6 +1676,37 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
     await Promise.all([loadAccounts(), loadEntries()]);
   }, [loadAccounts, loadEntries]);
 
+  /** Safe manual correction: create a reversal JE for the given journal entry (PF-07). */
+  const createReversalEntry = useCallback(async (originalJournalEntryId: string, reason?: string): Promise<boolean> => {
+    if (!companyId) {
+      toast.error('Company not set');
+      return false;
+    }
+    const validBranchId = (branchId && branchId !== 'all') ? branchId : null;
+    const { data: { user } } = await supabase.auth.getUser();
+    const createdBy = (user as any)?.id ?? null;
+    try {
+      const result = await accountingService.createReversalEntry(
+        companyId,
+        validBranchId,
+        originalJournalEntryId,
+        createdBy,
+        reason
+      );
+      if (result) {
+        await refreshEntries();
+        toast.success('Reversal entry created');
+        return true;
+      }
+      toast.error('Could not create reversal (entry not found or wrong company)');
+      return false;
+    } catch (e: any) {
+      console.error('[ACCOUNTING] createReversalEntry failed:', e);
+      toast.error(e?.message || 'Failed to create reversal');
+      return false;
+    }
+  }, [companyId, branchId, refreshEntries]);
+
   const getAccountsByType = useCallback((type: PaymentMethod) => accounts.filter(account => account.type === type), [accounts]);
   const getAccountById = useCallback((id: string) => accounts.find(account => account.id === id), [accounts]);
 
@@ -1654,6 +1715,7 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
     balances,
     loading,
     createEntry,
+    createReversalEntry,
     refreshEntries,
     getEntriesByReference,
     getEntriesBySource,
@@ -1675,6 +1737,7 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
     recordWorkerPayment,
     recordExpense,
     recordPurchase,
+    recordPurchaseReturn,
     recordSupplierPayment,
     recordOnAccountCustomerPayment,
     accounts,
@@ -1682,13 +1745,13 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
     getAccountById,
   }), [
     entries, balances, loading, accounts,
-    createEntry, refreshEntries, getEntriesByReference, getEntriesBySource,
+    createEntry, createReversalEntry, refreshEntries, getEntriesByReference, getEntriesBySource,
     getAccountBalance, getEntriesBySupplier, getEntriesByCustomer, getEntriesByWorker,
     getSupplierBalance, getCustomerBalance, getWorkerBalance,
     recordSale, recordSalePayment, recordRentalBooking, recordRentalDelivery,
     recordRentalCreditDelivery, recordRentalReturn, recordStudioSale,
     recordWorkerJobCompletion, recordWorkerPayment, recordExpense, recordPurchase,
-    recordSupplierPayment, recordOnAccountCustomerPayment, getAccountsByType, getAccountById,
+    recordPurchaseReturn, recordSupplierPayment, recordOnAccountCustomerPayment, getAccountsByType, getAccountById,
   ]);
 
   return (
@@ -1708,4 +1771,9 @@ export const useAccounting = () => {
     throw new Error('useAccounting must be used within AccountingProvider');
   }
   return context;
+};
+
+/** Optional accounting context (returns undefined when outside provider). Use when consumer may render before provider or during HMR. */
+export const useAccountingOptional = (): AccountingContextType | undefined => {
+  return useContext(AccountingContext);
 };

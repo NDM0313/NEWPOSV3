@@ -468,10 +468,11 @@ export const Dashboard = () => {
         </div>
       </div>
 
+      {/* Issue 05: Same source as executive summary (displayMetrics) so cards match reports */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
         <StatCard 
           title="Total Due (Receivables)" 
-          value={formatCurrency(metrics.totalReceivables)} 
+          value={formatCurrency(displayMetricsWithCashBank.receivables)} 
           change="—" 
           icon={ArrowDownRight} 
           trend="up"
@@ -479,7 +480,7 @@ export const Dashboard = () => {
         />
         <StatCard 
           title="Supplier Due (Payables)" 
-          value={formatCurrency(metrics.totalPayables)} 
+          value={formatCurrency(displayMetricsWithCashBank.payables)} 
           change="—" 
           icon={ArrowUpRight} 
           trend="down"
@@ -487,15 +488,15 @@ export const Dashboard = () => {
         />
         <StatCard 
           title="Net Profit" 
-          value={formatCurrency(metrics.netProfit)} 
-          change={metrics.netProfit >= 0 ? "—" : "—"} 
+          value={formatCurrency(displayMetricsWithCashBank.monthly_profit)} 
+          change={displayMetricsWithCashBank.monthly_profit >= 0 ? "—" : "—"} 
           icon={DollarSign} 
-          trend={metrics.netProfit >= 0 ? "up" : "down"}
+          trend={displayMetricsWithCashBank.monthly_profit >= 0 ? "up" : "down"}
           iconColor="text-[#10B981]"
         />
         <StatCard 
           title="Total Sales" 
-          value={formatCurrency(metrics.totalSales)} 
+          value={formatCurrency(displayMetricsWithCashBank.monthly_revenue)} 
           change="—" 
           icon={ShoppingBag} 
           trend="up"

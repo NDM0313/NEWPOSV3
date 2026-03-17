@@ -52,9 +52,13 @@ export interface StudioProduction {
   generated_product_id?: string | null;
   /** sales_items.id of the generated studio line. Pricing sync updates only this item. */
   generated_invoice_item_id?: string | null;
+  /** Pricing Calculator: percentage | fixed */
+  profit_margin_mode?: string | null;
+  /** Pricing Calculator: margin % or fixed amount */
+  profit_margin_value?: number | null;
 }
 
-export type StudioProductionStageType = 'dyer' | 'stitching' | 'handwork';
+export type StudioProductionStageType = 'dyer' | 'stitching' | 'handwork' | 'extra';
 export type StudioProductionStageStatus = 'pending' | 'assigned' | 'in_progress' | 'completed';
 
 export interface StudioProductionStage {
@@ -466,6 +470,22 @@ export const studioProductionService = {
       await supabase.from('stock_movements').insert(reversePayload);
       // Trigger updates products.current_stock; no direct update.
     }
+  },
+
+  /** Update profit margin for Pricing Calculator (persists so values show after back/forward). */
+  async updateProductionProfitMargin(
+    productionId: string,
+    payload: { mode: 'percentage' | 'fixed'; value: number }
+  ): Promise<void> {
+    const { error } = await supabase
+      .from('studio_productions')
+      .update({
+        profit_margin_mode: payload.mode,
+        profit_margin_value: payload.value,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', productionId);
+    if (error) throw error;
   },
 
   /**

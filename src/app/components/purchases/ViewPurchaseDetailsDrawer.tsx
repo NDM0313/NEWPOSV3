@@ -1434,7 +1434,7 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
               </div>
 
               {loadingPayments ? (
-                <div className="text-center py-12 text-gray-400">Loading payments...</div>
+                <div className="text-center py-12 text-gray-400">Loading…</div>
               ) : payments.length > 0 ? (
                 <div className="space-y-4">
                   {/* Summary Cards by Payment Method */}
@@ -1649,7 +1649,7 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
               <h3 className="text-lg font-semibold text-white mb-4">Activity Timeline</h3>
               
               {loadingActivityLogs ? (
-                <div className="text-center py-12 text-gray-400">Loading activity logs...</div>
+                <div className="text-center py-12 text-gray-400">Loading…</div>
               ) : activityLogs.length > 0 ? (
                 <div className="space-y-4">
                   {activityLogs.map((log, index) => {

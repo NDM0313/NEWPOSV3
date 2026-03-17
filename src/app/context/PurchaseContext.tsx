@@ -5,7 +5,7 @@
 
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, ReactNode } from 'react';
 import { documentNumberService } from '@/app/services/documentNumberService';
-import { useAccounting } from '@/app/context/AccountingContext';
+import { useAccountingOptional } from '@/app/context/AccountingContext';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { purchaseService, Purchase as SupabasePurchase, PurchaseItem as SupabasePurchaseItem } from '@/app/services/purchaseService';
 import { productService } from '@/app/services/productService';
@@ -222,7 +222,7 @@ export const convertFromSupabasePurchase = (supabasePurchase: any): Purchase => 
 export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
   const [purchases, setPurchases] = useState<Purchase[]>([]);
   const [loading, setLoading] = useState(true);
-  const accounting = useAccounting();
+  const accounting = useAccountingOptional();
   const { formatCurrency } = useFormatCurrency();
   const { companyId, branchId, user } = useSupabase();
 
@@ -688,8 +688,8 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
         }
       }
       
-      // Auto-post to accounting if paid
-      if (newPurchase.paid > 0) {
+      // Auto-post to accounting if paid (skip when accounting context not yet available, e.g. HMR)
+      if (newPurchase.paid > 0 && accounting) {
         accounting.recordSupplierPayment({
           supplierId: newPurchase.supplier,
           supplierName: newPurchase.supplierName,
@@ -765,6 +765,11 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
       // This must happen BEFORE purchase_items are deleted/updated so we can fetch old items
       const purchase = getPurchaseById(id);
       const isFinalStatus = (updates.status === 'received' || updates.status === 'final') || (purchase?.status === 'final' || purchase?.status === 'received');
+      // PF-02: Capture old amounts for accounting repost (reverse old JE/ledger, post new)
+      const accountingRepostNeeded = isFinalStatus && (updates.total !== undefined || updates.paid !== undefined || updates.discount !== undefined || ((updates as any).items && Array.isArray((updates as any).items)) || Array.isArray((updates as any).expenses));
+      const oldTotalForRepost = (accountingRepostNeeded && purchase) ? (Number(purchase.total) || 0) : 0;
+      const oldPaidForRepost = (accountingRepostNeeded && purchase) ? (Number(purchase.paid) || 0) : 0;
+      const oldDiscountForRepost = (accountingRepostNeeded && purchase) ? (Number(purchase.discount) || 0) : 0;
       let stockMovementDeltas: Array<{
         productId: string;
         variationId?: string;
@@ -1117,7 +1122,226 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
           toast.warning('Purchase updated, but stock movements failed. Check logs.');
         }
       }
-      
+
+      // PF-02: Purchase Edit Re-Post — reverse old JE + supplier ledger, post new (frozen accounting model)
+      if (accountingRepostNeeded && companyId) {
+        try {
+          const { supabase } = await import('@/lib/supabase');
+          const updated = await purchaseService.getPurchase(id);
+          if (!updated) throw new Error('Purchase not found after update');
+          const newTotal = Number(updated.total ?? 0) || 0;
+          const newPaid = Number(updated.paid_amount ?? 0) || 0;
+          const newDiscount = Number(updated.discount_amount ?? 0) || 0;
+          const supplierId = (updated as any).supplier_id || (updated as any).supplier?.id;
+          const supplierName = (updated as any).supplier_name || (updated as any).supplier?.name || 'Supplier';
+          const poNo = (updated as any).po_no || `PUR-${id.substring(0, 8)}`;
+          const entryDate = (updated as any).po_date || new Date().toISOString().slice(0, 10);
+          let effectiveBranchId = (updated as any).branch_id || branchId;
+          if (!effectiveBranchId || effectiveBranchId === 'all') {
+            const branches = await branchService.getAllBranches(companyId);
+            effectiveBranchId = branches?.length ? branches[0].id : null;
+          }
+
+          // 1) Find and remove existing journal entry for this purchase
+          const { data: existingJEs } = await supabase
+            .from('journal_entries')
+            .select('id')
+            .eq('company_id', companyId)
+            .eq('reference_type', 'purchase')
+            .eq('reference_id', id);
+          if (existingJEs && existingJEs.length > 0) {
+            for (const je of existingJEs) {
+              await supabase.from('journal_entry_lines').delete().eq('journal_entry_id', je.id);
+              await supabase.from('journal_entries').delete().eq('id', je.id);
+            }
+            console.log('[PURCHASE CONTEXT] PF-02: Reversed existing purchase JE(s) for edit:', existingJEs.length);
+          }
+
+          // 2) Post new journal entry (same structure as create)
+          if (newTotal > 0) {
+            let inventoryAccountId: string | null = null;
+            let apAccountId: string | null = null;
+            let discountAccountId: string | null = null;
+            let { data: inv } = await supabase.from('accounts').select('id').eq('company_id', companyId).or('name.ilike.Inventory,name.ilike.Stock,code.eq.1500').limit(1);
+            inventoryAccountId = inv?.[0]?.id ?? null;
+            if (!inventoryAccountId) {
+              const { data: asset } = await supabase.from('accounts').select('id').eq('company_id', companyId).eq('type', 'asset').limit(1);
+              inventoryAccountId = asset?.[0]?.id ?? null;
+            }
+            const { data: ap } = await supabase.from('accounts').select('id').eq('company_id', companyId).or('name.ilike.Accounts Payable,code.eq.2000').limit(1);
+            apAccountId = ap?.[0]?.id ?? null;
+            const { data: disc } = await supabase.from('accounts').select('id').eq('company_id', companyId).or('name.ilike.Discount Received,name.ilike.Purchase Discount,name.ilike.Operating Expense').limit(1);
+            discountAccountId = disc?.[0]?.id ?? null;
+            if (!inventoryAccountId || !apAccountId) {
+              console.error('[PURCHASE CONTEXT] PF-02: Missing accounts for repost. Skipping JE.');
+            } else {
+              const itemsSubtotal = Number((updated as any).subtotal ?? 0) || newTotal;
+              const charges = Array.isArray((updated as any).charges) ? (updated as any).charges : (Array.isArray((updated as any).purchase_charges) ? (updated as any).purchase_charges : []);
+              const { data: mainJE, error: jeErr } = await supabase
+                .from('journal_entries')
+                .insert({
+                  company_id: companyId,
+                  branch_id: effectiveBranchId,
+                  entry_date: entryDate,
+                  description: `Purchase ${poNo} from ${supplierName} (edited)`,
+                  reference_type: 'purchase',
+                  reference_id: id,
+                  created_by: user?.id,
+                })
+                .select()
+                .single();
+              if (jeErr || !mainJE) {
+                console.error('[PURCHASE CONTEXT] PF-02: Failed to create repost JE:', jeErr);
+                throw new Error(`Purchase edit repost JE failed: ${jeErr?.message || 'Unknown'}`);
+              }
+              const jid = mainJE.id;
+              if (itemsSubtotal > 0) {
+                await supabase.from('journal_entry_lines').insert({
+                  journal_entry_id: jid,
+                  account_id: inventoryAccountId,
+                  debit: itemsSubtotal,
+                  credit: 0,
+                  description: `Inventory purchase ${poNo}`,
+                });
+                await supabase.from('journal_entry_lines').insert({
+                  journal_entry_id: jid,
+                  account_id: apAccountId,
+                  debit: 0,
+                  credit: itemsSubtotal,
+                  description: `Payable to ${supplierName}`,
+                });
+              }
+              for (const c of charges) {
+                const amount = Number(c?.amount ?? 0);
+                if (amount <= 0) continue;
+                if ((c?.charge_type || c?.chargeType) === 'discount' && discountAccountId) {
+                  await supabase.from('journal_entry_lines').insert({
+                    journal_entry_id: jid,
+                    account_id: apAccountId,
+                    debit: amount,
+                    credit: 0,
+                    description: 'Purchase discount',
+                  });
+                  await supabase.from('journal_entry_lines').insert({
+                    journal_entry_id: jid,
+                    account_id: discountAccountId,
+                    debit: 0,
+                    credit: amount,
+                    description: 'Discount received',
+                  });
+                } else {
+                  await supabase.from('journal_entry_lines').insert({
+                    journal_entry_id: jid,
+                    account_id: inventoryAccountId,
+                    debit: amount,
+                    credit: 0,
+                    description: `${c?.charge_type || c?.chargeType || 'charge'} (purchase)`,
+                  });
+                  await supabase.from('journal_entry_lines').insert({
+                    journal_entry_id: jid,
+                    account_id: apAccountId,
+                    debit: 0,
+                    credit: amount,
+                    description: `Payable - ${c?.charge_type || c?.chargeType || 'charge'}`,
+                  });
+                }
+              }
+              console.log('[PURCHASE CONTEXT] PF-02: Created new purchase JE after edit:', mainJE.id);
+            }
+          }
+
+          // 3) Supplier ledger: reversal then new (so balance matches edited purchase)
+          if (supplierId) {
+            const ledger = await getOrCreateLedger(companyId, 'supplier', supplierId, supplierName);
+            if (ledger) {
+              if (oldTotalForRepost > 0) {
+                await addLedgerEntry({
+                  companyId,
+                  ledgerId: ledger.id,
+                  entryDate,
+                  debit: oldTotalForRepost,
+                  credit: 0,
+                  source: 'purchase',
+                  referenceNo: poNo,
+                  referenceId: id,
+                  remarks: `Reversal (edit): Purchase ${poNo}`,
+                });
+              }
+              if (oldPaidForRepost > 0) {
+                await addLedgerEntry({
+                  companyId,
+                  ledgerId: ledger.id,
+                  entryDate,
+                  debit: 0,
+                  credit: oldPaidForRepost,
+                  source: 'payment',
+                  referenceNo: poNo,
+                  referenceId: id,
+                  remarks: `Reversal (edit): Payment ${poNo}`,
+                });
+              }
+              if (oldDiscountForRepost > 0) {
+                await addLedgerEntry({
+                  companyId,
+                  ledgerId: ledger.id,
+                  entryDate,
+                  debit: 0,
+                  credit: oldDiscountForRepost,
+                  source: 'purchase',
+                  referenceNo: poNo,
+                  referenceId: id,
+                  remarks: `Reversal (edit): Discount ${poNo}`,
+                });
+              }
+              if (newTotal > 0) {
+                await addLedgerEntry({
+                  companyId,
+                  ledgerId: ledger.id,
+                  entryDate,
+                  debit: 0,
+                  credit: newTotal,
+                  source: 'purchase',
+                  referenceNo: poNo,
+                  referenceId: id,
+                  remarks: `Purchase ${poNo} (edited)`,
+                });
+              }
+              if (newPaid > 0) {
+                await addLedgerEntry({
+                  companyId,
+                  ledgerId: ledger.id,
+                  entryDate,
+                  debit: newPaid,
+                  credit: 0,
+                  source: 'payment',
+                  referenceNo: poNo,
+                  referenceId: id,
+                  remarks: `Payment for ${poNo}`,
+                });
+              }
+              if (newDiscount > 0) {
+                await addLedgerEntry({
+                  companyId,
+                  ledgerId: ledger.id,
+                  entryDate,
+                  debit: newDiscount,
+                  credit: 0,
+                  source: 'purchase',
+                  referenceNo: poNo,
+                  referenceId: id,
+                  remarks: `Discount for ${poNo}`,
+                });
+              }
+              console.log('[PURCHASE CONTEXT] PF-02: Supplier ledger updated for edit.');
+              window.dispatchEvent(new CustomEvent('ledgerUpdated', { detail: { ledgerType: 'supplier', entityId: supplierId } }));
+            }
+          }
+        } catch (repostErr: any) {
+          console.error('[PURCHASE CONTEXT] PF-02: Purchase edit repost failed:', repostErr);
+          toast.warning('Purchase updated, but accounting repost failed. Check logs.');
+        }
+      }
+
       // Update local state
       setPurchases(prev => prev.map(purchase => 
         purchase.id === id 

@@ -39,6 +39,8 @@ export function useCheckPermission() {
     canDeletePurchase: checkPermissionUtil(currentUser, 'purchases', 'delete'),
     canViewReports: checkPermissionUtil(currentUser, 'reports', 'view'),
     canAccessAccounting: checkPermissionUtil(currentUser, 'accounting', 'view'),
+    /** Can post accounting (manual entry, reversal, add account, pay courier). Admin/Manager only when they have accounting access. */
+    canPostAccounting: checkPermissionUtil(currentUser, 'accounting', 'create'),
     canManageSettings: checkPermissionUtil(currentUser, 'settings', 'view'),
     canManageUsers: checkPermissionUtil(currentUser, 'users', 'view'),
     canAccessPurchases: checkPermissionUtil(currentUser, 'purchases', 'view'),

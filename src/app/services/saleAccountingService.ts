@@ -4,13 +4,18 @@
  * ERP Rule: Journal entries are created ONLY when a sale is finalized.
  *
  *   Simple Sale (no discount / extras):
- *     Dr Accounts Receivable (2000)   total
+ *     Dr Accounts Receivable (1100)   total
  *     Cr Sales Revenue (4000)                  total
  *
  *   Sale with discount_amount > 0:
- *     Dr Accounts Receivable (2000)   net_total  (total after discount)
+ *     Dr Accounts Receivable (1100)   net_total  (total after discount)
  *     Dr Discount Allowed   (5200)    discount_amount
  *     Cr Sales Revenue      (4000)               gross_total  (subtotal before discount)
+ *
+ *   Issue 08 – COGS: When sale has line items with product cost:
+ *     Dr Cost of Production (5000)   totalCogs
+ *     Cr Inventory (1200)                     totalCogs
+ *   (Same journal entry; totalCogs = sum(line.quantity * product.cost_price).)
  *
  *   Sale with extra_expenses > 0:
  *     Dr Extra Expense (5300)   extra_expenses
@@ -18,7 +23,7 @@
  *     (separate journal entry, reference_type='sale_extra_expense')
  *
  *   Cancelled:
- *     Reversal of the original sale entry.
+ *     Reversal of the original sale entry (including COGS reversal: Dr Inventory Cr COGS).
  *
  * Duplicate Protection: One entry per sale (reference_type='sale', reference_id=saleId).
  */
@@ -47,32 +52,32 @@ async function saleJournalEntryExists(saleId: string): Promise<boolean> {
   }
 }
 
-/** Ensure Accounts Receivable (2000) exists for the company; create if missing. */
+/** Ensure Accounts Receivable (1100) exists for the company; create if missing. Canonical: 1100=AR, 2000=AP. */
 async function ensureARAccount(companyId: string): Promise<{ id: string } | null> {
-  let account = await accountHelperService.getAccountByCode('2000', companyId);
+  let account = await accountHelperService.getAccountByCode('1100', companyId);
   if (account?.id) return account;
 
-  // Fallback: look by name
+  // Fallback: look by name (exclude 2000 — that is Accounts Payable)
   const { data: byName } = await supabase
     .from('accounts')
-    .select('id')
+    .select('id, code')
     .eq('company_id', companyId)
     .ilike('name', '%Accounts Receivable%')
     .eq('is_active', true)
-    .limit(1)
-    .maybeSingle();
+    .limit(5);
 
-  if (byName?.id) return byName;
+  const arByName = (byName as { id: string; code: string }[] | null)?.find((a) => a.code !== '2000');
+  if (arByName?.id) return { id: arByName.id };
 
-  // Auto-create if missing
+  // Auto-create if missing (canonical code 1100)
   try {
     const { data: created, error } = await supabase
       .from('accounts')
       .insert({
         company_id: companyId,
-        code: '2000',
+        code: '1100',
         name: 'Accounts Receivable',
-        type: 'Accounts Receivable',
+        type: 'asset',
         balance: 0,
         is_active: true,
       })
@@ -80,7 +85,7 @@ async function ensureARAccount(companyId: string): Promise<{ id: string } | null
       .single();
 
     if (!error && created?.id) {
-      console.log('[saleAccountingService] Created Accounts Receivable (2000) account');
+      console.log('[saleAccountingService] Created Accounts Receivable (1100) account');
       return created;
     }
   } catch (e) {
@@ -182,17 +187,103 @@ async function ensureAPAccount(companyId: string): Promise<{ id: string } | null
   return null;
 }
 
+/** Issue 08: COGS account (5000) for Cost of Production / Cost of Goods Sold. */
+async function ensureCOGSAccount(companyId: string): Promise<{ id: string } | null> {
+  const existing = await accountHelperService.getAccountByCode('5000', companyId);
+  if (existing?.id) return existing;
+  const { data: byName } = await supabase
+    .from('accounts')
+    .select('id')
+    .eq('company_id', companyId)
+    .or('name.ilike.%Cost of Production%,name.ilike.%Cost of Goods Sold%')
+    .eq('is_active', true)
+    .limit(1)
+    .maybeSingle();
+  if (byName?.id) return byName;
+  try {
+    const { data, error } = await supabase
+      .from('accounts')
+      .insert({ company_id: companyId, code: '5000', name: 'Cost of Production', type: 'expense', balance: 0, is_active: true })
+      .select('id')
+      .single();
+    if (!error && data?.id) {
+      console.log('[saleAccountingService] Created COGS account (5000)');
+      return data;
+    }
+  } catch (e) {
+    console.warn('[saleAccountingService] Could not auto-create COGS account:', e);
+  }
+  return null;
+}
+
+/** Issue 08: Inventory asset account (1200). */
+async function ensureInventoryAccount(companyId: string): Promise<{ id: string } | null> {
+  const existing = await accountHelperService.getAccountByCode('1200', companyId);
+  if (existing?.id) return existing;
+  const { data: byName } = await supabase
+    .from('accounts')
+    .select('id')
+    .eq('company_id', companyId)
+    .ilike('name', '%Inventory%')
+    .eq('is_active', true)
+    .limit(1)
+    .maybeSingle();
+  if (byName?.id) return byName;
+  try {
+    const { data, error } = await supabase
+      .from('accounts')
+      .insert({ company_id: companyId, code: '1200', name: 'Inventory', type: 'asset', balance: 0, is_active: true })
+      .select('id')
+      .single();
+    if (!error && data?.id) {
+      console.log('[saleAccountingService] Created Inventory account (1200)');
+      return data;
+    }
+  } catch (e) {
+    console.warn('[saleAccountingService] Could not auto-create Inventory account:', e);
+  }
+  return null;
+}
+
+/**
+ * Issue 08: Compute total COGS for a sale from line items (quantity × product.cost_price).
+ * Uses sales_items first, fallback sale_items. Returns 0 if no items or no cost.
+ */
+async function getSaleCogs(saleId: string): Promise<number> {
+  let items: { quantity: number; product?: { cost_price?: number } | null }[] = [];
+  const { data: fromSalesItems, error: err1 } = await supabase
+    .from('sales_items')
+    .select('quantity, product:products(cost_price)')
+    .eq('sale_id', saleId);
+  if (!err1 && fromSalesItems?.length) {
+    items = fromSalesItems as typeof items;
+  } else {
+    const { data: fromSaleItems } = await supabase
+      .from('sale_items')
+      .select('quantity, product:products(cost_price)')
+      .eq('sale_id', saleId);
+    if (fromSaleItems?.length) items = fromSaleItems as typeof items;
+  }
+  let total = 0;
+  for (const row of items) {
+    const qty = Number(row.quantity) || 0;
+    const cost = Number(row.product?.cost_price) || 0;
+    total += qty * cost;
+  }
+  return Math.round(total * 100) / 100;
+}
+
 export const saleAccountingService = {
   /**
    * Create journal entry when sale is finalized.
    *
    * With discount:
-   *   Dr Accounts Receivable (2000)   net_total
+   *   Dr Accounts Receivable (1100)   net_total
    *   Dr Discount Allowed   (5200)    discount_amount
    *   Cr Sales Revenue      (4000)               gross_total
    *
    * Without discount:
-   *   Dr Accounts Receivable (2000)   total
+   *   Dr Accounts Receivable (1100)   total
    *   Cr Sales Revenue (4000)                  total
    *
    * Safe to call multiple times — duplicate is detected and skipped.
@@ -284,6 +375,31 @@ export const saleAccountingService = {
       credit: hasDiscount ? grossTotal : total,
       description: `Sales Revenue – ${invoiceNo}`,
     });
+
+    // Issue 08: COGS – Dr Cost of Production (5000), Cr Inventory (1200)
+    const totalCogs = await getSaleCogs(saleId);
+    if (totalCogs > 0) {
+      const cogsAccount = await ensureCOGSAccount(companyId);
+      const invAccount = await ensureInventoryAccount(companyId);
+      if (cogsAccount?.id && invAccount?.id) {
+        lines.push({
+          id: '',
+          journal_entry_id: '',
+          account_id: cogsAccount.id,
+          debit: totalCogs,
+          credit: 0,
+          description: `Cost of Goods Sold – ${invoiceNo}`,
+        });
+        lines.push({
+          id: '',
+          journal_entry_id: '',
+          account_id: invAccount.id,
+          debit: 0,
+          credit: totalCogs,
+          description: `Inventory – sale ${invoiceNo}`,
+        });
+      }
+    }
 
     try {
       const result = await accountingService.createEntry(entry, lines);
@@ -382,7 +498,7 @@ export const saleAccountingService = {
    * Create reversing journal entry when a finalized sale is cancelled.
    *
    *   Dr Sales Revenue (4000)         amount   [reversal]
-   *   Cr Accounts Receivable (2000)            amount
+   *   Cr Accounts Receivable (1100)            amount
    *
    * Only creates reversal if an original sale journal entry exists.
    */
@@ -463,6 +579,31 @@ export const saleAccountingService = {
       credit: total,
       description: `Reversal Accounts Receivable – ${invoiceNo}`,
     });
+
+    // Issue 08: Reverse COGS – Dr Inventory (1200), Cr Cost of Production (5000)
+    const totalCogs = await getSaleCogs(saleId);
+    if (totalCogs > 0) {
+      const cogsAccount = await ensureCOGSAccount(companyId);
+      const invAccount = await ensureInventoryAccount(companyId);
+      if (cogsAccount?.id && invAccount?.id) {
+        lines.push({
+          id: '',
+          journal_entry_id: '',
+          account_id: invAccount.id,
+          debit: totalCogs,
+          credit: 0,
+          description: `Reversal Inventory – ${invoiceNo}`,
+        });
+        lines.push({
+          id: '',
+          journal_entry_id: '',
+          account_id: cogsAccount.id,
+          debit: 0,
+          credit: totalCogs,
+          description: `Reversal Cost of Goods Sold – ${invoiceNo}`,
+        });
+      }
+    }
 
     try {
       const result = await accountingService.createEntry(entry, lines);

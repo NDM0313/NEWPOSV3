@@ -532,12 +532,12 @@ export const StudioSaleDetailNew = () => {
     };
   }, []);
 
-  // Map backend stage_type to display name and icon
+  // Map backend stage_type to display name and icon (includes custom type 'extra')
   const stageTypeToStep = (stageType: string, index: number): { name: string; icon: any } => {
-    const order = index + 1;
     if (stageType === 'dyer') return { name: 'Dyeing', icon: Palette };
     if (stageType === 'handwork') return { name: 'Handwork / Embroidery', icon: Sparkles };
     if (stageType === 'stitching') return { name: 'Stitching', icon: Scissors };
+    if (stageType === 'extra') return { name: 'Extra', icon: Scissors };
     return { name: stageType, icon: Scissors };
   };
 
@@ -547,11 +547,11 @@ export const StudioSaleDetailNew = () => {
     stages: Array<{ id: string; stage_type: string; assigned_worker_id?: string | null; assigned_at?: string | null; cost?: number; expected_cost?: number | null; status?: string; expected_completion_date?: string | null; completed_at?: string | null; notes?: string | null; worker?: { id: string; name: string } }>,
     ledgerStatusByStageId?: Record<string, 'unpaid' | 'partial' | 'paid'>
   ): ProductionStep[] => {
-    const stageTypeMap: Record<string, 'dyer' | 'stitching' | 'handwork'> = { dyer: 'dyer', dyeing: 'dyer', stitching: 'stitching', handwork: 'handwork' };
+    const stageTypeMap: Record<string, 'dyer' | 'stitching' | 'handwork' | 'extra'> = { dyer: 'dyer', dyeing: 'dyer', stitching: 'stitching', handwork: 'handwork', extra: 'extra' };
     return stages.map((s, i) => {
       const { name, icon } = stageTypeToStep(s.stage_type, i);
       const workerName = s.assigned_worker_id ? (s.worker?.name || '') : '';
-      const stageType = stageTypeMap[s.stage_type] || undefined;
+      const stageType = stageTypeMap[s.stage_type] ?? (s.stage_type || undefined);
       const ledgerStatus = ledgerStatusByStageId?.[s.id];
       const workerPaymentStatus: 'Payable' | 'Pending' | 'Partial' | 'Paid' =
         ledgerStatus === 'paid' ? 'Paid' : ledgerStatus === 'partial' ? 'Partial' : (s.status === 'completed' ? 'Payable' : 'Pending');
@@ -652,10 +652,17 @@ export const StudioSaleDetailNew = () => {
           try {
             const productions = await studioProductionService.getProductionsBySaleId(sale.id);
             if (productions.length > 0) {
-              const prodId = productions[0].id;
+              const prod = productions[0] as any;
+              const prodId = prod.id;
               setProductionId(prodId);
-              setInvoiceLinked(!!productions[0].generated_invoice_item_id);
-              setGeneratedInvoiceItemId(productions[0].generated_invoice_item_id ?? null);
+              setInvoiceLinked(!!prod.generated_invoice_item_id);
+              setGeneratedInvoiceItemId(prod.generated_invoice_item_id ?? null);
+              if (prod.profit_margin_mode === 'fixed' || prod.profit_margin_mode === 'percentage') {
+                setProfitMarginMode(prod.profit_margin_mode);
+              }
+              if (prod.profit_margin_value != null && prod.profit_margin_value !== '') {
+                setProfitMarginValue(String(prod.profit_margin_value));
+              }
               await studioProductionService.syncWorkerLedgerEntriesForProduction(prodId);
               window.dispatchEvent(new CustomEvent('studio-production-saved'));
               const stages = await studioProductionService.getStagesByProductionId(prodId);
@@ -718,6 +725,8 @@ export const StudioSaleDetailNew = () => {
             convertedDetail.balanceDue = Math.max(0, convertedDetail.totalAmount - (convertedDetail.paidAmount || 0));
           } catch (_) { /* ignore */ }
           setSaleDetail({ ...convertedDetail, productionSteps });
+          // Restore custom tasks from persisted 'extra' stages so they show after navigation
+          setCustomTasks(productionSteps.filter((s) => s.stageType === 'extra').map((s) => ({ id: s.id, name: s.name })));
           return;
         }
       } catch (_) {
@@ -1243,6 +1252,17 @@ export const StudioSaleDetailNew = () => {
       }
       setHasUnsavedChanges(false);
       savedSuccessfullyRef.current = true;
+      // Persist Pricing Calculator profit margin so it shows after back/forward
+      if (currentProductionId) {
+        try {
+          await studioProductionService.updateProductionProfitMargin(currentProductionId, {
+            mode: profitMarginMode,
+            value: parseFloat(profitMarginValue) || 0,
+          });
+        } catch (marginErr: any) {
+          if (import.meta.env?.DEV) console.warn('[StudioSaleDetail] updateProductionProfitMargin failed:', marginErr?.message);
+        }
+      }
       toast.success('Changes saved to database.');
       window.dispatchEvent(new CustomEvent('studio-production-saved'));
       // Auto-sync invoice line if one is already linked and sale is still draft
@@ -1265,7 +1285,7 @@ export const StudioSaleDetailNew = () => {
     } finally {
       setSavingStage(false);
     }
-  }, [saleDetail, productionId, ensureProductionForSale, reloadProductionSteps, workers, autoSyncInvoiceAfterCostChange]);
+  }, [saleDetail, productionId, ensureProductionForSale, reloadProductionSteps, workers, autoSyncInvoiceAfterCostChange, profitMarginMode, profitMarginValue]);
 
   const handleSaveAndLeave = useCallback(async () => {
     const target = pendingLeaveTarget;
@@ -1967,20 +1987,22 @@ export const StudioSaleDetailNew = () => {
           notes: ''
         });
       } else {
-        // Custom task – preserve existing if same id
+        // Custom task – preserve existing if same id; backend persists as stage_type 'extra'
         const customTask = customTasks.find(t => t.id === taskId);
         const existing = findExistingById(taskId);
         if (customTask) {
-          newSteps.push(existing ? {
+          const base = existing ? {
             ...existing,
             order: order++,
             name: customTask.name,
             icon: MoreHorizontal,
+            stageType: 'extra' as const,
           } : {
             id: customTask.id,
             name: customTask.name,
             icon: MoreHorizontal,
             order: order++,
+            stageType: 'extra' as const,
             assignedWorker: '',
             assignedWorkers: [],
             assignedDate: '',
@@ -1988,7 +2010,8 @@ export const StudioSaleDetailNew = () => {
             workerCost: 0,
             status: 'Pending' as const,
             notes: ''
-          });
+          };
+          newSteps.push(base);
         }
       }
     });
@@ -2015,16 +2038,31 @@ export const StudioSaleDetailNew = () => {
           toast.error('Select at least one task.');
           return;
         }
-        const taskIdToStageType: Record<string, 'dyer' | 'handwork' | 'stitching'> = {
+        const taskIdToStageType: Record<string, 'dyer' | 'handwork' | 'stitching' | 'extra'> = {
           dyeing: 'dyer',
           handwork: 'handwork',
           stitching: 'stitching',
         };
-        const stagesToSave = selectedTaskIds
-          .map((tid) => taskIdToStageType[tid])
-          .filter((t): t is 'dyer' | 'handwork' | 'stitching' => !!t);
+        // Include custom tasks as 'extra' (one per production due to DB unique (production_id, stage_type))
+        let addedExtra = false;
+        const customSelected = selectedTaskIds.filter((tid) => customTasks.some((ct) => ct.id === tid));
+        const stagesToSave: Array<'dyer' | 'handwork' | 'stitching' | 'extra'> = [];
+        for (const tid of selectedTaskIds) {
+          const st = taskIdToStageType[tid];
+          if (st) {
+            stagesToSave.push(st);
+            continue;
+          }
+          if (customTasks.some((ct) => ct.id === tid) && !addedExtra) {
+            stagesToSave.push('extra');
+            addedExtra = true;
+          }
+        }
+        if (customSelected.length > 1) {
+          toast.info('Only one custom task is persisted per order. Others are kept in this session only.');
+        }
         if (stagesToSave.length === 0) {
-          toast.error('Select at least one standard task (Dyeing, Handwork, or Stitching).');
+          toast.error('Select at least one task (Dyeing, Handwork, Stitching, or a custom task).');
           return;
         }
         if (import.meta.env?.DEV) {
@@ -3355,82 +3393,96 @@ export const StudioSaleDetailNew = () => {
                 </div>
               </div>
 
-              {/* PAYMENT SECTION - NOW AT BOTTOM */}
-              <div>
+              {/* PAYMENT SECTION – disabled once invoice is generated (studio product line linked) */}
+              <div className={cn(invoiceLinked && "opacity-70 pointer-events-none")}>
                 <div className="flex items-center justify-between mb-4">
                   <h2 className="text-base font-bold text-white flex items-center gap-2">
-                    <CreditCard size={18} className="text-green-400" />
+                    <CreditCard size={18} className={!invoiceLinked ? "text-green-400" : "text-gray-500"} />
                     Payment
+                    {invoiceLinked && <Lock size={14} className="text-gray-500" />}
                   </h2>
-                  <Badge className={cn(
-                    "text-xs",
-                    displayBalanceDue === 0 && "bg-green-600",
-                    displayBalanceDue > 0 && saleDetail.paidAmount > 0 && "bg-blue-600",
-                    displayBalanceDue >= grandTotalForCard && grandTotalForCard > 0 && "bg-orange-600"
-                  )}>
-                    {displayBalanceDue === 0 ? 'Paid' : saleDetail.paidAmount > 0 ? 'Partial' : 'Pending'}
-                  </Badge>
+                  {!invoiceLinked && (
+                    <Badge className={cn(
+                      "text-xs",
+                      displayBalanceDue === 0 && "bg-green-600",
+                      displayBalanceDue > 0 && saleDetail.paidAmount > 0 && "bg-blue-600",
+                      displayBalanceDue >= grandTotalForCard && grandTotalForCard > 0 && "bg-orange-600"
+                    )}>
+                      {displayBalanceDue === 0 ? 'Paid' : saleDetail.paidAmount > 0 ? 'Partial' : 'Pending'}
+                    </Badge>
+                  )}
                 </div>
 
-                {/* Summary Card – unified: pricing (Production Cost, Profit, Final Sale Price) + Paid + Balance Due */}
-                <div className={cn(
-                  "border rounded-xl p-5 mb-4",
-                  displayBalanceDue === 0
-                    ? "bg-gradient-to-br from-green-950/30 to-green-900/20 border-green-800/50"
-                    : saleDetail.paidAmount > 0
-                      ? "bg-gradient-to-br from-blue-950/30 to-blue-900/20 border-blue-800/50"
-                      : "bg-gradient-to-br from-gray-900 to-gray-950 border-gray-800"
-                )}>
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-gray-400">Production Cost</span>
-                      <span className="text-lg font-semibold text-white">{formatCurrency(productionCostFromStages)}</span>
-                    </div>
-                    <div className="flex items-center justify-between bg-transparent">
-                      <span className="text-sm text-gray-400">Profit</span>
-                      <span className="text-lg font-semibold text-white">{formatCurrency(profitAmount)}</span>
-                    </div>
-                    {saleDetail.shipmentCharges > 0 && (
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm text-gray-400">Shipment</span>
-                        <span className="text-lg font-semibold text-white">{formatCurrency(saleDetail.shipmentCharges)}</span>
-                      </div>
-                    )}
-                    <div className="h-px bg-gray-800"></div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm font-semibold text-gray-300">Grand Total</span>
-                      <span className="text-xl font-bold text-white">{formatCurrency(grandTotalForCard)}</span>
-                    </div>
-                    {saleDetail.paidAmount > 0 && (
-                      <>
+                {invoiceLinked ? (
+                  <div className="rounded-xl border border-gray-800 bg-gray-900/50 p-5 mb-4">
+                    <p className="text-sm text-gray-400 flex items-center gap-2">
+                      <Lock size={14} className="text-gray-500 shrink-0" />
+                      Invoice generated — Payment section is locked. Use Accounting → Customer Receipts for payments.
+                    </p>
+                  </div>
+                ) : (
+                  <>
+                    {/* Summary Card – unified: pricing (Production Cost, Profit, Final Sale Price) + Paid + Balance Due */}
+                    <div className={cn(
+                      "border rounded-xl p-5 mb-4",
+                      displayBalanceDue === 0
+                        ? "bg-gradient-to-br from-green-950/30 to-green-900/20 border-green-800/50"
+                        : saleDetail.paidAmount > 0
+                          ? "bg-gradient-to-br from-blue-950/30 to-blue-900/20 border-blue-800/50"
+                          : "bg-gradient-to-br from-gray-900 to-gray-950 border-gray-800"
+                    )}>
+                      <div className="space-y-3">
                         <div className="flex items-center justify-between">
-                          <span className="text-sm text-gray-400">Customer Paid</span>
+                          <span className="text-sm text-gray-400">Production Cost</span>
+                          <span className="text-lg font-semibold text-white">{formatCurrency(productionCostFromStages)}</span>
+                        </div>
+                        <div className="flex items-center justify-between bg-transparent">
+                          <span className="text-sm text-gray-400">Profit</span>
+                          <span className="text-lg font-semibold text-white">{formatCurrency(profitAmount)}</span>
+                        </div>
+                        {saleDetail.shipmentCharges > 0 && (
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm text-gray-400">Shipment</span>
+                            <span className="text-lg font-semibold text-white">{formatCurrency(saleDetail.shipmentCharges)}</span>
+                          </div>
+                        )}
+                        <div className="h-px bg-gray-800"></div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm font-semibold text-gray-300">Grand Total</span>
+                          <span className="text-xl font-bold text-white">{formatCurrency(grandTotalForCard)}</span>
+                        </div>
+                        {saleDetail.paidAmount > 0 && (
+                          <>
+                            <div className="flex items-center justify-between">
+                              <span className="text-sm text-gray-400">Customer Paid</span>
+                              <div className="flex items-center gap-2">
+                                <span className="text-lg font-semibold text-green-400">{formatCurrency(saleDetail.paidAmount)}</span>
+                                <span className="text-xs text-gray-500">
+                                  ({grandTotalForCard > 0 ? ((saleDetail.paidAmount / grandTotalForCard) * 100).toFixed(0) : 0}%)
+                                </span>
+                              </div>
+                            </div>
+                          </>
+                        )}
+                        <div className="h-px bg-gray-800"></div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm font-semibold text-gray-300">Balance Due</span>
                           <div className="flex items-center gap-2">
-                            <span className="text-lg font-semibold text-green-400">{formatCurrency(saleDetail.paidAmount)}</span>
-                            <span className="text-xs text-gray-500">
-                              ({grandTotalForCard > 0 ? ((saleDetail.paidAmount / grandTotalForCard) * 100).toFixed(0) : 0}%)
+                            <span className={cn(
+                              "text-2xl font-bold",
+                              displayBalanceDue === 0 ? "text-green-400" : "text-orange-400"
+                            )}>
+                              {formatCurrency(displayBalanceDue)}
                             </span>
+                            {displayBalanceDue === 0 && (
+                              <CheckCircle2 size={24} className="text-green-400" />
+                            )}
                           </div>
                         </div>
-                      </>
-                    )}
-                    <div className="h-px bg-gray-800"></div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm font-semibold text-gray-300">Balance Due</span>
-                      <div className="flex items-center gap-2">
-                        <span className={cn(
-                          "text-2xl font-bold",
-                          displayBalanceDue === 0 ? "text-green-400" : "text-orange-400"
-                        )}>
-                          {formatCurrency(displayBalanceDue)}
-                        </span>
-                        {displayBalanceDue === 0 && (
-                          <CheckCircle2 size={24} className="text-green-400" />
-                        )}
                       </div>
                     </div>
-                  </div>
-                </div>
+                  </>
+                )}
 
                 {/* ERP Info - Accounting Integration */}
                 <div className="bg-blue-950/20 border border-blue-800/30 rounded-lg p-4 mb-4">

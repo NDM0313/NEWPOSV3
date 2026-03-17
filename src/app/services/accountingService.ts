@@ -237,6 +237,51 @@ export const accountingService = {
     return data;
   },
 
+  /**
+   * Create a safe reversal journal entry for manual correction (PF-07).
+   * Creates a new JE with same accounts but swapped debit/credit; links via reference_type
+   * 'correction_reversal' and reference_id = original JE id. No deletes; reports stay consistent.
+   */
+  async createReversalEntry(
+    companyId: string,
+    branchId: string | null,
+    originalJournalEntryId: string,
+    createdBy?: string | null,
+    reason?: string
+  ): Promise<{ id: string } | null> {
+    const original = await this.getEntry(originalJournalEntryId).catch(() => null);
+    if (!original || (original as any).company_id !== companyId) {
+      return null;
+    }
+    const lines = (original as any).lines;
+    if (!Array.isArray(lines) || lines.length === 0) {
+      return null;
+    }
+    const entryNo = `JE-REV-${Date.now()}-${Math.random().toString(36).substr(2, 5).toUpperCase()}`;
+    const entryDate = new Date().toISOString().split('T')[0];
+    const description = reason?.trim()
+      ? `Reversal: ${reason}`
+      : `Reversal of: ${(original as any).description || (original as any).entry_no || 'Journal entry'}`;
+    const reversalEntry: JournalEntry = {
+      company_id: companyId,
+      branch_id: branchId || undefined,
+      entry_no: entryNo,
+      entry_date: entryDate,
+      description,
+      reference_type: 'correction_reversal',
+      reference_id: originalJournalEntryId,
+      created_by: createdBy || null,
+    };
+    const reversalLines: JournalEntryLine[] = lines.map((line: any) => ({
+      account_id: line.account_id,
+      debit: line.credit || 0,
+      credit: line.debit || 0,
+      description: line.description ? `Reversal: ${line.description}` : undefined,
+    }));
+    const result = await this.createEntry(reversalEntry, reversalLines);
+    return result ? { id: (result as any).id } : null;
+  },
+
   // Get journal entry by reference number
   // Get journal entry by ID (PRIMARY METHOD - NO GUESSING)
   async getEntryById(journalEntryId: string, companyId: string) {
@@ -707,27 +752,26 @@ export const accountingService = {
     searchTerm?: string
   ): Promise<AccountLedgerEntry[]> {
     try {
-      // First, find Accounts Receivable account
-      // CRITICAL: Journal entries use account code 2000, so we MUST prioritize code 2000
-      // Query all AR accounts and pick code 2000 first, then fallback to 1100
-      const { data: allArAccounts } = await supabase
+      // Accounts Receivable only: canonical code 1100. Exclude 2000 (Accounts Payable).
+      const { data: rawAr } = await supabase
         .from('accounts')
         .select('id, code, name')
         .eq('company_id', companyId)
-        .or('code.eq.2000,code.eq.1100,name.ilike.%Accounts Receivable%');
+        .eq('is_active', true)
+        .or('code.eq.1100,name.ilike.%Accounts Receivable%');
 
-      if (!allArAccounts || allArAccounts.length === 0) {
+      const allArAccounts = (rawAr || []).filter((a: any) => a.code !== '2000');
+      if (allArAccounts.length === 0) {
         console.warn('[ACCOUNTING SERVICE] Accounts Receivable account not found');
         return [];
       }
 
-      // Use ALL AR account IDs so we don't miss lines (sales may write to 2000 or 1100)
       const arAccountIds = allArAccounts.map((a: any) => a.id);
       console.log('[ACCOUNTING SERVICE] getCustomerLedger - AR Account IDs:', arAccountIds.length, allArAccounts.map((a: any) => a.code));
 
       console.log('[ACCOUNTING SERVICE] getCustomerLedger - PHASE 1: Starting with customerId:', customerId);
 
-      // Get journal entry lines for ALL Accounts Receivable accounts (2000, 1100, etc.)
+      // Get journal entry lines for AR accounts only (1100; never 2000 = AP)
       const { data: lines, error } = await supabase
         .from('journal_entry_lines')
         .select(`
@@ -1210,11 +1254,12 @@ export const accountingService = {
           const d = (s.invoice_date || '').toString();
           if (startDate && d < startDate) return;
           if (endDate && d > endDate) return;
+          const saleTotal = (Number(s.total) || 0) + (Number(s.shipment_charges) ?? 0);
           items.push({
             date: d,
             reference_number: (s.invoice_no || `SALE-${s.id?.slice(0, 8)}`).toString(),
             description: 'Sale',
-            debit: Number(s.total) || 0,
+            debit: saleTotal,
             credit: 0,
             sale_id: s.id,
             source_module: 'Sales',
@@ -1319,11 +1364,12 @@ export const accountingService = {
           const d = (s.invoice_date || '').toString();
           if (startDate && d < startDate) return;
           if (endDate && d > endDate) return;
+          const saleTotal = (Number(s.total) || 0) + (Number(s.shipment_charges) ?? 0);
           mergeItems.push({
             date: d,
             reference_number: (s.invoice_no || `SALE-${s.id?.slice(0, 8)}`).toString(),
             description: 'Sale',
-            debit: Number(s.total) || 0,
+            debit: saleTotal,
             credit: 0,
             sale_id: s.id,
             source_module: 'Sales',

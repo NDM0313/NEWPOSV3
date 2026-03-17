@@ -28,7 +28,8 @@ import {
   ChevronDown,
   X,
   BookMarked,
-  Truck
+  Truck,
+  RotateCcw
 } from 'lucide-react';
 import { Button } from '@/app/components/ui/button';
 import { Badge } from '@/app/components/ui/badge';
@@ -99,7 +100,7 @@ const AR_ACCOUNTS = new Set(['Accounts Receivable']);
 const AP_ACCOUNTS = new Set(['Accounts Payable', 'Worker Payable']);
 
 export const AccountingDashboard = () => {
-  const { canAccessAccounting } = useCheckPermission();
+  const { canAccessAccounting, canPostAccounting } = useCheckPermission();
   const { modules: settingsModules } = useSettings();
   const accounting = useAccounting();
   const sales = useSales();
@@ -310,7 +311,7 @@ export const AccountingDashboard = () => {
             <h1 className="text-2xl font-bold text-white">Accounting</h1>
             <p className="text-sm text-gray-400 mt-0.5">Financial transactions and reporting</p>
           </div>
-          {canAccessAccounting && activeTab === 'journal_entries' && (
+          {canAccessAccounting && canPostAccounting && activeTab === 'journal_entries' && (
             <Button 
               onClick={() => setAddEntryFlowOpen(true)}
               className="bg-blue-600 hover:bg-blue-500 text-white h-10 gap-2 shadow-lg shadow-blue-900/30"
@@ -468,7 +469,10 @@ export const AccountingDashboard = () => {
             <div className="flex items-center justify-between">
               <div>
                 <h3 className="text-lg font-bold text-white">Journal Entries</h3>
-                <p className="text-sm text-gray-400">All journal entries – click a reference to view details (50 per page)</p>
+                <p className="text-sm text-gray-400">
+                  All journal entries – click a reference to view details (50 per page).
+                  {canPostAccounting ? ' Manual correction: use Reverse to create a reversal entry, or Manual Entry for adjustments.' : ' Posting and corrections require Manager or Admin role.'}
+                </p>
               </div>
             </div>
 
@@ -477,7 +481,8 @@ export const AccountingDashboard = () => {
               {filteredTransactions.length === 0 ? (
                 <div className="text-center py-12">
                   <FileText size={48} className="mx-auto text-gray-600 mb-3" />
-                  <p className="text-gray-400 text-sm">No transactions found</p>
+                  <p className="text-gray-400 text-sm font-medium">No journal entries yet</p>
+                  <p className="text-gray-500 text-xs mt-1">Create a sale, record a payment, or add an entry to see transactions here.</p>
                 </div>
               ) : (
                 <>
@@ -493,6 +498,7 @@ export const AccountingDashboard = () => {
                         <th className="px-4 py-3 text-left">Payment Method</th>
                         <th className="px-4 py-3 text-right">Amount</th>
                         <th className="px-4 py-3 text-left">Source</th>
+                        {canPostAccounting && <th className="px-4 py-3 text-left">Actions</th>}
                       </tr>
                     </thead>
                     <tbody>
@@ -506,6 +512,7 @@ export const AccountingDashboard = () => {
                         const amount = entry.amount || 0;
                         const paymentMethod = (entry.metadata as any)?.paymentMethod || 'N/A';
                         const type = amount >= 0 ? 'Income' : 'Expense';
+                        const isReversal = entry.source === 'Reversal';
                         
                         return (
                           <tr
@@ -563,6 +570,26 @@ export const AccountingDashboard = () => {
                             <td className="px-4 py-3 text-xs text-gray-400">
                               {entry.source || 'Manual'}
                             </td>
+                            {canPostAccounting && (
+                            <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                              {!isReversal && (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-8 text-amber-400 hover:text-amber-300 hover:bg-amber-500/10"
+                                  onClick={() => {
+                                    if (window.confirm('Create a reversal entry for this journal entry? This will post a new entry that offsets the original.')) {
+                                      accounting.createReversalEntry(entry.id);
+                                    }
+                                  }}
+                                  title="Create reversal (manual correction)"
+                                >
+                                  <RotateCcw className="w-4 h-4 mr-1" />
+                                  Reverse
+                                </Button>
+                              )}
+                            </td>
+                            )}
                           </tr>
                         );
                       })}
@@ -693,12 +720,14 @@ export const AccountingDashboard = () => {
                     </label>
                   )}
                 </div>
-                <Button
-                  onClick={() => setIsAddAccountOpen(true)}
-                  className="bg-blue-600 hover:bg-blue-500 text-white gap-2"
-                >
-                  <Plus size={16} /> Create New Account
-                </Button>
+                {canPostAccounting && (
+                  <Button
+                    onClick={() => setIsAddAccountOpen(true)}
+                    className="bg-blue-600 hover:bg-blue-500 text-white gap-2"
+                  >
+                    <Plus size={16} /> Create New Account
+                  </Button>
+                )}
               </div>
             </div>
 
@@ -1005,15 +1034,17 @@ export const AccountingDashboard = () => {
           <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden">
             <div className="flex items-center justify-between px-4 py-3 border-b border-gray-800">
               <span className="text-sm text-gray-400">Supplier & Courier payables</span>
-              <Button
-                variant="outline"
-                size="sm"
-                className="border-gray-600 text-gray-300 hover:bg-gray-800 hover:text-white gap-1.5"
-                onClick={() => setPayCourierOpen(true)}
-              >
-                <Truck size={14} />
-                Pay Courier
-              </Button>
+              {canPostAccounting && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="border-gray-600 text-gray-300 hover:bg-gray-800 hover:text-white gap-1.5"
+                  onClick={() => setPayCourierOpen(true)}
+                >
+                  <Truck size={14} />
+                  Pay Courier
+                </Button>
+              )}
             </div>
             {purchases.purchases.filter(p => p.due > 0).length === 0 ? (
               <div className="text-center py-12">

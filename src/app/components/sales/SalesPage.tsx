@@ -4,7 +4,7 @@ import {
   MoreVertical, Eye, Edit, Trash2, FileText, Phone, MapPin,
   Package, Truck, CheckCircle, CheckCircle2, Clock, XCircle, AlertCircle,
   UserCheck, Receipt, Loader2, PackageCheck, PackageX, ChevronDown, ChevronUp,
-  RotateCcw, Paperclip, X, Zap, Store, Printer, Download, Share2
+  RotateCcw, Paperclip, X, Zap, Store, Printer, Download, Share2, Scissors
 } from 'lucide-react';
 import { Button } from "@/app/components/ui/button";
 import { Badge } from "@/app/components/ui/badge";
@@ -692,20 +692,38 @@ export const SalesPage = () => {
     return columns.trim();
   }, [columnOrder, visibleColumns]);
 
-  // Helper function to detect if sale is POS (Walk-in Customer + Final)
+  // Helper: POS = invoice prefix POS- or walk-in + final
   const isLikelyPOS = (sale: Sale): boolean => {
+    const inv = (sale.invoiceNo || '').trim();
+    if (inv.startsWith('POS-')) return true;
     const walkIn = sale.customerName?.toLowerCase().includes('walk-in') || sale.customer === 'walk-in';
     const final = sale.status === 'final';
     return !!(walkIn && final);
   };
 
+  // Helper: Studio = invoice prefix STD- / ST- or is_studio or has studio charges
+  const isStudioSale = (sale: Sale): boolean => {
+    const inv = (sale.invoiceNo || '').trim();
+    if (inv.startsWith('STD-') || inv.startsWith('ST-')) return true;
+    if ((sale as any).is_studio === true) return true;
+    if (Number(sale.studioCharges ?? 0) > 0) return true;
+    return false;
+  };
+
   const getSourceBadge = (sale: Sale) => {
-    const pos = isLikelyPOS(sale);
-    if (pos) {
+    if (isLikelyPOS(sale)) {
       return (
         <Badge className="gap-1 h-6 px-2 text-xs font-medium bg-amber-500/20 text-amber-400 border border-amber-500/40">
           <Zap size={12} />
           POS
+        </Badge>
+      );
+    }
+    if (isStudioSale(sale)) {
+      return (
+        <Badge className="gap-1 h-6 px-2 text-xs font-medium bg-purple-500/20 text-purple-400 border border-purple-500/40">
+          <Scissors size={12} />
+          Studio
         </Badge>
       );
     }

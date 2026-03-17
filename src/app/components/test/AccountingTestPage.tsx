@@ -65,6 +65,7 @@ export function AccountingTestPage({ embedded = false, onClose }: AccountingTest
   const [customers, setCustomers] = useState<{ id: string; name: string }[]>([]);
   const [workers, setWorkers] = useState<{ id: string; name: string; dueBalance?: number }[]>([]);
   const [expenseCategories, setExpenseCategories] = useState<{ id: string; name: string }[]>([]);
+  const [operatingExpenseAccounts, setOperatingExpenseAccounts] = useState<{ id: string; name: string }[]>([]);
   const [showTypeSelector, setShowTypeSelector] = useState(embedded);
   const [openModal, setOpenModal] = useState<ModalType>(null);
   const [loading, setLoading] = useState(true);
@@ -93,14 +94,16 @@ export function AccountingTestPage({ embedded = false, onClose }: AccountingTest
     (async () => {
       setLoading(true);
       try {
-        const [acc, sup, cust, exp, purchasesData] = await Promise.all([
+        const [acc, sup, cust, exp, purchasesData, operatingExpense] = await Promise.all([
           accountService.getAllAccounts(companyId, branchId === 'all' ? undefined : branchId || undefined),
           contactService.getAllContacts(companyId, 'supplier'),
           contactService.getAllContacts(companyId, 'customer'),
           expenseCategoryService.getCategories(companyId),
           purchaseService.getAllPurchases(companyId, branchId === 'all' ? undefined : branchId || undefined),
+          accountService.getOperatingExpenseAccountsOnly(companyId),
         ]);
         setAccounts((acc || []).map((a: any) => ({ id: a.id, name: `${a.code || ''} ${a.name}`.trim() || a.name })));
+        setOperatingExpenseAccounts((operatingExpense || []).map((a: any) => ({ id: a.id, name: `${a.code || ''} ${a.name}`.trim() || a.name })));
         const supplierDueMap = new Map<string, number>();
         (purchasesData || []).forEach((p: any) => {
           const sid = p.supplier_id || p.supplier?.id;
@@ -141,8 +144,8 @@ export function AccountingTestPage({ embedded = false, onClose }: AccountingTest
     [accounts]
   );
   const expenseAccounts = useMemo(
-    () => accounts.filter((a) => a.name.toLowerCase().includes('expense')),
-    [accounts]
+    () => operatingExpenseAccounts.length > 0 ? operatingExpenseAccounts : accounts.filter((a) => a.name.toLowerCase().includes('expense')),
+    [accounts, operatingExpenseAccounts]
   );
 
   const openTypeSelector = () => setShowTypeSelector(true);

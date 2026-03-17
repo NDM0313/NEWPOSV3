@@ -132,7 +132,8 @@ export default function ShipmentLedgerPage({ companyId }: ShipmentLedgerPageProp
       )}
       {!loading && !error && rows.length === 0 && (
         <div className="text-sm text-gray-500 text-center py-8">
-          No shipment ledger entries yet.
+          <p className="font-medium">No shipment ledger entries yet</p>
+          <p className="text-xs mt-1">Create shipments from Sales to see income, expense, and courier payable here.</p>
         </div>
       )}
 

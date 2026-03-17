@@ -4,7 +4,7 @@
  * Real courier-ledger accounting:
  *
  * CASE A — Customer shipping charge:
- *   Dr  Accounts Receivable (2000)   charged_to_customer
+ *   Dr  Accounts Receivable (1100)   charged_to_customer
  *   Cr  Shipping Income      (4100)  charged_to_customer
  *
  * CASE B — Courier expense (per-courier sub-ledger 2031, 2032, …):
@@ -263,7 +263,7 @@ export const shipmentAccountingService = {
 
     const label = invoiceNo ? ` – ${invoiceNo}` : '';
     const [arAccount, shippingIncomeAccount, shippingExpenseAccount] = await Promise.all([
-      ensureAccount('2000', 'Accounts Receivable', 'Accounts Receivable', companyId),
+      ensureAccount('1100', 'Accounts Receivable', 'asset', companyId),
       ensureAccount('4100', 'Shipping Income', 'Revenue', companyId),
       ensureAccount('5100', 'Shipping Expense', 'Expense', companyId),
     ]);
@@ -380,7 +380,7 @@ export const shipmentAccountingService = {
 
     const [arAccount, shippingIncomeAccount, shippingExpenseAccount, courierPayableAccountId] =
       await Promise.all([
-        ensureAccount('2000', 'Accounts Receivable', 'Accounts Receivable', companyId),
+        ensureAccount('1100', 'Accounts Receivable', 'asset', companyId),
         ensureAccount('4100', 'Shipping Income', 'Revenue', companyId),
         ensureAccount('5100', 'Shipping Expense', 'Expense', companyId),
         getCourierPayableAccountIdForShipment(shipmentId),

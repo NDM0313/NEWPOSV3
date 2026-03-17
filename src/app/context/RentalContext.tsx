@@ -329,6 +329,20 @@ export const RentalProvider = ({ children }: { children: ReactNode }) => {
   const addPayment = async (rentalId: string, amount: number, method: string, reference?: string) => {
     if (!companyId) return;
     await rentalService.addPayment(rentalId, companyId, amount, method, reference, user?.id);
+    // Issue 11: Post rental payment to accounting so reports/ledger reconcile with rental_payments
+    const rental = getRentalById(rentalId);
+    if (rental && amount > 0) {
+      const paymentMethod = method === 'bank' ? 'Bank' : method === 'other' ? 'Mobile Wallet' : 'Cash';
+      accounting.recordRentalDelivery({
+        bookingId: rentalId,
+        customerName: rental.customerName,
+        customerId: rental.customerId || '',
+        remainingAmount: amount,
+        paymentMethod,
+      }).catch((err) => {
+        console.warn('[RentalContext] Ledger posting failed (payment already recorded):', err);
+      });
+    }
     await loadRentals();
     toast.success('Payment recorded');
   };

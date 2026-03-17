@@ -30,6 +30,9 @@ const ADDITIONAL_MANDATORY_ACCOUNTS: DefaultAccount[] = [
   { code: '1100', name: 'Accounts Receivable', type: 'asset' }, // Required for customer payment entries
   { code: '2000', name: 'Accounts Payable', type: 'liability' }, // Required for supplier/purchase payment entries
   { code: '2010', name: 'Worker Payable', type: 'liability' }, // Required for studio worker payments
+  { code: '2011', name: 'Security Deposit', type: 'liability' }, // Rental security deposit (Issue 11)
+  { code: '2020', name: 'Rental Advance', type: 'liability' }, // Rental booking advance (Issue 11)
+  { code: '2030', name: 'Courier Payable (Control)', type: 'liability' }, // PF-01: Courier control; sub-accounts 2031, 2032... per courier
   { code: '5000', name: 'Cost of Production', type: 'expense' }, // Required for studio production cost entries
 ];
 

@@ -33,6 +33,13 @@ BEGIN
   INSERT INTO accounts (company_id, code, name, type, balance, is_active)
   VALUES (p_company_id, '2010', 'Worker Payable', 'Worker Payable', 0, true)
   ON CONFLICT (company_id, code) DO NOTHING;
+  -- PF-04: Equity section – Owner Capital and Retained Earnings (canonical handling; opening capital can be posted to 3000)
+  INSERT INTO accounts (company_id, code, name, type, balance, is_active)
+  VALUES (p_company_id, '3000', 'Owner Capital', 'equity', 0, true)
+  ON CONFLICT (company_id, code) DO NOTHING;
+  INSERT INTO accounts (company_id, code, name, type, balance, is_active)
+  VALUES (p_company_id, '3002', 'Retained Earnings', 'equity', 0, true)
+  ON CONFLICT (company_id, code) DO NOTHING;
 EXCEPTION WHEN OTHERS THEN
   RAISE WARNING 'ensure_erp_accounts failed for company %: %', p_company_id, SQLERRM;
 END;

@@ -923,6 +923,32 @@ export const saleService = {
         }
       }
 
+      // STEP 6b: Unlink studio_productions so sale can be deleted (FK: studio_productions_sale_id_fkey)
+      const { data: studioProductions } = await supabase
+        .from('studio_productions')
+        .select('id')
+        .eq('sale_id', id);
+      if (studioProductions && studioProductions.length > 0) {
+        const productionIds = studioProductions.map((p: { id: string }) => p.id);
+        for (const prodId of productionIds) {
+          const { error: stagesErr } = await supabase
+            .from('studio_production_stages')
+            .delete()
+            .eq('production_id', prodId);
+          if (stagesErr) {
+            console.warn('[SALE SERVICE] Error deleting studio_production_stages (non-critical):', stagesErr);
+          }
+        }
+        const { error: prodErr } = await supabase
+          .from('studio_productions')
+          .delete()
+          .eq('sale_id', id);
+        if (prodErr) {
+          console.error('[SALE SERVICE] Error deleting studio_productions:', prodErr);
+          throw prodErr;
+        }
+      }
+
       // STEP 7: Finally delete the sale record itself
       const { error: saleError } = await supabase
         .from('sales')

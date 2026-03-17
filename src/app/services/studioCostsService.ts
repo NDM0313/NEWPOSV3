@@ -383,17 +383,23 @@ export const studioCostsService = {
       });
     });
 
+    // Issue 10 / 24: Reconcile summary with worker breakdown — cards must match worker-wise table.
+    const reconciledTotalCost = workerCosts.reduce((s, w) => s + w.totalCost, 0);
+    const reconciledTotalPaid = workerCosts.reduce((s, w) => s + w.paidAmount, 0);
+    const reconciledTotalUnpaid = workerCosts.reduce((s, w) => s + w.unpaidAmount, 0);
+    const useReconciled = workerCosts.length > 0;
+
     return {
       summary: {
-        totalCost,
-        totalPaid,
-        totalUnpaid,
+        totalCost: useReconciled ? reconciledTotalCost : totalCost,
+        totalPaid: useReconciled ? reconciledTotalPaid : totalPaid,
+        totalUnpaid: useReconciled ? reconciledTotalUnpaid : totalUnpaid,
         workersCount: workerCosts.length,
         byStageType,
         fromJournal: true,
       },
       workerCosts,
-      hasData: totalCost > 0 || workerCosts.length > 0,
+      hasData: totalCost > 0 || reconciledTotalCost > 0 || workerCosts.length > 0,
     };
   },
 

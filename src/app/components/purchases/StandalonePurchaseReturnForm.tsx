@@ -35,6 +35,7 @@ import {
 } from '../ui/table';
 import { toast } from 'sonner';
 import { useSupabase } from '@/app/context/SupabaseContext';
+import { useAccounting } from '@/app/context/AccountingContext';
 import { useSettings } from '@/app/context/SettingsContext';
 import { PackingEntryModal, type PackingDetails } from '@/app/components/transactions/PackingEntryModal';
 import { purchaseReturnService, CreatePurchaseReturnData } from '@/app/services/purchaseReturnService';
@@ -65,6 +66,7 @@ interface StandalonePurchaseReturnFormProps {
 
 export const StandalonePurchaseReturnForm: React.FC<StandalonePurchaseReturnFormProps> = ({ open, onClose, onSuccess }) => {
   const { companyId, branchId: contextBranchId, user } = useSupabase();
+  const accounting = useAccounting();
   const { inventorySettings } = useSettings();
   const { formatCurrency } = useFormatCurrency();
   const enablePacking = inventorySettings.enablePacking ?? false;
@@ -286,6 +288,20 @@ export const StandalonePurchaseReturnForm: React.FC<StandalonePurchaseReturnForm
       };
       const purchaseReturn = await purchaseReturnService.createPurchaseReturn(payload);
       await purchaseReturnService.finalizePurchaseReturn(purchaseReturn.id!, companyId, branch, user?.id);
+      const totalAmount = Number(purchaseReturn.total ?? subtotal);
+      if (totalAmount > 0) {
+        accounting.recordPurchaseReturn({
+          returnId: purchaseReturn.id!,
+          returnNo: purchaseReturn.return_no || `PRET-${purchaseReturn.id?.slice(0, 8)}`,
+          supplierName: supplierName || 'Supplier',
+          supplierId: supplierId || undefined,
+          amount: totalAmount,
+          creditAccount: 'Inventory',
+        }).catch((err) => {
+          console.warn('[StandalonePurchaseReturnForm] Accounting reversal may have failed:', err);
+          toast.warning('Return finalized, but accounting entry may have failed. Check manually.');
+        });
+      }
       toast.success(`Purchase return ${purchaseReturn.return_no || purchaseReturn.id} finalized`);
       setItems([]);
       if (onSuccess) onSuccess();

@@ -37,6 +37,12 @@ BEGIN
     INSERT INTO accounts (company_id, code, name, type, is_active)
     VALUES (v_company_id, '2010', 'Worker Payable', 'Worker Payable', true)
     ON CONFLICT (company_id, code) DO NOTHING;
+    INSERT INTO accounts (company_id, code, name, type, is_active)
+    VALUES (v_company_id, '3000', 'Owner Capital', 'equity', true)
+    ON CONFLICT (company_id, code) DO NOTHING;
+    INSERT INTO accounts (company_id, code, name, type, is_active)
+    VALUES (v_company_id, '3002', 'Retained Earnings', 'equity', true)
+    ON CONFLICT (company_id, code) DO NOTHING;
   END IF;
   RETURN jsonb_build_object('ok', true, 'company_id', v_company_id);
 EXCEPTION WHEN OTHERS THEN
@@ -87,6 +93,12 @@ BEGIN
       ON CONFLICT (company_id, code) DO NOTHING;
       INSERT INTO accounts (company_id, code, name, type, is_active)
       VALUES (r.company_id, '2010', 'Worker Payable', 'Worker Payable', true)
+      ON CONFLICT (company_id, code) DO NOTHING;
+      INSERT INTO accounts (company_id, code, name, type, is_active)
+      VALUES (r.company_id, '3000', 'Owner Capital', 'equity', true)
+      ON CONFLICT (company_id, code) DO NOTHING;
+      INSERT INTO accounts (company_id, code, name, type, is_active)
+      VALUES (r.company_id, '3002', 'Retained Earnings', 'equity', true)
       ON CONFLICT (company_id, code) DO NOTHING;
       cnt := cnt + 1;
     END LOOP;

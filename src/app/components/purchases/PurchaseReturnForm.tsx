@@ -10,6 +10,7 @@ import { Label } from '../ui/label';
 import { CalendarDatePicker } from '../ui/CalendarDatePicker';
 import { toast } from 'sonner';
 import { useSupabase } from '@/app/context/SupabaseContext';
+import { useAccounting } from '@/app/context/AccountingContext';
 import { useSettings } from '@/app/context/SettingsContext';
 import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
 import { purchaseReturnService, CreatePurchaseReturnData } from '@/app/services/purchaseReturnService';
@@ -44,6 +45,7 @@ interface ReturnItemRow {
 
 export const PurchaseReturnForm: React.FC<PurchaseReturnFormProps> = ({ purchaseId, onClose, onSuccess }) => {
   const { companyId, branchId: contextBranchId, user } = useSupabase();
+  const accounting = useAccounting();
   const { inventorySettings } = useSettings();
   const { formatCurrency } = useFormatCurrency();
   const enablePacking = inventorySettings.enablePacking;
@@ -164,6 +166,19 @@ export const PurchaseReturnForm: React.FC<PurchaseReturnFormProps> = ({ purchase
       };
       const purchaseReturn = await purchaseReturnService.createPurchaseReturn(returnData);
       await purchaseReturnService.finalizePurchaseReturn(purchaseReturn.id!, companyId, branchId, user?.id);
+      if (purchaseReturn.total > 0) {
+        accounting.recordPurchaseReturn({
+          returnId: purchaseReturn.id!,
+          returnNo: purchaseReturn.return_no || `PRET-${purchaseReturn.id?.slice(0, 8)}`,
+          supplierName: purchaseReturn.supplier_name || originalPurchase.supplier_name || 'Supplier',
+          supplierId: originalPurchase.supplier_id || originalPurchase.supplier,
+          amount: purchaseReturn.total,
+          creditAccount: 'Inventory',
+        }).catch((err) => {
+          console.warn('[PurchaseReturnForm] Accounting reversal may have failed:', err);
+          toast.warning('Return finalized, but accounting entry may have failed. Check manually.');
+        });
+      }
       toast.success(`Purchase return ${purchaseReturn.return_no || purchaseReturn.id} created and finalized`);
       if (onSuccess) onSuccess();
       onClose();

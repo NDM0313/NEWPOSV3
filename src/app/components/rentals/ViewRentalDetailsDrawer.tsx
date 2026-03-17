@@ -217,9 +217,11 @@ export const ViewRentalDetailsDrawer: React.FC<ViewRentalDetailsDrawerProps> = (
               {r && getStatusBadge()}
             </h2>
             <p className="text-sm text-gray-400 mt-0.5">Rental Booking Details</p>
-            {/* Status workflow bar: Booked → Picked Up → Returned */}
+            {/* Status workflow bar: Booked → Picked Up → Returned — operator flow clarity */}
             {r && !['draft', 'cancelled'].includes(r.status) && (
-              <div className="flex items-center gap-1 mt-4">
+              <div className="mt-4">
+              <p className="text-xs text-gray-500 mb-2">Flow: Booked → Pick up (confirm delivery) → Return (confirm items back). Add payment from Payments tab when needed.</p>
+              <div className="flex items-center gap-1">
                 <div className={cn(
                   'px-3 py-1.5 rounded-lg text-xs font-semibold transition-all',
                   r.status === 'booked' ? 'bg-pink-500/30 text-pink-400 border border-pink-500/50' : 'bg-green-500/20 text-green-400/80 border border-green-500/30'
@@ -245,6 +247,7 @@ export const ViewRentalDetailsDrawer: React.FC<ViewRentalDetailsDrawerProps> = (
                 )}>
                   Returned
                 </div>
+              </div>
               </div>
             )}
           </div>
@@ -488,7 +491,7 @@ export const ViewRentalDetailsDrawer: React.FC<ViewRentalDetailsDrawerProps> = (
                     )}
                   </div>
                   {loadingPayments ? (
-                    <div className="text-center py-12 text-gray-400">Loading payments...</div>
+                    <div className="text-center py-12 text-gray-400">Loading…</div>
                   ) : payments.length > 0 ? (
                     <div className="space-y-3">
                       {payments.map((p) => (
@@ -517,7 +520,7 @@ export const ViewRentalDetailsDrawer: React.FC<ViewRentalDetailsDrawerProps> = (
                 <div className="space-y-4">
                   <h3 className="text-lg font-semibold text-white">Activity History</h3>
                   {loadingActivityLogs ? (
-                    <div className="text-center py-12 text-gray-400">Loading...</div>
+                    <div className="text-center py-12 text-gray-400">Loading…</div>
                   ) : activityLogs.length > 0 ? (
                     <div className="space-y-2">
                       {activityLogs.map((log) => (
@@ -531,7 +534,10 @@ export const ViewRentalDetailsDrawer: React.FC<ViewRentalDetailsDrawerProps> = (
                       ))}
                     </div>
                   ) : (
-                    <div className="text-center py-12 text-gray-500 border border-dashed border-gray-700 rounded-xl">No activity logs yet.</div>
+                    <div className="text-center py-12 text-gray-500 border border-dashed border-gray-700 rounded-xl">
+                      <p className="font-medium">No activity yet</p>
+                      <p className="text-xs mt-1">Pickup, return, and payment actions will appear here.</p>
+                    </div>
                   )}
                 </div>
               )}

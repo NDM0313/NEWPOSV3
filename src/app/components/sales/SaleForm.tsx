@@ -1330,20 +1330,25 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
             }
             
             // Pre-fill status from DB so draft stays draft when reopening (draft lifecycle fix)
-            const savedStatus = (initialSale as any).status ?? initialSale.type;
-            if (savedStatus === 'draft' || savedStatus === 'quotation' || savedStatus === 'order' || savedStatus === 'final') {
-                setSaleStatus(savedStatus);
-            } else if (initialSale.type === 'quotation') {
-                setSaleStatus('quotation');
-            } else {
+            // When opened via "Convert to Final", show Final immediately so header and Shipment section are correct
+            if (convertToFinal) {
                 setSaleStatus('final');
+            } else {
+                const savedStatus = (initialSale as any).status ?? initialSale.type;
+                if (savedStatus === 'draft' || savedStatus === 'quotation' || savedStatus === 'order' || savedStatus === 'final') {
+                    setSaleStatus(savedStatus);
+                } else if (initialSale.type === 'quotation') {
+                    setSaleStatus('quotation');
+                } else {
+                    setSaleStatus('final');
+                }
             }
             // Pre-fill Studio type when editing a studio sale
             if ((initialSale as any).is_studio) {
                 setIsStudioSale(true);
             }
         }
-    }, [initialSale]);
+    }, [initialSale, convertToFinal]);
 
     // Load sale_shipments when editing an existing sale
     useEffect(() => {
@@ -1961,8 +1966,12 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                     documentType = 'studio';
                     documentNumber = generateDocumentNumber('studio');
                 } else {
-                    // When user changed status to Final in edit mode, use new SL- number (don't keep DRAFT-)
-                    if (saleStatus === 'final' && (initialSale.invoiceNo?.startsWith('DRAFT-') || initialSale.invoiceNo?.startsWith('QT-') || initialSale.invoiceNo?.startsWith('SO-'))) {
+                    // Convert to Final: keep same invoice number (STD-/SO-/QT-/DRAFT-) so same document becomes final
+                    if (convertToFinal && initialSale?.id) {
+                        documentNumber = initialSale.invoiceNo;
+                        documentType = 'invoice';
+                    } else if (saleStatus === 'final' && (initialSale.invoiceNo?.startsWith('DRAFT-') || initialSale.invoiceNo?.startsWith('QT-') || initialSale.invoiceNo?.startsWith('SO-'))) {
+                        // When user changed status to Final in edit mode (not convert flow), use new SL- number
                         documentNumber = generateDocumentNumber('invoice');
                         documentType = 'invoice';
                     } else {
@@ -2063,9 +2072,22 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                 discount: discountAmount,
                 tax: 0, // Can be enhanced later
                 expenses: expensesTotal + (initialSale?.id ? 0 : (shippingChargeInput || 0)),
-                total: totalAmount,
+                // PF-03 / Issue 02: When shipping is present, persist product-only total so trigger sets due_amount = (total + shipment_charges) - paid (no double count)
+                // Create/convert: product-only total + due from trigger after shipment row created. Edit: same when sale has or will have shipping.
+                total: (() => {
+                    const hasShipping = saleShipments.length > 0 || (shippingChargeInput || 0) > 0;
+                    if (hasShipping && (!initialSale?.id || !!convertToFinal)) return afterDiscountTotal; // new/convert with shipping
+                    if (hasShipping && initialSale?.id) return afterDiscountTotal; // PF-03: edit with shipping → product-only
+                    return totalAmount;
+                })(),
                 paid: finalPaid,
-                due: finalDue,
+                due: (() => {
+                    const hasShipping = saleShipments.length > 0 || (shippingChargeInput || 0) > 0;
+                    const effShipping = initialSale?.id ? (saleShipments.length > 0 ? shipmentChargesFromApi : (shippingChargeInput || 0)) : (shippingChargeInput || 0);
+                    if (hasShipping && (!initialSale?.id || !!convertToFinal)) return Math.max(0, afterDiscountTotal - totalPaid);
+                    if (hasShipping && initialSale?.id) return Math.max(0, (afterDiscountTotal + effShipping) - totalPaid); // PF-03: edit with shipping
+                    return finalDue;
+                })(),
                 returnDue: 0,
                 paymentStatus: finalPaymentStatus,
                 paymentMethod: (effectiveFinal && partialPayments.length > 0) ? partialPayments[0].method : 'cash',
@@ -2094,74 +2116,10 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                 is_studio: isStudioSale
             };
             
-            // Convert to Final flow: create new sale (new invoice number) then delete the draft
-            if (convertToFinal && initialSale?.id) {
-                const draftIdToDelete = initialSale.id;
-                // Force next invoice number (SL-xxxx); do not reuse draft number
-                const nextInvoiceNo = generateDocumentNumber('invoice');
-                const saleDataForNew = { ...saleData, invoiceNo: nextInvoiceNo };
-                const created = await createSale(saleDataForNew);
-                if (!created?.id) {
-                    toast.error('Failed to create final sale.');
-                    return null;
-                }
-                try {
-                    await deleteSale(draftIdToDelete);
-                } catch (delErr: any) {
-                    console.warn('[SALE FORM] Draft could not be deleted after creating final sale:', delErr);
-                    toast.warning('Final sale created but draft could not be removed. You may delete it manually.');
-                }
-                // Post-create: shipment, attachments, increment, toast
-                if (created.id && (shippingChargeInput || 0) > 0 && companyId && finalBranchId) {
-                    try {
-                        await shipmentService.create(
-                            created.id,
-                            companyId,
-                            finalBranchId,
-                            { shipment_type: 'Courier', charged_to_customer: shippingChargeInput, actual_cost: 0, currency: 'PKR', shipment_status: 'Pending' },
-                            undefined,
-                            nextInvoiceNo
-                        );
-                    } catch (shipErr: any) {
-                        console.warn('[SALE FORM] Shipment record for shipping charge could not be created:', shipErr?.message);
-                    }
-                }
-                if (created.id && saleAttachmentFiles.length > 0 && companyId) {
-                    try {
-                        const uploaded = await uploadSaleAttachments(companyId, created.id, saleAttachmentFiles);
-                        if (uploaded.length > 0) await updateSale(created.id, { attachments: uploaded } as any);
-                        setSaleAttachmentFiles([]);
-                        setSavedSaleAttachments(uploaded);
-                    } catch (e) {
-                        console.warn('[SALE FORM] Attachment upload failed:', e);
-                        toast.warning('Sale created but some attachments could not be uploaded.');
-                    }
-                }
-                incrementNextNumber('invoice');
-                toast.success(`Draft converted to final. New invoice ${nextInvoiceNo} created; draft removed.`);
-                setSavedSaleId(created.id);
-                setSavedSaleInvoiceNo(nextInvoiceNo);
-                if (print) {
-                    try {
-                        const full = await saleService.getSaleById(created.id);
-                        const saleToPrint = full ? convertFromSupabaseSale(full) : null;
-                        if (saleToPrint) {
-                            setSaleForPrint(saleToPrint);
-                            setShowPrintLayout(true);
-                        }
-                    } catch (e) {
-                        toast.warning('Sale saved. Open it from the list to print.');
-                    }
-                    return { saleId: created.id, invoiceNo: nextInvoiceNo };
-                }
-                if (shouldOpenPaymentDialog) {
-                    return { saleId: created.id, invoiceNo: nextInvoiceNo };
-                }
-                onClose();
-                return { saleId: created.id, invoiceNo: nextInvoiceNo };
-            }
+            // Convert to Final: update same sale to status 'final' (same invoice number, one row in DB). No create+delete.
+            // Falls through to edit path below so updateSale(initialSale.id, saleData) runs with status: 'final'.
 
-            // CRITICAL FIX: Check if editing existing sale
+            // CRITICAL FIX: Check if editing existing sale (includes convertToFinal: same sale updated to final)
             if (initialSale && initialSale.id) {
                 // EDIT MODE: Update existing sale (invoice number updated when converting to Studio)
                 await updateSale(initialSale.id, saleData);
@@ -2182,11 +2140,11 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                 if (isStudioSale && !initialSale.invoiceNo.startsWith('STD-') && !initialSale.invoiceNo.startsWith('ST-')) {
                     incrementNextNumber('studio');
                 }
-                // If we converted draft/quotation/order to final, we used a new SL- number – consume it so next sale gets next number
-                if (documentType === 'invoice' && (initialSale.invoiceNo?.startsWith('DRAFT-') || initialSale.invoiceNo?.startsWith('QT-') || initialSale.invoiceNo?.startsWith('SO-'))) {
+                // If we converted draft/quotation/order to final with a NEW SL- number, consume it (not when convertToFinal: we keep same invoice)
+                if (!convertToFinal && documentType === 'invoice' && (initialSale.invoiceNo?.startsWith('DRAFT-') || initialSale.invoiceNo?.startsWith('QT-') || initialSale.invoiceNo?.startsWith('SO-'))) {
                     incrementNextNumber('invoice');
                 }
-                toast.success(`Sale ${documentNumber} updated successfully!`);
+                toast.success(convertToFinal ? `Order converted to final. ${documentNumber} is now final.` : `Sale ${documentNumber} updated successfully!`);
                 
                 // Store sale ID and invoice number for payment dialog (edit mode)
                 setSavedSaleId(initialSale.id);

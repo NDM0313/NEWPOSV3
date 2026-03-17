@@ -237,6 +237,26 @@ export const accountService = {
     if (error) throw error;
   },
 
+  /**
+   * PF-06: Operating expense accounts only (for user-facing expense pickers).
+   * Excludes production/studio/shipping/courier cost accounts (5000, 5010, 5100, 5200, 5300 and names matching internal).
+   */
+  async getOperatingExpenseAccountsOnly(companyId: string) {
+    const all = await this.getAllAccounts(companyId);
+    const active = (all || []).filter((a: any) => a.is_active !== false);
+    const expenseType = (a: any) => /expense|cogs|cost of sales/i.test(String(a.type ?? ''));
+    const internalCodes = new Set(['5000', '5010', '5100', '5200', '5300']);
+    const internalNames = /cost of production|cost of studio|shipping expense|extra expense|courier|payable|receivable/i;
+    return active.filter((a: any) => {
+      if (!expenseType(a)) return false;
+      const code = String(a.code ?? '').trim();
+      const name = String(a.name ?? '').toLowerCase();
+      if (internalCodes.has(code)) return false;
+      if (internalNames.test(name)) return false;
+      return true;
+    });
+  },
+
   // Get accounts by type
   async getAccountsByType(companyId: string, type: 'Cash' | 'Bank' | 'Mobile Wallet') {
     const { data, error } = await supabase

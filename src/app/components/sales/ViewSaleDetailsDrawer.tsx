@@ -552,8 +552,9 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
     ? (Number(studioLineItem.price) || 0) * (Number(studioLineItem.quantity) || (studioLineItem as any).qty || 1)
     : 0;
   const studioCost = studioLineTotalFromInvoice > 0 ? studioLineTotalFromInvoice : studioCostLegacy;
-  // When sale.total already includes the studio line (synced invoice), use it as grand total; else add legacy studio cost
-  const grandTotal = studioLineTotalFromInvoice > 0 ? (sale.total ?? 0) : (sale.total ?? 0) + studioCostLegacy;
+  // Issue 02: Include shipping in grand total (sale.total is product-only when shipment exists; shipment_charges synced by trigger)
+  const saleWithShipping = (sale.total ?? 0) + (Number(sale.shippingCharges ?? sale.expenses ?? (sale as any).shipment_charges) || 0);
+  const grandTotal = studioLineTotalFromInvoice > 0 ? saleWithShipping : saleWithShipping + studioCostLegacy;
   // Use sum of actual payment records when loaded (single source of truth); fallback to sale.paid from DB.
   // Fixes desktop drawer showing wrong paid amount (e.g. doubled) when sales.paid_amount is out of sync.
   const totalPaidDisplay =
@@ -1326,20 +1327,27 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
           {activeTab === 'payments' && (
             <div className="space-y-4">
               {/* Add Payment Button - hidden when cancelled/returned; shown for final or partially_returned with due */}
-              <div className="flex justify-between items-center">
+              <div className="flex justify-between items-center flex-wrap gap-2">
                 <h3 className="text-lg font-semibold text-white">Payment History</h3>
                 {canAddPayment && (
-                  <Button
-                    onClick={() => {
-                      onAddPayment?.(sale.id);
-                    }}
-                    className="bg-blue-600 hover:bg-blue-700 text-white"
-                  >
-                    <CreditCard size={16} className="mr-2" />
-                    Add Payment
-                  </Button>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      onClick={() => {
+                        onAddPayment?.(sale.id);
+                      }}
+                      className="bg-blue-600 hover:bg-blue-700 text-white"
+                    >
+                      <CreditCard size={16} className="mr-2" />
+                      Add Payment
+                    </Button>
+                  </div>
                 )}
               </div>
+              {canAddPayment && (
+                <p className="text-xs text-gray-500">
+                  To record <strong>COD received from courier</strong>: use Add Payment and add note &quot;COD received from courier&quot;.
+                </p>
+              )}
 
               {/* CRITICAL FIX: Payment Summary with Cash/Bank Breakdown */}
               {loadingPayments ? (

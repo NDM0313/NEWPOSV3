@@ -541,11 +541,12 @@ export const NewRentalBooking = () => {
               {loading ? (
                 <div className="text-center py-8 text-gray-500">
                   <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-[#800020]"></div>
-                  <p className="mt-2">Loading products...</p>
+                  <p className="mt-2">Loading…</p>
                 </div>
               ) : filteredProducts.length === 0 ? (
                 <div className="text-center py-8 text-gray-500">
-                  No rentable products found
+                  <p className="font-medium">No rentable products found</p>
+                  <p className="text-xs mt-1">Add products and enable rental in product settings, or check filters.</p>
                 </div>
               ) : filteredProducts.map(product => {
                 const availability = isProductAvailable(product);
@@ -758,6 +759,7 @@ export const NewRentalBooking = () => {
             <Button
               onClick={handleSaveBooking}
               disabled={selectedItems.length === 0 || !datesLocked || saving || loading}
+              aria-busy={saving}
               className="w-full bg-[#800020] hover:bg-[#600018] text-white font-bold py-6 text-lg shadow-lg shadow-[#800020]/20 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <CheckCircle2 size={20} className="mr-2" />

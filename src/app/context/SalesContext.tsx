@@ -17,6 +17,7 @@ import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
 import { toast } from 'sonner';
 import { activityLogService } from '@/app/services/activityLogService';
 import { documentNumberService } from '@/app/services/documentNumberService';
+import { shipmentService } from '@/app/services/shipmentService';
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 function isValidBranchId(id: string | null): id is string {
@@ -346,8 +347,8 @@ export const convertFromSupabaseSale = (supabaseSale: any): Sale => {
       subtotal: supabaseSale.subtotal || 0,
       discount: supabaseSale.discount_amount || 0,
       tax: supabaseSale.tax_amount || 0,
-    expenses: supabaseSale.expenses || supabaseSale.shipping_charges || 0,
-    shippingCharges: supabaseSale.expenses || supabaseSale.shipping_charges || 0, // Map expenses to shippingCharges for UI
+    expenses: supabaseSale.expenses || supabaseSale.shipment_charges || supabaseSale.shipping_charges || 0,
+    shippingCharges: supabaseSale.shipment_charges ?? supabaseSale.expenses ?? supabaseSale.shipping_charges ?? 0, // Issue 02: prefer trigger-synced shipment_charges
     otherCharges: supabaseSale.other_charges || 0, // Extra charges if any
       total: supabaseSale.total || 0,
       studioCharges: supabaseSale.studio_charges != null ? Number(supabaseSale.studio_charges) : undefined,
@@ -1208,6 +1209,13 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
       // This must happen BEFORE sale_items are deleted/updated so we can fetch old items
       const sale = getSaleById(id);
       const isFinalStatus = (updates.status === 'invoice' || updates.status === 'final') || (sale?.status === 'final' || sale?.type === 'invoice');
+      // PF-13: When editing a posted (final) sale and financial fields change, repost accounting so COA/ledger/reports stay in sync
+      const accountingRepostNeeded = isFinalStatus && (
+        updates.total !== undefined ||
+        updates.subtotal !== undefined ||
+        updates.discount !== undefined ||
+        ((updates as any).items && Array.isArray((updates as any).items))
+      );
       let stockMovementDeltas: Array<{
         productId: string;
         variationId?: string;
@@ -1606,6 +1614,129 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
         const discountAmt = Number((updates as any).discount ?? updates.discount_amount ?? 0);
         if (discountAmt > 0) charges.push({ charge_type: 'discount', amount: discountAmt });
         await saleService.replaceSaleCharges(id, charges, user?.id ?? undefined);
+      }
+
+      // PF-03: Sync shipping charge to sale_shipments so trigger updates sales.shipment_charges and due_amount (single source of truth)
+      if ((updates as any).shippingCharges !== undefined && companyId) {
+        try {
+          const shipments = await shipmentService.getBySaleId(id);
+          let effectiveBranchId = isValidBranchId(branchId) ? branchId : (sale?.location ?? null);
+          if (!effectiveBranchId && companyId) {
+            const branches = await branchService.getAllBranches(companyId);
+            effectiveBranchId = branches?.length ? branches[0].id : null;
+          }
+          if (shipments.length > 0) {
+            await shipmentService.update(shipments[0].id, { charged_to_customer: updateShippingCharges }, user?.id ?? undefined);
+            console.log('[SALES CONTEXT] PF-03: Updated first shipment charged_to_customer, trigger will sync sale shipment_charges and due_amount');
+          } else if (updateShippingCharges > 0 && effectiveBranchId) {
+            await shipmentService.create(
+              id,
+              companyId,
+              effectiveBranchId,
+              { shipment_type: 'Courier', charged_to_customer: updateShippingCharges, actual_cost: 0, currency: 'PKR', shipment_status: 'Pending' },
+              user?.id ?? undefined,
+              sale?.invoiceNo ?? undefined
+            );
+            console.log('[SALES CONTEXT] PF-03: Created shipment for shipping charge, trigger will sync sale shipment_charges and due_amount');
+          }
+        } catch (shipSyncErr: any) {
+          console.warn('[SALES CONTEXT] PF-03: Shipment sync for shipping charge failed:', shipSyncErr?.message);
+        }
+      }
+
+      // PF-13: Posted document edit sync — remove old sale JE and post new one so COA/ledger/reports match edited values
+      if (accountingRepostNeeded && companyId) {
+        try {
+          const { supabase: sb } = await import('@/lib/supabase');
+          const updatedSale = await saleService.getSaleById(id);
+          if (!updatedSale) throw new Error('Sale not found after update');
+          const newTotal = Number((updatedSale as any).total ?? (updatedSale as any).total_amount ?? 0) || 0;
+          const newPaid = Number((updatedSale as any).paid_amount ?? (updatedSale as any).paid ?? 0) || 0;
+          const invoiceNo = (updatedSale as any).invoice_no ?? (updatedSale as any).invoiceNo ?? id;
+          const customerName = (updatedSale as any).customer_name ?? (updatedSale as any).customerName ?? 'Customer';
+          const entryDate = ((updatedSale as any).invoice_date ?? (updatedSale as any).date ?? new Date().toISOString().slice(0, 10)).toString().slice(0, 10);
+          let effectiveBranchId = isValidBranchId(branchId) ? branchId : ((updatedSale as any).branch_id && (updatedSale as any).branch_id !== 'all') ? (updatedSale as any).branch_id : null;
+          if (!effectiveBranchId && companyId) {
+            const branches = await branchService.getAllBranches(companyId);
+            effectiveBranchId = branches?.length ? branches[0].id : null;
+          }
+          const createdByAuthId = (user as any)?.id ?? (user as any)?.auth_user_id ?? null;
+
+          const { data: existingJEs } = await sb
+            .from('journal_entries')
+            .select('id')
+            .eq('company_id', companyId)
+            .eq('reference_type', 'sale')
+            .eq('reference_id', id);
+          if (existingJEs && existingJEs.length > 0) {
+            for (const je of existingJEs) {
+              await sb.from('journal_entry_lines').delete().eq('journal_entry_id', je.id);
+              await sb.from('journal_entries').delete().eq('id', je.id);
+            }
+            console.log('[SALES CONTEXT] PF-13: Reversed existing sale JE(s) for edit:', existingJEs.length);
+          }
+
+          if (newTotal > 0) {
+            const { data: arAccounts } = await sb
+              .from('accounts')
+              .select('id, code')
+              .eq('company_id', companyId)
+              .or('code.eq.2000,code.eq.1100,name.ilike.%Accounts Receivable%');
+            const arAccount = arAccounts?.find((a: any) => a.code === '2000') || arAccounts?.find((a: any) => a.code === '1100') || arAccounts?.[0];
+            const arAccountId = arAccount?.id;
+            let salesAccountId: string | undefined;
+            const { data: salesByCode } = await sb.from('accounts').select('id').eq('company_id', companyId).in('code', ['4000', '4001', '4002', '4003']).eq('is_active', true).limit(1);
+            salesAccountId = salesByCode?.[0]?.id;
+            if (!salesAccountId) {
+              const { data: salesByName } = await sb.from('accounts').select('id').eq('company_id', companyId).or('name.ilike.%Sales%,name.ilike.%Revenue%').eq('is_active', true).limit(1);
+              salesAccountId = salesByName?.[0]?.id;
+            }
+            if (arAccountId && salesAccountId) {
+              const unpaidAmount = newTotal - newPaid;
+              const { data: mainJE, error: jeErr } = await sb
+                .from('journal_entries')
+                .insert({
+                  company_id: companyId,
+                  branch_id: effectiveBranchId,
+                  entry_date: entryDate,
+                  description: `Sale ${invoiceNo} to ${customerName} (edited)`,
+                  reference_type: 'sale',
+                  reference_id: id,
+                  created_by: createdByAuthId,
+                })
+                .select()
+                .single();
+              if (jeErr || !mainJE) {
+                console.error('[SALES CONTEXT] PF-13: Failed to create repost sale JE:', jeErr);
+                toast.warning('Sale updated, but accounting repost failed. Check logs.');
+              } else {
+                if (unpaidAmount > 0) {
+                  await sb.from('journal_entry_lines').insert({
+                    journal_entry_id: mainJE.id,
+                    account_id: arAccountId,
+                    debit: unpaidAmount,
+                    credit: 0,
+                    description: `Accounts Receivable for ${invoiceNo}`,
+                  });
+                }
+                await sb.from('journal_entry_lines').insert({
+                  journal_entry_id: mainJE.id,
+                  account_id: salesAccountId,
+                  debit: 0,
+                  credit: newTotal,
+                  description: `Sales Revenue for ${invoiceNo}`,
+                });
+                console.log('[SALES CONTEXT] PF-13: Created new sale JE after edit:', mainJE.id);
+                window.dispatchEvent(new CustomEvent('accountingEntriesChanged'));
+              }
+            } else {
+              console.error('[SALES CONTEXT] PF-13: Missing AR or Sales account for repost. Skipping JE.');
+            }
+          }
+        } catch (repostErr: any) {
+          console.error('[SALES CONTEXT] PF-13: Sale edit repost failed:', repostErr);
+          toast.warning('Sale updated, but accounting repost failed. Check logs.');
+        }
       }
 
       // Commission: NOT posted per sale on update. Batch posting only via Commission Report.

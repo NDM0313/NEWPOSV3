@@ -330,9 +330,12 @@ export const AccountLedgerPage: React.FC<AccountLedgerPageProps> = ({
       {/* Ledger Table */}
       <div className="flex-1 overflow-auto bg-gray-950">
         {loading ? (
-          <div className="text-center py-12 text-gray-400">Loading ledger...</div>
+          <div className="text-center py-12 text-gray-400">Loading…</div>
         ) : filteredEntries.length === 0 ? (
-          <div className="text-center py-12 text-gray-400">No ledger entries found</div>
+          <div className="text-center py-12 text-gray-400">
+            <p className="font-medium">No ledger entries</p>
+            <p className="text-sm text-gray-500 mt-1">Transactions for this account will appear here.</p>
+          </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full">
