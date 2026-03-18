@@ -1,31 +1,13 @@
 /**
- * Sale Accounting Service
+ * Sale Accounting Service (Phase 4: one contract)
  *
- * ERP Rule: Journal entries are created ONLY when a sale is finalized.
+ * Source lock: journal_entries + journal_entry_lines + accounts only.
+ * COA: 1100 AR, 4000 Sales Revenue, 4100 Shipping Income, 5200 Discount Allowed, 5300 Extra Expense, 5000 COGS, 1200 Inventory, 2000 AP.
+ * Payment isolation: document JEs never touch payment_id; payment has its own flow.
  *
- *   Simple Sale (no discount / extras):
- *     Dr Accounts Receivable (1100)   total
- *     Cr Sales Revenue (4000)                  total
- *
- *   Sale with discount_amount > 0:
- *     Dr Accounts Receivable (1100)   net_total  (total after discount)
- *     Dr Discount Allowed   (5200)    discount_amount
- *     Cr Sales Revenue      (4000)               gross_total  (subtotal before discount)
- *
- *   Issue 08 – COGS: When sale has line items with product cost:
- *     Dr Cost of Production (5000)   totalCogs
- *     Cr Inventory (1200)                     totalCogs
- *   (Same journal entry; totalCogs = sum(line.quantity * product.cost_price).)
- *
- *   Sale with extra_expenses > 0:
- *     Dr Extra Expense (5300)   extra_expenses
- *     Cr Cash (1000) / Accounts Payable (2000)   extra_expenses
- *     (separate journal entry, reference_type='sale_extra_expense')
- *
- *   Cancelled:
- *     Reversal of the original sale entry (including COGS reversal: Dr Inventory Cr COGS).
- *
- * Duplicate Protection: One entry per sale (reference_type='sale', reference_id=saleId).
+ * Sale create: Dr AR (total), Dr Discount (if any), Cr Sales Revenue (product), Cr Shipping Income (4100, if shipmentCharges), COGS/Inventory.
+ * Sale edit: delta JEs only (revenue, discount, shipping, extra); no blanket reversal; payment untouched unless payment changed.
+ * Sale cancel: reversal JE matching create (Sales Revenue, Shipping Income, Discount, AR, COGS/Inventory).
  */
 
 import { supabase } from '@/lib/supabase';
@@ -198,6 +180,23 @@ async function ensureAPAccount(companyId: string): Promise<{ id: string } | null
   return null;
 }
 
+/** Phase 4: Shipping Income (4100) – Cr when shipping charged to customer (COA mapping). */
+async function ensureShippingIncomeAccount(companyId: string): Promise<{ id: string } | null> {
+  const existing = await accountHelperService.getAccountByCode('4100', companyId);
+  if (existing?.id) return existing;
+  try {
+    const { data, error } = await supabase
+      .from('accounts')
+      .insert({ company_id: companyId, code: '4100', name: 'Shipping Income', type: 'revenue', balance: 0, is_active: true })
+      .select('id')
+      .single();
+    if (!error && data?.id) return data;
+  } catch (e) {
+    console.warn('[saleAccountingService] Could not auto-create Shipping Income account (4100):', e);
+  }
+  return null;
+}
+
 /** Issue 08: COGS account (5000) for Cost of Production / Cost of Goods Sold. */
 async function ensureCOGSAccount(companyId: string): Promise<{ id: string } | null> {
   const existing = await accountHelperService.getAccountByCode('5000', companyId);
@@ -286,17 +285,10 @@ async function getSaleCogs(saleId: string): Promise<number> {
 
 export const saleAccountingService = {
   /**
-   * Create journal entry when sale is finalized.
+   * Create journal entry when sale is finalized (Phase 4: one contract).
    *
-   * With discount:
-   *   Dr Accounts Receivable (1100)   net_total
-   *   Dr Discount Allowed   (5200)    discount_amount
-   *   Cr Sales Revenue      (4000)               gross_total
-   *
-   * Without discount:
-   *   Dr Accounts Receivable (1100)   total
-   *   Cr Sales Revenue (4000)                  total
-   *
+   * Dr AR (1100) = total. Cr: Sales Revenue (4000) for product, Shipping Income (4100) for shipping, Discount (5200) if any.
+   * COGS: Dr Cost of Production (5000), Cr Inventory (1200).
    * Safe to call multiple times — duplicate is detected and skipped.
    */
   async createSaleJournalEntry(params: {
@@ -305,10 +297,12 @@ export const saleAccountingService = {
     branchId?: string | null;
     total: number;
     discountAmount?: number;
+    /** Phase 4: Shipping charged to customer → Cr Shipping Income (4100). */
+    shipmentCharges?: number;
     invoiceNo: string;
     performedBy?: string | null;
   }): Promise<string | null> {
-    const { saleId, companyId, branchId, total, discountAmount = 0, invoiceNo, performedBy } = params;
+    const { saleId, companyId, branchId, total, discountAmount = 0, shipmentCharges = 0, invoiceNo, performedBy } = params;
 
     if (!saleId || !companyId) {
       console.warn('[saleAccountingService] createSaleJournalEntry: missing saleId or companyId');
@@ -378,14 +372,40 @@ export const saleAccountingService = {
       }
     }
 
-    lines.push({
-      id: '',
-      journal_entry_id: '',
-      account_id: revenueAccount.id,
-      debit: 0,
-      credit: hasDiscount ? grossTotal : total,
-      description: `Sales Revenue – ${invoiceNo}`,
-    });
+    const shippingAmount = Math.round((Number(shipmentCharges) || 0) * 100) / 100;
+    const revenueCredit = Math.round((grossTotal - shippingAmount) * 100) / 100;
+    if (revenueCredit > 0) {
+      lines.push({
+        id: '',
+        journal_entry_id: '',
+        account_id: revenueAccount.id,
+        debit: 0,
+        credit: revenueCredit,
+        description: `Sales Revenue – ${invoiceNo}`,
+      });
+    }
+    if (shippingAmount > 0) {
+      const shippingAccount = await ensureShippingIncomeAccount(companyId);
+      if (shippingAccount?.id) {
+        lines.push({
+          id: '',
+          journal_entry_id: '',
+          account_id: shippingAccount.id,
+          debit: 0,
+          credit: shippingAmount,
+          description: `Shipping Income – ${invoiceNo}`,
+        });
+      } else {
+        lines.push({
+          id: '',
+          journal_entry_id: '',
+          account_id: revenueAccount.id,
+          debit: 0,
+          credit: shippingAmount,
+          description: `Shipping (fallback Revenue) – ${invoiceNo}`,
+        });
+      }
+    }
 
     // Issue 08: COGS – Dr Cost of Production (5000), Cr Inventory (1200)
     const totalCogs = await getSaleCogs(saleId);
@@ -506,11 +526,8 @@ export const saleAccountingService = {
   },
 
   /**
-   * Create reversing journal entry when a finalized sale is cancelled.
-   *
-   *   Dr Sales Revenue (4000)         amount   [reversal]
-   *   Cr Accounts Receivable (1100)            amount
-   *
+   * Create reversing journal entry when a finalized sale is cancelled (Phase 4: match create).
+   * Reverses: Sales Revenue, Shipping Income (if any), Discount, AR, and COGS/Inventory.
    * Only creates reversal if an original sale journal entry exists.
    */
   async reverseSaleJournalEntry(params: {
@@ -519,10 +536,11 @@ export const saleAccountingService = {
     branchId?: string | null;
     total: number;
     discountAmount?: number;
+    shipmentCharges?: number;
     invoiceNo: string;
     performedBy?: string | null;
   }): Promise<string | null> {
-    const { saleId, companyId, branchId, total, discountAmount = 0, invoiceNo, performedBy } = params;
+    const { saleId, companyId, branchId, total, discountAmount = 0, shipmentCharges = 0, invoiceNo, performedBy } = params;
 
     if (!saleId || !companyId || total <= 0) return null;
 
@@ -558,18 +576,42 @@ export const saleAccountingService = {
 
     const hasDiscount = discountAmount > 0;
     const grossTotal = hasDiscount ? total + discountAmount : total;
+    const shippingAmount = Math.round((Number(shipmentCharges) || 0) * 100) / 100;
+    const revenueReversal = Math.round((grossTotal - shippingAmount) * 100) / 100;
 
-    const lines: JournalEntryLine[] = [
-      {
+    const lines: JournalEntryLine[] = [];
+    if (revenueReversal > 0) {
+      lines.push({
         id: '',
         journal_entry_id: '',
         account_id: revenueAccount.id,
-        debit: hasDiscount ? grossTotal : total,
+        debit: revenueReversal,
         credit: 0,
         description: `Reversal Sales Revenue – ${invoiceNo}`,
-      },
-    ];
-
+      });
+    }
+    if (shippingAmount > 0) {
+      const shippingAccount = await ensureShippingIncomeAccount(companyId);
+      if (shippingAccount?.id) {
+        lines.push({
+          id: '',
+          journal_entry_id: '',
+          account_id: shippingAccount.id,
+          debit: shippingAmount,
+          credit: 0,
+          description: `Reversal Shipping Income – ${invoiceNo}`,
+        });
+      } else {
+        lines.push({
+          id: '',
+          journal_entry_id: '',
+          account_id: revenueAccount.id,
+          debit: shippingAmount,
+          credit: 0,
+          description: `Reversal Shipping (Revenue) – ${invoiceNo}`,
+        });
+      }
+    }
     if (hasDiscount) {
       const discountAccount = await ensureDiscountAllowedAccount(companyId);
       if (discountAccount?.id) {
@@ -581,7 +623,6 @@ export const saleAccountingService = {
         });
       }
     }
-
     lines.push({
       id: '',
       journal_entry_id: '',
@@ -736,19 +777,21 @@ export const saleAccountingService = {
       }
     }
 
-    // 4) Shipping (charged to customer) delta – treat as revenue-side: Dr AR, Cr Revenue or shipping income
+    // 4) Shipping (charged to customer) delta – Phase 4: Cr Shipping Income (4100), not Sales Revenue
     const deltaShipping = Math.round((newSnapshot.shippingCharges - oldSnapshot.shippingCharges) * 100) / 100;
     if (deltaShipping !== 0) {
+      const shippingIncomeAccount = await ensureShippingIncomeAccount(companyId);
+      const creditAccountId = shippingIncomeAccount?.id ?? revenueAccount.id;
       const desc = `Sale adjustment – shipping change (was Rs ${fmt(oldSnapshot.shippingCharges)}, now Rs ${fmt(newSnapshot.shippingCharges)}) – ${invoiceNo}`;
       if (deltaShipping > 0) {
         await postAdjustmentJE(companyId, branchIdSafe, saleId, entryDate, createdBy, desc, [
           { accountId: arAccount.id, debit: deltaShipping, credit: 0, description: `AR shipping – ${invoiceNo}` },
-          { accountId: revenueAccount.id, debit: 0, credit: deltaShipping, description: `Sales Revenue – ${invoiceNo}` },
+          { accountId: creditAccountId, debit: 0, credit: deltaShipping, description: `Shipping Income – ${invoiceNo}` },
         ]);
         adjustmentCount++;
       } else {
         await postAdjustmentJE(companyId, branchIdSafe, saleId, entryDate, createdBy, desc, [
-          { accountId: revenueAccount.id, debit: -deltaShipping, credit: 0, description: `Sales Revenue reversal – ${invoiceNo}` },
+          { accountId: creditAccountId, debit: -deltaShipping, credit: 0, description: `Shipping Income reversal – ${invoiceNo}` },
           { accountId: arAccount.id, debit: 0, credit: -deltaShipping, description: `AR reversal – ${invoiceNo}` },
         ]);
         adjustmentCount++;

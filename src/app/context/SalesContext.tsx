@@ -1686,7 +1686,7 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
             window.dispatchEvent(new CustomEvent('accountingEntriesChanged'));
           }
 
-          // PF-14.2: Human-readable history for sale component edits
+          // Phase 4: Activity only when value actually changed (no misleading or duplicate entries)
           const logComponent = (field: string, oldVal: number, newVal: number, label: string) => {
             if (oldVal === newVal) return;
             activityLogService.logActivity({

@@ -593,7 +593,7 @@ export const saleService = {
   // Update sale status (when 'cancelled': create SALE_CANCELLED stock reversals, then update status)
   async updateSaleStatus(id: string, status: Sale['status']) {
     if (status === 'cancelled') {
-      const { data: saleRow } = await supabase.from('sales').select('id, invoice_no, branch_id, company_id, total, status').eq('id', id).single();
+      const { data: saleRow } = await supabase.from('sales').select('id, invoice_no, branch_id, company_id, total, status, discount_amount, shipment_charges').eq('id', id).single();
       if (!saleRow) throw new Error('Sale not found');
       const invoiceNo = (saleRow as any).invoice_no || `SL-${id.substring(0, 8)}`;
 
@@ -642,13 +642,15 @@ export const saleService = {
       const { data, error } = await supabase.from('sales').update({ status }).eq('id', id).select().single();
       if (error) throw error;
 
-      // Accounting reversal: only if the sale was previously final
+      // Accounting reversal: only if the sale was previously final (Phase 4: include discount and shipping)
       if ((saleRow as any).status === 'final') {
         saleAccountingService.reverseSaleJournalEntry({
           saleId: id,
           companyId: (saleRow as any).company_id,
           branchId: (saleRow as any).branch_id,
           total: Number((saleRow as any).total) || 0,
+          discountAmount: Number((saleRow as any).discount_amount ?? 0) || undefined,
+          shipmentCharges: Number((saleRow as any).shipment_charges ?? 0) || undefined,
           invoiceNo,
         }).catch((err: any) =>
           console.warn('[saleService] Accounting reversal failed (non-critical):', err?.message)
@@ -669,11 +671,16 @@ export const saleService = {
 
     // Accounting: Create Dr AR / Cr Sales Revenue when sale is finalized
     if (status === 'final') {
+      const total = Number(data.total) || 0;
+      const discountAmount = Number((data as any).discount_amount ?? 0) || 0;
+      const shipmentCharges = Number((data as any).shipment_charges ?? 0) || 0;
       saleAccountingService.createSaleJournalEntry({
         saleId: data.id,
         companyId: data.company_id,
         branchId: data.branch_id,
-        total: Number(data.total) || 0,
+        total,
+        discountAmount: discountAmount || undefined,
+        shipmentCharges: shipmentCharges || undefined,
         invoiceNo: data.invoice_no || `SL-${data.id?.substring(0, 8)}`,
         performedBy: data.created_by,
       }).catch((err: any) =>
@@ -727,11 +734,15 @@ export const saleService = {
     const newStatus = updates.status ?? (data as any)?.status;
     if (newStatus === 'final' && prevStatus !== 'final') {
       const total = Number((data as any)?.total ?? (existingSale as any)?.total) || 0;
+      const discountAmount = Number((data as any)?.discount_amount ?? (existingSale as any)?.discount_amount ?? 0) || 0;
+      const shipmentCharges = Number((data as any)?.shipment_charges ?? (existingSale as any)?.shipment_charges ?? 0) || 0;
       saleAccountingService.createSaleJournalEntry({
         saleId: id,
         companyId: (data as any)?.company_id ?? (existingSale as any)?.company_id,
         branchId: (data as any)?.branch_id ?? (existingSale as any)?.branch_id,
         total,
+        discountAmount: discountAmount || undefined,
+        shipmentCharges: shipmentCharges || undefined,
         invoiceNo: (data as any)?.invoice_no ?? (existingSale as any)?.invoice_no ?? `SL-${id.substring(0, 8)}`,
         performedBy: (data as any)?.created_by,
       }).catch((err: any) =>
