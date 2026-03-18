@@ -650,8 +650,9 @@ export const saleAccountingService = {
   },
 
   /**
-   * PF-14: Post delta-only adjustment JEs for a sale edit. Original sale JEs remain untouched.
+   * PF-14 / Phase 3: Post delta-only adjustment JEs for a sale edit. Original sale JEs remain untouched.
    * Each component (revenue, discount, extra expense, shipping) gets its own adjustment JE if delta !== 0.
+   * Payment isolation: this method does NOT touch any payment_id JE or payment ledger; only document components.
    */
   async postSaleEditAdjustments(params: {
     companyId: string;

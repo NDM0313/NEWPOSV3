@@ -1255,29 +1255,32 @@ export const saleService = {
       }
       const data = updateResult.data;
 
-      // PF-14.2: Log payment_edited for History tab (human-readable: "Payment edited from Rs X to Rs Y via Cash")
+      // Phase 3: Log payment_edited only when something changed; avoid "from 33000 to 33000"
       const newAmount = updates.amount !== undefined ? Number(updates.amount) : oldAmount;
       const paymentMethodDisplay = (updates.paymentMethod ?? (data as any)?.payment_method ?? 'Cash').toString();
-      if (oldAmount != null && newAmount != null && (oldAmount !== newAmount || updates.paymentMethod !== undefined)) {
+      const amountChanged = oldAmount != null && newAmount != null && oldAmount !== newAmount;
+      const accountOrMethodOnly = (updates.accountId !== undefined || updates.paymentMethod !== undefined) && !amountChanged;
+      if ((amountChanged || accountOrMethodOnly) && (data as any)?.company_id) {
         const saleRow = await this.getSaleById(saleId).catch(() => null);
         const invoiceNo = (saleRow as any)?.invoice_no ?? (saleRow as any)?.invoiceNo ?? saleId?.slice(0, 8) ?? 'N/A';
         const { data: { user } } = await supabase.auth.getUser();
-        const companyIdForLog = (data as any)?.company_id ?? null;
-        if (companyIdForLog) {
-          activityLogService.logActivity({
-            companyId: companyIdForLog,
-            module: 'sale',
-            entityId: saleId,
-            entityReference: invoiceNo,
-            action: 'payment_edited',
-            oldValue: oldAmount,
-            newValue: newAmount,
-            amount: newAmount,
-            paymentMethod: paymentMethodDisplay,
-            performedBy: (user as any)?.id ?? null,
-            description: `Payment edited from Rs ${Number(oldAmount).toLocaleString()} to Rs ${Number(newAmount).toLocaleString()} via ${paymentMethodDisplay}`,
-          }).catch((e) => console.warn('[SALE SERVICE] Activity log payment_edited failed:', e));
-        }
+        const companyIdForLog = (data as any).company_id;
+        const description = amountChanged
+          ? `Payment edited from Rs ${Number(oldAmount).toLocaleString()} to Rs ${Number(newAmount).toLocaleString()} via ${paymentMethodDisplay}`
+          : `Payment account/method changed to ${paymentMethodDisplay}`;
+        activityLogService.logActivity({
+          companyId: companyIdForLog,
+          module: 'sale',
+          entityId: saleId,
+          entityReference: invoiceNo,
+          action: 'payment_edited',
+          oldValue: oldAmount ?? undefined,
+          newValue: newAmount ?? undefined,
+          amount: newAmount ?? undefined,
+          paymentMethod: paymentMethodDisplay,
+          performedBy: (user as any)?.id ?? null,
+          description,
+        }).catch((e) => console.warn('[SALE SERVICE] Activity log payment_edited failed:', e));
       }
 
       // PF-14.1: Post payment adjustment JE when amount changed (original payment JE stays untouched)

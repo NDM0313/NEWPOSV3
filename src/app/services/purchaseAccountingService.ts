@@ -126,6 +126,7 @@ export async function postPurchaseEditAdjustments(params: {
 
   const branchIdSafe = branchId && branchId !== 'all' ? branchId : undefined;
 
+  // Phase 3: Payment isolation – only document deltas (inventory, AP, discount); never touch payment_id JEs.
   // Resolve accounts once. Phase 2: Inventory canonical = 1200; fallback 1500 then name.
   let inventoryAccountId: string | null = null;
   let apAccountId: string | null = null;

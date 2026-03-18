@@ -882,7 +882,7 @@ export const purchaseService = {
     return { id: result.paymentId, reference_number: result.referenceNumber };
   },
 
-  // Update payment
+  // Update payment (Phase 3: isolated — post only payment delta JEs, never touch document JEs)
   async updatePayment(
     paymentId: string,
     purchaseId: string,
@@ -897,6 +897,31 @@ export const purchaseService = {
     }
   ) {
     try {
+      // Phase 3: Capture current payment before update (for amount/account adjustment JEs)
+      let oldAmount: number | null = null;
+      let oldAccountId: string | null = null;
+      let paymentAccountId: string | null = null;
+      let companyId: string | null = null;
+      let branchId: string | null = null;
+      let paymentDate: string | null = null;
+      const needPreState = updates.amount !== undefined || updates.accountId !== undefined || updates.paymentMethod !== undefined;
+      if (needPreState) {
+        const { data: current } = await supabase
+          .from('payments')
+          .select('amount, payment_account_id, company_id, branch_id, payment_date')
+          .eq('id', paymentId)
+          .single();
+        if (current) {
+          const c = current as any;
+          oldAmount = Number(c.amount ?? 0) || 0;
+          oldAccountId = c.payment_account_id ?? null;
+          paymentAccountId = c.payment_account_id ?? null;
+          companyId = c.company_id ?? null;
+          branchId = c.branch_id ?? null;
+          paymentDate = c.payment_date ?? null;
+        }
+      }
+
       // Normalize payment method if provided
       let normalizedPaymentMethod = updates.paymentMethod;
       if (updates.paymentMethod) {
@@ -941,9 +966,77 @@ export const purchaseService = {
         throw error;
       }
 
-      // Triggers will handle:
-      // 1. Journal entry update (if needed)
-      // 2. Purchase totals recalculation
+      const newAmount = updates.amount !== undefined ? Number(updates.amount) : oldAmount;
+
+      // Phase 3: Post payment amount adjustment JE when amount changed (original payment JE stays untouched)
+      if (
+        oldAmount != null &&
+        newAmount != null &&
+        oldAmount !== newAmount &&
+        companyId &&
+        paymentAccountId
+      ) {
+        try {
+          const purchaseRow = await this.getPurchase(purchaseId).catch(() => null);
+          const poNo = (purchaseRow as any)?.po_no ?? `PUR-${purchaseId.substring(0, 8)}`;
+          const { postPaymentAmountAdjustment } = await import('@/app/services/paymentAdjustmentService');
+          const { data: { user } } = await supabase.auth.getUser();
+          await postPaymentAmountAdjustment({
+            context: 'purchase',
+            companyId,
+            branchId,
+            paymentId,
+            referenceId: purchaseId,
+            oldAmount,
+            newAmount,
+            paymentAccountId: updates.accountId ?? paymentAccountId,
+            invoiceNoOrRef: poNo,
+            entryDate: (updates.paymentDate || paymentDate || new Date().toISOString().split('T')[0]).toString().slice(0, 10),
+            createdBy: (user as any)?.id ?? null,
+          });
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('accountingEntriesChanged'));
+          }
+        } catch (adjErr: any) {
+          console.warn('[PURCHASE SERVICE] Payment amount adjustment JE failed:', adjErr?.message || adjErr);
+        }
+      }
+
+      // Phase 3: When only payment account/method changed, post JE: Dr new account, Cr old account
+      const newAccountId = (data as any)?.payment_account_id ?? updates.accountId ?? null;
+      if (
+        companyId &&
+        oldAccountId != null &&
+        newAccountId != null &&
+        oldAccountId !== newAccountId &&
+        (newAmount != null && newAmount > 0)
+      ) {
+        try {
+          const purchaseRow = await this.getPurchase(purchaseId).catch(() => null);
+          const poNo = (purchaseRow as any)?.po_no ?? `PUR-${purchaseId.substring(0, 8)}`;
+          const { postPaymentAccountAdjustment } = await import('@/app/services/paymentAdjustmentService');
+          const { data: { user } } = await supabase.auth.getUser();
+          await postPaymentAccountAdjustment({
+            context: 'purchase',
+            companyId,
+            branchId,
+            paymentId,
+            referenceId: purchaseId,
+            oldAccountId,
+            newAccountId,
+            amount: newAmount,
+            invoiceNoOrRef: poNo,
+            entryDate: (updates.paymentDate || paymentDate || (data as any)?.payment_date || new Date().toISOString().split('T')[0]).toString().slice(0, 10),
+            createdBy: (user as any)?.id ?? null,
+          });
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('accountingEntriesChanged'));
+          }
+        } catch (accErr: any) {
+          console.warn('[PURCHASE SERVICE] Payment account adjustment JE failed:', accErr?.message || accErr);
+        }
+      }
+
       console.log('[PURCHASE SERVICE] Payment updated successfully');
       return data;
     } catch (error: any) {

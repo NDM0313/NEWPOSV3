@@ -1765,35 +1765,38 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
                 throw new Error(`No payment account found for ${normalizedMethod}. Please create a default account.`);
               }
               
-              // If no payment exists and paidAmount > 0, create payment record (DB sets reference_number)
+              // Phase 3: Only touch payment when paid or account actually changed (document-only edit must not repost payment)
+              const existingSum = existingPayments.reduce((s: number, p: any) => s + (Number(p.amount) || 0), 0);
+              const paymentUnchanged = existingPayments.length === 1 &&
+                Math.round((paidAmount - (Number(existingPayments[0].amount) || 0)) * 100) === 0 &&
+                (existingPayments[0].payment_account_id === paymentAccountId || !existingPayments[0].payment_account_id);
+
               if (existingPayments.length === 0 && paidAmount > 0) {
                 await saleService.recordPayment(
-                  id, 
-                  paidAmount, 
-                  paymentMethod, 
-                  paymentAccountId, 
-                  companyId, 
-                  effectiveBranchId, 
+                  id,
+                  paidAmount,
+                  paymentMethod,
+                  paymentAccountId,
+                  companyId,
+                  effectiveBranchId,
                   saleForSync.date,
                   undefined
                 );
                 console.log('[SALES CONTEXT] ✅ Payment record created in payments table');
-              } 
-              // If single payment exists, update it
-              else if (existingPayments.length === 1) {
+              } else if (existingPayments.length === 1 && !paymentUnchanged) {
                 await saleService.updatePayment(
-                  existingPayments[0].id, 
-                  id, 
-                  { 
-                    amount: paidAmount, 
+                  existingPayments[0].id,
+                  id,
+                  {
+                    amount: paidAmount,
                     paymentMethod: normalizedMethod,
-                    paymentAccountId: paymentAccountId
+                    accountId: paymentAccountId,
                   }
                 );
                 console.log('[SALES CONTEXT] ✅ Payment record updated in payments table');
-              }
-              // If multiple payments exist, log warning (shouldn't happen in normal flow)
-              else if (existingPayments.length > 1) {
+              } else if (existingPayments.length === 1 && paymentUnchanged) {
+                if (import.meta.env?.DEV) console.log('[SALES CONTEXT] Phase 3: Payment unchanged, skipping update');
+              } else if (existingPayments.length > 1) {
                 console.warn('[SALES CONTEXT] Multiple payments exist, cannot auto-update. Use payment management UI.');
               }
             }
