@@ -143,6 +143,13 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         setLoading(false);
         return;
       }
+      const storageErr = isStorageOrSecurityError(e);
+      if (storageErr && attempt < CONNECTION_ERROR_MAX_RETRIES) {
+        console.warn('[AUTH] getSession threw storage/security error, retrying in', RETRY_DELAY_MS, 'ms', { attempt: attempt + 1 });
+        setTimeout(() => attemptSessionLoad(attempt + 1), RETRY_DELAY_MS);
+        return;
+      }
+      if (storageErr) setConnectionError(true);
       if (isServerError(e) && attempt < CONNECTION_ERROR_MAX_RETRIES) {
         if (import.meta.env?.DEV) console.warn('[AUTH] getSession threw 5xx, retrying in', RETRY_DELAY_MS, 'ms', { attempt: attempt + 1 });
         setTimeout(() => attemptSessionLoad(attempt + 1), RETRY_DELAY_MS);
@@ -163,8 +170,8 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       try {
       const newUser = session?.user ?? null;
 
-      // Defensive: if client emits session=null shortly after sign-in (e.g. token refresh race or storage SecurityError),
-      // verify with getSession before clearing so we don't auto-logout on a spurious event.
+      // PRODUCTION FIX: Only clear session when event is SIGNED_OUT. Any other session=null (e.g. after
+      // GoTrueClient SecurityError / "request was denied") must NOT clear – otherwise user is logged out after 1–2s.
       if (!newUser && event !== 'SIGNED_OUT') {
         try {
           const { data: { session: current } } = await supabase.auth.getSession();
@@ -175,9 +182,13 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             fetchUserData(current.user.id, false, 0);
             return;
           }
+          // getSession() returned null – do NOT clear; treat as transient/storage/security (production SecurityError path).
+          console.warn('[AUTH] session=null but event !== SIGNED_OUT; keeping existing session, set connectionError', { event });
+          setConnectionError(true);
+          return;
         } catch (e) {
           // getSession() can throw SecurityError when storage is blocked – do NOT clear session.
-          if (import.meta.env?.DEV) console.warn('[AUTH] getSession threw (e.g. storage blocked), keeping existing session', e);
+          console.warn('[AUTH] getSession threw (e.g. storage blocked), keeping existing session', e);
           setConnectionError(true);
           return;
         }
@@ -200,6 +211,7 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         }
         fetchUserData(newUser.id, false, 0);
       } else {
+        console.info('[AUTH] Logout: event=', event, '- clearing session (only path that clears session)');
         setCompanyId(null);
         setUserRole(null);
         setBranchId(null);
