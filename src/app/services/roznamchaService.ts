@@ -1,6 +1,6 @@
 /**
  * Roznamcha (Daily Cash Book) – Cash In / Cash Out only (not Journal Debit/Credit).
- * Sources: payments (sale receipts, customer payments, expense payments, purchase payments).
+ * SOURCE LOCK (Phase 1): Movement from payments only; account names from accounts.
  */
 
 import { supabase } from '@/lib/supabase';

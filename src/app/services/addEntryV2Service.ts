@@ -1,6 +1,7 @@
 /**
  * Add Entry V2 – Typed entry services. One path per entry type.
- * Uses canonical DB only: accounts, journal_entries, journal_entry_lines, payments, ledger_master, ledger_entries, erp_document_sequences.
+ * SOURCE LOCK (Phase 1): COA=accounts, Journal=journal_entries+journal_entry_lines, Roznamcha=payments, numbering=erp_document_sequences.
+ * ledger_master + ledger_entries used only for UI ledger sync (supplier/user screens), not for GL reports.
  * Rule: If entry touches Cash/Bank/Wallet → create payments row first, then JE with payment_id, then ledger sync where applicable.
  */
 

@@ -1,5 +1,6 @@
 /**
  * Build LedgerData (same shape as Customer Ledger) for Supplier, User, and Worker.
+ * SOURCE LOCK (Phase 1): ledger_master + ledger_entries = UI display only (not GL truth).
  * Customer ledger stays on customerLedgerApi. Supplier/User use ledger_master + ledger_entries; Worker uses worker_ledger_entries.
  */
 

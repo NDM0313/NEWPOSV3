@@ -67,7 +67,7 @@ export const accountingService = {
       const startStr = startDate == null ? undefined : typeof startDate === 'string' ? startDate.slice(0, 10) : startDate.toISOString().slice(0, 10);
       const endStr = endDate == null ? undefined : typeof endDate === 'string' ? endDate.slice(0, 10) : endDate.toISOString().slice(0, 10);
 
-      // Journal-based accounting: journal_entries + journal_entry_lines only (no ledger_entries).
+      // SOURCE LOCK (Phase 1): journal_entries + journal_entry_lines only (no ledger_entries for GL).
       // Embed account name per line for display; avoid payment embed so query works when payment_id column is missing.
       let query = supabase
         .from('journal_entries')
@@ -775,13 +775,13 @@ export const accountingService = {
     searchTerm?: string
   ): Promise<AccountLedgerEntry[]> {
     try {
-      // Get all journal entry lines for this account
+      // Get all journal entry lines for this account, scoped to this company via inner join
       // Sort by Date ASC, then ID ASC (as per requirements)
       let query = supabase
         .from('journal_entry_lines')
         .select(`
           *,
-          journal_entry:journal_entries(
+          journal_entry:journal_entries!inner(
             id,
             entry_no,
             entry_date,
@@ -792,11 +792,12 @@ export const accountingService = {
             branch_id,
             created_by,
             created_at,
-            is_void,
+            company_id,
             branch:branches(id, name, code)
           )
         `)
         .eq('account_id', accountId)
+        .eq('journal_entries.company_id', companyId)
         .order('created_at', { ascending: true });
 
       const { data: lines, error } = await query;
@@ -1056,7 +1057,6 @@ export const accountingService = {
             branch_id,
             created_by,
             created_at,
-            is_void,
             branch:branches(id, name, code)
           )
         `)

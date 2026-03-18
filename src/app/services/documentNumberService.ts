@@ -1,8 +1,8 @@
 // ============================================================================
 // DOCUMENT NUMBER SERVICE - Collision-Safe Number Generation
 // ============================================================================
-// Ensures document numbers are always unique by checking database
-// Single source of truth for document numbering validation
+// SOURCE LOCK (Phase 1): Payment numbering = erp_document_sequences (via generate_document_number RPC).
+// Ensures document numbers are always unique by checking database.
 // ============================================================================
 
 import { supabase } from '@/lib/supabase';

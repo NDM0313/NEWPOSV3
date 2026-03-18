@@ -1,5 +1,7 @@
 /**
  * Ledger service for Supplier and User ledgers (ledger_master + ledger_entries).
+ * SOURCE LOCK (Phase 1): This is the UI ledger layer only — not GL truth.
+ * Trial Balance, P&L, Balance Sheet must use journal_entries + journal_entry_lines only.
  * Customer ledger = customerLedgerApi (sales/payments). Worker = worker_ledger_entries (studio).
  */
 

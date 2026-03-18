@@ -1,6 +1,12 @@
 /**
  * Accounting Reports Service
  * Trial Balance, P&L, Balance Sheet, Account Ledger, Sales Profit, Inventory Valuation
+ *
+ * SOURCE LOCK (Phase 1): All GL reports use only:
+ * - COA: accounts
+ * - Journal: journal_entries + journal_entry_lines
+ * No ledger_entries or ledger_master for GL totals (they are UI ledger layer only).
+ *
  * Canonical sale line table: sales_items; fallback: sale_items (legacy).
  */
 
