@@ -793,6 +793,7 @@ export const accountingService = {
             created_by,
             created_at,
             company_id,
+            is_void,
             branch:branches(id, name, code)
           )
         `)
@@ -811,14 +812,12 @@ export const accountingService = {
         return [];
       }
 
-      // Get account current balance (balance after all entries)
-      const { data: account } = await supabase
-        .from('accounts')
-        .select('balance')
-        .eq('id', accountId)
-        .single();
-
-      const currentBalance = account?.balance ?? 0;
+      // Phase 7: Current balance from journal only (single source of truth). Exclude voided JEs.
+      const currentBalance = (lines as any[]).reduce((sum: number, line: any) => {
+        const entry = line.journal_entry;
+        if (!entry || (entry as any).is_void === true) return sum;
+        return sum + ((line.debit || 0) - (line.credit || 0));
+      }, 0);
 
       // Get payment references for entries that need them (batch fetch)
       const paymentIds = lines

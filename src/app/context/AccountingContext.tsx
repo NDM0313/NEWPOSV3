@@ -3,6 +3,7 @@ import { useSupabase } from '@/app/context/SupabaseContext';
 import { useGlobalFilterOptional } from '@/app/context/GlobalFilterContext';
 import { accountService, Account as SupabaseAccount } from '@/app/services/accountService';
 import { accountingService, JournalEntryWithLines, JournalEntryLine } from '@/app/services/accountingService';
+import { accountingReportsService } from '@/app/services/accountingReportsService';
 import { documentNumberService } from '@/app/services/documentNumberService';
 import { generatePaymentReference } from '@/app/utils/paymentUtils';
 import { getOrCreateLedger, addLedgerEntry } from '@/app/services/ledgerService';
@@ -409,14 +410,25 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
     };
   }, []);
 
-  // Load accounts from database
+  // Load accounts from database. Phase 7: Prefer balance from journal (single source of truth).
   const loadAccounts = useCallback(async () => {
     if (!companyId) return;
-    
+
     try {
       const data = await accountService.getAllAccounts(companyId, branchId === 'all' ? undefined : branchId || undefined);
       const convertedAccounts = data.map(convertFromSupabaseAccount);
-      setAccounts(convertedAccounts);
+      try {
+        const asOf = new Date().toISOString().slice(0, 10);
+        const journalBalances = await accountingReportsService.getAccountBalancesFromJournal(companyId, asOf, branchId === 'all' ? undefined : branchId);
+        const merged = convertedAccounts.map((acc) => ({
+          ...acc,
+          balance: journalBalances[acc.id!] !== undefined ? journalBalances[acc.id!]! : acc.balance,
+        }));
+        setAccounts(merged);
+      } catch (jbErr) {
+        if (import.meta.env?.DEV) console.warn('[ACCOUNTING CONTEXT] Journal balances fallback to account.balance:', jbErr);
+        setAccounts(convertedAccounts);
+      }
       if (import.meta.env?.DEV) console.log('✅ Accounts loaded:', convertedAccounts.length);
     } catch (error) {
       console.error('[ACCOUNTING CONTEXT] Error loading accounts:', error);

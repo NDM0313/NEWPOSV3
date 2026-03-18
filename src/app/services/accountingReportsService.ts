@@ -143,8 +143,28 @@ function accountTypeCategory(type: string): 'revenue' | 'expense' | 'asset' | 'l
 
 export const accountingReportsService = {
   /**
+   * Phase 7: Account balances from journal only (single source of truth).
+   * Returns account_id -> balance (debit - credit) for all accounts with activity up to asOfDate.
+   * Use for Accounts screen and reconciliation; when no journal lines exist for an account, it will not appear in the map (caller can use accounts.balance as fallback).
+   */
+  async getAccountBalancesFromJournal(
+    companyId: string,
+    asOfDate?: string,
+    branchId?: string
+  ): Promise<Record<string, number>> {
+    const end = (asOfDate ?? new Date().toISOString().slice(0, 10)).slice(0, 10);
+    const tb = await this.getTrialBalance(companyId, '1900-01-01', end, branchId);
+    const out: Record<string, number> = {};
+    tb.rows.forEach((r) => {
+      out[r.account_id] = r.balance;
+    });
+    return out;
+  },
+
+  /**
    * Trial Balance: SUM(debit), SUM(credit) per account for date range.
    * Join journal_entry_lines -> journal_entries (filter by company, date), join accounts.
+   * When every journal entry is double-entry balanced, totalDebit = totalCredit and difference = 0.
    */
   async getTrialBalance(
     companyId: string,
@@ -169,7 +189,7 @@ export const accountingReportsService = {
         account_id,
         debit,
         credit,
-        journal_entry:journal_entries(entry_date, company_id, branch_id)
+        journal_entry:journal_entries(entry_date, company_id, branch_id, is_void)
       `)
       .in('account_id', accountIds);
 
@@ -196,6 +216,7 @@ export const accountingReportsService = {
     lines.forEach((line: any) => {
       const je = line.journal_entry;
       if (!je || je.company_id !== companyId) return;
+      if ((je as any).is_void === true) return;
       const ed = (je.entry_date || '').slice(0, 10);
       if (ed < start || ed > end) return;
       if (branchId && je.branch_id !== branchId) return;
