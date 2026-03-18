@@ -111,6 +111,9 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const fetchingRef = useRef<Set<string>>(new Set());
   const fetchedRef = useRef<Set<string>>(new Set());
   const lastFetchedUserIdRef = useRef<string | null>(null);
+  /** Production: ignore logout (session=null) for this many ms after sign-in – GoTrue can emit SIGNED_OUT on SecurityError. */
+  const lastSignInTimeRef = useRef<number>(0);
+  const SIGNED_IN_GRACE_MS = 15000;
 
   // Initialize user session. Retry getSession on 502/5xx so transient gateway errors don't immediately show login.
   const attemptSessionLoad = async (attempt = 0): Promise<void> => {
@@ -170,27 +173,32 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       try {
       const newUser = session?.user ?? null;
 
-      // PRODUCTION FIX: Only clear session when event is SIGNED_OUT. Any other session=null (e.g. after
-      // GoTrueClient SecurityError / "request was denied") must NOT clear – otherwise user is logged out after 1–2s.
-      if (!newUser && event !== 'SIGNED_OUT') {
-        try {
-          const { data: { session: current } } = await supabase.auth.getSession();
-          if (current?.user) {
-            if (import.meta.env?.DEV) console.warn('[AUTH] Ignoring spurious session=null, keeping session from getSession');
-            setSession(current);
-            setUser(current.user);
-            fetchUserData(current.user.id, false, 0);
+      // PRODUCTION FIX: Do NOT clear session on session=null unless (1) event is SIGNED_OUT AND (2) outside grace period after sign-in.
+      // GoTrue can emit SIGNED_OUT on SecurityError / "request was denied" within 1–2s of login – ignore that.
+      if (!newUser) {
+        const withinGrace = Date.now() - lastSignInTimeRef.current < SIGNED_IN_GRACE_MS;
+        if (withinGrace) {
+          console.warn('[AUTH] session=null within', SIGNED_IN_GRACE_MS / 1000, 's of sign-in – ignoring (production SecurityError path)', { event });
+          setConnectionError(true);
+          return;
+        }
+        if (event !== 'SIGNED_OUT') {
+          try {
+            const { data: { session: current } } = await supabase.auth.getSession();
+            if (current?.user) {
+              setSession(current);
+              setUser(current.user);
+              fetchUserData(current.user.id, false, 0);
+              return;
+            }
+            console.warn('[AUTH] session=null but event !== SIGNED_OUT; keeping existing session', { event });
+            setConnectionError(true);
+            return;
+          } catch (e) {
+            console.warn('[AUTH] getSession threw, keeping existing session', e);
+            setConnectionError(true);
             return;
           }
-          // getSession() returned null – do NOT clear; treat as transient/storage/security (production SecurityError path).
-          console.warn('[AUTH] session=null but event !== SIGNED_OUT; keeping existing session, set connectionError', { event });
-          setConnectionError(true);
-          return;
-        } catch (e) {
-          // getSession() can throw SecurityError when storage is blocked – do NOT clear session.
-          console.warn('[AUTH] getSession threw (e.g. storage blocked), keeping existing session', e);
-          setConnectionError(true);
-          return;
         }
       }
 
@@ -198,10 +206,11 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       setUser(newUser);
 
       if (newUser) {
-        if (event === 'SIGNED_IN' && import.meta.env?.DEV) {
-          console.log('[AUTH] SIGNED_IN - auth user:', { id: newUser.id, email: newUser.email });
-        }
         if (event === 'SIGNED_IN') {
+          lastSignInTimeRef.current = Date.now();
+          if (import.meta.env?.DEV) {
+            console.log('[AUTH] SIGNED_IN - auth user:', { id: newUser.id, email: newUser.email });
+          }
           supabase.from('users').update({ last_login_at: new Date().toISOString() }).or(`id.eq.${newUser.id},auth_user_id.eq.${newUser.id}`).then(() => {});
         }
         // Clear cache if user changed
