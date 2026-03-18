@@ -450,8 +450,10 @@ export const accountingReportsService = {
   },
 
   /**
-   * Inventory Valuation: current stock quantity × unit cost per product.
-   * Uses stock_movements (quantity, unit_cost, total_cost, created_at).
+   * Inventory Valuation (Phase 6): stock_movements as single source; align with stock screen.
+   * Quantity/cost: same product+variant grouping as inventoryService (has_variations → sum by variation; else by product_id with variation_id null).
+   * Unit cost: weighted avg from movements (total_cost/quantity); fallback product.cost_price/cost.
+   * Names: product.name/sku → sales_items.product_name → purchase_items.product_name → product_variations sku → "Product" (never "Unknown product (id)").
    */
   async getInventoryValuation(
     companyId: string,
@@ -461,18 +463,39 @@ export const accountingReportsService = {
     const asOf = asOfDate ? asOfDate.slice(0, 10) : new Date().toISOString().slice(0, 10);
     let movQuery = supabase
       .from('stock_movements')
-      .select('product_id, quantity, unit_cost, total_cost, created_at')
+      .select('product_id, variation_id, quantity, unit_cost, total_cost, created_at')
       .eq('company_id', companyId);
-    if (branchId) movQuery = movQuery.eq('branch_id', branchId);
+    if (branchId && branchId !== 'all') movQuery = movQuery.eq('branch_id', branchId);
     const { data: movements } = await movQuery;
     if (!movements?.length) {
       return { rows: [], totalValue: 0, asOfDate: asOf };
     }
+    const movementProductIds = [...new Set((movements as any[]).map((m: any) => m.product_id).filter(Boolean))] as string[];
+    const [productsRes, variationsRes] = await Promise.all([
+      supabase.from('products').select('id, name, sku, cost_price, cost, has_variations').eq('company_id', companyId).in('id', movementProductIds),
+      supabase.from('product_variations').select('id, product_id, sku').in('product_id', movementProductIds).eq('is_active', true),
+    ]);
+    const products = productsRes.data || [];
+    const variations = variationsRes.data || [];
+    const productMap = new Map(products.map((p: any) => [p.id, p]));
+    const variationMap: Record<string, string[]> = {};
+    variations.forEach((v: any) => {
+      if (!variationMap[v.product_id]) variationMap[v.product_id] = [];
+      variationMap[v.product_id].push(v.id);
+    });
     const byProduct: Record<string, { qty: number; costSum: number; costQty: number }> = {};
     movements.forEach((m: any) => {
       const createdAt = m.created_at;
       if (createdAt && String(createdAt).slice(0, 10) > asOf) return;
       const pid = m.product_id;
+      if (!pid) return;
+      const variationIds = variationMap[pid];
+      const hasVariations = variationIds?.length > 0 || productMap.get(pid)?.has_variations === true;
+      if (hasVariations) {
+        if (!m.variation_id || !variationIds?.includes(m.variation_id)) return;
+      } else {
+        if (m.variation_id != null) return;
+      }
       if (!byProduct[pid]) byProduct[pid] = { qty: 0, costSum: 0, costQty: 0 };
       const qty = Number(m.quantity) || 0;
       byProduct[pid].qty += qty;
@@ -490,37 +513,23 @@ export const accountingReportsService = {
     });
     const productIds = Object.keys(byProduct).filter((id) => byProduct[id].qty > 0);
     if (!productIds.length) return { rows: [], totalValue: 0, asOfDate: asOf };
-    const { data: products } = await supabase
-      .from('products')
-      .select('id, name, sku, cost_price, cost')
-      .eq('company_id', companyId)
-      .in('id', productIds);
-    const productMap = new Map((products || []).map((p: any) => [p.id, p]));
-    // Fallback for product names when product row is missing (e.g. deleted): use product_name from sales_items or purchase_items
     const missingIds = productIds.filter((id) => !productMap.has(id));
     const nameFallback = new Map<string, string>();
     if (missingIds.length > 0) {
-      const { data: fromSales } = await supabase
-        .from('sales_items')
-        .select('product_id, product_name')
-        .in('product_id', missingIds)
-        .not('product_name', 'is', null)
-        .limit(missingIds.length * 2);
-      (fromSales || []).forEach((r: any) => {
+      const [fromSales, fromPurchases, fromVariations] = await Promise.all([
+        supabase.from('sales_items').select('product_id, product_name').in('product_id', missingIds).not('product_name', 'is', null).limit(missingIds.length * 2),
+        supabase.from('purchase_items').select('product_id, product_name').in('product_id', missingIds).not('product_name', 'is', null).limit(missingIds.length * 2),
+        supabase.from('product_variations').select('product_id, sku').in('product_id', missingIds).limit(missingIds.length * 2),
+      ]);
+      (fromSales.data || []).forEach((r: any) => {
         if (r?.product_name?.trim() && !nameFallback.has(r.product_id)) nameFallback.set(r.product_id, String(r.product_name).trim());
       });
-      const stillMissing = missingIds.filter((id) => !nameFallback.has(id));
-      if (stillMissing.length > 0) {
-        const { data: fromPurchases } = await supabase
-          .from('purchase_items')
-          .select('product_id, product_name')
-          .in('product_id', stillMissing)
-          .not('product_name', 'is', null)
-          .limit(stillMissing.length * 2);
-        (fromPurchases || []).forEach((r: any) => {
-          if (r?.product_name?.trim() && !nameFallback.has(r.product_id)) nameFallback.set(r.product_id, String(r.product_name).trim());
-        });
-      }
+      (fromPurchases.data || []).forEach((r: any) => {
+        if (r?.product_name?.trim() && !nameFallback.has(r.product_id)) nameFallback.set(r.product_id, String(r.product_name).trim());
+      });
+      (fromVariations.data || []).forEach((r: any) => {
+        if (r?.sku?.trim() && !nameFallback.has(r.product_id)) nameFallback.set(r.product_id, String(r.sku).trim());
+      });
     }
     let totalValue = 0;
     const rows: InventoryValuationRow[] = productIds.map((pid) => {
@@ -530,10 +539,9 @@ export const accountingReportsService = {
         rec.costQty > 0 ? rec.costSum / rec.costQty : Number(p?.cost_price ?? p?.cost) || 0;
       const total_value = Math.round(rec.qty * avgCost * 100) / 100;
       totalValue += total_value;
-      const fromProduct = (p?.name != null && String(p.name).trim() !== '') ? String(p.name).trim() : (p ? 'Unnamed product' : null);
-      const product_name = fromProduct ?? nameFallback.get(pid) ?? `Unknown product (${pid.slice(0, 8)})`;
-      const sku =
-        (p?.sku != null && String(p.sku).trim() !== '') ? String(p.sku).trim() : '—';
+      const fromProduct = (p?.name != null && String(p.name).trim() !== '') ? String(p.name).trim() : (p?.sku != null && String(p.sku).trim() !== '') ? String(p.sku).trim() : (p ? 'Unnamed product' : null);
+      const product_name = fromProduct ?? nameFallback.get(pid) ?? 'Product';
+      const sku = (p?.sku != null && String(p.sku).trim() !== '') ? String(p.sku).trim() : '—';
       return {
         product_id: pid,
         product_name,
