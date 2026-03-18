@@ -71,4 +71,4 @@ After approval, commit with message:
 
 `Phase 5: Purchase engine rebuild – one contract, 1200/2000/5210, component-level edit only`
 
-**Commit:** `6678b5c`
+**Commit:** `4650fc5`
