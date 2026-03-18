@@ -74,4 +74,4 @@ Verification can be done manually on any final sale/purchase with payments: edit
 
 ## 7. Git commit hash
 
-*(To be filled after commit.)*
+`9b9b3dc` — Phase 3: Payment isolation engine (rules, purchase adjustment JEs, sale skip-unchanged, activity log fix)
