@@ -17,6 +17,10 @@
 
 ## 2. Quick check – backend live hai ya nahi?
 
+**Agar browser 502 dikhe (regression):** Pehle VPS se full check – `ssh dincouture-vps "cd /root/NEWPOSV3 && git pull && bash deploy/diagnose-live-platform.sh"`. Sab PASS ho to hard refresh/incognito. Koi FAIL ho to `RESTART_IF_FAIL=1 bash deploy/diagnose-live-platform.sh`. **`docs/LIVE_REGRESSION_FIX_RESULT.md`**.
+
+**Apne machine se (jahan error aa raha hai):**
+
 Apne machine se (jahan error aa raha hai):
 
 ```bash
@@ -133,6 +137,7 @@ phir dubara `kong-safe-repair.sh` chalao.
 
 | Doc | Kab use karein |
 |-----|-----------------|
+| **LIVE_REGRESSION_FIX_RESULT.md** | Browser 502 / re-baseline, diagnose-live-platform.sh, recovery |
 | **STUDIO_502_AND_ERP_AUTOLOGOUT_RUNBOOK.md** | Studio 502, ERP auto-logout, host mapping |
 | **KONG_502_PERMANENT_FIX_RUNBOOK.md** | 502, Kong restart loop, CORS YAML fix, kong-safe-repair, kong-doctor |
 | **LOGIN_502_RESULT.md** | 502 phase-2: analytics/auth routes malformed, fix scripts, office apply steps |
