@@ -438,46 +438,25 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
           // Import supabase dynamically
           const { supabase } = await import('@/lib/supabase');
           
-          // Get Inventory account
-          let { data: inventoryAccounts } = await supabase
-            .from('accounts')
-            .select('id')
-            .eq('company_id', companyId)
-            .or('name.ilike.Inventory,name.ilike.Stock,code.eq.1500')
-            .limit(1);
-          
-          let inventoryAccountId = inventoryAccounts?.[0]?.id;
-          
-          // If no inventory account, try to find any asset account as fallback
+          // Phase 5: Same account resolution as purchaseAccountingService (COA lock: 1200 then 1500 then name; AP 2000; Discount 5210 then name)
+          const { data: invRows } = await supabase.from('accounts').select('id, code').eq('company_id', companyId).eq('is_active', true).or('code.eq.1200,code.eq.1500,name.ilike.%Inventory%,name.ilike.%Stock%');
+          const invList = (invRows || []) as { id: string; code: string }[];
+          const inv1200 = invList.find((a: { code: string }) => a.code === '1200');
+          const inv1500 = invList.find((a: { code: string }) => a.code === '1500');
+          let inventoryAccountId = (inv1200 ?? inv1500 ?? invList[0])?.id ?? null;
           if (!inventoryAccountId) {
-            const { data: assetAccounts } = await supabase
-              .from('accounts')
-              .select('id')
-              .eq('company_id', companyId)
-              .eq('type', 'asset')
-              .limit(1);
-            inventoryAccountId = assetAccounts?.[0]?.id;
+            const { data: assetAccounts } = await supabase.from('accounts').select('id').eq('company_id', companyId).eq('type', 'asset').limit(1);
+            inventoryAccountId = assetAccounts?.[0]?.id ?? null;
           }
-          
-          // Get Accounts Payable account
-          const { data: apAccounts } = await supabase
-            .from('accounts')
-            .select('id')
-            .eq('company_id', companyId)
-            .or('name.ilike.Accounts Payable,code.eq.2000')
-            .limit(1);
-          
-          const apAccountId = apAccounts?.[0]?.id;
-          
-          // Discount Received (or Operating Expense) for credit side of discount
+          const { data: apAccounts } = await supabase.from('accounts').select('id, code').eq('company_id', companyId).or('name.ilike.%Accounts Payable%,code.eq.2000').limit(2);
+          const apList = (apAccounts || []) as { id: string; code: string }[];
+          const ap2000 = apList.find((a: { code: string }) => a.code === '2000');
+          const apAccountId = (ap2000 ?? apList[0])?.id ?? null;
           let discountAccountId: string | null = null;
-          const { data: discountAccounts } = await supabase
-            .from('accounts')
-            .select('id')
-            .eq('company_id', companyId)
-            .or('name.ilike.Discount Received,name.ilike.Purchase Discount,name.ilike.Operating Expense')
-            .limit(1);
-          discountAccountId = discountAccounts?.[0]?.id ?? null;
+          const { data: discRows } = await supabase.from('accounts').select('id, code').eq('company_id', companyId).eq('is_active', true).or('code.eq.5210,name.ilike.%Discount Received%,name.ilike.%Purchase Discount%,name.ilike.%Operating Expense%');
+          const discList = (discRows || []) as { id: string; code: string }[];
+          const disc5210 = discList.find((a: { code: string }) => a.code === '5210');
+          discountAccountId = (disc5210 ?? discList[0])?.id ?? null;
           
           if (!inventoryAccountId || !apAccountId) {
             const errorMsg = `Missing required accounts for purchase journal entry. Inventory: ${inventoryAccountId ? 'OK' : 'MISSING'}, AP: ${apAccountId ? 'OK' : 'MISSING'}`;
@@ -1186,10 +1165,12 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
               const { data: asset } = await supabase.from('accounts').select('id').eq('company_id', companyId).eq('type', 'asset').limit(1);
               inventoryAccountId = asset?.[0]?.id ?? null;
             }
-            const { data: ap } = await supabase.from('accounts').select('id').eq('company_id', companyId).or('name.ilike.Accounts Payable,code.eq.2000').limit(1);
-            apAccountId = ap?.[0]?.id ?? null;
-            const { data: disc } = await supabase.from('accounts').select('id').eq('company_id', companyId).or('name.ilike.Discount Received,name.ilike.Purchase Discount,name.ilike.Operating Expense').limit(1);
-            discountAccountId = disc?.[0]?.id ?? null;
+            const { data: apRows } = await supabase.from('accounts').select('id, code').eq('company_id', companyId).eq('is_active', true).or('name.ilike.%Accounts Payable%,code.eq.2000');
+            const apList = (apRows || []) as { id: string; code: string }[];
+            apAccountId = apList.find((a) => a.code === '2000')?.id ?? apList[0]?.id ?? null;
+            const { data: discRows } = await supabase.from('accounts').select('id, code').eq('company_id', companyId).eq('is_active', true).or('code.eq.5210,name.ilike.%Discount Received%,name.ilike.%Purchase Discount%,name.ilike.%Operating Expense%');
+            const discList = (discRows || []) as { id: string; code: string }[];
+            discountAccountId = discList.find((a) => a.code === '5210')?.id ?? discList[0]?.id ?? null;
             if (inventoryAccountId && apAccountId) {
               const itemsSubtotal = Number((updated as any).subtotal ?? 0) || newTotal;
               const charges = Array.isArray((updated as any).charges) ? (updated as any).charges : (Array.isArray((updated as any).purchase_charges) ? (updated as any).purchase_charges : []);

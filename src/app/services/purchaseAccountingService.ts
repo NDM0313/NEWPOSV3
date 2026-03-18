@@ -1,13 +1,12 @@
 /**
- * Purchase Accounting Service – Component-Level Edit Engine
+ * Purchase Accounting Service (Phase 5: one contract)
  *
- * RULE: On purchase edit, do NOT full-reverse. Only reverse/adjust the components that changed.
- * - Items/subtotal change → adjust only inventory + AP (purchase value)
- * - Discount change → adjust only discount + AP
- * - Freight/labor/extra expense change → adjust only that component
- * - Payment change → NEVER touched here (payment has its own JEs via supplierPaymentService)
+ * Source lock: journal_entries + journal_entry_lines + accounts only.
+ * COA: 1200 Inventory, 2000 AP, 5210 Discount Received, freight/labor/extra → Dr Inventory Cr AP.
+ * Payment isolation: document JEs never touch payment_id; payment has its own flow.
  *
- * Supplier ledger: only post reversal + new entries for components that actually changed.
+ * Purchase create: in PurchaseContext – Dr Inventory (1200), Cr AP (2000); discount → Dr AP Cr Discount Received (5210); other charges → Dr Inventory Cr AP.
+ * Purchase edit: delta JEs only (subtotal, discount, otherCharges); no blanket reversal; payment untouched unless payment changed.
  */
 
 import { supabase } from '@/lib/supabase';
@@ -140,10 +139,12 @@ export async function postPurchaseEditAdjustments(params: {
     const { data: asset } = await supabase.from('accounts').select('id').eq('company_id', companyId).eq('type', 'asset').limit(1);
     inventoryAccountId = asset?.[0]?.id ?? null;
   }
-  const { data: ap } = await supabase.from('accounts').select('id').eq('company_id', companyId).or('name.ilike.%Accounts Payable%,code.eq.2000').limit(1);
-  apAccountId = ap?.[0]?.id ?? null;
-  const { data: disc } = await supabase.from('accounts').select('id').eq('company_id', companyId).or('name.ilike.%Discount Received%,name.ilike.%Purchase Discount%,name.ilike.%Operating Expense%').limit(1);
-  discountAccountId = disc?.[0]?.id ?? null;
+  const { data: apRows } = await supabase.from('accounts').select('id, code').eq('company_id', companyId).eq('is_active', true).or('name.ilike.%Accounts Payable%,code.eq.2000');
+  const apList = (apRows || []) as { id: string; code: string }[];
+  apAccountId = apList.find((a) => a.code === '2000')?.id ?? apList[0]?.id ?? null;
+  const { data: discRows } = await supabase.from('accounts').select('id, code').eq('company_id', companyId).eq('is_active', true).or('code.eq.5210,name.ilike.%Discount Received%,name.ilike.%Purchase Discount%,name.ilike.%Operating Expense%');
+  const discList = (discRows || []) as { id: string; code: string }[];
+  discountAccountId = discList.find((a) => a.code === '5210')?.id ?? discList[0]?.id ?? null;
 
   if (!inventoryAccountId || !apAccountId) {
     console.warn('[purchaseAccountingService] Missing Inventory or AP account, skipping adjustments');
