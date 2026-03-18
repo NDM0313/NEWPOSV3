@@ -62,4 +62,4 @@ Accounting was at risk of **mixed sources**: multiple layers could read from dif
 
 ## 6. Git commit hash
 
-`89d80c9` — Phase 1: Accounting source lock enforcement (docs + comments)
+`47d12b2` — Phase 1: Accounting source lock enforcement (docs + comments)
