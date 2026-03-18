@@ -82,5 +82,5 @@ Studio is served as the **top-level** document (Traefik → supabase-studio:3000
 
 ## 6. Git
 
-- **Commit:** (to be filled after commit)  
+- **Commit:** 8eaf24f  
 - **Branch:** main
