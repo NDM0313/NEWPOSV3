@@ -253,5 +253,8 @@ $COMPOSE_CMD up -d backup-page 2>/dev/null || true
 docker compose -f deploy/docker-compose.prod.yml up -d studio-injector 2>/dev/null || true
 [ -f deploy/point-kong-dashboard-to-injector.sh ] && bash deploy/point-kong-dashboard-to-injector.sh || true
 
+# studio.dincouture.pk: Traefik must be on supabase_default to reach supabase-studio:3000 (avoid 502)
+[ -f deploy/ensure-studio-traefik-network.sh ] && bash deploy/ensure-studio-traefik-network.sh || true
+
 echo "ERP running. Configure Caddy/Nginx for https://erp.dincouture.pk"
 echo "Backup: https://supabase.dincouture.pk/backup (and under Studio Platform after injector)"

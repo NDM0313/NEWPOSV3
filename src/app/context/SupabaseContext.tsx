@@ -145,12 +145,26 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     attemptSessionLoad();
 
     // Listen for auth changes (guard against thrown errors in listener)
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       try {
-      setSession(session);
       const newUser = session?.user ?? null;
+
+      // Defensive: if client emits session=null shortly after sign-in (e.g. token refresh race),
+      // verify with getSession before clearing so we don't auto-logout on a spurious event.
+      if (!newUser && event !== 'SIGNED_OUT') {
+        const { data: { session: current } } = await supabase.auth.getSession();
+        if (current?.user) {
+          if (import.meta.env?.DEV) console.warn('[AUTH] Ignoring spurious session=null, keeping session from getSession');
+          setSession(current);
+          setUser(current.user);
+          fetchUserData(current.user.id, false, 0);
+          return;
+        }
+      }
+
+      setSession(session);
       setUser(newUser);
-      
+
       if (newUser) {
         if (event === 'SIGNED_IN' && import.meta.env?.DEV) {
           console.log('[AUTH] SIGNED_IN - auth user:', { id: newUser.id, email: newUser.email });
