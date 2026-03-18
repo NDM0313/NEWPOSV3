@@ -114,6 +114,8 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   /** Production: ignore logout (session=null) for this many ms after sign-in – GoTrue can emit SIGNED_OUT on SecurityError. */
   const lastSignInTimeRef = useRef<number>(0);
   const SIGNED_IN_GRACE_MS = 15000;
+  /** Log storage/security retry only once per userId to avoid 15–20 console messages. */
+  const storageErrorLoggedRef = useRef<Set<string>>(new Set());
 
   // Initialize user session. Retry getSession on 502/5xx so transient gateway errors don't immediately show login.
   const attemptSessionLoad = async (attempt = 0): Promise<void> => {
@@ -298,7 +300,10 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         const storageErr = isStorageOrSecurityError(error);
         if ((serverErr || storageErr) && retryCount < CONNECTION_ERROR_MAX_RETRIES) {
           const delay = RETRY_DELAY_MS * (retryCount + 1);
-          console.warn('[FETCH USER DATA]', storageErr ? 'Storage/security error' : 'Server error', ', retrying in', delay, 'ms', { attempt: retryCount + 1 });
+          if (!storageErrorLoggedRef.current.has(userId)) {
+            storageErrorLoggedRef.current.add(userId);
+            console.warn('[FETCH USER DATA]', storageErr ? 'Storage/security error' : 'Server error', ', will retry up to', CONNECTION_ERROR_MAX_RETRIES, 'times');
+          }
           fetchingRef.current.delete(userId);
           setTimeout(() => fetchUserData(userId, true, retryCount + 1), delay);
           return;
