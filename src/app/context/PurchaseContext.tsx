@@ -1177,8 +1177,11 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
             let inventoryAccountId: string | null = null;
             let apAccountId: string | null = null;
             let discountAccountId: string | null = null;
-            let { data: inv } = await supabase.from('accounts').select('id').eq('company_id', companyId).or('name.ilike.Inventory,name.ilike.Stock,code.eq.1500').limit(1);
-            inventoryAccountId = inv?.[0]?.id ?? null;
+            const { data: invRows } = await supabase.from('accounts').select('id, code').eq('company_id', companyId).eq('is_active', true).or('code.eq.1200,code.eq.1500,name.ilike.%Inventory%,name.ilike.%Stock%');
+            const invList = (invRows || []) as { id: string; code: string }[];
+            const inv1200 = invList.find((a) => a.code === '1200');
+            const inv1500 = invList.find((a) => a.code === '1500');
+            inventoryAccountId = (inv1200 ?? inv1500 ?? invList[0])?.id ?? null;
             if (!inventoryAccountId) {
               const { data: asset } = await supabase.from('accounts').select('id').eq('company_id', companyId).eq('type', 'asset').limit(1);
               inventoryAccountId = asset?.[0]?.id ?? null;

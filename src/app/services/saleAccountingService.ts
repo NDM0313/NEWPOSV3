@@ -19,7 +19,7 @@
  *
  *   Sale with extra_expenses > 0:
  *     Dr Extra Expense (5300)   extra_expenses
- *     Cr Cash / Accounts Payable (2020)   extra_expenses
+ *     Cr Cash (1000) / Accounts Payable (2000)   extra_expenses
  *     (separate journal entry, reference_type='sale_extra_expense')
  *
  *   Cancelled:
@@ -170,19 +170,30 @@ async function ensureExtraExpenseAccount(companyId: string): Promise<{ id: strin
   return null;
 }
 
-/** Ensure Accounts Payable (2020) exists for the company; create if missing. */
+/** Phase 2: Supplier payable = 2000 only (not 2020). Sale extra expense credit when payable uses this. */
 async function ensureAPAccount(companyId: string): Promise<{ id: string } | null> {
-  const existing = await accountHelperService.getAccountByCode('2020', companyId);
+  const existing = await accountHelperService.getAccountByCode('2000', companyId);
   if (existing?.id) return existing;
+  const { data: byName } = await supabase
+    .from('accounts')
+    .select('id, code')
+    .eq('company_id', companyId)
+    .ilike('name', '%Accounts Payable%')
+    .eq('is_active', true)
+    .limit(2);
+  const canonical = (byName as { id: string; code: string }[] | null)?.find((a) => a.code === '2000');
+  if (canonical?.id) return { id: canonical.id };
+  const first = (byName as { id: string }[] | null)?.[0];
+  if (first?.id) return { id: first.id };
   try {
     const { data, error } = await supabase
       .from('accounts')
-      .insert({ company_id: companyId, code: '2020', name: 'Accounts Payable', type: 'Liability', balance: 0, is_active: true })
+      .insert({ company_id: companyId, code: '2000', name: 'Accounts Payable', type: 'liability', balance: 0, is_active: true })
       .select('id')
       .single();
     if (!error && data?.id) return data;
   } catch (e) {
-    console.warn('[saleAccountingService] Could not auto-create Accounts Payable account:', e);
+    console.warn('[saleAccountingService] Could not auto-create Accounts Payable account (2000):', e);
   }
   return null;
 }
@@ -416,7 +427,7 @@ export const saleAccountingService = {
    * Create extra expense journal entry for a sale.
    *
    *   Dr Extra Expense (5300)    amount
-   *   Cr Cash (1000) or Accounts Payable (2020)   amount
+   *   Cr Cash (1000) or Accounts Payable (2000)   amount
    *
    * Uses reference_type='sale_extra_expense' to allow multiple per sale.
    */
@@ -772,6 +783,7 @@ async function postAdjustmentJE(
     return;
   }
   const entryNo = `JE-ADJ-${Date.now()}-${Math.random().toString(36).substr(2, 6).toUpperCase()}`;
+  const fingerprint = `sale_adjustment:${companyId}:${saleId}:${description}`;
   const entry: JournalEntry = {
     id: '',
     company_id: companyId,
@@ -782,6 +794,7 @@ async function postAdjustmentJE(
     reference_type: 'sale_adjustment',
     reference_id: saleId,
     created_by: createdBy || undefined,
+    action_fingerprint: fingerprint,
   };
   const lineRows: JournalEntryLine[] = lines.map((l) => ({
     id: '',

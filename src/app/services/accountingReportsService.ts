@@ -128,8 +128,8 @@ const EXPENSE_TYPES = ['expense', 'cost of sales', 'cogs'];
 const ASSET_TYPES = ['asset', 'cash', 'bank', 'mobile_wallet', 'receivable', 'inventory'];
 const LIABILITY_TYPES = ['liability'];
 const EQUITY_TYPES = ['equity'];
-/** PF-06: Production/studio cost account codes – P&L shows these under Cost of Sales, not Operating Expenses. */
-const COST_OF_PRODUCTION_CODES = new Set(['5000', '5010', '5100', '5200', '5300']);
+/** PF-06: Production/studio cost account codes – P&L shows these under Cost of Sales, not Operating Expenses. Phase 2: 5110 = Sales Commission Expense. */
+const COST_OF_PRODUCTION_CODES = new Set(['5000', '5010', '5100', '5110', '5200', '5300']);
 
 function accountTypeCategory(type: string): 'revenue' | 'expense' | 'asset' | 'liability' | 'equity' {
   const t = (type || '').toLowerCase();

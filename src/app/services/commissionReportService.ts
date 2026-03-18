@@ -214,10 +214,11 @@ export async function getCommissionReport(
   };
 }
 
-/** Ensure Sales Commission Expense (5100) and Salesman Payable (2040) exist; create 2040 if missing */
+/** Ensure Sales Commission Expense (5110 preferred, else 5100) and Salesman Payable (2040) exist; create 2040 if missing. Phase 2: 5100 = Shipping Expense; 5110 = Sales Commission when present. */
 async function ensureCommissionAccounts(companyId: string): Promise<{ expenseAccountId: string; payableAccountId: string }> {
-  const expense = await accountHelperService.getAccountByCode('5100', companyId);
-  if (!expense?.id) throw new Error('Sales Commission Expense account (5100) not found. Add it in Chart of Accounts.');
+  let expense = await accountHelperService.getAccountByCode('5110', companyId);
+  if (!expense?.id) expense = await accountHelperService.getAccountByCode('5100', companyId);
+  if (!expense?.id) throw new Error('Sales Commission Expense account (5110 or 5100) not found. Add it in Chart of Accounts.');
   let payable = await accountHelperService.getAccountByCode('2040', companyId);
   if (!payable?.id) {
     const { accountService } = await import('./accountService');

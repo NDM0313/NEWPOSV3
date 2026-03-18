@@ -216,7 +216,7 @@ export const shipmentAccountingService = {
    * Create journal entries for a shipment.
    *
    * Case A (charged_to_customer > 0):
-   *   Dr Accounts Receivable (2000)  /  Cr Shipping Income (4100)
+   *   Dr Accounts Receivable (1100)  /  Cr Shipping Income (4100)
    *
    * Case B (actual_cost > 0):
    *   Dr Shipping Expense (5100)  /  Cr Courier Payable (2030)
