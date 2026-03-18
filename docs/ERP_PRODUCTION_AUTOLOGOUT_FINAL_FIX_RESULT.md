@@ -79,5 +79,5 @@ So we **never** clear session on a non-SIGNED_OUT event, even if getSession() re
 
 ## 6. Git
 
-- **Commit:** (set after commit)
+- **Commit:** db76640
 - **Branch:** main
