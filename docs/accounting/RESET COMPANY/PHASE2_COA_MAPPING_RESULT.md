@@ -96,4 +96,4 @@ See **`docs/accounting/COA_MAPPING_MATRIX.md`** for the full matrix. Summary:
 
 ## 8. Git commit hash
 
-*(To be filled after commit.)*
+`a9382ca` — Phase 2: COA mapping lock and duplicate resolution (docs + code)
