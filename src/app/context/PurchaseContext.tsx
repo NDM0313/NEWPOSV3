@@ -875,7 +875,19 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
 
       // Log what we're sending for debugging
       console.log('[PURCHASE CONTEXT] Updating purchase:', { id, supabaseUpdates, originalUpdates: updates });
-      
+
+      // PF-COMPONENT: Capture old accounting snapshot BEFORE update (for component-level edit, no full reversal)
+      let oldPurchaseSnapshot: { total: number; subtotal: number; discount: number; otherCharges: number } | null = null;
+      if (accountingRepostNeeded && companyId) {
+        try {
+          const { purchaseAccountingService: pac } = await import('@/app/services/purchaseAccountingService');
+          const oldPurchaseForAccounting = await purchaseService.getPurchase(id);
+          if (oldPurchaseForAccounting) oldPurchaseSnapshot = pac.getPurchaseAccountingSnapshot(oldPurchaseForAccounting);
+        } catch (e) {
+          console.warn('[PURCHASE CONTEXT] Could not capture old purchase snapshot:', e);
+        }
+      }
+
       // Update in Supabase
       await purchaseService.updatePurchase(id, supabaseUpdates);
       
@@ -1123,10 +1135,11 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
         }
       }
 
-      // PF-02: Purchase Edit Re-Post — reverse old JE + supplier ledger, post new (frozen accounting model)
+      // PF-COMPONENT: Component-level purchase edit — do NOT full-reverse. Only adjust changed components; never touch payment unless payment changed.
       if (accountingRepostNeeded && companyId) {
         try {
           const { supabase } = await import('@/lib/supabase');
+          const { purchaseAccountingService: pac } = await import('@/app/services/purchaseAccountingService');
           const updated = await purchaseService.getPurchase(id);
           if (!updated) throw new Error('Purchase not found after update');
           const newTotal = Number(updated.total ?? 0) || 0;
@@ -1142,23 +1155,25 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
             effectiveBranchId = branches?.length ? branches[0].id : null;
           }
 
-          // 1) Find and remove existing journal entry for this purchase
-          const { data: existingJEs } = await supabase
-            .from('journal_entries')
-            .select('id')
-            .eq('company_id', companyId)
-            .eq('reference_type', 'purchase')
-            .eq('reference_id', id);
-          if (existingJEs && existingJEs.length > 0) {
-            for (const je of existingJEs) {
-              await supabase.from('journal_entry_lines').delete().eq('journal_entry_id', je.id);
-              await supabase.from('journal_entries').delete().eq('id', je.id);
-            }
-            console.log('[PURCHASE CONTEXT] PF-02: Reversed existing purchase JE(s) for edit:', existingJEs.length);
-          }
+          const hasExistingPurchaseJE = await pac.purchaseJournalEntryExists(id);
 
-          // 2) Post new journal entry (same structure as create)
-          if (newTotal > 0) {
+          if (hasExistingPurchaseJE && oldPurchaseSnapshot) {
+            // Component-level: post only adjustment JEs for deltas. Do NOT delete original purchase JE. Do NOT touch payment JEs.
+            const newSnapshot = pac.getPurchaseAccountingSnapshot(updated);
+            const { adjustmentCount } = await pac.postPurchaseEditAdjustments({
+              companyId,
+              branchId: effectiveBranchId,
+              purchaseId: id,
+              poNo,
+              entryDate,
+              createdBy: user?.id ?? null,
+              oldSnapshot: oldPurchaseSnapshot,
+              newSnapshot,
+              supplierName,
+            });
+            console.log('[PURCHASE CONTEXT] PF-COMPONENT: Posted', adjustmentCount, 'purchase adjustment JE(s); original JE and payment JEs unchanged.');
+          } else if (!hasExistingPurchaseJE && newTotal > 0) {
+            // No existing purchase JE (e.g. legacy data): create one full JE (same as create path)
             let inventoryAccountId: string | null = null;
             let apAccountId: string | null = null;
             let discountAccountId: string | null = null;
@@ -1172,9 +1187,7 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
             apAccountId = ap?.[0]?.id ?? null;
             const { data: disc } = await supabase.from('accounts').select('id').eq('company_id', companyId).or('name.ilike.Discount Received,name.ilike.Purchase Discount,name.ilike.Operating Expense').limit(1);
             discountAccountId = disc?.[0]?.id ?? null;
-            if (!inventoryAccountId || !apAccountId) {
-              console.error('[PURCHASE CONTEXT] PF-02: Missing accounts for repost. Skipping JE.');
-            } else {
+            if (inventoryAccountId && apAccountId) {
               const itemsSubtotal = Number((updated as any).subtotal ?? 0) || newTotal;
               const charges = Array.isArray((updated as any).charges) ? (updated as any).charges : (Array.isArray((updated as any).purchase_charges) ? (updated as any).purchase_charges : []);
               const { data: mainJE, error: jeErr } = await supabase
@@ -1183,78 +1196,80 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
                   company_id: companyId,
                   branch_id: effectiveBranchId,
                   entry_date: entryDate,
-                  description: `Purchase ${poNo} from ${supplierName} (edited)`,
+                  description: `Purchase ${poNo} from ${supplierName}`,
                   reference_type: 'purchase',
                   reference_id: id,
                   created_by: user?.id,
                 })
                 .select()
                 .single();
-              if (jeErr || !mainJE) {
-                console.error('[PURCHASE CONTEXT] PF-02: Failed to create repost JE:', jeErr);
-                throw new Error(`Purchase edit repost JE failed: ${jeErr?.message || 'Unknown'}`);
-              }
-              const jid = mainJE.id;
-              if (itemsSubtotal > 0) {
-                await supabase.from('journal_entry_lines').insert({
-                  journal_entry_id: jid,
-                  account_id: inventoryAccountId,
-                  debit: itemsSubtotal,
-                  credit: 0,
-                  description: `Inventory purchase ${poNo}`,
-                });
-                await supabase.from('journal_entry_lines').insert({
-                  journal_entry_id: jid,
-                  account_id: apAccountId,
-                  debit: 0,
-                  credit: itemsSubtotal,
-                  description: `Payable to ${supplierName}`,
-                });
-              }
-              for (const c of charges) {
-                const amount = Number(c?.amount ?? 0);
-                if (amount <= 0) continue;
-                if ((c?.charge_type || c?.chargeType) === 'discount' && discountAccountId) {
-                  await supabase.from('journal_entry_lines').insert({
-                    journal_entry_id: jid,
-                    account_id: apAccountId,
-                    debit: amount,
-                    credit: 0,
-                    description: 'Purchase discount',
-                  });
-                  await supabase.from('journal_entry_lines').insert({
-                    journal_entry_id: jid,
-                    account_id: discountAccountId,
-                    debit: 0,
-                    credit: amount,
-                    description: 'Discount received',
-                  });
-                } else {
+              if (!jeErr && mainJE) {
+                const jid = mainJE.id;
+                if (itemsSubtotal > 0) {
                   await supabase.from('journal_entry_lines').insert({
                     journal_entry_id: jid,
                     account_id: inventoryAccountId,
-                    debit: amount,
+                    debit: itemsSubtotal,
                     credit: 0,
-                    description: `${c?.charge_type || c?.chargeType || 'charge'} (purchase)`,
+                    description: `Inventory purchase ${poNo}`,
                   });
                   await supabase.from('journal_entry_lines').insert({
                     journal_entry_id: jid,
                     account_id: apAccountId,
                     debit: 0,
-                    credit: amount,
-                    description: `Payable - ${c?.charge_type || c?.chargeType || 'charge'}`,
+                    credit: itemsSubtotal,
+                    description: `Payable to ${supplierName}`,
                   });
                 }
+                for (const c of charges) {
+                  const amount = Number(c?.amount ?? 0);
+                  if (amount <= 0) continue;
+                  if ((c?.charge_type || c?.chargeType) === 'discount' && discountAccountId) {
+                    await supabase.from('journal_entry_lines').insert({
+                      journal_entry_id: jid,
+                      account_id: apAccountId,
+                      debit: amount,
+                      credit: 0,
+                      description: 'Purchase discount',
+                    });
+                    await supabase.from('journal_entry_lines').insert({
+                      journal_entry_id: jid,
+                      account_id: discountAccountId,
+                      debit: 0,
+                      credit: amount,
+                      description: 'Discount received',
+                    });
+                  } else {
+                    await supabase.from('journal_entry_lines').insert({
+                      journal_entry_id: jid,
+                      account_id: inventoryAccountId,
+                      debit: amount,
+                      credit: 0,
+                      description: `${c?.charge_type || c?.chargeType || 'charge'} (purchase)`,
+                    });
+                    await supabase.from('journal_entry_lines').insert({
+                      journal_entry_id: jid,
+                      account_id: apAccountId,
+                      debit: 0,
+                      credit: amount,
+                      description: `Payable - ${c?.charge_type || c?.chargeType || 'charge'}`,
+                    });
+                  }
+                }
+                console.log('[PURCHASE CONTEXT] PF-COMPONENT: Created initial purchase JE (no prior JE):', mainJE.id);
               }
-              console.log('[PURCHASE CONTEXT] PF-02: Created new purchase JE after edit:', mainJE.id);
             }
           }
 
-          // 3) Supplier ledger: reversal then new (so balance matches edited purchase)
+          // Supplier ledger: only reverse and re-post components that CHANGED (never touch payment unless paid changed)
+          const totalChanged = Math.round((newTotal - oldTotalForRepost) * 100) !== 0;
+          const paidChanged = Math.round((newPaid - oldPaidForRepost) * 100) !== 0;
+          const discountChanged = Math.round((newDiscount - oldDiscountForRepost) * 100) !== 0;
+
           if (supplierId) {
             const ledger = await getOrCreateLedger(companyId, 'supplier', supplierId, supplierName);
             if (ledger) {
-              if (oldTotalForRepost > 0) {
+              if (totalChanged && oldTotalForRepost > 0) {
                 await addLedgerEntry({
                   companyId,
                   ledgerId: ledger.id,
@@ -1267,33 +1282,7 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
                   remarks: `Reversal (edit): Purchase ${poNo}`,
                 });
               }
-              if (oldPaidForRepost > 0) {
-                await addLedgerEntry({
-                  companyId,
-                  ledgerId: ledger.id,
-                  entryDate,
-                  debit: 0,
-                  credit: oldPaidForRepost,
-                  source: 'payment',
-                  referenceNo: poNo,
-                  referenceId: id,
-                  remarks: `Reversal (edit): Payment ${poNo}`,
-                });
-              }
-              if (oldDiscountForRepost > 0) {
-                await addLedgerEntry({
-                  companyId,
-                  ledgerId: ledger.id,
-                  entryDate,
-                  debit: 0,
-                  credit: oldDiscountForRepost,
-                  source: 'purchase',
-                  referenceNo: poNo,
-                  referenceId: id,
-                  remarks: `Reversal (edit): Discount ${poNo}`,
-                });
-              }
-              if (newTotal > 0) {
+              if (totalChanged && newTotal > 0) {
                 await addLedgerEntry({
                   companyId,
                   ledgerId: ledger.id,
@@ -1306,7 +1295,20 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
                   remarks: `Purchase ${poNo} (edited)`,
                 });
               }
-              if (newPaid > 0) {
+              if (paidChanged && oldPaidForRepost > 0) {
+                await addLedgerEntry({
+                  companyId,
+                  ledgerId: ledger.id,
+                  entryDate,
+                  debit: 0,
+                  credit: oldPaidForRepost,
+                  source: 'payment',
+                  referenceNo: poNo,
+                  referenceId: id,
+                  remarks: `Reversal (edit): Payment ${poNo}`,
+                });
+              }
+              if (paidChanged && newPaid > 0) {
                 await addLedgerEntry({
                   companyId,
                   ledgerId: ledger.id,
@@ -1319,7 +1321,20 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
                   remarks: `Payment for ${poNo}`,
                 });
               }
-              if (newDiscount > 0) {
+              if (discountChanged && oldDiscountForRepost > 0) {
+                await addLedgerEntry({
+                  companyId,
+                  ledgerId: ledger.id,
+                  entryDate,
+                  debit: 0,
+                  credit: oldDiscountForRepost,
+                  source: 'purchase',
+                  referenceNo: poNo,
+                  referenceId: id,
+                  remarks: `Reversal (edit): Discount ${poNo}`,
+                });
+              }
+              if (discountChanged && newDiscount > 0) {
                 await addLedgerEntry({
                   companyId,
                   ledgerId: ledger.id,
@@ -1332,12 +1347,12 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
                   remarks: `Discount for ${poNo}`,
                 });
               }
-              console.log('[PURCHASE CONTEXT] PF-02: Supplier ledger updated for edit.');
+              console.log('[PURCHASE CONTEXT] PF-COMPONENT: Supplier ledger updated (component-level).');
               window.dispatchEvent(new CustomEvent('ledgerUpdated', { detail: { ledgerType: 'supplier', entityId: supplierId } }));
             }
           }
         } catch (repostErr: any) {
-          console.error('[PURCHASE CONTEXT] PF-02: Purchase edit repost failed:', repostErr);
+          console.error('[PURCHASE CONTEXT] PF-COMPONENT: Purchase edit accounting failed:', repostErr);
           toast.warning('Purchase updated, but accounting repost failed. Check logs.');
         }
       }

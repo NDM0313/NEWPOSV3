@@ -490,6 +490,32 @@ export const accountingReportsService = {
       .eq('company_id', companyId)
       .in('id', productIds);
     const productMap = new Map((products || []).map((p: any) => [p.id, p]));
+    // Fallback for product names when product row is missing (e.g. deleted): use product_name from sales_items or purchase_items
+    const missingIds = productIds.filter((id) => !productMap.has(id));
+    const nameFallback = new Map<string, string>();
+    if (missingIds.length > 0) {
+      const { data: fromSales } = await supabase
+        .from('sales_items')
+        .select('product_id, product_name')
+        .in('product_id', missingIds)
+        .not('product_name', 'is', null)
+        .limit(missingIds.length * 2);
+      (fromSales || []).forEach((r: any) => {
+        if (r?.product_name?.trim() && !nameFallback.has(r.product_id)) nameFallback.set(r.product_id, String(r.product_name).trim());
+      });
+      const stillMissing = missingIds.filter((id) => !nameFallback.has(id));
+      if (stillMissing.length > 0) {
+        const { data: fromPurchases } = await supabase
+          .from('purchase_items')
+          .select('product_id, product_name')
+          .in('product_id', stillMissing)
+          .not('product_name', 'is', null)
+          .limit(stillMissing.length * 2);
+        (fromPurchases || []).forEach((r: any) => {
+          if (r?.product_name?.trim() && !nameFallback.has(r.product_id)) nameFallback.set(r.product_id, String(r.product_name).trim());
+        });
+      }
+    }
     let totalValue = 0;
     const rows: InventoryValuationRow[] = productIds.map((pid) => {
       const p = productMap.get(pid);
@@ -498,8 +524,8 @@ export const accountingReportsService = {
         rec.costQty > 0 ? rec.costSum / rec.costQty : Number(p?.cost_price ?? p?.cost) || 0;
       const total_value = Math.round(rec.qty * avgCost * 100) / 100;
       totalValue += total_value;
-      const product_name =
-        (p?.name != null && String(p.name).trim() !== '') ? String(p.name).trim() : (p ? 'Unnamed product' : `Unknown product (${pid.slice(0, 8)})`);
+      const fromProduct = (p?.name != null && String(p.name).trim() !== '') ? String(p.name).trim() : (p ? 'Unnamed product' : null);
+      const product_name = fromProduct ?? nameFallback.get(pid) ?? `Unknown product (${pid.slice(0, 8)})`;
       const sku =
         (p?.sku != null && String(p.sku).trim() !== '') ? String(p.sku).trim() : '—';
       return {
@@ -566,7 +592,8 @@ export const accountingReportsService = {
       .select('id')
       .eq('company_id', companyId)
       .gte('entry_date', start)
-      .lte('entry_date', end);
+      .lte('entry_date', end)
+      .or('is_void.is.null,is_void.eq.false');
     const entryIdsInRange = (entriesInRange || []).map((e: any) => e.id);
     if (!entryIdsInRange.length) {
       return {

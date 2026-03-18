@@ -15,6 +15,8 @@ export interface JournalEntry {
   updated_at?: string;
   /** Optional attachments (same as payments: [{ url, name }]). Requires journal_entries.attachments column. */
   attachments?: { url: string; name: string }[] | null;
+  /** PF-14.5B: Logical action fingerprint for duplicate prevention; same fingerprint must not create multiple active JEs. */
+  action_fingerprint?: string | null;
 }
 
 export interface JournalEntryLine {
@@ -216,6 +218,7 @@ export const accountingService = {
       // Filter entries: only include if purchase/sale/payment still exists (no per-entry logging on load)
       const validEntries = dataFiltered.filter((entry: any) => {
         if (entry.reference_type === 'purchase' && entry.reference_id && !existingPurchases.has(entry.reference_id)) return false;
+        if (entry.reference_type === 'purchase_adjustment' && entry.reference_id && !existingPurchases.has(entry.reference_id)) return false;
         if (entry.reference_type === 'sale' && entry.reference_id && !existingSales.has(entry.reference_id)) return false;
         if (entry.reference_type === 'sale_adjustment' && entry.reference_id && !existingSales.has(entry.reference_id)) return false;
         if (entry.reference_type === 'payment' && entry.reference_id && !validPayments.has(entry.reference_id)) return false;
@@ -252,7 +255,7 @@ export const accountingService = {
               out.root_reference_id = root.root_reference_id;
             }
           }
-        } else if (entry.reference_type === 'purchase' && entry.reference_id) {
+        } else if ((entry.reference_type === 'purchase' || entry.reference_type === 'purchase_adjustment') && entry.reference_id) {
           out.root_reference_type = 'purchase';
           out.root_reference_id = entry.reference_id;
         }
@@ -298,6 +301,29 @@ export const accountingService = {
       .eq('reference_type', 'sale_adjustment')
       .eq('reference_id', saleId)
       .eq('description', description)
+      .or('is_void.is.null,is_void.eq.false')
+      .limit(1);
+    if (error) return false;
+    return Array.isArray(data) && data.length > 0;
+  },
+
+  /**
+   * PF-COMPONENT: Idempotency for purchase_adjustment JEs (component-level edit engine).
+   */
+  async hasExistingPurchaseAdjustmentByDescription(
+    companyId: string,
+    purchaseId: string,
+    description: string
+  ): Promise<boolean> {
+    if (!companyId || !purchaseId || !description?.trim()) return false;
+    const { data, error } = await supabase
+      .from('journal_entries')
+      .select('id')
+      .eq('company_id', companyId)
+      .eq('reference_type', 'purchase_adjustment')
+      .eq('reference_id', purchaseId)
+      .eq('description', description)
+      .or('is_void.is.null,is_void.eq.false')
       .limit(1);
     if (error) return false;
     return Array.isArray(data) && data.length > 0;
@@ -323,7 +349,8 @@ export const accountingService = {
       .select('id, description')
       .eq('company_id', companyId)
       .eq('reference_type', 'payment_adjustment')
-      .eq('reference_id', paymentId);
+      .eq('reference_id', paymentId)
+      .or('is_void.is.null,is_void.eq.false');
     if (error || !data?.length) return false;
     return data.some((row: { description?: string }) => {
       const d = row.description || '';
@@ -350,7 +377,8 @@ export const accountingService = {
       .eq('company_id', companyId)
       .eq('reference_type', 'payment_adjustment')
       .eq('reference_id', paymentId)
-      .ilike('description', '%Payment account changed%');
+      .ilike('description', '%Payment account changed%')
+      .or('is_void.is.null,is_void.eq.false');
     if (error || !entries?.length) return false;
     const jeIds = entries.map((e: { id: string }) => e.id);
     const { data: lines } = await supabase
@@ -497,6 +525,7 @@ export const accountingService = {
       .select(`
         id,
         reference_type,
+        is_void,
         lines:journal_entry_lines(
           id,
           account_id,
@@ -509,9 +538,12 @@ export const accountingService = {
       .or(`payment_id.eq.${paymentId},and(reference_type.eq.payment_adjustment,reference_id.eq.${paymentId})`);
 
     if (error || !entries?.length) return [];
+    // PF-14.5B: Exclude voided JEs from effective lines
+    const nonVoidEntries = (entries as any[]).filter((e: any) => e.is_void !== true);
+    if (nonVoidEntries.length === 0) return [];
 
     const byAccount = new Map<string, { debit: number; credit: number; account: any }>();
-    for (const je of entries) {
+    for (const je of nonVoidEntries) {
       const lines = (je as any).lines ?? [];
       for (const line of lines) {
         const acc = line.account ?? {};
@@ -760,6 +792,7 @@ export const accountingService = {
             branch_id,
             created_by,
             created_at,
+            is_void,
             branch:branches(id, name, code)
           )
         `)
@@ -809,9 +842,11 @@ export const accountingService = {
 
       // Build ledger entries with running balance
       // First filter, then sort by Date ASC, ID ASC (as per requirements)
+      // PF-14.5B: Exclude voided JEs from business ledger
       const filteredLines = lines.filter((line: any) => {
         const entry = line.journal_entry;
         if (!entry) return false;
+        if ((entry as any).is_void === true) return false;
         
         const entryDate = entry.entry_date;
         if (startDate && entryDate < startDate) return false;
@@ -1771,6 +1806,9 @@ export const accountingService = {
     }
     if (entry.attachments !== undefined && entry.attachments != null && Array.isArray(entry.attachments) && entry.attachments.length > 0) {
       insertData.attachments = JSON.parse(JSON.stringify(entry.attachments));
+    }
+    if (entry.action_fingerprint) {
+      insertData.action_fingerprint = entry.action_fingerprint;
     }
 
     // STEP 2 FIX: Fix journal_entries query - use proper select instead of select()
