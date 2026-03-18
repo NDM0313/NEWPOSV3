@@ -72,5 +72,5 @@
 
 ## 6. Git commit
 
-**Commit:** (to be filled after commit)  
+**Commit:** `a2de2fa`  
 Message: `Phase 8: Live data repair – detection, safe sync accounts.balance, verification`

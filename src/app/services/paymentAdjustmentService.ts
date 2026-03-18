@@ -68,6 +68,7 @@ export async function postPaymentAmountAdjustment(params: {
       ? `Payment edited: was Rs ${Number(oldAmount).toLocaleString()}, now Rs ${Number(newAmount).toLocaleString()} – ${invoiceNoOrRef}`
       : `Payment edited: was Rs ${Number(oldAmount).toLocaleString()}, now Rs ${Number(newAmount).toLocaleString()} – ${invoiceNoOrRef}`;
 
+  const fingerprintAmount = `payment_adjustment_amount:${companyId}:${paymentId}:${oldAmount}:${newAmount}`;
   const entry: JournalEntry = {
     id: '',
     company_id: companyId,
@@ -78,6 +79,7 @@ export async function postPaymentAmountAdjustment(params: {
     reference_type: 'payment_adjustment',
     reference_id: paymentId,
     created_by: createdBy || undefined,
+    action_fingerprint: fingerprintAmount,
   };
 
   let lines: JournalEntryLine[];
@@ -166,6 +168,7 @@ export async function postPaymentAccountAdjustment(params: {
       ? `Payment account changed – ${invoiceNoOrRef} (same amount, new account)`
       : `Payment account changed – ${invoiceNoOrRef} (same amount, new account)`;
 
+  const fingerprintAccount = `payment_adjustment_account:${companyId}:${paymentId}:${oldAccountId}:${newAccountId}:${amount}`;
   const entry: JournalEntry = {
     id: '',
     company_id: companyId,
@@ -176,6 +179,7 @@ export async function postPaymentAccountAdjustment(params: {
     reference_type: 'payment_adjustment',
     reference_id: paymentId,
     created_by: createdBy || undefined,
+    action_fingerprint: fingerprintAccount,
   };
 
   // Dr new account (money now in Bank), Cr old account (money left Cash)

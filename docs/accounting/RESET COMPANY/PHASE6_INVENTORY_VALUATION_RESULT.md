@@ -64,5 +64,5 @@ Verification can be done on current live inventory/product records and as-of dat
 
 ## 7. Git commit
 
-**Commit:** `a523749`  
+**Commit:** `23686c3`  
 Message: `Phase 6: Inventory valuation and cost flow – product/variant alignment, remove Unknown product, one source`

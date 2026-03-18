@@ -246,6 +246,7 @@ apply_quick_login_auth
 
 # Supabase /backup route: https://supabase.dincouture.pk/backup serves backup page (erp-backup-page)
 [ -d deploy/backup-page ] && chmod -R 755 deploy/backup-page || true
+$COMPOSE_CMD up -d backup-page 2>/dev/null || true
 [ -f deploy/add-kong-backup-route.sh ] && bash deploy/add-kong-backup-route.sh || true
 
 # Studio sidebar: inject "Backups" under Platform (Kong -> studio-injector -> Studio). Skip build if Docker Hub timeout.

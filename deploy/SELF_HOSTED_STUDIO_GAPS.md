@@ -49,6 +49,8 @@ docker exec -i supabase-db pg_restore -U postgres -d postgres -c --if-exists < b
 
 **Backup link in Studio:** A **floating “Backups” link** is injected at the **bottom-left** of Studio (https://supabase.dincouture.pk). It does not sit in the sidebar (that would break React hydration and cause “Host is not supported” / tables not loading). Click it to open the backup page. Direct URL: https://supabase.dincouture.pk/backup
 
+**If /backup shows "name resolution failed":** The backup-page container must be running on the same Docker network as Kong. On VPS run: `cd /root/NEWPOSV3 && bash deploy/fix-backup-name-resolution.sh`. Full deploy also starts it: `bash deploy/deploy.sh`.
+
 ---
 
 ## 3. Authentication Page – “Missing” Items

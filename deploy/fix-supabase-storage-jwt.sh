@@ -41,18 +41,18 @@ if [ -z "$OUTPUT" ]; then
   echo "[fix-jwt] Failed to generate keys (node or docker run node). Skip."
   exit 0
 fi
-NEW_ANON=$(echo "$OUTPUT" | grep '^ANON_KEY=' | cut -d= -f2-)
-NEW_SERVICE=$(echo "$OUTPUT" | grep '^SERVICE_ROLE_KEY=' | cut -d= -f2-)
+NEW_ANON=$(echo "$OUTPUT" | grep '^ANON_KEY=' | cut -d= -f2- | tr -d '\n\r')
+NEW_SERVICE=$(echo "$OUTPUT" | grep '^SERVICE_ROLE_KEY=' | cut -d= -f2- | tr -d '\n\r')
 if [ -z "$NEW_ANON" ] || [ -z "$NEW_SERVICE" ]; then
   echo "[fix-jwt] Failed to parse generated keys. Skip."
   exit 0
 fi
 
-# Update Supabase .env (avoid sed special chars: use grep -v + echo)
+# Update Supabase .env: use printf to avoid shell $ expansion (JWTs contain "iss", "iat", etc.)
 grep -v '^ANON_KEY=' "$SUPABASE_ENV" > "${SUPABASE_ENV}.tmp" 2>/dev/null || true
-echo "ANON_KEY=$NEW_ANON" >> "${SUPABASE_ENV}.tmp"
+printf 'ANON_KEY=%s\n' "$NEW_ANON" >> "${SUPABASE_ENV}.tmp"
 grep -v '^SERVICE_ROLE_KEY=' "${SUPABASE_ENV}.tmp" > "${SUPABASE_ENV}.tmp2" 2>/dev/null || true
-echo "SERVICE_ROLE_KEY=$NEW_SERVICE" >> "${SUPABASE_ENV}.tmp2"
+printf 'SERVICE_ROLE_KEY=%s\n' "$NEW_SERVICE" >> "${SUPABASE_ENV}.tmp2"
 mv "${SUPABASE_ENV}.tmp2" "$SUPABASE_ENV"
 rm -f "${SUPABASE_ENV}.tmp"
 echo "[fix-jwt] Updated ANON_KEY and SERVICE_ROLE_KEY in $SUPABASE_ENV"
@@ -60,7 +60,7 @@ echo "[fix-jwt] Updated ANON_KEY and SERVICE_ROLE_KEY in $SUPABASE_ENV"
 # Update ERP .env.production so frontend uses the same anon key
 if [ -f "$ERP_ENV" ]; then
   grep -v '^VITE_SUPABASE_ANON_KEY=' "$ERP_ENV" > "${ERP_ENV}.tmp" 2>/dev/null || true
-  echo "VITE_SUPABASE_ANON_KEY=$NEW_ANON" >> "${ERP_ENV}.tmp"
+  printf 'VITE_SUPABASE_ANON_KEY=%s\n' "$NEW_ANON" >> "${ERP_ENV}.tmp"
   mv "${ERP_ENV}.tmp" "$ERP_ENV"
   echo "[fix-jwt] Updated VITE_SUPABASE_ANON_KEY in .env.production"
 fi

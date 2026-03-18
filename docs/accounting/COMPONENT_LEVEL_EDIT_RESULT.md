@@ -83,3 +83,11 @@
 9. Reports reconcile from one accounting truth.  
 10. Inventory valuation: product names from products or fallback from line items.  
 11. Verified on component-level logic and existing live records (PUR-0105, SL-0006) as above.
+
+---
+
+## 7. Git commit and redeploy
+
+- **Commit hash:** `32de92d`
+- **Branch:** `main`
+- **Redeploy:** Build completed successfully. To deploy: pull on VPS and restart (e.g. `git pull && npm run build` then restart app/server). No DB migration required for component-level engine (only new reference_type values `purchase_adjustment` in application data).

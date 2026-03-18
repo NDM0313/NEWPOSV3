@@ -67,6 +67,7 @@ const CourierReportsTab = lazy(() => import('./CourierReportsTab').then((m) => (
 const DayBookReport = lazy(() => import('@/app/components/reports/DayBookReport').then((m) => ({ default: m.DayBookReport })));
 const RoznamchaReport = lazy(() => import('@/app/components/reports/RoznamchaReport').then((m) => ({ default: m.RoznamchaReport })));
 const AccountLedgerReportPage = lazy(() => import('@/app/components/reports/AccountLedgerReportPage').then((m) => ({ default: m.AccountLedgerReportPage })));
+const AccountingIntegrityTestLab = lazy(() => import('./AccountingIntegrityTestLab').then((m) => ({ default: m.AccountingIntegrityTestLab })));
 import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
 import { useCheckPermission } from '@/app/hooks/useCheckPermission';
 import { DateTimeDisplay } from '@/app/components/ui/DateTimeDisplay';
@@ -117,7 +118,7 @@ export const AccountingDashboard = () => {
     setCurrentModule('accounting');
   }, [setCurrentModule]);
 
-  const [activeTab, setActiveTab] = useState<'journal_entries' | 'daybook' | 'roznamcha' | 'accounts' | 'ledger' | 'receivables' | 'payables' | 'courier' | 'deposits' | 'studio' | 'account_statements'>('journal_entries');
+  const [activeTab, setActiveTab] = useState<'journal_entries' | 'daybook' | 'roznamcha' | 'accounts' | 'ledger' | 'receivables' | 'payables' | 'courier' | 'deposits' | 'studio' | 'account_statements' | 'integrity_lab'>('journal_entries');
   const reportStartDate = useMemo(() => {
     const d = new Date();
     d.setDate(1);
@@ -222,6 +223,7 @@ export const AccountingDashboard = () => {
     { key: 'deposits', label: 'Deposits', icon: Shield, isHidden: !settingsModules.rentalModuleEnabled },
     { key: 'studio', label: 'Studio Costs', icon: Wrench, isHidden: !settingsModules.studioModuleEnabled },
     { key: 'account_statements', label: 'Account Statements', icon: BarChart3 },
+    { key: 'integrity_lab', label: 'Integrity Test Lab', icon: TestTube },
   ];
   const tabs = allTabs.filter((t) => !('isHidden' in t) || !(t as any).isHidden);
 
@@ -1350,6 +1352,12 @@ export const AccountingDashboard = () => {
               <AccountLedgerReportPage startDate={reportStartDate} endDate={reportEndDate} branchId={branchId} />
             </Suspense>
           </div>
+        )}
+
+        {activeTab === 'integrity_lab' && (
+          <Suspense fallback={<div className="flex items-center justify-center py-12 text-gray-400">Loading…</div>}>
+            <AccountingIntegrityTestLab />
+          </Suspense>
         )}
       </div>
       

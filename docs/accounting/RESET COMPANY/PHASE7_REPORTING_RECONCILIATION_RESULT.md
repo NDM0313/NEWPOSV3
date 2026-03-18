@@ -70,5 +70,5 @@ Verification can be done on current live sale/purchase/payment/inventory and jou
 
 ## 7. Git commit
 
-**Commit:** `5146770`  
+**Commit:** `4f95f2a`  
 Message: `Phase 7: Reporting reconciliation – one journal truth, TB exclude voided, accounts/ledger from journal`
