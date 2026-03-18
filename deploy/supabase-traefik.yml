@@ -1,6 +1,11 @@
 # Supabase Kong API + Studio (CORS for auth refresh from localhost + ERP)
+# Studio: allow storage in browsers that respect Permissions-Policy (may help with localStorage SecurityError)
 http:
   middlewares:
+    studio-storage-policy:
+      headers:
+        customResponseHeaders:
+          Permissions-Policy: "storage-access=(self)"
     supabase-cors:
       headers:
         accessControlAllowOriginList:
@@ -38,6 +43,8 @@ http:
     studio-dincouture:
       rule: Host(`studio.dincouture.pk`)
       service: studio-dincouture
+      middlewares:
+        - studio-storage-policy
       entryPoints:
         - websecure
       tls:

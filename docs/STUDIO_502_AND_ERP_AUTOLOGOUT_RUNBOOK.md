@@ -38,6 +38,21 @@ ssh dincouture-vps "cd /root/NEWPOSV3 && bash deploy/ensure-studio-traefik-netwo
 
 ---
 
+## 2b. Studio blank screen / localStorage SecurityError
+
+**Symptom:** studio.dincouture.pk/project/default opens but main UI is **blank/black**; console:  
+`SecurityError: Failed to read the 'localStorage' property from 'Window': Access is denied for this document`
+
+**Cause:** Browser is denying storage access (strict privacy, site data blocked, or restricted context).
+
+**Fixes:**  
+1. **Traefik:** Repo `deploy/supabase-traefik.yml` adds middleware `studio-storage-policy` (Permissions-Policy: storage-access=(self)). On VPS, copy to `/etc/dokploy/traefik/dynamic/supabase.yml` and reload Traefik (or run `deploy/apply-studio-traefik-config.sh` if present).  
+2. **Browser:** Allow cookies/site data for studio.dincouture.pk (Chrome: lock icon → Site settings → Allow). Try without strict extensions or in a clean profile.
+
+**Detail:** **`docs/STUDIO_BLANK_ERP_AUTOLOGOUT_PHASE2_RESULT.md`**.
+
+---
+
 ## 3. ERP auto-logout – cause and fix
 
 **Symptom:** User logs in at https://erp.dincouture.pk; after about **1 second** they are logged out again (back to login screen).
@@ -48,7 +63,9 @@ ssh dincouture-vps "cd /root/NEWPOSV3 && bash deploy/ensure-studio-traefik-netwo
 2. **User row has `is_active = false`** – app calls `signOut()` when profile fetch returns inactive user (intended behavior).
 3. **Profile fetch failed** – we do **not** sign out on profile fetch failure; we show "Loading your profile…" and retry. Only after profile load **complete** and no company do we show "Create your business" (with optional Sign out button).
 
-**Fix applied in code:** In `SupabaseContext.tsx`, when the auth listener receives **session=null** and the event is **not** `SIGNED_OUT`, we now **verify with `getSession()`** before clearing state. If `getSession()` still returns a valid session, we keep the user logged in. This prevents a single spurious null event (e.g. token refresh race) from logging the user out.
+**Fix applied in code (Phase-1 + Phase-2):**  
+- When the auth listener receives **session=null** and event is not `SIGNED_OUT`, we **verify with `getSession()`** before clearing. If `getSession()` **throws** (e.g. SecurityError when storage is blocked), we **do not clear** – we set `connectionError` and keep the session (Phase-2).  
+- **fetchUserData:** SecurityError / "request was denied" are now retried like server errors and **never** trigger sign out; only `connectionError` when retries are exhausted (Phase-2).
 
 **Deploy:** Rebuild and redeploy the ERP frontend so the new auth guard is in the live build:
 

@@ -26,6 +26,20 @@ function isAbortError(err: any): boolean {
   return err?.name === 'AbortError' || String(err?.message ?? '').toLowerCase().includes('aborted');
 }
 
+/** SecurityError / request denied (storage blocked, CORS, or opaque response) – retry like server errors, never sign out. */
+function isStorageOrSecurityError(err: any): boolean {
+  if (!err) return false;
+  const msg = String(err?.message ?? err ?? '').toLowerCase();
+  const name = String(err?.name ?? '').toLowerCase();
+  return (
+    name === 'securityerror' ||
+    msg.includes('securityerror') ||
+    msg.includes('request was denied') ||
+    msg.includes('access is denied') ||
+    msg.includes('the request was denied')
+  );
+}
+
 interface SupabaseContextType {
   user: User | null;
   session: Session | null;
@@ -149,15 +163,22 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       try {
       const newUser = session?.user ?? null;
 
-      // Defensive: if client emits session=null shortly after sign-in (e.g. token refresh race),
+      // Defensive: if client emits session=null shortly after sign-in (e.g. token refresh race or storage SecurityError),
       // verify with getSession before clearing so we don't auto-logout on a spurious event.
       if (!newUser && event !== 'SIGNED_OUT') {
-        const { data: { session: current } } = await supabase.auth.getSession();
-        if (current?.user) {
-          if (import.meta.env?.DEV) console.warn('[AUTH] Ignoring spurious session=null, keeping session from getSession');
-          setSession(current);
-          setUser(current.user);
-          fetchUserData(current.user.id, false, 0);
+        try {
+          const { data: { session: current } } = await supabase.auth.getSession();
+          if (current?.user) {
+            if (import.meta.env?.DEV) console.warn('[AUTH] Ignoring spurious session=null, keeping session from getSession');
+            setSession(current);
+            setUser(current.user);
+            fetchUserData(current.user.id, false, 0);
+            return;
+          }
+        } catch (e) {
+          // getSession() can throw SecurityError when storage is blocked – do NOT clear session.
+          if (import.meta.env?.DEV) console.warn('[AUTH] getSession threw (e.g. storage blocked), keeping existing session', e);
+          setConnectionError(true);
           return;
         }
       }
@@ -250,20 +271,21 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           setProfileLoadComplete(true);
           return;
         }
-        // 502/503/504 or message containing 502: retry with backoff, then set connectionError if exhausted
+        // 502/503/504 or SecurityError/request denied: retry with backoff; NEVER sign out on these
         const serverErr = isServerError(error);
-        if (serverErr && retryCount < CONNECTION_ERROR_MAX_RETRIES) {
+        const storageErr = isStorageOrSecurityError(error);
+        if ((serverErr || storageErr) && retryCount < CONNECTION_ERROR_MAX_RETRIES) {
           const delay = RETRY_DELAY_MS * (retryCount + 1);
-          console.warn('[FETCH USER DATA] Server error (502/5xx), retrying in', delay, 'ms', { attempt: retryCount + 1 });
+          console.warn('[FETCH USER DATA]', storageErr ? 'Storage/security error' : 'Server error', ', retrying in', delay, 'ms', { attempt: retryCount + 1 });
           fetchingRef.current.delete(userId);
           setTimeout(() => fetchUserData(userId, true, retryCount + 1), delay);
           return;
         }
-        if (serverErr && retryCount >= CONNECTION_ERROR_MAX_RETRIES) {
+        if ((serverErr || storageErr) && retryCount >= CONNECTION_ERROR_MAX_RETRIES) {
           setConnectionError(true);
         }
         // Other transient: single retry (existing behavior)
-        if (!serverErr && !isRetry) {
+        if (!serverErr && !storageErr && !isRetry) {
           console.warn('[FETCH USER DATA] Transient error, retrying once in 1.5s:', { code: error.code, message: error.message });
           fetchingRef.current.delete(userId);
           setTimeout(() => fetchUserData(userId, true, 0), 1500);
@@ -325,7 +347,19 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       }
     } catch (error) {
       console.error('[FETCH USER DATA EXCEPTION]', error);
-      if (!isRetry) {
+      // SecurityError / request denied: retry like server errors; NEVER sign out
+      const storageErr = isStorageOrSecurityError(error);
+      if (storageErr && retryCount < CONNECTION_ERROR_MAX_RETRIES) {
+        const delay = RETRY_DELAY_MS * (retryCount + 1);
+        console.warn('[FETCH USER DATA] Exception (storage/security), retrying in', delay, 'ms');
+        fetchingRef.current.delete(userId);
+        setTimeout(() => fetchUserData(userId, true, retryCount + 1), delay);
+        return;
+      }
+      if (storageErr && retryCount >= CONNECTION_ERROR_MAX_RETRIES) {
+        setConnectionError(true);
+      }
+      if (!storageErr && !isRetry) {
         fetchingRef.current.delete(userId);
         setTimeout(() => fetchUserData(userId, true), 1500);
         return;
