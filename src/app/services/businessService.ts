@@ -143,7 +143,14 @@ export const businessService = {
       }
       return { success: true };
     } catch (err: any) {
-      return { success: false, error: err?.message || 'Unknown error' };
+      const msg = err?.message ?? '';
+      const isSecurity = err?.name === 'SecurityError' || /request was denied|access is denied/i.test(msg);
+      return {
+        success: false,
+        error: isSecurity
+          ? 'Network or security restriction. Please check your connection and try again, or use Retry above.'
+          : msg || 'Unknown error',
+      };
     }
   },
 };

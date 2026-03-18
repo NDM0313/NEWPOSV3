@@ -230,6 +230,7 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         fetchingRef.current.clear();
         fetchedRef.current.clear();
         lastFetchedUserIdRef.current = null;
+        storageErrorLoggedRef.current.clear();
       }
       } catch {
         setLoading(false);
