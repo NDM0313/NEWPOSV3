@@ -70,4 +70,4 @@ Verification can be done on current live edited sale records: run a few create/e
 
 ## 7. Git commit hash
 
-*(To be filled after commit.)*
+`c0b7099` — Phase 4: Sale engine rebuild - Shipping Income 4100, one contract, no blanket reversal
