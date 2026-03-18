@@ -615,4 +615,181 @@ export const saleAccountingService = {
       return null;
     }
   },
+
+  /**
+   * PF-14: Build accounting snapshot from sale row + sale_charges for delta comparison.
+   * Used to compute OLD vs NEW and post only adjustment JEs on sale edit (never delete original JEs).
+   */
+  getSaleAccountingSnapshot(sale: {
+    total?: number;
+    total_amount?: number;
+    subtotal?: number;
+    discount_amount?: number;
+    expenses?: number;
+    shipment_charges?: number;
+    charges?: { charge_type?: string; amount?: number }[];
+  }): { total: number; subtotal: number; discount: number; extraExpense: number; shippingCharges: number } {
+    const total = Number(sale?.total ?? sale?.total_amount ?? 0) || 0;
+    const charges = Array.isArray(sale?.charges) ? sale.charges : [];
+    const discount = Number(sale?.discount_amount ?? 0) || sumCharges(charges, 'discount');
+    const shippingCharges = Number(sale?.shipment_charges ?? sale?.expenses ?? 0) || sumCharges(charges, 'shipping');
+    const extraExpense = Number(sale?.expenses ?? 0) || sumCharges(charges, (t) => t !== 'discount' && t !== 'shipping');
+    const subtotal = Number(sale?.subtotal ?? 0) || total + discount; // gross before discount
+    return { total, subtotal, discount, extraExpense, shippingCharges };
+  },
+
+  /**
+   * PF-14: Post delta-only adjustment JEs for a sale edit. Original sale JEs remain untouched.
+   * Each component (revenue, discount, extra expense, shipping) gets its own adjustment JE if delta !== 0.
+   */
+  async postSaleEditAdjustments(params: {
+    companyId: string;
+    branchId: string | null;
+    saleId: string;
+    invoiceNo: string;
+    entryDate: string;
+    createdBy: string | null;
+    oldSnapshot: { total: number; subtotal: number; discount: number; extraExpense: number; shippingCharges: number };
+    newSnapshot: { total: number; subtotal: number; discount: number; extraExpense: number; shippingCharges: number };
+  }): Promise<{ adjustmentCount: number }> {
+    const { companyId, branchId, saleId, invoiceNo, entryDate, createdBy, oldSnapshot, newSnapshot } = params;
+    let adjustmentCount = 0;
+
+    const arAccount = await ensureARAccount(companyId);
+    const revenueAccount = await ensureRevenueAccount(companyId);
+    const discountAccount = await ensureDiscountAllowedAccount(companyId);
+    const extraExpenseAccount = await ensureExtraExpenseAccount(companyId);
+    const apAccount = await ensureAPAccount(companyId);
+    if (!arAccount?.id || !revenueAccount?.id) return { adjustmentCount };
+
+    const branchIdSafe = branchId && branchId !== 'all' ? branchId : undefined;
+
+    const fmt = (n: number) => Number(n).toLocaleString();
+    // 1) Sales revenue delta (gross = subtotal; change in revenue)
+    const oldGross = oldSnapshot.subtotal || oldSnapshot.total + oldSnapshot.discount;
+    const newGross = newSnapshot.subtotal || newSnapshot.total + newSnapshot.discount;
+    const deltaRevenue = Math.round((newGross - oldGross) * 100) / 100;
+    if (deltaRevenue !== 0) {
+      const desc = `Sale adjustment – revenue change (was Rs ${fmt(oldGross)}, now Rs ${fmt(newGross)}) – ${invoiceNo}`;
+      if (deltaRevenue > 0) {
+        await postAdjustmentJE(companyId, branchIdSafe, saleId, entryDate, createdBy, desc, [
+          { accountId: arAccount.id, debit: deltaRevenue, credit: 0, description: `AR – ${invoiceNo}` },
+          { accountId: revenueAccount.id, debit: 0, credit: deltaRevenue, description: `Sales Revenue – ${invoiceNo}` },
+        ]);
+        adjustmentCount++;
+      } else {
+        await postAdjustmentJE(companyId, branchIdSafe, saleId, entryDate, createdBy, desc, [
+          { accountId: revenueAccount.id, debit: -deltaRevenue, credit: 0, description: `Sales Revenue reversal – ${invoiceNo}` },
+          { accountId: arAccount.id, debit: 0, credit: -deltaRevenue, description: `AR reversal – ${invoiceNo}` },
+        ]);
+        adjustmentCount++;
+      }
+    }
+
+    // 2) Discount delta
+    const deltaDiscount = Math.round((newSnapshot.discount - oldSnapshot.discount) * 100) / 100;
+    if (deltaDiscount !== 0 && discountAccount?.id) {
+      const desc = `Sale adjustment – discount change (was Rs ${fmt(oldSnapshot.discount)}, now Rs ${fmt(newSnapshot.discount)}) – ${invoiceNo}`;
+      if (deltaDiscount > 0) {
+        await postAdjustmentJE(companyId, branchIdSafe, saleId, entryDate, createdBy, desc, [
+          { accountId: discountAccount.id, debit: deltaDiscount, credit: 0, description: `Discount Allowed – ${invoiceNo}` },
+          { accountId: revenueAccount.id, debit: 0, credit: deltaDiscount, description: `Sales Revenue – ${invoiceNo}` },
+        ]);
+        adjustmentCount++;
+      } else {
+        await postAdjustmentJE(companyId, branchIdSafe, saleId, entryDate, createdBy, desc, [
+          { accountId: revenueAccount.id, debit: -deltaDiscount, credit: 0, description: `Sales Revenue – ${invoiceNo}` },
+          { accountId: discountAccount.id, debit: 0, credit: -deltaDiscount, description: `Discount reversal – ${invoiceNo}` },
+        ]);
+        adjustmentCount++;
+      }
+    }
+
+    // 3) Extra expense delta
+    const deltaExtra = Math.round((newSnapshot.extraExpense - oldSnapshot.extraExpense) * 100) / 100;
+    if (deltaExtra !== 0 && extraExpenseAccount?.id && apAccount?.id) {
+      const desc = `Sale adjustment – extra expense change (was Rs ${fmt(oldSnapshot.extraExpense)}, now Rs ${fmt(newSnapshot.extraExpense)}) – ${invoiceNo}`;
+      if (deltaExtra > 0) {
+        await postAdjustmentJE(companyId, branchIdSafe, saleId, entryDate, createdBy, desc, [
+          { accountId: extraExpenseAccount.id, debit: deltaExtra, credit: 0, description: `Extra Expense – ${invoiceNo}` },
+          { accountId: apAccount.id, debit: 0, credit: deltaExtra, description: `Payable – ${invoiceNo}` },
+        ]);
+        adjustmentCount++;
+      } else {
+        await postAdjustmentJE(companyId, branchIdSafe, saleId, entryDate, createdBy, desc, [
+          { accountId: apAccount.id, debit: -deltaExtra, credit: 0, description: `Payable reversal – ${invoiceNo}` },
+          { accountId: extraExpenseAccount.id, debit: 0, credit: -deltaExtra, description: `Extra Expense reversal – ${invoiceNo}` },
+        ]);
+        adjustmentCount++;
+      }
+    }
+
+    // 4) Shipping (charged to customer) delta – treat as revenue-side: Dr AR, Cr Revenue or shipping income
+    const deltaShipping = Math.round((newSnapshot.shippingCharges - oldSnapshot.shippingCharges) * 100) / 100;
+    if (deltaShipping !== 0) {
+      const desc = `Sale adjustment – shipping change (was Rs ${fmt(oldSnapshot.shippingCharges)}, now Rs ${fmt(newSnapshot.shippingCharges)}) – ${invoiceNo}`;
+      if (deltaShipping > 0) {
+        await postAdjustmentJE(companyId, branchIdSafe, saleId, entryDate, createdBy, desc, [
+          { accountId: arAccount.id, debit: deltaShipping, credit: 0, description: `AR shipping – ${invoiceNo}` },
+          { accountId: revenueAccount.id, debit: 0, credit: deltaShipping, description: `Sales Revenue – ${invoiceNo}` },
+        ]);
+        adjustmentCount++;
+      } else {
+        await postAdjustmentJE(companyId, branchIdSafe, saleId, entryDate, createdBy, desc, [
+          { accountId: revenueAccount.id, debit: -deltaShipping, credit: 0, description: `Sales Revenue reversal – ${invoiceNo}` },
+          { accountId: arAccount.id, debit: 0, credit: -deltaShipping, description: `AR reversal – ${invoiceNo}` },
+        ]);
+        adjustmentCount++;
+      }
+    }
+
+    return { adjustmentCount };
+  },
 };
+
+function sumCharges(charges: { charge_type?: string; amount?: number }[], type: string | ((t: string) => boolean)): number {
+  return charges.reduce((sum, c) => {
+    const t = (c.charge_type || '').toLowerCase();
+    const amt = Number(c.amount ?? 0) || 0;
+    if (typeof type === 'function' ? type(t) : t === type) return sum + amt;
+    return sum;
+  }, 0);
+}
+
+async function postAdjustmentJE(
+  companyId: string,
+  branchId: string | undefined,
+  saleId: string,
+  entryDate: string,
+  createdBy: string | null,
+  description: string,
+  lines: { accountId: string; debit: number; credit: number; description: string }[]
+): Promise<void> {
+  // PF-14.4: Idempotency – skip if this exact adjustment already exists (prevents duplicate JEs on double submit / re-run).
+  const exists = await accountingService.hasExistingSaleAdjustmentByDescription(companyId, saleId, description);
+  if (exists) {
+    if (import.meta.env?.DEV) console.log('[saleAccountingService] Skipping duplicate sale_adjustment JE (idempotent):', description.slice(0, 60));
+    return;
+  }
+  const entryNo = `JE-ADJ-${Date.now()}-${Math.random().toString(36).substr(2, 6).toUpperCase()}`;
+  const entry: JournalEntry = {
+    id: '',
+    company_id: companyId,
+    branch_id: branchId,
+    entry_no: entryNo,
+    entry_date: entryDate,
+    description,
+    reference_type: 'sale_adjustment',
+    reference_id: saleId,
+    created_by: createdBy || undefined,
+  };
+  const lineRows: JournalEntryLine[] = lines.map((l) => ({
+    id: '',
+    journal_entry_id: '',
+    account_id: l.accountId,
+    debit: l.debit,
+    credit: l.credit,
+    description: l.description,
+  }));
+  await accountingService.createEntry(entry, lineRows);
+}

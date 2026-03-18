@@ -1178,6 +1178,31 @@ export const saleService = {
     }
   ) {
     try {
+      // PF-14.1: Capture current payment before update (for amount and/or account adjustment JEs)
+      let oldAmount: number | null = null;
+      let oldAccountId: string | null = null;
+      let paymentAccountId: string | null = null;
+      let companyId: string | null = null;
+      let branchId: string | null = null;
+      let paymentDate: string | null = null;
+      const needPreState = updates.amount !== undefined || updates.accountId !== undefined || updates.paymentMethod !== undefined;
+      if (needPreState) {
+        const { data: current } = await supabase
+          .from('payments')
+          .select('amount, payment_account_id, company_id, branch_id, payment_date')
+          .eq('id', paymentId)
+          .single();
+        if (current) {
+          const c = current as any;
+          oldAmount = Number(c.amount ?? 0) || 0;
+          oldAccountId = c.payment_account_id ?? null;
+          paymentAccountId = c.payment_account_id ?? null;
+          companyId = c.company_id ?? null;
+          branchId = c.branch_id ?? null;
+          paymentDate = c.payment_date ?? null;
+        }
+      }
+
       // Normalize payment method if provided
       let normalizedPaymentMethod = updates.paymentMethod;
       if (updates.paymentMethod) {
@@ -1230,9 +1255,100 @@ export const saleService = {
       }
       const data = updateResult.data;
 
-      // Triggers will handle:
-      // 1. Journal entry update (if needed)
-      // 2. Sale totals recalculation
+      // PF-14.2: Log payment_edited for History tab (human-readable: "Payment edited from Rs X to Rs Y via Cash")
+      const newAmount = updates.amount !== undefined ? Number(updates.amount) : oldAmount;
+      const paymentMethodDisplay = (updates.paymentMethod ?? (data as any)?.payment_method ?? 'Cash').toString();
+      if (oldAmount != null && newAmount != null && (oldAmount !== newAmount || updates.paymentMethod !== undefined)) {
+        const saleRow = await this.getSaleById(saleId).catch(() => null);
+        const invoiceNo = (saleRow as any)?.invoice_no ?? (saleRow as any)?.invoiceNo ?? saleId?.slice(0, 8) ?? 'N/A';
+        const { data: { user } } = await supabase.auth.getUser();
+        const companyIdForLog = (data as any)?.company_id ?? null;
+        if (companyIdForLog) {
+          activityLogService.logActivity({
+            companyId: companyIdForLog,
+            module: 'sale',
+            entityId: saleId,
+            entityReference: invoiceNo,
+            action: 'payment_edited',
+            oldValue: oldAmount,
+            newValue: newAmount,
+            amount: newAmount,
+            paymentMethod: paymentMethodDisplay,
+            performedBy: (user as any)?.id ?? null,
+            description: `Payment edited from Rs ${Number(oldAmount).toLocaleString()} to Rs ${Number(newAmount).toLocaleString()} via ${paymentMethodDisplay}`,
+          }).catch((e) => console.warn('[SALE SERVICE] Activity log payment_edited failed:', e));
+        }
+      }
+
+      // PF-14.1: Post payment adjustment JE when amount changed (original payment JE stays untouched)
+      if (
+        oldAmount != null &&
+        newAmount != null &&
+        oldAmount !== newAmount &&
+        companyId &&
+        paymentAccountId
+      ) {
+        try {
+          const { postPaymentAmountAdjustment } = await import('@/app/services/paymentAdjustmentService');
+          const saleRow = await this.getSaleById(saleId).catch(() => null);
+          const invoiceNo = (saleRow as any)?.invoice_no ?? (saleRow as any)?.invoiceNo ?? saleId?.slice(0, 8) ?? 'N/A';
+          const { data: { user } } = await supabase.auth.getUser();
+          await postPaymentAmountAdjustment({
+            context: 'sale',
+            companyId,
+            branchId,
+            paymentId,
+            referenceId: saleId,
+            oldAmount,
+            newAmount,
+            paymentAccountId: updates.accountId || paymentAccountId,
+            invoiceNoOrRef: invoiceNo,
+            entryDate: (updates.paymentDate || paymentDate || new Date().toISOString().split('T')[0]).toString().slice(0, 10),
+            createdBy: (user as any)?.id ?? null,
+          });
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('accountingEntriesChanged'));
+          }
+        } catch (adjErr: any) {
+          console.warn('[SALE SERVICE] Payment adjustment JE failed (payment row already updated):', adjErr?.message || adjErr);
+        }
+      }
+
+      // PF-14.1: When only payment account/method changed (Cash → Bank), post JE: Dr new account, Cr old account
+      const newAccountId = (data as any)?.payment_account_id ?? updates.accountId ?? null;
+      if (
+        companyId &&
+        oldAccountId != null &&
+        newAccountId != null &&
+        oldAccountId !== newAccountId &&
+        (newAmount != null && newAmount > 0)
+      ) {
+        try {
+          const { postPaymentAccountAdjustment } = await import('@/app/services/paymentAdjustmentService');
+          const saleRow = await this.getSaleById(saleId).catch(() => null);
+          const invoiceNo = (saleRow as any)?.invoice_no ?? (saleRow as any)?.invoiceNo ?? saleId?.slice(0, 8) ?? 'N/A';
+          const { data: { user } } = await supabase.auth.getUser();
+          await postPaymentAccountAdjustment({
+            context: 'sale',
+            companyId,
+            branchId,
+            paymentId,
+            referenceId: saleId,
+            oldAccountId,
+            newAccountId,
+            amount: newAmount,
+            invoiceNoOrRef: invoiceNo,
+            entryDate: (updates.paymentDate || paymentDate || (data as any)?.payment_date || new Date().toISOString().split('T')[0]).toString().slice(0, 10),
+            createdBy: (user as any)?.id ?? null,
+          });
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('accountingEntriesChanged'));
+          }
+        } catch (accErr: any) {
+          console.warn('[SALE SERVICE] Payment account adjustment JE failed:', accErr?.message || accErr);
+        }
+      }
+
       console.log('[SALE SERVICE] Payment updated successfully');
       return data;
     } catch (error: any) {

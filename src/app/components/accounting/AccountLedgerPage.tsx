@@ -16,6 +16,7 @@ import { format } from 'date-fns';
 import { cn } from '@/app/components/ui/utils';
 import { toast } from 'sonner';
 import { TransactionDetailModal } from './TransactionDetailModal';
+import { DateTimeDisplay } from '@/app/components/ui/DateTimeDisplay';
 
 interface AccountLedgerPageProps {
   accountId: string;
@@ -84,12 +85,19 @@ export const AccountLedgerPage: React.FC<AccountLedgerPageProps> = ({
       );
 
       setLedgerEntries(entries);
-      
-      // Calculate opening balance
+
+      // Opening balance = balance before the chronologically first entry (API returns date ASC)
       if (entries.length > 0) {
-        const firstEntry = entries[0];
-        const firstChange = (firstEntry.debit || 0) - (firstEntry.credit || 0);
-        setOpeningBalance(firstEntry.running_balance - firstChange);
+        const chronological = [...entries].sort((a, b) => {
+          const d = (a.date || '').localeCompare(b.date || '');
+          if (d !== 0) return d;
+          const ta = a.created_at ? new Date(a.created_at).getTime() : 0;
+          const tb = b.created_at ? new Date(b.created_at).getTime() : 0;
+          return ta - tb;
+        });
+        const first = chronological[0];
+        const firstChange = (first.debit || 0) - (first.credit || 0);
+        setOpeningBalance(first.running_balance - firstChange);
       } else {
         setOpeningBalance(0);
       }
@@ -102,35 +110,35 @@ export const AccountLedgerPage: React.FC<AccountLedgerPageProps> = ({
   };
 
   const filteredEntries = useMemo(() => {
-    if (!searchTerm.trim()) {
-      return ledgerEntries;
+    let list = ledgerEntries;
+    if (searchTerm.trim()) {
+      const search = searchTerm.toLowerCase().trim();
+      list = list.filter(entry => {
+        if (entry.reference_number?.toLowerCase().includes(search)) return true;
+        if (entry.description?.toLowerCase().includes(search)) return true;
+        const amountStr = ((entry.debit || 0) + (entry.credit || 0)).toString();
+        if (amountStr.includes(search)) return true;
+        if (entry.source_module?.toLowerCase().includes(search)) return true;
+        return false;
+      });
     }
-
-    const search = searchTerm.toLowerCase().trim();
-    
-    return ledgerEntries.filter(entry => {
-      // Reference number match (JE-0047, EXP-0001, etc.)
-      if (entry.reference_number?.toLowerCase().includes(search)) return true;
-      
-      // Description match
-      if (entry.description?.toLowerCase().includes(search)) return true;
-      
-      // Amount match (partial)
-      const amountStr = ((entry.debit || 0) + (entry.credit || 0)).toString();
-      if (amountStr.includes(search)) return true;
-      
-      // Source module match
-      if (entry.source_module?.toLowerCase().includes(search)) return true;
-      
-      return false;
+    // Sort A to Z: date ascending, then created_at ascending (oldest first)
+    return [...list].sort((a, b) => {
+      const dateA = (a.date || '').toString();
+      const dateB = (b.date || '').toString();
+      if (dateA !== dateB) return dateA.localeCompare(dateB);
+      const timeA = a.created_at ? new Date(a.created_at).getTime() : 0;
+      const timeB = b.created_at ? new Date(b.created_at).getTime() : 0;
+      return timeA - timeB;
     });
   }, [ledgerEntries, searchTerm]);
 
   const totals = useMemo(() => {
     const totalDebit = filteredEntries.reduce((sum, entry) => sum + (entry.debit || 0), 0);
     const totalCredit = filteredEntries.reduce((sum, entry) => sum + (entry.credit || 0), 0);
-    const closingBalance = filteredEntries.length > 0 
-      ? filteredEntries[filteredEntries.length - 1].running_balance 
+    // With A→Z sort, last row is newest; its running_balance is closing
+    const closingBalance = filteredEntries.length > 0
+      ? filteredEntries[filteredEntries.length - 1].running_balance
       : openingBalance;
     
     return {
@@ -345,6 +353,7 @@ export const AccountLedgerPage: React.FC<AccountLedgerPageProps> = ({
                   <th className="px-4 py-3 text-left">Reference No</th>
                   <th className="px-4 py-3 text-left">Source</th>
                   <th className="px-4 py-3 text-left">Description</th>
+                  <th className="px-4 py-3 text-left">Counter Account</th>
                   <th className="px-4 py-3 text-right">Debit</th>
                   <th className="px-4 py-3 text-right">Credit</th>
                   <th className="px-4 py-3 text-right">Running Balance</th>
@@ -357,6 +366,8 @@ export const AccountLedgerPage: React.FC<AccountLedgerPageProps> = ({
                   <td className="px-4 py-3 text-gray-300">-</td>
                   <td className="px-4 py-3 text-gray-500">-</td>
                   <td className="px-4 py-3 text-white">Opening Balance</td>
+                  <td className="px-4 py-3 text-gray-500">-</td>
+                  <td className="px-4 py-3 text-gray-500">-</td>
                   <td className="px-4 py-3 text-right text-gray-500">-</td>
                   <td className="px-4 py-3 text-right text-gray-500">-</td>
                   <td className={cn(
@@ -382,8 +393,11 @@ export const AccountLedgerPage: React.FC<AccountLedgerPageProps> = ({
                       key={`${entry.journal_entry_id}-${index}`}
                       className="border-b border-gray-800 hover:bg-gray-800/50 transition-colors"
                     >
-                      <td className="px-4 py-3 text-sm text-gray-300">
-                        {format(new Date(entry.date), 'dd MMM yyyy')}
+                      <td className="px-4 py-3 text-sm text-gray-300 whitespace-nowrap">
+                        <DateTimeDisplay
+                          date={entry.created_at ?? entry.date}
+                          className="flex flex-col leading-tight"
+                        />
                       </td>
                       <td className="px-4 py-3">
                         <button
@@ -399,6 +413,9 @@ export const AccountLedgerPage: React.FC<AccountLedgerPageProps> = ({
                         </Badge>
                       </td>
                       <td className="px-4 py-3 text-sm text-gray-300">{entry.description}</td>
+                      <td className="px-4 py-3 text-sm text-blue-400/90">
+                        {entry.counter_account || '-'}
+                      </td>
                       <td className={cn(
                         "px-4 py-3 text-sm text-right tabular-nums",
                         entry.debit > 0 ? "text-green-400 font-semibold" : "text-gray-500"
@@ -443,7 +460,7 @@ export const AccountLedgerPage: React.FC<AccountLedgerPageProps> = ({
 
                 {/* Closing Balance Row */}
                 <tr className="bg-gray-900 font-bold border-t-2 border-blue-500/30">
-                  <td colSpan={4} className="px-4 py-3 text-right text-white uppercase text-sm">
+                  <td colSpan={5} className="px-4 py-3 text-right text-white uppercase text-sm">
                     Closing Balance:
                   </td>
                   <td className="px-4 py-3 text-right text-green-400 text-lg">
@@ -467,7 +484,7 @@ export const AccountLedgerPage: React.FC<AccountLedgerPageProps> = ({
                       maximumFractionDigits: 2,
                     })}
                   </td>
-                  <td className="px-4 py-3"></td>
+                  <td className="px-4 py-3" />
                 </tr>
               </tbody>
             </table>

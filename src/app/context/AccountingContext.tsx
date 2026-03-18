@@ -92,6 +92,9 @@ export interface AccountingEntry {
     optionalReference?: string;
     /** Journal entry created_at for date+time display (ISO string). */
     createdAt?: string;
+    /** PF-14.3B: Root document for grouping (e.g. sale_id so sale + sale_adjustment + payment_adjustment show as one row). */
+    rootReferenceId?: string;
+    rootReferenceType?: string;
   };
 }
 
@@ -344,14 +347,16 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
     const debitLine = journalEntry.lines?.find(line => line.debit > 0);
     const creditLine = journalEntry.lines?.find(line => line.credit > 0);
 
-    // Determine source from reference_type
+    // Determine source from reference_type (PF-14.3B: sale_adjustment/payment_adjustment show as Sale/Payment for grouping)
     const sourceMap: Record<string, TransactionSource> = {
       'sale': 'Sale',
+      'sale_adjustment': 'Sale',
       'purchase': 'Purchase',
       'expense': 'Expense',
       'rental': 'Rental',
       'studio': 'Studio',
       'payment': 'Payment',
+      'payment_adjustment': 'Payment',
       'worker_payment': 'Payment',
       'manual': 'Manual',
       'correction_reversal': 'Reversal',
@@ -367,7 +372,8 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
     const debitAccountName = debitLine?.account_name ?? (debitLine as any)?.account?.name ?? 'Expense';
     const creditAccountName = creditLine?.account_name ?? (creditLine as any)?.account?.name ?? 'Cash';
 
-    // Extract metadata from description or reference
+    // Extract metadata from description or reference (PF-14.3B: root for grouped Journal list)
+    const raw = journalEntry as { root_reference_id?: string; root_reference_type?: string };
     const metadata: AccountingEntry['metadata'] = {
       journalEntryId: journalEntry.id,
       referenceId: journalEntry.reference_id,
@@ -375,6 +381,8 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
       paymentId: journalEntry.payment_id,
       paymentMethod: paymentMethod,
       createdAt: (journalEntry as { created_at?: string }).created_at ?? undefined,
+      rootReferenceId: raw.root_reference_id ?? journalEntry.reference_id ?? undefined,
+      rootReferenceType: raw.root_reference_type ?? journalEntry.reference_type ?? undefined,
     };
     
     if (journalEntry.reference_id) {
@@ -425,6 +433,19 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
 
     setLoading(true);
     try {
+      // PF-14.1: Sync ledger with payments table (single source of truth). Any payment whose
+      // payment_account_id differs from the effective debit account in JEs gets a backfilled
+      // account-adjustment JE so Cash/Bank ledgers show correctly without per-screen fixes.
+      try {
+        const { syncPaymentAccountAdjustmentsForCompany } = await import('@/app/services/paymentAdjustmentService');
+        const { synced } = await syncPaymentAccountAdjustmentsForCompany(companyId);
+        if (synced > 0 && typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('accountingEntriesChanged'));
+        }
+      } catch (syncErr) {
+        if (import.meta.env?.DEV) console.warn('[ACCOUNTING CONTEXT] Payment account sync:', syncErr);
+      }
+
       // Convert ISO strings back to Date objects only at call time — deps stay as stable primitives
       const startDate = startDateISO ? new Date(startDateISO) : null;
       const endDate = endDateISO ? new Date(endDateISO) : null;

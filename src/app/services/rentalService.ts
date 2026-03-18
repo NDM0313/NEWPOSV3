@@ -665,7 +665,7 @@ export const rentalService = {
 
     const { data: rental, error: fetchErr } = await supabase
       .from('rentals')
-      .select('id, status, branch_id, booking_no')
+      .select('id, status, branch_id, booking_no, security_deposit')
       .eq('id', id)
       .single();
 
@@ -712,6 +712,9 @@ export const rentalService = {
       if (movErr) throw movErr;
     }
 
+    const securityDeposit = Number(r.security_deposit ?? 0);
+    const refundAmount = Math.max(0, securityDeposit - penaltyAmount);
+
     const updatePayload: Record<string, unknown> = {
       status: 'returned',
       actual_return_date: actualReturnDate,
@@ -721,6 +724,7 @@ export const rentalService = {
       damage_charges: penaltyAmount,
       penalty_paid: penaltyPaid,
       document_returned: documentReturned,
+      refund_amount: refundAmount,
     };
     if (notes) updatePayload.notes = notes;
 

@@ -33,6 +33,8 @@ export interface JournalEntryWithLines extends JournalEntry {
 
 export interface AccountLedgerEntry {
   date: string;
+  /** ISO datetime for sort/display (from journal_entries.created_at) */
+  created_at?: string;
   reference_number: string;
   entry_no?: string; // Actual entry_no from database (for lookup)
   description: string;
@@ -48,6 +50,8 @@ export interface AccountLedgerEntry {
   branch_id?: string;
   branch_name?: string;
   account_name?: string; // Payment Account name (from account_id)
+  /** Other account(s) in this double-entry (e.g. "Bank ABC" when viewing Cash ledger) */
+  counter_account?: string;
   notes?: string; // User notes/narration (separate from description)
   document_type?: string; // Document Type (Sale, Payment, etc.)
 }
@@ -110,23 +114,28 @@ export const accountingService = {
         return [];
       }
 
+      // PF-14.4: Exclude voided entries from business ledgers/reports (audit can show all via raw query).
+      const dataFiltered = (data as any[]).filter((e: any) => e.is_void !== true);
+
       // CRITICAL: Filter out entries for deleted purchases/sales
-      const purchaseIds = data
+      const purchaseIds = dataFiltered
         .filter(e => e.reference_type === 'purchase' && e.reference_id)
         .map(e => e.reference_id) as string[];
       
-      const saleIds = data
-        .filter(e => e.reference_type === 'sale' && e.reference_id)
-        .map(e => e.reference_id) as string[];
+      const saleIds = dataFiltered
+        .filter((e: any) => (e.reference_type === 'sale' || e.reference_type === 'sale_adjustment') && e.reference_id)
+        .map((e: any) => e.reference_id) as string[];
       
-      const paymentIds = data
-        .filter(e => e.reference_type === 'payment' && e.reference_id)
-        .map(e => e.reference_id) as string[];
+      const paymentIds = dataFiltered
+        .filter((e: any) => (e.reference_type === 'payment' || e.reference_type === 'payment_adjustment') && e.reference_id)
+        .map((e: any) => e.reference_id) as string[];
+      const uniquePaymentIds = [...new Set(paymentIds)];
 
       // Check which purchases/sales still exist
       let existingPurchases: Set<string> = new Set();
       let existingSales: Set<string> = new Set();
       let validPayments: Set<string> = new Set();
+      let paymentsList: { id: string; reference_type?: string; reference_id?: string }[] = [];
 
       if (purchaseIds.length > 0) {
         const { data: purchases } = await supabase
@@ -150,14 +159,15 @@ export const accountingService = {
         }
       }
 
-      // For payments, check if the referenced purchase/sale exists
-      if (paymentIds.length > 0) {
+      // For payments, check if the referenced purchase/sale exists (payment + payment_adjustment both use payment id)
+      if (uniquePaymentIds.length > 0) {
         const { data: payments } = await supabase
           .from('payments')
           .select('id, reference_type, reference_id')
-          .in('id', paymentIds);
+          .in('id', uniquePaymentIds);
         
         if (payments) {
+          paymentsList = payments;
           const purchaseRefs = payments
             .filter((p: any) => p.reference_type === 'purchase' && p.reference_id)
             .map((p: any) => p.reference_id) as string[];
@@ -204,18 +214,52 @@ export const accountingService = {
       }
 
       // Filter entries: only include if purchase/sale/payment still exists (no per-entry logging on load)
-      const validEntries = data.filter((entry: any) => {
+      const validEntries = dataFiltered.filter((entry: any) => {
         if (entry.reference_type === 'purchase' && entry.reference_id && !existingPurchases.has(entry.reference_id)) return false;
         if (entry.reference_type === 'sale' && entry.reference_id && !existingSales.has(entry.reference_id)) return false;
+        if (entry.reference_type === 'sale_adjustment' && entry.reference_id && !existingSales.has(entry.reference_id)) return false;
         if (entry.reference_type === 'payment' && entry.reference_id && !validPayments.has(entry.reference_id)) return false;
+        if (entry.reference_type === 'payment_adjustment' && entry.reference_id && !validPayments.has(entry.reference_id)) return false;
         return true;
       });
 
-      if (import.meta.env?.DEV && validEntries.length !== data.length) {
-        console.log(`[ACCOUNTING SERVICE] Filtered ${data.length} entries to ${validEntries.length} valid entries`);
+      if (import.meta.env?.DEV && validEntries.length !== dataFiltered.length) {
+        console.log(`[ACCOUNTING SERVICE] Filtered ${dataFiltered.length} entries to ${validEntries.length} valid entries`);
       }
-      
-      return validEntries;
+
+      // PF-14.3B: Root-document grouping – attach root_reference_type and root_reference_id so Journal list can show one logical row per sale
+      const paymentIdToRoot = new Map<string, { root_reference_type: string; root_reference_id: string }>();
+      paymentsList.forEach((p: any) => {
+          if (p.reference_type === 'sale' && p.reference_id) {
+            paymentIdToRoot.set(p.id, { root_reference_type: 'sale', root_reference_id: p.reference_id });
+          }
+          if (p.reference_type === 'purchase' && p.reference_id) {
+            paymentIdToRoot.set(p.id, { root_reference_type: 'purchase', root_reference_id: p.reference_id });
+          }
+      });
+      const enrichedEntries = validEntries.map((entry: any) => {
+        const out = { ...entry };
+        if (entry.reference_type === 'sale' || entry.reference_type === 'sale_adjustment') {
+          if (entry.reference_id) {
+            out.root_reference_type = 'sale';
+            out.root_reference_id = entry.reference_id;
+          }
+        } else if (entry.reference_type === 'payment' || entry.reference_type === 'payment_adjustment') {
+          if (entry.reference_id) {
+            const root = paymentIdToRoot.get(entry.reference_id);
+            if (root) {
+              out.root_reference_type = root.root_reference_type;
+              out.root_reference_id = root.root_reference_id;
+            }
+          }
+        } else if (entry.reference_type === 'purchase' && entry.reference_id) {
+          out.root_reference_type = 'purchase';
+          out.root_reference_id = entry.reference_id;
+        }
+        return out;
+      });
+
+      return enrichedEntries;
     } catch (error: any) {
       console.warn('[ACCOUNTING SERVICE] Error:', error.message);
       return [];
@@ -235,6 +279,103 @@ export const accountingService = {
 
     if (error) throw error;
     return data;
+  },
+
+  /**
+   * PF-14.4: Idempotency – check if a sale_adjustment JE already exists for this sale with the same description.
+   * Prevents duplicate JEs when postSaleEditAdjustments is called multiple times for the same logical edit.
+   */
+  async hasExistingSaleAdjustmentByDescription(
+    companyId: string,
+    saleId: string,
+    description: string
+  ): Promise<boolean> {
+    if (!companyId || !saleId || !description?.trim()) return false;
+    const { data, error } = await supabase
+      .from('journal_entries')
+      .select('id')
+      .eq('company_id', companyId)
+      .eq('reference_type', 'sale_adjustment')
+      .eq('reference_id', saleId)
+      .eq('description', description)
+      .limit(1);
+    if (error) return false;
+    return Array.isArray(data) && data.length > 0;
+  },
+
+  /**
+   * PF-14.4: Idempotency – check if a payment_adjustment JE already exists for this payment with same amount edit.
+   * Matches description pattern "was Rs X, now Rs Y" so duplicate amount edits do not create extra JEs.
+   */
+  async hasExistingPaymentAmountAdjustment(
+    companyId: string,
+    paymentId: string,
+    oldAmount: number,
+    newAmount: number
+  ): Promise<boolean> {
+    if (!companyId || !paymentId) return false;
+    const o = Number(oldAmount);
+    const n = Number(newAmount);
+    const needle1 = `was Rs ${o.toLocaleString()}, now Rs ${n.toLocaleString()}`;
+    const needle2 = `was Rs ${o}, now Rs ${n}`;
+    const { data, error } = await supabase
+      .from('journal_entries')
+      .select('id, description')
+      .eq('company_id', companyId)
+      .eq('reference_type', 'payment_adjustment')
+      .eq('reference_id', paymentId);
+    if (error || !data?.length) return false;
+    return data.some((row: { description?: string }) => {
+      const d = row.description || '';
+      return d.includes(needle1) || d.includes(needle2);
+    });
+  },
+
+  /**
+   * PF-14.4: Idempotency – check if a payment_adjustment JE already exists for this payment moving
+   * the same amount from oldAccountId to newAccountId (Dr new, Cr old). Prevents duplicate
+   * "Payment account changed" JEs from syncPaymentAccountAdjustmentsForCompany or repeated UI saves.
+   */
+  async hasExistingPaymentAccountAdjustment(
+    companyId: string,
+    paymentId: string,
+    oldAccountId: string,
+    newAccountId: string,
+    amount: number
+  ): Promise<boolean> {
+    if (!companyId || !paymentId || !oldAccountId || !newAccountId || amount <= 0) return false;
+    const { data: entries, error } = await supabase
+      .from('journal_entries')
+      .select('id')
+      .eq('company_id', companyId)
+      .eq('reference_type', 'payment_adjustment')
+      .eq('reference_id', paymentId)
+      .ilike('description', '%Payment account changed%');
+    if (error || !entries?.length) return false;
+    const jeIds = entries.map((e: { id: string }) => e.id);
+    const { data: lines } = await supabase
+      .from('journal_entry_lines')
+      .select('journal_entry_id, account_id, debit, credit')
+      .in('journal_entry_id', jeIds);
+    if (!lines?.length) return false;
+    const amountRounded = Math.round(amount * 100) / 100;
+    const byJe = new Map<string, { debit: Map<string, number>; credit: Map<string, number> }>();
+    for (const line of lines as { journal_entry_id: string; account_id: string; debit: number; credit: number }[]) {
+      if (!byJe.has(line.journal_entry_id)) {
+        byJe.set(line.journal_entry_id, { debit: new Map(), credit: new Map() });
+      }
+      const rec = byJe.get(line.journal_entry_id)!;
+      const d = (rec.debit.get(line.account_id) ?? 0) + Number(line.debit ?? 0);
+      const c = (rec.credit.get(line.account_id) ?? 0) + Number(line.credit ?? 0);
+      rec.debit.set(line.account_id, d);
+      rec.credit.set(line.account_id, c);
+    }
+    for (const [, rec] of byJe) {
+      const newDebit = rec.debit.get(newAccountId) ?? 0;
+      const oldCredit = rec.credit.get(oldAccountId) ?? 0;
+      if (Math.abs(newDebit - amountRounded) < 0.02 && Math.abs(oldCredit - amountRounded) < 0.02) return true;
+    }
+    return false;
   },
 
   /**
@@ -300,7 +441,7 @@ export const accountingService = {
           *,
           account:accounts(id, name, code, type)
         ),
-        payment:payments(id, reference_number, amount, payment_method, payment_date, contact_id),
+        payment:payments(id, reference_number, amount, payment_method, payment_date, contact_id, payment_account_id),
         branch:branches(id, name, code)
       `)
       .eq('id', journalEntryId)
@@ -338,6 +479,83 @@ export const accountingService = {
     return data;
   },
 
+  /**
+   * Effective journal lines for a payment: original payment JE + any payment_adjustment JEs,
+   * aggregated by account so the modal shows the correct accounts (e.g. Bank after edit from Cash).
+   * If currentPaymentAccountId is provided and the stored JEs still show a different debit account
+   * (e.g. payment was edited to Bank but no adjustment JE was posted yet), returns synthetic
+   * lines showing the current payment account so the UI is correct.
+   */
+  async getEffectiveJournalLinesForPayment(
+    paymentId: string,
+    companyId: string,
+    currentPaymentAccountId?: string | null
+  ): Promise<{ id: string; account_id: string; account: { id: string; name: string; code?: string; type?: string }; debit: number; credit: number }[]> {
+    if (!paymentId || !companyId) return [];
+    const { data: entries, error } = await supabase
+      .from('journal_entries')
+      .select(`
+        id,
+        reference_type,
+        lines:journal_entry_lines(
+          id,
+          account_id,
+          debit,
+          credit,
+          account:accounts(id, name, code, type)
+        )
+      `)
+      .eq('company_id', companyId)
+      .or(`payment_id.eq.${paymentId},and(reference_type.eq.payment_adjustment,reference_id.eq.${paymentId})`);
+
+    if (error || !entries?.length) return [];
+
+    const byAccount = new Map<string, { debit: number; credit: number; account: any }>();
+    for (const je of entries) {
+      const lines = (je as any).lines ?? [];
+      for (const line of lines) {
+        const acc = line.account ?? {};
+        const aid = line.account_id ?? '';
+        const debit = Number(line.debit ?? 0);
+        const credit = Number(line.credit ?? 0);
+        if (!byAccount.has(aid)) {
+          byAccount.set(aid, { debit: 0, credit: 0, account: { id: acc.id, name: acc.name ?? 'Unknown', code: acc.code, type: acc.type } });
+        }
+        const row = byAccount.get(aid)!;
+        row.debit += debit;
+        row.credit += credit;
+      }
+    }
+
+    let result = Array.from(byAccount.entries())
+      .filter(([, row]) => row.debit > 0 || row.credit > 0)
+      .map(([account_id, row]) => ({
+        id: '',
+        account_id,
+        account: row.account,
+        debit: Math.round(row.debit * 100) / 100,
+        credit: Math.round(row.credit * 100) / 100,
+      }));
+
+    if (currentPaymentAccountId && result.length >= 2) {
+      const debitAccountRow = result.find((r) => r.debit > 0);
+      if (debitAccountRow && debitAccountRow.account_id !== currentPaymentAccountId) {
+        const { data: accRow } = await supabase
+          .from('accounts')
+          .select('id, name, code, type')
+          .eq('id', currentPaymentAccountId)
+          .single();
+        const name = (accRow as any)?.name ?? 'Account';
+        const code = (accRow as any)?.code;
+        result = [
+          { id: '', account_id: currentPaymentAccountId, account: { id: currentPaymentAccountId, name, code, type: (accRow as any)?.type }, debit: debitAccountRow.debit, credit: 0 },
+          ...result.filter((r) => r.credit > 0),
+        ];
+      }
+    }
+    return result;
+  },
+
   // CRITICAL FIX: Lookup by entry_no, payment reference_number, or invoice_no (FALLBACK ONLY)
   async getEntryByReference(referenceNumber: string, companyId: string) {
     if (!referenceNumber || !companyId) {
@@ -359,7 +577,7 @@ export const accountingService = {
           *,
           account:accounts(id, name, code, type)
         ),
-        payment:payments(id, reference_number, amount, payment_method, payment_date),
+        payment:payments(id, reference_number, amount, payment_method, payment_date, payment_account_id),
         branch:branches(id, name, code)
       `)
       .eq('company_id', companyId)
@@ -384,7 +602,7 @@ export const accountingService = {
               *,
               account:accounts(id, name, code, type)
             ),
-            payment:payments(id, reference_number, amount, payment_method, payment_date),
+            payment:payments(id, reference_number, amount, payment_method, payment_date, payment_account_id),
             branch:branches(id, name, code)
           `)
           .eq('company_id', companyId)
@@ -418,8 +636,8 @@ export const accountingService = {
               *,
               account:accounts(id, name, code, type)
             ),
-            payment:payments(id, reference_number, amount, payment_method, payment_date),
-            sale:sales(id, invoice_no, customer_name, total, paid_amount, due_amount),
+          payment:payments(id, reference_number, amount, payment_method, payment_date, payment_account_id),
+          sale:sales(id, invoice_no, customer_name, total, paid_amount, due_amount),
             branch:branches(id, name, code)
           `)
           .eq('company_id', companyId)
@@ -459,7 +677,7 @@ export const accountingService = {
             *,
             account:accounts(id, name, code, type)
           ),
-          payment:payments(id, reference_number, amount, payment_method, payment_date),
+          payment:payments(id, reference_number, amount, payment_method, payment_date, payment_account_id),
           branch:branches(id, name, code)
         `)
         .eq('company_id', companyId)
@@ -486,7 +704,7 @@ export const accountingService = {
             *,
             account:accounts(id, name, code, type)
           ),
-          payment:payments(id, reference_number, amount, payment_method, payment_date),
+          payment:payments(id, reference_number, amount, payment_method, payment_date, payment_account_id),
           branch:branches(id, name, code)
         `)
         .eq('company_id', companyId)
@@ -559,33 +777,14 @@ export const accountingService = {
         return [];
       }
 
-      // Get account opening balance (balance before first entry)
+      // Get account current balance (balance after all entries)
       const { data: account } = await supabase
         .from('accounts')
         .select('balance')
         .eq('id', accountId)
         .single();
 
-      let runningBalance = account?.balance || 0;
-
-      // Calculate running balance from all entries before start date
-      if (startDate) {
-        const { data: priorEntries } = await supabase
-          .from('journal_entry_lines')
-          .select(`
-            debit,
-            credit,
-            journal_entry:journal_entries(entry_date)
-          `)
-          .eq('account_id', accountId)
-          .lt('journal_entry.entry_date', startDate);
-
-        if (priorEntries) {
-          priorEntries.forEach((entry: any) => {
-            runningBalance += (entry.debit || 0) - (entry.credit || 0);
-          });
-        }
-      }
+      const currentBalance = account?.balance ?? 0;
 
       // Get payment references for entries that need them (batch fetch)
       const paymentIds = lines
@@ -651,6 +850,35 @@ export const accountingService = {
         return idA.localeCompare(idB);
       });
 
+      // Fetch counter-account names (other side of double-entry) for each journal entry
+      const jeIds = [...new Set(filteredLines.map((l: any) => l.journal_entry?.id).filter(Boolean))] as string[];
+      const counterAccountMap = new Map<string, string>();
+      if (jeIds.length > 0) {
+        const { data: otherLines } = await supabase
+          .from('journal_entry_lines')
+          .select('journal_entry_id, account_id, account:accounts(name)')
+          .in('journal_entry_id', jeIds)
+          .neq('account_id', accountId);
+        for (const ol of otherLines || []) {
+          const name = (ol as any).account?.name ?? 'Unknown';
+          const arr = counterAccountMap.get(ol.journal_entry_id) ? `${counterAccountMap.get(ol.journal_entry_id)}, ${name}` : name;
+          counterAccountMap.set(ol.journal_entry_id, arr);
+        }
+      }
+
+      // Opening balance = current balance minus sum of movements in this range (so running balance is correct for each row)
+      const totalMovementInRange = filteredLines.reduce(
+        (sum: number, line: any) => sum + ((line.debit || 0) - (line.credit || 0)),
+        0
+      );
+      let runningBalance = currentBalance - totalMovementInRange;
+
+      const isUuidOrBad = (s: string | null | undefined) => {
+        if (!s || !s.trim()) return true;
+        if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s.trim())) return true;
+        return false;
+      };
+
       const ledgerEntries: AccountLedgerEntry[] = filteredLines.map((line: any) => {
           const entry = line.journal_entry;
           runningBalance += (line.debit || 0) - (line.credit || 0);
@@ -664,38 +892,42 @@ export const accountingService = {
           }
 
           // Use entry_no if it's in short format (EXP-0001, JE-0001, etc.)
-          // If entry_no is UUID or missing, generate short reference
           let referenceNumber = entry.entry_no;
-          
-          // Check if entry_no is UUID or invalid format
           const isUUID = referenceNumber && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(referenceNumber);
           const isShortFormat = referenceNumber && /^[A-Z]+-[0-9]+$/.test(referenceNumber);
-          
           if (!referenceNumber || referenceNumber.length > 20 || isUUID || !isShortFormat) {
-            // Try to get from payment reference first
             if (entry.payment_id && paymentRefsMap.has(entry.payment_id)) {
               referenceNumber = paymentRefsMap.get(entry.payment_id)!;
             } else if (entry.reference_type === 'expense' || entry.reference_type === 'extra_expense') {
-              // Generate EXP-XXXX format
               referenceNumber = `EXP-${entry.id.substring(0, 4).toUpperCase()}`;
             } else if (entry.reference_type === 'sale') {
-              // Try to get invoice number from sale
-              // This will be handled by salesMap in getCustomerLedger
               referenceNumber = `JE-${entry.id.substring(0, 4).toUpperCase()}`;
             } else {
-              // Generate JE-XXXX format for manual entries
               referenceNumber = `JE-${entry.id.substring(0, 4).toUpperCase()}`;
             }
           }
 
-          // Get branch info from joined data
+          // Human-readable description: avoid showing UUIDs; use reference_type + reference number
+          let description = entry.description || line.description || '';
+          if (isUuidOrBad(description)) {
+            const refType = (entry.reference_type || '').toLowerCase();
+            if (refType === 'payment') description = `Payment ${referenceNumber}`;
+            else if (refType === 'sale' || refType === 'sale_adjustment') description = `Sale ${referenceNumber}`;
+            else if (refType === 'purchase') description = `Purchase ${referenceNumber}`;
+            else if (refType === 'expense' || refType === 'extra_expense') description = `Expense ${referenceNumber}`;
+            else if (refType === 'rental') description = `Rental ${referenceNumber}`;
+            else description = `Journal entry ${referenceNumber}`;
+          }
+
           const branch = (entry as any).branch;
           const branchName = branch ? (branch.code ? `${branch.code} | ${branch.name}` : branch.name) : null;
+          const counterAccount = counterAccountMap.get(entry.id) || null;
 
           return {
             date: entry.entry_date,
+            created_at: (entry as any).created_at,
             reference_number: referenceNumber,
-            description: entry.description || line.description || 'Journal Entry',
+            description,
             debit: line.debit || 0,
             credit: line.credit || 0,
             running_balance: runningBalance,
@@ -706,6 +938,7 @@ export const accountingService = {
             sale_id: entry.reference_id,
             branch_id: entry.branch_id,
             branch_name: branchName,
+            counter_account: counterAccount ?? undefined,
           };
         });
 
@@ -788,6 +1021,7 @@ export const accountingService = {
             branch_id,
             created_by,
             created_at,
+            is_void,
             branch:branches(id, name, code)
           )
         `)
@@ -800,7 +1034,8 @@ export const accountingService = {
       if (error) {
         console.error('[ACCOUNTING SERVICE] Error fetching journal lines (continuing with RPC/synthetic):', error);
       }
-      const linesToUse = lines || [];
+      // PF-14.4: Exclude lines from voided JEs (business ledger must not show them).
+      const linesToUse = (lines || []).filter((l: any) => (l.journal_entry && (l.journal_entry as any).is_void) !== true);
 
       // PHASE 2: Get ALL sales and payments for this customer (RPC – always run so we can show ledger when no journal entries)
       // Use RPC get_customer_ledger_sales so we get sales regardless of branch (SECURITY DEFINER bypasses RLS)
@@ -974,16 +1209,14 @@ export const accountingService = {
         }
 
         // Check if linked to this customer via sale (DEBIT entries - sales increase receivable)
-        if (entry.reference_type === 'sale' && entry.reference_id) {
+        // PF-14: include sale_adjustment entries (same reference_id = saleId)
+        if ((entry.reference_type === 'sale' || entry.reference_type === 'sale_adjustment') && entry.reference_id) {
           const sale = salesMap.get(entry.reference_id);
           if (sale) {
-            console.log(`[ACCOUNTING SERVICE] Sale check: entry.ref_id=${entry.reference_id}, sale.customer_id=${sale.customer_id}, customerId=${customerId}, match=${sale.customer_id === customerId}`);
             if (sale.customer_id === customerId) {
               saleMatchCount++;
               return true;
             }
-          } else {
-            console.log(`[ACCOUNTING SERVICE] Sale NOT in map: entry.ref_id=${entry.reference_id}`);
           }
         }
 

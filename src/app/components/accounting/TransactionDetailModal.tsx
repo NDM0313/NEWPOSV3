@@ -10,28 +10,49 @@ import { useSupabase } from '@/app/context/SupabaseContext';
 import { format } from 'date-fns';
 import { cn } from '@/app/components/ui/utils';
 import { getAttachmentOpenUrl } from '@/app/utils/paymentAttachmentUrl';
+import type { AccountingEntry } from '@/app/context/AccountingContext';
 
 interface TransactionDetailModalProps {
   isOpen: boolean;
   onClose: () => void;
   referenceNumber: string; // Can be journal_entry_id (UUID) or reference_no (string)
+  /** PF-14.3B: When opening from grouped journal row, pass all entries in the document thread to show edit trail. */
+  groupEntries?: AccountingEntry[];
 }
 
 export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
   isOpen,
   onClose,
   referenceNumber,
+  groupEntries,
 }) => {
   const { companyId, branchId } = useSupabase();
   const [transaction, setTransaction] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [selectedAttachment, setSelectedAttachment] = useState<string | null>(null);
+  /** Effective journal lines for payment (original + account-adjustment JEs merged) so Bank shows after Cash→Bank edit */
+  const [effectiveLines, setEffectiveLines] = useState<any[]>([]);
 
   useEffect(() => {
     if (isOpen && referenceNumber && companyId) {
       loadTransaction();
     }
   }, [isOpen, referenceNumber, companyId]);
+
+  useEffect(() => {
+    if (!transaction || !companyId) {
+      setEffectiveLines([]);
+      return;
+    }
+    const paymentId = transaction.payment_id ?? (transaction.payment?.[0]?.id ?? transaction.payment?.id);
+    if (!paymentId) {
+      setEffectiveLines([]);
+      return;
+    }
+    const payment = Array.isArray(transaction.payment) ? transaction.payment[0] : transaction.payment;
+    const currentPaymentAccountId = (payment as any)?.payment_account_id ?? null;
+    accountingService.getEffectiveJournalLinesForPayment(paymentId, companyId, currentPaymentAccountId).then(setEffectiveLines);
+  }, [transaction, companyId]);
 
   const loadTransaction = async () => {
     if (!referenceNumber || !companyId) return;
@@ -105,11 +126,12 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
     );
   }
 
-  const journalLines = Array.isArray(transaction?.lines) 
-    ? transaction.lines 
-    : transaction?.lines 
-      ? [transaction.lines] 
+  const rawJournalLines = Array.isArray(transaction?.lines)
+    ? transaction.lines
+    : transaction?.lines
+      ? [transaction.lines]
       : [];
+  const journalLines = effectiveLines.length > 0 ? effectiveLines : rawJournalLines;
   const payment = Array.isArray(transaction?.payment) 
     ? transaction.payment[0] 
     : transaction?.payment;
@@ -141,6 +163,42 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
           <div className="text-center py-12 text-gray-400">Loading transaction details...</div>
         ) : transaction ? (
           <div className="space-y-6">
+            {/* PF-14.3B: Document trail (original + adjustments) when opened from grouped row */}
+            {groupEntries && groupEntries.length > 1 && (
+              <div className="bg-gray-800/50 rounded-lg p-4 border border-gray-700">
+                <h3 className="text-sm font-semibold text-gray-300 mb-3">Document trail (same sale / payment)</h3>
+                <p className="text-xs text-gray-500 mb-3">Original entry and any edit or payment adjustments – one logical document.</p>
+                <ul className="space-y-2">
+                  {[...groupEntries]
+                    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+                    .map((e) => {
+                      const refType = e.metadata?.referenceType ?? '';
+                      const label = refType === 'sale' ? 'Original sale' : refType === 'sale_adjustment' ? 'Sale edit' : refType === 'payment_adjustment' ? 'Payment edit' : refType === 'payment' ? 'Payment' : 'Entry';
+                      const isPrimary = e.referenceNo === referenceNumber || e.id === referenceNumber;
+                      return (
+                        <li
+                          key={e.id}
+                          className={cn(
+                            'flex items-center justify-between rounded px-3 py-2 text-sm',
+                            isPrimary ? 'bg-blue-500/10 border border-blue-500/30' : 'bg-gray-800/50'
+                          )}
+                        >
+                          <div className="flex items-center gap-3">
+                            <span className="text-gray-400 font-medium w-24">{label}</span>
+                            <span className="text-white">{e.referenceNo}</span>
+                            <span className="text-gray-500">{format(new Date(e.date), 'dd MMM yyyy')}</span>
+                            <span className="text-gray-400 max-w-[200px] truncate">{e.description || '—'}</span>
+                          </div>
+                          <span className={cn('font-medium tabular-nums', e.amount >= 0 ? 'text-green-400' : 'text-red-400')}>
+                            Rs {Math.abs(e.amount).toLocaleString()}
+                          </span>
+                        </li>
+                      );
+                    })}
+                </ul>
+              </div>
+            )}
+
             {/* SECTION A: BASIC INFO */}
             <div className="bg-gray-800/50 rounded-lg p-4 border border-gray-700">
               <h3 className="text-sm font-semibold text-gray-300 mb-3 flex items-center gap-2">
@@ -283,6 +341,9 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
             {/* SECTION C: JOURNAL ENTRIES (MOST IMPORTANT) */}
             <div className="bg-gray-800/50 rounded-lg p-4 border border-gray-700">
               <h3 className="text-sm font-semibold text-gray-300 mb-3">Journal Entries (Double Entry)</h3>
+              {effectiveLines.length > 0 && (
+                <p className="text-xs text-blue-400/90 mb-2">Showing effective accounts (includes payment account change, e.g. Cash → Bank)</p>
+              )}
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead className="bg-gray-900">
@@ -293,10 +354,10 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
                     </tr>
                   </thead>
                   <tbody>
-                    {journalLines.map((line: any) => {
+                    {journalLines.map((line: any, idx: number) => {
                       const account = line.account || {};
                       return (
-                        <tr key={line.id} className="border-b border-gray-700">
+                        <tr key={line.id || line.account_id || idx} className="border-b border-gray-700">
                           <td className="px-4 py-3 text-sm text-white">
                             <div>
                               <p className="font-medium">{account.name || 'Unknown Account'}</p>

@@ -26,6 +26,8 @@ import {
   Star,
   List,
   ChevronDown,
+  ChevronUp,
+  ChevronsUpDown,
   X,
   BookMarked,
   Truck,
@@ -145,6 +147,10 @@ export const AccountingDashboard = () => {
   // 🎯 Ledger & Transaction State
   const [ledgerAccount, setLedgerAccount] = useState<any>(null);
   const [transactionReference, setTransactionReference] = useState<string | null>(null);
+  /** PF-14.3B: When opening a grouped journal row, pass all entries in the group for the detail trail. */
+  const [selectedGroupEntries, setSelectedGroupEntries] = useState<AccountingEntry[] | null>(null);
+  /** PF-14.3B: Default = grouped (one logical row per sale); audit = all raw JEs. */
+  const [journalViewMode, setJournalViewMode] = useState<'grouped' | 'audit'>('grouped');
   
   // Ledger: type chosen from dropdown (no inner Ledger dropdown on page)
   const [ledgerType, setLedgerType] = useState<'customer' | 'supplier' | 'user' | 'worker'>('customer');
@@ -153,6 +159,11 @@ export const AccountingDashboard = () => {
   const [typeFilter, setTypeFilter] = useState<string>('all');
   const [departmentFilter, setDepartmentFilter] = useState<string>('all');
   const [statusFilter, setStatusFilter] = useState<string>('all');
+
+  // Journal table sort: default by date+time descending (newest first)
+  type JournalSortKey = 'date' | 'reference' | 'module' | 'description' | 'type' | 'paymentMethod' | 'amount' | 'source';
+  const [journalSortKey, setJournalSortKey] = useState<JournalSortKey>('date');
+  const [journalSortDir, setJournalSortDir] = useState<'asc' | 'desc'>('desc');
 
   // 🎯 Use real entries from AccountingContext
   const transactions = useMemo(() => {
@@ -251,19 +262,89 @@ export const AccountingDashboard = () => {
     return filtered;
   }, [transactions, searchTerm, typeFilter]);
 
-  // Journal entries pagination: 50 per page (stable performance as company grows)
+  // PF-14.3B: Group journal entries by root document so one sale (original + adjustments) = one logical row
+  type JournalGroup = { rootKey: string; primary: AccountingEntry; entries: AccountingEntry[] };
+  const getEntrySortValue = (entry: AccountingEntry, key: JournalSortKey): string | number => {
+    const meta = entry.metadata as { createdAt?: string; paymentMethod?: string } | undefined;
+    switch (key) {
+      case 'date':
+        return new Date(meta?.createdAt ?? entry.date).getTime();
+      case 'reference':
+        return (entry.referenceNo || (meta as any)?.paymentId?.substring(0, 8) || entry.id?.substring(0, 8) || '').toLowerCase();
+      case 'module':
+        return (entry.module || 'Accounting').toLowerCase();
+      case 'description':
+        return (entry.description || '').toLowerCase();
+      case 'type':
+        return (entry.amount ?? 0) >= 0 ? 'income' : 'expense';
+      case 'paymentMethod':
+        return ((meta?.paymentMethod ?? '') || 'N/A').toString().toLowerCase();
+      case 'amount':
+        return Math.abs(entry.amount ?? 0);
+      case 'source':
+        return (entry.source || 'Manual').toLowerCase();
+      default:
+        return '';
+    }
+  };
+  const groupedJournalRows = useMemo(() => {
+    const keyToEntries = new Map<string, AccountingEntry[]>();
+    for (const t of filteredTransactions) {
+      const rt = t.metadata?.rootReferenceType ?? t.metadata?.referenceType;
+      const ri = t.metadata?.rootReferenceId ?? t.metadata?.referenceId;
+      const key = rt && ri ? `${rt}:${ri}` : `single:${t.id}`;
+      if (!keyToEntries.has(key)) keyToEntries.set(key, []);
+      keyToEntries.get(key)!.push(t);
+    }
+    const groups: JournalGroup[] = [];
+    keyToEntries.forEach((entries, rootKey) => {
+      const primary =
+        entries.find((e) => (e.metadata?.referenceType ?? '') === 'sale') ??
+        entries.find((e) => (e.metadata?.referenceType ?? '') === 'purchase') ??
+        entries.find((e) => (e.metadata?.referenceType ?? '') === 'payment') ??
+        entries.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())[0];
+      groups.push({ rootKey, primary, entries });
+    });
+    groups.sort((a, b) => new Date(b.primary.date).getTime() - new Date(a.primary.date).getTime());
+    return groups;
+  }, [filteredTransactions]);
+
+  // Sorted list for display: default date+time desc; column header sort applies to both grouped and audit
+  const sortedGroupedRows = useMemo(() => {
+    const dir = journalSortDir === 'asc' ? 1 : -1;
+    return [...groupedJournalRows].sort((a, b) => {
+      const va = getEntrySortValue(a.primary, journalSortKey);
+      const vb = getEntrySortValue(b.primary, journalSortKey);
+      const cmp = typeof va === 'number' && typeof vb === 'number' ? va - vb : String(va).localeCompare(String(vb));
+      return cmp * dir;
+    });
+  }, [groupedJournalRows, journalSortKey, journalSortDir]);
+  const sortedFlatEntries = useMemo(() => {
+    const dir = journalSortDir === 'asc' ? 1 : -1;
+    return [...filteredTransactions].sort((a, b) => {
+      const va = getEntrySortValue(a, journalSortKey);
+      const vb = getEntrySortValue(b, journalSortKey);
+      const cmp = typeof va === 'number' && typeof vb === 'number' ? va - vb : String(va).localeCompare(String(vb));
+      return cmp * dir;
+    });
+  }, [filteredTransactions, journalSortKey, journalSortDir]);
+
+  // Journal entries pagination: 50 per page (grouped = by group, audit = by raw entry); use sorted lists
   const JOURNAL_PAGE_SIZE = 50;
-  const totalJournalPages = Math.max(1, Math.ceil(filteredTransactions.length / JOURNAL_PAGE_SIZE));
+  const listForPagination = journalViewMode === 'grouped' ? sortedGroupedRows : sortedFlatEntries;
+  const totalJournalPages = Math.max(1, Math.ceil(listForPagination.length / JOURNAL_PAGE_SIZE));
   const paginatedJournalEntries = useMemo(() => {
     const start = (currentPage - 1) * JOURNAL_PAGE_SIZE;
-    return filteredTransactions.slice(start, start + JOURNAL_PAGE_SIZE);
-  }, [filteredTransactions, currentPage, JOURNAL_PAGE_SIZE]);
+    return Array.isArray(listForPagination)
+      ? listForPagination.slice(start, start + JOURNAL_PAGE_SIZE)
+      : [];
+  }, [listForPagination, currentPage, JOURNAL_PAGE_SIZE]);
   useEffect(() => {
     if (currentPage > totalJournalPages && totalJournalPages >= 1) setCurrentPage(1);
   }, [currentPage, totalJournalPages]);
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm, typeFilter]);
+  }, [searchTerm, typeFilter, journalViewMode]);
 
   // Permission gate – Accounting restricted to authorized roles
   if (!canAccessAccounting) {
@@ -466,13 +547,35 @@ export const AccountingDashboard = () => {
       <div className="flex-1 overflow-auto px-6 py-4 bg-[#0B0F19]">
         {activeTab === 'journal_entries' && (
           <div className="space-y-4">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between flex-wrap gap-2">
               <div>
                 <h3 className="text-lg font-bold text-white">Journal Entries</h3>
                 <p className="text-sm text-gray-400">
-                  All journal entries – click a reference to view details (50 per page).
+                  {journalViewMode === 'grouped'
+                    ? 'One row per document (e.g. sale); open a row to see original + edit adjustments.'
+                    : 'All raw journal entries – audit view.'}
+                  {' '}(50 per page).
                   {canPostAccounting ? ' Manual correction: use Reverse to create a reversal entry, or Manual Entry for adjustments.' : ' Posting and corrections require Manager or Admin role.'}
                 </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-gray-500">View:</span>
+                <Button
+                  variant={journalViewMode === 'grouped' ? 'default' : 'outline'}
+                  size="sm"
+                  className="h-8"
+                  onClick={() => setJournalViewMode('grouped')}
+                >
+                  By document
+                </Button>
+                <Button
+                  variant={journalViewMode === 'audit' ? 'default' : 'outline'}
+                  size="sm"
+                  className="h-8"
+                  onClick={() => setJournalViewMode('audit')}
+                >
+                  All entries (audit)
+                </Button>
               </div>
             </div>
 
@@ -490,116 +593,224 @@ export const AccountingDashboard = () => {
                   <table className="w-full">
                     <thead className="bg-gray-900 border-b border-gray-800">
                       <tr className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                        <th className="px-4 py-3 text-left">Date</th>
-                        <th className="px-4 py-3 text-left">Reference</th>
-                        <th className="px-4 py-3 text-left">Module</th>
-                        <th className="px-4 py-3 text-left">Description</th>
-                        <th className="px-4 py-3 text-left">Type</th>
-                        <th className="px-4 py-3 text-left">Payment Method</th>
-                        <th className="px-4 py-3 text-right">Amount</th>
-                        <th className="px-4 py-3 text-left">Source</th>
+                        {(['date', 'reference', 'module', 'description', 'type', 'paymentMethod', 'amount', 'source'] as const).map((key) => {
+                          const label = key === 'paymentMethod' ? 'Payment Method' : key.charAt(0).toUpperCase() + key.slice(1);
+                          const isActive = journalSortKey === key;
+                          const alignRight = key === 'amount';
+                          return (
+                            <th key={key} className={cn('px-4 py-3', alignRight ? 'text-right' : 'text-left')}>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (journalSortKey === key) {
+                                    setJournalSortDir((d) => (d === 'desc' ? 'asc' : 'desc'));
+                                  } else {
+                                    setJournalSortKey(key);
+                                    setJournalSortDir('desc');
+                                  }
+                                }}
+                                className="flex items-center gap-1 w-full group hover:text-gray-300 transition-colors focus:outline-none focus:ring-0"
+                                style={alignRight ? { justifyContent: 'flex-end' } : undefined}
+                              >
+                                {label}
+                                {isActive ? (
+                                  journalSortDir === 'desc' ? <ChevronDown size={14} className="shrink-0 opacity-80" /> : <ChevronUp size={14} className="shrink-0 opacity-80" />
+                                ) : (
+                                  <ChevronsUpDown size={14} className="shrink-0 opacity-50 group-hover:opacity-70" />
+                                )}
+                              </button>
+                            </th>
+                          );
+                        })}
+                        <th className="px-4 py-3 text-left">Account</th>
                         {canPostAccounting && <th className="px-4 py-3 text-left">Actions</th>}
                       </tr>
                     </thead>
                     <tbody>
-                      {paginatedJournalEntries.map((entry) => {
-                        // Get reference from metadata or generate from id
-                        const referenceNumber = entry.referenceNo || 
-                          (entry.metadata as any)?.paymentId?.substring(0, 8) || 
-                          entry.id?.substring(0, 8) || 
-                          'N/A';
-                        const module = entry.module || 'Accounting';
-                        const amount = entry.amount || 0;
-                        const paymentMethod = (entry.metadata as any)?.paymentMethod || 'N/A';
-                        const type = amount >= 0 ? 'Income' : 'Expense';
-                        const isReversal = entry.source === 'Reversal';
-                        
-                        return (
-                          <tr
-                            key={entry.id}
-                            className="border-b border-gray-800 hover:bg-gray-800/30 transition-colors cursor-pointer"
-                            onClick={() => setTransactionReference(referenceNumber)}
-                          >
-                            <td className="px-4 py-3 text-sm text-gray-300 whitespace-nowrap">
-                              {entry.date ? (
-                                <DateTimeDisplay
-                                  date={(entry.metadata as { createdAt?: string } | undefined)?.createdAt ?? entry.date}
-                                  className="flex flex-col leading-tight"
-                                />
-                              ) : (
-                                'N/A'
-                              )}
-                            </td>
-                            <td className="px-4 py-3">
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
+                      {journalViewMode === 'grouped'
+                        ? (paginatedJournalEntries as JournalGroup[]).map((group) => {
+                            const entry = group.primary;
+                            const referenceNumber = entry.referenceNo || (entry.metadata as any)?.paymentId?.substring(0, 8) || entry.id?.substring(0, 8) || 'N/A';
+                            const module = entry.module || 'Accounting';
+                            const amount = entry.amount || 0;
+                            const paymentMethod = (entry.metadata as any)?.paymentMethod || 'N/A';
+                            const type = amount >= 0 ? 'Income' : 'Expense';
+                            const isReversal = entry.source === 'Reversal';
+                            const adjustmentCount = group.entries.length > 1 ? group.entries.length - 1 : 0;
+                            return (
+                              <tr
+                                key={group.rootKey}
+                                className="border-b border-gray-800 hover:bg-gray-800/30 transition-colors cursor-pointer"
+                                onClick={() => {
                                   setTransactionReference(referenceNumber);
+                                  setSelectedGroupEntries(group.entries);
                                 }}
-                                className="text-blue-400 hover:text-blue-300 hover:underline text-sm font-medium"
                               >
-                                {referenceNumber}
-                              </button>
-                            </td>
-                            <td className="px-4 py-3">
-                              <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/30 text-xs">
-                                {module}
-                              </Badge>
-                            </td>
-                            <td className="px-4 py-3 text-sm text-gray-300 max-w-xs truncate">
-                              {entry.description || 'No description'}
-                            </td>
-                            <td className="px-4 py-3">
-                              <Badge className={
-                                type === 'Income'
-                                  ? 'bg-green-500/20 text-green-400 border-green-500/30'
-                                  : 'bg-red-500/20 text-red-400 border-red-500/30'
-                              }>
-                                {type}
-                              </Badge>
-                            </td>
-                            <td className="px-4 py-3 text-sm text-gray-400 capitalize">
-                              {paymentMethod}
-                            </td>
-                            <td className={cn(
-                              "px-4 py-3 text-sm font-semibold text-right tabular-nums",
-                              amount >= 0 ? "text-green-400" : "text-red-400"
-                            )}>
-                              {formatCurrency(Math.abs(amount))}
-                            </td>
-                            <td className="px-4 py-3 text-xs text-gray-400">
-                              {entry.source || 'Manual'}
-                            </td>
-                            {canPostAccounting && (
-                            <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
-                              {!isReversal && (
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  className="h-8 text-amber-400 hover:text-amber-300 hover:bg-amber-500/10"
-                                  onClick={() => {
-                                    if (window.confirm('Create a reversal entry for this journal entry? This will post a new entry that offsets the original.')) {
-                                      accounting.createReversalEntry(entry.id);
-                                    }
-                                  }}
-                                  title="Create reversal (manual correction)"
-                                >
-                                  <RotateCcw className="w-4 h-4 mr-1" />
-                                  Reverse
-                                </Button>
-                              )}
-                            </td>
-                            )}
-                          </tr>
-                        );
-                      })}
+                                <td className="px-4 py-3 text-sm text-gray-300 whitespace-nowrap">
+                                  {entry.date ? (
+                                    <DateTimeDisplay
+                                      date={(entry.metadata as { createdAt?: string } | undefined)?.createdAt ?? entry.date}
+                                      className="flex flex-col leading-tight"
+                                    />
+                                  ) : (
+                                    'N/A'
+                                  )}
+                                </td>
+                                <td className="px-4 py-3">
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setTransactionReference(referenceNumber);
+                                      setSelectedGroupEntries(group.entries);
+                                    }}
+                                    className="text-blue-400 hover:text-blue-300 hover:underline text-sm font-medium"
+                                  >
+                                    {referenceNumber}
+                                    {adjustmentCount > 0 && (
+                                      <span className="ml-1.5 text-gray-500 font-normal">(+{adjustmentCount})</span>
+                                    )}
+                                  </button>
+                                </td>
+                                <td className="px-4 py-3">
+                                  <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/30 text-xs">
+                                    {module}
+                                  </Badge>
+                                </td>
+                                <td className="px-4 py-3 text-sm text-gray-300 max-w-xs truncate">
+                                  {entry.description || 'No description'}
+                                  {adjustmentCount > 0 && (
+                                    <span className="text-gray-500 ml-1">(edit trail)</span>
+                                  )}
+                                </td>
+                                <td className="px-4 py-3">
+                                  <Badge className={type === 'Income' ? 'bg-green-500/20 text-green-400 border-green-500/30' : 'bg-red-500/20 text-red-400 border-red-500/30'}>
+                                    {type}
+                                  </Badge>
+                                </td>
+                                <td className="px-4 py-3 text-sm text-gray-400 capitalize">{paymentMethod}</td>
+                                <td className={cn("px-4 py-3 text-sm font-semibold text-right tabular-nums", amount >= 0 ? "text-green-400" : "text-red-400")}>
+                                  {formatCurrency(Math.abs(amount))}
+                                </td>
+                                <td className="px-4 py-3 text-xs text-gray-400">{entry.source || 'Manual'}</td>
+                                <td className="px-4 py-3 text-xs text-gray-400 max-w-[180px]" title={`Debit: ${entry.debitAccount} → Credit: ${entry.creditAccount}`}>
+                                  <span className="text-gray-500">Debit:</span> {entry.debitAccount}
+                                  <span className="text-gray-600 mx-1">→</span>
+                                  <span className="text-blue-400 font-medium">Credit: {entry.creditAccount}</span>
+                                </td>
+                                {canPostAccounting && (
+                                  <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                                    {!isReversal && (
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        className="h-8 text-amber-400 hover:text-amber-300 hover:bg-amber-500/10"
+                                        onClick={() => {
+                                          if (window.confirm('Create a reversal entry for this journal entry? This will post a new entry that offsets the original.')) {
+                                            accounting.createReversalEntry(entry.id);
+                                          }
+                                        }}
+                                        title="Create reversal (manual correction)"
+                                      >
+                                        <RotateCcw className="w-4 h-4 mr-1" />
+                                        Reverse
+                                      </Button>
+                                    )}
+                                  </td>
+                                )}
+                              </tr>
+                            );
+                          })
+                        : (paginatedJournalEntries as AccountingEntry[]).map((entry) => {
+                            const referenceNumber = entry.referenceNo || (entry.metadata as any)?.paymentId?.substring(0, 8) || entry.id?.substring(0, 8) || 'N/A';
+                            const module = entry.module || 'Accounting';
+                            const amount = entry.amount || 0;
+                            const paymentMethod = (entry.metadata as any)?.paymentMethod || 'N/A';
+                            const type = amount >= 0 ? 'Income' : 'Expense';
+                            const isReversal = entry.source === 'Reversal';
+                            return (
+                              <tr
+                                key={entry.id}
+                                className="border-b border-gray-800 hover:bg-gray-800/30 transition-colors cursor-pointer"
+                                onClick={() => {
+                                  setTransactionReference(referenceNumber);
+                                  setSelectedGroupEntries(null);
+                                }}
+                              >
+                                <td className="px-4 py-3 text-sm text-gray-300 whitespace-nowrap">
+                                  {entry.date ? (
+                                    <DateTimeDisplay
+                                      date={(entry.metadata as { createdAt?: string } | undefined)?.createdAt ?? entry.date}
+                                      className="flex flex-col leading-tight"
+                                    />
+                                  ) : (
+                                    'N/A'
+                                  )}
+                                </td>
+                                <td className="px-4 py-3">
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setTransactionReference(referenceNumber);
+                                      setSelectedGroupEntries(null);
+                                    }}
+                                    className="text-blue-400 hover:text-blue-300 hover:underline text-sm font-medium"
+                                  >
+                                    {referenceNumber}
+                                  </button>
+                                </td>
+                                <td className="px-4 py-3">
+                                  <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/30 text-xs">
+                                    {module}
+                                  </Badge>
+                                </td>
+                                <td className="px-4 py-3 text-sm text-gray-300 max-w-xs truncate">
+                                  {entry.description || 'No description'}
+                                </td>
+                                <td className="px-4 py-3">
+                                  <Badge className={type === 'Income' ? 'bg-green-500/20 text-green-400 border-green-500/30' : 'bg-red-500/20 text-red-400 border-red-500/30'}>
+                                    {type}
+                                  </Badge>
+                                </td>
+                                <td className="px-4 py-3 text-sm text-gray-400 capitalize">{paymentMethod}</td>
+                                <td className={cn("px-4 py-3 text-sm font-semibold text-right tabular-nums", amount >= 0 ? "text-green-400" : "text-red-400")}>
+                                  {formatCurrency(Math.abs(amount))}
+                                </td>
+                                <td className="px-4 py-3 text-xs text-gray-400">{entry.source || 'Manual'}</td>
+                                <td className="px-4 py-3 text-xs text-gray-400 max-w-[180px]" title={`Debit: ${entry.debitAccount} → Credit: ${entry.creditAccount}`}>
+                                  <span className="text-gray-500">Debit:</span> {entry.debitAccount}
+                                  <span className="text-gray-600 mx-1">→</span>
+                                  <span className="text-blue-400 font-medium">Credit: {entry.creditAccount}</span>
+                                </td>
+                                {canPostAccounting && (
+                                  <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                                    {!isReversal && (
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        className="h-8 text-amber-400 hover:text-amber-300 hover:bg-amber-500/10"
+                                        onClick={() => {
+                                          if (window.confirm('Create a reversal entry for this journal entry? This will post a new entry that offsets the original.')) {
+                                            accounting.createReversalEntry(entry.id);
+                                          }
+                                        }}
+                                        title="Create reversal (manual correction)"
+                                      >
+                                        <RotateCcw className="w-4 h-4 mr-1" />
+                                        Reverse
+                                      </Button>
+                                    )}
+                                  </td>
+                                )}
+                              </tr>
+                            );
+                          })}
                     </tbody>
                   </table>
                 </div>
                 {totalJournalPages > 1 && (
                   <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 border-t border-gray-800 bg-gray-900/80">
                     <p className="text-xs text-gray-400">
-                      Showing {(currentPage - 1) * JOURNAL_PAGE_SIZE + 1}–{Math.min(currentPage * JOURNAL_PAGE_SIZE, filteredTransactions.length)} of {filteredTransactions.length}
+                      Showing {(currentPage - 1) * JOURNAL_PAGE_SIZE + 1}–{Math.min(currentPage * JOURNAL_PAGE_SIZE, listForPagination.length)} of {listForPagination.length}
                     </p>
                     <div className="flex items-center gap-1">
                       <Button
@@ -1229,12 +1440,16 @@ export const AccountingDashboard = () => {
         />
       )}
 
-      {/* Transaction Detail Modal */}
+      {/* Transaction Detail Modal (PF-14.3B: pass group entries to show edit trail when opening from grouped row) */}
       {transactionReference && (
         <TransactionDetailModal
           isOpen={!!transactionReference}
-          onClose={() => setTransactionReference(null)}
+          onClose={() => {
+            setTransactionReference(null);
+            setSelectedGroupEntries(null);
+          }}
           referenceNumber={transactionReference}
+          groupEntries={selectedGroupEntries ?? undefined}
         />
       )}
 

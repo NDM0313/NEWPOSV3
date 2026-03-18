@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Loader2, FileText, FileSpreadsheet } from 'lucide-react';
 import { Button } from '@/app/components/ui/button';
 import {
@@ -52,11 +52,22 @@ export const AccountLedgerReportPage: React.FC<{
       .finally(() => setLoading(false));
   }, [companyId, selectedAccountId, startDate, endDate, branchId]);
 
+  const sortedEntries = useMemo(() => {
+    return [...entries].sort((a, b) => {
+      const dateA = (a.date || '').toString();
+      const dateB = (b.date || '').toString();
+      if (dateA !== dateB) return dateA.localeCompare(dateB);
+      const timeA = a.created_at ? new Date(a.created_at).getTime() : 0;
+      const timeB = b.created_at ? new Date(b.created_at).getTime() : 0;
+      return timeA - timeB;
+    });
+  }, [entries]);
+
   const selectedAccount = accounts.find((a) => a.id === selectedAccountId);
   const toExport = (): ExportData => ({
     title: `Account Ledger - ${selectedAccount?.name || selectedAccountId} (${startDate} to ${endDate})`,
     headers: ['Date', 'Reference', 'Description', 'Debit', 'Credit', 'Balance'],
-    rows: entries.map((e) => [
+    rows: sortedEntries.map((e) => [
       e.date,
       e.reference_number,
       e.description,
@@ -125,16 +136,16 @@ export const AccountLedgerReportPage: React.FC<{
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-800">
-              {entries.length === 0 ? (
+              {sortedEntries.length === 0 ? (
                 <tr>
                   <td colSpan={6} className="p-6 text-center text-gray-500">
                     No transactions in this period.
                   </td>
                 </tr>
               ) : (
-                entries.map((e, i) => (
+                sortedEntries.map((e, i) => (
                   <tr key={`${e.journal_entry_id}-${i}`} className="hover:bg-gray-800/30">
-                    <td className="p-3 text-gray-300">{e.date}</td>
+                    <td className="p-3 text-gray-300">{e.created_at ? new Date(e.created_at).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' }) : e.date}</td>
                     <td className="p-3 font-mono text-gray-300">{e.reference_number}</td>
                     <td className="p-3 text-white">{e.description}</td>
                     <td className="p-3 text-right text-gray-300">{e.debit ? formatCurrency(e.debit) : '—'}</td>

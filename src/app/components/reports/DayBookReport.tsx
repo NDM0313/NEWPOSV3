@@ -6,7 +6,7 @@ import { ReportActions } from './ReportActions';
 import { DateRangePicker } from '../ui/DateRangePicker';
 import { DateTimeDisplay } from '../ui/DateTimeDisplay';
 import { Button } from '../ui/button';
-import { Loader2, BookOpen } from 'lucide-react';
+import { Loader2, BookOpen, ChevronDown, ChevronUp, ChevronsUpDown } from 'lucide-react';
 import { cn } from '../ui/utils';
 import { exportToPDF, exportToExcel } from '@/app/utils/exportUtils';
 
@@ -28,6 +28,8 @@ export interface DayBookEntry {
 function refTypeToDisplayType(ref: string): DayBookEntry['type'] {
   const m: Record<string, DayBookEntry['type']> = {
     sale: 'Sale',
+    sale_adjustment: 'Sale', // PF-14: delta adjustments for edited sales; show as Sale
+    payment_adjustment: 'Payment', // PF-14.1: payment amount edit delta; show as Payment
     purchase: 'Purchase',
     payment: 'Payment',
     expense: 'Expense',
@@ -56,6 +58,11 @@ export const DayBookReport = ({ onVoucherClick, globalStartDate, globalEndDate }
   });
   const [entries, setEntries] = useState<DayBookEntry[]>([]);
   const [loading, setLoading] = useState(!!companyId);
+
+  // Table sort: default by date+time descending (newest first)
+  type DayBookSortKey = 'date' | 'voucher' | 'account' | 'description' | 'debit' | 'credit' | 'type';
+  const [sortKey, setSortKey] = useState<DayBookSortKey>('date');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
 
   const useGlobalRange = Boolean(globalStartDate && globalEndDate);
   const dateFrom = useGlobalRange
@@ -101,8 +108,11 @@ export const DayBookReport = ({ onVoucherClick, globalStartDate, globalEndDate }
         const dateTimeStr = formatDateTime(createdAt);
         const timeStr = createdAt.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
         const voucher = String(je.entry_no ?? `JE-${String(je.id ?? '').slice(0, 8)}`);
-        const desc = String(je.description ?? '');
-        const type = refTypeToDisplayType(String(je.reference_type ?? ''));
+        // PF-14.3B: Make clear in Day Book that these are edit adjustments for the same document, not new sales
+        const refType = String(je.reference_type ?? '');
+        const descSuffix = refType === 'sale_adjustment' ? ' (sale edit)' : refType === 'payment_adjustment' ? ' (payment edit)' : '';
+        const desc = String(je.description ?? '') + descSuffix;
+        const type = refTypeToDisplayType(refType);
 
         for (const line of lines) {
           const debit = Number(line.debit ?? 0);
@@ -130,6 +140,37 @@ export const DayBookReport = ({ onVoucherClick, globalStartDate, globalEndDate }
     return () => { cancelled = true; };
   }, [companyId, dateFrom, dateTo]);
 
+  const getSortValue = (e: DayBookEntry, key: DayBookSortKey): string | number => {
+    switch (key) {
+      case 'date':
+        return e.createdAt.getTime();
+      case 'voucher':
+        return (e.voucher ?? '').toLowerCase();
+      case 'account':
+        return (e.account ?? '').toLowerCase();
+      case 'description':
+        return (e.description ?? '').toLowerCase();
+      case 'debit':
+        return e.debit;
+      case 'credit':
+        return e.credit;
+      case 'type':
+        return (e.type ?? '').toLowerCase();
+      default:
+        return '';
+    }
+  };
+
+  const sortedEntries = useMemo(() => {
+    const dir = sortDir === 'asc' ? 1 : -1;
+    return [...entries].sort((a, b) => {
+      const va = getSortValue(a, sortKey);
+      const vb = getSortValue(b, sortKey);
+      const cmp = typeof va === 'number' && typeof vb === 'number' ? va - vb : String(va).localeCompare(String(vb));
+      return cmp * dir;
+    });
+  }, [entries, sortKey, sortDir]);
+
   const totalDebit = entries.reduce((s, e) => s + e.debit, 0);
   const totalCredit = entries.reduce((s, e) => s + e.credit, 0);
   const difference = totalDebit - totalCredit;
@@ -138,17 +179,17 @@ export const DayBookReport = ({ onVoucherClick, globalStartDate, globalEndDate }
 
   const PAGE_SIZE = 50;
   const [currentPage, setCurrentPage] = useState(1);
-  const totalPages = Math.max(1, Math.ceil(entries.length / PAGE_SIZE));
+  const totalPages = Math.max(1, Math.ceil(sortedEntries.length / PAGE_SIZE));
   const paginatedEntries = useMemo(() => {
     const start = (currentPage - 1) * PAGE_SIZE;
-    return entries.slice(start, start + PAGE_SIZE);
-  }, [entries, currentPage, PAGE_SIZE]);
+    return sortedEntries.slice(start, start + PAGE_SIZE);
+  }, [sortedEntries, currentPage, PAGE_SIZE]);
   useEffect(() => {
     if (currentPage > totalPages && totalPages >= 1) setCurrentPage(1);
   }, [currentPage, totalPages]);
   useEffect(() => {
     setCurrentPage(1);
-  }, [dateFrom, dateTo]);
+  }, [dateFrom, dateTo, sortKey, sortDir]);
 
   // Analyse: which vouchers are unbalanced (sum of debit - sum of credit per voucher)
   const byVoucher = new Map<string, { debit: number; credit: number }>();
@@ -170,7 +211,7 @@ export const DayBookReport = ({ onVoucherClick, globalStartDate, globalEndDate }
 
   const exportData = {
     headers: ['Date & Time', 'Voucher #', 'Account', 'Description', 'Debit (₨)', 'Credit (₨)', 'Type'],
-    rows: entries.map((e) => [
+    rows: sortedEntries.map((e) => [
       e.dateTime,
       e.voucher,
       e.account,
@@ -219,13 +260,44 @@ export const DayBookReport = ({ onVoucherClick, globalStartDate, globalEndDate }
               <table className="w-full text-sm">
                 <thead className="bg-gray-900/80 text-gray-400 border-b border-gray-800">
                   <tr>
-                    <th className="px-4 py-3 text-left font-medium w-40">Date & Time</th>
-                    <th className="px-4 py-3 text-left font-medium w-24">Voucher #</th>
-                    <th className="px-4 py-3 text-left font-medium">Account</th>
-                    <th className="px-4 py-3 text-left font-medium">Description</th>
-                    <th className="px-4 py-3 text-right font-medium w-28">Debit (₨)</th>
-                    <th className="px-4 py-3 text-right font-medium w-28">Credit (₨)</th>
-                    <th className="px-4 py-3 text-center font-medium w-24">Type</th>
+                    {([
+                      { key: 'date' as const, label: 'Date & Time', className: 'w-40', align: 'left' },
+                      { key: 'voucher' as const, label: 'Voucher #', className: 'w-24', align: 'left' },
+                      { key: 'account' as const, label: 'Account', className: '', align: 'left' },
+                      { key: 'description' as const, label: 'Description', className: '', align: 'left' },
+                      { key: 'debit' as const, label: 'Debit (₨)', className: 'w-28', align: 'right' },
+                      { key: 'credit' as const, label: 'Credit (₨)', className: 'w-28', align: 'right' },
+                      { key: 'type' as const, label: 'Type', className: 'w-24', align: 'center' },
+                    ] as const).map(({ key, label, className, align }) => {
+                      const isActive = sortKey === key;
+                      return (
+                        <th key={key} className={cn('px-4 py-3 font-medium', align === 'right' && 'text-right', align === 'center' && 'text-center', className)}>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (sortKey === key) {
+                                setSortDir((d) => (d === 'desc' ? 'asc' : 'desc'));
+                              } else {
+                                setSortKey(key);
+                                setSortDir('desc');
+                              }
+                            }}
+                            className={cn(
+                              'flex items-center gap-1 w-full group hover:text-gray-300 transition-colors focus:outline-none focus:ring-0',
+                              align === 'right' && 'justify-end',
+                              align === 'center' && 'justify-center'
+                            )}
+                          >
+                            {label}
+                            {isActive ? (
+                              sortDir === 'desc' ? <ChevronDown size={14} className="shrink-0 opacity-80" /> : <ChevronUp size={14} className="shrink-0 opacity-80" />
+                            ) : (
+                              <ChevronsUpDown size={14} className="shrink-0 opacity-50 group-hover:opacity-70" />
+                            )}
+                          </button>
+                        </th>
+                      );
+                    })}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-800">
@@ -309,7 +381,7 @@ export const DayBookReport = ({ onVoucherClick, globalStartDate, globalEndDate }
             {totalPages > 1 && (
               <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 border-t border-gray-800 bg-gray-900/80">
                 <p className="text-xs text-gray-400">
-                  Showing {(currentPage - 1) * PAGE_SIZE + 1}–{Math.min(currentPage * PAGE_SIZE, entries.length)} of {entries.length}
+                  Showing {(currentPage - 1) * PAGE_SIZE + 1}–{Math.min(currentPage * PAGE_SIZE, sortedEntries.length)} of {sortedEntries.length}
                 </p>
                 <div className="flex items-center gap-1">
                   <Button

@@ -53,16 +53,20 @@ export const DepositsTab: React.FC = () => {
       const mapped: RentalDepositRow[] = withDeposit.map((r: any) => {
         const deposit = Number(r.security_deposit ?? 0);
         const refund = Number(r.refund_amount ?? 0);
+        const customerName = r.customer_name ?? (r.customer?.name ?? 'Unknown');
+        const rentalNo = r.rental_no ?? r.booking_no ?? '-';
+        const startDate = r.pickup_date ?? r.start_date ?? r.booking_date ?? '-';
+        const returnDate = r.actual_return_date ?? r.return_date ?? r.expected_return_date ?? '-';
         return {
           id: r.id,
-          rentalNo: r.rental_no || r.booking_no || '-',
-          customerName: r.customer_name || r.customer?.name || 'Unknown',
+          rentalNo,
+          customerName,
           securityDeposit: deposit,
           refundAmount: refund,
           netHeld: deposit - refund,
           status: r.status || 'draft',
-          startDate: r.start_date || r.pickup_date || r.booking_date || '-',
-          returnDate: r.expected_return_date || r.return_date || '-',
+          startDate,
+          returnDate,
         };
       });
       setRows(mapped);

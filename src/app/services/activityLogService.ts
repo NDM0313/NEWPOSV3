@@ -295,10 +295,18 @@ export const activityLogService = {
       
       case 'payment_added':
         return `${userName} added payment of Rs ${log.amount?.toLocaleString()} via ${log.payment_method} on ${timestamp}`;
-      
+
+      case 'payment_edited':
+        if (log.description) return log.description;
+        return `Payment edited from Rs ${Number(log.old_value ?? 0).toLocaleString()} to Rs ${Number(log.new_value ?? log.amount ?? 0).toLocaleString()} via ${log.payment_method || 'Cash'}`;
+
       case 'payment_deleted':
         return `${userName} deleted payment of Rs ${log.amount?.toLocaleString()} on ${timestamp}`;
-      
+
+      case 'sale_component_edited':
+        if (log.description) return log.description;
+        return `${log.field || 'Sale'} changed from Rs ${Number(log.old_value ?? 0).toLocaleString()} to Rs ${Number(log.new_value ?? 0).toLocaleString()}`;
+
       case 'delete':
         return `${userName} deleted ${log.module} ${log.entity_reference || log.entity_id} on ${timestamp}`;
       
