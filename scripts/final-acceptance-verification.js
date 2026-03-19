@@ -34,11 +34,16 @@ loadEnv('.env.local');
 loadEnv('.env');
 
 const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
-const supabaseKey = process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY;
+// Prefer service role so verification can read companies/accounts when RLS restricts anon
+const supabaseKey =
+  process.env.SUPABASE_SERVICE_ROLE_KEY ||
+  process.env.VITE_SUPABASE_SERVICE_ROLE_KEY ||
+  process.env.VITE_SUPABASE_ANON_KEY ||
+  process.env.SUPABASE_ANON_KEY;
 const companyIdOverride = process.env.COMPANY_ID;
 
 if (!supabaseUrl || !supabaseKey) {
-  console.error('Missing VITE_SUPABASE_URL or VITE_SUPABASE_ANON_KEY. Set in .env.local');
+  console.error('Missing VITE_SUPABASE_URL and (VITE_SUPABASE_ANON_KEY or SUPABASE_SERVICE_ROLE_KEY). Set in .env.local');
   process.exit(1);
 }
 
@@ -47,8 +52,15 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 async function getCompanyId() {
   if (companyIdOverride) return companyIdOverride;
   const { data, error } = await supabase.from('companies').select('id').limit(1).maybeSingle();
-  if (error || !data) return null;
-  return data.id;
+  if (!error && data?.id) return data.id;
+  // Fallback: get company_id from accounts (in case RLS blocks companies read)
+  const { data: acc } = await supabase.from('accounts').select('company_id').limit(1).maybeSingle();
+  if (acc?.company_id) return acc.company_id;
+  const { data: je } = await supabase.from('journal_entries').select('company_id').limit(1).maybeSingle();
+  if (je?.company_id) return je.company_id;
+  const { data: br } = await supabase.from('branches').select('company_id').limit(1).maybeSingle();
+  if (br?.company_id) return br.company_id;
+  return null;
 }
 
 async function getTrialBalance(companyId, startDate, endDate) {

@@ -1,5 +1,7 @@
 # Login 401 Global Fix – Result
 
+**Master runbook (502/401/office/ghar):** **`docs/MASTER_AUTH_AND_KONG_RUNBOOK.md`**
+
 **Date:** 2026-03-18  
 **Scope:** Restore working login for all valid accounts (localhost + production) after company reset.
 

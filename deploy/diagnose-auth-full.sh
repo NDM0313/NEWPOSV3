@@ -36,11 +36,12 @@ echo ""
 echo ""
 
 echo "========== PUBLIC HEALTH (with apikey) =========="
+CODE=""
 [ -n "$KEY" ] && CODE=$(curl -sk -o /dev/null -w '%{http_code}' -H "apikey: $KEY" "$BASE_URL/auth/v1/health") && echo "GET $BASE_URL/auth/v1/health -> $CODE" || echo "FAIL or no key"
-[ "$CODE" = "200" ] && echo "  -> 200 = Kong + Auth OK (not 401/502)"
-[ "$CODE" = "401" ] && echo "  -> 401 = Kong key-auth or ACL issue"
-[ "$CODE" = "502" ] && echo "  -> 502 = Kong down or upstream unreachable"
-[ "$CODE" = "404" ] && echo "  -> 404 = Kong route not matched (check kong.yml auth-v1 service)"
+[ "$CODE" = "200" ] && echo "  -> 200 = Kong + Auth OK (not 401/502)" || true
+[ "$CODE" = "401" ] && echo "  -> 401 = Kong key-auth or ACL issue" || true
+[ "$CODE" = "502" ] && echo "  -> 502 = Kong down or upstream unreachable" || true
+[ "$CODE" = "404" ] && echo "  -> 404 = Kong route not matched (check kong.yml auth-v1 service)" || true
 echo ""
 
 echo "========== PUBLIC REST (with apikey) =========="

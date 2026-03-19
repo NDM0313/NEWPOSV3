@@ -35,7 +35,7 @@ import { Switch } from "../ui/switch";
 import { PackingEntryModal } from '../transactions/PackingEntryModal';
 
 export const GlobalDrawer = () => {
-  const { activeDrawer, openDrawer, closeDrawer, drawerData, parentDrawer, packingModalOpen, closePackingModal, packingModalData } = useNavigation();
+  const { activeDrawer, openDrawer, closeDrawer, drawerData, parentDrawer, setCreatedProduct, packingModalOpen, closePackingModal, packingModalData } = useNavigation();
   const { companyId, user, enablePacking } = useSupabase();
   const isMobile = useMediaQuery('(max-width: 768px)');
   const [saving, setSaving] = useState(false);
@@ -90,6 +90,8 @@ export const GlobalDrawer = () => {
   
   // Check if we have a nested drawer (Contact opened from Sale/Purchase)
   const hasNestedDrawer = isContact && parentDrawer && (parentDrawer === 'addSale' || parentDrawer === 'addPurchase' || parentDrawer === 'edit-sale' || parentDrawer === 'edit-purchase');
+  // Nested Product drawer: Add Product opened from Sale/Purchase – keep Sale/Purchase visible behind
+  const hasNestedProductDrawer = isProduct && parentDrawer && (parentDrawer === 'addSale' || parentDrawer === 'addPurchase' || parentDrawer === 'edit-sale' || parentDrawer === 'edit-purchase');
   
   // Custom classes for the sheet content
   // IMPORTANT: Responsive widths, isolated from global layout
@@ -176,10 +178,15 @@ export const GlobalDrawer = () => {
         {activeDrawer === 'addProduct' && (
           <EnhancedProductForm 
             onCancel={() => closeDrawer()}
-            onSave={() => {
-              toast.success('Product created successfully');
-              closeDrawer();
-              window.dispatchEvent(new CustomEvent('products-updated'));
+            onSave={(product?: any) => {
+              if (hasNestedProductDrawer && product && setCreatedProduct) {
+                setCreatedProduct(product);
+                closeDrawer();
+              } else {
+                toast.success('Product created successfully');
+                closeDrawer();
+                window.dispatchEvent(new CustomEvent('products-updated'));
+              }
             }}
           />
         )}
@@ -260,6 +267,58 @@ export const GlobalDrawer = () => {
               }
               closePackingModal?.();
             }}
+            initialData={packingModalData.initialData}
+            productName={packingModalData.productName}
+          />
+        )}
+      </>
+    );
+  }
+
+  // Nested Product drawer: Sale/Purchase stays open, Add Product on top
+  if (hasNestedProductDrawer) {
+    const parentIsSale = parentDrawer === 'addSale' || parentDrawer === 'edit-sale';
+    const parentIsPurchase = parentDrawer === 'addPurchase' || parentDrawer === 'edit-purchase';
+    const parentContentClasses = "border-l border-gray-800 bg-gray-950 text-white p-0 gap-0 h-full !max-w-none w-full lg:w-[1200px] lg:max-w-[1200px] !z-[60] overflow-y-auto";
+    return (
+      <>
+        <Sheet open={true} onOpenChange={() => {}}>
+          <SheetContent side={side} className={parentContentClasses}>
+            <SheetHeader className="sr-only">
+              <SheetTitle>{parentIsSale ? 'Sale' : parentIsPurchase ? 'Purchase' : 'Drawer'}</SheetTitle>
+              <SheetDescription className="sr-only">{parentIsSale ? 'Sale form' : parentIsPurchase ? 'Purchase form' : 'Drawer'}</SheetDescription>
+            </SheetHeader>
+            {renderParentContent()}
+          </SheetContent>
+        </Sheet>
+        <Sheet open={isOpen} onOpenChange={handleOpenChange}>
+          <SheetContent side={side} className={contentClasses}>
+            <SheetHeader className="sr-only">
+              <SheetTitle>Add Product</SheetTitle>
+              <SheetDescription className="sr-only">Create a new product</SheetDescription>
+            </SheetHeader>
+            <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
+              <EnhancedProductForm
+                onCancel={() => closeDrawer()}
+                onSave={(product?: any) => {
+                  if (product && setCreatedProduct) {
+                    setCreatedProduct(product);
+                    closeDrawer();
+                  } else {
+                    toast.success('Product created successfully');
+                    closeDrawer();
+                    window.dispatchEvent(new CustomEvent('products-updated'));
+                  }
+                }}
+              />
+            </div>
+          </SheetContent>
+        </Sheet>
+        {enablePacking && packingModalData && (
+          <PackingEntryModal
+            open={packingModalOpen || false}
+            onOpenChange={(open) => { if (!open) closePackingModal?.(); }}
+            onSave={(details) => { packingModalData.onSave?.(details); closePackingModal?.(); }}
             initialData={packingModalData.initialData}
             productName={packingModalData.productName}
           />

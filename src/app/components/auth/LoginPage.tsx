@@ -64,7 +64,7 @@ export const LoginPage: React.FC = () => {
     setLoading(true);
     setError('');
     const mainEmail = 'ndm313@yahoo.com';
-    const mainPassword = 'iPhone@14max';
+    const mainPassword = '123456';
     setEmail(mainEmail);
     setPassword(mainPassword);
     const { data, error: signInError } = await signIn(mainEmail, mainPassword);
@@ -76,11 +76,13 @@ export const LoginPage: React.FC = () => {
     }
   };
 
+
+  
   const handleAdminLogin = async () => {
     setLoading(true);
     setError('');
     const adminEmail = 'admin@dincouture.pk';
-    const adminPassword = 'AdminDincouture2026';
+    const adminPassword = '123456';
     setEmail(adminEmail);
     setPassword(adminPassword);
     const { data, error: signInError } = await signIn(adminEmail, adminPassword);

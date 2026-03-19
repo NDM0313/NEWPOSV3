@@ -158,7 +158,7 @@ export const ProductsPage = () => {
   const [branchFilter, setBranchFilter] = useState('all');
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [brandFilter, setBrandFilter] = useState('all');
-  const [typeFilter, setTypeFilter] = useState<'all' | ProductType>('all');
+  const [typeFilter, setTypeFilter] = useState<'all' | ProductType | 'simple,variable'>('all');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
   const [stockStatusFilter, setStockStatusFilter] = useState<'all' | StockStatus>('all');
   
@@ -243,8 +243,12 @@ export const ProductsPage = () => {
       // Brand filter (TASK 1 FIX - "all" means no filter)
       if (brandFilter !== 'all' && product.brand !== brandFilter) return false;
       
-      // Type filter (TASK 1 FIX - "all" means no filter)
-      if (typeFilter !== 'all' && product.type !== typeFilter) return false;
+      // Type filter (TASK 1 FIX - "all" means no filter; "simple,variable" = Standard + Variable)
+      if (typeFilter !== 'all') {
+        if (typeFilter === 'simple,variable') {
+          if (product.type !== 'simple' && product.type !== 'variable') return false;
+        } else if (product.type !== typeFilter) return false;
+      }
       
       // Status filter (TASK 1 FIX - "all" means no filter)
       if (statusFilter !== 'all' && product.status !== statusFilter) return false;
@@ -564,12 +568,18 @@ export const ProductsPage = () => {
         );
       case 'type':
         return (
-          <Badge className={cn(
-            'text-xs font-medium capitalize w-fit px-2 py-0.5 h-5',
-            product.type === 'simple' && 'bg-gray-500/20 text-gray-400 border-gray-500/30',
-            product.type === 'variable' && 'bg-purple-500/20 text-purple-400 border-purple-500/30',
-            product.type === 'combo' && 'bg-amber-500/20 text-amber-400 border-amber-500/30'
-          )}>
+          <Badge
+            role={product.type === 'variable' ? 'button' : undefined}
+            tabIndex={product.type === 'variable' ? 0 : undefined}
+            onClick={product.type === 'variable' ? () => setTypeFilter('simple,variable') : undefined}
+            onKeyDown={product.type === 'variable' ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setTypeFilter('simple,variable'); } } : undefined}
+            className={cn(
+              'text-xs font-medium capitalize w-fit px-2 py-0.5 h-5',
+              product.type === 'simple' && 'bg-gray-500/20 text-gray-400 border-gray-500/30',
+              product.type === 'variable' && 'bg-purple-500/20 text-purple-400 border-purple-500/30 cursor-pointer hover:opacity-90',
+              product.type === 'combo' && 'bg-amber-500/20 text-amber-400 border-amber-500/30'
+            )}
+          >
             {product.type}
           </Badge>
         );
@@ -790,6 +800,7 @@ export const ProductsPage = () => {
                         { value: 'all', label: 'All Types' },
                         { value: 'simple', label: 'Simple Product' },
                         { value: 'variable', label: 'Variable Product' },
+                        { value: 'simple,variable', label: 'Standard + Variable' },
                         { value: 'combo', label: 'Combo Product' },
                       ].map(opt => (
                         <label key={opt.value} className="flex items-center gap-2 cursor-pointer">

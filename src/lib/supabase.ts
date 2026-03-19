@@ -14,11 +14,14 @@ import { createClient } from '@supabase/supabase-js';
 // IMPORTANT: Vite inlines these at BUILD time. For production Docker build,
 // pass VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY as build args (see deploy/Dockerfile).
 let supabaseUrl = (import.meta.env.VITE_SUPABASE_URL || import.meta.env.NEXT_PUBLIC_SUPABASE_URL || '').trim();
-// Live ERP: always use Supabase API host so auth returns JSON (erp.dincouture.pk/auth can return 308 → "Unexpected token '/', \"/auth\" is not valid JSON")
-if (typeof window !== 'undefined' && window.location.origin.includes('erp.dincouture.pk')) {
-  supabaseUrl = 'https://supabase.dincouture.pk';
-} else if (supabaseUrl.includes('erp.dincouture.pk')) {
-  supabaseUrl = supabaseUrl.replace(/https?:\/\/erp\.dincouture\.pk\/?/i, 'https://supabase.dincouture.pk');
+// Production (app served from erp.dincouture.pk): same-origin so /auth/, /rest/ go through nginx → Kong (avoids SecurityError).
+// Localhost / other origins: hit supabase.dincouture.pk directly so auth returns JSON (erp.dincouture.pk from another origin can return 5xx/HTML).
+if (typeof window !== 'undefined') {
+  if (window.location.origin.includes('erp.dincouture.pk')) {
+    supabaseUrl = window.location.origin;
+  } else if (supabaseUrl.includes('erp.dincouture.pk')) {
+    supabaseUrl = 'https://supabase.dincouture.pk';
+  }
 }
 const supabaseAnonKey = (import.meta.env.VITE_SUPABASE_ANON_KEY ||
                         import.meta.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||

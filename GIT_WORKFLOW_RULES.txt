@@ -54,7 +54,7 @@ git commit -m "Bug fix: Purchase service FK issue"
 
 On current machine:
 git add .
-git commit -m "SQL DATABASE ADUIT"
+git commit -m "account coa is testing mode live"
 git push origin main
 
 On new machine:

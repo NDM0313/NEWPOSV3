@@ -1,5 +1,7 @@
 # Login 502 AuthRetryableFetchError – Fix Result (Phase 2)
 
+**Master runbook (502/401/office/ghar):** **`docs/MASTER_AUTH_AND_KONG_RUNBOOK.md`**
+
 **Date:** 2026-03-18  
 **Scope:** Fix 502 Bad Gateway / AuthRetryableFetchError after the 401 fix. Restore working login on localhost and production.
 
@@ -71,6 +73,30 @@
   `bash deploy/verify-login-401-fix.sh`
 - **If Kong restarts again:**  
   `docker logs supabase-kong --tail 50` then apply the appropriate fix script and `docker compose up -d kong --force-recreate`.
+
+---
+
+## Office: apply 502 fix (VPS)
+
+Agar login pe **502** ya **AuthRetryableFetchError** aaye, VPS par ye steps chalao:
+
+1. **Diagnostic (pehle ye):**  
+   `ssh dincouture-vps "cd /root/NEWPOSV3 && bash deploy/diagnose-auth-full.sh"`  
+   Output mein dekho: health **200** hai ya **502/404**? Kong status **Up** hai ya **Restarting**?
+
+2. **Agar 502 / Kong Restarting:**  
+   - Kong logs: `ssh dincouture-vps "docker logs supabase-kong --tail 50"`  
+   - Agar `plugin 'analytics-v1-all' not enabled` ya routes-under-plugins dikhe:  
+     `ssh dincouture-vps "cd /root/NEWPOSV3 && python3 deploy/fix-kong-analytics-plugin-error.py /root/supabase/docker/volumes/api/kong.yml"`  
+   - Agar `did not find expected key` / CORS block malformed: kong.yml se misplaced `config:` blocks hatao (SUPABASE_AUTH_502_FIX_REPORT.md dekho).  
+   - Phir: `ssh dincouture-vps "cd /root/supabase/docker && docker compose up -d kong --force-recreate"`
+
+3. **Agar 404 no Route matched (auth):**  
+   `ssh dincouture-vps "cd /root/NEWPOSV3 && python3 deploy/fix-kong-auth-routes.py /root/supabase/docker/volumes/api/kong.yml"`  
+   Phir: `cd /root/supabase/docker && docker compose up -d kong --force-recreate`
+
+4. **Verify:**  
+   `bash deploy/diagnose-auth-full.sh` phir se chalao; health **200** aur token **OK** aana chahiye.
 
 ---
 

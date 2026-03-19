@@ -1,5 +1,7 @@
 # Kong 502 Permanent Fix Runbook
 
+**Saari auth/Kong docs ek jagah:** **`docs/MASTER_AUTH_AND_KONG_RUNBOOK.md`** – 502, 401, office/ghar, console errors sab ka index.
+
 **Scope:** Self-hosted Supabase on VPS. When `supabase.dincouture.pk` returns **502 Bad Gateway** on `/auth/v1/*` and `/rest/v1/*` because Kong is in a restart loop due to malformed `kong.yml`.
 
 ---

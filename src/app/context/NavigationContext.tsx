@@ -96,6 +96,9 @@ interface NavigationContextType {
   createdContactId?: string | null; // Store newly created contact ID for auto-selection
   createdContactType?: 'customer' | 'supplier' | 'both' | null; // Store contact type for filtering
   setCreatedContactId?: (id: string | null, type?: 'customer' | 'supplier' | 'both' | null) => void;
+  /** When set, Sale/Purchase form should auto-select this product (and then clear it). */
+  createdProduct?: any | null;
+  setCreatedProduct?: (product: any | null) => void;
   // Packing Modal State (Global)
   packingModalOpen?: boolean;
   openPackingModal?: (data: { itemId: number | string; productName: string; initialData?: any; onSave: (details: any) => void }) => void;
@@ -120,6 +123,8 @@ const defaultNavigationContext: NavigationContextType = {
   openSaleIdForView: null,
   setOpenSaleIdForView: () => {},
   setCreatedContactId: () => {},
+  createdProduct: null,
+  setCreatedProduct: () => {},
   openPackingModal: () => {},
   closePackingModal: () => {},
   packingModalOpen: false,
@@ -143,6 +148,7 @@ export const NavigationProvider = ({ children }: { children: ReactNode }) => {
   const [drawerPrefillPhone, setDrawerPrefillPhone] = useState<string | undefined>(undefined);
   const [createdContactId, setCreatedContactIdState] = useState<string | null>(null);
   const [createdContactType, setCreatedContactType] = useState<'customer' | 'supplier' | 'both' | null>(null);
+  const [createdProduct, setCreatedProduct] = useState<any | null>(null);
   
   // Packing Modal State (Global)
   const [packingModalOpen, setPackingModalOpen] = useState(false);
@@ -221,6 +227,7 @@ export const NavigationProvider = ({ children }: { children: ReactNode }) => {
       // If opening a root drawer, clear parent
       setParentDrawer(null);
     }
+    if (drawer === 'addProduct') setCreatedProduct(null);
     setActiveDrawer(drawer);
   }, []);
 
@@ -273,6 +280,8 @@ export const NavigationProvider = ({ children }: { children: ReactNode }) => {
     createdContactId,
     createdContactType,
     setCreatedContactId,
+    createdProduct,
+    setCreatedProduct,
     packingModalOpen,
     openPackingModal,
     closePackingModal,
@@ -281,8 +290,8 @@ export const NavigationProvider = ({ children }: { children: ReactNode }) => {
     currentView, isSidebarOpen, mobileNavOpen, activeDrawer, parentDrawer,
     selectedStudioSaleId, openSaleIdForView, selectedWorkerId, selectedProductionId,
     selectedStudioOrderIdV3, selectedManufacturingOrderId, drawerContactType, drawerData, drawerPrefillName,
-    drawerPrefillPhone, createdContactId, createdContactType, packingModalOpen,
-    packingModalData, toggleSidebar, openDrawer, closeDrawer, setCreatedContactId,
+    drawerPrefillPhone, createdContactId, createdContactType, createdProduct, packingModalOpen,
+    packingModalData, toggleSidebar, openDrawer, closeDrawer, setCreatedContactId, setCreatedProduct,
     openPackingModal, closePackingModal
   ]);
 

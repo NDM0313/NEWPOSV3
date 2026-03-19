@@ -41,7 +41,8 @@
 - **Browser se sirf `https://supabase.dincouture.pk` open kiya:**  
   Wahan sirf ek JSON message aata hai (API info). Ye normal hai. **Data use karne ke liye ERP use karein:** https://erp.dincouture.pk.
 
-- **ERP pe data nahi aa raha / login fail:**  
+- **ERP pe “SecurityError: The request was denied” / data nahi aa raha / login fail:**  
+  ERP production par API **same-origin** use karta hai (erp.dincouture.pk/auth, /rest) taake browser cross-origin block na kare. Nginx in container in paths ko Kong tak proxy karta hai.  
   1. ERP ka URL sahi ho: **https://erp.dincouture.pk**  
   2. VPS par diagnostic:  
      `ssh dincouture-vps "cd /root/NEWPOSV3 && bash deploy/diagnose-auth-full.sh"`  

@@ -74,6 +74,17 @@ export const InventoryDesignTestPage = () => {
     else setLoading(false);
   }, [companyId, loadOverview]);
 
+  // Global refresh: when inventory or products are updated anywhere in the app, refetch overview
+  useEffect(() => {
+    const onInventoryOrProductsUpdate = () => { if (companyId) loadOverview(); };
+    window.addEventListener('products-updated', onInventoryOrProductsUpdate);
+    window.addEventListener('inventory-updated', onInventoryOrProductsUpdate);
+    return () => {
+      window.removeEventListener('products-updated', onInventoryOrProductsUpdate);
+      window.removeEventListener('inventory-updated', onInventoryOrProductsUpdate);
+    };
+  }, [companyId, loadOverview]);
+
   const filteredProducts = useMemo(() => {
     let list = overviewRows.filter(p =>
       p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -193,6 +204,7 @@ export const InventoryDesignTestPage = () => {
       toast.success('Stock adjustment saved');
       setAdjustmentProduct(null);
       loadOverview();
+      window.dispatchEvent(new CustomEvent('inventory-updated'));
     } catch (error: any) {
       toast.error('Adjustment failed: ' + (error?.message || 'Unknown error'));
     }
@@ -589,6 +601,7 @@ export const InventoryDesignTestPage = () => {
                     if (row.productId) await inventoryService.insertOpeningBalanceMovement(companyId, branchIdOrNull, row.productId, row.quantity, 0);
                   }
                   await loadOverview();
+                  window.dispatchEvent(new CustomEvent('inventory-updated'));
                   toast.success(`Imported ${valid.length} item(s).`);
                   setImportInventoryModalOpen(false);
                   setImportRows([]);

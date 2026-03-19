@@ -154,7 +154,7 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
     // Permission-based: settings access allows branch selection (was role === 'admin')
     const isAdmin = canManageSettings;
     const { createPurchase, updatePurchase } = usePurchases();
-    const { openDrawer, activeDrawer, createdContactId, createdContactType, setCreatedContactId, openPackingModal } = useNavigation();
+    const { openDrawer, activeDrawer, createdContactId, createdContactType, setCreatedContactId, createdProduct, setCreatedProduct, openPackingModal } = useNavigation();
     const { generateDocumentNumber, generateDocumentNumberSafe } = useDocumentNumbering();
     
     // STEP 1: Detect edit mode - check for purchase ID in multiple possible fields
@@ -532,11 +532,29 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
             setLastAddedItemId(newItemId);
         }
         
-        // Close search and reset
+// Close search and reset
         setProductSearchOpen(false);
         setProductSearchTerm("");
     };
-    
+
+    // Auto-select product when created from Add Product drawer (Create New Product from Purchase)
+    useEffect(() => {
+        if (!createdProduct || !setCreatedProduct) return;
+        const p = createdProduct;
+        const mapped = {
+            id: p.id ?? p.uuid,
+            name: p.name ?? '',
+            sku: p.sku ?? '',
+            price: Number(p.cost_price ?? p.retail_price ?? p.price ?? 0),
+            hasVariations: Array.isArray(p.variations) && p.variations.length > 0,
+            stock: 0,
+            lastPurchasePrice: p.cost_price != null ? Number(p.cost_price) : undefined,
+            needsPacking: false,
+        };
+        setCreatedProduct(null);
+        handleSelectProduct(mapped);
+    }, [createdProduct, setCreatedProduct]);
+
     // Handle variation selection from inline strip
     const handleInlineVariationSelect = (itemId: number, variation: { id?: string; size?: string; color?: string; sku?: string; price?: number; stock?: number; attributes?: Record<string, unknown> }) => {
         setItems(prev => prev.map(item => {

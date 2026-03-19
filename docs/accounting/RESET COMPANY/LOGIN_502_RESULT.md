@@ -74,6 +74,20 @@
 
 ---
 
+## Office: apply 502 fix (VPS)
+
+Agar login pe **502** ya **AuthRetryableFetchError** aaye, VPS par ye steps chalao:
+
+1. **Diagnostic:**  
+   `ssh dincouture-vps "cd /root/NEWPOSV3 && bash deploy/diagnose-auth-full.sh"`
+2. **502 / Kong Restarting:** Kong logs dekho; `fix-kong-analytics-plugin-error.py` ya kong.yml CORS fix; phir `docker compose up -d kong --force-recreate`.
+3. **404 no Route matched:** `fix-kong-auth-routes.py` chalao, phir Kong recreate.
+4. **Verify:** `diagnose-auth-full.sh` dubara; health 200, token OK.
+
+(Full steps: `docs/LOGIN_502_RESULT.md`.)
+
+---
+
 ## Git
 
 - **Commits:** `7a4b9b8` (fix-kong-analytics), `7ac629e` (fix-kong-auth-routes), `31c593b` (diagnose-auth-full + LOGIN_502_RESULT).

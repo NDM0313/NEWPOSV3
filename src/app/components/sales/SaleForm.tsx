@@ -184,7 +184,7 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
     const { inventorySettings, loading: settingsLoading, company } = useSettings();
     const enablePacking = inventorySettings.enablePacking;
     const { createSale, updateSale, deleteSale } = useSales();
-    const { openDrawer, closeDrawer, activeDrawer, createdContactId, createdContactType, setCreatedContactId, openPackingModal, setCurrentView, setSelectedStudioSaleId } = useNavigation();
+    const { openDrawer, closeDrawer, activeDrawer, createdContactId, createdContactType, setCreatedContactId, createdProduct, setCreatedProduct, openPackingModal, setCurrentView, setSelectedStudioSaleId } = useNavigation();
     
     // Permission-based: settings access allows branch selection and full branch list (was role === 'admin')
     const isAdmin = canManageSettings;
@@ -1554,6 +1554,24 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
         setProductSearchOpen(false);
         setProductSearchTerm("");
     };
+
+    // Auto-select product when created from Add Product drawer (Create New Product from Sale)
+    useEffect(() => {
+        if (!createdProduct || !setCreatedProduct) return;
+        const p = createdProduct;
+        const mapped = {
+            id: p.id ?? p.uuid,
+            name: p.name ?? '',
+            sku: p.sku ?? '',
+            price: Number(p.retail_price ?? p.price ?? 0),
+            hasVariations: Array.isArray(p.variations) && p.variations.length > 0,
+            stock: 0,
+            lastPurchasePrice: p.cost_price != null ? Number(p.cost_price) : undefined,
+            needsPacking: false,
+        };
+        setCreatedProduct(null);
+        handleSelectProduct(mapped);
+    }, [createdProduct, setCreatedProduct]);
     
     // Handle variation selection from inline row (variation from backend product.variations)
     const handleInlineVariationSelect = (itemId: number, variation: { id?: string; size?: string; color?: string; sku?: string; price?: number; stock?: number; attributes?: Record<string, unknown> }) => {
@@ -2765,8 +2783,8 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                         {/* RIGHT PANEL - Summary + Payment (Independent Scroll) */}
                         <div className="flex flex-col h-full overflow-y-auto space-y-3 pb-3">
                             {/* PART 8 order: Extra Expenses → Shipping Charge → Shipment → Attachments → Invoice Summary */}
-                            {/* Extra Expenses - disabled when not Final */}
-                            <div className={cn("bg-gray-900/50 border border-gray-800 rounded-lg p-4 shrink-0", !isFinal && "opacity-60 pointer-events-none")}>
+                            {/* Extra Expenses - disabled (always) */}
+                            <div className={cn("bg-gray-900/50 border border-gray-800 rounded-lg p-4 shrink-0 opacity-60 pointer-events-none")}>
                                 <div className="flex items-center justify-between mb-3">
                                 <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide flex items-center gap-2">
                                     <DollarSign size={14} className="text-purple-500" />
@@ -2838,8 +2856,8 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                                 )}
                             </div>
 
-                            {/* Shipping Charge – charged_to_customer (saved in sale_shipments when shipment exists); disabled when not Final */}
-                            <div className={cn("bg-gray-900/50 border border-gray-800 rounded-lg p-3 shrink-0", !isFinal && "opacity-60 pointer-events-none")}>
+                            {/* Shipping Charge – disabled (always) */}
+                            <div className={cn("bg-gray-900/50 border border-gray-800 rounded-lg p-3 shrink-0 opacity-60 pointer-events-none")}>
                                 <h3 className="text-xs font-semibold text-blue-400 uppercase tracking-wide flex items-center gap-2 mb-2">
                                     <Truck size={14} />
                                     Shipping Charge
@@ -2858,8 +2876,8 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                                 )}
                             </div>
 
-                            {/* Shipment section – only when Final; Add Shipment / Update Shipment with courier, tracking, status badge */}
-                            <div className={cn("bg-gray-900/50 border border-gray-800 rounded-lg p-3 shrink-0", !isFinal && "opacity-60 pointer-events-none")}>
+                            {/* Shipment section – disabled (always) */}
+                            <div className={cn("bg-gray-900/50 border border-gray-800 rounded-lg p-3 shrink-0 opacity-60 pointer-events-none")}>
                                 <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2 flex items-center gap-2">
                                     <Truck size={14} />
                                     Shipment
@@ -2915,8 +2933,8 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                                 )}
                             </div>
 
-                            {/* Attachments – disabled when not Final (PART 8: before Invoice Summary) */}
-                            <div className={cn("bg-gray-900/50 border border-gray-800 rounded-lg p-4 space-y-3 shrink-0", !isFinal && "opacity-60 pointer-events-none")}>
+                            {/* Attachments – disabled (always) */}
+                            <div className={cn("bg-gray-900/50 border border-gray-800 rounded-lg p-4 space-y-3 shrink-0 opacity-60 pointer-events-none")}>
                                 <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wide flex items-center gap-2">
                                     <Paperclip size={14} />
                                     Attachments

@@ -112,8 +112,6 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const fetchedRef = useRef<Set<string>>(new Set());
   const lastFetchedUserIdRef = useRef<string | null>(null);
   /** Production: ignore logout (session=null) for this many ms after sign-in – GoTrue can emit SIGNED_OUT on SecurityError. */
-  const lastSignInTimeRef = useRef<number>(0);
-  const SIGNED_IN_GRACE_MS = 15000;
   /** Log storage/security retry only once per userId to avoid 15–20 console messages. */
   const storageErrorLoggedRef = useRef<Set<string>>(new Set());
 
@@ -161,8 +159,7 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         return;
       }
       if (isServerError(e)) setConnectionError(true);
-      setSession(null);
-      setUser(null);
+      // Do NOT clear session/user when getSession() throws (e.g. SecurityError). Only signOut() should clear.
       setLoading(false);
     }
   };
@@ -175,33 +172,22 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       try {
       const newUser = session?.user ?? null;
 
-      // PRODUCTION FIX: Do NOT clear session on session=null unless (1) event is SIGNED_OUT AND (2) outside grace period after sign-in.
-      // GoTrue can emit SIGNED_OUT on SecurityError / "request was denied" within 1–2s of login – ignore that.
+      // PRODUCTION: Never clear session in the listener. GoTrue emits session=null/SIGNED_OUT on SecurityError
+      // and breaks production login. Only our signOut() (user clicked Sign Out) should clear state.
       if (!newUser) {
-        const withinGrace = Date.now() - lastSignInTimeRef.current < SIGNED_IN_GRACE_MS;
-        if (withinGrace) {
-          console.warn('[AUTH] session=null within', SIGNED_IN_GRACE_MS / 1000, 's of sign-in – ignoring (production SecurityError path)', { event });
-          setConnectionError(true);
-          return;
-        }
-        if (event !== 'SIGNED_OUT') {
-          try {
-            const { data: { session: current } } = await supabase.auth.getSession();
-            if (current?.user) {
-              setSession(current);
-              setUser(current.user);
-              fetchUserData(current.user.id, false, 0);
-              return;
-            }
-            console.warn('[AUTH] session=null but event !== SIGNED_OUT; keeping existing session', { event });
-            setConnectionError(true);
-            return;
-          } catch (e) {
-            console.warn('[AUTH] getSession threw, keeping existing session', e);
-            setConnectionError(true);
+        try {
+          const { data: { session: current } } = await supabase.auth.getSession();
+          if (current?.user) {
+            setSession(current);
+            setUser(current.user);
+            fetchUserData(current.user.id, false, 0);
             return;
           }
+        } catch {
+          // getSession threw – keep existing session
         }
+        setConnectionError(true);
+        return;
       }
 
       setSession(session);
@@ -209,7 +195,6 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
       if (newUser) {
         if (event === 'SIGNED_IN') {
-          lastSignInTimeRef.current = Date.now();
           if (import.meta.env?.DEV) {
             console.log('[AUTH] SIGNED_IN - auth user:', { id: newUser.id, email: newUser.email });
           }
@@ -217,22 +202,10 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         }
         // Clear cache if user changed
         if (lastFetchedUserIdRef.current !== null && lastFetchedUserIdRef.current !== newUser.id) {
-          fetchedRef.current.clear();
           fetchingRef.current.clear();
+          fetchedRef.current.clear();
         }
         fetchUserData(newUser.id, false, 0);
-      } else {
-        console.info('[AUTH] Logout: event=', event, '- clearing session (only path that clears session)');
-        setCompanyId(null);
-        setUserRole(null);
-        setBranchId(null);
-        setDefaultBranchId(null);
-        setProfileLoadComplete(false);
-        // Clear fetch tracking on sign out
-        fetchingRef.current.clear();
-        fetchedRef.current.clear();
-        lastFetchedUserIdRef.current = null;
-        storageErrorLoggedRef.current.clear();
       }
       } catch {
         setLoading(false);
@@ -547,6 +520,7 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const signOut = async () => {
     await supabase.auth.signOut();
     setConnectionError(false);
+    setProfileLoadComplete(false);
     permissionEngine.clear();
     branchService.clearBranchCache();
     setUser(null);
@@ -556,10 +530,10 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setBranchId(null);
     setDefaultBranchId(null);
     setAccessibleBranchIds([]);
-    // Clear fetch tracking on sign out
     fetchingRef.current.clear();
     fetchedRef.current.clear();
     lastFetchedUserIdRef.current = null;
+    storageErrorLoggedRef.current.clear();
     setEnablePackingState(false);
   };
 
