@@ -798,7 +798,7 @@ export const purchaseService = {
     }
   },
 
-  // Record payment – allowed only when purchase status is final/completed (ERP rule).
+  // Record payment – allowed only when purchase status is final or received (DB enum — no `completed`).
   // Uses canonical supplierPaymentService: one payments row + one journal entry (no duplicate JE).
   async recordPayment(purchaseId: string, amount: number, paymentMethod: string, accountId: string, companyId: string, branchId?: string | null, _referenceNumber?: string | null, options?: { notes?: string; attachments?: any }) {
     const { data: purchase, error: fetchError } = await supabase
@@ -814,7 +814,7 @@ export const purchaseService = {
     if (status === 'cancelled') {
       throw new Error('Cannot record payment on a cancelled purchase order.');
     }
-    if (status !== 'final' && status !== 'completed' && status !== 'received') {
+    if (status !== 'final' && status !== 'received') {
       throw new Error('Payment not allowed until purchase is Received or Final. Current status: ' + (status || 'unknown'));
     }
     const purchaseBranchId = (purchase as any).branch_id;

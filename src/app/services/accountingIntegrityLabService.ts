@@ -1,0 +1,1105 @@
+/**
+ * Accounting Integrity Lab — Phase 2: categorized checks, fresh vs live, deep-link metadata, extended snapshots.
+ * Canonical GL: accounts, journal_entries, journal_entry_lines. Ops: payments, stock_movements, documents.
+ */
+
+import { supabase } from '@/lib/supabase';
+import { accountingReportsService } from '@/app/services/accountingReportsService';
+import { PURCHASE_STATUSES_FOR_PAYABLE_RECONCILIATION } from '@/app/lib/purchaseDbConstants';
+import { INTEGRITY_LAB_SESSION_KEY as _INTEGRITY_LAB_SESSION_KEY } from '@/app/lib/integrityLabConstants';
+
+/** Re-export for lab UI (prefer importing from @/app/lib/integrityLabConstants in new code) */
+export const INTEGRITY_LAB_SESSION_KEY = _INTEGRITY_LAB_SESSION_KEY;
+
+export type LabCheckStatus = 'pass' | 'fail' | 'warn' | 'skip';
+
+/** A · Engine Integrity | B · Reconciliation | C · Data Quality / Legacy */
+export type LabCheckCategory = 'engine' | 'reconciliation' | 'data_quality';
+
+/**
+ * F · Why this warning exists (for QA triage).
+ * - engine_bug: current posting logic likely wrong for this row
+ * - legacy_data: old rows / manual SQL / pre-canonical postings
+ * - missing_backfill: column or link expected but never synced
+ * - source_link: payments ↔ JE payment_id, reference chain
+ * - reconciliation_timing: subledger vs GL timing / scope mismatch (often OK after investigation)
+ * - informational: heuristic / not a failure
+ */
+export type WarningClassification =
+  | 'engine_bug'
+  | 'legacy_data'
+  | 'missing_backfill'
+  | 'source_link'
+  | 'reconciliation_timing'
+  | 'informational';
+
+/** Actions the lab UI can take when user traces a failure */
+export type LabNavAction =
+  | { type: 'sale'; saleId: string; label?: string }
+  | { type: 'purchase'; purchaseId: string; label?: string }
+  | {
+      type: 'accounting';
+      tab: 'journal_entries' | 'daybook' | 'roznamcha' | 'accounts' | 'ledger' | 'receivables' | 'payables';
+      focusJournalEntryId?: string;
+      focusAccountId?: string;
+      ledgerType?: 'customer' | 'supplier' | 'user' | 'worker';
+      label?: string;
+    }
+  | { type: 'customer_ledger'; label?: string }
+  | { type: 'supplier_ledger'; label?: string }
+  | { type: 'copy'; text: string; label?: string };
+
+export interface LabCheckFailure {
+  module: string;
+  step: string;
+  record: string;
+  expected: string;
+  actual: string;
+  /** Single row classification (most specific) */
+  classification?: WarningClassification;
+  /** Quick actions for traceability */
+  navActions?: LabNavAction[];
+}
+
+export interface LabCheckResult {
+  id: string;
+  label: string;
+  category: LabCheckCategory;
+  /** Whole-check default classification when status is warn/fail */
+  defaultClassification?: WarningClassification;
+  status: LabCheckStatus;
+  failures: LabCheckFailure[];
+  meta?: Record<string, unknown>;
+}
+
+export interface JournalBalanceRow {
+  journal_entry_id: string;
+  entry_no: string | null;
+  reference_type: string | null;
+  reference_id: string | null;
+  total_debit: number;
+  total_credit: number;
+  diff: number;
+}
+
+/** Per-entry debit/credit sums; unbalanced entries have diff !== 0 */
+export async function findUnbalancedJournalEntries(
+  companyId: string,
+  branchId?: string | null
+): Promise<JournalBalanceRow[]> {
+  let jeQuery = supabase
+    .from('journal_entries')
+    .select('id, entry_no, reference_type, reference_id, company_id, branch_id, is_void')
+    .eq('company_id', companyId);
+  if (branchId && branchId !== 'all') {
+    jeQuery = jeQuery.or(`branch_id.eq.${branchId},branch_id.is.null`);
+  }
+  const { data: entries, error } = await jeQuery;
+  if (error || !entries?.length) return [];
+
+  const ids = entries.filter((e: any) => !e.is_void).map((e: any) => e.id);
+  if (!ids.length) return [];
+
+  const { data: lines } = await supabase
+    .from('journal_entry_lines')
+    .select('journal_entry_id, debit, credit')
+    .in('journal_entry_id', ids);
+
+  const sums = new Map<string, { d: number; c: number }>();
+  ids.forEach((id) => sums.set(id, { d: 0, c: 0 }));
+  (lines || []).forEach((l: any) => {
+    const s = sums.get(l.journal_entry_id);
+    if (!s) return;
+    s.d += Number(l.debit) || 0;
+    s.c += Number(l.credit) || 0;
+  });
+
+  const byId = new Map(entries.map((e: any) => [e.id, e]));
+  const out: JournalBalanceRow[] = [];
+  sums.forEach((s, jeId) => {
+    const diff = Math.round((s.d - s.c) * 100) / 100;
+    if (Math.abs(diff) > 0.01) {
+      const e = byId.get(jeId) as any;
+      out.push({
+        journal_entry_id: jeId,
+        entry_no: e?.entry_no ?? null,
+        reference_type: e?.reference_type ?? null,
+        reference_id: e?.reference_id ?? null,
+        total_debit: s.d,
+        total_credit: s.c,
+        diff,
+      });
+    }
+  });
+  return out;
+}
+
+function navForUnbalancedRow(u: JournalBalanceRow): LabNavAction[] {
+  const actions: LabNavAction[] = [
+    {
+      type: 'accounting',
+      tab: 'journal_entries',
+      focusJournalEntryId: u.journal_entry_id,
+      label: 'Journal entries (search JE)',
+    },
+    {
+      type: 'accounting',
+      tab: 'daybook',
+      focusJournalEntryId: u.journal_entry_id,
+      label: 'Day Book',
+    },
+    { type: 'copy', text: u.journal_entry_id, label: 'Copy JE id' },
+  ];
+  if (u.reference_type === 'sale' && u.reference_id) {
+    actions.unshift({ type: 'sale', saleId: u.reference_id, label: 'Open sale' });
+  }
+  if (u.reference_type === 'purchase' && u.reference_id) {
+    actions.unshift({ type: 'purchase', purchaseId: u.reference_id, label: 'Open purchase' });
+  }
+  return actions;
+}
+
+function extractPaymentId(record: string): string | null {
+  const m = record.match(/payments\.id=([0-9a-f-]{36})/i);
+  return m ? m[1] : null;
+}
+
+function extractAccountId(record: string): string | null {
+  const m = record.match(/accounts\.id=([0-9a-f-]{36})/i);
+  return m ? m[1] : null;
+}
+
+export interface DocumentTruthSnapshot {
+  sale?: {
+    id: string;
+    invoice_no: string | null;
+    status: string;
+    total: number;
+    paid_amount: number;
+    due_amount: number;
+    discount_amount: number;
+    shipment_charges: number;
+    expenses: number;
+    subtotal: number;
+    tax_amount: number;
+  };
+  purchase?: {
+    id: string;
+    po_no: string | null;
+    status: string;
+    total: number;
+    paid_amount: number;
+    due_amount: number;
+    discount_amount: number;
+  };
+  payments: Array<{
+    id: string;
+    amount: number;
+    payment_type: string;
+    reference_type: string;
+    reference_id: string;
+    payment_account_id: string | null;
+    payment_date: string | null;
+  }>;
+  journalEntries: Array<{
+    id: string;
+    entry_no: string | null;
+    reference_type: string | null;
+    reference_id: string | null;
+    description: string | null;
+    lineCount: number;
+    totalDebit: number;
+    totalCredit: number;
+    balanced: boolean;
+  }>;
+  stockMovementsSample: Array<{
+    id: string;
+    movement_type: string;
+    quantity: number;
+    reference_type: string | null;
+    reference_id: string | null;
+  }>;
+}
+
+/** Phase 2 · Snapshot compare: full detail for QA */
+export interface ExtendedLabSnapshot {
+  document: Record<string, unknown> | null;
+  payments: DocumentTruthSnapshot['payments'];
+  journalEntriesDetailed: Array<{
+    id: string;
+    entry_no: string | null;
+    reference_type: string | null;
+    reference_id: string | null;
+    description: string | null;
+    lines: Array<{
+      account_id: string;
+      account_code?: string;
+      account_name?: string;
+      debit: number;
+      credit: number;
+      description?: string | null;
+    }>;
+    totalDebit: number;
+    totalCredit: number;
+    balanced: boolean;
+  }>;
+  /** Net debit − credit per account across all lines above */
+  affectedAccounts: Record<string, { code?: string; name?: string; netDrMinusCr: number }>;
+  /** Should be ~0 if every JE on document is self-balanced */
+  aggregateLinesDrMinusCr: number;
+  trialBalanceHint: {
+    companyTbDifference: number | null;
+    note: string;
+  };
+  arAp?: { label: string; sumDueDocuments?: number; glBalance?: number; diff?: number };
+  inventory?: { inventoryGl1200?: number; movementHeuristicCost?: number; note: string };
+  capturedAt: string;
+}
+
+export async function buildExtendedLabSnapshot(
+  companyId: string,
+  kind: 'sale' | 'purchase',
+  docId: string,
+  branchId?: string | null
+): Promise<ExtendedLabSnapshot | null> {
+  const base = kind === 'sale' ? await buildSaleTruthSnapshot(docId) : await buildPurchaseTruthSnapshot(docId);
+  if (!base) return null;
+
+  const jesDetailed: ExtendedLabSnapshot['journalEntriesDetailed'] = [];
+  let aggDr = 0;
+  let aggCr = 0;
+  const accMap: ExtendedLabSnapshot['affectedAccounts'] = {};
+
+  const jeIds = base.journalEntries.map((j) => j.id);
+  if (jeIds.length) {
+    const { data: lines } = await supabase
+      .from('journal_entry_lines')
+      .select('journal_entry_id, account_id, debit, credit, description')
+      .in('journal_entry_id', jeIds);
+    const accountIds = [...new Set((lines || []).map((l: any) => l.account_id).filter(Boolean))];
+    const { data: accs } = await supabase.from('accounts').select('id, code, name').in('id', accountIds);
+    const accById = new Map((accs || []).map((a: any) => [a.id, a]));
+
+    const byJe = new Map<string, any[]>();
+    (lines || []).forEach((l: any) => {
+      const arr = byJe.get(l.journal_entry_id) || [];
+      arr.push(l);
+      byJe.set(l.journal_entry_id, arr);
+    });
+
+    for (const je of base.journalEntries) {
+      const jl = byJe.get(je.id) || [];
+      let td = 0,
+        tc = 0;
+      const lineRows = jl.map((l: any) => {
+        const ai = l.account_id;
+        const meta = accById.get(ai) as any;
+        const d = Number(l.debit) || 0;
+        const c = Number(l.credit) || 0;
+        td += d;
+        tc += c;
+        aggDr += d;
+        aggCr += c;
+        const prev = accMap[ai] || { code: meta?.code, name: meta?.name, netDrMinusCr: 0 };
+        prev.netDrMinusCr += d - c;
+        if (meta?.code) prev.code = meta.code;
+        if (meta?.name) prev.name = meta.name;
+        accMap[ai] = prev;
+        return {
+          account_id: ai,
+          account_code: meta?.code,
+          account_name: meta?.name,
+          debit: d,
+          credit: c,
+          description: l.description,
+        };
+      });
+      jesDetailed.push({
+        id: je.id,
+        entry_no: je.entry_no,
+        reference_type: je.reference_type,
+        reference_id: je.reference_id,
+        description: (je as any).description ?? null,
+        lines: lineRows,
+        totalDebit: td,
+        totalCredit: tc,
+        balanced: Math.abs(td - tc) < 0.01,
+      });
+    }
+  }
+
+  let companyTbDiff: number | null = null;
+  try {
+    const end = new Date().toISOString().slice(0, 10);
+    const tb = await accountingReportsService.getTrialBalance(
+      companyId,
+      '1900-01-01',
+      end,
+      branchId && branchId !== 'all' ? branchId : undefined
+    );
+    companyTbDiff = tb.difference;
+  } catch {
+    companyTbDiff = null;
+  }
+
+  let arAp: ExtendedLabSnapshot['arAp'];
+  if (kind === 'sale' && base.sale) {
+    const ar = await runReceivablesVsARCheck(companyId, branchId);
+    arAp = {
+      label: 'AR vs sales.due (final)',
+      sumDueDocuments: (ar.meta?.sumDue as number) ?? undefined,
+      glBalance: (ar.meta?.arBalance as number) ?? undefined,
+      diff: (ar.meta?.diff as number) ?? undefined,
+    };
+  }
+  if (kind === 'purchase' && base.purchase) {
+    const ap = await runPayablesVsAPCheck(companyId, branchId);
+    arAp = {
+      label: 'AP vs purchases.due',
+      sumDueDocuments: (ap.meta?.sumDue as number) ?? undefined,
+      glBalance: (ap.meta?.apBalance as number) ?? undefined,
+      diff: (ap.meta?.diff as number) ?? undefined,
+    };
+  }
+
+  const inv = await runInventoryValuationVsStockCheck(companyId);
+
+  return {
+    document: (kind === 'sale' ? base.sale : base.purchase) as any,
+    payments: base.payments,
+    journalEntriesDetailed: jesDetailed,
+    affectedAccounts: accMap,
+    aggregateLinesDrMinusCr: Math.round((aggDr - aggCr) * 100) / 100,
+    trialBalanceHint: {
+      companyTbDifference: companyTbDiff,
+      note: 'Company-wide TB difference (not only this document). Use Live reconciliation mode to fix legacy JEs.',
+    },
+    arAp,
+    inventory: {
+      inventoryGl1200: (inv.meta?.invGlBalance as number) ?? undefined,
+      movementHeuristicCost: (inv.meta?.movementHeuristic as number) ?? undefined,
+      note: 'Heuristic — use Reports → Inventory Valuation for truth',
+    },
+    capturedAt: new Date().toISOString(),
+  };
+}
+
+export async function buildSaleTruthSnapshot(saleId: string): Promise<DocumentTruthSnapshot | null> {
+  const { data: sale, error } = await supabase
+    .from('sales')
+    .select(
+      'id, invoice_no, status, total, paid_amount, due_amount, discount_amount, shipment_charges, expenses, subtotal, tax_amount'
+    )
+    .eq('id', saleId)
+    .maybeSingle();
+  if (error || !sale) return null;
+
+  const { data: payments } = await supabase
+    .from('payments')
+    .select('id, amount, payment_type, reference_type, reference_id, payment_account_id, payment_date')
+    .eq('reference_type', 'sale')
+    .eq('reference_id', saleId);
+
+  const { data: jes } = await supabase
+    .from('journal_entries')
+    .select('id, entry_no, reference_type, reference_id, description, is_void')
+    .eq('reference_type', 'sale')
+    .eq('reference_id', saleId);
+
+  const journalEntries: DocumentTruthSnapshot['journalEntries'] = [];
+  for (const je of jes || []) {
+    if ((je as any).is_void) continue;
+    const { data: jl } = await supabase
+      .from('journal_entry_lines')
+      .select('debit, credit')
+      .eq('journal_entry_id', (je as any).id);
+    let td = 0,
+      tc = 0;
+    (jl || []).forEach((l: any) => {
+      td += Number(l.debit) || 0;
+      tc += Number(l.credit) || 0;
+    });
+    const balanced = Math.abs(td - tc) < 0.01;
+    journalEntries.push({
+      id: (je as any).id,
+      entry_no: (je as any).entry_no,
+      reference_type: (je as any).reference_type,
+      reference_id: (je as any).reference_id,
+      description: (je as any).description,
+      lineCount: jl?.length ?? 0,
+      totalDebit: td,
+      totalCredit: tc,
+      balanced,
+    });
+  }
+
+  const { data: sm } = await supabase
+    .from('stock_movements')
+    .select('id, movement_type, quantity, reference_type, reference_id')
+    .eq('reference_type', 'sale')
+    .eq('reference_id', saleId)
+    .limit(50);
+
+  return {
+    sale: {
+      id: sale.id,
+      invoice_no: sale.invoice_no,
+      status: sale.status,
+      total: Number(sale.total) || 0,
+      paid_amount: Number(sale.paid_amount) || 0,
+      due_amount: Number(sale.due_amount) || 0,
+      discount_amount: Number(sale.discount_amount) || 0,
+      shipment_charges: Number((sale as any).shipment_charges) || 0,
+      expenses: Number((sale as any).expenses) || 0,
+      subtotal: Number(sale.subtotal) || 0,
+      tax_amount: Number(sale.tax_amount) || 0,
+    },
+    payments: (payments || []).map((p: any) => ({
+      id: p.id,
+      amount: Number(p.amount) || 0,
+      payment_type: p.payment_type,
+      reference_type: p.reference_type,
+      reference_id: p.reference_id,
+      payment_account_id: p.payment_account_id,
+      payment_date: p.payment_date,
+    })),
+    journalEntries,
+    stockMovementsSample: (sm || []).map((m: any) => ({
+      id: m.id,
+      movement_type: m.movement_type,
+      quantity: Number(m.quantity) || 0,
+      reference_type: m.reference_type,
+      reference_id: m.reference_id,
+    })),
+  };
+}
+
+export async function buildPurchaseTruthSnapshot(purchaseId: string): Promise<DocumentTruthSnapshot | null> {
+  const { data: purchase, error } = await supabase
+    .from('purchases')
+    .select('id, po_no, status, total, paid_amount, due_amount, discount_amount')
+    .eq('id', purchaseId)
+    .maybeSingle();
+  if (error || !purchase) return null;
+
+  const { data: payments } = await supabase
+    .from('payments')
+    .select('id, amount, payment_type, reference_type, reference_id, payment_account_id, payment_date')
+    .eq('reference_type', 'purchase')
+    .eq('reference_id', purchaseId);
+
+  const { data: jes } = await supabase
+    .from('journal_entries')
+    .select('id, entry_no, reference_type, reference_id, description, is_void')
+    .eq('reference_type', 'purchase')
+    .eq('reference_id', purchaseId);
+
+  const journalEntries: DocumentTruthSnapshot['journalEntries'] = [];
+  for (const je of jes || []) {
+    if ((je as any).is_void) continue;
+    const { data: jl } = await supabase
+      .from('journal_entry_lines')
+      .select('debit, credit')
+      .eq('journal_entry_id', (je as any).id);
+    let td = 0,
+      tc = 0;
+    (jl || []).forEach((l: any) => {
+      td += Number(l.debit) || 0;
+      tc += Number(l.credit) || 0;
+    });
+    journalEntries.push({
+      id: (je as any).id,
+      entry_no: (je as any).entry_no,
+      reference_type: (je as any).reference_type,
+      reference_id: (je as any).reference_id,
+      description: (je as any).description,
+      lineCount: jl?.length ?? 0,
+      totalDebit: td,
+      totalCredit: tc,
+      balanced: Math.abs(td - tc) < 0.01,
+    });
+  }
+
+  const { data: sm } = await supabase
+    .from('stock_movements')
+    .select('id, movement_type, quantity, reference_type, reference_id')
+    .eq('reference_type', 'purchase')
+    .eq('reference_id', purchaseId)
+    .limit(50);
+
+  return {
+    purchase: {
+      id: purchase.id,
+      po_no: (purchase as any).po_no ?? null,
+      status: purchase.status,
+      total: Number(purchase.total) || 0,
+      paid_amount: Number(purchase.paid_amount) || 0,
+      due_amount: Number(purchase.due_amount) || 0,
+      discount_amount: Number(purchase.discount_amount) || 0,
+    },
+    payments: (payments || []).map((p: any) => ({
+      id: p.id,
+      amount: Number(p.amount) || 0,
+      payment_type: p.payment_type,
+      reference_type: p.reference_type,
+      reference_id: p.reference_id,
+      payment_account_id: p.payment_account_id,
+      payment_date: p.payment_date,
+    })),
+    journalEntries,
+    stockMovementsSample: (sm || []).map((m: any) => ({
+      id: m.id,
+      movement_type: m.movement_type,
+      quantity: Number(m.quantity) || 0,
+      reference_type: m.reference_type,
+      reference_id: m.reference_id,
+    })),
+  };
+}
+
+export async function findPaymentsMissingJournalLink(
+  companyId: string,
+  limit = 100
+): Promise<LabCheckResult> {
+  const failures: LabCheckFailure[] = [];
+  const { data: payments } = await supabase
+    .from('payments')
+    .select('id, amount, reference_type, reference_id')
+    .eq('company_id', companyId)
+    .in('reference_type', ['sale', 'purchase'])
+    .limit(limit);
+
+  for (const p of payments || []) {
+    const { data: je } = await supabase
+      .from('journal_entries')
+      .select('id')
+      .eq('payment_id', (p as any).id)
+      .maybeSingle();
+    if (!je && (Number((p as any).amount) || 0) > 0) {
+      const pid = (p as any).id as string;
+      const rid = (p as any).reference_id as string;
+      const rtype = (p as any).reference_type as string;
+      failures.push({
+        module: 'payments',
+        step: 'journal_link',
+        record: `payments.id=${pid} ref=${rtype}`,
+        expected: 'journal_entries.payment_id',
+        actual: 'none — legacy or trigger gap',
+        classification: 'source_link',
+        navActions: [
+          ...(rtype === 'sale' && rid
+            ? ([{ type: 'sale' as const, saleId: rid, label: 'Open sale' }] as LabNavAction[])
+            : []),
+          ...(rtype === 'purchase' && rid
+            ? ([{ type: 'purchase' as const, purchaseId: rid, label: 'Open purchase' }] as LabNavAction[])
+            : []),
+          {
+            type: 'accounting',
+            tab: 'journal_entries',
+            label: 'Journal entries',
+          },
+          { type: 'copy', text: pid, label: 'Copy payment id' },
+        ],
+      });
+    }
+  }
+  return {
+    id: 'payment_je_link',
+    label: 'Payments → journal_entries.payment_id',
+    category: 'data_quality',
+    defaultClassification: 'source_link',
+    status: failures.length === 0 ? 'pass' : 'warn',
+    failures,
+    meta: { checked: (payments || []).length },
+  };
+}
+
+export async function runTrialBalanceCheck(
+  companyId: string,
+  branchId?: string | null
+): Promise<LabCheckResult> {
+  const end = new Date().toISOString().slice(0, 10);
+  const tb = await accountingReportsService.getTrialBalance(companyId, '1900-01-01', end, branchId || undefined);
+  const ok = Math.abs(tb.difference) < 0.02;
+  return {
+    id: 'trial_balance',
+    label: 'Trial balance (journal lines)',
+    category: 'engine',
+    defaultClassification: ok ? undefined : 'legacy_data',
+    status: ok ? 'pass' : 'fail',
+    failures: ok
+      ? []
+      : [
+          {
+            module: 'journal_entry_lines',
+            step: 'trial_balance',
+            record: 'company aggregate',
+            expected: 'totalDebit === totalCredit',
+            actual: `debit=${tb.totalDebit} credit=${tb.totalCredit} diff=${tb.difference}`,
+            classification: 'legacy_data',
+            navActions: [
+              { type: 'accounting', tab: 'journal_entries', label: 'Journal entries' },
+              { type: 'accounting', tab: 'accounts', label: 'Accounts' },
+            ],
+          },
+        ],
+    meta: { totalDebit: tb.totalDebit, totalCredit: tb.totalCredit, difference: tb.difference },
+  };
+}
+
+export async function runBalanceSheetCheck(
+  companyId: string,
+  branchId?: string | null
+): Promise<LabCheckResult> {
+  const asOf = new Date().toISOString().slice(0, 10);
+  const bs = await accountingReportsService.getBalanceSheet(companyId, asOf, branchId || undefined);
+  const ok = Math.abs(bs.difference) < 0.02;
+  return {
+    id: 'balance_sheet',
+    label: 'Balance sheet equation',
+    category: 'engine',
+    defaultClassification: ok ? undefined : 'legacy_data',
+    status: ok ? 'pass' : 'fail',
+    failures: ok
+      ? []
+      : [
+          {
+            module: 'reports',
+            step: 'balance_sheet',
+            record: `as_of=${bs.asOfDate}`,
+            expected: 'Assets = Liabilities + Equity (incl. net income)',
+            actual: `diff=${bs.difference} assets=${bs.totalAssets} L+E=${bs.totalLiabilitiesAndEquity}`,
+            classification: 'legacy_data',
+            navActions: [{ type: 'accounting', tab: 'accounts', label: 'Accounts' }],
+          },
+        ],
+    meta: {
+      totalAssets: bs.totalAssets,
+      totalLiabilitiesAndEquity: bs.totalLiabilitiesAndEquity,
+      difference: bs.difference,
+    },
+  };
+}
+
+export async function runPnLConsistencyCheck(
+  companyId: string,
+  branchId?: string | null
+): Promise<LabCheckResult> {
+  const start = `${new Date().getFullYear()}-01-01`;
+  const end = new Date().toISOString().slice(0, 10);
+  const pl = await accountingReportsService.getProfitLoss(companyId, start, end, branchId || undefined);
+  const derived = pl.grossProfit - pl.expenses.total;
+  const ok = Math.abs(derived - pl.netProfit) < 0.02;
+  return {
+    id: 'pnl_consistency',
+    label: 'P&L internal consistency',
+    category: 'engine',
+    defaultClassification: ok ? undefined : 'engine_bug',
+    status: ok ? 'pass' : 'fail',
+    failures: ok
+      ? []
+      : [
+          {
+            module: 'profit_loss',
+            step: 'net_profit',
+            record: `${start}..${end}`,
+            expected: `netProfit = grossProfit - expenses (${derived})`,
+            actual: String(pl.netProfit),
+            classification: 'engine_bug',
+          },
+        ],
+    meta: { grossProfit: pl.grossProfit, expenses: pl.expenses.total, netProfit: pl.netProfit },
+  };
+}
+
+export async function runReceivablesVsARCheck(companyId: string, branchId?: string | null): Promise<LabCheckResult> {
+  let saleQuery = supabase
+    .from('sales')
+    .select('due_amount')
+    .eq('company_id', companyId)
+    .eq('status', 'final');
+  if (branchId && branchId !== 'all') saleQuery = saleQuery.eq('branch_id', branchId);
+  const { data: sales } = await saleQuery;
+  const sumDue = (sales || []).reduce((a, s: any) => a + (Number(s.due_amount) || 0), 0);
+
+  const { data: arAcc } = await supabase
+    .from('accounts')
+    .select('id, code, name')
+    .eq('company_id', companyId)
+    .or('code.eq.1100,code.eq.1200,name.ilike.%receivable%')
+    .limit(5);
+
+  const arId = (arAcc || []).find((a: any) => String(a.code) === '1100')?.id || (arAcc || [])[0]?.id;
+  let arBalance = 0;
+  if (arId) {
+    const map = await accountingReportsService.getAccountBalancesFromJournal(
+      companyId,
+      new Date().toISOString().slice(0, 10),
+      branchId || undefined
+    );
+    arBalance = map[arId] ?? 0;
+  }
+
+  const diff = Math.round((sumDue - arBalance) * 100) / 100;
+  const ok = Math.abs(diff) < 1;
+  return {
+    id: 'ar_reconcile',
+    label: 'Receivables (sales.due) vs AR journal balance',
+    category: 'reconciliation',
+    defaultClassification: ok ? undefined : 'reconciliation_timing',
+    status: ok ? 'pass' : 'warn',
+    failures: ok
+      ? []
+      : [
+          {
+            module: 'reconciliation',
+            step: 'ar',
+            record: arId || 'no AR account',
+            expected: `≈ sum final sale due_amount (${sumDue})`,
+            actual: `AR journal balance ${arBalance} diff=${diff}`,
+            classification: 'reconciliation_timing',
+            navActions: [
+              { type: 'accounting', tab: 'receivables', label: 'Receivables' },
+              ...(arId
+                ? ([
+                    {
+                      type: 'accounting' as const,
+                      tab: 'ledger' as const,
+                      focusAccountId: arId,
+                      label: 'Ledger (pick AR)',
+                    },
+                  ] as LabNavAction[])
+                : []),
+              { type: 'customer_ledger', label: 'Customer ledger test page' },
+            ],
+          },
+        ],
+    meta: { sumDue, arBalance, diff },
+  };
+}
+
+export async function runPayablesVsAPCheck(companyId: string, branchId?: string | null): Promise<LabCheckResult> {
+  let pq = supabase
+    .from('purchases')
+    .select('due_amount')
+    .eq('company_id', companyId)
+    .in('status', [...PURCHASE_STATUSES_FOR_PAYABLE_RECONCILIATION]);
+  if (branchId && branchId !== 'all') pq = pq.eq('branch_id', branchId);
+  const { data: purchases } = await pq;
+  const sumDue = (purchases || []).reduce((a, p: any) => a + (Number(p.due_amount) || 0), 0);
+
+  const { data: apAcc } = await supabase
+    .from('accounts')
+    .select('id, code')
+    .eq('company_id', companyId)
+    .or('code.eq.2000,code.eq.2010')
+    .limit(3);
+  const apId = (apAcc || []).find((a: any) => String(a.code) === '2000')?.id || (apAcc || [])[0]?.id;
+  let apBalance = 0;
+  if (apId) {
+    const map = await accountingReportsService.getAccountBalancesFromJournal(
+      companyId,
+      new Date().toISOString().slice(0, 10),
+      branchId || undefined
+    );
+    apBalance = Math.abs(map[apId] ?? 0);
+  }
+  const diff = Math.round((sumDue - apBalance) * 100) / 100;
+  const ok = Math.abs(diff) < 1;
+  return {
+    id: 'ap_reconcile',
+    label: 'Payables (purchase due) vs AP journal balance',
+    category: 'reconciliation',
+    defaultClassification: ok ? undefined : 'reconciliation_timing',
+    status: ok ? 'pass' : 'warn',
+    failures: ok
+      ? []
+      : [
+          {
+            module: 'reconciliation',
+            step: 'ap',
+            record: apId || 'no AP account',
+            expected: `≈ sum purchase due (${sumDue})`,
+            actual: `AP abs balance ${apBalance} diff=${diff}`,
+            classification: 'reconciliation_timing',
+            navActions: [
+              { type: 'accounting', tab: 'payables', label: 'Payables' },
+              { type: 'supplier_ledger', label: 'Supplier context' },
+            ],
+          },
+        ],
+    meta: { sumDue, apBalance, diff },
+  };
+}
+
+export async function runInventoryValuationVsStockCheck(companyId: string): Promise<LabCheckResult> {
+  const { data: invAcc } = await supabase
+    .from('accounts')
+    .select('id')
+    .eq('company_id', companyId)
+    .eq('code', '1200')
+    .maybeSingle();
+  const map = await accountingReportsService.getAccountBalancesFromJournal(
+    companyId,
+    new Date().toISOString().slice(0, 10)
+  );
+  const invGl = invAcc?.id ? map[invAcc.id] ?? 0 : 0;
+
+  const { data: mov } = await supabase
+    .from('stock_movements')
+    .select('quantity, unit_cost, total_cost')
+    .eq('company_id', companyId)
+    .limit(5000);
+  let movValue = 0;
+  (mov || []).forEach((m: any) => {
+    const tc = Number(m.total_cost);
+    if (!Number.isNaN(tc) && tc !== 0) movValue += tc;
+    else movValue += (Number(m.quantity) || 0) * (Number(m.unit_cost) || 0);
+  });
+
+  return {
+    id: 'inventory_vs_movements',
+    label: 'Inventory GL (1200) vs movement cost heuristic',
+    category: 'reconciliation',
+    defaultClassification: 'informational',
+    status: 'warn',
+    failures: [
+      {
+        module: 'inventory',
+        step: 'compare',
+        record: 'heuristic only',
+        expected: 'Use Reports → Inventory Valuation',
+        actual: `GL(1200)~${invGl} heuristic_move_sum~${Math.round(movValue * 100) / 100}`,
+        classification: 'informational',
+        navActions: [{ type: 'accounting', tab: 'accounts', label: 'Accounts (1200)' }],
+      },
+    ],
+    meta: { invGlBalance: invGl, movementHeuristic: movValue },
+  };
+}
+
+export async function runAccountsVsJournalCheck(companyId: string): Promise<LabCheckResult> {
+  let accounts: any[] | null = null;
+  const sel = await supabase
+    .from('accounts')
+    .select('id, code, name, balance')
+    .eq('company_id', companyId)
+    .eq('is_active', true)
+    .limit(200);
+  if (sel.error?.message?.includes('balance') || sel.error?.code === '42703') {
+    const alt = await supabase
+      .from('accounts')
+      .select('id, code, name')
+      .eq('company_id', companyId)
+      .eq('is_active', true)
+      .limit(200);
+    accounts = alt.data;
+  } else {
+    accounts = sel.data;
+  }
+
+  const journalMap = await accountingReportsService.getAccountBalancesFromJournal(
+    companyId,
+    new Date().toISOString().slice(0, 10)
+  );
+
+  const failures: LabCheckFailure[] = [];
+  let compared = 0;
+  const hasBalanceColumn = (accounts || []).some((a: any) => 'balance' in a && (a as any).balance != null);
+  if (!hasBalanceColumn) {
+    return {
+      id: 'accounts_vs_journal',
+      label: 'accounts.balance vs journal-derived balance',
+      category: 'data_quality',
+      status: 'skip',
+      failures: [],
+      meta: { note: 'accounts.balance column not available — skipped' },
+    };
+  }
+  for (const a of accounts || []) {
+    const jid = (a as any).id;
+    const colBal = Number((a as any).balance ?? 0) || 0;
+    const jBal = journalMap[jid];
+    if (jBal === undefined) continue;
+    compared++;
+    if (Math.abs(colBal - jBal) > 0.02) {
+      failures.push({
+        module: 'accounts',
+        step: 'balance_column_vs_journal',
+        record: `accounts.id=${jid} code=${(a as any).code}`,
+        expected: String(jBal),
+        actual: String(colBal),
+        classification: 'missing_backfill',
+        navActions: [
+          {
+            type: 'accounting',
+            tab: 'accounts',
+            focusAccountId: jid,
+            label: 'Accounts',
+          },
+          { type: 'copy', text: jid, label: 'Copy account id' },
+        ],
+      });
+    }
+  }
+  return {
+    id: 'accounts_vs_journal',
+    label: 'accounts.balance vs journal-derived balance',
+    category: 'data_quality',
+    defaultClassification: failures.length ? 'missing_backfill' : undefined,
+    status: failures.length === 0 ? 'pass' : 'warn',
+    failures,
+    meta: { compared },
+  };
+}
+
+function unbalancedCheckResult(unbalanced: JournalBalanceRow[]): LabCheckResult {
+  return {
+    id: 'je_balance',
+    label: 'Every journal entry balanced',
+    category: 'engine',
+    defaultClassification: unbalanced.length ? 'engine_bug' : undefined,
+    status: unbalanced.length === 0 ? 'pass' : 'fail',
+    failures: unbalanced.map((u) => ({
+      module: 'journal_entries',
+      step: 'line_totals',
+      record: u.journal_entry_id,
+      expected: 'debit === credit',
+      actual: `debit=${u.total_debit} credit=${u.total_credit} diff=${u.diff} ref=${u.reference_type}/${u.reference_id}`,
+      classification: (u.reference_type === 'sale' || u.reference_type === 'purchase' ? 'engine_bug' : 'legacy_data') as WarningClassification,
+      navActions: navForUnbalancedRow(u),
+    })),
+    meta: { count: unbalanced.length },
+  };
+}
+
+/** Live company-wide reconciliation (includes legacy data). */
+export async function runAllReconciliationChecks(
+  companyId: string,
+  branchId?: string | null
+): Promise<LabCheckResult[]> {
+  const unbalanced = await findUnbalancedJournalEntries(companyId, branchId);
+  const paymentLink = await findPaymentsMissingJournalLink(companyId, 80);
+
+  return [
+    unbalancedCheckResult(unbalanced),
+    paymentLink,
+    await runTrialBalanceCheck(companyId, branchId),
+    await runBalanceSheetCheck(companyId, branchId),
+    await runPnLConsistencyCheck(companyId, branchId),
+    await runReceivablesVsARCheck(companyId, branchId),
+    await runPayablesVsAPCheck(companyId, branchId),
+    await runInventoryValuationVsStockCheck(companyId),
+    await runAccountsVsJournalCheck(companyId),
+  ];
+}
+
+/**
+ * Fresh scenario: only JEs + payments tied to the selected sale or purchase.
+ * Use after exercising one document to see if the engine left that document internally consistent.
+ */
+export async function runFreshScenarioChecks(
+  companyId: string,
+  branchId: string | null | undefined,
+  opts: { saleId?: string; purchaseId?: string }
+): Promise<LabCheckResult[]> {
+  if (!opts.saleId && !opts.purchaseId) {
+    return [
+      {
+        id: 'fresh_scope',
+        label: 'Fresh scenario scope',
+        category: 'engine',
+        defaultClassification: 'informational',
+        status: 'skip',
+        failures: [],
+        meta: { hint: 'Select a sale or purchase, then run Fresh mode.' },
+      },
+    ];
+  }
+
+  const allUnbalanced = await findUnbalancedJournalEntries(companyId, branchId);
+  const rt = opts.saleId ? 'sale' : 'purchase';
+  const docId = (opts.saleId || opts.purchaseId) as string;
+  const scoped = allUnbalanced.filter((u) => u.reference_type === rt && u.reference_id === docId);
+
+  const results: LabCheckResult[] = [unbalancedCheckResult(scoped)];
+
+  if (opts.saleId) {
+    const { data: sale } = await supabase
+      .from('sales')
+      .select('paid_amount, id, status')
+      .eq('id', opts.saleId)
+      .single();
+    const { data: pays } = await supabase
+      .from('payments')
+      .select('amount')
+      .eq('reference_type', 'sale')
+      .eq('reference_id', opts.saleId);
+    const sumPay = (pays || []).reduce((a, p: any) => a + (Number(p.amount) || 0), 0);
+    const paid = Number((sale as any)?.paid_amount) || 0;
+    const ok = Math.abs(sumPay - paid) < 0.02;
+    results.push({
+      id: 'fresh_sale_payments_vs_paid',
+      label: 'Fresh: Σ payments vs sales.paid_amount',
+      category: 'engine',
+      status: ok ? 'pass' : 'warn',
+      failures: ok
+        ? []
+        : [
+            {
+              module: 'sales',
+              step: 'paid_amount',
+              record: opts.saleId,
+              expected: `sum(payments)=${sumPay}`,
+              actual: `paid_amount=${paid}`,
+              classification: 'engine_bug',
+              navActions: [{ type: 'sale', saleId: opts.saleId, label: 'Open sale' }],
+            },
+          ],
+      meta: { sumPay, paid },
+    });
+  }
+
+  if (opts.purchaseId) {
+    const { data: pur } = await supabase
+      .from('purchases')
+      .select('paid_amount, id')
+      .eq('id', opts.purchaseId)
+      .single();
+    const { data: pays } = await supabase
+      .from('payments')
+      .select('amount')
+      .eq('reference_type', 'purchase')
+      .eq('reference_id', opts.purchaseId);
+    const sumPay = (pays || []).reduce((a, p: any) => a + (Number(p.amount) || 0), 0);
+    const paid = Number((pur as any)?.paid_amount) || 0;
+    const ok = Math.abs(sumPay - paid) < 0.02;
+    results.push({
+      id: 'fresh_purchase_payments_vs_paid',
+      label: 'Fresh: Σ payments vs purchases.paid_amount',
+      category: 'engine',
+      status: ok ? 'pass' : 'warn',
+      failures: ok
+        ? []
+        : [
+            {
+              module: 'purchases',
+              step: 'paid_amount',
+              record: opts.purchaseId,
+              expected: `sum(payments)=${sumPay}`,
+              actual: `paid_amount=${paid}`,
+              classification: 'engine_bug',
+              navActions: [{ type: 'purchase', purchaseId: opts.purchaseId, label: 'Open purchase' }],
+            },
+          ],
+      meta: { sumPay, paid },
+    });
+  }
+
+  return results;
+}
+
+export function snapshotToComparableJson(s: unknown): string {
+  if (s == null) return 'null';
+  return JSON.stringify(s, null, 2);
+}

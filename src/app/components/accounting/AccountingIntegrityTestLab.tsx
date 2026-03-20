@@ -438,3 +438,5 @@ export function AccountingIntegrityTestLab() {
     </div>
   );
 }
+
+export default AccountingIntegrityTestLab;

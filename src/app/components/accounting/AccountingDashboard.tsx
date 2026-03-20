@@ -54,6 +54,7 @@ import { useSettings } from '@/app/context/SettingsContext';
 import { AccountingTestPage } from '@/app/components/test/AccountingTestPage';
 import { AddEntryV2 } from './AddEntryV2';
 import { useSupabase } from '@/app/context/SupabaseContext';
+import { INTEGRITY_LAB_SESSION_KEY } from '@/app/lib/integrityLabConstants';
 
 /** Add Entry: V2 = new default (typed, theme-matched). Set false to use legacy AccountingTestPage. */
 const USE_ADD_ENTRY_V2 = true;
@@ -67,7 +68,7 @@ const CourierReportsTab = lazy(() => import('./CourierReportsTab').then((m) => (
 const DayBookReport = lazy(() => import('@/app/components/reports/DayBookReport').then((m) => ({ default: m.DayBookReport })));
 const RoznamchaReport = lazy(() => import('@/app/components/reports/RoznamchaReport').then((m) => ({ default: m.RoznamchaReport })));
 const AccountLedgerReportPage = lazy(() => import('@/app/components/reports/AccountLedgerReportPage').then((m) => ({ default: m.AccountLedgerReportPage })));
-const AccountingIntegrityTestLab = lazy(() => import('./AccountingIntegrityTestLab').then((m) => ({ default: m.AccountingIntegrityTestLab })));
+const AccountingIntegrityTestLab = lazy(() => import('./AccountingIntegrityTestLab'));
 import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
 import { useCheckPermission } from '@/app/hooks/useCheckPermission';
 import { DateTimeDisplay } from '@/app/components/ui/DateTimeDisplay';
@@ -232,6 +233,28 @@ export const AccountingDashboard = () => {
     if (activeTab === 'deposits' && !settingsModules.rentalModuleEnabled) setActiveTab('journal_entries');
     if (activeTab === 'studio' && !settingsModules.studioModuleEnabled) setActiveTab('journal_entries');
   }, [activeTab, settingsModules.rentalModuleEnabled, settingsModules.studioModuleEnabled]);
+
+  /** Accounting Integrity Lab: deep-link to tab + optional search focus */
+  useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem(INTEGRITY_LAB_SESSION_KEY);
+      if (!raw) return;
+      const o = JSON.parse(raw) as {
+        tab?: typeof activeTab;
+        ledgerType?: typeof ledgerType;
+        searchTerm?: string;
+      };
+      if (o.tab) setActiveTab(o.tab);
+      if (o.ledgerType) setLedgerType(o.ledgerType);
+      if (o.searchTerm) setSearchTerm(o.searchTerm);
+      sessionStorage.removeItem(INTEGRITY_LAB_SESSION_KEY);
+      if (o.searchTerm) {
+        toast.info(`Filtered journal search: ${o.searchTerm.slice(0, 8)}…`);
+      }
+    } catch {
+      sessionStorage.removeItem(INTEGRITY_LAB_SESSION_KEY);
+    }
+  }, []);
 
   // Filter transactions based on search and filters
   const filteredTransactions = useMemo(() => {
