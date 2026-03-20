@@ -4,7 +4,7 @@ This document is the **RESULT.md** deliverable for the internal **Accounting Int
 
 ## Git commit hash
 
-**Latest (accounting engine hygiene):** `fdb85b4`. Record **`git rev-parse HEAD`** after each tooling drop (avoid stale SHAs in docs).
+**Latest (accounting engine hygiene):** `6a7674b`. Record **`git rev-parse HEAD`** after each tooling drop (avoid stale SHAs in docs).
 
 ---
 

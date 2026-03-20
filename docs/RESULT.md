@@ -7,7 +7,7 @@ See the full deliverable: **[ACCOUNTING_INTEGRITY_LAB_RESULT.md](./ACCOUNTING_IN
 - **Code:** `saleAccountingService` requires DB `sales.status === 'final'` before document JE; `SalesContext` removed duplicate JE path + discount RPC (single Phase-4 service); `PurchaseContext` duplicate JE guard; `accountingService.createEntry` idempotent on duplicate sale/fingerprint.
 - **SQL:** `migrations/20260312_disable_legacy_auto_post_contact_triggers.sql` (+ prior stock migration for `movement_type`).
 - **Doc:** `docs/accounting/LEGACY_TRIGGER_AUDIT.md`.
-- **Commit:** `fdb85b4` (`fix(accounting): final-only sale/purchase JEs, dedupe inserts, drop legacy auto-post triggers`).
+- **Commit:** `6a7674b` (`fix(accounting): final-only sale/purchase JEs, dedupe inserts, drop legacy auto-post triggers`).
 
 ## Latest integrity outcome (unbalanced JE repair)
 
