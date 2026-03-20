@@ -84,7 +84,7 @@ import { AccountingTestPage } from './components/test/AccountingTestPage';
 import { SalesListDesignTestPage } from './components/test/SalesListDesignTestPage';
 const CustomerLedgerTestPage = lazy(() => import('./components/customer-ledger-test/CustomerLedgerTestPage').then(m => ({ default: m.CustomerLedgerTestPage })));
 import TestLedger from './TestLedger';
-const CustomerLedgerInteractiveTest = lazy(() => import('./components/customer-ledger-test/CustomerLedgerInteractiveTest').then(m => ({ default: m.CustomerLedgerInteractiveTest })));
+const CustomerLedgerInteractiveTest = lazy(() => import('./components/customer-ledger-test/CustomerLedgerInteractiveTest'));
 import { SupabaseProvider } from './context/SupabaseContext';
 import { ProtectedRoute } from './components/auth/ProtectedRoute';
 import { PublicContactForm } from './components/public/PublicContactForm';
@@ -92,6 +92,7 @@ import { ErrorBoundary } from './components/shared/ErrorBoundary';
 import { useSettings } from './context/SettingsContext';
 import { GlobalFilterProvider } from './context/GlobalFilterContext';
 import { PermissionInspectorPage } from './components/admin/PermissionInspectorPage';
+const AccountingIntegrityLabPage = lazy(() => import('./components/admin/AccountingIntegrityLabPage'));
 
 // v1.0.1 - Enhanced Product Form with SKU auto-generation and global access
 
@@ -330,6 +331,11 @@ const AppContent = () => {
       {currentView === 'cutover-prep' && <CutoverPrepPage />}
       {currentView === 'responsive-test' && <ResponsiveTestPage />}
       {currentView === 'test-account-entry' && <AccountingTestPage />}
+      {currentView === 'accounting-integrity-lab' && (
+        <Suspense fallback={<div className="flex items-center justify-center p-12"><div className="animate-pulse text-gray-500">Loading lab…</div></div>}>
+          <AccountingIntegrityLabPage />
+        </Suspense>
+      )}
       {currentView === 'test-ledger' && <TestLedger />}
       {currentView === 'customer-ledger-interactive-test' && (
         <Suspense fallback={<div className="flex items-center justify-center p-12"><div className="animate-pulse text-gray-500">Loading...</div></div>}>

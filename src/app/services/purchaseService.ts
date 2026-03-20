@@ -1,6 +1,7 @@
 import { supabase } from '@/lib/supabase';
 import { activityLogService } from '@/app/services/activityLogService';
 import { createSupplierPayment } from '@/app/services/supplierPaymentService';
+import { PURCHASE_HEADER_COLUMNS } from '@/app/lib/purchaseDbConstants';
 
 /** Enrich purchases with creator full_name. purchases.created_by = auth.users.id; resolve via users.auth_user_id. */
 async function enrichPurchasesWithCreatorNames(purchases: any[]): Promise<void> {
@@ -390,25 +391,117 @@ export const purchaseService = {
 
   // Get single purchase (include attachments + purchase_charges for line-level extra expenses on edit)
   // Use explicit column lists for product/variation to avoid requesting current_stock (column may not exist).
-  async getPurchase(id: string) {
-    const { data, error } = await supabase
+  /** When embeds fail (PGRST204/400) or `*, attachments` duplicate broke PostgREST, load header + related rows separately. */
+  async getPurchaseSplit(id: string): Promise<any> {
+    const { data: header, error: hErr } = await supabase
       .from('purchases')
-      .select(`
+      .select(PURCHASE_HEADER_COLUMNS)
+      .eq('id', id)
+      .single();
+    if (hErr) throw hErr;
+
+    const supplierId = (header as any)?.supplier_id as string | null | undefined;
+    const [{ data: itemsRaw }, chargesRes, supplierRes] = await Promise.all([
+      supabase.from('purchase_items').select('*').eq('purchase_id', id),
+      supabase.from('purchase_charges').select('*').eq('purchase_id', id),
+      supplierId
+        ? supabase.from('contacts').select('id, name, phone').eq('id', supplierId).maybeSingle()
+        : Promise.resolve({ data: null, error: null }),
+    ]);
+    const charges = chargesRes.error ? [] : chargesRes.data || [];
+
+    const itemsList = itemsRaw || [];
+    const productIds = [...new Set(itemsList.map((r: any) => r.product_id).filter(Boolean))] as string[];
+    const variationIds = [...new Set(itemsList.map((r: any) => r.variation_id).filter(Boolean))] as string[];
+
+    let productsById: Record<string, any> = {};
+    if (productIds.length > 0) {
+      const prodsRes = await supabase
+        .from('products')
+        .select('id, name, sku, cost_price, has_variations, unit_id, category_id, min_stock, max_stock')
+        .in('id', productIds);
+      if (!prodsRes.error && prodsRes.data) {
+        (prodsRes.data as any[]).forEach((p: any) => {
+          if (p?.id) productsById[p.id] = p;
+        });
+      } else {
+        const minimal = await supabase.from('products').select('id, name, sku').in('id', productIds);
+        (minimal.data || []).forEach((p: any) => {
+          if (p?.id) productsById[p.id] = p;
+        });
+      }
+    }
+
+    let varsById: Record<string, any> = {};
+    if (variationIds.length > 0) {
+      const { data: vars } = await supabase
+        .from('product_variations')
+        .select('id, product_id, sku, attributes')
+        .in('id', variationIds);
+      (vars || []).forEach((v: any) => {
+        if (v?.id) varsById[v.id] = v;
+      });
+    }
+
+    const items = itemsList.map((row: any) => ({
+      ...row,
+      product: row.product_id ? productsById[row.product_id] ?? null : null,
+      variation: row.variation_id ? varsById[row.variation_id] ?? null : null,
+    }));
+
+    const data: any = {
+      ...(header as any),
+      supplier: supplierRes?.data ?? null,
+      items,
+      purchase_charges: charges || [],
+    };
+
+    const { data: returns } = await supabase
+      .from('purchase_returns')
+      .select('id')
+      .eq('original_purchase_id', id)
+      .eq('status', 'final')
+      .limit(1);
+
+    data.hasReturn = (returns && returns.length > 0) || false;
+    data.returnCount = returns?.length || 0;
+    data.charges = Array.isArray(data.purchase_charges) ? data.purchase_charges : [];
+
+    return data;
+  },
+
+  async getPurchase(id: string) {
+    // NOTE: Do not list `attachments` after `*` — duplicate field in select often yields PostgREST 400 (`select=*` requests).
+    const embeddedSelect = `
         *,
-        attachments,
-        supplier:contacts(*),
+        supplier:contacts(id, name, phone),
         items:purchase_items(
           *,
           product:products(id, name, sku, cost_price, has_variations, unit_id, category_id, min_stock, max_stock),
           variation:product_variations(id, product_id, sku, attributes)
         ),
         purchase_charges(*)
-      `)
-      .eq('id', id)
-      .single();
+      `;
 
-    if (error) throw error;
-    
+    const { data, error } = await supabase.from('purchases').select(embeddedSelect).eq('id', id).single();
+
+    if (error) {
+      const code = (error as any).code;
+      const msg = String((error as any).message || '');
+      const retry =
+        code === 'PGRST200' ||
+        code === 'PGRST204' ||
+        code === '42703' ||
+        (error as any).status === 400 ||
+        msg.toLowerCase().includes('column') ||
+        msg.toLowerCase().includes('relationship');
+      console.warn('[PURCHASE SERVICE] getPurchase embedded failed; retrying split fetch:', error);
+      if (retry) {
+        return this.getPurchaseSplit(id);
+      }
+      throw error;
+    }
+
     // 🔒 LOCK CHECK: Check if purchase has returns (prevents editing)
     const { data: returns } = await supabase
       .from('purchase_returns')
@@ -416,14 +509,13 @@ export const purchaseService = {
       .eq('original_purchase_id', id)
       .eq('status', 'final')
       .limit(1);
-    
+
     if (data) {
-      data.hasReturn = (returns && returns.length > 0) || false;
-      data.returnCount = returns?.length || 0;
-      // Expose as charges for form (line-level extra expenses + discount)
-      data.charges = Array.isArray((data as any).purchase_charges) ? (data as any).purchase_charges : [];
+      (data as any).hasReturn = (returns && returns.length > 0) || false;
+      (data as any).returnCount = returns?.length || 0;
+      (data as any).charges = Array.isArray((data as any).purchase_charges) ? (data as any).purchase_charges : [];
     }
-    
+
     return data;
   },
 
@@ -475,7 +567,12 @@ export const purchaseService = {
         .eq('movement_type', 'PURCHASE_CANCELLED')
         .limit(1);
       if (existingReversal && existingReversal.length > 0) {
-        const { data, error } = await supabase.from('purchases').update({ status }).eq('id', id).select().single();
+        const { data, error } = await supabase
+          .from('purchases')
+          .update({ status })
+          .eq('id', id)
+          .select(PURCHASE_HEADER_COLUMNS)
+          .single();
         if (error) throw error;
         return data;
       }
@@ -509,7 +606,12 @@ export const purchaseService = {
         }
       }
 
-      const { data, error } = await supabase.from('purchases').update({ status }).eq('id', id).select().single();
+      const { data, error } = await supabase
+        .from('purchases')
+        .update({ status })
+        .eq('id', id)
+        .select(PURCHASE_HEADER_COLUMNS)
+        .single();
       if (error) throw error;
       return data;
     }
@@ -518,7 +620,7 @@ export const purchaseService = {
       .from('purchases')
       .update({ status })
       .eq('id', id)
-      .select()
+      .select(PURCHASE_HEADER_COLUMNS)
       .single();
 
     // Auto-fix: if update failed and we sent 'final', try all common enum casings (DB may use final/FINAL/Final).
@@ -529,7 +631,7 @@ export const purchaseService = {
           .from('purchases')
           .update({ status: value })
           .eq('id', id)
-          .select()
+          .select(PURCHASE_HEADER_COLUMNS)
           .single();
         if (!retryError && retryData) return retryData;
       }
@@ -572,7 +674,7 @@ export const purchaseService = {
       .from('purchases')
       .update(sanitized)
       .eq('id', id)
-      .select()
+      .select(PURCHASE_HEADER_COLUMNS)
       .single();
 
     if (error) throw error;

@@ -4,7 +4,7 @@ This document is the **RESULT.md** deliverable for the internal **Accounting Int
 
 ## Git commit hash
 
-Tooling blockers (purchase 400 filter, lazy export, snapshot truth): **`86d28a9aea5331f2984a1a75c0d10a2da821c5db`**
+Record the current **`git rev-parse HEAD`** after each tooling drop (avoid stale SHAs in docs).
 
 ---
 
@@ -92,6 +92,14 @@ Only **final / posted** documents should drive accounting and stock. The lab UI 
 | **3** | Before/after both showed e.g. `cancelled` after failed cancel | Stale **After** from a previous successful run; no explicit clear on error. | `wrapAction`: clear `snapshotAfter` + `lastActionError` at start; on catch set `lastActionError` to formatted API error and **do not** fetch after; **After** panel shows placeholder when action failed. |
 
 **Priority 4 (your step):** Re-run **Fresh** and **Live** reconciliation after deploy; then trust TB/BS/AR/AP/JE triage again.
+
+### Follow-up (purchase by-id GET 400 + lazy + snapshot audit)
+
+| Item | Root cause | Fix |
+|------|------------|-----|
+| `GET …/purchases?id=eq…&select=*` **400** | (1) **Duplicate select**: `getPurchase` used `*` plus a second `attachments` field — PostgREST rejects overlapping select → **400**. (2) Broken **embed** (missing FK / schema drift) also yields 400/PGRST — needs fallback. | Removed duplicate `attachments`; narrowed `supplier:contacts(*)` to `id, name, phone`; on embed error **retry `getPurchaseSplit`**: header via `PURCHASE_HEADER_COLUMNS`, then `purchase_items`, optional `purchase_charges`, batched `products` / `product_variations`, optional `contacts`. Patches use `.select(PURCHASE_HEADER_COLUMNS)` instead of bare `.select()` where safe. |
+| **Lazy undefined** (after Contact Search test) | **`CustomerLedgerInteractiveTest`** is **`export default`** only; `App.tsx` used `.then(m => ({ default: m.CustomerLedgerInteractiveTest }))` → **`undefined`**. | `lazy(() => import('…/CustomerLedgerInteractiveTest'))` (default module). |
+| **Snapshot trust** | Need explicit timeline + outcome badge. | Tab **F**: ISO timestamps (before / action start / action end / after), **Success / Failed** badge, after skipped on failure; header uses `div` not `CardDescription` `<p>` to fix DOM nesting warning. |
 
 ### Known non-lab noise (from browser logs)
 

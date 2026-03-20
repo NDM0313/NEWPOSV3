@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { Button } from '@/app/components/ui/button';
 import { Label } from '@/app/components/ui/label';
+import { Badge } from '@/app/components/ui/badge';
 import {
   Select,
   SelectContent,
@@ -137,6 +138,20 @@ export function AccountingIntegrityLabPage() {
   const [lastActionError, setLastActionError] = useState<string | null>(null);
   const [lastAction, setLastAction] = useState<string>('');
   const [scenarioPass, setScenarioPass] = useState<boolean | null>(null);
+  /** Audit trail for tab F (no nested <p> inside CardDescription). */
+  const [snapshotMeta, setSnapshotMeta] = useState<{
+    beforeAt: string | null;
+    actionStartedAt: string | null;
+    actionEndedAt: string | null;
+    afterAt: string | null;
+    outcome: 'none' | 'success' | 'failure';
+  }>({
+    beforeAt: null,
+    actionStartedAt: null,
+    actionEndedAt: null,
+    afterAt: null,
+    outcome: 'none',
+  });
 
   const effectiveBranch = branchId && branchId !== 'all' ? branchId : null;
 
@@ -297,20 +312,44 @@ export function AccountingIntegrityLabPage() {
     }
 
     const docId = kind === 'sale' ? selectedSaleId : selectedPurchaseId;
+    const beforeIso = new Date().toISOString();
     setLastActionError(null);
     setSnapshotAfter(null);
+    setSnapshotMeta({
+      beforeAt: null,
+      actionStartedAt: null,
+      actionEndedAt: null,
+      afterAt: null,
+      outcome: 'none',
+    });
     if (docId) {
       const before = await captureExtendedSnapshot(kind, docId);
       setSnapshotBefore(before);
+      setSnapshotMeta((m) => ({
+        ...m,
+        beforeAt: beforeIso,
+        actionStartedAt: new Date().toISOString(),
+      }));
+    } else {
+      setSnapshotMeta((m) => ({ ...m, actionStartedAt: new Date().toISOString() }));
     }
     setLastAction(name);
     try {
       await fn();
+      const endedOk = new Date().toISOString();
       toast.success(name);
       await loadDocs();
       if (docId) {
         const after = await captureExtendedSnapshot(kind, docId);
         setSnapshotAfter(after);
+        setSnapshotMeta((m) => ({
+          ...m,
+          actionEndedAt: endedOk,
+          afterAt: new Date().toISOString(),
+          outcome: 'success',
+        }));
+      } else {
+        setSnapshotMeta((m) => ({ ...m, actionEndedAt: endedOk, outcome: 'success' }));
       }
       await runChecks();
     } catch (e: unknown) {
@@ -318,6 +357,12 @@ export function AccountingIntegrityLabPage() {
       toast.error(`${name}: ${summary}`);
       setLastActionError(detailJson);
       setSnapshotAfter(null);
+      setSnapshotMeta((m) => ({
+        ...m,
+        actionEndedAt: new Date().toISOString(),
+        afterAt: null,
+        outcome: 'failure',
+      }));
       setScenarioPass(false);
     }
   };
@@ -1128,16 +1173,48 @@ export function AccountingIntegrityLabPage() {
           <Card>
             <CardHeader>
               <CardTitle>Snapshot compare</CardTitle>
-              <CardDescription className="space-y-1">
-                <p>
-                  Last action: <strong>{lastAction || '—'}</strong>
-                </p>
-                <p className="text-xs">
-                  <strong>Before</strong> is always fetched from the server immediately before the action.{' '}
-                  <strong>After</strong> is fetched only after the action completes without error (no optimistic
-                  &quot;after&quot; on failed PATCH/cancel).
-                </p>
-              </CardDescription>
+              {/* div (not CardDescription/p) so we can nest blocks + badges without DOM nesting warnings */}
+              <div className="space-y-2 text-sm text-muted-foreground">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span>
+                    Last action: <strong className="text-foreground">{lastAction || '—'}</strong>
+                  </span>
+                  {snapshotMeta.outcome === 'success' && (
+                    <Badge variant="default" className="text-[10px]">
+                      Success
+                    </Badge>
+                  )}
+                  {snapshotMeta.outcome === 'failure' && (
+                    <Badge variant="destructive" className="text-[10px]">
+                      Failed
+                    </Badge>
+                  )}
+                </div>
+                <div className="text-xs font-mono space-y-0.5">
+                  <div>
+                    <span className="text-muted-foreground">Before captured (ISO):</span> {snapshotMeta.beforeAt || '—'}
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">Action started:</span> {snapshotMeta.actionStartedAt || '—'}
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">Action ended:</span> {snapshotMeta.actionEndedAt || '—'}
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">After captured (ISO):</span>{' '}
+                    {snapshotMeta.outcome === 'success'
+                      ? snapshotMeta.afterAt || '—'
+                      : snapshotMeta.outcome === 'failure'
+                        ? '— (skipped)'
+                        : '—'}
+                  </div>
+                </div>
+                <div className="text-xs">
+                  <strong className="text-foreground">Before</strong> is fetched from the server immediately before the
+                  action runs. <strong className="text-foreground">After</strong> is fetched only after a server-confirmed
+                  successful action — never from optimistic UI state.
+                </div>
+              </div>
             </CardHeader>
             <CardContent className="space-y-4">
               {lastActionError && (
