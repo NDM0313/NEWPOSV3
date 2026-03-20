@@ -10,6 +10,10 @@
  */
 
 import { supabase } from '@/lib/supabase';
+import {
+  canPostAccountingForPurchaseStatus,
+  purchasePoNoAllowsCanonicalDocumentJe,
+} from '@/app/lib/postingStatusGate';
 import { accountingService, type JournalEntry, type JournalEntryLine } from './accountingService';
 
 export type PurchaseAccountingSnapshot = {
@@ -101,6 +105,33 @@ async function purchaseJournalEntryExists(purchaseId: string): Promise<boolean> 
   return !!id;
 }
 
+async function assertPurchaseEligibleForDocumentJournal(purchaseId: string, poNo: string): Promise<boolean> {
+  const { data, error } = await supabase
+    .from('purchases')
+    .select('id, status, po_no')
+    .eq('id', purchaseId)
+    .maybeSingle();
+  if (error || !data) {
+    console.warn('[purchaseAccountingService] Cannot load purchase for accounting guard:', purchaseId, error?.message);
+    return false;
+  }
+  const status = (data as { status?: string }).status;
+  const dbPo = String((data as { po_no?: string }).po_no ?? '').trim() || poNo;
+  if (!canPostAccountingForPurchaseStatus(status)) {
+    console.warn(
+      `[purchaseAccountingService] Blocked document JE for ${dbPo}: purchase status is "${status}" (only final/received may post inventory/AP document).`
+    );
+    return false;
+  }
+  if (!purchasePoNoAllowsCanonicalDocumentJe(dbPo)) {
+    console.warn(
+      `[purchaseAccountingService] Blocked document JE for ${dbPo}: PO uses draft/order series (PDR/POR) while status is posted — renumber to PUR- before posting.`
+    );
+    return false;
+  }
+  return true;
+}
+
 export async function createPurchaseJournalEntry(params: {
   purchaseId: string;
   companyId: string;
@@ -127,6 +158,9 @@ export async function createPurchaseJournalEntry(params: {
   } = params;
   if (!purchaseId || !companyId) return null;
   if ((Number(total) || 0) <= 0) return null;
+
+  const eligible = await assertPurchaseEligibleForDocumentJournal(purchaseId, poNo);
+  if (!eligible) return null;
 
   const existingId = await findActiveCanonicalPurchaseDocumentJournalEntryId(purchaseId);
   if (existingId) {
@@ -359,6 +393,80 @@ export async function postPurchaseEditAdjustments(params: {
   return { adjustmentCount };
 }
 
+/**
+ * Cancel of posted purchase: mirror canonical document JE lines into purchase_reversal (original document JE kept for audit).
+ * Idempotent: returns existing active reversal JE id if present.
+ */
+export async function reversePurchaseDocumentJournalEntry(params: {
+  purchaseId: string;
+  companyId: string;
+  branchId?: string | null;
+  poNo: string;
+  performedBy?: string | null;
+}): Promise<string | null> {
+  const { purchaseId, companyId, branchId, poNo, performedBy } = params;
+  if (!purchaseId || !companyId) return null;
+
+  const { data: revExisting } = await supabase
+    .from('journal_entries')
+    .select('id')
+    .eq('reference_type', 'purchase_reversal')
+    .eq('reference_id', purchaseId)
+    .is('payment_id', null)
+    .or('is_void.is.null,is_void.eq.false')
+    .limit(1);
+  const revRow = (revExisting as { id: string }[] | null)?.[0];
+  if (revRow?.id) return revRow.id;
+
+  const docId = await findActiveCanonicalPurchaseDocumentJournalEntryId(purchaseId);
+  if (!docId) {
+    console.log(`[purchaseAccountingService] No canonical purchase document JE for ${poNo}, skipping reversal`);
+    return null;
+  }
+
+  const { data: lines, error: linesErr } = await supabase
+    .from('journal_entry_lines')
+    .select('account_id, debit, credit, description')
+    .eq('journal_entry_id', docId);
+  if (linesErr || !lines?.length) {
+    console.warn('[purchaseAccountingService] Could not load lines for purchase reversal:', linesErr?.message);
+    return null;
+  }
+
+  const entryNo = `JE-PUR-REV-${Date.now()}-${Math.random().toString(36).substr(2, 6).toUpperCase()}`;
+  const entryDate = new Date().toISOString().split('T')[0];
+  const entry: JournalEntry = {
+    id: '',
+    company_id: companyId,
+    branch_id: branchId && branchId !== 'all' ? branchId : undefined,
+    entry_no: entryNo,
+    entry_date: entryDate,
+    description: `Purchase cancelled – reversal of ${poNo}`,
+    reference_type: 'purchase_reversal',
+    reference_id: purchaseId,
+    created_by: performedBy || undefined,
+  };
+
+  const lineRows: JournalEntryLine[] = (lines as { account_id: string; debit: number; credit: number; description?: string }[]).map(
+    (l) => ({
+      id: '',
+      journal_entry_id: '',
+      account_id: l.account_id,
+      debit: Number(l.credit) || 0,
+      credit: Number(l.debit) || 0,
+      description: l.description ? `Reversal: ${l.description}` : `Reversal – ${poNo}`,
+    })
+  );
+
+  try {
+    const result = await accountingService.createEntry(entry, lineRows);
+    return (result as { id?: string })?.id ?? null;
+  } catch (e: any) {
+    console.error('[purchaseAccountingService] Failed to create purchase reversal JE:', e?.message);
+    return null;
+  }
+}
+
 export const purchaseAccountingService = {
   getPurchaseAccountingSnapshot,
   postPurchaseEditAdjustments,
@@ -367,4 +475,5 @@ export const purchaseAccountingService = {
   findActiveCanonicalPurchaseDocumentJournalEntryId,
   listActiveCanonicalPurchaseDocumentJournalEntryIds,
   purchaseDocumentJournalFingerprint,
+  reversePurchaseDocumentJournalEntry,
 };

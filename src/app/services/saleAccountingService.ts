@@ -11,7 +11,10 @@
  */
 
 import { supabase } from '@/lib/supabase';
-import { canPostAccountingForSaleStatus } from '@/app/lib/postingStatusGate';
+import {
+  canPostAccountingForSaleStatus,
+  saleInvoiceNoAllowsCanonicalDocumentJe,
+} from '@/app/lib/postingStatusGate';
 import { accountHelperService } from './accountHelperService';
 import { accountingService, type JournalEntry, type JournalEntryLine } from './accountingService';
 
@@ -76,17 +79,28 @@ export async function listActiveCanonicalSaleDocumentJournalEntryIds(saleId: str
   }
 }
 
-/** Golden rule: only `final` sales get document-level sale JEs. */
+/** Golden rule: only `final` sales get document-level sale JEs; invoice series must not be draft/QT/SO. */
 async function assertSaleEligibleForDocumentJournal(saleId: string, invoiceNo: string): Promise<boolean> {
-  const { data, error } = await supabase.from('sales').select('id, status').eq('id', saleId).maybeSingle();
+  const { data, error } = await supabase
+    .from('sales')
+    .select('id, status, invoice_no')
+    .eq('id', saleId)
+    .maybeSingle();
   if (error || !data) {
     console.warn('[saleAccountingService] Cannot load sale for accounting guard:', saleId, error?.message);
     return false;
   }
   const status = (data as { status?: string }).status;
+  const dbInvoice = String((data as { invoice_no?: string }).invoice_no ?? '').trim() || invoiceNo;
   if (!canPostAccountingForSaleStatus(status)) {
     console.warn(
-      `[saleAccountingService] Blocked document JE for ${invoiceNo}: sale status is "${status}" (only final may post AR/Revenue/COGS).`
+      `[saleAccountingService] Blocked document JE for ${dbInvoice}: sale status is "${status}" (only final may post AR/Revenue/COGS).`
+    );
+    return false;
+  }
+  if (!saleInvoiceNoAllowsCanonicalDocumentJe(dbInvoice)) {
+    console.warn(
+      `[saleAccountingService] Blocked document JE for ${dbInvoice}: invoice uses a non-posted series (SDR/SQT/SOR/DRAFT/QT/SO) while status is final — renumber to SL- (or PS/STD) before posting.`
     );
     return false;
   }
@@ -528,6 +542,9 @@ export const saleAccountingService = {
 
     if (!saleId || !companyId || amount <= 0) return null;
 
+    const eligibleDoc = await assertSaleEligibleForDocumentJournal(saleId, invoiceNo);
+    if (!eligibleDoc) return null;
+
     const expenseAccount = await ensureExtraExpenseAccount(companyId);
     if (!expenseAccount?.id) {
       console.warn('[saleAccountingService] Extra Expense account not found');
@@ -770,6 +787,9 @@ export const saleAccountingService = {
   }): Promise<{ adjustmentCount: number }> {
     const { companyId, branchId, saleId, invoiceNo, entryDate, createdBy, oldSnapshot, newSnapshot } = params;
     let adjustmentCount = 0;
+
+    const eligible = await assertSaleEligibleForDocumentJournal(saleId, invoiceNo);
+    if (!eligible) return { adjustmentCount: 0 };
 
     const arAccount = await ensureARAccount(companyId);
     const revenueAccount = await ensureRevenueAccount(companyId);

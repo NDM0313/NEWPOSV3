@@ -52,3 +52,38 @@ export function wasSalePostedForReversal(status: unknown): boolean {
 export function wasPurchasePostedForReversal(status: unknown): boolean {
   return canPostAccountingForPurchaseStatus(status);
 }
+
+// ---------------------------------------------------------------------------
+// Hard gate: invoice / PO series must match lifecycle (defense vs status bugs)
+// ---------------------------------------------------------------------------
+
+/** Non–posted sale number series — must never receive canonical document / COGS JEs. */
+const SALE_NON_POSTED_INVOICE_PREFIX = /^(DRAFT-|QT-|SO-|SDR-|SQT-|SOR-)/i;
+
+/** Non–posted purchase PO series — canonical document JE only for PUR-* when posted. */
+const PURCHASE_NON_POSTED_PO_PREFIX = /^(PDR-|POR-)/i;
+
+export function saleInvoiceNoReservedForNonPostedLifecycle(invoiceNo: unknown): boolean {
+  const s = String(invoiceNo ?? '').trim();
+  if (!s) return false;
+  return SALE_NON_POSTED_INVOICE_PREFIX.test(s);
+}
+
+export function purchasePoNoReservedForNonPostedLifecycle(poNo: unknown): boolean {
+  const s = String(poNo ?? '').trim();
+  if (!s) return false;
+  return PURCHASE_NON_POSTED_PO_PREFIX.test(s);
+}
+
+/**
+ * Posted sale may receive canonical document JE only if invoice is not a draft/quotation/order series.
+ * (Fixes: DB status=final while invoice_no still DRAFT-0002 → no JE until renumbered.)
+ */
+export function saleInvoiceNoAllowsCanonicalDocumentJe(invoiceNo: unknown): boolean {
+  return !saleInvoiceNoReservedForNonPostedLifecycle(invoiceNo);
+}
+
+/** Posted purchase (final/received): canonical document JE only when PO uses PUR- series, not PDR/POR. */
+export function purchasePoNoAllowsCanonicalDocumentJe(poNo: unknown): boolean {
+  return !purchasePoNoReservedForNonPostedLifecycle(poNo);
+}

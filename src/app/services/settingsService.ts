@@ -174,11 +174,28 @@ export const settingsService = {
     const legacy = await this.getSetting(companyId, 'allow_negative_stock');
     const legacyVal = legacy?.value;
     const out = legacyVal === true || legacyVal === 'true' || String(legacyVal).toLowerCase() === 'true';
-    // When no row found (RLS or missing): allow negative so sales aren't blocked by config/RLS
-    const fallback = !invRecord && !legacy;
-    const result = out || fallback;
-    if (import.meta.env?.DEV) console.log('[SETTINGS] getAllowNegativeStock result:', result, '(from legacy:', !!legacy, ', fallback no-row:', fallback, ')');
+    // Deterministic default: missing inventory_settings + no legacy = do NOT allow negative stock
+    // (avoids unreliable certification when no settings row exists).
+    const result = out;
+    if (import.meta.env?.DEV)
+      console.log('[SETTINGS] getAllowNegativeStock result:', result, '(inventory row:', !!invRecord, ', legacy:', !!legacy, ')');
     return result;
+  },
+
+  /**
+   * Ensures `inventory_settings` exists with explicit negativeStockAllowed (default false).
+   * Call after company creation or from Settings load once.
+   */
+  async ensureDefaultInventorySettings(companyId: string): Promise<void> {
+    const existing = await this.getSetting(companyId, 'inventory_settings');
+    if (existing?.value != null) return;
+    await this.setSetting(
+      companyId,
+      'inventory_settings',
+      { negativeStockAllowed: false },
+      'inventory',
+      'Inventory policy (negativeStockAllowed); created by ensureDefaultInventorySettings'
+    );
   },
 
   // ============================================

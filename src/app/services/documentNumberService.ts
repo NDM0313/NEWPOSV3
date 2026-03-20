@@ -202,7 +202,22 @@ export const documentNumberService = {
    */
   async getNextDocumentNumberGlobal(
     companyId: string,
-    type: 'SL' | 'PS' | 'DRAFT' | 'QT' | 'SO' | 'CUS' | 'PUR' | 'PAY' | 'RNT' | 'STD'
+    type:
+      | 'SL'
+      | 'PS'
+      | 'DRAFT'
+      | 'QT'
+      | 'SO'
+      | 'SDR'
+      | 'SQT'
+      | 'SOR'
+      | 'CUS'
+      | 'PUR'
+      | 'PDR'
+      | 'POR'
+      | 'PAY'
+      | 'RNT'
+      | 'STD'
   ): Promise<string> {
     const { data, error } = await supabase.rpc('get_next_document_number_global', {
       p_company_id: companyId,

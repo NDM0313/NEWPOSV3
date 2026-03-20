@@ -490,8 +490,19 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
       } else if (saleData.type === 'invoice' || saleData.status === 'final') {
         docType = 'invoice';
       }
-      // Global document number from DB: separate sequence per type (DRAFT, QT, SO, SL, PS for POS)
-      const sequenceType = docType === 'draft' ? 'DRAFT' : docType === 'quotation' ? 'QT' : docType === 'order' ? 'SO' : docType === 'studio' ? 'STD' : docType === 'pos' ? 'PS' : 'SL';
+      // Global document number: SDR/SQT/SOR (non-posted), SL (final invoice), PS (POS), STD (studio)
+      const sequenceType =
+        docType === 'draft'
+          ? 'SDR'
+          : docType === 'quotation'
+            ? 'SQT'
+            : docType === 'order'
+              ? 'SOR'
+              : docType === 'studio'
+                ? 'STD'
+                : docType === 'pos'
+                  ? 'PS'
+                  : 'SL';
       let invoiceNo: string;
       try {
         invoiceNo = await documentNumberService.getNextDocumentNumberGlobal(companyId, sequenceType);
@@ -553,9 +564,20 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
         customer_id: saleData.customer || undefined,
         customer_name: saleData.customerName,
         type: convOpts?.conversionSourceId ? 'invoice' : saleData.type === 'invoice' ? 'invoice' : 'quotation',
+        // Align DB status with docType so we never persist final + draft-series number (hard gate in saleAccountingService).
         status: convOpts?.conversionSourceId
           ? 'final'
-          : saleData.status || (saleData.type === 'invoice' ? 'final' : 'quotation'), // Conversion = always new posted final row
+          : docType === 'draft'
+            ? 'draft'
+            : docType === 'quotation'
+              ? 'quotation'
+              : docType === 'order'
+                ? 'order'
+                : docType === 'invoice' || docType === 'pos'
+                  ? saleData.status ?? 'final'
+                  : docType === 'studio'
+                    ? (saleData.status as any) ?? 'order'
+                    : (saleData.status ?? (saleData.type === 'invoice' ? 'final' : 'quotation')),
         payment_status: saleData.paymentStatus,
         payment_method: saleData.paymentMethod ? normalizePaymentMethodForEnum(saleData.paymentMethod) : undefined,
         subtotal: saleData.subtotal,
@@ -971,26 +993,16 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
       
       // Commission: NOT posted per sale (commission_status=pending until batch post).
 
-      // 🔧 SALE DOCUMENT JE (single engine — saleAccountingService only; re-checks status=final in DB)
+      // 🔧 SALE DOCUMENT JE — single posting engine only (loads sale from DB; idempotent)
       if (canPostAccountingForSaleStatus(newSale.status) && companyId && newSale.total > 0) {
-        const { saleAccountingService: sac } = await import('@/app/services/saleAccountingService');
-        const shipmentCharges = Number((saleData as any).shippingCharges ?? 0) || 0;
-        const jeId = await sac.createSaleJournalEntry({
-          saleId: newSale.id,
-          companyId,
-          branchId: effectiveBranchId ?? undefined,
-          total: newSale.total,
-          discountAmount: Number(saleData.discount ?? 0) || undefined,
-          shipmentCharges: shipmentCharges || undefined,
-          invoiceNo: newSale.invoiceNo,
-          performedBy: createdByAuthId ?? null,
-        });
+        const { postSaleDocumentAccounting } = await import('@/app/services/documentPostingEngine');
+        const jeId = await postSaleDocumentAccounting(newSale.id);
         if (!jeId) {
           const { findActiveCanonicalSaleDocumentJournalEntryId } = await import('@/app/services/saleAccountingService');
           const existingDoc = await findActiveCanonicalSaleDocumentJournalEntryId(newSale.id);
           if (!existingDoc) {
             throw new Error(
-              'Final sale was saved but no canonical document journal entry exists. Check [saleAccountingService] logs (blocked non-final, missing accounts, or insert error).'
+              'Final sale was saved but no canonical document journal entry exists. Check posting engine / saleAccountingService logs (blocked non-final, missing accounts, or insert error).'
             );
           }
         }
@@ -1633,8 +1645,19 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
       if (updates.paid !== undefined) {
         try {
           const saleForSync = getSaleById(id);
+          const nextStatusRaw =
+            updates.status !== undefined
+              ? (updates.status === 'invoice' ? 'final' : String(updates.status))
+              : saleForSync?.status;
           if (!saleForSync || !companyId) {
             console.warn('[SALES CONTEXT] Cannot sync payment: sale or company missing');
+          } else if (!canPostAccountingForSaleStatus(nextStatusRaw)) {
+            if (Number(updates.paid) > 0) {
+              console.warn(
+                '[SALES CONTEXT] Skipping payment sync: only posted (final) sales may create payments / payment JEs.',
+                { id, nextStatusRaw }
+              );
+            }
           } else {
             const existingPayments = await saleService.getSalePayments(id);
             const paidAmount = Number(updates.paid) || 0;

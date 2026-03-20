@@ -37,6 +37,7 @@ import {
   buildExtendedLabSnapshot,
   runCompanyReconciliationChecks,
   runDocumentCertificationChecks,
+  runModuleCertificationSuite,
   summarizeCompanyReconciliationStatus,
   snapshotToComparableJson,
   INTEGRITY_LAB_SESSION_KEY,
@@ -129,8 +130,10 @@ export function AccountingIntegrityLabPage() {
   const [payAccountId, setPayAccountId] = useState<string>('');
   const [paymentAmount, setPaymentAmount] = useState<string>('100');
   const [documentChecks, setDocumentChecks] = useState<LabCheckResult[]>([]);
+  const [moduleChecks, setModuleChecks] = useState<LabCheckResult[]>([]);
   const [companyChecks, setCompanyChecks] = useState<LabCheckResult[]>([]);
   const [documentChecksLoading, setDocumentChecksLoading] = useState(false);
+  const [moduleChecksLoading, setModuleChecksLoading] = useState(false);
   const [companyChecksLoading, setCompanyChecksLoading] = useState(false);
   const [snapshotBefore, setSnapshotBefore] = useState<string | null>(null);
   const [snapshotAfter, setSnapshotAfter] = useState<string | null>(null);
@@ -239,6 +242,27 @@ export function AccountingIntegrityLabPage() {
       setCertificationActionPass(false);
     } finally {
       setDocumentChecksLoading(false);
+    }
+  };
+
+  /** Stock / COA / payment isolation / worker placeholder — document-scoped; primary with document cert for this phase. */
+  const runModuleCertification = async () => {
+    if (!companyId) return;
+    if (!selectedSaleId && !selectedPurchaseId) {
+      toast.error('Select a sale and/or purchase above.');
+      return;
+    }
+    setModuleChecksLoading(true);
+    try {
+      const results = await runModuleCertificationSuite(companyId, {
+        saleId: selectedSaleId || undefined,
+        purchaseId: selectedPurchaseId || undefined,
+      });
+      setModuleChecks(results);
+    } catch (e: any) {
+      toast.error(e?.message || 'Module certification failed');
+    } finally {
+      setModuleChecksLoading(false);
     }
   };
 
@@ -426,6 +450,11 @@ export function AccountingIntegrityLabPage() {
     if (categoryFilter === 'all') return documentChecks;
     return documentChecks.filter((c) => c.category === categoryFilter);
   }, [documentChecks, categoryFilter]);
+
+  const filteredModuleChecks = useMemo(() => {
+    if (categoryFilter === 'all') return moduleChecks;
+    return moduleChecks.filter((c) => c.category === categoryFilter);
+  }, [moduleChecks, categoryFilter]);
 
   const filteredCompanyChecks = useMemo(() => {
     if (categoryFilter === 'all') return companyChecks;
@@ -1082,7 +1111,7 @@ export function AccountingIntegrityLabPage() {
           <Card>
             <CardHeader className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
               <div>
-                <CardTitle>C · Auto checks (two layers)</CardTitle>
+                <CardTitle>C · Auto checks (document + module + company)</CardTitle>
                 <CardDescription>
                   Filter applies to both lists. After action runner success, only <strong>document certification</strong> refreshes
                   automatically.
@@ -1131,10 +1160,38 @@ export function AccountingIntegrityLabPage() {
             </CardContent>
           </Card>
 
+          <Card className="border-cyan-500/25">
+            <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <CardTitle className="text-base">2 · Module certification (posting + stock + COA)</CardTitle>
+                <CardDescription>
+                  Document-scoped: stock movements, balanced document JEs, payment↔JE linkage. Company-wide legacy
+                  reconciliation stays in section 3 — not a blocker for this phase.
+                </CardDescription>
+              </div>
+              <Button
+                onClick={() => runModuleCertification()}
+                disabled={moduleChecksLoading}
+                size="sm"
+                variant="secondary"
+              >
+                {moduleChecksLoading ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4 mr-1" />}
+                Run module certification
+              </Button>
+            </CardHeader>
+            <CardContent>
+              <LabCheckResultList
+                items={filteredModuleChecks}
+                emptyMsg="No module checks yet — select a document and click “Run module certification”."
+                onNav={executeNavAction}
+              />
+            </CardContent>
+          </Card>
+
           <Card className="border-amber-500/30">
             <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <CardTitle className="text-base">2 · Whole company / legacy reconciliation</CardTitle>
+                <CardTitle className="text-base">3 · Whole company / legacy reconciliation</CardTitle>
                 <CardDescription className="text-amber-200/90">
                   TB, BS, P&amp;L, AR/AP, inventory heuristic, accounts vs journal, posting-gate sample. May WARN/FAIL even when
                   the latest document action succeeded — run only when you intend to review legacy scope.
@@ -1179,7 +1236,7 @@ export function AccountingIntegrityLabPage() {
             <CardHeader>
               <CardTitle>E · Company reconciliation (manual)</CardTitle>
               <CardDescription>
-                Runs only the <strong>whole company / legacy</strong> suite (same as section 2 on tab C). Does{' '}
+                Runs only the <strong>whole company / legacy</strong> suite (same as section 3 on tab C). Does{' '}
                 <strong>not</strong> run document certification.
               </CardDescription>
             </CardHeader>

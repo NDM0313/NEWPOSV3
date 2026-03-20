@@ -12,7 +12,7 @@ import { employeeService } from './employeeService';
 import { activityLogService } from '@/app/services/activityLogService';
 import { settingsService } from '@/app/services/settingsService';
 import { productService } from '@/app/services/productService';
-import { saleAccountingService } from './saleAccountingService';
+import { postSaleDocumentAccounting, reverseSaleDocumentAccounting } from './documentPostingEngine';
 import { auditLogService } from './auditLogService';
 
 /** Enrich sales with creator full_name. sales.created_by stores auth.users.id; resolve via users.auth_user_id. */
@@ -259,7 +259,7 @@ export const saleService = {
     if (options?.conversionSourceId && saleData?.id) {
       const { error: convErr } = await supabase
         .from('sales')
-        .update({ converted: true, converted_to_document_id: saleData.id })
+        .update({ converted: true, converted_to_document_id: saleData.id, hidden_from_default_lists: true })
         .eq('id', options.conversionSourceId);
       if (convErr) {
         await supabase.from('sales_items').delete().eq('sale_id', saleData.id);
@@ -720,16 +720,8 @@ export const saleService = {
 
       // Accounting reversal: only if the sale was previously posted (final)
       if (priorPosted) {
-        saleAccountingService.reverseSaleJournalEntry({
-          saleId: id,
-          companyId: (saleRow as any).company_id,
-          branchId: (saleRow as any).branch_id,
-          total: Number((saleRow as any).total) || 0,
-          discountAmount: Number((saleRow as any).discount_amount ?? 0) || undefined,
-          shipmentCharges: Number((saleRow as any).shipment_charges ?? 0) || undefined,
-          invoiceNo,
-        }).catch((err: any) =>
-          console.warn('[saleService] Accounting reversal failed (non-critical):', err?.message)
+        reverseSaleDocumentAccounting(id).catch((err: any) =>
+          console.warn('[saleService] Document accounting reversal failed (non-critical):', err?.message)
         );
       }
 
@@ -745,22 +737,10 @@ export const saleService = {
 
     if (error) throw error;
 
-    // Accounting: Create Dr AR / Cr Sales Revenue when sale is finalized (guard in service + DB row)
+    // Accounting: canonical document JE when sale is finalized (single posting engine)
     if (canPostAccountingForSaleStatus(status)) {
-      const total = Number(data.total) || 0;
-      const discountAmount = Number((data as any).discount_amount ?? 0) || 0;
-      const shipmentCharges = Number((data as any).shipment_charges ?? 0) || 0;
-      saleAccountingService.createSaleJournalEntry({
-        saleId: data.id,
-        companyId: data.company_id,
-        branchId: data.branch_id,
-        total,
-        discountAmount: discountAmount || undefined,
-        shipmentCharges: shipmentCharges || undefined,
-        invoiceNo: data.invoice_no || `SL-${data.id?.substring(0, 8)}`,
-        performedBy: data.created_by,
-      }).catch((err: any) =>
-        console.warn('[saleService] Sale accounting entry failed (non-critical):', err?.message)
+      postSaleDocumentAccounting(data.id).catch((err: any) =>
+        console.warn('[saleService] Sale document posting engine failed (non-critical):', err?.message)
       );
     }
 
@@ -809,20 +789,8 @@ export const saleService = {
     const prevStatus = (existingSale as any)?.status;
     const newStatus = updates.status ?? (data as any)?.status;
     if (canPostAccountingForSaleStatus(newStatus) && !canPostAccountingForSaleStatus(prevStatus)) {
-      const total = Number((data as any)?.total ?? (existingSale as any)?.total) || 0;
-      const discountAmount = Number((data as any)?.discount_amount ?? (existingSale as any)?.discount_amount ?? 0) || 0;
-      const shipmentCharges = Number((data as any)?.shipment_charges ?? (existingSale as any)?.shipment_charges ?? 0) || 0;
-      saleAccountingService.createSaleJournalEntry({
-        saleId: id,
-        companyId: (data as any)?.company_id ?? (existingSale as any)?.company_id,
-        branchId: (data as any)?.branch_id ?? (existingSale as any)?.branch_id,
-        total,
-        discountAmount: discountAmount || undefined,
-        shipmentCharges: shipmentCharges || undefined,
-        invoiceNo: (data as any)?.invoice_no ?? (existingSale as any)?.invoice_no ?? `SL-${id.substring(0, 8)}`,
-        performedBy: (data as any)?.created_by,
-      }).catch((err: any) =>
-        console.warn('[saleService] updateSale accounting entry failed (non-critical):', err?.message)
+      postSaleDocumentAccounting(id).catch((err: any) =>
+        console.warn('[saleService] updateSale document posting engine failed (non-critical):', err?.message)
       );
     }
 

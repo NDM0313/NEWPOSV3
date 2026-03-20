@@ -8,6 +8,7 @@ import {
 import { activityLogService } from '@/app/services/activityLogService';
 import { createSupplierPayment } from '@/app/services/supplierPaymentService';
 import { PURCHASE_HEADER_COLUMNS } from '@/app/lib/purchaseDbConstants';
+import { postPurchaseDocumentAccounting, reversePurchaseDocumentAccounting } from '@/app/services/documentPostingEngine';
 
 /** Enrich purchases with creator full_name. purchases.created_by = auth.users.id; resolve via users.auth_user_id. */
 async function enrichPurchasesWithCreatorNames(purchases: any[]): Promise<void> {
@@ -641,6 +642,9 @@ export const purchaseService = {
           .select(PURCHASE_HEADER_COLUMNS)
           .single();
         if (error) throw error;
+        reversePurchaseDocumentAccounting(id).catch((err: any) =>
+          console.warn('[purchaseService] Document accounting reversal failed (non-critical):', err?.message)
+        );
         return data;
       }
 
@@ -680,8 +684,14 @@ export const purchaseService = {
         .select(PURCHASE_HEADER_COLUMNS)
         .single();
       if (error) throw error;
+      reversePurchaseDocumentAccounting(id).catch((err: any) =>
+        console.warn('[purchaseService] Document accounting reversal failed (non-critical):', err?.message)
+      );
       return data;
     }
+
+    const { data: priorRow } = await supabase.from('purchases').select('status').eq('id', id).maybeSingle();
+    const prevStatus = (priorRow as { status?: string } | null)?.status;
 
     const { data, error } = await supabase
       .from('purchases')
@@ -700,10 +710,24 @@ export const purchaseService = {
           .eq('id', id)
           .select(PURCHASE_HEADER_COLUMNS)
           .single();
-        if (!retryError && retryData) return retryData;
+        if (!retryError && retryData) {
+          const newSt = (retryData as { status?: string }).status;
+          if (canPostAccountingForPurchaseStatus(newSt) && !canPostAccountingForPurchaseStatus(prevStatus)) {
+            postPurchaseDocumentAccounting(id).catch((err: any) =>
+              console.warn('[purchaseService] Document posting engine failed (non-critical):', err?.message)
+            );
+          }
+          return retryData;
+        }
       }
     }
     if (error) throw error;
+    const newSt = (data as { status?: string }).status ?? status;
+    if (canPostAccountingForPurchaseStatus(newSt) && !canPostAccountingForPurchaseStatus(prevStatus)) {
+      postPurchaseDocumentAccounting(id).catch((err: any) =>
+        console.warn('[purchaseService] Document posting engine failed (non-critical):', err?.message)
+      );
+    }
     return data;
   },
 

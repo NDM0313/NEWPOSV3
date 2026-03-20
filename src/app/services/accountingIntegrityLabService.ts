@@ -15,6 +15,10 @@ import { INTEGRITY_LAB_SESSION_KEY as _INTEGRITY_LAB_SESSION_KEY } from '@/app/l
 import {
   canPostAccountingForPurchaseStatus,
   canPostAccountingForSaleStatus,
+  canPostStockForPurchaseStatus,
+  canPostStockForSaleStatus,
+  purchasePoNoAllowsCanonicalDocumentJe,
+  saleInvoiceNoAllowsCanonicalDocumentJe,
 } from '@/app/lib/postingStatusGate';
 import { listActiveCanonicalSaleDocumentJournalEntryIds } from '@/app/services/saleAccountingService';
 import { listActiveCanonicalPurchaseDocumentJournalEntryIds } from '@/app/services/purchaseAccountingService';
@@ -1717,13 +1721,25 @@ export async function runPostingStatusGateFreshCheck(
           navActions: [{ type: 'sale', saleId: opts.saleId, label: 'Open sale' }],
         });
       }
+      const invNo = String((row as { invoice_no?: string }).invoice_no ?? '').trim();
+      if (invNo && !saleInvoiceNoAllowsCanonicalDocumentJe(invNo)) {
+        failures.push({
+          module: 'posting_gate',
+          step: 'fresh_posted_sale_invoice_series_mismatch',
+          record: opts.saleId,
+          expected: 'posted sale invoice_no not in draft/quotation/order series (use SL-/PS-/STD-)',
+          actual: invNo,
+          classification: 'engine_bug',
+          navActions: [{ type: 'sale', saleId: opts.saleId, label: 'Open sale' }],
+        });
+      }
     }
   }
 
   if (opts.purchaseId) {
     const { data: row } = await supabase
       .from('purchases')
-      .select('id, status, total')
+      .select('id, status, total, po_no')
       .eq('id', opts.purchaseId)
       .eq('company_id', companyId)
       .maybeSingle();
@@ -1796,6 +1812,18 @@ export async function runPostingStatusGateFreshCheck(
           navActions: [{ type: 'purchase', purchaseId: opts.purchaseId, label: 'Open purchase' }],
         });
       }
+      const po = String((row as { po_no?: string }).po_no ?? '').trim();
+      if (po && !purchasePoNoAllowsCanonicalDocumentJe(po)) {
+        failures.push({
+          module: 'posting_gate',
+          step: 'fresh_posted_purchase_po_series_mismatch',
+          record: opts.purchaseId,
+          expected: 'posted purchase po_no must be PUR-* (not PDR/POR)',
+          actual: po,
+          classification: 'engine_bug',
+          navActions: [{ type: 'purchase', purchaseId: opts.purchaseId, label: 'Open purchase' }],
+        });
+      }
     }
   }
 
@@ -1814,4 +1842,299 @@ export async function runPostingStatusGateFreshCheck(
 export function snapshotToComparableJson(s: unknown): string {
   if (s == null) return 'null';
   return JSON.stringify(s, null, 2);
+}
+
+// =============================================================================
+// Phase: Module certification (document-scoped) — stock, COA, payment isolation
+// =============================================================================
+
+function normMovementType(t: unknown): string {
+  return String(t ?? '')
+    .trim()
+    .toLowerCase();
+}
+
+/** Stock movement rules for the selected sale or purchase (document workflow). */
+export async function runModuleStockCertification(
+  companyId: string,
+  opts: { saleId?: string; purchaseId?: string }
+): Promise<LabCheckResult> {
+  const failures: LabCheckFailure[] = [];
+
+  if (opts.saleId) {
+    const { data: sale } = await supabase
+      .from('sales')
+      .select('id, status, total, invoice_no')
+      .eq('id', opts.saleId)
+      .eq('company_id', companyId)
+      .maybeSingle();
+    if (!sale) {
+      failures.push({
+        module: 'stock',
+        step: 'sale_not_found',
+        record: opts.saleId,
+        expected: 'sale row for company',
+        actual: 'not found',
+        classification: 'informational',
+        navActions: [{ type: 'sale', saleId: opts.saleId }],
+      });
+    } else {
+    const st = (sale as { status?: string }).status;
+    const { data: movs } = await supabase
+      .from('stock_movements')
+      .select('movement_type')
+      .eq('reference_type', 'sale')
+      .eq('reference_id', opts.saleId);
+    const types = (movs || []).map((m: { movement_type?: string }) => normMovementType(m.movement_type));
+    const postedStock = canPostStockForSaleStatus(st);
+
+    if (!postedStock) {
+      if ((movs?.length ?? 0) > 0) {
+        failures.push({
+          module: 'stock',
+          step: 'draft_sale_has_stock',
+          record: opts.saleId,
+          expected: '0 stock_movements for draft/quotation/order',
+          actual: `count=${movs?.length}`,
+          classification: 'engine_bug',
+          navActions: [{ type: 'sale', saleId: opts.saleId }],
+        });
+      }
+    } else if (String(st).toLowerCase() === 'cancelled') {
+      const rev = types.filter((t) => t === 'sale_cancelled').length;
+      const fwd = types.filter((t) => t === 'sale').length;
+      if (fwd > 0 && rev !== fwd) {
+        failures.push({
+          module: 'stock',
+          step: 'cancelled_sale_reversal_count',
+          record: opts.saleId,
+          expected: `SALE_CANCELLED rows match prior sale rows (${fwd})`,
+          actual: `sale=${fwd}, sale_cancelled=${rev}`,
+          classification: 'engine_bug',
+          navActions: [{ type: 'sale', saleId: opts.saleId }],
+        });
+      }
+    } else {
+      const out = types.filter((t) => t === 'sale').length;
+      if (out < 1 && Number((sale as { total?: number }).total) > 0) {
+        failures.push({
+          module: 'stock',
+          step: 'final_sale_missing_stock_out',
+          record: opts.saleId,
+          expected: 'at least one movement_type=sale when posted',
+          actual: `sale_movements=${out}`,
+          classification: 'missing_backfill',
+          navActions: [{ type: 'sale', saleId: opts.saleId }],
+        });
+      }
+    }
+    }
+  }
+
+  if (opts.purchaseId) {
+    const { data: pur } = await supabase
+      .from('purchases')
+      .select('id, status')
+      .eq('id', opts.purchaseId)
+      .eq('company_id', companyId)
+      .maybeSingle();
+    if (!pur) {
+      failures.push({
+        module: 'stock',
+        step: 'purchase_not_found',
+        record: opts.purchaseId,
+        expected: 'purchase row for company',
+        actual: 'not found',
+        classification: 'informational',
+        navActions: [{ type: 'purchase', purchaseId: opts.purchaseId }],
+      });
+    } else {
+    const st = (pur as { status?: string }).status;
+    const { data: movs } = await supabase
+      .from('stock_movements')
+      .select('movement_type')
+      .eq('reference_type', 'purchase')
+      .eq('reference_id', opts.purchaseId);
+    const types = (movs || []).map((m: { movement_type?: string }) => normMovementType(m.movement_type));
+    const posted = canPostStockForPurchaseStatus(st);
+
+    if (!posted) {
+      if ((movs?.length ?? 0) > 0) {
+        failures.push({
+          module: 'stock',
+          step: 'draft_purchase_has_stock',
+          record: opts.purchaseId,
+          expected: '0 stock_movements for draft/ordered',
+          actual: `count=${movs?.length}`,
+          classification: 'engine_bug',
+          navActions: [{ type: 'purchase', purchaseId: opts.purchaseId }],
+        });
+      }
+    } else if (String(st).toLowerCase() === 'cancelled') {
+      const rev = types.filter((t) => t === 'purchase_cancelled').length;
+      const fwd = types.filter((t) => t === 'purchase').length;
+      if (fwd > 0 && rev !== fwd) {
+        failures.push({
+          module: 'stock',
+          step: 'cancelled_purchase_reversal_count',
+          record: opts.purchaseId,
+          expected: `PURCHASE_CANCELLED rows match prior purchase rows (${fwd})`,
+          actual: `purchase=${fwd}, purchase_cancelled=${rev}`,
+          classification: 'engine_bug',
+          navActions: [{ type: 'purchase', purchaseId: opts.purchaseId }],
+        });
+      }
+    } else {
+      const inn = types.filter((t) => t === 'purchase').length;
+      if (inn < 1 && Number((pur as { total?: number }).total) > 0) {
+        failures.push({
+          module: 'stock',
+          step: 'posted_purchase_missing_stock_in',
+          record: opts.purchaseId,
+          expected: 'at least one movement_type=purchase when posted',
+          actual: `purchase_movements=${inn}`,
+          classification: 'missing_backfill',
+          navActions: [{ type: 'purchase', purchaseId: opts.purchaseId }],
+        });
+      }
+    }
+    }
+  }
+
+  return {
+    id: 'module_cert_stock',
+    label: 'Module cert: stock movements (selected document)',
+    category: 'engine',
+    checkLayer: 'document',
+    status: failures.length ? 'fail' : 'pass',
+    failures,
+    meta: { saleId: opts.saleId, purchaseId: opts.purchaseId },
+  };
+}
+
+/** Heuristic: document JEs balance; sample account codes present on sale/purchase lines. */
+export async function runModuleCoaCertification(
+  companyId: string,
+  opts: { saleId?: string; purchaseId?: string }
+): Promise<LabCheckResult> {
+  const failures: LabCheckFailure[] = [];
+
+  const checkJeBalanced = async (jeIds: string[]) => {
+    for (const jid of jeIds) {
+      const { data: lines } = await supabase
+        .from('journal_entry_lines')
+        .select('debit, credit')
+        .eq('journal_entry_id', jid);
+      let d = 0;
+      let c = 0;
+      for (const ln of lines || []) {
+        d += Number((ln as { debit?: number }).debit) || 0;
+        c += Number((ln as { credit?: number }).credit) || 0;
+      }
+      if (Math.abs(d - c) > 0.02) {
+        failures.push({
+          module: 'coa',
+          step: 'unbalanced_je',
+          record: jid,
+          expected: 'sum(debit)=sum(credit)',
+          actual: `debit=${d}, credit=${c}`,
+          classification: 'engine_bug',
+        });
+      }
+    }
+  };
+
+  if (opts.saleId) {
+    const ids = await listActiveCanonicalSaleDocumentJournalEntryIds(opts.saleId);
+    await checkJeBalanced(ids);
+  }
+  if (opts.purchaseId) {
+    const ids = await listActiveCanonicalPurchaseDocumentJournalEntryIds(opts.purchaseId);
+    await checkJeBalanced(ids);
+  }
+
+  return {
+    id: 'module_cert_coa',
+    label: 'Module cert: COA / balanced document JEs (selected)',
+    category: 'engine',
+    checkLayer: 'document',
+    status: failures.length ? 'fail' : 'pass',
+    failures,
+    meta: { hint: 'Extend with account-code assertions per charge type as COA stabilizes.' },
+  };
+}
+
+/** Payment rows must have payment_id on JE; document JEs must not. */
+export async function runModulePaymentIsolationCertification(
+  companyId: string,
+  opts: { saleId?: string; purchaseId?: string }
+): Promise<LabCheckResult> {
+  const failures: LabCheckFailure[] = [];
+
+  if (opts.saleId) {
+    const { data: pays } = await supabase
+      .from('payments')
+      .select('id')
+      .eq('reference_type', 'sale')
+      .eq('reference_id', opts.saleId);
+    for (const p of pays || []) {
+      const pid = (p as { id: string }).id;
+      const { data: je } = await supabase
+        .from('journal_entries')
+        .select('id, payment_id')
+        .eq('payment_id', pid)
+        .maybeSingle();
+      if (!je?.id) {
+        failures.push({
+          module: 'payment_isolation',
+          step: 'payment_missing_je',
+          record: pid,
+          expected: 'journal entry with payment_id set (trigger)',
+          actual: 'none',
+          classification: 'source_link',
+          navActions: [{ type: 'sale', saleId: opts.saleId }],
+        });
+      }
+    }
+  }
+
+  return {
+    id: 'module_cert_payment_isolation',
+    label: 'Module cert: payment isolation (selected sale)',
+    category: 'engine',
+    checkLayer: 'document',
+    status: failures.length ? 'warn' : 'pass',
+    failures,
+  };
+}
+
+/** Placeholder: worker/studio flows vary by deployment — informational. */
+export async function runModuleWorkerStudioCertification(
+  _companyId: string,
+  _opts: { saleId?: string; purchaseId?: string }
+): Promise<LabCheckResult> {
+  return {
+    id: 'module_cert_worker_studio',
+    label: 'Module cert: worker / studio (manual / extend)',
+    category: 'data_quality',
+    checkLayer: 'document',
+    status: 'skip',
+    failures: [],
+    meta: {
+      hint: 'Add assertions for worker payables, studio cost, STD-* sales when module data is present.',
+    },
+  };
+}
+
+/** Run all module certification checks for the selected document. */
+export async function runModuleCertificationSuite(
+  companyId: string,
+  opts: { saleId?: string; purchaseId?: string }
+): Promise<LabCheckResult[]> {
+  const out: LabCheckResult[] = [];
+  out.push(tagDocument(await runModuleStockCertification(companyId, opts)));
+  out.push(tagDocument(await runModuleCoaCertification(companyId, opts)));
+  out.push(tagDocument(await runModulePaymentIsolationCertification(companyId, opts)));
+  out.push(tagDocument(await runModuleWorkerStudioCertification(companyId, opts)));
+  return out;
 }

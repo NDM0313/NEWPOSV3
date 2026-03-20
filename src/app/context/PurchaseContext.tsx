@@ -291,23 +291,27 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
       if (!finalBranchId || finalBranchId === 'all' || finalBranchId.trim() === '') {
         throw new Error('Please select a specific branch. "All Branches" is not allowed for purchases.');
       }
-      // ERP Numbering Engine: atomic, duplicate-free (no 409)
-      const purchaseNo = providedPurchaseNo ?? await documentNumberService.getNextDocumentNumber(companyId, finalBranchId, 'purchase');
 
-      // Convert to Supabase format
       // Database enum: 'draft', 'ordered', 'received', 'final' (NO 'completed')
-      // App status: 'draft', 'ordered', 'received', 'final', 'completed', 'cancelled'
-      // Map app status to database enum
       let dbStatus: 'draft' | 'ordered' | 'received' | 'final';
       if (purchaseData.status === 'completed' || purchaseData.status === 'final') {
-        dbStatus = 'final'; // Both 'completed' and 'final' map to 'final' in database
+        dbStatus = 'final';
       } else if (purchaseData.status === 'cancelled') {
-        dbStatus = 'draft'; // 'cancelled' not in enum, use 'draft' as fallback
+        dbStatus = 'draft';
       } else if (purchaseData.status === 'draft' || purchaseData.status === 'ordered' || purchaseData.status === 'received') {
-        dbStatus = purchaseData.status; // Direct mapping
+        dbStatus = purchaseData.status;
       } else {
-        dbStatus = 'draft'; // Default fallback
+        dbStatus = 'draft';
       }
+
+      // Global numbering: PDR (draft), POR (ordered), PUR (final/received) — never use PUR- for draft/order
+      const purchaseSequenceType: 'PDR' | 'POR' | 'PUR' =
+        dbStatus === 'draft' ? 'PDR' : dbStatus === 'ordered' ? 'POR' : 'PUR';
+      const purchaseNo =
+        providedPurchaseNo ??
+        (await documentNumberService.getNextDocumentNumberGlobal(companyId, purchaseSequenceType));
+
+      // Convert to Supabase format
       
       // Ensure supplier_id is either a valid UUID or undefined (not empty string)
       const supplierId = purchaseData.supplier && purchaseData.supplier.trim() !== '' 
@@ -448,22 +452,11 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
           .catch((err) => console.warn('[PURCHASE CONTEXT] Activity log failed:', err));
       }
 
-      // PURCHASE DOCUMENT JE: canonical, idempotent, and centralized in purchaseAccountingService.
+      // PURCHASE DOCUMENT JE — single posting engine (reads purchase + purchase_charges from DB after createPurchase)
       if (canPostAccountingForPurchaseStatus(newPurchase.status) && companyId && newPurchase.total > 0) {
         try {
-          const { createPurchaseJournalEntry } = await import('@/app/services/purchaseAccountingService');
-          const jeId = await createPurchaseJournalEntry({
-            purchaseId: newPurchase.id,
-            companyId,
-            branchId: finalBranchId,
-            total: Number(newPurchase.total) || 0,
-            subtotal: Number(newPurchase.subtotal ?? 0) || undefined,
-            poNo: newPurchase.purchaseNo || `PUR-${newPurchase.id.substring(0, 8)}`,
-            supplierName: newPurchase.supplierName || 'Supplier',
-            entryDate: newPurchase.date,
-            charges,
-            createdBy: user?.id ?? null,
-          });
+          const { postPurchaseDocumentAccounting } = await import('@/app/services/documentPostingEngine');
+          const jeId = await postPurchaseDocumentAccounting(newPurchase.id);
           if (!jeId) {
             throw new Error('Final/received purchase was saved but no canonical purchase document JE exists.');
           }
@@ -1099,22 +1092,9 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
             });
             console.log('[PURCHASE CONTEXT] PF-COMPONENT: Posted', adjustmentCount, 'purchase adjustment JE(s); original JE and payment JEs unchanged.');
           } else if (!hasExistingPurchaseJE && newTotal > 0 && willBePosted) {
-            // No existing canonical JE: create/reuse through centralized idempotent path only.
-            const charges = Array.isArray((updated as any).charges)
-              ? (updated as any).charges
-              : (Array.isArray((updated as any).purchase_charges) ? (updated as any).purchase_charges : []);
-            const jeId = await pac.createPurchaseJournalEntry({
-              purchaseId: id,
-              companyId,
-              branchId: effectiveBranchId,
-              total: newTotal,
-              subtotal: Number((updated as any).subtotal ?? 0) || undefined,
-              poNo,
-              supplierName,
-              entryDate,
-              charges,
-              createdBy: user?.id ?? null,
-            });
+            // No existing canonical JE: single posting engine only (loads charges from DB)
+            const { postPurchaseDocumentAccounting } = await import('@/app/services/documentPostingEngine');
+            const jeId = await postPurchaseDocumentAccounting(id);
             if (jeId) {
               console.log('[PURCHASE CONTEXT] PF-COMPONENT: Created initial canonical purchase JE:', jeId);
             }

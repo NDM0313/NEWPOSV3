@@ -9,6 +9,7 @@ import { generatePaymentReference } from '@/app/utils/paymentUtils';
 import { getOrCreateLedger, addLedgerEntry } from '@/app/services/ledgerService';
 import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
+import { canPostAccountingForSaleStatus } from '@/app/lib/postingStatusGate';
 
 /** True if account is a payment account (Cash/Bank/Mobile Wallet) – used for Manual Entry → Roznamcha rule */
 function isPaymentAccount(acc: { code?: string; type?: string; name?: string } | null): boolean {
@@ -1263,6 +1264,15 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
 
   const recordSalePayment = async (params: SalePaymentParams): Promise<boolean> => {
     const { saleId, invoiceNo, customerName, customerId, amount, paymentMethod, accountId } = params;
+
+    const { data: saleGate } = await supabase.from('sales').select('status').eq('id', saleId).maybeSingle();
+    if (!saleGate || !canPostAccountingForSaleStatus((saleGate as { status?: string }).status)) {
+      console.warn('[ACCOUNTING] recordSalePayment skipped: payments / payment JEs only for Final sales', {
+        saleId,
+        status: (saleGate as { status?: string })?.status,
+      });
+      return true;
+    }
 
     // CRITICAL FIX: Use provided accountId or find default account based on payment method
     let paymentAccountId = accountId;
