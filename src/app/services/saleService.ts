@@ -46,7 +46,11 @@ export interface Sale {
   id?: string;
   company_id: string;
   branch_id: string;
-  invoice_no?: string;
+  invoice_no?: string | null;
+  /** Stage numbers (same row); invoice_no is final-only. */
+  draft_no?: string | null;
+  quotation_no?: string | null;
+  order_no?: string | null;
   invoice_date: string;
   customer_id?: string;
   customer_name: string;
@@ -108,42 +112,25 @@ export interface SaleItem {
 /** Options for createSale. allowNegativeStock: when true, skip stock check (caller already validated). */
 export type CreateSaleOptions = {
   allowNegativeStock?: boolean;
-  /** When set, after successful create, marks source sale as converted and links to this new final row (canonical conversion workflow). */
-  conversionSourceId?: string;
 };
 
 export const saleService = {
   // Create sale with items. options.allowNegativeStock from caller (context or DB) — allow if either says true.
   async createSale(sale: Sale, items: SaleItem[], options?: CreateSaleOptions) {
-    if (options?.conversionSourceId) {
-      const { data: src, error: srcErr } = await supabase
-        .from('sales')
-        .select('id, status, converted')
-        .eq('id', options.conversionSourceId)
-        .maybeSingle();
-      if (srcErr || !src) {
-        throw new Error('Conversion source sale not found.');
-      }
-      if ((src as { converted?: boolean }).converted) {
-        throw new Error('This document was already converted to a final sale.');
-      }
-      const st = String((src as { status?: string }).status || '').toLowerCase();
-      if (!(SALE_BUSINESS_ONLY_STATUSES as readonly string[]).includes(st)) {
-        throw new Error(`Only draft, quotation, or order can be converted (current status: ${st}).`);
-      }
-      const invUpper = (sale.invoice_no || '').toString().toUpperCase();
-      if (invUpper.startsWith('STD-') || invUpper.startsWith('ST-')) {
-        throw new Error('Studio sales use a different workflow; conversion from STD/ST is not supported here.');
-      }
-    }
-
     const fromCaller = options?.allowNegativeStock === true;
     const fromDb = fromCaller ? true : await settingsService.getAllowNegativeStock(sale.company_id);
     const allowNegative = fromCaller || fromDb;
     if (import.meta.env?.DEV) {
       console.log('[SALE SERVICE] Negative stock check:', { allowNegative, fromCaller, fromDb, companyId: sale.company_id });
     }
-    const isStudio = (sale.invoice_no || '').toString().toUpperCase().startsWith('STD-') || (sale.invoice_no || '').toString().toUpperCase().startsWith('ST-');
+    const inv = (sale.invoice_no || '').toString();
+    const ord = ((sale as { order_no?: string | null }).order_no || '').toString();
+    const isStudio =
+      (sale as { is_studio?: boolean }).is_studio === true ||
+      ord.toUpperCase().startsWith('STD-') ||
+      ord.toUpperCase().startsWith('ST-') ||
+      inv.toUpperCase().startsWith('STD-') ||
+      inv.toUpperCase().startsWith('ST-');
     if (isStudio && items.length === 0) {
       throw new Error('Studio order must have at least one product (fabric/material). Add an item before saving.');
     }
@@ -169,6 +156,11 @@ export const saleService = {
       ...sale,
       notes: sale.notes ?? null,
       deadline: deadlineForDb,
+      // Same-row lifecycle: non-posted stages use draft_no / quotation_no / order_no; invoice_no only when final
+      draft_no: sale.draft_no ?? null,
+      quotation_no: sale.quotation_no ?? null,
+      order_no: sale.order_no ?? null,
+      invoice_no: canPostAccountingForSaleStatus(sale.status) ? sale.invoice_no ?? null : null,
     };
     if (import.meta.env?.DEV && deadlineForDb) {
       console.log('[SALE SERVICE] createSale inserting deadline:', deadlineForDb);
@@ -256,20 +248,12 @@ export const saleService = {
       throw new Error(`Failed to create sale items: ${itemsError.message}. Sale rolled back.`);
     }
 
-    if (options?.conversionSourceId && saleData?.id) {
-      const { error: convErr } = await supabase
-        .from('sales')
-        .update({ converted: true, converted_to_document_id: saleData.id, hidden_from_default_lists: true })
-        .eq('id', options.conversionSourceId);
-      if (convErr) {
-        await supabase.from('sales_items').delete().eq('sale_id', saleData.id);
-        await supabase.from('sale_items').delete().eq('sale_id', saleData.id);
-        await supabase.from('sales').delete().eq('id', saleData.id);
-        throw new Error(`Failed to archive source document after conversion: ${convErr.message}`);
-      }
-    }
-
-    void auditLogService.logSaleAction(sale.company_id, saleData.id, 'created', { invoice_no: saleData.invoice_no });
+    void auditLogService.logSaleAction(sale.company_id, saleData.id, 'created', {
+      invoice_no: saleData.invoice_no,
+      draft_no: (saleData as any).draft_no,
+      quotation_no: (saleData as any).quotation_no,
+      order_no: (saleData as any).order_no,
+    });
 
     // CRITICAL FIX: Fetch the complete sale with items to return
     // This ensures items are included in the response

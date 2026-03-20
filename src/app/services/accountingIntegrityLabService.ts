@@ -17,8 +17,6 @@ import {
   canPostAccountingForSaleStatus,
   canPostStockForPurchaseStatus,
   canPostStockForSaleStatus,
-  purchasePoNoAllowsCanonicalDocumentJe,
-  saleInvoiceNoAllowsCanonicalDocumentJe,
 } from '@/app/lib/postingStatusGate';
 import { listActiveCanonicalSaleDocumentJournalEntryIds } from '@/app/services/saleAccountingService';
 import { listActiveCanonicalPurchaseDocumentJournalEntryIds } from '@/app/services/purchaseAccountingService';
@@ -1722,13 +1720,13 @@ export async function runPostingStatusGateFreshCheck(
         });
       }
       const invNo = String((row as { invoice_no?: string }).invoice_no ?? '').trim();
-      if (invNo && !saleInvoiceNoAllowsCanonicalDocumentJe(invNo)) {
+      if (!invNo) {
         failures.push({
           module: 'posting_gate',
-          step: 'fresh_posted_sale_invoice_series_mismatch',
+          step: 'fresh_posted_sale_missing_invoice_no',
           record: opts.saleId,
-          expected: 'posted sale invoice_no not in draft/quotation/order series (use SL-/PS-/STD-)',
-          actual: invNo,
+          expected: 'invoice_no set when status=final (same-row lifecycle)',
+          actual: '(empty)',
           classification: 'engine_bug',
           navActions: [{ type: 'sale', saleId: opts.saleId, label: 'Open sale' }],
         });
@@ -1813,13 +1811,13 @@ export async function runPostingStatusGateFreshCheck(
         });
       }
       const po = String((row as { po_no?: string }).po_no ?? '').trim();
-      if (po && !purchasePoNoAllowsCanonicalDocumentJe(po)) {
+      if (!po) {
         failures.push({
           module: 'posting_gate',
-          step: 'fresh_posted_purchase_po_series_mismatch',
+          step: 'fresh_posted_purchase_missing_po_no',
           record: opts.purchaseId,
-          expected: 'posted purchase po_no must be PUR-* (not PDR/POR)',
-          actual: po,
+          expected: 'po_no set when status is final/received',
+          actual: '(empty)',
           classification: 'engine_bug',
           navActions: [{ type: 'purchase', purchaseId: opts.purchaseId, label: 'Open purchase' }],
         });

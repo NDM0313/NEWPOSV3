@@ -1,10 +1,6 @@
 import { supabase } from '@/lib/supabase';
 import { getDocumentConversionSchemaFlags } from '@/app/lib/documentConversionSchema';
-import { PURCHASE_BUSINESS_ONLY_STATUSES } from '@/app/lib/documentStatusConstants';
-import {
-  canPostAccountingForPurchaseStatus,
-  wasPurchasePostedForReversal,
-} from '@/app/lib/postingStatusGate';
+import { canPostAccountingForPurchaseStatus, wasPurchasePostedForReversal } from '@/app/lib/postingStatusGate';
 import { activityLogService } from '@/app/services/activityLogService';
 import { createSupplierPayment } from '@/app/services/supplierPaymentService';
 import { PURCHASE_HEADER_COLUMNS } from '@/app/lib/purchaseDbConstants';
@@ -39,7 +35,10 @@ export interface Purchase {
   id?: string;
   company_id: string;
   branch_id: string;
-  po_no?: string;
+  po_no?: string | null;
+  /** Same-row lifecycle: draft stage number; po_no is final-only. */
+  draft_no?: string | null;
+  order_no?: string | null;
   po_date: string;
   supplier_id?: string;
   supplier_name: string;
@@ -86,7 +85,7 @@ export interface PurchaseChargeInsert {
 
 /** Allowed columns for purchases insert. DB has discount_amount only (no discount_percentage). */
 const PURCHASE_INSERT_KEYS = [
-  'company_id', 'branch_id', 'po_no', 'po_date', 'supplier_id', 'supplier_name',
+  'company_id', 'branch_id', 'po_no', 'draft_no', 'order_no', 'po_date', 'supplier_id', 'supplier_name',
   'status', 'payment_status', 'subtotal', 'discount_amount', 'tax_amount', 'shipping_cost',
   'total', 'paid_amount', 'due_amount', 'notes', 'attachments', 'created_by',
 ] as const;
@@ -102,10 +101,13 @@ function pickPurchaseRow(row: Record<string, unknown>): Record<string, unknown> 
 /** Build purchase row for insert. Only discount_amount is stored; percentage is UI-only and never sent. */
 function buildPurchaseInsertRow(purchase: Purchase): Record<string, unknown> {
   const discountAmount = Number((purchase as any).discount_amount ?? (purchase as any).discount ?? 0) || 0;
+  const posted = canPostAccountingForPurchaseStatus(purchase.status);
   return pickPurchaseRow({
     company_id: purchase.company_id,
     branch_id: purchase.branch_id,
-    po_no: purchase.po_no,
+    po_no: posted ? purchase.po_no ?? null : null,
+    draft_no: purchase.draft_no ?? null,
+    order_no: purchase.order_no ?? null,
     po_date: purchase.po_date,
     supplier_id: purchase.supplier_id ?? null,
     supplier_name: purchase.supplier_name,
@@ -188,37 +190,14 @@ function buildPurchaseItemInsertRowMinimal(item: PurchaseItem, purchaseId: strin
   };
 }
 
-export type CreatePurchaseOptions = {
-  /** After successful create, marks source PO as converted and links to this new final row. */
-  conversionSourceId?: string;
-};
-
 export const purchaseService = {
   // Create purchase with items and optional per-line charges (for line-by-line ledger)
   async createPurchase(
     purchase: Purchase,
     items: PurchaseItem[],
     charges?: PurchaseChargeInsert[],
-    options?: CreatePurchaseOptions
+    _options?: Record<string, never>
   ) {
-    if (options?.conversionSourceId) {
-      const { data: src, error: srcErr } = await supabase
-        .from('purchases')
-        .select('id, status, converted')
-        .eq('id', options.conversionSourceId)
-        .maybeSingle();
-      if (srcErr || !src) {
-        throw new Error('Conversion source purchase not found.');
-      }
-      if ((src as { converted?: boolean }).converted) {
-        throw new Error('This purchase was already converted to a final PO.');
-      }
-      const st = String((src as { status?: string }).status || '').toLowerCase();
-      if (!(PURCHASE_BUSINESS_ONLY_STATUSES as readonly string[]).includes(st)) {
-        throw new Error(`Only draft or ordered purchases can be converted (current status: ${st}).`);
-      }
-    }
-
     const purchaseRow = buildPurchaseInsertRow(purchase);
 
     const { data: purchaseData, error: purchaseError } = await supabase
@@ -267,18 +246,6 @@ export const purchaseService = {
           console.warn('[PURCHASE SERVICE] purchase_charges insert failed (table may not exist):', chargesError);
           // Do not rollback purchase; header/items are saved. Accounting can use header totals as fallback.
         }
-      }
-    }
-
-    if (options?.conversionSourceId && purchaseData?.id) {
-      const { error: convErr } = await supabase
-        .from('purchases')
-        .update({ converted: true, converted_to_document_id: purchaseData.id })
-        .eq('id', options.conversionSourceId);
-      if (convErr) {
-        await supabase.from('purchase_items').delete().eq('purchase_id', purchaseData.id);
-        await supabase.from('purchases').delete().eq('id', purchaseData.id);
-        throw new Error(`Failed to archive source purchase after conversion: ${convErr.message}`);
       }
     }
 
@@ -756,6 +723,8 @@ export const purchaseService = {
     for (const key of Object.keys(raw)) {
       if (key === 'discount' && raw.discount !== undefined) {
         sanitized.discount_amount = Number(raw.discount) || 0;
+      } else if (key === 'purchaseNo' && raw.purchaseNo !== undefined) {
+        sanitized.po_no = raw.purchaseNo;
       } else if (allowed.has(key as any)) {
         sanitized[key] = raw[key];
       }

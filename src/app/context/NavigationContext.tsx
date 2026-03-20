@@ -58,6 +58,7 @@ type View =
   | 'cutover-prep'
   | 'responsive-test'
   | 'test-account-entry'
+  | 'accounting-integrity-lab'
   | 'erp-permissions'
   | 'permission-inspector'
   | 'studio-order-detail-v3'

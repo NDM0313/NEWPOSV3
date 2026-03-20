@@ -11,10 +11,7 @@
  */
 
 import { supabase } from '@/lib/supabase';
-import {
-  canPostAccountingForSaleStatus,
-  saleInvoiceNoAllowsCanonicalDocumentJe,
-} from '@/app/lib/postingStatusGate';
+import { canPostAccountingForSaleStatus } from '@/app/lib/postingStatusGate';
 import { accountHelperService } from './accountHelperService';
 import { accountingService, type JournalEntry, type JournalEntryLine } from './accountingService';
 
@@ -79,7 +76,7 @@ export async function listActiveCanonicalSaleDocumentJournalEntryIds(saleId: str
   }
 }
 
-/** Golden rule: only `final` sales get document-level sale JEs; invoice series must not be draft/QT/SO. */
+/** Golden rule: only `final` sales get document-level sale JEs; posted rows must have invoice_no (final number). */
 async function assertSaleEligibleForDocumentJournal(saleId: string, invoiceNo: string): Promise<boolean> {
   const { data, error } = await supabase
     .from('sales')
@@ -94,13 +91,13 @@ async function assertSaleEligibleForDocumentJournal(saleId: string, invoiceNo: s
   const dbInvoice = String((data as { invoice_no?: string }).invoice_no ?? '').trim() || invoiceNo;
   if (!canPostAccountingForSaleStatus(status)) {
     console.warn(
-      `[saleAccountingService] Blocked document JE for ${dbInvoice}: sale status is "${status}" (only final may post AR/Revenue/COGS).`
+      `[saleAccountingService] Blocked document JE for ${dbInvoice || saleId}: sale status is "${status}" (only final may post AR/Revenue/COGS).`
     );
     return false;
   }
-  if (!saleInvoiceNoAllowsCanonicalDocumentJe(dbInvoice)) {
+  if (!dbInvoice) {
     console.warn(
-      `[saleAccountingService] Blocked document JE for ${dbInvoice}: invoice uses a non-posted series (SDR/SQT/SOR/DRAFT/QT/SO) while status is final — renumber to SL- (or PS/STD) before posting.`
+      `[saleAccountingService] Blocked document JE for sale ${saleId}: status is final but invoice_no is empty — assign final invoice number before posting.`
     );
     return false;
   }

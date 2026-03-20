@@ -10,10 +10,7 @@
  */
 
 import { supabase } from '@/lib/supabase';
-import {
-  canPostAccountingForPurchaseStatus,
-  purchasePoNoAllowsCanonicalDocumentJe,
-} from '@/app/lib/postingStatusGate';
+import { canPostAccountingForPurchaseStatus } from '@/app/lib/postingStatusGate';
 import { accountingService, type JournalEntry, type JournalEntryLine } from './accountingService';
 
 export type PurchaseAccountingSnapshot = {
@@ -123,9 +120,9 @@ async function assertPurchaseEligibleForDocumentJournal(purchaseId: string, poNo
     );
     return false;
   }
-  if (!purchasePoNoAllowsCanonicalDocumentJe(dbPo)) {
+  if (!dbPo) {
     console.warn(
-      `[purchaseAccountingService] Blocked document JE for ${dbPo}: PO uses draft/order series (PDR/POR) while status is posted — renumber to PUR- before posting.`
+      `[purchaseAccountingService] Blocked document JE for purchase ${purchaseId}: posted status but po_no is empty — assign final PO number before posting.`
     );
     return false;
   }

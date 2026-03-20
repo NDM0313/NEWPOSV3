@@ -116,6 +116,7 @@ import { UnifiedSalesInvoiceView } from '@/app/documents';
 import { useNavigation } from '@/app/context/NavigationContext';
 import { Loader2 } from 'lucide-react';
 import { useDocumentNumbering } from '@/app/hooks/useDocumentNumbering';
+import { documentNumberService } from '@/app/services/documentNumberService';
 import { shipmentService, mapShipmentRowsToUi, type ShipmentType } from '@/app/services/shipmentService';
 import { courierService, type CourierRow } from '@/app/services/courierService';
 import { ShipmentModal } from './ShipmentModal';
@@ -1972,11 +1973,14 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
             const mappedStatus: 'draft' | 'quotation' | 'order' | 'final' = isNewStudioSale ? 'order' : saleStatus;
             
             // INVOICE PREFIX RULE: Regular sale → generateDocumentNumber('invoice') → SL. Studio → generateDocumentNumber('studio') → STD. Separate counters; never mix.
-            // If editing existing sale, preserve original invoice number unless type was changed to Studio.
+            // Same-row final: convertToFinal uses global SL counter (not display-prefix inference).
             let documentNumber: string;
             let documentType: 'draft' | 'quotation' | 'order' | 'invoice' | 'studio';
             
-            if (initialSale && initialSale.invoiceNo) {
+            if (initialSale?.id && convertToFinal && companyId) {
+                documentType = 'invoice';
+                documentNumber = await documentNumberService.getNextDocumentNumberGlobal(companyId, 'SL');
+            } else if (initialSale && initialSale.invoiceNo) {
                 // EDIT MODE: Preserve existing invoice number UNLESS type was changed to Studio (then use next STD-XXXX)
                 const existingIsStudio = initialSale.invoiceNo.startsWith('STD-') || initialSale.invoiceNo.startsWith('ST-');
                 if (isStudioSale && !existingIsStudio) {
@@ -1984,11 +1988,7 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                     documentType = 'studio';
                     documentNumber = generateDocumentNumber('studio');
                     } else {
-                    // Convert to Final: new row gets a NEW SL- number from ERP engine (source draft/QT/SO archived, not updated in place)
-                    if (convertToFinal && initialSale?.id) {
-                        documentType = 'invoice';
-                        documentNumber = generateDocumentNumber('invoice');
-                    } else if (saleStatus === 'final' && (initialSale.invoiceNo?.startsWith('DRAFT-') || initialSale.invoiceNo?.startsWith('QT-') || initialSale.invoiceNo?.startsWith('SO-'))) {
+                    if (saleStatus === 'final' && (initialSale.invoiceNo?.startsWith('DRAFT-') || initialSale.invoiceNo?.startsWith('QT-') || initialSale.invoiceNo?.startsWith('SO-'))) {
                         // When user changed status to Final in edit mode (not convert flow), use new SL- number
                         documentNumber = generateDocumentNumber('invoice');
                         documentType = 'invoice';
@@ -2134,9 +2134,9 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                 is_studio: isStudioSale
             };
             
-            // Convert to Final: create NEW final sale + archive source (canonical workflow). Edit otherwise: update same row.
-            if (initialSale && initialSale.id && !convertToFinal) {
-                // EDIT MODE: Update existing sale (invoice number updated when converting to Studio)
+            // Same row: new sale → create; edit or convert-to-final → update
+            if (initialSale && initialSale.id) {
+                // EDIT MODE: Update existing sale (invoice number updated when converting to Studio / final)
                 await updateSale(initialSale.id, saleData);
                 if (saleAttachmentFiles.length > 0 && companyId) {
                     try {
@@ -2188,11 +2188,7 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                 onClose();
                 return { saleId: initialSale.id, invoiceNo: documentNumber };
             } else {
-                // NEW SALE or CONVERT TO FINAL (both insert a new row; convert archives source)
-                const created = await createSale(
-                    saleData,
-                    convertToFinal && initialSale?.id ? { conversionSourceId: initialSale.id } : undefined
-                );
+                const created = await createSale(saleData);
                 // If user entered a shipping charge, create a sale_shipments row so ledger and shipment list stay correct
                 if (created?.id && (shippingChargeInput || 0) > 0 && companyId && finalBranchId) {
                     try {

@@ -115,6 +115,7 @@ export const Sidebar = () => {
         { id: 'accounting-chart-test', label: 'Chart of Accounts Test' },
         { id: 'inventory-design-test', label: 'Inventory Design Test' },
         { id: 'rls-validation', label: 'RLS Validation' },
+        { id: 'accounting-integrity-lab', label: 'Accounting Integrity Lab' },
         { id: 'day4-certification', label: 'Day 4 Certification' },
         { id: 'erp-integration-test', label: 'ERP Integration Test' },
         { id: 'cutover-prep', label: 'Cutover Prep' },

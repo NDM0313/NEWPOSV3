@@ -22,6 +22,7 @@ import {
   canPostAccountingForSaleStatus,
   canPostStockForSaleStatus,
 } from '@/app/lib/postingStatusGate';
+import { getSaleDisplayNumber } from '@/app/lib/documentDisplayNumbers';
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 function isValidBranchId(id: string | null): id is string {
@@ -72,7 +73,12 @@ export interface SaleItem {
 
 export interface Sale {
   id: string;
+  /** Main list / header number — display-only; use getSaleDisplayNumber from row when rendering lists. */
   invoiceNo: string;
+  /** Same-row lifecycle stage numbers (audit / history); optional on older rows. */
+  draftNo?: string;
+  quotationNo?: string;
+  orderNo?: string;
   type: SaleType;
   status?: 'draft' | 'quotation' | 'order' | 'final' | 'cancelled'; // Sale lifecycle; cancelled = reversed
   customer: string;
@@ -141,10 +147,7 @@ interface SalesContextType {
   /** Set current page and reload (0-based). */
   setPage: (page: number) => void;
   getSaleById: (id: string) => Sale | undefined;
-  createSale: (
-    sale: Omit<Sale, 'id' | 'invoiceNo' | 'createdAt' | 'updatedAt'>,
-    convOpts?: { conversionSourceId?: string }
-  ) => Promise<Sale>;
+  createSale: (sale: Omit<Sale, 'id' | 'invoiceNo' | 'createdAt' | 'updatedAt'>) => Promise<Sale>;
   updateSale: (id: string, updates: Partial<Sale>) => Promise<void>;
   deleteSale: (id: string) => Promise<void>;
   recordPayment: (saleId: string, amount: number, method: string, accountId?: string) => Promise<void>;
@@ -309,9 +312,13 @@ export const convertFromSupabaseSale = (supabaseSale: any): Sale => {
   }
   // Note: Do NOT fallback to branch_id UUID - it should never appear in UI
   
+    const displayNo = getSaleDisplayNumber(supabaseSale);
     return {
       id: supabaseSale.id,
-      invoiceNo: supabaseSale.invoice_no || '',
+      invoiceNo: displayNo || supabaseSale.invoice_no || '',
+      draftNo: supabaseSale.draft_no ?? undefined,
+      quotationNo: supabaseSale.quotation_no ?? undefined,
+      orderNo: supabaseSale.order_no ?? undefined,
       type: supabaseSale.status === 'quotation' ? 'quotation' : 'invoice',
     status: supabaseSale.status || (supabaseSale.type === 'invoice' ? 'final' : 'quotation'),
       customer: supabaseSale.customer_id || '',
@@ -446,8 +453,7 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
 
   // Create new sale
   const createSale = async (
-    saleData: Omit<Sale, 'id' | 'invoiceNo' | 'createdAt' | 'updatedAt'>,
-    convOpts?: { conversionSourceId?: string }
+    saleData: Omit<Sale, 'id' | 'invoiceNo' | 'createdAt' | 'updatedAt'>
   ): Promise<Sale> => {
     if (!companyId || !user) {
       throw new Error('Company ID and User are required');
@@ -461,13 +467,10 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
     }
 
     try {
-      if (convOpts?.conversionSourceId && (saleData as any).isStudioSale) {
-        throw new Error('Studio orders cannot use this conversion. Use Generate Invoice from Studio.');
-      }
       // CRITICAL FIX: Generate document number based on sale source + status (central numbering only)
       // Regular sale (final) → invoice → SL-0001. Studio → studio → STD-0001. POS → POS-. Draft/Quotation/Order → respective prefix.
       // SL and STD have separate counters; never mix.
-      // Canonical conversion: always allocate a NEW final SL- number; source draft/QT/SO stays archived (never posted).
+      // Same-row lifecycle: stage numbers go in draft_no / quotation_no / order_no; invoice_no only when status is final.
       const isPOS = (saleData as any).isPOS === true;
       const isStudioSale = (saleData as any).isStudioSale === true;
       // Studio orders must have at least one product (fabric/material); block creation of empty studio sales
@@ -475,9 +478,7 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
         throw new Error('Studio order must have at least one product (fabric/material). Add an item in the sale before saving.');
       }
       let docType: 'draft' | 'quotation' | 'order' | 'invoice' | 'pos' | 'studio' = 'invoice';
-      if (convOpts?.conversionSourceId) {
-        docType = 'invoice';
-      } else if (isPOS) {
+      if (isPOS) {
         docType = 'pos';
       } else if (isStudioSale) {
         docType = 'studio';
@@ -556,28 +557,35 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
       // Convert to Supabase format (use effectiveBranchId – valid UUID for DB)
       const salesmanIdVal = (saleData as any).salesmanId && (saleData as any).salesmanId !== 'none' && (saleData as any).salesmanId !== '1' ? (saleData as any).salesmanId : null;
       const commissionAmountVal = Number((saleData as any).commissionAmount) || 0;
+      const rowStatus =
+        docType === 'draft'
+          ? 'draft'
+          : docType === 'quotation'
+            ? 'quotation'
+            : docType === 'order'
+              ? 'order'
+              : docType === 'invoice' || docType === 'pos'
+                ? saleData.status ?? 'final'
+                : docType === 'studio'
+                  ? (saleData.status as any) ?? 'order'
+                  : (saleData.status ?? (saleData.type === 'invoice' ? 'final' : 'quotation'));
+      const draft_no = docType === 'draft' ? invoiceNo : undefined;
+      const quotation_no = docType === 'quotation' ? invoiceNo : undefined;
+      const order_no = docType === 'order' || docType === 'studio' ? invoiceNo : undefined;
+      const invoice_no_forRow = docType === 'invoice' || docType === 'pos' ? invoiceNo : undefined;
+
       const supabaseSale: SupabaseSale = {
         company_id: companyId,
         branch_id: effectiveBranchId,
-        invoice_no: invoiceNo,
+        invoice_no: invoice_no_forRow,
+        draft_no,
+        quotation_no,
+        order_no,
         invoice_date: saleData.date,
         customer_id: saleData.customer || undefined,
         customer_name: saleData.customerName,
-        type: convOpts?.conversionSourceId ? 'invoice' : saleData.type === 'invoice' ? 'invoice' : 'quotation',
-        // Align DB status with docType so we never persist final + draft-series number (hard gate in saleAccountingService).
-        status: convOpts?.conversionSourceId
-          ? 'final'
-          : docType === 'draft'
-            ? 'draft'
-            : docType === 'quotation'
-              ? 'quotation'
-              : docType === 'order'
-                ? 'order'
-                : docType === 'invoice' || docType === 'pos'
-                  ? saleData.status ?? 'final'
-                  : docType === 'studio'
-                    ? (saleData.status as any) ?? 'order'
-                    : (saleData.status ?? (saleData.type === 'invoice' ? 'final' : 'quotation')),
+        type: saleData.type === 'invoice' ? 'invoice' : 'quotation',
+        status: rowStatus,
         payment_status: saleData.paymentStatus,
         payment_method: saleData.paymentMethod ? normalizePaymentMethodForEnum(saleData.paymentMethod) : undefined,
         subtotal: saleData.subtotal,
@@ -628,7 +636,6 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
       try {
         result = await saleService.createSale(supabaseSale, supabaseItems, {
           allowNegativeStock,
-          conversionSourceId: convOpts?.conversionSourceId,
         });
         const deadlineErr = (result as any)?.deadlineError;
         if (deadlineErr) {
@@ -648,7 +655,6 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
             supabaseSale.invoice_no = effectiveInvoiceNo;
             result = await saleService.createSale(supabaseSale, supabaseItems, {
               allowNegativeStock,
-              conversionSourceId: convOpts?.conversionSourceId,
             });
             console.warn('[SALES CONTEXT] Duplicate invoice number; retried with DB number', effectiveInvoiceNo);
           } catch (retryErr: any) {
@@ -827,13 +833,7 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
         }
       }
       
-      // Update local state (conversion: drop archived source row from list)
-      setSales((prev) => {
-        const rest = convOpts?.conversionSourceId
-          ? prev.filter((s) => s.id !== convOpts.conversionSourceId)
-          : prev;
-        return [newSale, ...rest];
-      });
+      setSales((prev) => [newSale, ...prev]);
       
       // Stock OUT only when status is posted (`final`). Never use type=invoice alone (draft invoice must not move stock).
       // If DB trigger already inserted movements (INSERT final), skip app loop to avoid duplicates.
@@ -1026,13 +1026,7 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
       }
 
       const createdLabel = docType === 'pos' ? 'POS sale' : docType === 'invoice' ? 'Invoice' : docType === 'quotation' ? 'Quotation' : docType === 'order' ? 'Order' : 'Draft';
-      if (convOpts?.conversionSourceId) {
-        toast.success(
-          `Converted to final ${newSale.invoiceNo}. Source draft/quotation/order is archived (still in database for audit) and hidden from the main list.`
-        );
-      } else {
-        toast.success(`${createdLabel} ${effectiveInvoiceNo} created successfully!`);
-      }
+      toast.success(`${createdLabel} ${effectiveInvoiceNo} created successfully!`);
       
       // Dispatch event to refresh inventory
       window.dispatchEvent(new CustomEvent('saleSaved', { detail: { saleId: newSale.id } }));
@@ -1054,18 +1048,20 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
       // CRITICAL FIX: Handle full sale update (not just status)
       const supabaseUpdates: any = {};
       
-      // When converting to Studio, allow updating invoice_no to STD-XXXX (Form sends new number)
+      // Studio → STD (final invoice number for studio when applicable)
       if ((updates as any).is_studio === true && typeof (updates as any).invoiceNo === 'string' && (updates as any).invoiceNo) {
         supabaseUpdates.invoice_no = (updates as any).invoiceNo;
+      } else if (
+        (updates.status === 'final' || updates.type === 'invoice') &&
+        typeof (updates as any).invoiceNo === 'string' &&
+        String((updates as any).invoiceNo).trim() !== ''
+      ) {
+        // Same-row final: assign invoice_no from numbering engine — never infer from prefix
+        supabaseUpdates.invoice_no = String((updates as any).invoiceNo).trim();
       }
-      // When converting draft/quotation/order to final in edit mode, form sends new SL- invoice number – persist it
-      else if ((updates.status === 'final' || updates.type === 'invoice') && typeof (updates as any).invoiceNo === 'string' && (updates as any).invoiceNo) {
-        const inv = (updates as any).invoiceNo as string;
-        if (inv.startsWith('SL-') || inv.startsWith('INV-')) {
-          supabaseUpdates.invoice_no = inv;
-        }
-      }
-      // Otherwise preserve invoice_no when editing (no change)
+      if ((updates as any).draftNo !== undefined) supabaseUpdates.draft_no = (updates as any).draftNo;
+      if ((updates as any).quotationNo !== undefined) supabaseUpdates.quotation_no = (updates as any).quotationNo;
+      if ((updates as any).orderNo !== undefined) supabaseUpdates.order_no = (updates as any).orderNo;
 
       if (updates.status !== undefined) supabaseUpdates.status = updates.status === 'invoice' ? 'final' : (updates.status as string);
       if (updates.type !== undefined) supabaseUpdates.type = updates.type === 'invoice' ? 'invoice' : 'quotation';
@@ -1337,6 +1333,11 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
         }
       }
 
+      // Persist header (status, invoice_no, totals) before stock + before saleService posts canonical JE on first final
+      if (Object.keys(supabaseUpdates).length > 0) {
+        await saleService.updateSale(id, supabaseUpdates);
+      }
+
       // 🔒 CRITICAL FIX: Create stock movements for DELTA (after sale_items are updated)
       // GOLDEN RULE: Only create movements for the delta, not for all items
       if (stockMovementDeltas.length > 0 && companyId) {
@@ -1356,8 +1357,8 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
           
           // Create stock movements for DELTA only
           const stockMovementErrors: string[] = [];
-          const saleForStock = sale || (await saleService.getSaleById(id));
-          const saleInvoiceNo = saleForStock?.invoiceNo || id;
+          const saleForStock = await saleService.getSaleById(id);
+          const saleInvoiceNo = getSaleDisplayNumber(saleForStock as any) || (saleForStock as any)?.invoice_no || id;
           
           for (const delta of stockMovementDeltas) {
             try {
@@ -1451,8 +1452,10 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
           if (currentItems.length > 0) {
             const { data: { user: authUser } } = await sb.auth.getUser();
             const updateCreatedByAuthId = authUser?.id ?? (user as any)?.auth_user_id ?? user?.id;
-            const saleForStock = sale || (await saleService.getSaleById(id));
-            const saleInvoiceNo = (saleForStock as any)?.invoice_no ?? (saleForStock as any)?.invoiceNo ?? id;
+            const saleForStock = await saleService.getSaleById(id);
+            const saleInvoiceNo =
+              getSaleDisplayNumber(saleForStock as any) ||
+              String((saleForStock as any)?.invoice_no ?? (saleForStock as any)?.invoiceNo ?? id);
             const saleBranchId = (saleForStock as any)?.branch_id ?? null;
             let effectiveBranchId = isValidBranchId(saleBranchId) ? saleBranchId : (isValidBranchId(branchId) ? branchId : null);
             if (!effectiveBranchId) {
@@ -1513,11 +1516,6 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
           console.error('[SALES CONTEXT] Order→Final stock movements error:', orderToFinalErr);
           toast.warning('Sale marked Final but some stock movements failed. Check stock ledger.');
         }
-      }
-
-      // Update in Supabase
-      if (Object.keys(supabaseUpdates).length > 0) {
-        await saleService.updateSale(id, supabaseUpdates);
       }
 
       // Line-level charges: extraExpenses + standalone shipping + discount (replace sale_charges on edit)
@@ -1961,12 +1959,14 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
-  // Convert quotation (or draft/order) to invoice — same canonical flow as SaleForm convert: NEW final row + archive source
+  // Convert quotation (or draft/order) to final invoice — same row: assign SL invoice_no + status final
   const convertQuotationToInvoice = async (quotationId: string): Promise<Sale> => {
     try {
+      if (!companyId) throw new Error('Company required');
       const full = await saleService.getSaleById(quotationId);
       if (!full) throw new Error('Sale not found');
       const q = convertFromSupabaseSale(full);
+      const nextSl = await documentNumberService.getNextDocumentNumberGlobal(companyId, 'SL');
       const charges = q.charges || [];
       const extraExpenses = charges
         .filter((c: any) => (c.charge_type || c.chargeType) !== 'shipping' && (c.charge_type || c.chargeType) !== 'discount')
@@ -1977,14 +1977,10 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
       const shippingFromCharges = charges
         .filter((c: any) => (c.charge_type || c.chargeType) === 'shipping')
         .reduce((s: number, c: any) => s + (Number(c.amount) || 0), 0);
-      const saleData: Omit<Sale, 'id' | 'invoiceNo' | 'createdAt' | 'updatedAt'> = {
+      await updateSale(quotationId, {
         type: 'invoice',
         status: 'final',
-        customer: q.customer,
-        customerName: q.customerName,
-        contactNumber: q.contactNumber || '',
-        date: q.date,
-        location: q.location,
+        invoiceNo: nextSl,
         items: q.items,
         itemsCount: q.itemsCount,
         subtotal: q.subtotal,
@@ -2002,13 +1998,17 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
         extraExpenses,
         shippingCharges: shippingFromCharges || q.shippingCharges || 0,
         partialPayments: [],
-        isStudioSale: false,
         is_studio: false,
         commissionAmount: q.commissionAmount,
         salesmanId: q.salesmanId,
         commissionPercent: q.commissionPercent,
-      } as any;
-      return await createSale(saleData, { conversionSourceId: quotationId });
+      } as any);
+      const refreshed = await saleService.getSaleById(quotationId);
+      if (!refreshed) throw new Error('Sale not found after convert');
+      const out = convertFromSupabaseSale(refreshed);
+      setSales((prev) => prev.map((s) => (s.id === quotationId ? out : s)));
+      toast.success(`Invoice ${out.invoiceNo} — same document finalized.`);
+      return out;
     } catch (error: any) {
       console.error('[SALES CONTEXT] Error converting quotation:', error);
       toast.error(`Failed to convert: ${error.message || 'Unknown error'}`);

@@ -1,0 +1,752 @@
+ Download the React DevTools for a better development experience: https://reactjs.org/link/react-devtools
+ [SUPABASE] VITE_SUPABASE_URL at runtime: https://erp.dincouture.pk
+ [SUPABASE] Resolved supabaseUrl: https://supabase.dincouture.pk
+ [AUTH] SIGNED_IN - auth user: Object
+ [FETCH USER DATA] Looking for ERP profile with auth_user_id or id: 1bcaca56-840e-4e65-8c73-6faf537576cb
+ [FETCH USER DATA] Query: users WHERE id.eq.1bcaca56-840e-4e65-8c73-6faf537576cb OR auth_user_id.eq.1bcaca56-840e-4e65-8c73-6faf537576cb
+ [AUTH] AUTH USER (after getSession): Object
+ [FETCH USER DATA] Already fetching for user, skipping duplicate call: Object
+ [PERM_DEBUG] loadAllSettings started; loading=true → isPermissionLoaded=false
+ [PERM_DEBUG] loadAllSettings started; loading=true → isPermissionLoaded=false
+ [FETCH USER DATA] Already fetching for user, skipping duplicate call: Object
+ READ - Host validation failed: Object
+ [FETCH USER DATA] Result: Object
+ [FETCH USER DATA SUCCESS] Object
+ [PERM_DEBUG] loadAllSettings started; loading=true → isPermissionLoaded=false
+ WebSocket connection to 'wss://supabase.dincouture.pk/realtime/v1/websocket?apikey=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYW5vbiIsImlzcyI6InN1cGFiYXNlLWRlbW8iLCJpYXQiOjE2NDE3NjkyMDAsImV4cCI6MTc5OTUzNTYwMH0.uPWERzbv9FtmRpl0cBPDPox08YhjW_zTOXtwYNLWmuo&vsn=1.0.0' failed: 
+createWebSocket @ @supabase_supabase-js.js?v=9e93434f:1499
+connect @ @supabase_supabase-js.js?v=9e93434f:2935
+subscribe @ @supabase_supabase-js.js?v=9e93434f:2336
+(anonymous) @ RentalContext.tsx:161
+commitHookEffectListMount @ chunk-TH7NCS4R.js?v=9e93434f:16963
+commitPassiveMountOnFiber @ chunk-TH7NCS4R.js?v=9e93434f:18206
+commitPassiveMountEffects_complete @ chunk-TH7NCS4R.js?v=9e93434f:18179
+commitPassiveMountEffects_begin @ chunk-TH7NCS4R.js?v=9e93434f:18169
+commitPassiveMountEffects @ chunk-TH7NCS4R.js?v=9e93434f:18159
+flushPassiveEffectsImpl @ chunk-TH7NCS4R.js?v=9e93434f:19543
+flushPassiveEffects @ chunk-TH7NCS4R.js?v=9e93434f:19500
+(anonymous) @ chunk-TH7NCS4R.js?v=9e93434f:19381
+workLoop @ chunk-TH7NCS4R.js?v=9e93434f:197
+flushWork @ chunk-TH7NCS4R.js?v=9e93434f:176
+performWorkUntilDeadline @ chunk-TH7NCS4R.js?v=9e93434f:384
+SupabaseContext.tsx:396 [BRANCH LOADED] Admin: All Branches Object
+content.js:2524 Host is not supported
+content.js:2526 Host is not valid or supported
+content.js:2526 Host is not in insights whitelist
+RentalContext.tsx:205 WebSocket connection to 'wss://supabase.dincouture.pk/realtime/v1/websocket?apikey=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYW5vbiIsImlzcyI6InN1cGFiYXNlLWRlbW8iLCJpYXQiOjE2NDE3NjkyMDAsImV4cCI6MTc5OTUzNTYwMH0.uPWERzbv9FtmRpl0cBPDPox08YhjW_zTOXtwYNLWmuo&vsn=1.0.0' failed: 
+createWebSocket @ @supabase_supabase-js.js?v=9e93434f:1499
+connect @ @supabase_supabase-js.js?v=9e93434f:2935
+subscribe @ @supabase_supabase-js.js?v=9e93434f:2336
+(anonymous) @ RentalContext.tsx:205
+commitHookEffectListMount @ chunk-TH7NCS4R.js?v=9e93434f:16963
+commitPassiveMountOnFiber @ chunk-TH7NCS4R.js?v=9e93434f:18206
+commitPassiveMountEffects_complete @ chunk-TH7NCS4R.js?v=9e93434f:18179
+commitPassiveMountEffects_begin @ chunk-TH7NCS4R.js?v=9e93434f:18169
+commitPassiveMountEffects @ chunk-TH7NCS4R.js?v=9e93434f:18159
+flushPassiveEffectsImpl @ chunk-TH7NCS4R.js?v=9e93434f:19543
+flushPassiveEffects @ chunk-TH7NCS4R.js?v=9e93434f:19500
+(anonymous) @ chunk-TH7NCS4R.js?v=9e93434f:19381
+workLoop @ chunk-TH7NCS4R.js?v=9e93434f:197
+flushWork @ chunk-TH7NCS4R.js?v=9e93434f:176
+performWorkUntilDeadline @ chunk-TH7NCS4R.js?v=9e93434f:384
+SettingsContext.tsx:785 [PERM_DEBUG] 3. Derived flags: Object
+SettingsContext.tsx:813 loadAllSettings: 1948.31396484375 ms
+SettingsContext.tsx:814 ✅ Settings loaded
+SettingsContext.tsx:821 [PERM_DEBUG] loadAllSettings finished; loading=false → isPermissionLoaded=true
+inventoryService.ts:173 inventoryOverview:parallel: 1484.9541015625 ms
+inventoryService.ts:278 [INVENTORY SERVICE] ⚠️ Negative stock (dev only): PRD-0200 -2 Object
+(anonymous) @ inventoryService.ts:278
+_getInventoryOverviewInner @ inventoryService.ts:246
+AccountingContext.tsx:432 ✅ Accounts loaded: 23
+AccountingContext.tsx:432 ✅ Accounts loaded: 23
+AccountingContext.tsx:472 ✅ Journal entries loaded: 30
+AccountingContext.tsx:472 ✅ Journal entries loaded: 30
+customerLedgerApi.ts:472 [LEDGER] get_customer_ledger_sales Object
+accountingService.ts:1038 [ACCOUNTING SERVICE] getCustomerLedger - AR Account IDs: 1 Array(1)
+accountingService.ts:1040 [ACCOUNTING SERVICE] getCustomerLedger - PHASE 1: Starting with customerId: 4c013ec3-ea2a-48ca-8f83-8d6e95615528
+accountingService.ts:1065 [ACCOUNTING SERVICE] getCustomerLedger - PHASE 1: Total AR journal entry lines: 14
+accountingService.ts:1076 [ACCOUNTING SERVICE] getCustomerLedger - PHASE 2: Fetching sales via RPC Object
+accountingService.ts:1086 [ACCOUNTING SERVICE] getCustomerLedger - Customer sales found (RPC): 1
+accountingService.ts:1152 [ACCOUNTING SERVICE] getCustomerLedger - Payments found (RPC): 2
+accountingService.ts:1154 [ACCOUNTING SERVICE] getCustomerLedger - Sample payment: Object
+accountingService.ts:1175 [ACCOUNTING SERVICE] getCustomerLedger - Payments found: 2
+accountingService.ts:1182 [ACCOUNTING SERVICE] getCustomerLedger - Sales map size: 1
+accountingService.ts:1218 [ACCOUNTING SERVICE] getCustomerLedger - Rentals: 0 Payments: 0
+accountingService.ts:1222 [ACCOUNTING SERVICE] getCustomerLedger - PHASE 3: Filtering lines Object
+accountingService.ts:1310 [ACCOUNTING SERVICE] getCustomerLedger - PHASE 3: Filter results: Object
+accountingService.ts:1365 [ACCOUNTING SERVICE] getCustomerLedger - PHASE 4: Building ledger entries Object
+SupabaseContext.tsx:243 [FETCH USER DATA] Looking for ERP profile with auth_user_id or id: 1bcaca56-840e-4e65-8c73-6faf537576cb
+SupabaseContext.tsx:244 [FETCH USER DATA] Query: users WHERE id.eq.1bcaca56-840e-4e65-8c73-6faf537576cb OR auth_user_id.eq.1bcaca56-840e-4e65-8c73-6faf537576cb
+SupabaseContext.tsx:255 [FETCH USER DATA] Result: Object
+SupabaseContext.tsx:324 [FETCH USER DATA SUCCESS] Object
+SettingsContext.tsx:492 [PERM_DEBUG] loadAllSettings started; loading=true → isPermissionLoaded=false
+SupabaseContext.tsx:396 [BRANCH LOADED] Admin: All Branches Object
+RentalContext.tsx:205 WebSocket connection to 'wss://supabase.dincouture.pk/realtime/v1/websocket?apikey=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYW5vbiIsImlzcyI6InN1cGFiYXNlLWRlbW8iLCJpYXQiOjE2NDE3NjkyMDAsImV4cCI6MTc5OTUzNTYwMH0.uPWERzbv9FtmRpl0cBPDPox08YhjW_zTOXtwYNLWmuo&vsn=1.0.0' failed: 
+createWebSocket @ @supabase_supabase-js.js?v=9e93434f:1499
+connect @ @supabase_supabase-js.js?v=9e93434f:2935
+subscribe @ @supabase_supabase-js.js?v=9e93434f:2336
+(anonymous) @ RentalContext.tsx:205
+commitHookEffectListMount @ chunk-TH7NCS4R.js?v=9e93434f:16963
+commitPassiveMountOnFiber @ chunk-TH7NCS4R.js?v=9e93434f:18206
+commitPassiveMountEffects_complete @ chunk-TH7NCS4R.js?v=9e93434f:18179
+commitPassiveMountEffects_begin @ chunk-TH7NCS4R.js?v=9e93434f:18169
+commitPassiveMountEffects @ chunk-TH7NCS4R.js?v=9e93434f:18159
+flushPassiveEffectsImpl @ chunk-TH7NCS4R.js?v=9e93434f:19543
+flushPassiveEffects @ chunk-TH7NCS4R.js?v=9e93434f:19500
+(anonymous) @ chunk-TH7NCS4R.js?v=9e93434f:19381
+workLoop @ chunk-TH7NCS4R.js?v=9e93434f:197
+flushWork @ chunk-TH7NCS4R.js?v=9e93434f:176
+performWorkUntilDeadline @ chunk-TH7NCS4R.js?v=9e93434f:384
+SettingsContext.tsx:785 [PERM_DEBUG] 3. Derived flags: Object
+SettingsContext.tsx:813 loadAllSettings: 399.62890625 ms
+SettingsContext.tsx:814 ✅ Settings loaded
+SettingsContext.tsx:821 [PERM_DEBUG] loadAllSettings finished; loading=false → isPermissionLoaded=true
+AccountingContext.tsx:432 ✅ Accounts loaded: 23
+AccountingContext.tsx:432 ✅ Accounts loaded: 23
+AccountingContext.tsx:472 ✅ Journal entries loaded: 30
+AccountingContext.tsx:472 ✅ Journal entries loaded: 30
+customerLedgerApi.ts:472 [LEDGER] get_customer_ledger_sales Object
+accountingService.ts:1038 [ACCOUNTING SERVICE] getCustomerLedger - AR Account IDs: 1 Array(1)
+accountingService.ts:1040 [ACCOUNTING SERVICE] getCustomerLedger - PHASE 1: Starting with customerId: 5a591d8c-b487-4de6-a502-1824c5db5a25
+accountingService.ts:1065 [ACCOUNTING SERVICE] getCustomerLedger - PHASE 1: Total AR journal entry lines: 14
+accountingService.ts:1076 [ACCOUNTING SERVICE] getCustomerLedger - PHASE 2: Fetching sales via RPC Object
+accountingService.ts:1086 [ACCOUNTING SERVICE] getCustomerLedger - Customer sales found (RPC): 1
+accountingService.ts:1152 [ACCOUNTING SERVICE] getCustomerLedger - Payments found (RPC): 4
+accountingService.ts:1154 [ACCOUNTING SERVICE] getCustomerLedger - Sample payment: Object
+accountingService.ts:1175 [ACCOUNTING SERVICE] getCustomerLedger - Payments found: 4
+accountingService.ts:1182 [ACCOUNTING SERVICE] getCustomerLedger - Sales map size: 1
+accountingService.ts:1218 [ACCOUNTING SERVICE] getCustomerLedger - Rentals: 0 Payments: 0
+accountingService.ts:1222 [ACCOUNTING SERVICE] getCustomerLedger - PHASE 3: Filtering lines Object
+accountingService.ts:1310 [ACCOUNTING SERVICE] getCustomerLedger - PHASE 3: Filter results: Object
+accountingService.ts:1365 [ACCOUNTING SERVICE] getCustomerLedger - PHASE 4: Building ledger entries Object
+TestLedger.tsx:252 ================================================================================
+TestLedger.tsx:253 [TEST SUITE] Starting Customer Ledger API Tests
+TestLedger.tsx:254 ================================================================================
+TestLedger.tsx:255 [TEST] Company ID: c37b77cc-6eb9-4fc0-af7d-3e1eaaeaeaee
+TestLedger.tsx:256 [TEST] User ID: 1bcaca56-840e-4e65-8c73-6faf537576cb
+TestLedger.tsx:51 [TEST] Starting: 1. Get All Customers
+TestLedger.tsx:85 [TEST] Fetching customers for company: c37b77cc-6eb9-4fc0-af7d-3e1eaaeaeaee
+TestLedger.tsx:96 [TEST] Found 4 customers: Array(4)
+TestLedger.tsx:64 [TEST] ✅ Success: 1. Get All Customers (704ms) Array(4)
+TestLedger.tsx:278 [TEST SUITE] Using customer for tests: Object
+TestLedger.tsx:51 [TEST] Starting: 2. Get Customer By ID
+TestLedger.tsx:102 [TEST] Fetching customer by ID: 4c013ec3-ea2a-48ca-8f83-8d6e95615528
+TestLedger.tsx:109 [TEST] Customer details: Object
+TestLedger.tsx:64 [TEST] ✅ Success: 2. Get Customer By ID (714ms) Object
+TestLedger.tsx:51 [TEST] Starting: 3. Get Ledger Summary
+TestLedger.tsx:120 [TEST] Fetching ledger summary: Object
+TestLedger.tsx:131 [TEST] Ledger summary: Object
+TestLedger.tsx:64 [TEST] ✅ Success: 3. Get Ledger Summary (2527ms) Object
+TestLedger.tsx:51 [TEST] Starting: 4. Get Transactions
+TestLedger.tsx:142 [TEST] Fetching transactions: Object
+customerLedgerApi.ts:472 [LEDGER] get_customer_ledger_sales Object
+TestLedger.tsx:160 [TEST] Found 3 transactions: Array(3)
+TestLedger.tsx:64 [TEST] ✅ Success: 4. Get Transactions (2978ms) Array(3)
+TestLedger.tsx:51 [TEST] Starting: 5. Get Invoices
+TestLedger.tsx:171 [TEST] Fetching invoices: Object
+TestLedger.tsx:189 [TEST] Found 1 invoices: Array(1)
+TestLedger.tsx:64 [TEST] ✅ Success: 5. Get Invoices (237ms) Array(1)
+TestLedger.tsx:51 [TEST] Starting: 6. Get Payments
+TestLedger.tsx:200 [TEST] Fetching payments: Object
+TestLedger.tsx:218 [TEST] Found 2 payments: Array(2)
+TestLedger.tsx:64 [TEST] ✅ Success: 6. Get Payments (1157ms) Array(2)
+TestLedger.tsx:51 [TEST] Starting: 7. Get Aging Report
+TestLedger.tsx:226 [TEST] Fetching aging report: Object
+TestLedger.tsx:237 [TEST] Aging report: Object
+TestLedger.tsx:64 [TEST] ✅ Success: 7. Get Aging Report (292ms) Object
+TestLedger.tsx:323 ================================================================================
+TestLedger.tsx:324 [TEST SUITE] Test Summary
+TestLedger.tsx:325 [TEST SUITE] Total: 0, Passed: 0, Failed: 0
+TestLedger.tsx:326 ================================================================================
+chunk-TH7NCS4R.js?v=9e93434f:14930 Uncaught Error: Element type is invalid. Received a promise that resolves to: undefined. Lazy element type must resolve to a class or function.
+    at mountLazyComponent (chunk-TH7NCS4R.js?v=9e93434f:14930:17)
+    at beginWork (chunk-TH7NCS4R.js?v=9e93434f:15966:22)
+    at HTMLUnknownElement.callCallback2 (chunk-TH7NCS4R.js?v=9e93434f:3680:22)
+    at Object.invokeGuardedCallbackDev (chunk-TH7NCS4R.js?v=9e93434f:3705:24)
+    at invokeGuardedCallback (chunk-TH7NCS4R.js?v=9e93434f:3739:39)
+    at beginWork$1 (chunk-TH7NCS4R.js?v=9e93434f:19818:15)
+    at performUnitOfWork (chunk-TH7NCS4R.js?v=9e93434f:19251:20)
+    at workLoopConcurrent (chunk-TH7NCS4R.js?v=9e93434f:19242:13)
+    at renderRootConcurrent (chunk-TH7NCS4R.js?v=9e93434f:19217:15)
+    at performConcurrentWorkOnRoot (chunk-TH7NCS4R.js?v=9e93434f:18728:46)
+mountLazyComponent @ chunk-TH7NCS4R.js?v=9e93434f:14930
+beginWork @ chunk-TH7NCS4R.js?v=9e93434f:15966
+callCallback2 @ chunk-TH7NCS4R.js?v=9e93434f:3680
+invokeGuardedCallbackDev @ chunk-TH7NCS4R.js?v=9e93434f:3705
+invokeGuardedCallback @ chunk-TH7NCS4R.js?v=9e93434f:3739
+beginWork$1 @ chunk-TH7NCS4R.js?v=9e93434f:19818
+performUnitOfWork @ chunk-TH7NCS4R.js?v=9e93434f:19251
+workLoopConcurrent @ chunk-TH7NCS4R.js?v=9e93434f:19242
+renderRootConcurrent @ chunk-TH7NCS4R.js?v=9e93434f:19217
+performConcurrentWorkOnRoot @ chunk-TH7NCS4R.js?v=9e93434f:18728
+workLoop @ chunk-TH7NCS4R.js?v=9e93434f:197
+flushWork @ chunk-TH7NCS4R.js?v=9e93434f:176
+performWorkUntilDeadline @ chunk-TH7NCS4R.js?v=9e93434f:384
+chunk-TH7NCS4R.js?v=9e93434f:14930 Uncaught Error: Element type is invalid. Received a promise that resolves to: undefined. Lazy element type must resolve to a class or function.
+    at mountLazyComponent (chunk-TH7NCS4R.js?v=9e93434f:14930:17)
+    at beginWork (chunk-TH7NCS4R.js?v=9e93434f:15966:22)
+    at HTMLUnknownElement.callCallback2 (chunk-TH7NCS4R.js?v=9e93434f:3680:22)
+    at Object.invokeGuardedCallbackDev (chunk-TH7NCS4R.js?v=9e93434f:3705:24)
+    at invokeGuardedCallback (chunk-TH7NCS4R.js?v=9e93434f:3739:39)
+    at beginWork$1 (chunk-TH7NCS4R.js?v=9e93434f:19818:15)
+    at performUnitOfWork (chunk-TH7NCS4R.js?v=9e93434f:19251:20)
+    at workLoopSync (chunk-TH7NCS4R.js?v=9e93434f:19190:13)
+    at renderRootSync (chunk-TH7NCS4R.js?v=9e93434f:19169:15)
+    at recoverFromConcurrentError (chunk-TH7NCS4R.js?v=9e93434f:18786:28)
+mountLazyComponent @ chunk-TH7NCS4R.js?v=9e93434f:14930
+beginWork @ chunk-TH7NCS4R.js?v=9e93434f:15966
+callCallback2 @ chunk-TH7NCS4R.js?v=9e93434f:3680
+invokeGuardedCallbackDev @ chunk-TH7NCS4R.js?v=9e93434f:3705
+invokeGuardedCallback @ chunk-TH7NCS4R.js?v=9e93434f:3739
+beginWork$1 @ chunk-TH7NCS4R.js?v=9e93434f:19818
+performUnitOfWork @ chunk-TH7NCS4R.js?v=9e93434f:19251
+workLoopSync @ chunk-TH7NCS4R.js?v=9e93434f:19190
+renderRootSync @ chunk-TH7NCS4R.js?v=9e93434f:19169
+recoverFromConcurrentError @ chunk-TH7NCS4R.js?v=9e93434f:18786
+performConcurrentWorkOnRoot @ chunk-TH7NCS4R.js?v=9e93434f:18734
+workLoop @ chunk-TH7NCS4R.js?v=9e93434f:197
+flushWork @ chunk-TH7NCS4R.js?v=9e93434f:176
+performWorkUntilDeadline @ chunk-TH7NCS4R.js?v=9e93434f:384
+chunk-TH7NCS4R.js?v=9e93434f:14080 The above error occurred in one of your React components:
+
+    at Suspense
+    at main
+    at div
+    at div
+    at Layout (http://localhost:5173/src/app/components/layout/Layout.tsx:24:26)
+    at AppContent (http://localhost:5173/src/app/App.tsx?t=1773968334792:141:27)
+    at NavigationProvider (http://localhost:5173/src/app/context/NavigationContext.tsx:51:38)
+    at ProductionProvider (http://localhost:5173/src/app/context/ProductionContext.tsx:33:38)
+    at ExpenseProvider (http://localhost:5173/src/app/context/ExpenseContext.tsx:53:35)
+    at RentalProvider (http://localhost:5173/src/app/context/RentalContext.tsx:121:34)
+    at PurchaseProvider (http://localhost:5173/src/app/context/PurchaseContext.tsx:142:36)
+    at SalesProvider (http://localhost:5173/src/app/context/SalesContext.tsx:254:33)
+    at SettingsProvider (http://localhost:5173/src/app/context/SettingsContext.tsx:73:36)
+    at AccountingProvider (http://localhost:5173/src/app/context/AccountingContext.tsx:47:38)
+    at ModuleProvider (http://localhost:5173/src/app/context/ModuleContext.tsx:43:34)
+    at GlobalFilterProvider (http://localhost:5173/src/app/context/GlobalFilterContext.tsx:115:40)
+    at ProtectedRoute (http://localhost:5173/src/app/components/auth/ProtectedRoute.tsx:20:34)
+    at SupabaseProvider (http://localhost:5173/src/app/context/SupabaseContext.tsx:42:36)
+    at PermissionV2ThemeSync (http://localhost:5173/src/app/App.tsx?t=1773968334792:929:34)
+    at FeatureFlagProvider (http://localhost:5173/src/app/context/FeatureFlagContext.tsx:21:39)
+    at V (http://localhost:5173/node_modules/.vite/deps/next-themes.js?v=9e93434f:44:25)
+    at J (http://localhost:5173/node_modules/.vite/deps/next-themes.js?v=9e93434f:42:18)
+    at ErrorBoundary (http://localhost:5173/src/app/components/shared/ErrorBoundary.tsx:10:5)
+    at App
+
+React will try to recreate this component tree from scratch using the error boundary you provided, ErrorBoundary.
+logCapturedError @ chunk-TH7NCS4R.js?v=9e93434f:14080
+callback @ chunk-TH7NCS4R.js?v=9e93434f:14126
+callCallback @ chunk-TH7NCS4R.js?v=9e93434f:11296
+commitUpdateQueue @ chunk-TH7NCS4R.js?v=9e93434f:11313
+commitLayoutEffectOnFiber @ chunk-TH7NCS4R.js?v=9e93434f:17123
+commitLayoutMountEffects_complete @ chunk-TH7NCS4R.js?v=9e93434f:18030
+commitLayoutEffects_begin @ chunk-TH7NCS4R.js?v=9e93434f:18019
+commitLayoutEffects @ chunk-TH7NCS4R.js?v=9e93434f:17970
+commitRootImpl @ chunk-TH7NCS4R.js?v=9e93434f:19406
+commitRoot @ chunk-TH7NCS4R.js?v=9e93434f:19330
+finishConcurrentRender @ chunk-TH7NCS4R.js?v=9e93434f:18813
+performConcurrentWorkOnRoot @ chunk-TH7NCS4R.js?v=9e93434f:18768
+workLoop @ chunk-TH7NCS4R.js?v=9e93434f:197
+flushWork @ chunk-TH7NCS4R.js?v=9e93434f:176
+performWorkUntilDeadline @ chunk-TH7NCS4R.js?v=9e93434f:384
+errorUtils.ts:14 [ErrorBoundary] Element type is invalid. Received a promise that resolves to: undefined. Lazy element type must resolve to a class or function. Error: Element type is invalid. Received a promise that resolves to: undefined. Lazy element type must resolve to a class or function.
+    at mountLazyComponent (http://localhost:5173/node_modules/.vite/deps/chunk-TH7NCS4R.js?v=9e93434f:14930:17)
+    at beginWork (http://localhost:5173/node_modules/.vite/deps/chunk-TH7NCS4R.js?v=9e93434f:15966:22)
+    at beginWork$1 (http://localhost:5173/node_modules/.vite/deps/chunk-TH7NCS4R.js?v=9e93434f:19806:22)
+    at performUnitOfWork (http://localhost:5173/node_modules/.vite/deps/chunk-TH7NCS4R.js?v=9e93434f:19251:20)
+    at workLoopSync (http://localhost:5173/node_modules/.vite/deps/chunk-TH7NCS4R.js?v=9e93434f:19190:13)
+    at renderRootSync (http://localhost:5173/node_modules/.vite/deps/chunk-TH7NCS4R.js?v=9e93434f:19169:15)
+    at recoverFromConcurrentError (http://localhost:5173/node_modules/.vite/deps/chunk-TH7NCS4R.js?v=9e93434f:18786:28)
+    at performConcurrentWorkOnRoot (http://localhost:5173/node_modules/.vite/deps/chunk-TH7NCS4R.js?v=9e93434f:18734:30)
+    at workLoop (http://localhost:5173/node_modules/.vite/deps/chunk-TH7NCS4R.js?v=9e93434f:197:42)
+    at flushWork (http://localhost:5173/node_modules/.vite/deps/chunk-TH7NCS4R.js?v=9e93434f:176:22) Object
+logError @ errorUtils.ts:14
+componentDidCatch @ ErrorBoundary.tsx:33
+callback @ chunk-TH7NCS4R.js?v=9e93434f:14132
+callCallback @ chunk-TH7NCS4R.js?v=9e93434f:11296
+commitUpdateQueue @ chunk-TH7NCS4R.js?v=9e93434f:11313
+commitLayoutEffectOnFiber @ chunk-TH7NCS4R.js?v=9e93434f:17123
+commitLayoutMountEffects_complete @ chunk-TH7NCS4R.js?v=9e93434f:18030
+commitLayoutEffects_begin @ chunk-TH7NCS4R.js?v=9e93434f:18019
+commitLayoutEffects @ chunk-TH7NCS4R.js?v=9e93434f:17970
+commitRootImpl @ chunk-TH7NCS4R.js?v=9e93434f:19406
+commitRoot @ chunk-TH7NCS4R.js?v=9e93434f:19330
+finishConcurrentRender @ chunk-TH7NCS4R.js?v=9e93434f:18813
+performConcurrentWorkOnRoot @ chunk-TH7NCS4R.js?v=9e93434f:18768
+workLoop @ chunk-TH7NCS4R.js?v=9e93434f:197
+flushWork @ chunk-TH7NCS4R.js?v=9e93434f:176
+performWorkUntilDeadline @ chunk-TH7NCS4R.js?v=9e93434f:384
+SupabaseContext.tsx:134 [AUTH] AUTH USER (after getSession): Object
+SupabaseContext.tsx:243 [FETCH USER DATA] Looking for ERP profile with auth_user_id or id: 1bcaca56-840e-4e65-8c73-6faf537576cb
+SupabaseContext.tsx:244 [FETCH USER DATA] Query: users WHERE id.eq.1bcaca56-840e-4e65-8c73-6faf537576cb OR auth_user_id.eq.1bcaca56-840e-4e65-8c73-6faf537576cb
+SettingsContext.tsx:492 [PERM_DEBUG] loadAllSettings started; loading=true → isPermissionLoaded=false
+SettingsContext.tsx:492 [PERM_DEBUG] loadAllSettings started; loading=true → isPermissionLoaded=false
+SupabaseContext.tsx:223 [FETCH USER DATA] Already fetching for user, skipping duplicate call: Object
+SupabaseContext.tsx:255 [FETCH USER DATA] Result: Object
+SupabaseContext.tsx:324 [FETCH USER DATA SUCCESS] Object
+SettingsContext.tsx:492 [PERM_DEBUG] loadAllSettings started; loading=true → isPermissionLoaded=false
+SupabaseContext.tsx:396 [BRANCH LOADED] Admin: All Branches Object
+RentalContext.tsx:205 WebSocket connection to 'wss://supabase.dincouture.pk/realtime/v1/websocket?apikey=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYW5vbiIsImlzcyI6InN1cGFiYXNlLWRlbW8iLCJpYXQiOjE2NDE3NjkyMDAsImV4cCI6MTc5OTUzNTYwMH0.uPWERzbv9FtmRpl0cBPDPox08YhjW_zTOXtwYNLWmuo&vsn=1.0.0' failed: 
+createWebSocket @ @supabase_supabase-js.js?v=9e93434f:1499
+connect @ @supabase_supabase-js.js?v=9e93434f:2935
+subscribe @ @supabase_supabase-js.js?v=9e93434f:2336
+(anonymous) @ RentalContext.tsx:205
+commitHookEffectListMount @ chunk-TH7NCS4R.js?v=9e93434f:16963
+commitPassiveMountOnFiber @ chunk-TH7NCS4R.js?v=9e93434f:18206
+commitPassiveMountEffects_complete @ chunk-TH7NCS4R.js?v=9e93434f:18179
+commitPassiveMountEffects_begin @ chunk-TH7NCS4R.js?v=9e93434f:18169
+commitPassiveMountEffects @ chunk-TH7NCS4R.js?v=9e93434f:18159
+flushPassiveEffectsImpl @ chunk-TH7NCS4R.js?v=9e93434f:19543
+flushPassiveEffects @ chunk-TH7NCS4R.js?v=9e93434f:19500
+(anonymous) @ chunk-TH7NCS4R.js?v=9e93434f:19381
+workLoop @ chunk-TH7NCS4R.js?v=9e93434f:197
+flushWork @ chunk-TH7NCS4R.js?v=9e93434f:176
+performWorkUntilDeadline @ chunk-TH7NCS4R.js?v=9e93434f:384
+SettingsContext.tsx:785 [PERM_DEBUG] 3. Derived flags: Object
+SettingsContext.tsx:813 loadAllSettings: 700.66015625 ms
+SettingsContext.tsx:814 ✅ Settings loaded
+SettingsContext.tsx:821 [PERM_DEBUG] loadAllSettings finished; loading=false → isPermissionLoaded=true
+RentalContext.tsx:205 WebSocket connection to 'wss://supabase.dincouture.pk/realtime/v1/websocket?apikey=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYW5vbiIsImlzcyI6InN1cGFiYXNlLWRlbW8iLCJpYXQiOjE2NDE3NjkyMDAsImV4cCI6MTc5OTUzNTYwMH0.uPWERzbv9FtmRpl0cBPDPox08YhjW_zTOXtwYNLWmuo&vsn=1.0.0' failed: 
+createWebSocket @ @supabase_supabase-js.js?v=9e93434f:1499
+connect @ @supabase_supabase-js.js?v=9e93434f:2935
+subscribe @ @supabase_supabase-js.js?v=9e93434f:2336
+(anonymous) @ RentalContext.tsx:205
+commitHookEffectListMount @ chunk-TH7NCS4R.js?v=9e93434f:16963
+commitPassiveMountOnFiber @ chunk-TH7NCS4R.js?v=9e93434f:18206
+commitPassiveMountEffects_complete @ chunk-TH7NCS4R.js?v=9e93434f:18179
+commitPassiveMountEffects_begin @ chunk-TH7NCS4R.js?v=9e93434f:18169
+commitPassiveMountEffects @ chunk-TH7NCS4R.js?v=9e93434f:18159
+flushPassiveEffectsImpl @ chunk-TH7NCS4R.js?v=9e93434f:19543
+flushPassiveEffects @ chunk-TH7NCS4R.js?v=9e93434f:19500
+(anonymous) @ chunk-TH7NCS4R.js?v=9e93434f:19381
+workLoop @ chunk-TH7NCS4R.js?v=9e93434f:197
+flushWork @ chunk-TH7NCS4R.js?v=9e93434f:176
+performWorkUntilDeadline @ chunk-TH7NCS4R.js?v=9e93434f:384
+inventoryService.ts:173 inventoryOverview:parallel: 576.031005859375 ms
+AccountingContext.tsx:432 ✅ Accounts loaded: 23
+AccountingContext.tsx:432 ✅ Accounts loaded: 23
+AccountingContext.tsx:472 ✅ Journal entries loaded: 30
+AccountingContext.tsx:472 ✅ Journal entries loaded: 30
+supabase.dincouture.pk/rest/v1/purchases?select=due_amount&company_id=eq.c37b77cc-6eb9-4fc0-af7d-3e1eaaeaeaee&status=in.%28final%2Creceived%2Ccompleted%29&branch_id=eq.23976568-efc8-4442-ad56-eee9affe87be:1  Failed to load resource: the server responded with a status of 400 ()
+saleService.ts:1037 [SALE SERVICE] Payment method normalization: {original: 'Cash', normalized: 'cash', enumValue: 'cash'}
+@supabase_supabase-js.js?v=9e93434f:11448  GET https://supabase.dincouture.pk/rest/v1/purchases?select=due_amount&company_id=eq.c37b77cc-6eb9-4fc0-af7d-3e1eaaeaeaee&status=in.%28final%2Creceived%2Ccompleted%29&branch_id=eq.23976568-efc8-4442-ad56-eee9affe87be 400 (Bad Request)
+(anonymous) @ @supabase_supabase-js.js?v=9e93434f:11448
+(anonymous) @ @supabase_supabase-js.js?v=9e93434f:11462
+await in (anonymous)
+then @ @supabase_supabase-js.js?v=9e93434f:273
+@supabase_supabase-js.js?v=9e93434f:11448  GET https://supabase.dincouture.pk/rest/v1/purchases?select=due_amount&company_id=eq.c37b77cc-6eb9-4fc0-af7d-3e1eaaeaeaee&status=in.%28final%2Creceived%2Ccompleted%29&branch_id=eq.23976568-efc8-4442-ad56-eee9affe87be 400 (Bad Request)
+(anonymous) @ @supabase_supabase-js.js?v=9e93434f:11448
+(anonymous) @ @supabase_supabase-js.js?v=9e93434f:11462
+await in (anonymous)
+then @ @supabase_supabase-js.js?v=9e93434f:273
+@supabase_supabase-js.js?v=9e93434f:11448  GET https://supabase.dincouture.pk/rest/v1/purchases?select=due_amount&company_id=eq.c37b77cc-6eb9-4fc0-af7d-3e1eaaeaeaee&status=in.%28final%2Creceived%2Ccompleted%29&branch_id=eq.23976568-efc8-4442-ad56-eee9affe87be 400 (Bad Request)
+(anonymous) @ @supabase_supabase-js.js?v=9e93434f:11448
+(anonymous) @ @supabase_supabase-js.js?v=9e93434f:11462
+await in (anonymous)
+then @ @supabase_supabase-js.js?v=9e93434f:273
+@supabase_supabase-js.js?v=9e93434f:11448  GET https://supabase.dincouture.pk/rest/v1/purchases?select=due_amount&company_id=eq.c37b77cc-6eb9-4fc0-af7d-3e1eaaeaeaee&status=in.%28final%2Creceived%2Ccompleted%29&branch_id=eq.23976568-efc8-4442-ad56-eee9affe87be 400 (Bad Request)
+(anonymous) @ @supabase_supabase-js.js?v=9e93434f:11448
+(anonymous) @ @supabase_supabase-js.js?v=9e93434f:11462
+await in (anonymous)
+then @ @supabase_supabase-js.js?v=9e93434f:273
+@supabase_supabase-js.js?v=9e93434f:11448  GET https://supabase.dincouture.pk/rest/v1/purchases?select=due_amount&company_id=eq.c37b77cc-6eb9-4fc0-af7d-3e1eaaeaeaee&status=in.%28final%2Creceived%2Ccompleted%29&branch_id=eq.23976568-efc8-4442-ad56-eee9affe87be 400 (Bad Request)
+(anonymous) @ @supabase_supabase-js.js?v=9e93434f:11448
+(anonymous) @ @supabase_supabase-js.js?v=9e93434f:11462
+await in (anonymous)
+then @ @supabase_supabase-js.js?v=9e93434f:273
+saleService.ts:1366 [SALE SERVICE] Payment updated successfully
+@supabase_supabase-js.js?v=9e93434f:11448  GET https://supabase.dincouture.pk/rest/v1/purchases?select=due_amount&company_id=eq.c37b77cc-6eb9-4fc0-af7d-3e1eaaeaeaee&status=in.%28final%2Creceived%2Ccompleted%29&branch_id=eq.23976568-efc8-4442-ad56-eee9affe87be 400 (Bad Request)
+(anonymous) @ @supabase_supabase-js.js?v=9e93434f:11448
+(anonymous) @ @supabase_supabase-js.js?v=9e93434f:11462
+await in (anonymous)
+then @ @supabase_supabase-js.js?v=9e93434f:273
+saleService.ts:1366 [SALE SERVICE] Payment updated successfully
+@supabase_supabase-js.js?v=9e93434f:11448  GET https://supabase.dincouture.pk/rest/v1/purchases?select=due_amount&company_id=eq.c37b77cc-6eb9-4fc0-af7d-3e1eaaeaeaee&status=in.%28final%2Creceived%2Ccompleted%29&branch_id=eq.23976568-efc8-4442-ad56-eee9affe87be 400 (Bad Request)
+(anonymous) @ @supabase_supabase-js.js?v=9e93434f:11448
+(anonymous) @ @supabase_supabase-js.js?v=9e93434f:11462
+await in (anonymous)
+then @ @supabase_supabase-js.js?v=9e93434f:273
+saleAccountingService.ts:661 [saleAccountingService] Reversal entry created for cancelled sale SL-0008: 83862e82-26d8-4fb8-9c8f-51bd8e3c0c81
+@supabase_supabase-js.js?v=9e93434f:11448  GET https://supabase.dincouture.pk/rest/v1/purchases?select=due_amount&company_id=eq.c37b77cc-6eb9-4fc0-af7d-3e1eaaeaeaee&status=in.%28final%2Creceived%2Ccompleted%29&branch_id=eq.23976568-efc8-4442-ad56-eee9affe87be 400 (Bad Request)
+(anonymous) @ @supabase_supabase-js.js?v=9e93434f:11448
+(anonymous) @ @supabase_supabase-js.js?v=9e93434f:11462
+await in (anonymous)
+then @ @supabase_supabase-js.js?v=9e93434f:273
+@supabase_supabase-js.js?v=9e93434f:11448  GET https://supabase.dincouture.pk/rest/v1/purchases?select=due_amount&company_id=eq.c37b77cc-6eb9-4fc0-af7d-3e1eaaeaeaee&status=in.%28final%2Creceived%2Ccompleted%29&branch_id=eq.23976568-efc8-4442-ad56-eee9affe87be 400 (Bad Request)
+(anonymous) @ @supabase_supabase-js.js?v=9e93434f:11448
+(anonymous) @ @supabase_supabase-js.js?v=9e93434f:11462
+await in (anonymous)
+then @ @supabase_supabase-js.js?v=9e93434f:273
+@supabase_supabase-js.js?v=9e93434f:11448  GET https://supabase.dincouture.pk/rest/v1/purchases?select=due_amount&company_id=eq.c37b77cc-6eb9-4fc0-af7d-3e1eaaeaeaee&status=in.%28final%2Creceived%2Ccompleted%29&branch_id=eq.23976568-efc8-4442-ad56-eee9affe87be 400 (Bad Request)
+(anonymous) @ @supabase_supabase-js.js?v=9e93434f:11448
+(anonymous) @ @supabase_supabase-js.js?v=9e93434f:11462
+await in (anonymous)
+then @ @supabase_supabase-js.js?v=9e93434f:273
+@supabase_supabase-js.js?v=9e93434f:11448  GET https://supabase.dincouture.pk/rest/v1/purchases?select=due_amount&company_id=eq.c37b77cc-6eb9-4fc0-af7d-3e1eaaeaeaee&status=in.%28final%2Creceived%2Ccompleted%29&branch_id=eq.23976568-efc8-4442-ad56-eee9affe87be 400 (Bad Request)
+(anonymous) @ @supabase_supabase-js.js?v=9e93434f:11448
+(anonymous) @ @supabase_supabase-js.js?v=9e93434f:11462
+await in (anonymous)
+then @ @supabase_supabase-js.js?v=9e93434f:273
+@supabase_supabase-js.js?v=9e93434f:11448  GET https://supabase.dincouture.pk/rest/v1/purchases?select=due_amount&company_id=eq.c37b77cc-6eb9-4fc0-af7d-3e1eaaeaeaee&status=in.%28final%2Creceived%2Ccompleted%29&branch_id=eq.23976568-efc8-4442-ad56-eee9affe87be 400 (Bad Request)
+(anonymous) @ @supabase_supabase-js.js?v=9e93434f:11448
+(anonymous) @ @supabase_supabase-js.js?v=9e93434f:11462
+await in (anonymous)
+then @ @supabase_supabase-js.js?v=9e93434f:273
+@supabase_supabase-js.js?v=9e93434f:11448  GET https://supabase.dincouture.pk/rest/v1/purchases?select=due_amount&company_id=eq.c37b77cc-6eb9-4fc0-af7d-3e1eaaeaeaee&status=in.%28final%2Creceived%2Ccompleted%29&branch_id=eq.23976568-efc8-4442-ad56-eee9affe87be 400 (Bad Request)
+(anonymous) @ @supabase_supabase-js.js?v=9e93434f:11448
+(anonymous) @ @supabase_supabase-js.js?v=9e93434f:11462
+await in (anonymous)
+then @ @supabase_supabase-js.js?v=9e93434f:273
+@supabase_supabase-js.js?v=9e93434f:11448  GET https://supabase.dincouture.pk/rest/v1/purchases?select=due_amount&company_id=eq.c37b77cc-6eb9-4fc0-af7d-3e1eaaeaeaee&status=in.%28final%2Creceived%2Ccompleted%29&branch_id=eq.23976568-efc8-4442-ad56-eee9affe87be 400 (Bad Request)
+(anonymous) @ @supabase_supabase-js.js?v=9e93434f:11448
+(anonymous) @ @supabase_supabase-js.js?v=9e93434f:11462
+await in (anonymous)
+then @ @supabase_supabase-js.js?v=9e93434f:273
+@supabase_supabase-js.js?v=9e93434f:11448  GET https://supabase.dincouture.pk/rest/v1/purchases?select=due_amount&company_id=eq.c37b77cc-6eb9-4fc0-af7d-3e1eaaeaeaee&status=in.%28final%2Creceived%2Ccompleted%29&branch_id=eq.23976568-efc8-4442-ad56-eee9affe87be 400 (Bad Request)
+(anonymous) @ @supabase_supabase-js.js?v=9e93434f:11448
+(anonymous) @ @supabase_supabase-js.js?v=9e93434f:11462
+await in (anonymous)
+then @ @supabase_supabase-js.js?v=9e93434f:273
+@supabase_supabase-js.js?v=9e93434f:11448  GET https://supabase.dincouture.pk/rest/v1/purchases?select=due_amount&company_id=eq.c37b77cc-6eb9-4fc0-af7d-3e1eaaeaeaee&status=in.%28final%2Creceived%2Ccompleted%29&branch_id=eq.23976568-efc8-4442-ad56-eee9affe87be 400 (Bad Request)
+(anonymous) @ @supabase_supabase-js.js?v=9e93434f:11448
+(anonymous) @ @supabase_supabase-js.js?v=9e93434f:11462
+await in (anonymous)
+then @ @supabase_supabase-js.js?v=9e93434f:273
+@supabase_supabase-js.js?v=9e93434f:11448  GET https://supabase.dincouture.pk/rest/v1/purchases?select=due_amount&company_id=eq.c37b77cc-6eb9-4fc0-af7d-3e1eaaeaeaee&status=in.%28final%2Creceived%2Ccompleted%29&branch_id=eq.23976568-efc8-4442-ad56-eee9affe87be 400 (Bad Request)
+(anonymous) @ @supabase_supabase-js.js?v=9e93434f:11448
+(anonymous) @ @supabase_supabase-js.js?v=9e93434f:11462
+await in (anonymous)
+then @ @supabase_supabase-js.js?v=9e93434f:273
+@supabase_supabase-js.js?v=9e93434f:11448  GET https://supabase.dincouture.pk/rest/v1/purchases?select=due_amount&company_id=eq.c37b77cc-6eb9-4fc0-af7d-3e1eaaeaeaee&status=in.%28final%2Creceived%2Ccompleted%29&branch_id=eq.23976568-efc8-4442-ad56-eee9affe87be 400 (Bad Request)
+(anonymous) @ @supabase_supabase-js.js?v=9e93434f:11448
+(anonymous) @ @supabase_supabase-js.js?v=9e93434f:11462
+await in (anonymous)
+then @ @supabase_supabase-js.js?v=9e93434f:273
+@supabase_supabase-js.js?v=9e93434f:11448  GET https://supabase.dincouture.pk/rest/v1/purchases?select=due_amount&company_id=eq.c37b77cc-6eb9-4fc0-af7d-3e1eaaeaeaee&status=in.%28final%2Creceived%2Ccompleted%29&branch_id=eq.23976568-efc8-4442-ad56-eee9affe87be 400 (Bad Request)
+(anonymous) @ @supabase_supabase-js.js?v=9e93434f:11448
+(anonymous) @ @supabase_supabase-js.js?v=9e93434f:11462
+await in (anonymous)
+then @ @supabase_supabase-js.js?v=9e93434f:273
+@supabase_supabase-js.js?v=9e93434f:11448  GET https://supabase.dincouture.pk/rest/v1/purchases?select=due_amount&company_id=eq.c37b77cc-6eb9-4fc0-af7d-3e1eaaeaeaee&status=in.%28final%2Creceived%2Ccompleted%29&branch_id=eq.23976568-efc8-4442-ad56-eee9affe87be 400 (Bad Request)
+(anonymous) @ @supabase_supabase-js.js?v=9e93434f:11448
+(anonymous) @ @supabase_supabase-js.js?v=9e93434f:11462
+await in (anonymous)
+then @ @supabase_supabase-js.js?v=9e93434f:273
+purchaseService.ts:1040 [PURCHASE SERVICE] Payment updated successfully
+@supabase_supabase-js.js?v=9e93434f:11448  GET https://supabase.dincouture.pk/rest/v1/purchases?select=due_amount&company_id=eq.c37b77cc-6eb9-4fc0-af7d-3e1eaaeaeaee&status=in.%28final%2Creceived%2Ccompleted%29&branch_id=eq.23976568-efc8-4442-ad56-eee9affe87be 400 (Bad Request)
+(anonymous) @ @supabase_supabase-js.js?v=9e93434f:11448
+(anonymous) @ @supabase_supabase-js.js?v=9e93434f:11462
+await in (anonymous)
+then @ @supabase_supabase-js.js?v=9e93434f:273
+@supabase_supabase-js.js?v=9e93434f:11448  GET https://supabase.dincouture.pk/rest/v1/purchases?select=due_amount&company_id=eq.c37b77cc-6eb9-4fc0-af7d-3e1eaaeaeaee&status=in.%28final%2Creceived%2Ccompleted%29&branch_id=eq.23976568-efc8-4442-ad56-eee9affe87be 400 (Bad Request)
+(anonymous) @ @supabase_supabase-js.js?v=9e93434f:11448
+(anonymous) @ @supabase_supabase-js.js?v=9e93434f:11462
+await in (anonymous)
+then @ @supabase_supabase-js.js?v=9e93434f:273
+@supabase_supabase-js.js?v=9e93434f:11448  GET https://supabase.dincouture.pk/rest/v1/purchases?select=due_amount&company_id=eq.c37b77cc-6eb9-4fc0-af7d-3e1eaaeaeaee&status=in.%28final%2Creceived%2Ccompleted%29&branch_id=eq.23976568-efc8-4442-ad56-eee9affe87be 400 (Bad Request)
+(anonymous) @ @supabase_supabase-js.js?v=9e93434f:11448
+(anonymous) @ @supabase_supabase-js.js?v=9e93434f:11462
+await in (anonymous)
+then @ @supabase_supabase-js.js?v=9e93434f:273
+purchaseService.ts:1040 [PURCHASE SERVICE] Payment updated successfully
+@supabase_supabase-js.js?v=9e93434f:11448  GET https://supabase.dincouture.pk/rest/v1/purchases?select=due_amount&company_id=eq.c37b77cc-6eb9-4fc0-af7d-3e1eaaeaeaee&status=in.%28final%2Creceived%2Ccompleted%29&branch_id=eq.23976568-efc8-4442-ad56-eee9affe87be 400 (Bad Request)
+(anonymous) @ @supabase_supabase-js.js?v=9e93434f:11448
+(anonymous) @ @supabase_supabase-js.js?v=9e93434f:11462
+await in (anonymous)
+then @ @supabase_supabase-js.js?v=9e93434f:273
+@supabase_supabase-js.js?v=9e93434f:11448  GET https://supabase.dincouture.pk/rest/v1/purchases?select=due_amount&company_id=eq.c37b77cc-6eb9-4fc0-af7d-3e1eaaeaeaee&status=in.%28final%2Creceived%2Ccompleted%29&branch_id=eq.23976568-efc8-4442-ad56-eee9affe87be 400 (Bad Request)
+(anonymous) @ @supabase_supabase-js.js?v=9e93434f:11448
+(anonymous) @ @supabase_supabase-js.js?v=9e93434f:11462
+await in (anonymous)
+then @ @supabase_supabase-js.js?v=9e93434f:273
+@supabase_supabase-js.js?v=9e93434f:11448  GET https://supabase.dincouture.pk/rest/v1/purchases?select=due_amount&company_id=eq.c37b77cc-6eb9-4fc0-af7d-3e1eaaeaeaee&status=in.%28final%2Creceived%2Ccompleted%29&branch_id=eq.23976568-efc8-4442-ad56-eee9affe87be 400 (Bad Request)
+(anonymous) @ @supabase_supabase-js.js?v=9e93434f:11448
+(anonymous) @ @supabase_supabase-js.js?v=9e93434f:11462
+await in (anonymous)
+then @ @supabase_supabase-js.js?v=9e93434f:273
+@supabase_supabase-js.js?v=9e93434f:11448  GET https://supabase.dincouture.pk/rest/v1/purchases?select=due_amount&company_id=eq.c37b77cc-6eb9-4fc0-af7d-3e1eaaeaeaee&status=in.%28final%2Creceived%2Ccompleted%29&branch_id=eq.23976568-efc8-4442-ad56-eee9affe87be 400 (Bad Request)
+(anonymous) @ @supabase_supabase-js.js?v=9e93434f:11448
+(anonymous) @ @supabase_supabase-js.js?v=9e93434f:11462
+await in (anonymous)
+then @ @supabase_supabase-js.js?v=9e93434f:273
+@supabase_supabase-js.js?v=9e93434f:11448  GET https://supabase.dincouture.pk/rest/v1/purchases?select=due_amount&company_id=eq.c37b77cc-6eb9-4fc0-af7d-3e1eaaeaeaee&status=in.%28final%2Creceived%2Ccompleted%29&branch_id=eq.23976568-efc8-4442-ad56-eee9affe87be 400 (Bad Request)
+(anonymous) @ @supabase_supabase-js.js?v=9e93434f:11448
+(anonymous) @ @supabase_supabase-js.js?v=9e93434f:11462
+await in (anonymous)
+then @ @supabase_supabase-js.js?v=9e93434f:273
+saleAccountingService.ts:320 [saleAccountingService] Journal entry already exists for sale SL-0008, skipping
+@supabase_supabase-js.js?v=9e93434f:11448  GET https://supabase.dincouture.pk/rest/v1/purchases?select=due_amount&company_id=eq.c37b77cc-6eb9-4fc0-af7d-3e1eaaeaeaee&status=in.%28final%2Creceived%2Ccompleted%29&branch_id=eq.23976568-efc8-4442-ad56-eee9affe87be 400 (Bad Request)
+(anonymous) @ @supabase_supabase-js.js?v=9e93434f:11448
+(anonymous) @ @supabase_supabase-js.js?v=9e93434f:11462
+await in (anonymous)
+then @ @supabase_supabase-js.js?v=9e93434f:273
+saleService.ts:1037 [SALE SERVICE] Payment method normalization: {original: 'Cash', normalized: 'cash', enumValue: 'cash'}
+@supabase_supabase-js.js?v=9e93434f:11448  GET https://supabase.dincouture.pk/rest/v1/purchases?select=due_amount&company_id=eq.c37b77cc-6eb9-4fc0-af7d-3e1eaaeaeaee&status=in.%28final%2Creceived%2Ccompleted%29&branch_id=eq.23976568-efc8-4442-ad56-eee9affe87be 400 (Bad Request)
+(anonymous) @ @supabase_supabase-js.js?v=9e93434f:11448
+(anonymous) @ @supabase_supabase-js.js?v=9e93434f:11462
+await in (anonymous)
+then @ @supabase_supabase-js.js?v=9e93434f:273
+@supabase_supabase-js.js?v=9e93434f:11448  GET https://supabase.dincouture.pk/rest/v1/purchases?select=due_amount&company_id=eq.c37b77cc-6eb9-4fc0-af7d-3e1eaaeaeaee&status=in.%28final%2Creceived%2Ccompleted%29&branch_id=eq.23976568-efc8-4442-ad56-eee9affe87be 400 (Bad Request)
+(anonymous) @ @supabase_supabase-js.js?v=9e93434f:11448
+(anonymous) @ @supabase_supabase-js.js?v=9e93434f:11462
+await in (anonymous)
+then @ @supabase_supabase-js.js?v=9e93434f:273
+@supabase_supabase-js.js?v=9e93434f:11448  GET https://supabase.dincouture.pk/rest/v1/purchases?select=due_amount&company_id=eq.c37b77cc-6eb9-4fc0-af7d-3e1eaaeaeaee&status=in.%28final%2Creceived%2Ccompleted%29&branch_id=eq.23976568-efc8-4442-ad56-eee9affe87be 400 (Bad Request)
+(anonymous) @ @supabase_supabase-js.js?v=9e93434f:11448
+(anonymous) @ @supabase_supabase-js.js?v=9e93434f:11462
+await in (anonymous)
+then @ @supabase_supabase-js.js?v=9e93434f:273
+@supabase_supabase-js.js?v=9e93434f:11448  GET https://supabase.dincouture.pk/rest/v1/purchases?select=due_amount&company_id=eq.c37b77cc-6eb9-4fc0-af7d-3e1eaaeaeaee&status=in.%28final%2Creceived%2Ccompleted%29&branch_id=eq.23976568-efc8-4442-ad56-eee9affe87be 400 (Bad Request)
+(anonymous) @ @supabase_supabase-js.js?v=9e93434f:11448
+(anonymous) @ @supabase_supabase-js.js?v=9e93434f:11462
+await in (anonymous)
+then @ @supabase_supabase-js.js?v=9e93434f:273
+@supabase_supabase-js.js?v=9e93434f:11448  GET https://supabase.dincouture.pk/rest/v1/purchases?select=due_amount&company_id=eq.c37b77cc-6eb9-4fc0-af7d-3e1eaaeaeaee&status=in.%28final%2Creceived%2Ccompleted%29&branch_id=eq.23976568-efc8-4442-ad56-eee9affe87be 400 (Bad Request)
+(anonymous) @ @supabase_supabase-js.js?v=9e93434f:11448
+(anonymous) @ @supabase_supabase-js.js?v=9e93434f:11462
+await in (anonymous)
+then @ @supabase_supabase-js.js?v=9e93434f:273
+saleService.ts:1366 [SALE SERVICE] Payment updated successfully
+@supabase_supabase-js.js?v=9e93434f:11448  GET https://supabase.dincouture.pk/rest/v1/purchases?select=due_amount&company_id=eq.c37b77cc-6eb9-4fc0-af7d-3e1eaaeaeaee&status=in.%28final%2Creceived%2Ccompleted%29&branch_id=eq.23976568-efc8-4442-ad56-eee9affe87be 400 (Bad Request)
+(anonymous) @ @supabase_supabase-js.js?v=9e93434f:11448
+(anonymous) @ @supabase_supabase-js.js?v=9e93434f:11462
+await in (anonymous)
+then @ @supabase_supabase-js.js?v=9e93434f:273
+saleService.ts:1366 [SALE SERVICE] Payment updated successfully
+@supabase_supabase-js.js?v=9e93434f:11448  GET https://supabase.dincouture.pk/rest/v1/purchases?select=due_amount&company_id=eq.c37b77cc-6eb9-4fc0-af7d-3e1eaaeaeaee&status=in.%28final%2Creceived%2Ccompleted%29&branch_id=eq.23976568-efc8-4442-ad56-eee9affe87be 400 (Bad Request)
+(anonymous) @ @supabase_supabase-js.js?v=9e93434f:11448
+(anonymous) @ @supabase_supabase-js.js?v=9e93434f:11462
+await in (anonymous)
+then @ @supabase_supabase-js.js?v=9e93434f:273
+@supabase_supabase-js.js?v=9e93434f:11448  GET https://supabase.dincouture.pk/rest/v1/purchases?select=due_amount&company_id=eq.c37b77cc-6eb9-4fc0-af7d-3e1eaaeaeaee&status=in.%28final%2Creceived%2Ccompleted%29&branch_id=eq.23976568-efc8-4442-ad56-eee9affe87be 400 (Bad Request)
+(anonymous) @ @supabase_supabase-js.js?v=9e93434f:11448
+(anonymous) @ @supabase_supabase-js.js?v=9e93434f:11462
+await in (anonymous)
+then @ @supabase_supabase-js.js?v=9e93434f:273
+@supabase_supabase-js.js?v=9e93434f:11448  GET https://supabase.dincouture.pk/rest/v1/purchases?select=due_amount&company_id=eq.c37b77cc-6eb9-4fc0-af7d-3e1eaaeaeaee&status=in.%28final%2Creceived%2Ccompleted%29&branch_id=eq.23976568-efc8-4442-ad56-eee9affe87be 400 (Bad Request)
+(anonymous) @ @supabase_supabase-js.js?v=9e93434f:11448
+(anonymous) @ @supabase_supabase-js.js?v=9e93434f:11462
+await in (anonymous)
+then @ @supabase_supabase-js.js?v=9e93434f:273
+@supabase_supabase-js.js?v=9e93434f:11448  GET https://supabase.dincouture.pk/rest/v1/purchases?select=due_amount&company_id=eq.c37b77cc-6eb9-4fc0-af7d-3e1eaaeaeaee&status=in.%28final%2Creceived%2Ccompleted%29&branch_id=eq.23976568-efc8-4442-ad56-eee9affe87be 400 (Bad Request)
+(anonymous) @ @supabase_supabase-js.js?v=9e93434f:11448
+(anonymous) @ @supabase_supabase-js.js?v=9e93434f:11462
+await in (anonymous)
+then @ @supabase_supabase-js.js?v=9e93434f:273
+@supabase_supabase-js.js?v=9e93434f:11448  PATCH https://supabase.dincouture.pk/rest/v1/purchases?id=eq.749301a2-55e3-41aa-9a9b-34b3da7a0c6f&select=* 400 (Bad Request)
+(anonymous) @ @supabase_supabase-js.js?v=9e93434f:11448
+(anonymous) @ @supabase_supabase-js.js?v=9e93434f:11462
+await in (anonymous)
+then @ @supabase_supabase-js.js?v=9e93434f:273
+@supabase_supabase-js.js?v=9e93434f:11448  PATCH https://supabase.dincouture.pk/rest/v1/purchases?id=eq.749301a2-55e3-41aa-9a9b-34b3da7a0c6f&select=* 400 (Bad Request)
+(anonymous) @ @supabase_supabase-js.js?v=9e93434f:11448
+(anonymous) @ @supabase_supabase-js.js?v=9e93434f:11462
+await in (anonymous)
+then @ @supabase_supabase-js.js?v=9e93434f:273
+@supabase_supabase-js.js?v=9e93434f:11448  PATCH https://supabase.dincouture.pk/rest/v1/purchases?id=eq.749301a2-55e3-41aa-9a9b-34b3da7a0c6f&select=* 400 (Bad Request)
+(anonymous) @ @supabase_supabase-js.js?v=9e93434f:11448
+(anonymous) @ @supabase_supabase-js.js?v=9e93434f:11462
+await in (anonymous)
+then @ @supabase_supabase-js.js?v=9e93434f:273
+@supabase_supabase-js.js?v=9e93434f:11448  PATCH https://supabase.dincouture.pk/rest/v1/purchases?id=eq.749301a2-55e3-41aa-9a9b-34b3da7a0c6f&select=* 400 (Bad Request)
+(anonymous) @ @supabase_supabase-js.js?v=9e93434f:11448
+(anonymous) @ @supabase_supabase-js.js?v=9e93434f:11462
+await in (anonymous)
+then @ @supabase_supabase-js.js?v=9e93434f:273
+@supabase_supabase-js.js?v=9e93434f:11448  GET https://supabase.dincouture.pk/rest/v1/purchases?select=due_amount&company_id=eq.c37b77cc-6eb9-4fc0-af7d-3e1eaaeaeaee&status=in.%28final%2Creceived%2Ccompleted%29&branch_id=eq.23976568-efc8-4442-ad56-eee9affe87be 400 (Bad Request)
+(anonymous) @ @supabase_supabase-js.js?v=9e93434f:11448
+(anonymous) @ @supabase_supabase-js.js?v=9e93434f:11462
+await in (anonymous)
+then @ @supabase_supabase-js.js?v=9e93434f:273
+@supabase_supabase-js.js?v=9e93434f:11448  GET https://supabase.dincouture.pk/rest/v1/purchases?select=due_amount&company_id=eq.c37b77cc-6eb9-4fc0-af7d-3e1eaaeaeaee&status=in.%28final%2Creceived%2Ccompleted%29&branch_id=eq.23976568-efc8-4442-ad56-eee9affe87be 400 (Bad Request)
+(anonymous) @ @supabase_supabase-js.js?v=9e93434f:11448
+(anonymous) @ @supabase_supabase-js.js?v=9e93434f:11462
+await in (anonymous)
+then @ @supabase_supabase-js.js?v=9e93434f:273
+@supabase_supabase-js.js?v=9e93434f:11448  GET https://supabase.dincouture.pk/rest/v1/purchases?select=due_amount&company_id=eq.c37b77cc-6eb9-4fc0-af7d-3e1eaaeaeaee&status=in.%28final%2Creceived%2Ccompleted%29&branch_id=eq.23976568-efc8-4442-ad56-eee9affe87be 400 (Bad Request)
+(anonymous) @ @supabase_supabase-js.js?v=9e93434f:11448
+(anonymous) @ @supabase_supabase-js.js?v=9e93434f:11462
+await in (anonymous)
+then @ @supabase_supabase-js.js?v=9e93434f:273
+@supabase_supabase-js.js?v=9e93434f:11448  GET https://supabase.dincouture.pk/rest/v1/purchases?select=due_amount&company_id=eq.c37b77cc-6eb9-4fc0-af7d-3e1eaaeaeaee&status=in.%28final%2Creceived%2Ccompleted%29&branch_id=eq.23976568-efc8-4442-ad56-eee9affe87be 400 (Bad Request)
+(anonymous) @ @supabase_supabase-js.js?v=9e93434f:11448
+(anonymous) @ @supabase_supabase-js.js?v=9e93434f:11462
+await in (anonymous)
+then @ @supabase_supabase-js.js?v=9e93434f:273
+@supabase_supabase-js.js?v=9e93434f:11448  GET https://supabase.dincouture.pk/rest/v1/purchases?select=due_amount&company_id=eq.c37b77cc-6eb9-4fc0-af7d-3e1eaaeaeaee&status=in.%28final%2Creceived%2Ccompleted%29&branch_id=eq.23976568-efc8-4442-ad56-eee9affe87be 400 (Bad Request)
+(anonymous) @ @supabase_supabase-js.js?v=9e93434f:11448
+(anonymous) @ @supabase_supabase-js.js?v=9e93434f:11462
+await in (anonymous)
+then @ @supabase_supabase-js.js?v=9e93434f:273
+purchaseService.ts:1040 [PURCHASE SERVICE] Payment updated successfully
+@supabase_supabase-js.js?v=9e93434f:11448  GET https://supabase.dincouture.pk/rest/v1/purchases?select=due_amount&company_id=eq.c37b77cc-6eb9-4fc0-af7d-3e1eaaeaeaee&status=in.%28final%2Creceived%2Ccompleted%29&branch_id=eq.23976568-efc8-4442-ad56-eee9affe87be 400 (Bad Request)
+(anonymous) @ @supabase_supabase-js.js?v=9e93434f:11448
+(anonymous) @ @supabase_supabase-js.js?v=9e93434f:11462
+await in (anonymous)
+then @ @supabase_supabase-js.js?v=9e93434f:273
+@supabase_supabase-js.js?v=9e93434f:11448  GET https://supabase.dincouture.pk/rest/v1/purchases?select=due_amount&company_id=eq.c37b77cc-6eb9-4fc0-af7d-3e1eaaeaeaee&status=in.%28final%2Creceived%2Ccompleted%29&branch_id=eq.23976568-efc8-4442-ad56-eee9affe87be 400 (Bad Request)
+(anonymous) @ @supabase_supabase-js.js?v=9e93434f:11448
+(anonymous) @ @supabase_supabase-js.js?v=9e93434f:11462
+await in (anonymous)
+then @ @supabase_supabase-js.js?v=9e93434f:273
+@supabase_supabase-js.js?v=9e93434f:11448  GET https://supabase.dincouture.pk/rest/v1/purchases?select=due_amount&company_id=eq.c37b77cc-6eb9-4fc0-af7d-3e1eaaeaeaee&status=in.%28final%2Creceived%2Ccompleted%29&branch_id=eq.23976568-efc8-4442-ad56-eee9affe87be 400 (Bad Request)
+(anonymous) @ @supabase_supabase-js.js?v=9e93434f:11448
+(anonymous) @ @supabase_supabase-js.js?v=9e93434f:11462
+await in (anonymous)
+then @ @supabase_supabase-js.js?v=9e93434f:273
+purchaseService.ts:1040 [PURCHASE SERVICE] Payment updated successfully
+@supabase_supabase-js.js?v=9e93434f:11448  GET https://supabase.dincouture.pk/rest/v1/purchases?select=due_amount&company_id=eq.c37b77cc-6eb9-4fc0-af7d-3e1eaaeaeaee&status=in.%28final%2Creceived%2Ccompleted%29&branch_id=eq.23976568-efc8-4442-ad56-eee9affe87be 400 (Bad Request)
+(anonymous) @ @supabase_supabase-js.js?v=9e93434f:11448
+(anonymous) @ @supabase_supabase-js.js?v=9e93434f:11462
+await in (anonymous)
+then @ @supabase_supabase-js.js?v=9e93434f:273
+@supabase_supabase-js.js?v=9e93434f:11448  GET https://supabase.dincouture.pk/rest/v1/purchases?select=due_amount&company_id=eq.c37b77cc-6eb9-4fc0-af7d-3e1eaaeaeaee&status=in.%28final%2Creceived%2Ccompleted%29&branch_id=eq.23976568-efc8-4442-ad56-eee9affe87be 400 (Bad Request)
+(anonymous) @ @supabase_supabase-js.js?v=9e93434f:11448
+(anonymous) @ @supabase_supabase-js.js?v=9e93434f:11462
+await in (anonymous)
+then @ @supabase_supabase-js.js?v=9e93434f:273
+@supabase_supabase-js.js?v=9e93434f:11448  GET https://supabase.dincouture.pk/rest/v1/purchases?select=due_amount&company_id=eq.c37b77cc-6eb9-4fc0-af7d-3e1eaaeaeaee&status=in.%28final%2Creceived%2Ccompleted%29&branch_id=eq.23976568-efc8-4442-ad56-eee9affe87be 400 (Bad Request)
+(anonymous) @ @supabase_supabase-js.js?v=9e93434f:11448
+(anonymous) @ @supabase_supabase-js.js?v=9e93434f:11462
+await in (anonymous)
+then @ @supabase_supabase-js.js?v=9e93434f:273
+@supabase_supabase-js.js?v=9e93434f:11448  GET https://supabase.dincouture.pk/rest/v1/purchases?select=due_amount&company_id=eq.c37b77cc-6eb9-4fc0-af7d-3e1eaaeaeaee&status=in.%28final%2Creceived%2Ccompleted%29&branch_id=eq.23976568-efc8-4442-ad56-eee9affe87be 400 (Bad Request)
+(anonymous) @ @supabase_supabase-js.js?v=9e93434f:11448
+(anonymous) @ @supabase_supabase-js.js?v=9e93434f:11462
+await in (anonymous)
+then @ @supabase_supabase-js.js?v=9e93434f:273
+@supabase_supabase-js.js?v=9e93434f:11448  GET https://supabase.dincouture.pk/rest/v1/purchases?select=due_amount&company_id=eq.c37b77cc-6eb9-4fc0-af7d-3e1eaaeaeaee&status=in.%28final%2Creceived%2Ccompleted%29&branch_id=eq.23976568-efc8-4442-ad56-eee9affe87be 400 (Bad Request)
+(anonymous) @ @supabase_supabase-js.js?v=9e93434f:11448
+(anonymous) @ @supabase_supabase-js.js?v=9e93434f:11462
+await in (anonymous)
+then @ @supabase_supabase-js.js?v=9e93434f:273
+@supabase_supabase-js.js?v=9e93434f:11448  GET https://supabase.dincouture.pk/rest/v1/purchases?select=due_amount&company_id=eq.c37b77cc-6eb9-4fc0-af7d-3e1eaaeaeaee&status=in.%28final%2Creceived%2Ccompleted%29&branch_id=eq.23976568-efc8-4442-ad56-eee9affe87be 400 (Bad Request)
+(anonymous) @ @supabase_supabase-js.js?v=9e93434f:11448
+(anonymous) @ @supabase_supabase-js.js?v=9e93434f:11462
+await in (anonymous)
+then @ @supabase_supabase-js.js?v=9e93434f:273
+@supabase_supabase-js.js?v=9e93434f:11448  GET https://supabase.dincouture.pk/rest/v1/purchases?select=due_amount&company_id=eq.c37b77cc-6eb9-4fc0-af7d-3e1eaaeaeaee&status=in.%28final%2Creceived%2Ccompleted%29&branch_id=eq.23976568-efc8-4442-ad56-eee9affe87be 400 (Bad Request)
+(anonymous) @ @supabase_supabase-js.js?v=9e93434f:11448
+(anonymous) @ @supabase_supabase-js.js?v=9e93434f:11462
+await in (anonymous)
+then @ @supabase_supabase-js.js?v=9e93434f:273
+@supabase_supabase-js.js?v=9e93434f:11448  GET https://supabase.dincouture.pk/rest/v1/purchases?select=due_amount&company_id=eq.c37b77cc-6eb9-4fc0-af7d-3e1eaaeaeaee&status=in.%28final%2Creceived%2Ccompleted%29&branch_id=eq.23976568-efc8-4442-ad56-eee9affe87be 400 (Bad Request)
+(anonymous) @ @supabase_supabase-js.js?v=9e93434f:11448
+(anonymous) @ @supabase_supabase-js.js?v=9e93434f:11462
+await in (anonymous)
+then @ @supabase_supabase-js.js?v=9e93434f:273
+SupabaseContext.tsx:199 [AUTH] SIGNED_IN - auth user: {id: '1bcaca56-840e-4e65-8c73-6faf537576cb', email: 'ndm313@live.com'}
+SupabaseContext.tsx:243 [FETCH USER DATA] Looking for ERP profile with auth_user_id or id: 1bcaca56-840e-4e65-8c73-6faf537576cb
+SupabaseContext.tsx:244 [FETCH USER DATA] Query: users WHERE id.eq.1bcaca56-840e-4e65-8c73-6faf537576cb OR auth_user_id.eq.1bcaca56-840e-4e65-8c73-6faf537576cb
+SupabaseContext.tsx:255 [FETCH USER DATA] Result: {data: {…}, error: null}
+SupabaseContext.tsx:324 [FETCH USER DATA SUCCESS] {companyId: 'c37b77cc-6eb9-4fc0-af7d-3e1eaaeaeaee', role: 'admin'}
+SettingsContext.tsx:492 [PERM_DEBUG] loadAllSettings started; loading=true → isPermissionLoaded=false
+SupabaseContext.tsx:396 [BRANCH LOADED] Admin: All Branches {count: 1}
+RentalContext.tsx:205 WebSocket connection to 'wss://supabase.dincouture.pk/realtime/v1/websocket?apikey=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYW5vbiIsImlzcyI6InN1cGFiYXNlLWRlbW8iLCJpYXQiOjE2NDE3NjkyMDAsImV4cCI6MTc5OTUzNTYwMH0.uPWERzbv9FtmRpl0cBPDPox08YhjW_zTOXtwYNLWmuo&vsn=1.0.0' failed: 
+createWebSocket @ @supabase_supabase-js.js?v=9e93434f:1499
+connect @ @supabase_supabase-js.js?v=9e93434f:2935
+subscribe @ @supabase_supabase-js.js?v=9e93434f:2336
+(anonymous) @ RentalContext.tsx:205
+commitHookEffectListMount @ chunk-TH7NCS4R.js?v=9e93434f:16963
+commitPassiveMountOnFiber @ chunk-TH7NCS4R.js?v=9e93434f:18206
+commitPassiveMountEffects_complete @ chunk-TH7NCS4R.js?v=9e93434f:18179
+commitPassiveMountEffects_begin @ chunk-TH7NCS4R.js?v=9e93434f:18169
+commitPassiveMountEffects @ chunk-TH7NCS4R.js?v=9e93434f:18159
+flushPassiveEffectsImpl @ chunk-TH7NCS4R.js?v=9e93434f:19543
+flushPassiveEffects @ chunk-TH7NCS4R.js?v=9e93434f:19500
+performSyncWorkOnRoot @ chunk-TH7NCS4R.js?v=9e93434f:18921
+flushSyncCallbacks @ chunk-TH7NCS4R.js?v=9e93434f:9166
+commitRootImpl @ chunk-TH7NCS4R.js?v=9e93434f:19485
+commitRoot @ chunk-TH7NCS4R.js?v=9e93434f:19330
+finishConcurrentRender @ chunk-TH7NCS4R.js?v=9e93434f:18858
+performConcurrentWorkOnRoot @ chunk-TH7NCS4R.js?v=9e93434f:18768
+workLoop @ chunk-TH7NCS4R.js?v=9e93434f:197
+flushWork @ chunk-TH7NCS4R.js?v=9e93434f:176
+performWorkUntilDeadline @ chunk-TH7NCS4R.js?v=9e93434f:384
+SettingsContext.tsx:785 [PERM_DEBUG] 3. Derived flags: {canViewSale: true, canCreateSale: true, canEditSale: true, canViewReports: true, canManageProducts: true, …}
+SettingsContext.tsx:813 loadAllSettings: 651.81201171875 ms
+SettingsContext.tsx:814 ✅ Settings loaded
+SettingsContext.tsx:821 [PERM_DEBUG] loadAllSettings finished; loading=false → isPermissionLoaded=true
+AccountingContext.tsx:432 ✅ Accounts loaded: 23
+AccountingContext.tsx:432 ✅ Accounts loaded: 23
+AccountingContext.tsx:472 ✅ Journal entries loaded: 37
+AccountingContext.tsx:472 ✅ Journal entries loaded: 37
+SupabaseContext.tsx:199 [AUTH] SIGNED_IN - auth user: {id: '1bcaca56-840e-4e65-8c73-6faf537576cb', email: 'ndm313@live.com'}
+SupabaseContext.tsx:243 [FETCH USER DATA] Looking for ERP profile with auth_user_id or id: 1bcaca56-840e-4e65-8c73-6faf537576cb
+SupabaseContext.tsx:244 [FETCH USER DATA] Query: users WHERE id.eq.1bcaca56-840e-4e65-8c73-6faf537576cb OR auth_user_id.eq.1bcaca56-840e-4e65-8c73-6faf537576cb
+SupabaseContext.tsx:255 [FETCH USER DATA] Result: {data: {…}, error: null}
+SupabaseContext.tsx:324 [FETCH USER DATA SUCCESS] {companyId: 'c37b77cc-6eb9-4fc0-af7d-3e1eaaeaeaee', role: 'admin'}
+SettingsContext.tsx:492 [PERM_DEBUG] loadAllSettings started; loading=true → isPermissionLoaded=false
+SupabaseContext.tsx:396 [BRANCH LOADED] Admin: All Branches {count: 1}
+RentalContext.tsx:205 WebSocket connection to 'wss://supabase.dincouture.pk/realtime/v1/websocket?apikey=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYW5vbiIsImlzcyI6InN1cGFiYXNlLWRlbW8iLCJpYXQiOjE2NDE3NjkyMDAsImV4cCI6MTc5OTUzNTYwMH0.uPWERzbv9FtmRpl0cBPDPox08YhjW_zTOXtwYNLWmuo&vsn=1.0.0' failed: 
+createWebSocket @ @supabase_supabase-js.js?v=9e93434f:1499
+connect @ @supabase_supabase-js.js?v=9e93434f:2935
+subscribe @ @supabase_supabase-js.js?v=9e93434f:2336
+(anonymous) @ RentalContext.tsx:205
+commitHookEffectListMount @ chunk-TH7NCS4R.js?v=9e93434f:16963
+commitPassiveMountOnFiber @ chunk-TH7NCS4R.js?v=9e93434f:18206
+commitPassiveMountEffects_complete @ chunk-TH7NCS4R.js?v=9e93434f:18179
+commitPassiveMountEffects_begin @ chunk-TH7NCS4R.js?v=9e93434f:18169
+commitPassiveMountEffects @ chunk-TH7NCS4R.js?v=9e93434f:18159
+flushPassiveEffectsImpl @ chunk-TH7NCS4R.js?v=9e93434f:19543
+flushPassiveEffects @ chunk-TH7NCS4R.js?v=9e93434f:19500
+performSyncWorkOnRoot @ chunk-TH7NCS4R.js?v=9e93434f:18921
+flushSyncCallbacks @ chunk-TH7NCS4R.js?v=9e93434f:9166
+commitRootImpl @ chunk-TH7NCS4R.js?v=9e93434f:19485
+commitRoot @ chunk-TH7NCS4R.js?v=9e93434f:19330
+finishConcurrentRender @ chunk-TH7NCS4R.js?v=9e93434f:18858
+performConcurrentWorkOnRoot @ chunk-TH7NCS4R.js?v=9e93434f:18768
+workLoop @ chunk-TH7NCS4R.js?v=9e93434f:197
+flushWork @ chunk-TH7NCS4R.js?v=9e93434f:176
+performWorkUntilDeadline @ chunk-TH7NCS4R.js?v=9e93434f:384
+SettingsContext.tsx:785 [PERM_DEBUG] 3. Derived flags: {canViewSale: true, canCreateSale: true, canEditSale: true, canViewReports: true, canManageProducts: true, …}
+SettingsContext.tsx:813 loadAllSettings: 549.97705078125 ms
+SettingsContext.tsx:814 ✅ Settings loaded
+SettingsContext.tsx:821 [PERM_DEBUG] loadAllSettings finished; loading=false → isPermissionLoaded=true
+AccountingContext.tsx:432 ✅ Accounts loaded: 23
+AccountingContext.tsx:432 ✅ Accounts loaded: 23
+AccountingContext.tsx:472 ✅ Journal entries loaded: 37
+AccountingContext.tsx:472 ✅ Journal entries loaded: 37
+SupabaseContext.tsx:199 [AUTH] SIGNED_IN - auth user: {id: '1bcaca56-840e-4e65-8c73-6faf537576cb', email: 'ndm313@live.com'}
+SupabaseContext.tsx:243 [FETCH USER DATA] Looking for ERP profile with auth_user_id or id: 1bcaca56-840e-4e65-8c73-6faf537576cb
+SupabaseContext.tsx:244 [FETCH USER DATA] Query: users WHERE id.eq.1bcaca56-840e-4e65-8c73-6faf537576cb OR auth_user_id.eq.1bcaca56-840e-4e65-8c73-6faf537576cb
+SupabaseContext.tsx:255 [FETCH USER DATA] Result: {data: {…}, error: null}
+SupabaseContext.tsx:324 [FETCH USER DATA SUCCESS] {companyId: 'c37b77cc-6eb9-4fc0-af7d-3e1eaaeaeaee', role: 'admin'}
+SettingsContext.tsx:492 [PERM_DEBUG] loadAllSettings started; loading=true → isPermissionLoaded=false
+SupabaseContext.tsx:396 [BRANCH LOADED] Admin: All Branches {count: 1}
+RentalContext.tsx:205 WebSocket connection to 'wss://supabase.dincouture.pk/realtime/v1/websocket?apikey=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYW5vbiIsImlzcyI6InN1cGFiYXNlLWRlbW8iLCJpYXQiOjE2NDE3NjkyMDAsImV4cCI6MTc5OTUzNTYwMH0.uPWERzbv9FtmRpl0cBPDPox08YhjW_zTOXtwYNLWmuo&vsn=1.0.0' failed: 
+createWebSocket @ @supabase_supabase-js.js?v=9e93434f:1499
+connect @ @supabase_supabase-js.js?v=9e93434f:2935
+subscribe @ @supabase_supabase-js.js?v=9e93434f:2336
+(anonymous) @ RentalContext.tsx:205
+commitHookEffectListMount @ chunk-TH7NCS4R.js?v=9e93434f:16963
+commitPassiveMountOnFiber @ chunk-TH7NCS4R.js?v=9e93434f:18206
+commitPassiveMountEffects_complete @ chunk-TH7NCS4R.js?v=9e93434f:18179
+commitPassiveMountEffects_begin @ chunk-TH7NCS4R.js?v=9e93434f:18169
+commitPassiveMountEffects @ chunk-TH7NCS4R.js?v=9e93434f:18159
+flushPassiveEffectsImpl @ chunk-TH7NCS4R.js?v=9e93434f:19543
+flushPassiveEffects @ chunk-TH7NCS4R.js?v=9e93434f:19500
+performSyncWorkOnRoot @ chunk-TH7NCS4R.js?v=9e93434f:18921
+flushSyncCallbacks @ chunk-TH7NCS4R.js?v=9e93434f:9166
+commitRootImpl @ chunk-TH7NCS4R.js?v=9e93434f:19485
+commitRoot @ chunk-TH7NCS4R.js?v=9e93434f:19330
+finishConcurrentRender @ chunk-TH7NCS4R.js?v=9e93434f:18858
+performConcurrentWorkOnRoot @ chunk-TH7NCS4R.js?v=9e93434f:18768
+workLoop @ chunk-TH7NCS4R.js?v=9e93434f:197
+flushWork @ chunk-TH7NCS4R.js?v=9e93434f:176
+performWorkUntilDeadline @ chunk-TH7NCS4R.js?v=9e93434f:384
+SettingsContext.tsx:785 [PERM_DEBUG] 3. Derived flags: {canViewSale: true, canCreateSale: true, canEditSale: true, canViewReports: true, canManageProducts: true, …}
+SettingsContext.tsx:813 loadAllSettings: 570.18896484375 ms
+SettingsContext.tsx:814 ✅ Settings loaded
+SettingsContext.tsx:821 [PERM_DEBUG] loadAllSettings finished; loading=false → isPermissionLoaded=true
+AccountingContext.tsx:432 ✅ Accounts loaded: 23
+AccountingContext.tsx:432 ✅ Accounts loaded: 23
+AccountingContext.tsx:472 ✅ Journal entries loaded: 37
+AccountingContext.tsx:472 ✅ Journal entries loaded: 37
+
+
+---
+Accounting Integrity Lab blocker fixes (2026-03-20)
+Primary implementation commit: 86d28a9aea5331f2984a1a75c0d10a2da821c5db
+Docs SHA commit: c8243fe (see git log)

@@ -15,6 +15,7 @@ import { branchService } from '@/app/services/branchService';
 import { toast } from 'sonner';
 import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
 import { canPostAccountingForPurchaseStatus } from '@/app/lib/postingStatusGate';
+import { getPurchaseDisplayNumber } from '@/app/lib/documentDisplayNumbers';
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 function isValidBranchId(id: string | null): id is string {
@@ -73,7 +74,10 @@ export interface PurchaseItem {
 
 export interface Purchase {
   id: string;
+  /** Display number for lists (from po_no when posted, else draft_no / order_no). */
   purchaseNo: string;
+  draftNo?: string;
+  orderNo?: string;
   supplier: string;
   supplierName: string;
   contactNumber: string;
@@ -113,8 +117,7 @@ interface PurchaseContextType {
   getPurchaseById: (id: string) => Purchase | undefined;
   createPurchase: (
     purchase: Omit<Purchase, 'id' | 'purchaseNo' | 'createdAt' | 'updatedAt'>,
-    purchaseNo?: string,
-    convOpts?: { conversionSourceId?: string }
+    purchaseNo?: string
   ) => Promise<Purchase>;
   updatePurchase: (id: string, updates: Partial<Purchase>) => Promise<void>;
   deletePurchase: (id: string) => Promise<void>;
@@ -168,9 +171,12 @@ export const convertFromSupabasePurchase = (supabasePurchase: any): Purchase => 
   }
   // Note: Do NOT fallback to branch_id UUID - it should never appear in UI
   
+  const displayPo = getPurchaseDisplayNumber(supabasePurchase);
   return {
     id: supabasePurchase.id,
-    purchaseNo: supabasePurchase.po_no || '',
+    purchaseNo: displayPo || supabasePurchase.po_no || '',
+    draftNo: supabasePurchase.draft_no ?? undefined,
+    orderNo: supabasePurchase.order_no ?? undefined,
     supplier: supabasePurchase.supplier_id || '',
     supplierName: supabasePurchase.supplier_name || '',
     contactNumber: supabasePurchase.supplier?.phone || '',
@@ -279,8 +285,7 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
   // Create new purchase
   const createPurchase = async (
     purchaseData: Omit<Purchase, 'id' | 'purchaseNo' | 'createdAt' | 'updatedAt'>,
-    providedPurchaseNo?: string,
-    convOpts?: { conversionSourceId?: string }
+    providedPurchaseNo?: string
   ): Promise<Purchase> => {
     if (!companyId || !user) {
       throw new Error('Company ID and User are required');
@@ -311,6 +316,11 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
         providedPurchaseNo ??
         (await documentNumberService.getNextDocumentNumberGlobal(companyId, purchaseSequenceType));
 
+      const postedHeader = canPostAccountingForPurchaseStatus(dbStatus);
+      const draft_no = dbStatus === 'draft' ? purchaseNo : null;
+      const order_no = dbStatus === 'ordered' ? purchaseNo : null;
+      const po_no = postedHeader ? purchaseNo : null;
+
       // Convert to Supabase format
       
       // Ensure supplier_id is either a valid UUID or undefined (not empty string)
@@ -326,7 +336,9 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
       const supabasePurchase: SupabasePurchase = {
         company_id: companyId,
         branch_id: finalBranchId,
-        po_no: purchaseNo,
+        po_no,
+        draft_no,
+        order_no,
         po_date: purchaseData.date, // ❌ NO FALLBACK - user-selected date only
         supplier_id: supplierId,
         supplier_name: purchaseData.supplierName || 'Unknown Supplier',
@@ -398,7 +410,7 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
         firstItem: supabaseItems[0]
       });
       
-      const result = await purchaseService.createPurchase(supabasePurchase, supabaseItems, charges, convOpts);
+      const result = await purchaseService.createPurchase(supabasePurchase, supabaseItems, charges);
 
       // Convert back to app format
       const newPurchase = convertFromSupabasePurchase(result);
@@ -427,13 +439,7 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
         });
       }
       
-      // Update local state (conversion: remove archived source from list)
-      setPurchases((prev) => {
-        const rest = convOpts?.conversionSourceId
-          ? prev.filter((p) => p.id !== convOpts.conversionSourceId)
-          : prev;
-        return [newPurchase, ...rest];
-      });
+      setPurchases((prev) => [newPurchase, ...prev]);
 
       // Activity log for timeline
       if (companyId && user?.id) {
@@ -443,11 +449,9 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
             module: 'purchase',
             entityId: newPurchase.id,
             entityReference: newPurchase.purchaseNo,
-            action: convOpts?.conversionSourceId ? 'convert_to_final' : 'create',
+            action: 'create',
             performedBy: user.id,
-            description: convOpts?.conversionSourceId
-              ? `Converted to final PO ${newPurchase.purchaseNo} (source archived)`
-              : `Purchase ${newPurchase.purchaseNo} created`,
+            description: `Purchase ${newPurchase.purchaseNo} created`,
           })
           .catch((err) => console.warn('[PURCHASE CONTEXT] Activity log failed:', err));
       }
@@ -598,11 +602,7 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
         });
       }
 
-      toast.success(
-        convOpts?.conversionSourceId
-          ? `Converted to final ${newPurchase.purchaseNo}. Source draft/ordered PO is archived and hidden from the main list.`
-          : `Purchase Order ${purchaseNo} created successfully!`
-      );
+      toast.success(`Purchase Order ${purchaseNo} created successfully!`);
       
       // 🔒 CRITICAL FIX: Dispatch event to refresh inventory (like Sale module)
       window.dispatchEvent(new CustomEvent('purchaseSaved', { detail: { purchaseId: newPurchase.id } }));
@@ -661,6 +661,7 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
         supabaseUpdates.notes = updates.reference;
       }
       if ((updates as any).attachments !== undefined) supabaseUpdates.attachments = (updates as any).attachments;
+      if (updates.purchaseNo !== undefined) supabaseUpdates.po_no = updates.purchaseNo;
 
       // 🔒 CRITICAL FIX: Calculate stock movement DELTA BEFORE updating purchase_items
       // This must happen BEFORE purchase_items are deleted/updated so we can fetch old items

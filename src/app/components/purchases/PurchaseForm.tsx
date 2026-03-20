@@ -85,6 +85,7 @@ import { inventoryService } from '@/app/services/inventoryService';
 import { usePurchases } from '@/app/context/PurchaseContext';
 import { useNavigation } from '@/app/context/NavigationContext';
 import { useDocumentNumbering } from '@/app/hooks/useDocumentNumbering';
+import { documentNumberService } from '@/app/services/documentNumberService';
 import { Loader2 } from 'lucide-react';
 import { format, parseISO } from "date-fns";
 import {
@@ -1596,30 +1597,41 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                     purchaseStatus === 'final' && (priorStatus === 'draft' || priorStatus === 'ordered');
 
                 if (isConvertDraftOrderedToFinal) {
-                    if (!loadedPurchaseData) {
+                    if (!loadedPurchaseData || !companyId) {
                         toast.error('Purchase data is still loading. Please wait and try again.');
                         return null;
                     }
-                    const newPurchase = await createPurchase(purchaseData, undefined, {
-                        conversionSourceId: purchaseId,
+                    const nextPo = await documentNumberService.getNextDocumentNumberGlobal(companyId, 'PUR');
+                    await updatePurchase(purchaseId, {
+                        status: 'final',
+                        purchaseNo: nextPo,
+                        paymentStatus: paymentStatusToUse as 'paid' | 'partial' | 'unpaid',
+                        total: totalAmount,
+                        paid: paidToUse,
+                        due: dueToUse,
+                        notes: refNumber || undefined,
+                        date: formatDateWithTimezone(purchaseDate),
+                        items: purchaseItems,
+                        expenses: extraExpenses,
+                        discount: discountAmount,
                     });
-                    if (newPurchase?.id && purchaseAttachmentFiles.length > 0 && companyId) {
+                    if (purchaseAttachmentFiles.length > 0 && companyId) {
                         try {
-                            const uploaded = await uploadPurchaseAttachments(companyId, newPurchase.id, purchaseAttachmentFiles);
+                            const uploaded = await uploadPurchaseAttachments(companyId, purchaseId, purchaseAttachmentFiles);
                             if (uploaded.length > 0) {
-                                await updatePurchase(newPurchase.id, { attachments: uploaded } as any);
+                                await updatePurchase(purchaseId, { attachments: uploaded } as any);
                             }
                             setPurchaseAttachmentFiles([]);
                         } catch (e) {
                             console.warn('[PURCHASE FORM] Attachment upload after convert failed:', e);
                         }
                     }
-                    if (!openPaymentDialogAfter && partialPayments.length > 0 && newPurchase?.id && companyId) {
+                    if (!openPaymentDialogAfter && partialPayments.length > 0 && companyId) {
                         try {
                             const fb = isAdmin ? (branchId || contextBranchId || '') : (contextBranchId || branchId || '');
                             for (const payment of partialPayments) {
                                 await purchaseService.recordPayment(
-                                    newPurchase.id,
+                                    purchaseId,
                                     payment.amount,
                                     payment.method,
                                     payment.accountId || undefined,
@@ -1634,14 +1646,15 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                         }
                     }
                     await refreshPurchases();
-                    window.dispatchEvent(new CustomEvent('purchaseSaved', { detail: { purchaseId: newPurchase.id } }));
-                    if (openPaymentDialogAfter && newPurchase?.id) {
-                        setSavedPurchaseIdForPayment(newPurchase.id);
+                    window.dispatchEvent(new CustomEvent('purchaseSaved', { detail: { purchaseId } }));
+                    toast.success(`Purchase finalized as ${nextPo} (same row).`);
+                    if (openPaymentDialogAfter) {
+                        setSavedPurchaseIdForPayment(purchaseId);
                         setUnifiedPaymentDialogOpen(true);
-                        return newPurchase.id;
+                        return purchaseId;
                     }
                     onClose();
-                    return newPurchase.id;
+                    return purchaseId;
                 }
 
                 // 🔒 EDIT MODE: Update existing purchase with items
