@@ -1834,17 +1834,28 @@ export const accountingService = {
         (entryError as { status?: number }).status === 409 ||
         String(entryError.message || '').toLowerCase().includes('duplicate') ||
         String(entryError.message || '').toLowerCase().includes('unique'));
-    if (dup && entry.reference_type === 'sale' && entry.reference_id) {
-      const { data: existing } = await supabase
+    // Canonical document sale JE only (payment receipts also use reference_type=sale + payment_id).
+    if (
+      dup &&
+      entry.reference_type === 'sale' &&
+      entry.reference_id &&
+      !insertData.payment_id
+    ) {
+      const { data: existingRows } = await supabase
         .from('journal_entries')
         .select('*')
         .eq('reference_type', 'sale')
         .eq('reference_id', entry.reference_id)
-        .limit(1)
-        .maybeSingle();
-      if (existing?.id) {
+        .is('payment_id', null)
+        .or('is_void.is.null,is_void.eq.false')
+        .order('created_at', { ascending: true })
+        .limit(1);
+      const existing = (existingRows as Record<string, unknown>[] | null)?.[0] as
+        | { id: string; is_void?: boolean }
+        | undefined;
+      if (existing?.id && existing.is_void !== true) {
         if (import.meta.env?.DEV) {
-          console.warn('[accountingService] Duplicate sale JE insert — returning existing row:', existing.id);
+          console.warn('[accountingService] Duplicate canonical sale JE insert — returning existing row:', existing.id);
         }
         return { ...existing, lines: [] };
       }

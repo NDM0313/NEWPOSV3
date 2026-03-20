@@ -15,23 +15,64 @@ import { canPostAccountingForSaleStatus } from '@/app/lib/postingStatusGate';
 import { accountHelperService } from './accountHelperService';
 import { accountingService, type JournalEntry, type JournalEntryLine } from './accountingService';
 
-/** Check if a journal entry already exists for a given sale (duplicate guard). */
-async function saleJournalEntryExists(saleId: string): Promise<boolean> {
+/**
+ * Canonical sale **document** JE (Dr AR / Cr Revenue / COGS — Phase 4):
+ * - reference_type = 'sale'
+ * - reference_id = sale id
+ * - payment_id IS NULL (payment receipts use the same reference_type but always set payment_id)
+ * - not voided
+ *
+ * Never count payment JEs, sale_adjustment, sale_reversal, sale_extra_expense as document JEs.
+ */
+export function saleDocumentJournalFingerprint(companyId: string, saleId: string): string {
+  return `sale_document:${companyId}:${saleId}`;
+}
+
+/** Oldest active canonical document JE for idempotency / reversal guard. */
+export async function findActiveCanonicalSaleDocumentJournalEntryId(saleId: string): Promise<string | null> {
   try {
     const { data, error } = await supabase
       .from('journal_entries')
       .select('id')
       .eq('reference_type', 'sale')
       .eq('reference_id', saleId)
-      .limit(1)
-      .maybeSingle();
+      .is('payment_id', null)
+      .or('is_void.is.null,is_void.eq.false')
+      .order('created_at', { ascending: true })
+      .limit(1);
 
     if (error && (error.code === 'PGRST205' || error.message?.includes('does not exist'))) {
-      return false;
+      return null;
     }
-    return !!data;
+    if (error) return null;
+    const row = (data as { id: string }[] | null)?.[0];
+    return row?.id ?? null;
   } catch {
-    return false;
+    return null;
+  }
+}
+
+/** All active canonical document JE ids (Integrity Lab duplicate detection). */
+export async function listActiveCanonicalSaleDocumentJournalEntryIds(saleId: string): Promise<string[]> {
+  try {
+    const { data, error } = await supabase
+      .from('journal_entries')
+      .select('id, is_void')
+      .eq('reference_type', 'sale')
+      .eq('reference_id', saleId)
+      .is('payment_id', null)
+      .or('is_void.is.null,is_void.eq.false');
+
+    if (error && (error.code === 'PGRST205' || error.message?.includes('does not exist'))) {
+      return [];
+    }
+    if (error || !data?.length) return [];
+    return (data as { id: string; is_void?: boolean | null }[])
+      .filter((r) => r.is_void !== true)
+      .map((r) => r.id)
+      .filter(Boolean);
+  } catch {
+    return [];
   }
 }
 
@@ -335,11 +376,13 @@ export const saleAccountingService = {
     const eligible = await assertSaleEligibleForDocumentJournal(saleId, invoiceNo);
     if (!eligible) return null;
 
-    // Duplicate protection: skip if entry already exists for this sale
-    const alreadyExists = await saleJournalEntryExists(saleId);
-    if (alreadyExists) {
-      console.log(`[saleAccountingService] Journal entry already exists for sale ${invoiceNo}, skipping`);
-      return null;
+    // Idempotency: exactly one active canonical document JE; payment-linked rows must not block creation.
+    const existingDocId = await findActiveCanonicalSaleDocumentJournalEntryId(saleId);
+    if (existingDocId) {
+      console.log(
+        `[saleAccountingService] Canonical sale document JE already exists for ${invoiceNo}, reusing ${existingDocId}`
+      );
+      return existingDocId;
     }
 
     const arAccount = await ensureARAccount(companyId);
@@ -363,6 +406,7 @@ export const saleAccountingService = {
       reference_type: 'sale',
       reference_id: saleId,
       created_by: performedBy || undefined,
+      action_fingerprint: saleDocumentJournalFingerprint(companyId, saleId),
     };
 
     const hasDiscount = discountAmount > 0;
@@ -563,10 +607,10 @@ export const saleAccountingService = {
 
     if (!saleId || !companyId || total <= 0) return null;
 
-    // Only reverse if a non-void document JE exists (saleService only invokes after cancel of a final sale)
-    const hasOriginal = await saleJournalEntryExists(saleId);
-    if (!hasOriginal) {
-      console.log(`[saleAccountingService] No original journal entry for sale ${invoiceNo}, skipping reversal`);
+    // Only reverse if a non-void canonical document JE exists (ignore payment-linked rows)
+    const originalDocId = await findActiveCanonicalSaleDocumentJournalEntryId(saleId);
+    if (!originalDocId) {
+      console.log(`[saleAccountingService] No canonical sale document JE for sale ${invoiceNo}, skipping reversal`);
       return null;
     }
 

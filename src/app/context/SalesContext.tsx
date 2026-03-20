@@ -986,17 +986,11 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
           performedBy: createdByAuthId ?? null,
         });
         if (!jeId) {
-          const { supabase: sb } = await import('@/lib/supabase');
-          const { data: existingJe } = await sb
-            .from('journal_entries')
-            .select('id')
-            .eq('reference_type', 'sale')
-            .eq('reference_id', newSale.id)
-            .limit(1)
-            .maybeSingle();
-          if (!existingJe?.id) {
+          const { findActiveCanonicalSaleDocumentJournalEntryId } = await import('@/app/services/saleAccountingService');
+          const existingDoc = await findActiveCanonicalSaleDocumentJournalEntryId(newSale.id);
+          if (!existingDoc) {
             throw new Error(
-              'Final sale was saved but no document journal entry exists. Check [saleAccountingService] logs (blocked non-final, missing accounts, or insert error).'
+              'Final sale was saved but no canonical document journal entry exists. Check [saleAccountingService] logs (blocked non-final, missing accounts, or insert error).'
             );
           }
         }

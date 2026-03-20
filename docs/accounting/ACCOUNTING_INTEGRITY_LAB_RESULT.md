@@ -6,6 +6,10 @@ The maintained lab deliverable is **[`../ACCOUNTING_INTEGRITY_LAB_RESULT.md`](..
 
 See parent doc **“Two-layer verification (document vs company)”**. Company-wide TB/BS/AR/AP no longer run automatically after action-runner success.
 
+## 2026-03-12 — Canonical sale document JE (Fresh posting gate)
+
+Payment JEs are stored as `journal_entries.reference_type = 'sale'` with **`payment_id` set**. Document certification’s **Fresh posting gate (sale)** and `saleAccountingService` now count and guard **only** canonical document JEs (`payment_id IS NULL`). Repair + unique index: **`migrations/20260312_canonical_sale_document_je_unique_and_repair.sql`**. Details: parent **[`../ACCOUNTING_INTEGRITY_LAB_RESULT.md`](../ACCOUNTING_INTEGRITY_LAB_RESULT.md)** § *2026-03-12 — Fresh posting gate*.
+
 ## 2026-03-12 — Live `converted` column 400 + posting-gate sample
 
 See the parent file section **“Live posting-gate sample + converted filter (400 fix)”** and project audit **[`../LIVE_SCHEMA_AUDIT_20260312_CONVERSION.md`](../LIVE_SCHEMA_AUDIT_20260312_CONVERSION.md)**.

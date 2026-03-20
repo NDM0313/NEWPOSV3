@@ -16,6 +16,7 @@ import {
   canPostAccountingForPurchaseStatus,
   canPostAccountingForSaleStatus,
 } from '@/app/lib/postingStatusGate';
+import { listActiveCanonicalSaleDocumentJournalEntryIds } from '@/app/services/saleAccountingService';
 
 /** Re-export for lab UI (prefer importing from @/app/lib/integrityLabConstants in new code) */
 export const INTEGRITY_LAB_SESSION_KEY = _INTEGRITY_LAB_SESSION_KEY;
@@ -1471,16 +1472,17 @@ export async function runPostingStatusGateLiveCheck(companyId: string): Promise<
     if (!batch.length) continue;
     const { data: saleJes } = await supabase
       .from('journal_entries')
-      .select('id, reference_id, is_void')
+      .select('id, reference_id, is_void, payment_id')
       .eq('reference_type', 'sale')
-      .in('reference_id', batch);
+      .in('reference_id', batch)
+      .is('payment_id', null);
     for (const je of saleJes || []) {
       if (!isJeActive(je as { is_void?: boolean })) continue;
       failures.push({
         module: 'posting_gate',
         step: 'non_posted_sale_has_sale_je',
         record: (je as { id: string }).id,
-        expected: 'no active journal_entries for draft/quotation/order sale',
+        expected: 'no active canonical document journal_entries for draft/quotation/order sale',
         actual: `sale_id=${(je as { reference_id: string }).reference_id}`,
         classification: 'engine_bug',
         navActions: [
@@ -1638,12 +1640,9 @@ export async function runPostingStatusGateFreshCheck(
     }
 
     const st = (row as { status?: string }).status;
-    const { data: saleJes } = await supabase
-      .from('journal_entries')
-      .select('id, is_void')
-      .eq('reference_type', 'sale')
-      .eq('reference_id', opts.saleId);
-    const activeSaleJes = (saleJes || []).filter((j) => isJeActive(j as { is_void?: boolean }));
+    // Canonical document JEs only: payment receipts use reference_type=sale + payment_id (DB trigger).
+    const canonicalSaleJeIds = await listActiveCanonicalSaleDocumentJournalEntryIds(opts.saleId);
+    const activeSaleJes = canonicalSaleJeIds.map((id) => ({ id, is_void: false as const }));
 
     const { data: revJes } = await supabase
       .from('journal_entries')

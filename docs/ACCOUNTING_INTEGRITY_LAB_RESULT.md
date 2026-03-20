@@ -8,6 +8,20 @@ Record **`git rev-parse HEAD`** after each tooling drop (avoid stale SHAs in doc
 
 ---
 
+## 2026-03-12 — Fresh posting gate: canonical sale **document** JE only
+
+| Item | Detail |
+|------|--------|
+| **Symptom** | Document certification **FAIL**: *Fresh posting gate (sale)* — `expected` single canonical document JE, `actual` `active_je_count = 4` (or N payments). |
+| **Root cause** | Payment receipt JEs use **`reference_type = 'sale'`** + **`payment_id`** (DB trigger `create_payment_journal_entry`). Counting all `reference_type = 'sale'` rows **includes payment JEs**. The old duplicate guard could also treat a payment row as “already posted” and skip the real document JE. |
+| **Fix** | Canonical classifier: **`payment_id IS NULL`**, not void, `reference_type = 'sale'`. Engine + lab + `createEntry` idempotent path aligned. |
+| **SQL** | `migrations/20260312_canonical_sale_document_je_unique_and_repair.sql` — commented **preview** query, **void** duplicate canonical rows (keep one), **partial unique index** `idx_journal_entries_canonical_sale_document_active`. |
+| **Files** | `saleAccountingService.ts`, `accountingService.ts`, `accountingIntegrityLabService.ts`, `SalesContext.tsx`, migration above. |
+
+**QA:** Same flow as table in § “Draft JE / 409 / legacy triggers”; Fresh gate must report **`active_je_count = 1`** for posted sale with total &gt; 0 when payments exist.
+
+---
+
 ## 2026-03-20 — Two-layer verification (document vs company)
 
 ### Why action success and company reconciliation were mixed
@@ -82,7 +96,7 @@ Only **final / posted** documents should drive accounting and stock. The lab UI 
 | **POST journal_entries 409** | Unique index on `action_fingerprint` (PF-14.5) and/or **parallel sale** rows for same `reference_id` from trigger + app. | `accountingService.createEntry` treats **23505/409/unique** as idempotent: returns existing **`sale`** JE by `reference_id` or existing row by **fingerprint**. |
 | **Legacy DB overlap** | `trigger_auto_post_sale_to_accounting` / `trigger_auto_post_purchase_to_accounting` / contact-balance triggers fight the app engine. | SQL: `migrations/20260312_disable_legacy_auto_post_contact_triggers.sql`. Audit: `docs/accounting/LEGACY_TRIGGER_AUDIT.md`. **Keep** `trigger_calculate_*_totals`. |
 
-**Minimal QA script (after migrations on Supabase):** draft sale → no `reference_type=sale` JE; finalize → exactly one; add payment → payment JE; cancel finalized sale → one `sale_reversal` JE; no 409 on double-click finalize.
+**Minimal QA script (after migrations on Supabase):** draft sale → no **canonical** `reference_type=sale` **document** JE (`payment_id` null); finalize → exactly **one** canonical document JE; add payment → payment JE (`payment_id` set, still `reference_type=sale`); cancel finalized sale → one `sale_reversal` JE; no 409 on double-click finalize.
 
 ## Sections (A–F)
 

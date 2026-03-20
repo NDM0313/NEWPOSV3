@@ -2,6 +2,25 @@
 
 See the full deliverable: **[ACCOUNTING_INTEGRITY_LAB_RESULT.md](./ACCOUNTING_INTEGRITY_LAB_RESULT.md)** (Phase 2 + tooling: payables status filter, **purchase by-id / getPurchase 400**, **`CustomerLedgerInteractiveTest` lazy**, snapshot timestamps/outcome).
 
+## 2026-03-12 — Canonical sale document JE vs payment JEs (Fresh posting gate)
+
+### Root cause
+
+`create_payment_journal_entry()` writes `journal_entries` with **`reference_type = 'sale'`** and **`reference_id = sale id`** but **`payment_id` set**. The duplicate guard and **Fresh posting gate (sale)** treated **every** `reference_type = 'sale'` row as a “document” JE, so **N payments ⇒ `active_je_count = N`** and certification **FAIL** even when there was only one real AR/Revenue/COGS document (or **zero** if the guard saw a payment row first and skipped document creation).
+
+### Fix
+
+- **Classifier:** canonical document JE = `reference_type = 'sale'`, `reference_id = sale_id`, **`payment_id IS NULL`**, not void; exclude `sale_adjustment`, `sale_reversal`, `payment_adjustment` by type.
+- **App:** `saleAccountingService` — `findActiveCanonicalSaleDocumentJournalEntryId` / `listActiveCanonicalSaleDocumentJournalEntryIds`, idempotent `createSaleJournalEntry` (reuse id), `action_fingerprint` `sale_document:{companyId}:{saleId}`; `reverseSaleJournalEntry` keys off canonical document only; `accountingService.createEntry` duplicate recovery filters the same way; `SalesContext` post-create validation uses canonical lookup.
+- **Lab:** `runPostingStatusGateFreshCheck` + **live** non-posted sale sample count only canonical document JEs (`payment_id` null).
+- **DB:** `migrations/20260312_canonical_sale_document_je_unique_and_repair.sql` — preview `SELECT` in comments, **void** extra active canonical rows (keep earliest `created_at`), partial **unique index** on `reference_id` for active canonical sale document JEs.
+
+### Verification
+
+Draft → no canonical doc JE; finalize → **1** canonical doc JE; discount → **sale_adjustment** only; payment → payment JE only (`payment_id` set); edit payment account → **payment_adjustment** only; cancel posted sale → **sale_reversal** only. **Document certification** should **PASS** Fresh posting gate for that sale (`active_je_count = 1`). Company reconciliation may still WARN/FAIL on legacy data.
+
+---
+
 ## 2026-03-20 — Integrity Lab: document certification vs company reconciliation (split)
 
 ### Problem
