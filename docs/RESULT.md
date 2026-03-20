@@ -50,7 +50,7 @@ See the full deliverable: **[ACCOUNTING_INTEGRITY_LAB_RESULT.md](./ACCOUNTING_IN
 
 ### Git commit hash
 
-Run: `git log -1 --oneline`
+`2bcb1c1` — `feat(conversion): new final doc + archive source for sales/purchases`
 
 ## 2026-03-12 — Hard posting-status gate (sales + purchases)
 
