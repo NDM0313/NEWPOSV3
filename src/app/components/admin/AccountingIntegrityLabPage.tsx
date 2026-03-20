@@ -35,8 +35,9 @@ import {
   buildSaleTruthSnapshot,
   buildPurchaseTruthSnapshot,
   buildExtendedLabSnapshot,
-  runAllReconciliationChecks,
-  runFreshScenarioChecks,
+  runCompanyReconciliationChecks,
+  runDocumentCertificationChecks,
+  summarizeCompanyReconciliationStatus,
   snapshotToComparableJson,
   INTEGRITY_LAB_SESSION_KEY,
   type LabCheckResult,
@@ -50,11 +51,8 @@ import { Input } from '@/app/components/ui/input';
 import { ScrollArea } from '@/app/components/ui/scroll-area';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/app/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/app/components/ui/tabs';
-import { Badge } from '@/app/components/ui/badge';
 
 type Scenario = 'sale' | 'purchase' | 'inventory' | 'reconciliation';
-type LabMode = 'fresh' | 'live';
-
 interface DocRow {
   id: string;
   label: string;
@@ -119,7 +117,6 @@ export function AccountingIntegrityLabPage() {
   const { companyId, branchId, setBranchId, accessibleBranchIds } = useSupabase();
   const { openDrawer, setCurrentView, setOpenSaleIdForView } = useNavigation();
 
-  const [labMode, setLabMode] = useState<LabMode>('live');
   const [categoryFilter, setCategoryFilter] = useState<LabCheckCategory | 'all'>('all');
 
   const [scenario, setScenario] = useState<Scenario>('sale');
@@ -131,21 +128,28 @@ export function AccountingIntegrityLabPage() {
   const [paymentAccounts, setPaymentAccounts] = useState<{ id: string; name: string; code?: string }[]>([]);
   const [payAccountId, setPayAccountId] = useState<string>('');
   const [paymentAmount, setPaymentAmount] = useState<string>('100');
-  const [checks, setChecks] = useState<LabCheckResult[]>([]);
-  const [checksLoading, setChecksLoading] = useState(false);
+  const [documentChecks, setDocumentChecks] = useState<LabCheckResult[]>([]);
+  const [companyChecks, setCompanyChecks] = useState<LabCheckResult[]>([]);
+  const [documentChecksLoading, setDocumentChecksLoading] = useState(false);
+  const [companyChecksLoading, setCompanyChecksLoading] = useState(false);
   const [snapshotBefore, setSnapshotBefore] = useState<string | null>(null);
   const [snapshotAfter, setSnapshotAfter] = useState<string | null>(null);
   const [lastActionError, setLastActionError] = useState<string | null>(null);
   const [lastAction, setLastAction] = useState<string>('');
-  const [scenarioPass, setScenarioPass] = useState<boolean | null>(null);
+  /** True = no FAIL in document certification (WARN/SKIP allowed). Null = not run yet. */
+  const [certificationActionPass, setCertificationActionPass] = useState<boolean | null>(null);
+  /** Whole-company suite; null until user runs it explicitly. */
+  const [companyReconSummary, setCompanyReconSummary] = useState<'pass' | 'warn' | 'fail' | null>(null);
   /** Audit trail for tab F (no nested <p> inside CardDescription). */
   const [snapshotMeta, setSnapshotMeta] = useState<{
+    actionId: string | null;
     beforeAt: string | null;
     actionStartedAt: string | null;
     actionEndedAt: string | null;
     afterAt: string | null;
     outcome: 'none' | 'success' | 'failure';
   }>({
+    actionId: null,
     beforeAt: null,
     actionStartedAt: null,
     actionEndedAt: null,
@@ -214,27 +218,42 @@ export function AccountingIntegrityLabPage() {
     loadAccounts();
   }, [loadBranches, loadDocs, loadAccounts]);
 
-  const runChecks = async () => {
+  const summarizeCertPass = (results: LabCheckResult[]) => {
+    const meaningful = results.filter((r) => r.status !== 'skip');
+    if (meaningful.length === 0) return null;
+    return !meaningful.some((r) => r.status === 'fail');
+  };
+
+  const runDocumentCertification = async () => {
     if (!companyId) return;
-    setChecksLoading(true);
+    setDocumentChecksLoading(true);
     try {
-      let results: LabCheckResult[];
-      if (labMode === 'fresh') {
-        results = await runFreshScenarioChecks(companyId, branchId, {
-          saleId: selectedSaleId || undefined,
-          purchaseId: selectedPurchaseId || undefined,
-        });
-      } else {
-        results = await runAllReconciliationChecks(companyId, branchId);
-      }
-      setChecks(results);
-      const hasFail = results.some((r) => r.status === 'fail');
-      setScenarioPass(!hasFail);
+      const results = await runDocumentCertificationChecks(companyId, branchId, {
+        saleId: selectedSaleId || undefined,
+        purchaseId: selectedPurchaseId || undefined,
+      });
+      setDocumentChecks(results);
+      setCertificationActionPass(summarizeCertPass(results));
     } catch (e: any) {
-      toast.error(e?.message || 'Checks failed');
-      setScenarioPass(false);
+      toast.error(e?.message || 'Document certification failed');
+      setCertificationActionPass(false);
     } finally {
-      setChecksLoading(false);
+      setDocumentChecksLoading(false);
+    }
+  };
+
+  const runCompanyReconciliation = async () => {
+    if (!companyId) return;
+    setCompanyChecksLoading(true);
+    try {
+      const results = await runCompanyReconciliationChecks(companyId, branchId);
+      setCompanyChecks(results);
+      setCompanyReconSummary(summarizeCompanyReconciliationStatus(results));
+    } catch (e: any) {
+      toast.error(e?.message || 'Company reconciliation failed');
+      setCompanyReconSummary('fail');
+    } finally {
+      setCompanyChecksLoading(false);
     }
   };
 
@@ -313,9 +332,14 @@ export function AccountingIntegrityLabPage() {
 
     const docId = kind === 'sale' ? selectedSaleId : selectedPurchaseId;
     const beforeIso = new Date().toISOString();
+    const actionId =
+      typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+        ? crypto.randomUUID()
+        : `lab-act-${Date.now()}`;
     setLastActionError(null);
     setSnapshotAfter(null);
     setSnapshotMeta({
+      actionId,
       beforeAt: null,
       actionStartedAt: null,
       actionEndedAt: null,
@@ -351,7 +375,9 @@ export function AccountingIntegrityLabPage() {
       } else {
         setSnapshotMeta((m) => ({ ...m, actionEndedAt: endedOk, outcome: 'success' }));
       }
-      await runChecks();
+      if (docId) {
+        await runDocumentCertification();
+      }
     } catch (e: unknown) {
       const { summary, detailJson } = formatPostgrestError(e);
       toast.error(`${name}: ${summary}`);
@@ -363,7 +389,7 @@ export function AccountingIntegrityLabPage() {
         afterAt: null,
         outcome: 'failure',
       }));
-      setScenarioPass(false);
+      setCertificationActionPass(false);
     }
   };
 
@@ -396,10 +422,15 @@ export function AccountingIntegrityLabPage() {
     return branches;
   }, [branches, accessibleBranchIds]);
 
-  const filteredChecks = useMemo(() => {
-    if (categoryFilter === 'all') return checks;
-    return checks.filter((c) => c.category === categoryFilter);
-  }, [checks, categoryFilter]);
+  const filteredDocumentChecks = useMemo(() => {
+    if (categoryFilter === 'all') return documentChecks;
+    return documentChecks.filter((c) => c.category === categoryFilter);
+  }, [documentChecks, categoryFilter]);
+
+  const filteredCompanyChecks = useMemo(() => {
+    if (categoryFilter === 'all') return companyChecks;
+    return companyChecks.filter((c) => c.category === categoryFilter);
+  }, [companyChecks, categoryFilter]);
 
   /** Sale payments require a concrete branch_id (avoids 400 / bad inserts). */
   const salePaymentBlocked = !branchId || branchId === 'all';
@@ -431,36 +462,51 @@ export function AccountingIntegrityLabPage() {
             <strong>Golden rule:</strong> Only <strong>final / posted</strong> documents should drive accounting and stock.
             Draft edits should not post until finalized.
           </p>
-          <div className="mt-3 flex flex-wrap items-center gap-3">
-            <div className="flex items-center gap-2">
-              <Label className="text-xs text-muted-foreground whitespace-nowrap">Mode</Label>
-              <Select value={labMode} onValueChange={(v) => setLabMode(v as LabMode)}>
-                <SelectTrigger className="w-[220px] h-8 text-xs">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="fresh">
-                    Fresh scenario (selected doc only)
-                  </SelectItem>
-                  <SelectItem value="live">Live data reconciliation (whole company)</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <p className="text-xs text-muted-foreground max-w-xl">
-              <strong>Fresh:</strong> JEs + payments for the active sale/purchase only.{' '}
-              <strong>Live:</strong> TB/BS/AR/AP + legacy gaps — expect WARN until data is cleaned.
+          <div className="mt-3 rounded-md border border-border/60 bg-muted/20 px-3 py-2 text-xs text-muted-foreground max-w-4xl space-y-1">
+            <p>
+              <strong className="text-foreground">Document certification</strong> (auto after each action): selected sale/purchase
+              only — posting gate, scoped JE balance, payments vs header, totals, payment↔JE for posted docs.{' '}
+              <span className="text-emerald-200/80">Does not include TB/BS/AR/AP.</span>
+            </p>
+            <p>
+              <strong className="text-foreground">Company reconciliation</strong> (manual): whole company / legacy-aware — trial
+              balance, BS, P&amp;L, receivables/payables, inventory heuristic, accounts vs journal, posting-gate sample.{' '}
+              <span className="text-amber-200/90">May WARN/FAIL even when the latest document action succeeded.</span>
             </p>
           </div>
         </div>
-        {scenarioPass !== null && (
+        <div className="flex flex-col gap-2 items-end shrink-0 min-w-[220px]">
           <div
-            className={`rounded-lg px-4 py-2 text-sm font-semibold ${
-              scenarioPass ? 'bg-emerald-500/20 text-emerald-300' : 'bg-red-500/20 text-red-300'
+            className={`rounded-lg px-3 py-1.5 text-xs font-semibold w-full text-center ${
+              certificationActionPass === null
+                ? 'bg-muted/40 text-muted-foreground'
+                : certificationActionPass
+                  ? 'bg-emerald-500/20 text-emerald-300'
+                  : 'bg-red-500/20 text-red-300'
             }`}
           >
-            Last run: {scenarioPass ? 'No FAIL rows (WARNs may still exist)' : 'FAIL — see Engine / Data quality'}
+            Document certification:{' '}
+            {certificationActionPass === null
+              ? '—'
+              : certificationActionPass
+                ? 'PASS (no FAIL)'
+                : 'FAIL'}
           </div>
-        )}
+          <div
+            className={`rounded-lg px-3 py-1.5 text-xs font-semibold w-full text-center ${
+              companyReconSummary === null
+                ? 'bg-muted/40 text-muted-foreground'
+                : companyReconSummary === 'pass'
+                  ? 'bg-emerald-500/20 text-emerald-300'
+                  : companyReconSummary === 'warn'
+                    ? 'bg-amber-500/20 text-amber-200'
+                    : 'bg-red-500/20 text-red-300'
+            }`}
+          >
+            Company reconciliation:{' '}
+            {companyReconSummary === null ? 'Not run' : companyReconSummary.toUpperCase()}
+          </div>
+        </div>
       </div>
 
       <Tabs defaultValue="setup" className="w-full">
@@ -1032,13 +1078,14 @@ export function AccountingIntegrityLabPage() {
           </Card>
         </TabsContent>
 
-        <TabsContent value="checks" className="mt-4">
+        <TabsContent value="checks" className="mt-4 space-y-6">
           <Card>
-            <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <CardHeader className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
               <div>
-                <CardTitle>Auto accounting checks</CardTitle>
+                <CardTitle>C · Auto checks (two layers)</CardTitle>
                 <CardDescription>
-                  Mode: <strong>{labMode === 'fresh' ? 'Fresh (document-scoped)' : 'Live (company-wide)'}</strong>. Trace any row via actions below.
+                  Filter applies to both lists. After action runner success, only <strong>document certification</strong> refreshes
+                  automatically.
                 </CardDescription>
               </div>
               <div className="flex flex-wrap items-center gap-2">
@@ -1053,86 +1100,63 @@ export function AccountingIntegrityLabPage() {
                     <SelectItem value="data_quality">{CATEGORY_LABEL.data_quality}</SelectItem>
                   </SelectContent>
                 </Select>
-                <Button onClick={runChecks} disabled={checksLoading} size="sm">
-                  {checksLoading ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4 mr-1" />}
-                  Run now
-                </Button>
               </div>
             </CardHeader>
-            <CardContent className="space-y-3">
-              {filteredChecks.length === 0 && (
-                <p className="text-sm text-muted-foreground">No checks in this filter — choose “All categories” or run checks.</p>
-              )}
-              {filteredChecks.map((c) => (
-                <div
-                  key={c.id}
-                  className={`rounded-lg border p-3 space-y-2 ${
-                    c.status === 'fail' ? 'border-red-500/40 bg-red-500/5' : 'border-border/60'
-                  }`}
-                >
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="font-medium text-sm">{c.label}</span>
-                      <Badge variant="outline" className="text-[10px] font-normal">
-                        {CATEGORY_LABEL[c.category]}
-                      </Badge>
-                      {c.defaultClassification && c.status !== 'pass' && (
-                        <ClassificationBadge c={c.defaultClassification} />
-                      )}
-                    </div>
-                    <StatusBadge status={c.status} />
-                  </div>
-                  {c.failures.length > 0 && (
-                    <ScrollArea className="max-h-[320px] w-full rounded border border-border/40 p-2">
-                      <table className="w-full text-xs">
-                        <thead>
-                          <tr className="text-left text-muted-foreground">
-                            <th className="p-1">Triage</th>
-                            <th className="p-1">Module</th>
-                            <th className="p-1">Record</th>
-                            <th className="p-1">Expected / Actual</th>
-                            <th className="p-1">Trace</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {c.failures.map((f, i) => (
-                            <tr key={i} className="border-t border-border/30 align-top">
-                              <td className="p-1">
-                                <ClassificationBadge c={f.classification} />
-                              </td>
-                              <td className="p-1">
-                                {f.module}
-                                <div className="text-[10px] text-muted-foreground">{f.step}</div>
-                              </td>
-                              <td className="p-1 font-mono break-all max-w-[180px]">{f.record}</td>
-                              <td className="p-1">
-                                <div className="text-emerald-200/90">{f.expected}</div>
-                                <div className="text-amber-200">{f.actual}</div>
-                              </td>
-                              <td className="p-1">
-                                <div className="flex flex-col gap-1">
-                                  {(f.navActions || []).map((a, j) => (
-                                    <Button
-                                      key={j}
-                                      variant="ghost"
-                                      size="sm"
-                                      className="h-7 justify-start px-2 text-[10px] text-primary"
-                                      onClick={() => executeNavAction(a)}
-                                    >
-                                      {a.type === 'copy' ? <Copy className="h-3 w-3 mr-1 shrink-0" /> : <ExternalLink className="h-3 w-3 mr-1 shrink-0" />}
-                                      {(a as any).label || a.type}
-                                    </Button>
-                                  ))}
-                                </div>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </ScrollArea>
-                  )}
-                </div>
-              ))}
+          </Card>
+
+          <Card className="border-emerald-500/25">
+            <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <CardTitle className="text-base">1 · Document certification</CardTitle>
+                <CardDescription>
+                  Selected sale/purchase only. Validates the current workflow — not company-wide legacy data.
+                </CardDescription>
+              </div>
+              <Button
+                onClick={() => runDocumentCertification()}
+                disabled={documentChecksLoading}
+                size="sm"
+                variant="secondary"
+              >
+                {documentChecksLoading ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4 mr-1" />}
+                Run document certification
+              </Button>
+            </CardHeader>
+            <CardContent>
+              <LabCheckResultList
+                items={filteredDocumentChecks}
+                emptyMsg="No document checks yet — run an action or click “Run document certification”."
+                onNav={executeNavAction}
+              />
+            </CardContent>
+          </Card>
+
+          <Card className="border-amber-500/30">
+            <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <CardTitle className="text-base">2 · Whole company / legacy reconciliation</CardTitle>
+                <CardDescription className="text-amber-200/90">
+                  TB, BS, P&amp;L, AR/AP, inventory heuristic, accounts vs journal, posting-gate sample. May WARN/FAIL even when
+                  the latest document action succeeded — run only when you intend to review legacy scope.
+                </CardDescription>
+              </div>
+              <Button
+                onClick={() => runCompanyReconciliation()}
+                disabled={companyChecksLoading}
+                size="sm"
+                variant="outline"
+                className="border-amber-500/50"
+              >
+                {companyChecksLoading ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4 mr-1" />}
+                Run company reconciliation
+              </Button>
+            </CardHeader>
+            <CardContent>
+              <LabCheckResultList
+                items={filteredCompanyChecks}
+                emptyMsg="Not run — click “Run company reconciliation” (or use tab E). This suite is never auto-run after actions."
+                onNav={executeNavAction}
+              />
             </CardContent>
           </Card>
         </TabsContent>
@@ -1153,17 +1177,20 @@ export function AccountingIntegrityLabPage() {
         <TabsContent value="reports" className="mt-4">
           <Card>
             <CardHeader>
-              <CardTitle>Reports reconciliation (one-click)</CardTitle>
-              <CardDescription>Same engine as tab C — trial balance, BS, P&amp;L, AR/AP hints, accounts column vs journal.</CardDescription>
+              <CardTitle>E · Company reconciliation (manual)</CardTitle>
+              <CardDescription>
+                Runs only the <strong>whole company / legacy</strong> suite (same as section 2 on tab C). Does{' '}
+                <strong>not</strong> run document certification.
+              </CardDescription>
             </CardHeader>
             <CardContent>
-              <Button onClick={runChecks} disabled={checksLoading} className="mb-4">
+              <Button onClick={() => runCompanyReconciliation()} disabled={companyChecksLoading} className="mb-4">
                 <ClipboardList className="h-4 w-4 mr-2" />
-                Run full reconciliation suite
+                Run company reconciliation suite
               </Button>
               <p className="text-xs text-muted-foreground">
-                Trial Balance difference · Balance Sheet difference · P&amp;L consistency · Receivables vs AR · Payables vs
-                AP · Inventory heuristic · Accounts.balance vs journal
+                Trial Balance · Balance Sheet · P&amp;L · Receivables vs AR · Payables vs AP · Inventory heuristic ·
+                Accounts.balance vs journal · Posting gate (sample)
               </p>
             </CardContent>
           </Card>
@@ -1191,6 +1218,9 @@ export function AccountingIntegrityLabPage() {
                   )}
                 </div>
                 <div className="text-xs font-mono space-y-0.5">
+                  <div>
+                    <span className="text-muted-foreground">Action id:</span> {snapshotMeta.actionId || '—'}
+                  </div>
                   <div>
                     <span className="text-muted-foreground">Before captured (ISO):</span> {snapshotMeta.beforeAt || '—'}
                   </div>
@@ -1248,6 +1278,92 @@ export function AccountingIntegrityLabPage() {
 }
 
 export default AccountingIntegrityLabPage;
+
+function LabCheckResultList({
+  items,
+  emptyMsg,
+  onNav,
+}: {
+  items: LabCheckResult[];
+  emptyMsg: string;
+  onNav: (a: LabNavAction) => void;
+}) {
+  if (items.length === 0) {
+    return <p className="text-sm text-muted-foreground">{emptyMsg}</p>;
+  }
+  return (
+    <div className="space-y-3">
+      {items.map((c) => (
+        <div
+          key={c.id}
+          className={`rounded-lg border p-3 space-y-2 ${
+            c.status === 'fail' ? 'border-red-500/40 bg-red-500/5' : 'border-border/60'
+          }`}
+        >
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="font-medium text-sm">{c.label}</span>
+              <Badge variant="outline" className="text-[10px] font-normal">
+                {CATEGORY_LABEL[c.category]}
+              </Badge>
+              {c.defaultClassification && c.status !== 'pass' && <ClassificationBadge c={c.defaultClassification} />}
+            </div>
+            <StatusBadge status={c.status} />
+          </div>
+          {c.failures.length > 0 && (
+            <ScrollArea className="max-h-[320px] w-full rounded border border-border/40 p-2">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="text-left text-muted-foreground">
+                    <th className="p-1">Triage</th>
+                    <th className="p-1">Module</th>
+                    <th className="p-1">Record</th>
+                    <th className="p-1">Expected / Actual</th>
+                    <th className="p-1">Trace</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {c.failures.map((f, i) => (
+                    <tr key={i} className="border-t border-border/30 align-top">
+                      <td className="p-1">
+                        <ClassificationBadge c={f.classification} />
+                      </td>
+                      <td className="p-1">
+                        {f.module}
+                        <div className="text-[10px] text-muted-foreground">{f.step}</div>
+                      </td>
+                      <td className="p-1 font-mono break-all max-w-[180px]">{f.record}</td>
+                      <td className="p-1">
+                        <div className="text-emerald-200/90">{f.expected}</div>
+                        <div className="text-amber-200">{f.actual}</div>
+                      </td>
+                      <td className="p-1">
+                        <div className="flex flex-col gap-1">
+                          {(f.navActions || []).map((a, j) => (
+                            <Button
+                              key={j}
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 justify-start px-2 text-[10px] text-primary"
+                              onClick={() => onNav(a)}
+                            >
+                              {a.type === 'copy' ? <Copy className="h-3 w-3 mr-1 shrink-0" /> : <ExternalLink className="h-3 w-3 mr-1 shrink-0" />}
+                              {(a as { label?: string }).label || a.type}
+                            </Button>
+                          ))}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </ScrollArea>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
 
 function TruthPanel({ title, id, kind }: { title: string; id: string; kind: 'sale' | 'purchase' }) {
   const [json, setJson] = useState<string>('—');

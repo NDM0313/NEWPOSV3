@@ -2,6 +2,32 @@
 
 See the full deliverable: **[ACCOUNTING_INTEGRITY_LAB_RESULT.md](./ACCOUNTING_INTEGRITY_LAB_RESULT.md)** (Phase 2 + tooling: payables status filter, **purchase by-id / getPurchase 400**, **`CustomerLedgerInteractiveTest` lazy**, snapshot timestamps/outcome).
 
+## 2026-03-20 — Integrity Lab: document certification vs company reconciliation (split)
+
+### Problem
+
+Tab **C · Auto checks** mixed **selected-document** validation with **whole-company** TB/BS/AR/AP/inventory. After a successful action runner step, **Run** (or auto-run) could still show **FAIL** from legacy company data — confusing (“toast succeeded but lab failed”).
+
+### Fix (two layers)
+
+| Layer | When it runs | What it checks |
+|--------|----------------|----------------|
+| **Document certification** | Auto after each successful action (when a doc is selected); manual **Run document certification** on tab C | Selected sale/purchase only: scoped JE balance (doc + reversal + payment-linked JEs), Σ payments vs header `paid_amount`, total≈paid+due, payment↔`journal_entries.payment_id` for **posted** docs, **Fresh posting gate** (non-posted → no doc JE/stock/reversal; posted → single canonical doc JE when total&gt;0). **No** TB/BS/company AR/AP. |
+| **Company reconciliation** | **Only** when user clicks **Run company reconciliation** (tab C §2 or tab E) | Unbalanced JEs (company), payment link sample, TB, BS, P&amp;L, receivables vs AR, payables vs AP, inventory heuristic, accounts.balance vs journal, **posting gate live sample**. Tagged `checkLayer: 'company'`. |
+
+### UI
+
+- Two status badges: **Document certification: PASS/FAIL** (FAIL only if any non-skip check fails; WARN does not flip PASS) and **Company reconciliation: PASS/WARN/FAIL/Not run**.
+- Tab **F** snapshots include **`actionId`** (UUID per runner action).
+
+### Code
+
+- `runDocumentCertificationChecks`, `runCompanyReconciliationChecks` (`runAllReconciliationChecks` / `runFreshScenarioChecks` kept as aliases).
+- `findUnbalancedJournalEntriesForDocument` — no company-wide JE load for certification.
+- `AccountingIntegrityLabPage.tsx` — removed single mixed banner/mode switch in favor of the split above.
+
+---
+
 ## 2026-03-12 — Live `converted` columns + PostgREST 400 fix (production)
 
 ### Root cause

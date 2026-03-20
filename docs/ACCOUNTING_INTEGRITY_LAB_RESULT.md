@@ -4,23 +4,40 @@ This document is the **RESULT.md** deliverable for the internal **Accounting Int
 
 ## Git commit hash
 
-**Latest (accounting engine hygiene):** `6a7674b`. Record **`git rev-parse HEAD`** after each tooling drop (avoid stale SHAs in docs).
+Record **`git rev-parse HEAD`** after each tooling drop (avoid stale SHAs in docs).
 
 ---
 
-## Phase 2 (QA usability)
+## 2026-03-20 — Two-layer verification (document vs company)
+
+### Why action success and company reconciliation were mixed
+
+The lab used one checklist and one **PASS/FAIL** banner. **Fresh** vs **Live** mode selected different queries, but operators still conflated “my sale payment worked” with “trial balance balances company-wide.” **Live** includes AR/AP mismatches from old rows — unrelated to the document under test.
+
+### New mechanism
+
+1. **Document certification** (`checkLayer: document`, `runDocumentCertificationChecks`) — answers: *Is this selected sale/purchase internally consistent right now?* Scoped data only; **not** company TB/BS/AR/AP.
+2. **Company reconciliation** (`checkLayer: company`, `runCompanyReconciliationChecks`) — answers: *Does the whole company/legacy data pass reconciliation heuristics?* Explicit manual run; may **WARN/FAIL** even when the last document action was correct.
+
+### How to use the lab
+
+- Use **Action runner** for the flow under test; after success, **document certification** runs automatically (if a doc id is in scope).
+- Run **company reconciliation** only when you want a legacy/whole-company read — tab **C §2** or tab **E**.
+- Interpret **PASS**: **Document certification PASS** = no FAIL rows in that list (WARN/SKIP allowed). **Company PASS** = no FAIL and no WARN in that suite; **WARN** = no FAIL but at least one WARN.
+
+### Phase 2 (QA usability) — updated
 
 | Enhancement | Detail |
 |-------------|--------|
-| **Check categories** | Each check has `category`: **Engine integrity**, **Reconciliation**, **Data quality / legacy**. Filter in tab C. |
-| **Modes** | **Fresh scenario** = only JEs + payment totals for the **selected** sale/purchase. **Live data** = full company TB/BS/AR/AP/legacy gaps. |
+| **Check categories** | Each check has `category`: **Engine integrity**, **Reconciliation**, **Data quality / legacy**. Filter in tab C (applies to both lists). |
+| **Two layers** | **Document certification** vs **Whole company / legacy reconciliation** — separate buttons, separate result lists, separate header badges. |
 | **Triage tags** | Per row: `engine_bug`, `legacy_data`, `missing_backfill`, `source_link`, `reconciliation_timing`, `informational`. |
 | **Trace actions** | FAIL/WARN rows expose buttons: open sale/purchase, Accounting tab (Day Book / Journal / Accounts / Receivables / Payables), customer-ledger test, copy id. Uses `sessionStorage` key `erp_integrity_lab_nav` consumed by `AccountingDashboard` on load. |
-| **Action runner** | Buttons **disabled** until the right document is selected; **Add sale payment** disabled until a **specific branch** is chosen (not “All branches”) — avoids bad `recordPayment` calls / 400s. |
+| **Action runner** | Buttons **disabled** until the right document is selected; **Add sale payment** disabled until a **specific branch** is chosen (not “All branches”) — avoids bad `recordPayment` calls / 400s. After success, **only** document certification refreshes — not company reconciliation. |
 | **Purchase list 400 fix** | Loads `po_no` (not `po_number`) and orders by `id` — matches DB (`localhost-*.log` purchase 400). |
-| **Extended snapshots (F)** | Before/after JSON includes document, payments, **journal lines with accounts**, **affectedAccounts**, aggregate Dr−Cr, **company TB hint**, **AR/AP snapshot**, inventory heuristic. |
+| **Extended snapshots (F)** | Before/after JSON includes document, payments, **journal lines with accounts**, **affectedAccounts**, aggregate Dr−Cr, **company TB hint**, **AR/AP snapshot**, inventory heuristic. Each action has **`actionId`**. |
 | **Regression presets (G)** | One-click strips for sale + purchase flows at top of tab B. |
-| **Status banner** | Green if **no FAIL**; WARN-only (typical in Live mode) no longer shows as hard failure. |
+| **Status banners** | **Document certification: PASS/FAIL** and **Company reconciliation: PASS/WARN/FAIL/Not run** (independent). |
 
 ---
 

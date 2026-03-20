@@ -70,6 +70,9 @@ export interface LabCheckFailure {
   navActions?: LabNavAction[];
 }
 
+/** Lab UI: document certification vs whole-company legacy reconciliation */
+export type LabCheckLayer = 'document' | 'company';
+
 export interface LabCheckResult {
   id: string;
   label: string;
@@ -79,6 +82,8 @@ export interface LabCheckResult {
   status: LabCheckStatus;
   failures: LabCheckFailure[];
   meta?: Record<string, unknown>;
+  /** When set, Auto checks tab splits document vs company suites */
+  checkLayer?: LabCheckLayer;
 }
 
 export interface JournalBalanceRow {
@@ -141,6 +146,131 @@ export async function findUnbalancedJournalEntries(
     }
   });
   return out;
+}
+
+function matchesBranchFilter(
+  rowBranchId: string | null | undefined,
+  branchId: string | null | undefined
+): boolean {
+  if (!branchId || branchId === 'all') return true;
+  if (rowBranchId == null || rowBranchId === '') return true;
+  return rowBranchId === branchId;
+}
+
+/**
+ * Unbalanced JEs that touch only the selected sale/purchase: document + reversal refs,
+ * plus any journal_entries linked via payments for that document. Does not load company-wide JE rows.
+ */
+export async function findUnbalancedJournalEntriesForDocument(
+  companyId: string,
+  branchId: string | null | undefined,
+  opts: { saleId?: string; purchaseId?: string }
+): Promise<JournalBalanceRow[]> {
+  const jeIds = new Set<string>();
+
+  const considerRow = (e: { id: string; branch_id?: string | null; is_void?: boolean | null }) => {
+    if (e.is_void) return;
+    if (!matchesBranchFilter(e.branch_id, branchId)) return;
+    jeIds.add(e.id);
+  };
+
+  const addByRef = async (rt: string, rid: string) => {
+    const { data } = await supabase
+      .from('journal_entries')
+      .select('id, branch_id, is_void')
+      .eq('company_id', companyId)
+      .eq('reference_type', rt)
+      .eq('reference_id', rid);
+    (data || []).forEach(considerRow);
+  };
+
+  if (opts.saleId) {
+    await addByRef('sale', opts.saleId);
+    await addByRef('sale_reversal', opts.saleId);
+    const { data: pays } = await supabase
+      .from('payments')
+      .select('id')
+      .eq('reference_type', 'sale')
+      .eq('reference_id', opts.saleId);
+    for (const p of pays || []) {
+      const { data: jes } = await supabase
+        .from('journal_entries')
+        .select('id, branch_id, is_void')
+        .eq('company_id', companyId)
+        .eq('payment_id', (p as { id: string }).id);
+      (jes || []).forEach(considerRow);
+    }
+  }
+
+  if (opts.purchaseId) {
+    await addByRef('purchase', opts.purchaseId);
+    const { data: pays } = await supabase
+      .from('payments')
+      .select('id')
+      .eq('reference_type', 'purchase')
+      .eq('reference_id', opts.purchaseId);
+    for (const p of pays || []) {
+      const { data: jes } = await supabase
+        .from('journal_entries')
+        .select('id, branch_id, is_void')
+        .eq('company_id', companyId)
+        .eq('payment_id', (p as { id: string }).id);
+      (jes || []).forEach(considerRow);
+    }
+  }
+
+  const ids = [...jeIds];
+  if (!ids.length) return [];
+
+  const { data: entries, error } = await supabase
+    .from('journal_entries')
+    .select('id, entry_no, reference_type, reference_id, company_id, branch_id, is_void')
+    .eq('company_id', companyId)
+    .in('id', ids);
+  if (error || !entries?.length) return [];
+
+  const activeIds = entries.filter((e: any) => !e.is_void).map((e: any) => e.id);
+  if (!activeIds.length) return [];
+
+  const { data: lines } = await supabase
+    .from('journal_entry_lines')
+    .select('journal_entry_id, debit, credit')
+    .in('journal_entry_id', activeIds);
+
+  const sums = new Map<string, { d: number; c: number }>();
+  activeIds.forEach((id) => sums.set(id, { d: 0, c: 0 }));
+  (lines || []).forEach((l: any) => {
+    const s = sums.get(l.journal_entry_id);
+    if (!s) return;
+    s.d += Number(l.debit) || 0;
+    s.c += Number(l.credit) || 0;
+  });
+
+  const byId = new Map(entries.map((e: any) => [e.id, e]));
+  const out: JournalBalanceRow[] = [];
+  sums.forEach((s, jeId) => {
+    const diff = Math.round((s.d - s.c) * 100) / 100;
+    if (Math.abs(diff) > 0.01) {
+      const e = byId.get(jeId) as any;
+      out.push({
+        journal_entry_id: jeId,
+        entry_no: e?.entry_no ?? null,
+        reference_type: e?.reference_type ?? null,
+        reference_id: e?.reference_id ?? null,
+        total_debit: s.d,
+        total_credit: s.c,
+        diff,
+      });
+    }
+  });
+  return out;
+}
+
+/** Roll up company reconciliation: FAIL beats WARN beats PASS */
+export function summarizeCompanyReconciliationStatus(results: LabCheckResult[]): 'pass' | 'warn' | 'fail' {
+  if (results.some((r) => r.status === 'fail')) return 'fail';
+  if (results.some((r) => r.status === 'warn')) return 'warn';
+  return 'pass';
 }
 
 function navForUnbalancedRow(u: JournalBalanceRow): LabNavAction[] {
@@ -982,8 +1112,14 @@ function unbalancedCheckResult(unbalanced: JournalBalanceRow[]): LabCheckResult 
   };
 }
 
-/** Live company-wide reconciliation (includes legacy data). */
-export async function runAllReconciliationChecks(
+const tagCompany = (r: LabCheckResult): LabCheckResult => ({ ...r, checkLayer: 'company' });
+const tagDocument = (r: LabCheckResult): LabCheckResult => ({ ...r, checkLayer: 'document' });
+
+/**
+ * Whole company / legacy-aware reconciliation. TB/BS/P&L/AR/AP/inventory/accounts balance + posting-gate sample.
+ * Does NOT belong in the “action just succeeded” path — run manually or from Reports tab.
+ */
+export async function runCompanyReconciliationChecks(
   companyId: string,
   branchId?: string | null
 ): Promise<LabCheckResult[]> {
@@ -991,48 +1127,206 @@ export async function runAllReconciliationChecks(
   const paymentLink = await findPaymentsMissingJournalLink(companyId, 80);
 
   return [
-    unbalancedCheckResult(unbalanced),
-    paymentLink,
-    await runTrialBalanceCheck(companyId, branchId),
-    await runBalanceSheetCheck(companyId, branchId),
-    await runPnLConsistencyCheck(companyId, branchId),
-    await runReceivablesVsARCheck(companyId, branchId),
-    await runPayablesVsAPCheck(companyId, branchId),
-    await runInventoryValuationVsStockCheck(companyId),
-    await runAccountsVsJournalCheck(companyId),
-    await runPostingStatusGateLiveCheck(companyId),
+    tagCompany(unbalancedCheckResult(unbalanced)),
+    tagCompany(paymentLink),
+    tagCompany(await runTrialBalanceCheck(companyId, branchId)),
+    tagCompany(await runBalanceSheetCheck(companyId, branchId)),
+    tagCompany(await runPnLConsistencyCheck(companyId, branchId)),
+    tagCompany(await runReceivablesVsARCheck(companyId, branchId)),
+    tagCompany(await runPayablesVsAPCheck(companyId, branchId)),
+    tagCompany(await runInventoryValuationVsStockCheck(companyId)),
+    tagCompany(await runAccountsVsJournalCheck(companyId)),
+    tagCompany(await runPostingStatusGateLiveCheck(companyId)),
   ];
 }
 
+/** @deprecated Use `runCompanyReconciliationChecks` (same behavior, tagged `checkLayer: company`). */
+export async function runAllReconciliationChecks(
+  companyId: string,
+  branchId?: string | null
+): Promise<LabCheckResult[]> {
+  return runCompanyReconciliationChecks(companyId, branchId);
+}
+
 /**
- * Fresh scenario: only JEs + payments tied to the selected sale or purchase.
- * Use after exercising one document to see if the engine left that document internally consistent.
+ * Posted doc: each payment with amount &gt; 0 should have at least one non-void JE with payment_id set.
  */
-export async function runFreshScenarioChecks(
+async function runDocumentPaymentJournalLinkCheck(
+  companyId: string,
+  opts: { saleId?: string; purchaseId?: string }
+): Promise<LabCheckResult> {
+  const failures: LabCheckFailure[] = [];
+
+  const checkSide = async (refType: 'sale' | 'purchase', docId: string, status: string | undefined) => {
+    const posted =
+      refType === 'sale'
+        ? canPostAccountingForSaleStatus(status)
+        : canPostAccountingForPurchaseStatus(status);
+    if (!posted) return;
+
+    const { data: pays } = await supabase
+      .from('payments')
+      .select('id, amount')
+      .eq('reference_type', refType)
+      .eq('reference_id', docId);
+    for (const p of pays || []) {
+      const amt = Number((p as any).amount) || 0;
+      if (amt <= 0.01) continue;
+      const { count } = await supabase
+        .from('journal_entries')
+        .select('*', { count: 'exact', head: true })
+        .eq('company_id', companyId)
+        .eq('payment_id', (p as { id: string }).id)
+        .or('is_void.is.null,is_void.eq.false');
+      if ((count ?? 0) < 1) {
+        failures.push({
+          module: 'payments',
+          step: 'payment_je_link',
+          record: `payments.id=${(p as { id: string }).id}`,
+          expected: '≥1 active journal_entries row with payment_id for posted doc payment',
+          actual: `linked_je_count=${count ?? 0}`,
+          classification: 'source_link',
+          navActions:
+            refType === 'sale'
+              ? [{ type: 'sale', saleId: docId, label: 'Open sale' }]
+              : [{ type: 'purchase', purchaseId: docId, label: 'Open purchase' }],
+        });
+      }
+    }
+  };
+
+  if (opts.saleId) {
+    const { data: sale } = await supabase.from('sales').select('status').eq('id', opts.saleId).maybeSingle();
+    await checkSide('sale', opts.saleId, (sale as any)?.status);
+  }
+  if (opts.purchaseId) {
+    const { data: pur } = await supabase.from('purchases').select('status').eq('id', opts.purchaseId).maybeSingle();
+    await checkSide('purchase', opts.purchaseId, (pur as any)?.status);
+  }
+
+  return {
+    id: 'doc_cert_payment_je_link',
+    label: 'Document cert: payments ↔ JE (posted docs)',
+    category: 'engine',
+    defaultClassification: failures.length ? 'source_link' : undefined,
+    status: failures.length === 0 ? 'pass' : 'warn',
+    failures,
+    meta: { saleId: opts.saleId, purchaseId: opts.purchaseId },
+  };
+}
+
+async function runDocumentTotalsConsistencyCheck(
+  companyId: string,
+  opts: { saleId?: string; purchaseId?: string }
+): Promise<LabCheckResult[]> {
+  const out: LabCheckResult[] = [];
+
+  if (opts.saleId) {
+    const { data: s } = await supabase
+      .from('sales')
+      .select('total, paid_amount, due_amount, status, id')
+      .eq('id', opts.saleId)
+      .eq('company_id', companyId)
+      .maybeSingle();
+    if (s) {
+      const st = String((s as any).status || '').toLowerCase();
+      const total = Number((s as any).total) || 0;
+      const paid = Number((s as any).paid_amount) || 0;
+      const due = Number((s as any).due_amount) || 0;
+      const ok = st === 'cancelled' || Math.abs(total - paid - due) < 0.02;
+      out.push({
+        id: 'doc_cert_sale_totals',
+        label: 'Document cert: sale total = paid + due',
+        category: 'engine',
+        status: ok ? 'pass' : 'warn',
+        failures: ok
+          ? []
+          : [
+              {
+                module: 'sales',
+                step: 'totals',
+                record: opts.saleId,
+                expected: `total≈paid+due (${total} vs ${paid + due})`,
+                actual: `total=${total} paid=${paid} due=${due}`,
+                classification: 'engine_bug',
+                navActions: [{ type: 'sale', saleId: opts.saleId, label: 'Open sale' }],
+              },
+            ],
+        meta: { total, paid, due, status: st },
+      });
+    }
+  }
+
+  if (opts.purchaseId) {
+    const { data: p } = await supabase
+      .from('purchases')
+      .select('total, paid_amount, due_amount, status, id')
+      .eq('id', opts.purchaseId)
+      .eq('company_id', companyId)
+      .maybeSingle();
+    if (p) {
+      const st = String((p as any).status || '').toLowerCase();
+      const total = Number((p as any).total) || 0;
+      const paid = Number((p as any).paid_amount) || 0;
+      const due = Number((p as any).due_amount) || 0;
+      const ok = st === 'cancelled' || Math.abs(total - paid - due) < 0.02;
+      out.push({
+        id: 'doc_cert_purchase_totals',
+        label: 'Document cert: purchase total = paid + due',
+        category: 'engine',
+        status: ok ? 'pass' : 'warn',
+        failures: ok
+          ? []
+          : [
+              {
+                module: 'purchases',
+                step: 'totals',
+                record: opts.purchaseId,
+                expected: `total≈paid+due (${total} vs ${paid + due})`,
+                actual: `total=${total} paid=${paid} due=${due}`,
+                classification: 'engine_bug',
+                navActions: [{ type: 'purchase', purchaseId: opts.purchaseId, label: 'Open purchase' }],
+              },
+            ],
+        meta: { total, paid, due, status: st },
+      });
+    }
+  }
+
+  return out;
+}
+
+/**
+ * Document certification: selected sale/purchase only — posting gate, scoped JE balance, payments vs header, totals, payment↔JE for posted docs.
+ * Does not run TB/BS/AR/AP/company inventory heuristics.
+ */
+export async function runDocumentCertificationChecks(
   companyId: string,
   branchId: string | null | undefined,
   opts: { saleId?: string; purchaseId?: string }
 ): Promise<LabCheckResult[]> {
   if (!opts.saleId && !opts.purchaseId) {
     return [
-      {
-        id: 'fresh_scope',
-        label: 'Fresh scenario scope',
+      tagDocument({
+        id: 'doc_cert_scope',
+        label: 'Document certification: scope',
         category: 'engine',
         defaultClassification: 'informational',
         status: 'skip',
         failures: [],
-        meta: { hint: 'Select a sale or purchase, then run Fresh mode.' },
-      },
+        meta: { hint: 'Select a sale or purchase to certify the current document workflow.' },
+      }),
     ];
   }
 
-  const allUnbalanced = await findUnbalancedJournalEntries(companyId, branchId);
-  const rt = opts.saleId ? 'sale' : 'purchase';
-  const docId = (opts.saleId || opts.purchaseId) as string;
-  const scoped = allUnbalanced.filter((u) => u.reference_type === rt && u.reference_id === docId);
-
-  const results: LabCheckResult[] = [unbalancedCheckResult(scoped)];
+  const scoped = await findUnbalancedJournalEntriesForDocument(companyId, branchId, opts);
+  const ub = unbalancedCheckResult(scoped);
+  const results: LabCheckResult[] = [
+    tagDocument({
+      ...ub,
+      label: 'Document cert: balanced JEs (this doc + its payments only)',
+    }),
+  ];
 
   if (opts.saleId) {
     const { data: sale } = await supabase
@@ -1048,26 +1342,28 @@ export async function runFreshScenarioChecks(
     const sumPay = (pays || []).reduce((a, p: any) => a + (Number(p.amount) || 0), 0);
     const paid = Number((sale as any)?.paid_amount) || 0;
     const ok = Math.abs(sumPay - paid) < 0.02;
-    results.push({
-      id: 'fresh_sale_payments_vs_paid',
-      label: 'Fresh: Σ payments vs sales.paid_amount',
-      category: 'engine',
-      status: ok ? 'pass' : 'warn',
-      failures: ok
-        ? []
-        : [
-            {
-              module: 'sales',
-              step: 'paid_amount',
-              record: opts.saleId,
-              expected: `sum(payments)=${sumPay}`,
-              actual: `paid_amount=${paid}`,
-              classification: 'engine_bug',
-              navActions: [{ type: 'sale', saleId: opts.saleId, label: 'Open sale' }],
-            },
-          ],
-      meta: { sumPay, paid },
-    });
+    results.push(
+      tagDocument({
+        id: 'doc_cert_sale_payments_vs_paid',
+        label: 'Document cert: Σ payments vs sales.paid_amount',
+        category: 'engine',
+        status: ok ? 'pass' : 'warn',
+        failures: ok
+          ? []
+          : [
+              {
+                module: 'sales',
+                step: 'paid_amount',
+                record: opts.saleId,
+                expected: `sum(payments)=${sumPay}`,
+                actual: `paid_amount=${paid}`,
+                classification: 'engine_bug',
+                navActions: [{ type: 'sale', saleId: opts.saleId, label: 'Open sale' }],
+              },
+            ],
+        meta: { sumPay, paid },
+      })
+    );
   }
 
   if (opts.purchaseId) {
@@ -1084,30 +1380,48 @@ export async function runFreshScenarioChecks(
     const sumPay = (pays || []).reduce((a, p: any) => a + (Number(p.amount) || 0), 0);
     const paid = Number((pur as any)?.paid_amount) || 0;
     const ok = Math.abs(sumPay - paid) < 0.02;
-    results.push({
-      id: 'fresh_purchase_payments_vs_paid',
-      label: 'Fresh: Σ payments vs purchases.paid_amount',
-      category: 'engine',
-      status: ok ? 'pass' : 'warn',
-      failures: ok
-        ? []
-        : [
-            {
-              module: 'purchases',
-              step: 'paid_amount',
-              record: opts.purchaseId,
-              expected: `sum(payments)=${sumPay}`,
-              actual: `paid_amount=${paid}`,
-              classification: 'engine_bug',
-              navActions: [{ type: 'purchase', purchaseId: opts.purchaseId, label: 'Open purchase' }],
-            },
-          ],
-      meta: { sumPay, paid },
-    });
+    results.push(
+      tagDocument({
+        id: 'doc_cert_purchase_payments_vs_paid',
+        label: 'Document cert: Σ payments vs purchases.paid_amount',
+        category: 'engine',
+        status: ok ? 'pass' : 'warn',
+        failures: ok
+          ? []
+          : [
+              {
+                module: 'purchases',
+                step: 'paid_amount',
+                record: opts.purchaseId,
+                expected: `sum(payments)=${sumPay}`,
+                actual: `paid_amount=${paid}`,
+                classification: 'engine_bug',
+                navActions: [{ type: 'purchase', purchaseId: opts.purchaseId, label: 'Open purchase' }],
+              },
+            ],
+        meta: { sumPay, paid },
+      })
+    );
   }
 
-  results.push(await runPostingStatusGateFreshCheck(companyId, opts));
+  for (const r of await runDocumentTotalsConsistencyCheck(companyId, opts)) {
+    results.push(tagDocument(r));
+  }
+
+  results.push(tagDocument(await runDocumentPaymentJournalLinkCheck(companyId, opts)));
+  results.push(tagDocument(await runPostingStatusGateFreshCheck(companyId, opts)));
   return results;
+}
+
+/**
+ * @deprecated Use `runDocumentCertificationChecks` (same behavior: document-scoped only, tagged `checkLayer: document`).
+ */
+export async function runFreshScenarioChecks(
+  companyId: string,
+  branchId: string | null | undefined,
+  opts: { saleId?: string; purchaseId?: string }
+): Promise<LabCheckResult[]> {
+  return runDocumentCertificationChecks(companyId, branchId, opts);
 }
 
 function chunkArray<T>(arr: T[], size: number): T[][] {
