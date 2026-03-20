@@ -4,13 +4,7 @@ This document is the **RESULT.md** deliverable for the internal **Accounting Int
 
 ## Git commit hash
 
-After you commit this feature:
-
-```bash
-git rev-parse HEAD
-```
-
-Replace with your own commit SHA after `git add` and `git commit`.
+Tooling blockers (purchase 400 filter, lazy export, snapshot truth): **`86d28a9aea5331f2984a1a75c0d10a2da821c5db`**
 
 ---
 

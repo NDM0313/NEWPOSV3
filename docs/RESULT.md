@@ -4,13 +4,4 @@ See the full deliverable: **[ACCOUNTING_INTEGRITY_LAB_RESULT.md](./ACCOUNTING_IN
 
 ## Git commit hash
 
-The tooling-blocker fix is on branch `main` with message:
-
-`fix(integrity-lab): purchase status filter 400, snapshot truth, lazy default export`
-
-Resolve the exact SHA after pull:
-
-```bash
-git log -1 --oneline --grep="integrity-lab"
-git rev-parse HEAD
-```
+`86d28a9aea5331f2984a1a75c0d10a2da821c5db` — `fix(integrity-lab): purchase status filter 400, snapshot truth, lazy default export`
