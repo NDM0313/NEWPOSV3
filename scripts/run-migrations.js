@@ -80,6 +80,26 @@ CREATE TABLE IF NOT EXISTS schema_migrations (
 
 async function run() {
   const client = new pg.Client({ connectionString });
+  let dbFatal = null;
+  const safeEnd = async () => {
+    try {
+      await client.end();
+    } catch {
+      // Ignore end() errors when backend already terminated the connection.
+    }
+  };
+
+  // Prevent unhandled 'error' events from crashing the process in --allow-fail mode.
+  client.on('error', (err) => {
+    dbFatal = err;
+    const code = err?.code || 'unknown';
+    const msg = err?.message || String(err);
+    console.error('[MIGRATE][DB-ERROR]', code, msg);
+    if (ALLOW_FAIL) {
+      console.warn('[MIGRATE] --allow-fail: database connection terminated; skipping migrations so app can start.');
+      process.exit(0);
+    }
+  });
   try {
     await client.connect();
     await client.query(CREATE_MIGRATIONS_TABLE);
@@ -149,7 +169,7 @@ async function run() {
       } catch (err) {
         console.error('[FAIL]', file, err.message);
         if (err.detail) console.error('Detail:', err.detail);
-        await client.end();
+        await safeEnd();
         if (ALLOW_FAIL) {
           console.warn('[MIGRATE] --allow-fail: continuing so app can start. Fix the migration and run again.');
           process.exit(0);
@@ -169,7 +189,7 @@ async function run() {
         } catch (err) {
           console.error('[FAIL]', file, err.message);
           if (err.detail) console.error('Detail:', err.detail);
-          await client.end();
+          await safeEnd();
           if (ALLOW_FAIL) {
             console.warn('[MIGRATE] --allow-fail: continuing so app can start. Fix the migration and run again.');
             process.exit(0);
@@ -183,13 +203,16 @@ async function run() {
     console.log('Migrations complete. Applied', runCount, 'new migration(s).');
   } catch (err) {
     console.error('Error:', err.message);
+    if (dbFatal && !err?.message?.includes(dbFatal.message || '')) {
+      console.error('[MIGRATE] Last DB fatal:', dbFatal.message || dbFatal);
+    }
     if (ALLOW_FAIL) {
       console.warn('[MIGRATE] --allow-fail: continuing so app can start.');
       process.exit(0);
     }
     process.exit(1);
   } finally {
-    await client.end();
+    await safeEnd();
   }
 }
 

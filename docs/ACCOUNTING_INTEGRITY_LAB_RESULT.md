@@ -101,6 +101,28 @@ Only **final / posted** documents should drive accounting and stock. The lab UI 
 | **Lazy undefined** (after Contact Search test) | **`CustomerLedgerInteractiveTest`** is **`export default`** only; `App.tsx` used `.then(m => ({ default: m.CustomerLedgerInteractiveTest }))` → **`undefined`**. | `lazy(() => import('…/CustomerLedgerInteractiveTest'))` (default module). |
 | **Snapshot trust** | Need explicit timeline + outcome badge. | Tab **F**: ISO timestamps (before / action start / action end / after), **Success / Failed** badge, after skipped on failure; header uses `div` not `CardDescription` `<p>` to fix DOM nesting warning. |
 
+### 2026-03-20 — Unbalanced JE root-cause + repair
+
+| Item | Finding | Action |
+|------|---------|--------|
+| Unbalanced JE #1 | `dc2fd0f9-dd66-4e52-876c-bad2021bcfe7` (`EXP-0001`, ref `sale/8b4e9b31-...`): Dr `5200` 1500 + Dr `1100` 1500, **no credit** (diff 3000). | Voided as legacy bad voucher via targeted migration. |
+| Unbalanced JE #2 | `4bce1498-bae8-40d8-9eb5-a3aca8d0239f` (`EXP-0002`, ref `sale/405c2ccd-...`): Dr `5200` 5000 + Dr `2000` 5000, **no credit** (diff 10000). | Voided as legacy bad voucher via targeted migration. |
+| Generator logic | Old extra-expense sale posting path produced EXP-* duplicate/unbalanced entries; current DB function `create_extra_expense_journal_entry` is already **no-op** and SalesContext no longer calls it. | Kept engine fix, added traceable live-data repair migration. |
+
+Repair migration:
+
+- `migrations/20260320_void_legacy_unbalanced_exp_sale_je.sql`
+- Safe scope: specific JE ids only, company-scoped, only if currently unbalanced + not already void.
+
+Post-repair verification snapshot:
+
+- Unbalanced JEs: **0**
+- Trial Balance: debit `3719230.00` = credit `3719230.00`, diff **`0.00`**
+- Balance Sheet diff: **`283800`** (non-zero, still requires separate reconciliation)
+- Receivables vs AR diff: **`203400`**
+- Payables vs AP diff: **`-865770`**
+- Payments -> `journal_entries.payment_id` missing links: **1** row (purchase payment, likely legacy/backfill gap)
+
 ### Known non-lab noise (from browser logs)
 
 - `get_contact_balances_summary` **400** / missing column: **contact/RPC** issue, not the Integrity Lab. Fix RPC or migration separately.
