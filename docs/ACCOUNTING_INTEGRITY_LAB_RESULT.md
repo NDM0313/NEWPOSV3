@@ -6,6 +6,8 @@ This document is the **RESULT.md** deliverable for the internal **Accounting Int
 
 Record **`git rev-parse HEAD`** after each tooling drop (avoid stale SHAs in docs).
 
+**Latest (canonical sale document JE fix):** `5a4d6c4`
+
 ---
 
 ## 2026-03-12 — Fresh posting gate: canonical sale **document** JE only
