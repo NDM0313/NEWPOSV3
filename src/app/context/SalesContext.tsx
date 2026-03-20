@@ -18,6 +18,10 @@ import { toast } from 'sonner';
 import { activityLogService } from '@/app/services/activityLogService';
 import { documentNumberService } from '@/app/services/documentNumberService';
 import { shipmentService } from '@/app/services/shipmentService';
+import {
+  canPostAccountingForSaleStatus,
+  canPostStockForSaleStatus,
+} from '@/app/lib/postingStatusGate';
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 function isValidBranchId(id: string | null): id is string {
@@ -491,15 +495,15 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
         throw new Error(`Invalid invoice number generated: ${invoiceNo}. Check document numbering settings.`);
       }
 
-      // Negative stock: allow if EITHER context (UI) or DB says true — avoids stale context / RLS mismatch
-      const isFinal = saleData.status === 'final' || saleData.type === 'invoice';
+      // Negative stock: only enforce when this save will post stock (`final`), not for draft/quotation/order
+      const effectiveCreateStatus = saleData.status || (saleData.type === 'invoice' ? 'final' : 'quotation');
       const fromContext = inventorySettings.negativeStockAllowed === true;
       const fromDb = await import('@/app/services/settingsService').then(m => m.settingsService.getAllowNegativeStock(companyId));
       const allowNegative = fromContext || fromDb;
       if (import.meta.env?.DEV) {
         console.log('[SALES CONTEXT] Negative stock:', { allowNegative, fromContext, fromDb, inventorySettingsNegative: inventorySettings.negativeStockAllowed });
       }
-      if (isFinal && !allowNegative && saleData.items?.length > 0) {
+      if (canPostStockForSaleStatus(effectiveCreateStatus) && !allowNegative && saleData.items?.length > 0) {
         const { supabase } = await import('@/lib/supabase');
         const productIds = [...new Set(saleData.items.map((i) => i.productId))];
         const [stockMap, { data: prods }] = await Promise.all([
@@ -661,7 +665,14 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
       // Each payment method = separate payment record = separate reference number = separate journal entry
       const partialPayments = (saleData as any).partialPayments || [];
       
-      if (newSale.paid > 0 && companyId && effectiveBranchId && user) {
+      // Payments table + payment JEs: only for posted (final) sales — draft paid fields are UI/draft only
+      if (
+        newSale.paid > 0 &&
+        companyId &&
+        effectiveBranchId &&
+        user &&
+        canPostAccountingForSaleStatus(newSale.status)
+      ) {
         try {
           const { accountHelperService } = await import('@/app/services/accountHelperService');
           const { saleService } = await import('@/app/services/saleService');
@@ -777,9 +788,9 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
       // Update local state
       setSales(prev => [newSale, ...prev]);
       
-      // CRITICAL: If sale is invoice (status = final), decrement stock
+      // Stock OUT only when status is posted (`final`). Never use type=invoice alone (draft invoice must not move stock).
       // STEP 1 RULE: Silent fail NOT allowed - throw error if stock movement fails
-      if (newSale.type === 'invoice' && newSale.status === 'final' && newSale.items && newSale.items.length > 0) {
+      if (canPostStockForSaleStatus(newSale.status) && newSale.items && newSale.items.length > 0) {
         console.log('[SALES CONTEXT] 🔄 Creating stock movements for sale:', newSale.id, 'Items:', newSale.items.length);
         
         const stockMovementErrors: string[] = [];
@@ -924,7 +935,7 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
       // Commission: NOT posted per sale (commission_status=pending until batch post).
 
       // 🔧 SALE DOCUMENT JE (single engine — saleAccountingService only; re-checks status=final in DB)
-      if (newSale.type === 'invoice' && newSale.status === 'final' && companyId && newSale.total > 0) {
+      if (canPostAccountingForSaleStatus(newSale.status) && companyId && newSale.total > 0) {
         const { saleAccountingService: sac } = await import('@/app/services/saleAccountingService');
         const shipmentCharges = Number((saleData as any).shippingCharges ?? 0) || 0;
         const jeId = await sac.createSaleJournalEntry({
@@ -954,9 +965,8 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
         }
       }
       
-      // CRITICAL FIX: Create payment journal entry separately (if paid)
-      // Payment is separate from sale transaction (double-entry rule)
-      if (newSale.type === 'invoice' && newSale.status === 'final' && newSale.paid > 0) {
+      // Payment JE only for posted (final) sales — draft/quotation/order must not hit GL or AR payment postings
+      if (canPostAccountingForSaleStatus(newSale.status) && newSale.paid > 0) {
         try {
           await accounting.recordSalePayment({
           saleId: newSale.id,
@@ -1051,9 +1061,18 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
       // 🔒 CRITICAL FIX: Calculate stock movement DELTA BEFORE updating sale_items
       // This must happen BEFORE sale_items are deleted/updated so we can fetch old items
       const sale = getSaleById(id);
-      const isFinalStatus = (updates.status === 'invoice' || updates.status === 'final') || (sale?.status === 'final' || sale?.type === 'invoice');
-      // PF-14: When editing a posted (final) sale and financial fields change, post delta adjustments only (never delete original JEs).
-      const accountingRepostNeeded = isFinalStatus && (
+      const newStatusForGate =
+        updates.status !== undefined
+          ? (updates.status === 'invoice' ? 'final' : String(updates.status))
+          : undefined;
+      const priorPostedStock = sale != null && canPostStockForSaleStatus(sale.status);
+      const willBePostedStock =
+        newStatusForGate != null && canPostStockForSaleStatus(newStatusForGate);
+      /** Stock deltas: only if already posted or this save moves to posted (finalize + item change). */
+      const allowStockItemDeltas = priorPostedStock || willBePostedStock;
+      // PF-14: Component-level GL only when sale was already posted before this edit (not draft→final in same payload — handled by finalize paths / service).
+      const priorPostedAccounting = sale != null && canPostAccountingForSaleStatus(sale.status);
+      const accountingRepostNeeded = priorPostedAccounting && (
         updates.total !== undefined ||
         updates.subtotal !== undefined ||
         updates.discount !== undefined ||
@@ -1079,8 +1098,8 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
         name: string;
       }> = [];
       
-      // Only calculate delta if items are being updated and sale is final
-      if (isFinalStatus && (updates as any).items && Array.isArray((updates as any).items) && companyId) {
+      // Only calculate delta if items are being updated and sale is / will be posted for stock
+      if (allowStockItemDeltas && (updates as any).items && Array.isArray((updates as any).items) && companyId) {
         try {
           console.log('[SALES CONTEXT] 🔄 Calculating stock movement DELTA for sale edit (BEFORE items update):', id);
           
@@ -1354,15 +1373,14 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
           toast.warning('Sale updated but stock movements failed. Check console for details.');
           // Don't block update if stock movement fails
         }
-      } else if (stockMovementDeltas.length === 0 && isFinalStatus && (updates as any).items) {
+      } else if (stockMovementDeltas.length === 0 && allowStockItemDeltas && (updates as any).items) {
         console.log('[SALES CONTEXT] ✅ No stock movement delta (items unchanged or no delta)');
       }
 
       // Order/Draft/Quotation → Final: create stock OUT for all items when only status is being updated (no item deltas)
-      const saleStatus = (sale?.status ?? (sale as any)?.status)?.toString()?.toLowerCase();
-      const saleType = (sale?.type ?? (sale as any)?.type)?.toString()?.toLowerCase();
-      const wasNotFinal = saleStatus !== 'final' && saleType !== 'invoice';
-      const isNowFinal = updates.status === 'final' || updates.status === 'invoice';
+      const wasNotFinal = sale != null && !canPostStockForSaleStatus(sale.status);
+      const isNowFinal =
+        newStatusForGate != null && canPostStockForSaleStatus(newStatusForGate);
       const effectiveCompanyId = companyId || (sale as any)?.company_id;
       if (wasNotFinal && isNowFinal && stockMovementDeltas.length === 0 && effectiveCompanyId) {
         try {

@@ -14,6 +14,7 @@ import { getOrCreateLedger, addLedgerEntry } from '@/app/services/ledgerService'
 import { branchService } from '@/app/services/branchService';
 import { toast } from 'sonner';
 import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
+import { canPostAccountingForPurchaseStatus } from '@/app/lib/postingStatusGate';
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 function isValidBranchId(id: string | null): id is string {
@@ -430,10 +431,8 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
         }).catch((err) => console.warn('[PURCHASE CONTEXT] Activity log failed:', err));
       }
 
-      // 🔧 PURCHASE DOCUMENT JE — only posted statuses (final/received); skip duplicate (DB trigger / retry)
-      const postedPurchaseStatus = new Set(['final', 'received']);
-      const purchaseSt = String(newPurchase.status || '').toLowerCase();
-      if (postedPurchaseStatus.has(purchaseSt) && companyId && newPurchase.total > 0) {
+      // 🔧 PURCHASE DOCUMENT JE — only posted statuses (final/received; app `completed` ≡ final); skip duplicate (DB trigger / retry)
+      if (canPostAccountingForPurchaseStatus(newPurchase.status) && companyId && newPurchase.total > 0) {
         try {
           const { purchaseAccountingService: pac } = await import('@/app/services/purchaseAccountingService');
           if (await pac.purchaseJournalEntryExists(newPurchase.id)) {
@@ -557,8 +556,13 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
         }
       }
       
-      // Supplier Ledger: Purchase → CREDIT (we owe supplier); post on every purchase create
-      if (companyId && newPurchase.supplier && newPurchase.total != null) {
+      // Supplier ledger / balances: only when purchase is posted (draft/ordered must not move AP or supplier subledger)
+      if (
+        canPostAccountingForPurchaseStatus(newPurchase.status) &&
+        companyId &&
+        newPurchase.supplier &&
+        newPurchase.total != null
+      ) {
         try {
           const ledger = await getOrCreateLedger(companyId, 'supplier', newPurchase.supplier, newPurchase.supplierName);
           if (ledger) {
@@ -595,13 +599,13 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
       
       // Stock movements for purchase: created by DB trigger purchase_final_stock_movement_trigger
       // when purchase status is 'final' (AFTER INSERT/UPDATE). Do NOT create here to avoid double posting.
-      if ((newPurchase.status === 'received' || newPurchase.status === 'final') && newPurchase.items && newPurchase.items.length > 0) {
+      if (canPostAccountingForPurchaseStatus(newPurchase.status) && newPurchase.items && newPurchase.items.length > 0) {
         console.log('[PURCHASE CONTEXT] Stock for purchase', newPurchase.id, 'handled by DB trigger (single posting).');
       }
       
       // Extra expenses and discount are now in the single line-by-line journal above (from purchase_charges).
-      // Supplier ledger: still post discount as debit to reduce payable
-      if ((newPurchase.status === 'received' || newPurchase.status === 'final') && companyId && newPurchase.discount > 0) {
+      // Supplier ledger: still post discount as debit to reduce payable (posted POs only)
+      if (canPostAccountingForPurchaseStatus(newPurchase.status) && companyId && newPurchase.discount > 0) {
         try {
           const ledger = await getOrCreateLedger(companyId, 'supplier', newPurchase.supplier, newPurchase.supplierName);
           if (ledger) {
@@ -622,9 +626,8 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
         }
       }
       
-      // 🔒 CRITICAL FIX: Record initial payment in payments table (like Sale module)
-      // If purchase created with paid > 0, create payment record in payments table
-      if (newPurchase.paid > 0 && companyId && finalBranchId) {
+      // 🔒 CRITICAL FIX: Record initial payment in payments table (like Sale module) — posted POs only (no payment JE for draft/ordered)
+      if (canPostAccountingForPurchaseStatus(newPurchase.status) && newPurchase.paid > 0 && companyId && finalBranchId) {
         try {
           // Get payment method from purchase data or default to 'cash'
           const paymentMethod = normalizePaymentMethodForEnum(purchaseData.paymentMethod || 'cash');
@@ -672,8 +675,8 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
         }
       }
       
-      // Auto-post to accounting if paid (skip when accounting context not yet available, e.g. HMR)
-      if (newPurchase.paid > 0 && accounting) {
+      // Auto-post to accounting if paid (posted POs only)
+      if (canPostAccountingForPurchaseStatus(newPurchase.status) && newPurchase.paid > 0 && accounting) {
         accounting.recordSupplierPayment({
           supplierId: newPurchase.supplier,
           supplierName: newPurchase.supplierName,
@@ -748,12 +751,31 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
       // 🔒 CRITICAL FIX: Calculate stock movement DELTA BEFORE updating purchase_items
       // This must happen BEFORE purchase_items are deleted/updated so we can fetch old items
       const purchase = getPurchaseById(id);
-      const isFinalStatus = (updates.status === 'received' || updates.status === 'final') || (purchase?.status === 'final' || purchase?.status === 'received');
-      // PF-02: Capture old amounts for accounting repost (reverse old JE/ledger, post new)
-      const accountingRepostNeeded = isFinalStatus && (updates.total !== undefined || updates.paid !== undefined || updates.discount !== undefined || ((updates as any).items && Array.isArray((updates as any).items)) || Array.isArray((updates as any).expenses));
-      const oldTotalForRepost = (accountingRepostNeeded && purchase) ? (Number(purchase.total) || 0) : 0;
-      const oldPaidForRepost = (accountingRepostNeeded && purchase) ? (Number(purchase.paid) || 0) : 0;
-      const oldDiscountForRepost = (accountingRepostNeeded && purchase) ? (Number(purchase.discount) || 0) : 0;
+      let newStatusForGate: string | undefined;
+      if (updates.status !== undefined) {
+        const u = updates.status;
+        if (u === 'completed' || u === 'final') newStatusForGate = 'final';
+        else if (u === 'cancelled') newStatusForGate = 'draft';
+        else newStatusForGate = String(u);
+      }
+      const priorPosted = purchase != null && canPostAccountingForPurchaseStatus(purchase.status);
+      const willBePosted =
+        newStatusForGate !== undefined && canPostAccountingForPurchaseStatus(newStatusForGate);
+      /** Stock / GL paths: already posted or this save moves into posted (final/received). */
+      const isPostedForPurchaseEffects = priorPosted || willBePosted;
+      const accountingFieldsTouched =
+        updates.status !== undefined ||
+        updates.total !== undefined ||
+        updates.paid !== undefined ||
+        updates.discount !== undefined ||
+        ((updates as any).items && Array.isArray((updates as any).items)) ||
+        Array.isArray((updates as any).expenses);
+      const needsPurchaseAccountingPass =
+        !!companyId && isPostedForPurchaseEffects && accountingFieldsTouched;
+      // PF-02: Capture old amounts when we may touch supplier ledger / GL for this update
+      const oldTotalForRepost = (needsPurchaseAccountingPass && purchase) ? (Number(purchase.total) || 0) : 0;
+      const oldPaidForRepost = (needsPurchaseAccountingPass && purchase) ? (Number(purchase.paid) || 0) : 0;
+      const oldDiscountForRepost = (needsPurchaseAccountingPass && purchase) ? (Number(purchase.discount) || 0) : 0;
       let stockMovementDeltas: Array<{
         productId: string;
         variationId?: string;
@@ -762,8 +784,8 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
         name: string;
       }> = [];
       
-      // Only calculate delta if items are being updated and purchase is final/received
-      if (isFinalStatus && (updates as any).items && Array.isArray((updates as any).items) && companyId) {
+      // Only calculate delta if items are being updated and purchase is / will be posted for stock
+      if (isPostedForPurchaseEffects && (updates as any).items && Array.isArray((updates as any).items) && companyId) {
         try {
           console.log('[PURCHASE CONTEXT] 🔄 Calculating stock movement DELTA for purchase edit (BEFORE items update):', id);
           
@@ -862,7 +884,7 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
 
       // PF-COMPONENT: Capture old accounting snapshot BEFORE update (for component-level edit, no full reversal)
       let oldPurchaseSnapshot: { total: number; subtotal: number; discount: number; otherCharges: number } | null = null;
-      if (accountingRepostNeeded && companyId) {
+      if (needsPurchaseAccountingPass && companyId) {
         try {
           const { purchaseAccountingService: pac } = await import('@/app/services/purchaseAccountingService');
           const oldPurchaseForAccounting = await purchaseService.getPurchase(id);
@@ -1120,7 +1142,7 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
       }
 
       // PF-COMPONENT: Component-level purchase edit — do NOT full-reverse. Only adjust changed components; never touch payment unless payment changed.
-      if (accountingRepostNeeded && companyId) {
+      if (needsPurchaseAccountingPass && companyId) {
         try {
           const { supabase } = await import('@/lib/supabase');
           const { purchaseAccountingService: pac } = await import('@/app/services/purchaseAccountingService');
@@ -1141,7 +1163,7 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
 
           const hasExistingPurchaseJE = await pac.purchaseJournalEntryExists(id);
 
-          if (hasExistingPurchaseJE && oldPurchaseSnapshot) {
+          if (hasExistingPurchaseJE && oldPurchaseSnapshot && priorPosted) {
             // Component-level: post only adjustment JEs for deltas. Do NOT delete original purchase JE. Do NOT touch payment JEs.
             const newSnapshot = pac.getPurchaseAccountingSnapshot(updated);
             const { adjustmentCount } = await pac.postPurchaseEditAdjustments({
@@ -1156,7 +1178,7 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
               supplierName,
             });
             console.log('[PURCHASE CONTEXT] PF-COMPONENT: Posted', adjustmentCount, 'purchase adjustment JE(s); original JE and payment JEs unchanged.');
-          } else if (!hasExistingPurchaseJE && newTotal > 0) {
+          } else if (!hasExistingPurchaseJE && newTotal > 0 && willBePosted) {
             // No existing purchase JE (e.g. legacy data): create one full JE (same as create path)
             let inventoryAccountId: string | null = null;
             let apAccountId: string | null = null;
@@ -1442,8 +1464,10 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
     if (!purchase || !companyId || !branchId) {
       throw new Error('Purchase not found or company/branch missing');
     }
-    if (purchase.status !== 'final' && purchase.status !== 'completed') {
-      throw new Error('Payment not allowed until purchase is Final. Current status: ' + purchase.status);
+    if (!canPostAccountingForPurchaseStatus(purchase.status)) {
+      throw new Error(
+        'Payment not allowed until purchase is Final or Received. Current status: ' + purchase.status
+      );
     }
 
     try {

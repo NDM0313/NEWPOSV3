@@ -11,6 +11,7 @@
  */
 
 import { supabase } from '@/lib/supabase';
+import { canPostAccountingForSaleStatus } from '@/app/lib/postingStatusGate';
 import { accountHelperService } from './accountHelperService';
 import { accountingService, type JournalEntry, type JournalEntryLine } from './accountingService';
 
@@ -34,17 +35,17 @@ async function saleJournalEntryExists(saleId: string): Promise<boolean> {
   }
 }
 
-/** Golden rule: only posted/final sales get document-level sale JEs (not draft/quotation/order/cancelled). */
+/** Golden rule: only `final` sales get document-level sale JEs. */
 async function assertSaleEligibleForDocumentJournal(saleId: string, invoiceNo: string): Promise<boolean> {
-  const { data, error } = await supabase.from('sales').select('id, status, type').eq('id', saleId).maybeSingle();
+  const { data, error } = await supabase.from('sales').select('id, status').eq('id', saleId).maybeSingle();
   if (error || !data) {
     console.warn('[saleAccountingService] Cannot load sale for accounting guard:', saleId, error?.message);
     return false;
   }
-  const status = String((data as { status?: string }).status || '').toLowerCase();
-  if (status !== 'final') {
+  const status = (data as { status?: string }).status;
+  if (!canPostAccountingForSaleStatus(status)) {
     console.warn(
-      `[saleAccountingService] Blocked document JE for ${invoiceNo}: sale status is "${status}" (only status=final may post AR/Revenue/COGS).`
+      `[saleAccountingService] Blocked document JE for ${invoiceNo}: sale status is "${status}" (only final may post AR/Revenue/COGS).`
     );
     return false;
   }

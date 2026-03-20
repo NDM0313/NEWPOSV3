@@ -7,6 +7,10 @@ import { supabase } from '@/lib/supabase';
 import { accountingReportsService } from '@/app/services/accountingReportsService';
 import { PURCHASE_STATUSES_FOR_PAYABLE_RECONCILIATION } from '@/app/lib/purchaseDbConstants';
 import { INTEGRITY_LAB_SESSION_KEY as _INTEGRITY_LAB_SESSION_KEY } from '@/app/lib/integrityLabConstants';
+import {
+  canPostAccountingForPurchaseStatus,
+  canPostAccountingForSaleStatus,
+} from '@/app/lib/postingStatusGate';
 
 /** Re-export for lab UI (prefer importing from @/app/lib/integrityLabConstants in new code) */
 export const INTEGRITY_LAB_SESSION_KEY = _INTEGRITY_LAB_SESSION_KEY;
@@ -991,6 +995,7 @@ export async function runAllReconciliationChecks(
     await runPayablesVsAPCheck(companyId, branchId),
     await runInventoryValuationVsStockCheck(companyId),
     await runAccountsVsJournalCheck(companyId),
+    await runPostingStatusGateLiveCheck(companyId),
   ];
 }
 
@@ -1096,7 +1101,361 @@ export async function runFreshScenarioChecks(
     });
   }
 
+  results.push(await runPostingStatusGateFreshCheck(companyId, opts));
   return results;
+}
+
+function chunkArray<T>(arr: T[], size: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+  return out;
+}
+
+function isJeActive(j: { is_void?: boolean | null }): boolean {
+  return j.is_void !== true;
+}
+
+/**
+ * Live: sample non-posted sales/purchases — must not have document JEs, reversals (sales), or stock_movements by reference.
+ */
+export async function runPostingStatusGateLiveCheck(companyId: string): Promise<LabCheckResult> {
+  const failures: LabCheckFailure[] = [];
+
+  const { data: nonFinalSales } = await supabase
+    .from('sales')
+    .select('id, status')
+    .eq('company_id', companyId)
+    .in('status', ['draft', 'quotation', 'order'])
+    .limit(200);
+  const saleIds = (nonFinalSales || []).map((r: { id: string }) => r.id).filter(Boolean);
+
+  for (const batch of chunkArray(saleIds, 80)) {
+    if (!batch.length) continue;
+    const { data: saleJes } = await supabase
+      .from('journal_entries')
+      .select('id, reference_id, is_void')
+      .eq('reference_type', 'sale')
+      .in('reference_id', batch);
+    for (const je of saleJes || []) {
+      if (!isJeActive(je as { is_void?: boolean })) continue;
+      failures.push({
+        module: 'posting_gate',
+        step: 'non_posted_sale_has_sale_je',
+        record: (je as { id: string }).id,
+        expected: 'no active journal_entries for draft/quotation/order sale',
+        actual: `sale_id=${(je as { reference_id: string }).reference_id}`,
+        classification: 'engine_bug',
+        navActions: [
+          { type: 'sale', saleId: (je as { reference_id: string }).reference_id, label: 'Open sale' },
+        ],
+      });
+    }
+    const { data: revJes } = await supabase
+      .from('journal_entries')
+      .select('id, reference_id, is_void')
+      .eq('reference_type', 'sale_reversal')
+      .in('reference_id', batch);
+    for (const je of revJes || []) {
+      if (!isJeActive(je as { is_void?: boolean })) continue;
+      failures.push({
+        module: 'posting_gate',
+        step: 'non_posted_sale_has_reversal_je',
+        record: (je as { id: string }).id,
+        expected: 'no sale_reversal JE for draft/quotation/order (nothing posted)',
+        actual: `sale_id=${(je as { reference_id: string }).reference_id}`,
+        classification: 'engine_bug',
+        navActions: [
+          { type: 'sale', saleId: (je as { reference_id: string }).reference_id, label: 'Open sale' },
+        ],
+      });
+    }
+    for (const sid of batch) {
+      const { count } = await supabase
+        .from('stock_movements')
+        .select('*', { count: 'exact', head: true })
+        .eq('reference_type', 'sale')
+        .eq('reference_id', sid);
+      if ((count ?? 0) > 0) {
+        failures.push({
+          module: 'posting_gate',
+          step: 'non_posted_sale_has_stock',
+          record: sid,
+          expected: 'no stock_movements for draft/quotation/order sale',
+          actual: `movement_count=${count}`,
+          classification: 'engine_bug',
+          navActions: [{ type: 'sale', saleId: sid, label: 'Open sale' }],
+        });
+      }
+    }
+  }
+
+  const { data: nonPostedPurchases } = await supabase
+    .from('purchases')
+    .select('id, status')
+    .eq('company_id', companyId)
+    .in('status', ['draft', 'ordered'])
+    .limit(200);
+  const purIds = (nonPostedPurchases || []).map((r: { id: string }) => r.id).filter(Boolean);
+
+  for (const batch of chunkArray(purIds, 80)) {
+    if (!batch.length) continue;
+    const { data: purJes } = await supabase
+      .from('journal_entries')
+      .select('id, reference_id, is_void')
+      .eq('reference_type', 'purchase')
+      .in('reference_id', batch);
+    for (const je of purJes || []) {
+      if (!isJeActive(je as { is_void?: boolean })) continue;
+      failures.push({
+        module: 'posting_gate',
+        step: 'non_posted_purchase_has_purchase_je',
+        record: (je as { id: string }).id,
+        expected: 'no active journal_entries for draft/ordered purchase',
+        actual: `purchase_id=${(je as { reference_id: string }).reference_id}`,
+        classification: 'engine_bug',
+        navActions: [
+          {
+            type: 'purchase',
+            purchaseId: (je as { reference_id: string }).reference_id,
+            label: 'Open purchase',
+          },
+        ],
+      });
+    }
+    for (const pid of batch) {
+      const { count } = await supabase
+        .from('stock_movements')
+        .select('*', { count: 'exact', head: true })
+        .eq('reference_type', 'purchase')
+        .eq('reference_id', pid);
+      if ((count ?? 0) > 0) {
+        failures.push({
+          module: 'posting_gate',
+          step: 'non_posted_purchase_has_stock',
+          record: pid,
+          expected: 'no stock_movements for draft/ordered purchase',
+          actual: `movement_count=${count}`,
+          classification: 'engine_bug',
+          navActions: [{ type: 'purchase', purchaseId: pid, label: 'Open purchase' }],
+        });
+      }
+    }
+  }
+
+  return {
+    id: 'posting_status_gate_live',
+    label: 'Posting gate: non-posted docs have no GL/stock (sample)',
+    category: 'engine',
+    defaultClassification: failures.length ? 'engine_bug' : undefined,
+    status: failures.length === 0 ? 'pass' : 'fail',
+    failures,
+    meta: { salesSampled: saleIds.length, purchasesSampled: purIds.length },
+  };
+}
+
+/**
+ * Fresh: selected sale or purchase must match posting rules (no side effects until posted).
+ */
+export async function runPostingStatusGateFreshCheck(
+  companyId: string,
+  opts: { saleId?: string; purchaseId?: string }
+): Promise<LabCheckResult> {
+  const failures: LabCheckFailure[] = [];
+
+  if (opts.saleId) {
+    const { data: row } = await supabase
+      .from('sales')
+      .select('id, status, total, invoice_no')
+      .eq('id', opts.saleId)
+      .eq('company_id', companyId)
+      .maybeSingle();
+
+    if (!row) {
+      return {
+        id: 'fresh_posting_gate_sale',
+        label: 'Fresh: posting gate (sale)',
+        category: 'engine',
+        status: 'skip',
+        failures: [],
+        meta: { reason: 'Sale not found for company' },
+      };
+    }
+
+    const st = (row as { status?: string }).status;
+    const { data: saleJes } = await supabase
+      .from('journal_entries')
+      .select('id, is_void')
+      .eq('reference_type', 'sale')
+      .eq('reference_id', opts.saleId);
+    const activeSaleJes = (saleJes || []).filter((j) => isJeActive(j as { is_void?: boolean }));
+
+    const { data: revJes } = await supabase
+      .from('journal_entries')
+      .select('id, is_void')
+      .eq('reference_type', 'sale_reversal')
+      .eq('reference_id', opts.saleId);
+    const activeRev = (revJes || []).filter((j) => isJeActive(j as { is_void?: boolean }));
+
+    const { count: stockCount } = await supabase
+      .from('stock_movements')
+      .select('*', { count: 'exact', head: true })
+      .eq('reference_type', 'sale')
+      .eq('reference_id', opts.saleId);
+
+    if (!canPostAccountingForSaleStatus(st)) {
+      if (activeSaleJes.length > 0) {
+        failures.push({
+          module: 'posting_gate',
+          step: 'fresh_non_posted_sale_je',
+          record: opts.saleId,
+          expected: 'no document sale JE',
+          actual: `active_je_count=${activeSaleJes.length}`,
+          classification: 'engine_bug',
+          navActions: [{ type: 'sale', saleId: opts.saleId, label: 'Open sale' }],
+        });
+      }
+      if (activeRev.length > 0) {
+        failures.push({
+          module: 'posting_gate',
+          step: 'fresh_non_posted_sale_reversal',
+          record: opts.saleId,
+          expected: 'no sale_reversal JE',
+          actual: `active_reversal_count=${activeRev.length}`,
+          classification: 'engine_bug',
+          navActions: [{ type: 'sale', saleId: opts.saleId, label: 'Open sale' }],
+        });
+      }
+      if ((stockCount ?? 0) > 0) {
+        failures.push({
+          module: 'posting_gate',
+          step: 'fresh_non_posted_sale_stock',
+          record: opts.saleId,
+          expected: 'no stock_movements',
+          actual: `count=${stockCount}`,
+          classification: 'engine_bug',
+          navActions: [{ type: 'sale', saleId: opts.saleId, label: 'Open sale' }],
+        });
+      }
+    } else {
+      const total = Number((row as { total?: number }).total) || 0;
+      if (total > 0 && activeSaleJes.length === 0) {
+        failures.push({
+          module: 'posting_gate',
+          step: 'fresh_posted_sale_missing_je',
+          record: opts.saleId,
+          expected: 'at least one active document sale JE when total > 0',
+          actual: 'active_je_count=0',
+          classification: 'missing_backfill',
+          navActions: [{ type: 'sale', saleId: opts.saleId, label: 'Open sale' }],
+        });
+      }
+      if (total > 0 && activeSaleJes.length > 1) {
+        failures.push({
+          module: 'posting_gate',
+          step: 'fresh_posted_sale_duplicate_je',
+          record: opts.saleId,
+          expected: 'single canonical document sale JE (excl. void)',
+          actual: `active_je_count=${activeSaleJes.length}`,
+          classification: 'engine_bug',
+          navActions: [{ type: 'sale', saleId: opts.saleId, label: 'Open sale' }],
+        });
+      }
+    }
+  }
+
+  if (opts.purchaseId) {
+    const { data: row } = await supabase
+      .from('purchases')
+      .select('id, status, total')
+      .eq('id', opts.purchaseId)
+      .eq('company_id', companyId)
+      .maybeSingle();
+
+    if (!row) {
+      return {
+        id: 'fresh_posting_gate_purchase',
+        label: 'Fresh: posting gate (purchase)',
+        category: 'engine',
+        status: 'skip',
+        failures: [],
+        meta: { reason: 'Purchase not found for company' },
+      };
+    }
+
+    const st = (row as { status?: string }).status;
+    const { data: purJes } = await supabase
+      .from('journal_entries')
+      .select('id, is_void')
+      .eq('reference_type', 'purchase')
+      .eq('reference_id', opts.purchaseId);
+    const activePurJes = (purJes || []).filter((j) => isJeActive(j as { is_void?: boolean }));
+
+    const { count: stockCount } = await supabase
+      .from('stock_movements')
+      .select('*', { count: 'exact', head: true })
+      .eq('reference_type', 'purchase')
+      .eq('reference_id', opts.purchaseId);
+
+    if (!canPostAccountingForPurchaseStatus(st)) {
+      if (activePurJes.length > 0) {
+        failures.push({
+          module: 'posting_gate',
+          step: 'fresh_non_posted_purchase_je',
+          record: opts.purchaseId,
+          expected: 'no document purchase JE',
+          actual: `active_je_count=${activePurJes.length}`,
+          classification: 'engine_bug',
+          navActions: [{ type: 'purchase', purchaseId: opts.purchaseId, label: 'Open purchase' }],
+        });
+      }
+      if ((stockCount ?? 0) > 0) {
+        failures.push({
+          module: 'posting_gate',
+          step: 'fresh_non_posted_purchase_stock',
+          record: opts.purchaseId,
+          expected: 'no stock_movements',
+          actual: `count=${stockCount}`,
+          classification: 'engine_bug',
+          navActions: [{ type: 'purchase', purchaseId: opts.purchaseId, label: 'Open purchase' }],
+        });
+      }
+    } else {
+      const total = Number((row as { total?: number }).total) || 0;
+      if (total > 0 && activePurJes.length === 0) {
+        failures.push({
+          module: 'posting_gate',
+          step: 'fresh_posted_purchase_missing_je',
+          record: opts.purchaseId,
+          expected: 'at least one active document purchase JE when total > 0',
+          actual: 'active_je_count=0',
+          classification: 'missing_backfill',
+          navActions: [{ type: 'purchase', purchaseId: opts.purchaseId, label: 'Open purchase' }],
+        });
+      }
+      if (total > 0 && activePurJes.length > 1) {
+        failures.push({
+          module: 'posting_gate',
+          step: 'fresh_posted_purchase_duplicate_je',
+          record: opts.purchaseId,
+          expected: 'single canonical document purchase JE (excl. void; adjustments use other ref types)',
+          actual: `active_je_count=${activePurJes.length}`,
+          classification: 'engine_bug',
+          navActions: [{ type: 'purchase', purchaseId: opts.purchaseId, label: 'Open purchase' }],
+        });
+      }
+    }
+  }
+
+  const id = opts.saleId ? 'fresh_posting_gate_sale' : 'fresh_posting_gate_purchase';
+  return {
+    id,
+    label: opts.saleId ? 'Fresh: posting gate (sale)' : 'Fresh: posting gate (purchase)',
+    category: 'engine',
+    defaultClassification: failures.length ? 'engine_bug' : undefined,
+    status: failures.length === 0 ? 'pass' : 'fail',
+    failures,
+    meta: { saleId: opts.saleId, purchaseId: opts.purchaseId },
+  };
 }
 
 export function snapshotToComparableJson(s: unknown): string {

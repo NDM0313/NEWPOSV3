@@ -1,4 +1,9 @@
 import { supabase } from '@/lib/supabase';
+import {
+  canPostAccountingForSaleStatus,
+  canPostStockForSaleStatus,
+  wasSalePostedForReversal,
+} from '@/app/lib/postingStatusGate';
 import { documentNumberService } from '@/app/services/documentNumberService';
 import { generatePaymentReference } from '@/app/utils/paymentUtils';
 import { employeeService } from './employeeService';
@@ -114,8 +119,7 @@ export const saleService = {
     if (isStudio && items.length === 0) {
       throw new Error('Studio order must have at least one product (fabric/material). Add an item before saving.');
     }
-    const isFinal = sale.status === 'final';
-    if (isFinal && items.length > 0 && !allowNegative) {
+    if (canPostStockForSaleStatus(sale.status) && items.length > 0 && !allowNegative) {
       const branchId = sale.branch_id || undefined;
       const productIds = [...new Set(items.map(i => i.product_id))];
       const stockMap = await productService.getStockForProducts(productIds, sale.company_id, branchId);
@@ -596,6 +600,14 @@ export const saleService = {
       const { data: saleRow } = await supabase.from('sales').select('id, invoice_no, branch_id, company_id, total, status, discount_amount, shipment_charges').eq('id', id).single();
       if (!saleRow) throw new Error('Sale not found');
       const invoiceNo = (saleRow as any).invoice_no || `SL-${id.substring(0, 8)}`;
+      const priorPosted = wasSalePostedForReversal((saleRow as any).status);
+
+      // Draft / quotation / order: no stock reversal, no accounting reversal (nothing was posted)
+      if (!priorPosted) {
+        const { data, error } = await supabase.from('sales').update({ status }).eq('id', id).select().single();
+        if (error) throw error;
+        return data;
+      }
 
       const { data: existingReversal } = await supabase
         .from('stock_movements')
@@ -642,8 +654,8 @@ export const saleService = {
       const { data, error } = await supabase.from('sales').update({ status }).eq('id', id).select().single();
       if (error) throw error;
 
-      // Accounting reversal: only if the sale was previously final (Phase 4: include discount and shipping)
-      if ((saleRow as any).status === 'final') {
+      // Accounting reversal: only if the sale was previously posted (final)
+      if (priorPosted) {
         saleAccountingService.reverseSaleJournalEntry({
           saleId: id,
           companyId: (saleRow as any).company_id,
@@ -669,8 +681,8 @@ export const saleService = {
 
     if (error) throw error;
 
-    // Accounting: Create Dr AR / Cr Sales Revenue when sale is finalized
-    if (status === 'final') {
+    // Accounting: Create Dr AR / Cr Sales Revenue when sale is finalized (guard in service + DB row)
+    if (canPostAccountingForSaleStatus(status)) {
       const total = Number(data.total) || 0;
       const discountAmount = Number((data as any).discount_amount ?? 0) || 0;
       const shipmentCharges = Number((data as any).shipment_charges ?? 0) || 0;
@@ -732,7 +744,7 @@ export const saleService = {
     // Accounting: if sale just became final for the first time, create journal entry
     const prevStatus = (existingSale as any)?.status;
     const newStatus = updates.status ?? (data as any)?.status;
-    if (newStatus === 'final' && prevStatus !== 'final') {
+    if (canPostAccountingForSaleStatus(newStatus) && !canPostAccountingForSaleStatus(prevStatus)) {
       const total = Number((data as any)?.total ?? (existingSale as any)?.total) || 0;
       const discountAmount = Number((data as any)?.discount_amount ?? (existingSale as any)?.discount_amount ?? 0) || 0;
       const shipmentCharges = Number((data as any)?.shipment_charges ?? (existingSale as any)?.shipment_charges ?? 0) || 0;
@@ -995,6 +1007,11 @@ export const saleService = {
     const { data: saleRow } = await supabase.from('sales').select('status').eq('id', saleId).single();
     if (saleRow && (saleRow as any).status === 'cancelled') {
       throw new Error('Cannot record payment on a cancelled invoice.');
+    }
+    if (saleRow && !canPostAccountingForSaleStatus((saleRow as any).status)) {
+      throw new Error(
+        `Payment and payment journal entries are only allowed after the sale is Final. Current status: ${(saleRow as any).status || 'unknown'}`
+      );
     }
     // CRITICAL VALIDATION: All required fields must be present
     if (!accountId) {

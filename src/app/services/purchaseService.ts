@@ -1,4 +1,8 @@
 import { supabase } from '@/lib/supabase';
+import {
+  canPostAccountingForPurchaseStatus,
+  wasPurchasePostedForReversal,
+} from '@/app/lib/postingStatusGate';
 import { activityLogService } from '@/app/services/activityLogService';
 import { createSupplierPayment } from '@/app/services/supplierPaymentService';
 import { PURCHASE_HEADER_COLUMNS } from '@/app/lib/purchaseDbConstants';
@@ -557,9 +561,22 @@ export const purchaseService = {
   // Update purchase status (when 'cancelled': create PURCHASE_CANCELLED stock reversals, then update status)
   async updatePurchaseStatus(id: string, status: Purchase['status']) {
     if (status === 'cancelled') {
-      const { data: purchaseRow } = await supabase.from('purchases').select('id, po_no, branch_id, company_id').eq('id', id).single();
+      const { data: purchaseRow } = await supabase.from('purchases').select('id, po_no, branch_id, company_id, status').eq('id', id).single();
       if (!purchaseRow) throw new Error('Purchase not found');
       const poNo = (purchaseRow as any).po_no || `PUR-${id.substring(0, 8)}`;
+      const priorPosted = wasPurchasePostedForReversal((purchaseRow as any).status);
+
+      // Draft / ordered: no stock reversal (inventory was never posted for this PO)
+      if (!priorPosted) {
+        const { data, error } = await supabase
+          .from('purchases')
+          .update({ status })
+          .eq('id', id)
+          .select(PURCHASE_HEADER_COLUMNS)
+          .single();
+        if (error) throw error;
+        return data;
+      }
 
       const { data: existingReversal } = await supabase
         .from('stock_movements')
@@ -918,7 +935,7 @@ export const purchaseService = {
     if (status === 'cancelled') {
       throw new Error('Cannot record payment on a cancelled purchase order.');
     }
-    if (status !== 'final' && status !== 'received') {
+    if (!canPostAccountingForPurchaseStatus(status)) {
       throw new Error('Payment not allowed until purchase is Received or Final. Current status: ' + (status || 'unknown'));
     }
     const purchaseBranchId = (purchase as any).branch_id;
