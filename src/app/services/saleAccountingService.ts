@@ -34,6 +34,23 @@ async function saleJournalEntryExists(saleId: string): Promise<boolean> {
   }
 }
 
+/** Golden rule: only posted/final sales get document-level sale JEs (not draft/quotation/order/cancelled). */
+async function assertSaleEligibleForDocumentJournal(saleId: string, invoiceNo: string): Promise<boolean> {
+  const { data, error } = await supabase.from('sales').select('id, status, type').eq('id', saleId).maybeSingle();
+  if (error || !data) {
+    console.warn('[saleAccountingService] Cannot load sale for accounting guard:', saleId, error?.message);
+    return false;
+  }
+  const status = String((data as { status?: string }).status || '').toLowerCase();
+  if (status !== 'final') {
+    console.warn(
+      `[saleAccountingService] Blocked document JE for ${invoiceNo}: sale status is "${status}" (only status=final may post AR/Revenue/COGS).`
+    );
+    return false;
+  }
+  return true;
+}
+
 /** Ensure Accounts Receivable (1100) exists for the company; create if missing. Canonical: 1100=AR, 2000=AP. */
 async function ensureARAccount(companyId: string): Promise<{ id: string } | null> {
   let account = await accountHelperService.getAccountByCode('1100', companyId);
@@ -314,6 +331,9 @@ export const saleAccountingService = {
       return null;
     }
 
+    const eligible = await assertSaleEligibleForDocumentJournal(saleId, invoiceNo);
+    if (!eligible) return null;
+
     // Duplicate protection: skip if entry already exists for this sale
     const alreadyExists = await saleJournalEntryExists(saleId);
     if (alreadyExists) {
@@ -444,12 +464,10 @@ export const saleAccountingService = {
   },
 
   /**
-   * Create extra expense journal entry for a sale.
+   * @deprecated Extra charges on customer invoices are included in the main sale JE (Dr AR / Cr Revenue).
+   * Do not use for invoice add-ons — causes double-counting / imbalanced EXP-* vouchers. Kept for rare direct calls only.
    *
-   *   Dr Extra Expense (5300)    amount
-   *   Cr Cash (1000) or Accounts Payable (2000)   amount
-   *
-   * Uses reference_type='sale_extra_expense' to allow multiple per sale.
+   * Legacy design was Dr Extra Expense / Cr Cash or AP (supplier-style); sale form totals already book via main sale entry.
    */
   async createExtraExpenseJournalEntry(params: {
     saleId: string;
@@ -544,7 +562,7 @@ export const saleAccountingService = {
 
     if (!saleId || !companyId || total <= 0) return null;
 
-    // Only reverse if the original journal entry exists
+    // Only reverse if a non-void document JE exists (saleService only invokes after cancel of a final sale)
     const hasOriginal = await saleJournalEntryExists(saleId);
     if (!hasOriginal) {
       console.log(`[saleAccountingService] No original journal entry for sale ${invoiceNo}, skipping reversal`);
@@ -711,8 +729,6 @@ export const saleAccountingService = {
     const arAccount = await ensureARAccount(companyId);
     const revenueAccount = await ensureRevenueAccount(companyId);
     const discountAccount = await ensureDiscountAllowedAccount(companyId);
-    const extraExpenseAccount = await ensureExtraExpenseAccount(companyId);
-    const apAccount = await ensureAPAccount(companyId);
     if (!arAccount?.id || !revenueAccount?.id) return { adjustmentCount };
 
     const branchIdSafe = branchId && branchId !== 'all' ? branchId : undefined;
@@ -758,20 +774,21 @@ export const saleAccountingService = {
       }
     }
 
-    // 3) Extra expense delta
+    // 3) Extra charges on invoice (stitching, etc.) delta — same economics as shipping to customer:
+    //    Dr AR, Cr Sales Revenue. NOT Dr Extra Expense / Cr AP (that is for supplier bills, not invoice add-ons).
     const deltaExtra = Math.round((newSnapshot.extraExpense - oldSnapshot.extraExpense) * 100) / 100;
-    if (deltaExtra !== 0 && extraExpenseAccount?.id && apAccount?.id) {
-      const desc = `Sale adjustment – extra expense change (was Rs ${fmt(oldSnapshot.extraExpense)}, now Rs ${fmt(newSnapshot.extraExpense)}) – ${invoiceNo}`;
+    if (deltaExtra !== 0) {
+      const desc = `Sale adjustment – extra charges on invoice (was Rs ${fmt(oldSnapshot.extraExpense)}, now Rs ${fmt(newSnapshot.extraExpense)}) – ${invoiceNo}`;
       if (deltaExtra > 0) {
         await postAdjustmentJE(companyId, branchIdSafe, saleId, entryDate, createdBy, desc, [
-          { accountId: extraExpenseAccount.id, debit: deltaExtra, credit: 0, description: `Extra Expense – ${invoiceNo}` },
-          { accountId: apAccount.id, debit: 0, credit: deltaExtra, description: `Payable – ${invoiceNo}` },
+          { accountId: arAccount.id, debit: deltaExtra, credit: 0, description: `AR – extra charges – ${invoiceNo}` },
+          { accountId: revenueAccount.id, debit: 0, credit: deltaExtra, description: `Sales Revenue (extra charges) – ${invoiceNo}` },
         ]);
         adjustmentCount++;
       } else {
         await postAdjustmentJE(companyId, branchIdSafe, saleId, entryDate, createdBy, desc, [
-          { accountId: apAccount.id, debit: -deltaExtra, credit: 0, description: `Payable reversal – ${invoiceNo}` },
-          { accountId: extraExpenseAccount.id, debit: 0, credit: -deltaExtra, description: `Extra Expense reversal – ${invoiceNo}` },
+          { accountId: revenueAccount.id, debit: -deltaExtra, credit: 0, description: `Sales Revenue reversal (extra charges) – ${invoiceNo}` },
+          { accountId: arAccount.id, debit: 0, credit: -deltaExtra, description: `AR reversal – extra charges – ${invoiceNo}` },
         ]);
         adjustmentCount++;
       }

@@ -4,7 +4,7 @@ This document is the **RESULT.md** deliverable for the internal **Accounting Int
 
 ## Git commit hash
 
-Record the current **`git rev-parse HEAD`** after each tooling drop (avoid stale SHAs in docs).
+**Latest (accounting engine hygiene):** `fdb85b4`. Record **`git rev-parse HEAD`** after each tooling drop (avoid stale SHAs in docs).
 
 ---
 
@@ -46,6 +46,16 @@ Not used for GL truth in this lab: `chart_accounts`, `account_transactions`, `le
 ## Golden rule
 
 Only **final / posted** documents should drive accounting and stock. The lab UI states this explicitly; actions like **Finalize sale/purchase** call real services that align with production behavior.
+
+### 2026-03-12 — Draft JE / 409 / legacy triggers (enforced in code + SQL)
+
+| Item | Root cause | Fix |
+|------|------------|-----|
+| **“DRAFT-0001” + JE** | Invoice **number** can stay `DRAFT-*` after **Finalize** while `status` is `final`; plus **duplicate paths** (SalesContext direct `journal_entries` insert + `saleAccountingService` + optional DB `auto_post_sale`). | `createSaleJournalEntry` **re-reads `sales.status`** and returns `null` unless `status === 'final'`. SalesContext uses **only** `saleAccountingService` (removed inline JE + `create_discount_journal_entry` RPC). |
+| **POST journal_entries 409** | Unique index on `action_fingerprint` (PF-14.5) and/or **parallel sale** rows for same `reference_id` from trigger + app. | `accountingService.createEntry` treats **23505/409/unique** as idempotent: returns existing **`sale`** JE by `reference_id` or existing row by **fingerprint**. |
+| **Legacy DB overlap** | `trigger_auto_post_sale_to_accounting` / `trigger_auto_post_purchase_to_accounting` / contact-balance triggers fight the app engine. | SQL: `migrations/20260312_disable_legacy_auto_post_contact_triggers.sql`. Audit: `docs/accounting/LEGACY_TRIGGER_AUDIT.md`. **Keep** `trigger_calculate_*_totals`. |
+
+**Minimal QA script (after migrations on Supabase):** draft sale → no `reference_type=sale` JE; finalize → exactly one; add payment → payment JE; cancel finalized sale → one `sale_reversal` JE; no 409 on double-click finalize.
 
 ## Sections (A–F)
 

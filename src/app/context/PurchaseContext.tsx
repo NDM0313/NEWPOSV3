@@ -430,11 +430,15 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
         }).catch((err) => console.warn('[PURCHASE CONTEXT] Activity log failed:', err));
       }
 
-      // 🔧 FIX 2: UNPAID PURCHASE JOURNAL ENTRY (MANDATORY)
-      // CRITICAL: ALWAYS create journal entry for purchase (paid or unpaid)
-      // Rule: Inventory Dr, Accounts Payable Cr (double-entry accounting)
-      if ((newPurchase.status === 'received' || newPurchase.status === 'final') && companyId && newPurchase.total > 0) {
+      // 🔧 PURCHASE DOCUMENT JE — only posted statuses (final/received); skip duplicate (DB trigger / retry)
+      const postedPurchaseStatus = new Set(['final', 'received']);
+      const purchaseSt = String(newPurchase.status || '').toLowerCase();
+      if (postedPurchaseStatus.has(purchaseSt) && companyId && newPurchase.total > 0) {
         try {
+          const { purchaseAccountingService: pac } = await import('@/app/services/purchaseAccountingService');
+          if (await pac.purchaseJournalEntryExists(newPurchase.id)) {
+            console.log('[PURCHASE CONTEXT] Document JE already exists for purchase, skipping duplicate insert');
+          } else {
           // Import supabase dynamically
           const { supabase } = await import('@/lib/supabase');
           
@@ -545,6 +549,7 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
           }
           
           console.log('[PURCHASE CONTEXT] ✅ Created line-by-line accounting entry for purchase (items + charges):', mainJournalEntry.id);
+          }
         } catch (accountingError: any) {
           console.error('[PURCHASE CONTEXT] ❌ CRITICAL: Purchase accounting entry failed:', accountingError);
           // CRITICAL: Throw error to prevent purchase creation without accounting

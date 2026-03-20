@@ -393,12 +393,13 @@ export const purchaseService = {
   // Use explicit column lists for product/variation to avoid requesting current_stock (column may not exist).
   /** When embeds fail (PGRST204/400) or `*, attachments` duplicate broke PostgREST, load header + related rows separately. */
   async getPurchaseSplit(id: string): Promise<any> {
-    const { data: header, error: hErr } = await supabase
-      .from('purchases')
-      .select(PURCHASE_HEADER_COLUMNS)
-      .eq('id', id)
-      .single();
+    const [{ data: header, error: hErr }, attRes] = await Promise.all([
+      supabase.from('purchases').select(PURCHASE_HEADER_COLUMNS).eq('id', id).single(),
+      supabase.from('purchases').select('attachments').eq('id', id).maybeSingle(),
+    ]);
     if (hErr) throw hErr;
+    const attachments =
+      !attRes.error && attRes.data ? ((attRes.data as { attachments?: unknown }).attachments ?? null) : null;
 
     const supplierId = (header as any)?.supplier_id as string | null | undefined;
     const [{ data: itemsRaw }, chargesRes, supplierRes] = await Promise.all([
@@ -451,6 +452,7 @@ export const purchaseService = {
 
     const data: any = {
       ...(header as any),
+      attachments,
       supplier: supplierRes?.data ?? null,
       items,
       purchase_charges: charges || [],

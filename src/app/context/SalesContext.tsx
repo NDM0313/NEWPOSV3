@@ -921,193 +921,36 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
         console.log('[SALES CONTEXT] ✅ All stock movements created successfully for sale:', newSale.id);
       }
       
-      // 🔒 ACCOUNTING OFF/ON BEHAVIOR RULE
-      // Accounting OFF: Discount & Extra Charges stored in DB but NO journal entries
-      // Single accounting engine: always create journal entries (no module toggle)
-      if (newSale.type === 'invoice' && newSale.status === 'final') {
-        try {
-          const { supabase } = await import('@/lib/supabase');
-          
-          // Handle discount - ONLY if accounting enabled
-          if (saleData.discount && saleData.discount > 0) {
-            const { error: discountError } = await supabase.rpc('create_discount_journal_entry', {
-              p_sale_id: newSale.id,
-              p_company_id: companyId,
-              p_branch_id: effectiveBranchId,
-              p_discount_amount: saleData.discount,
-              p_invoice_no: newSale.invoiceNo
-            });
-            if (discountError) {
-              console.error('[SALES CONTEXT] Error creating discount journal entry:', discountError);
-            }
-          }
-          
-          // Commission: NOT posted per sale. Stored on sale (commission_status=pending).
-          // Admin posts via Commission Report → "Post Commission" (batch) only.
-          
-          // Handle extra expenses - ONLY if accounting enabled
-          const extraExpenses = (saleData as any).extraExpenses || [];
-          for (const expense of extraExpenses) {
-            if (expense.amount > 0) {
-              const { error: expenseError } = await supabase.rpc('create_extra_expense_journal_entry', {
-                p_sale_id: newSale.id,
-                p_company_id: companyId,
-                p_branch_id: effectiveBranchId,
-                p_expense_amount: expense.amount,
-                p_expense_name: expense.name || 'Extra Expense',
-                p_invoice_no: newSale.invoiceNo
-              });
-              if (expenseError) {
-                console.error('[SALES CONTEXT] Error creating extra expense journal entry:', expenseError);
-              }
-            }
-          }
-        } catch (error: any) {
-          console.error('[SALES CONTEXT] Error creating accounting entries:', error);
-        }
-      }
+      // Commission: NOT posted per sale (commission_status=pending until batch post).
 
-      // 🔧 UNPAID SALE JOURNAL ENTRY (MANDATORY)
-      // CRITICAL: ALWAYS create journal entry for sale (paid or unpaid)
-      // Rule: Accounts Receivable Dr (if unpaid) or Cash/Bank Dr (if paid), Sales Revenue Cr
+      // 🔧 SALE DOCUMENT JE (single engine — saleAccountingService only; re-checks status=final in DB)
       if (newSale.type === 'invoice' && newSale.status === 'final' && companyId && newSale.total > 0) {
-        try {
-          const { supabase } = await import('@/lib/supabase');
-          
-          // Get Accounts Receivable account – canonical 1100 = AR; 2000 = AP (never use AP for sales)
-          const { data: arAccounts } = await supabase
-            .from('accounts')
-            .select('id, code')
-            .eq('company_id', companyId)
-            .or('code.eq.1100,code.eq.2000,name.ilike.%Accounts Receivable%');
-          const arAccount = arAccounts?.find((a: any) => a.code === '1100')
-            || (arAccounts?.filter((a: any) => a.code !== '2000')?.[0])
-            || arAccounts?.[0];
-          const arAccountId = arAccount?.id;
-          
-          // Get Sales Revenue account: try code 4000/4001/4002/4003, then name containing "Sales" or "Revenue"
-          let salesAccountId: string | undefined;
-          const { data: salesByCode } = await supabase
-            .from('accounts')
-            .select('id')
-            .eq('company_id', companyId)
-            .in('code', ['4000', '4001', '4002', '4003'])
-            .eq('is_active', true)
-            .limit(1);
-          salesAccountId = salesByCode?.[0]?.id;
-          if (!salesAccountId) {
-            const { data: salesByName } = await supabase
-              .from('accounts')
-              .select('id')
-              .eq('company_id', companyId)
-              .or('name.ilike.%Sales%,name.ilike.%Revenue%')
-              .eq('is_active', true)
-              .limit(1);
-            salesAccountId = salesByName?.[0]?.id;
-          }
-          // If still missing, create default Sales Revenue account so sale can proceed
-          if (!salesAccountId) {
-            const payload: Record<string, unknown> = {
-              company_id: companyId,
-              code: '4000',
-              name: 'Sales Revenue',
-              type: 'revenue',
-              is_active: true,
-            };
-            let { data: newAccount, error: createErr } = await supabase
-              .from('accounts')
-              .insert({ ...payload, balance: 0 })
-              .select('id')
-              .single();
-            if (createErr && (createErr.message?.includes('balance') || createErr.message?.includes('column'))) {
-              const { data: retry, error: retryErr } = await supabase
-                .from('accounts')
-                .insert(payload)
-                .select('id')
-                .single();
-              if (!retryErr && retry?.id) {
-                newAccount = retry;
-                createErr = null;
-              }
-            }
-            if (!createErr && newAccount?.id) {
-              salesAccountId = newAccount.id;
-              console.log('[SALES CONTEXT] Created default Sales Revenue account (4000) for company');
-            } else if (createErr?.code === '23505') {
-              const { data: existing } = await supabase.from('accounts').select('id').eq('company_id', companyId).eq('code', '4000').limit(1).single();
-              if (existing?.id) salesAccountId = existing.id;
-            }
-          }
-          if (!arAccountId || !salesAccountId) {
-            const errorMsg = `Missing required accounts for sale journal entry. AR: ${arAccountId ? 'OK' : 'MISSING'}, Sales: ${salesAccountId ? 'OK' : 'MISSING'}. Add a "Sales Revenue" account (code 4000) in Settings → Accounting → Chart of Accounts.`;
-            console.error('[SALES CONTEXT] ❌ CRITICAL:', errorMsg);
-            throw new Error(errorMsg);
-          }
-          
-          // Create main journal entry for sale (ALWAYS, paid or unpaid)
-          const { data: mainJournalEntry, error: journalError } = await supabase
+        const { saleAccountingService: sac } = await import('@/app/services/saleAccountingService');
+        const shipmentCharges = Number((saleData as any).shippingCharges ?? 0) || 0;
+        const jeId = await sac.createSaleJournalEntry({
+          saleId: newSale.id,
+          companyId,
+          branchId: effectiveBranchId ?? undefined,
+          total: newSale.total,
+          discountAmount: Number(saleData.discount ?? 0) || undefined,
+          shipmentCharges: shipmentCharges || undefined,
+          invoiceNo: newSale.invoiceNo,
+          performedBy: createdByAuthId ?? null,
+        });
+        if (!jeId) {
+          const { supabase: sb } = await import('@/lib/supabase');
+          const { data: existingJe } = await sb
             .from('journal_entries')
-            .insert({
-              company_id: companyId,
-              branch_id: effectiveBranchId,
-              entry_date: newSale.date,
-              description: `Sale ${newSale.invoiceNo} to ${newSale.customerName}`,
-              reference_type: 'sale',
-              reference_id: newSale.id,
-              created_by: createdByAuthId,
-            })
-            .select()
-            .single();
-          
-          if (journalError || !mainJournalEntry) {
-            console.error('[SALES CONTEXT] ❌ CRITICAL: Failed to create sale journal entry:', journalError);
-            throw new Error(`Failed to create sale journal entry: ${journalError?.message || 'Unknown error'}`);
+            .select('id')
+            .eq('reference_type', 'sale')
+            .eq('reference_id', newSale.id)
+            .limit(1)
+            .maybeSingle();
+          if (!existingJe?.id) {
+            throw new Error(
+              'Final sale was saved but no document journal entry exists. Check [saleAccountingService] logs (blocked non-final, missing accounts, or insert error).'
+            );
           }
-          
-          // Debit: Accounts Receivable (for unpaid portion) or Cash/Bank (for paid portion)
-          const unpaidAmount = newSale.total - (newSale.paid || 0);
-          
-          if (unpaidAmount > 0) {
-            // Debit: Accounts Receivable (credit sale)
-            const { error: arDebitError } = await supabase
-              .from('journal_entry_lines')
-              .insert({
-                journal_entry_id: mainJournalEntry.id,
-                account_id: arAccountId,
-                debit: unpaidAmount,
-                credit: 0,
-                description: `Accounts Receivable for ${newSale.invoiceNo}`,
-              });
-            
-            if (arDebitError) {
-              console.error('[SALES CONTEXT] ❌ CRITICAL: Failed to create AR debit line:', arDebitError);
-              throw arDebitError;
-            }
-          }
-          
-          // Credit: Sales Revenue (always)
-          const { error: salesCreditError } = await supabase
-            .from('journal_entry_lines')
-            .insert({
-              journal_entry_id: mainJournalEntry.id,
-              account_id: salesAccountId,
-              debit: 0,
-              credit: newSale.total,
-              description: `Sales Revenue for ${newSale.invoiceNo}`,
-            });
-          
-          if (salesCreditError) {
-            console.error('[SALES CONTEXT] ❌ CRITICAL: Failed to create Sales Revenue credit line:', salesCreditError);
-            throw salesCreditError;
-          }
-          
-          console.log('[SALES CONTEXT] ✅ Created main accounting entry for sale (paid or unpaid):', mainJournalEntry.id);
-          
-          // If paid, create separate payment journal entry (handled below)
-        } catch (accountingError: any) {
-          console.error('[SALES CONTEXT] ❌ CRITICAL: Sale accounting entry failed:', accountingError);
-          // CRITICAL: Throw error to prevent sale creation without accounting
-          throw new Error(`Failed to create sale accounting entry: ${accountingError.message || 'Unknown error'}`);
         }
       }
       

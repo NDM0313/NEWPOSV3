@@ -5,8 +5,11 @@
 export const PURCHASE_STATUSES_FOR_PAYABLE_RECONCILIATION = ['final', 'received'] as const;
 
 /**
- * Header-only columns for purchase by-id fetch (no embeds). Use when embedded `getPurchase` fails
- * (PGRST / relation errors) or to avoid `select=*` issues on some proxies.
+ * Header-only columns for purchase by-id fetch and PATCH return (no embeds).
+ *
+ * **Do not include `attachments` here** — some DBs never ran
+ * `27_purchase_sale_attachments_storage.sql`; PostgREST returns **400** if `select=` lists a
+ * non-existent column. Fetch `attachments` in a separate optional query when needed.
  */
 export const PURCHASE_HEADER_COLUMNS = `
   id,
@@ -26,7 +29,6 @@ export const PURCHASE_HEADER_COLUMNS = `
   paid_amount,
   due_amount,
   notes,
-  attachments,
   created_by,
   created_at,
   updated_at

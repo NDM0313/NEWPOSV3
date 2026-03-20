@@ -2,6 +2,13 @@
 
 See the full deliverable: **[ACCOUNTING_INTEGRITY_LAB_RESULT.md](./ACCOUNTING_INTEGRITY_LAB_RESULT.md)** (Phase 2 + tooling: payables status filter, **purchase by-id / getPurchase 400**, **`CustomerLedgerInteractiveTest` lazy**, snapshot timestamps/outcome).
 
+## 2026-03-12 — Accounting engine hygiene (draft guard, 409, legacy triggers)
+
+- **Code:** `saleAccountingService` requires DB `sales.status === 'final'` before document JE; `SalesContext` removed duplicate JE path + discount RPC (single Phase-4 service); `PurchaseContext` duplicate JE guard; `accountingService.createEntry` idempotent on duplicate sale/fingerprint.
+- **SQL:** `migrations/20260312_disable_legacy_auto_post_contact_triggers.sql` (+ prior stock migration for `movement_type`).
+- **Doc:** `docs/accounting/LEGACY_TRIGGER_AUDIT.md`.
+- **Commit:** `fdb85b4` (`fix(accounting): final-only sale/purchase JEs, dedupe inserts, drop legacy auto-post triggers`).
+
 ## Latest integrity outcome (unbalanced JE repair)
 
 - Root cause JEs: `dc2fd0f9-dd66-4e52-876c-bad2021bcfe7` (diff 3000) and `4bce1498-bae8-40d8-9eb5-a3aca8d0239f` (diff 10000), both legacy EXP sale vouchers with debit-only lines.

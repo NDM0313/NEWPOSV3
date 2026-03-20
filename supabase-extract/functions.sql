@@ -235,17 +235,16 @@ BEGIN
         WHERE id = v_item.variation_id;
       END IF;
 
-      -- Record stock movement
+      -- Record stock movement (column is movement_type, not legacy "type")
       INSERT INTO stock_movements (
         company_id,
         branch_id,
         product_id,
         variation_id,
-        type,
+        movement_type,
         quantity,
         unit_cost,
         total_cost,
-        balance_qty,
         reference_type,
         reference_id,
         created_by
@@ -259,7 +258,6 @@ BEGIN
         -v_item.quantity, -- Negative for stock OUT
         v_item.unit_price,
         -v_item.total,
-        (SELECT current_stock FROM products WHERE id = v_item.product_id),
         'sale',
         NEW.id,
         NEW.created_by;
@@ -300,17 +298,16 @@ BEGIN
         WHERE id = v_item.variation_id;
       END IF;
 
-      -- Record stock movement
+      -- Record stock movement (column is movement_type, not legacy "type")
       INSERT INTO stock_movements (
         company_id,
         branch_id,
         product_id,
         variation_id,
-        type,
+        movement_type,
         quantity,
         unit_cost,
         total_cost,
-        balance_qty,
         reference_type,
         reference_id,
         created_by
@@ -324,7 +321,6 @@ BEGIN
         v_item.quantity, -- Positive for stock IN
         v_item.unit_price,
         v_item.total,
-        (SELECT current_stock FROM products WHERE id = v_item.product_id),
         'purchase',
         NEW.id,
         NEW.created_by;

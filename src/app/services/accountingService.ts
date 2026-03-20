@@ -1827,6 +1827,44 @@ export const accountingService = {
       throw new Error(errorMessage);
     }
 
+    // Idempotent recovery: duplicate key / 409 (e.g. idx_journal_entries_fingerprint_active or parallel sale JE)
+    const dup =
+      entryError &&
+      (entryError.code === '23505' ||
+        (entryError as { status?: number }).status === 409 ||
+        String(entryError.message || '').toLowerCase().includes('duplicate') ||
+        String(entryError.message || '').toLowerCase().includes('unique'));
+    if (dup && entry.reference_type === 'sale' && entry.reference_id) {
+      const { data: existing } = await supabase
+        .from('journal_entries')
+        .select('*')
+        .eq('reference_type', 'sale')
+        .eq('reference_id', entry.reference_id)
+        .limit(1)
+        .maybeSingle();
+      if (existing?.id) {
+        if (import.meta.env?.DEV) {
+          console.warn('[accountingService] Duplicate sale JE insert — returning existing row:', existing.id);
+        }
+        return { ...existing, lines: [] };
+      }
+    }
+    if (dup && insertData.action_fingerprint) {
+      const { data: fpRow } = await supabase
+        .from('journal_entries')
+        .select('*')
+        .eq('company_id', entry.company_id)
+        .eq('action_fingerprint', insertData.action_fingerprint)
+        .limit(1)
+        .maybeSingle();
+      if (fpRow?.id && (fpRow as { is_void?: boolean }).is_void !== true) {
+        if (import.meta.env?.DEV) {
+          console.warn('[accountingService] Duplicate fingerprint JE — returning existing:', fpRow.id);
+        }
+        return { ...fpRow, lines: [] };
+      }
+    }
+
     if (entryError) throw entryError;
 
     // Insert journal entry lines
