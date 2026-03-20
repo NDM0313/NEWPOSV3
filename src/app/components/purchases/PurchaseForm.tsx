@@ -153,7 +153,7 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
     const enablePacking = inventorySettings.enablePacking;
     // Permission-based: settings access allows branch selection (was role === 'admin')
     const isAdmin = canManageSettings;
-    const { createPurchase, updatePurchase } = usePurchases();
+    const { createPurchase, updatePurchase, refreshPurchases } = usePurchases();
     const { openDrawer, activeDrawer, createdContactId, createdContactType, setCreatedContactId, createdProduct, setCreatedProduct, openPackingModal } = useNavigation();
     const { generateDocumentNumber, generateDocumentNumberSafe } = useDocumentNumbering();
     
@@ -1591,9 +1591,60 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
             
             // STEP 5: Handle edit vs create mode
             if (isEditMode && purchaseId) {
+                const priorStatus = String((loadedPurchaseData as any)?.status ?? '').toLowerCase();
+                const isConvertDraftOrderedToFinal =
+                    purchaseStatus === 'final' && (priorStatus === 'draft' || priorStatus === 'ordered');
+
+                if (isConvertDraftOrderedToFinal) {
+                    if (!loadedPurchaseData) {
+                        toast.error('Purchase data is still loading. Please wait and try again.');
+                        return null;
+                    }
+                    const newPurchase = await createPurchase(purchaseData, undefined, {
+                        conversionSourceId: purchaseId,
+                    });
+                    if (newPurchase?.id && purchaseAttachmentFiles.length > 0 && companyId) {
+                        try {
+                            const uploaded = await uploadPurchaseAttachments(companyId, newPurchase.id, purchaseAttachmentFiles);
+                            if (uploaded.length > 0) {
+                                await updatePurchase(newPurchase.id, { attachments: uploaded } as any);
+                            }
+                            setPurchaseAttachmentFiles([]);
+                        } catch (e) {
+                            console.warn('[PURCHASE FORM] Attachment upload after convert failed:', e);
+                        }
+                    }
+                    if (!openPaymentDialogAfter && partialPayments.length > 0 && newPurchase?.id && companyId) {
+                        try {
+                            const fb = isAdmin ? (branchId || contextBranchId || '') : (contextBranchId || branchId || '');
+                            for (const payment of partialPayments) {
+                                await purchaseService.recordPayment(
+                                    newPurchase.id,
+                                    payment.amount,
+                                    payment.method,
+                                    payment.accountId || undefined,
+                                    companyId,
+                                    fb || undefined,
+                                    payment.reference || undefined
+                                );
+                            }
+                        } catch (paymentError: any) {
+                            console.error('[PURCHASE FORM] Payments after convert failed:', paymentError);
+                            toast.error('Final PO created but some payments failed: ' + (paymentError.message || ''));
+                        }
+                    }
+                    await refreshPurchases();
+                    window.dispatchEvent(new CustomEvent('purchaseSaved', { detail: { purchaseId: newPurchase.id } }));
+                    if (openPaymentDialogAfter && newPurchase?.id) {
+                        setSavedPurchaseIdForPayment(newPurchase.id);
+                        setUnifiedPaymentDialogOpen(true);
+                        return newPurchase.id;
+                    }
+                    onClose();
+                    return newPurchase.id;
+                }
+
                 // 🔒 EDIT MODE: Update existing purchase with items
-                // CRITICAL FIX: Pass items to updatePurchase() (like SaleForm does)
-                // PurchaseContext.updatePurchase() handles items update internally with delta-based stock movements
                 await updatePurchase(purchaseId, {
                     status: purchaseStatus as 'draft' | 'ordered' | 'received' | 'final',
                     paymentStatus: paymentStatusToUse as 'paid' | 'partial' | 'unpaid',

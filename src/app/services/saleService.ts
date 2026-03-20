@@ -104,11 +104,37 @@ export interface SaleItem {
 }
 
 /** Options for createSale. allowNegativeStock: when true, skip stock check (caller already validated). */
-export type CreateSaleOptions = { allowNegativeStock?: boolean };
+export type CreateSaleOptions = {
+  allowNegativeStock?: boolean;
+  /** When set, after successful create, marks source sale as converted and links to this new final row (canonical conversion workflow). */
+  conversionSourceId?: string;
+};
 
 export const saleService = {
   // Create sale with items. options.allowNegativeStock from caller (context or DB) — allow if either says true.
   async createSale(sale: Sale, items: SaleItem[], options?: CreateSaleOptions) {
+    if (options?.conversionSourceId) {
+      const { data: src, error: srcErr } = await supabase
+        .from('sales')
+        .select('id, status, converted')
+        .eq('id', options.conversionSourceId)
+        .maybeSingle();
+      if (srcErr || !src) {
+        throw new Error('Conversion source sale not found.');
+      }
+      if ((src as { converted?: boolean }).converted) {
+        throw new Error('This document was already converted to a final sale.');
+      }
+      const st = String((src as { status?: string }).status || '').toLowerCase();
+      if (!['draft', 'quotation', 'order'].includes(st)) {
+        throw new Error(`Only draft, quotation, or order can be converted (current status: ${st}).`);
+      }
+      const invUpper = (sale.invoice_no || '').toString().toUpperCase();
+      if (invUpper.startsWith('STD-') || invUpper.startsWith('ST-')) {
+        throw new Error('Studio sales use a different workflow; conversion from STD/ST is not supported here.');
+      }
+    }
+
     const fromCaller = options?.allowNegativeStock === true;
     const fromDb = fromCaller ? true : await settingsService.getAllowNegativeStock(sale.company_id);
     const allowNegative = fromCaller || fromDb;
@@ -226,6 +252,19 @@ export const saleService = {
       // ROLLBACK: Delete sale if items insert fails
       await supabase.from('sales').delete().eq('id', saleData.id);
       throw new Error(`Failed to create sale items: ${itemsError.message}. Sale rolled back.`);
+    }
+
+    if (options?.conversionSourceId && saleData?.id) {
+      const { error: convErr } = await supabase
+        .from('sales')
+        .update({ converted: true, converted_to_document_id: saleData.id })
+        .eq('id', options.conversionSourceId);
+      if (convErr) {
+        await supabase.from('sales_items').delete().eq('sale_id', saleData.id);
+        await supabase.from('sale_items').delete().eq('sale_id', saleData.id);
+        await supabase.from('sales').delete().eq('id', saleData.id);
+        throw new Error(`Failed to archive source document after conversion: ${convErr.message}`);
+      }
     }
 
     void auditLogService.logSaleAction(sale.company_id, saleData.id, 'created', { invoice_no: saleData.invoice_no });
@@ -381,21 +420,32 @@ export const saleService = {
     const selectWithoutCreator = `*, customer:contacts(*), branch:branches(id, name, code), items:sales_items(*, product:products(id, name, sku, cost_price, retail_price, has_variations), variation:product_variations(id, product_id, sku, attributes))`;
     const limit = opts?.limit ?? 50;
     const offset = opts?.offset ?? 0;
-    let query = supabase
-      .from('sales')
-      .select(selectWithoutCreator, opts ? { count: 'exact' } : undefined)
-      .eq('company_id', companyId)
-      .order('created_at', { ascending: false })
-      .order('invoice_date', { ascending: false });
+    const runMainList = (hideConverted: boolean) => {
+      let q = supabase
+        .from('sales')
+        .select(selectWithoutCreator, opts ? { count: 'exact' } : undefined)
+        .eq('company_id', companyId)
+        .order('created_at', { ascending: false })
+        .order('invoice_date', { ascending: false });
+      if (hideConverted) q = q.eq('converted', false);
+      if (branchId) q = q.eq('branch_id', branchId);
+      if (opts) q = q.range(offset, offset + limit - 1);
+      return q;
+    };
 
-    if (branchId) {
-      query = query.eq('branch_id', branchId);
+    let { data, error, count } = await runMainList(true);
+    if (
+      error &&
+      (error.code === '42703' ||
+        String(error.message || '')
+          .toLowerCase()
+          .includes('converted'))
+    ) {
+      const retry = await runMainList(false);
+      data = retry.data;
+      error = retry.error;
+      count = retry.count;
     }
-    if (opts) {
-      query = query.range(offset, offset + limit - 1);
-    }
-
-    const { data, error, count } = await query;
 
     if (error && (error.code === '42P01' || error.message?.includes('sales_items'))) {
       if (opts) throw error;
@@ -527,20 +577,44 @@ export const saleService = {
     const offset = opts?.offset ?? 0;
     const selectWithItems = (itemsTable: 'sales_items' | 'sale_items') =>
       `*, customer:contacts(name, phone), items:${itemsTable}(*)`;
-    const runQuery = async (itemsTable: 'sales_items' | 'sale_items', orderBy: string, useRange: boolean) => {
+    const runQuery = async (
+      itemsTable: 'sales_items' | 'sale_items',
+      orderBy: string,
+      useRange: boolean,
+      hideConverted: boolean
+    ) => {
       let q = supabase
         .from('sales')
         .select(selectWithItems(itemsTable), useRange ? { count: 'exact' } : undefined)
         .eq('company_id', companyId)
         .ilike('invoice_no', 'STD-%');
+      if (hideConverted) q = q.eq('converted', false);
       if (branchId && branchId !== 'all') q = q.eq('branch_id', branchId);
       q = q.order(orderBy, { ascending: false });
       if (useRange) q = q.range(offset, offset + limit - 1);
       return await q;
     };
-    let result: { data: any[]; error: any; count?: number } = await runQuery('sales_items', 'invoice_date', !!opts);
+    let result: { data: any[]; error: any; count?: number } = await runQuery('sales_items', 'invoice_date', !!opts, true);
+    if (
+      result.error &&
+      (result.error.code === '42703' ||
+        String(result.error.message || '')
+          .toLowerCase()
+          .includes('converted'))
+    ) {
+      result = await runQuery('sales_items', 'invoice_date', !!opts, false);
+    }
     if (result.error && (result.error.code === '42P01' || result.error.code === '42703' || String(result.error.message || '').includes('sales_items') || String(result.error.message || '').includes('invoice_date'))) {
-      result = await runQuery('sale_items', 'created_at', !!opts);
+      result = await runQuery('sale_items', 'created_at', !!opts, true);
+      if (
+        result.error &&
+        (result.error.code === '42703' ||
+          String(result.error.message || '')
+            .toLowerCase()
+            .includes('converted'))
+      ) {
+        result = await runQuery('sale_items', 'created_at', !!opts, false);
+      }
     }
     if (result.error) throw result.error;
     const data = result.data || [];

@@ -185,9 +185,37 @@ function buildPurchaseItemInsertRowMinimal(item: PurchaseItem, purchaseId: strin
   };
 }
 
+export type CreatePurchaseOptions = {
+  /** After successful create, marks source PO as converted and links to this new final row. */
+  conversionSourceId?: string;
+};
+
 export const purchaseService = {
   // Create purchase with items and optional per-line charges (for line-by-line ledger)
-  async createPurchase(purchase: Purchase, items: PurchaseItem[], charges?: PurchaseChargeInsert[]) {
+  async createPurchase(
+    purchase: Purchase,
+    items: PurchaseItem[],
+    charges?: PurchaseChargeInsert[],
+    options?: CreatePurchaseOptions
+  ) {
+    if (options?.conversionSourceId) {
+      const { data: src, error: srcErr } = await supabase
+        .from('purchases')
+        .select('id, status, converted')
+        .eq('id', options.conversionSourceId)
+        .maybeSingle();
+      if (srcErr || !src) {
+        throw new Error('Conversion source purchase not found.');
+      }
+      if ((src as { converted?: boolean }).converted) {
+        throw new Error('This purchase was already converted to a final PO.');
+      }
+      const st = String((src as { status?: string }).status || '').toLowerCase();
+      if (!['draft', 'ordered'].includes(st)) {
+        throw new Error(`Only draft or ordered purchases can be converted (current status: ${st}).`);
+      }
+    }
+
     const purchaseRow = buildPurchaseInsertRow(purchase);
 
     const { data: purchaseData, error: purchaseError } = await supabase
@@ -239,6 +267,18 @@ export const purchaseService = {
       }
     }
 
+    if (options?.conversionSourceId && purchaseData?.id) {
+      const { error: convErr } = await supabase
+        .from('purchases')
+        .update({ converted: true, converted_to_document_id: purchaseData.id })
+        .eq('id', options.conversionSourceId);
+      if (convErr) {
+        await supabase.from('purchase_items').delete().eq('purchase_id', purchaseData.id);
+        await supabase.from('purchases').delete().eq('id', purchaseData.id);
+        throw new Error(`Failed to archive source purchase after conversion: ${convErr.message}`);
+      }
+    }
+
     return purchaseData;
   },
 
@@ -250,10 +290,7 @@ export const purchaseService = {
   ): Promise<any[] | { data: any[]; total: number }> {
     const limit = opts?.limit ?? 50;
     const offset = opts?.offset ?? 0;
-    let query = supabase
-      .from('purchases')
-      .select(
-        `
+    const purchaseSelect = `
         *,
         supplier:contacts(name, phone),
         branch:branches(id, name, code),
@@ -261,20 +298,32 @@ export const purchaseService = {
           *,
           product:products(name)
         )
-      `,
-        opts ? { count: 'exact' } : undefined
-      )
-      .eq('company_id', companyId)
-      .order('po_date', { ascending: false });
+      `;
+    const runPurchList = (hideConverted: boolean) => {
+      let q = supabase
+        .from('purchases')
+        .select(purchaseSelect, opts ? { count: 'exact' } : undefined)
+        .eq('company_id', companyId)
+        .order('po_date', { ascending: false });
+      if (hideConverted) q = q.eq('converted', false);
+      if (branchId) q = q.eq('branch_id', branchId);
+      if (opts) q = q.range(offset, offset + limit - 1);
+      return q;
+    };
 
-    if (branchId) {
-      query = query.eq('branch_id', branchId);
+    let { data, error, count } = await runPurchList(true);
+    if (
+      error &&
+      (error.code === '42703' ||
+        String(error.message || '')
+          .toLowerCase()
+          .includes('converted'))
+    ) {
+      const retry = await runPurchList(false);
+      data = retry.data;
+      error = retry.error;
+      count = retry.count;
     }
-    if (opts) {
-      query = query.range(offset, offset + limit - 1);
-    }
-
-    const { data, error, count } = await query;
 
     if (error && opts) throw error;
 

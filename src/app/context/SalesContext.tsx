@@ -141,7 +141,10 @@ interface SalesContextType {
   /** Set current page and reload (0-based). */
   setPage: (page: number) => void;
   getSaleById: (id: string) => Sale | undefined;
-  createSale: (sale: Omit<Sale, 'id' | 'invoiceNo' | 'createdAt' | 'updatedAt'>) => Promise<Sale>;
+  createSale: (
+    sale: Omit<Sale, 'id' | 'invoiceNo' | 'createdAt' | 'updatedAt'>,
+    convOpts?: { conversionSourceId?: string }
+  ) => Promise<Sale>;
   updateSale: (id: string, updates: Partial<Sale>) => Promise<void>;
   deleteSale: (id: string) => Promise<void>;
   recordPayment: (saleId: string, amount: number, method: string, accountId?: string) => Promise<void>;
@@ -170,7 +173,7 @@ export const useSales = () => {
         pageSize: 50,
         setPage: () => {},
         getSaleById: () => undefined,
-        createSale: defaultError,
+        createSale: defaultError as SalesContextType['createSale'],
         updateSale: defaultError,
         deleteSale: defaultError,
         recordPayment: defaultError,
@@ -442,7 +445,10 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
   };
 
   // Create new sale
-  const createSale = async (saleData: Omit<Sale, 'id' | 'invoiceNo' | 'createdAt' | 'updatedAt'>): Promise<Sale> => {
+  const createSale = async (
+    saleData: Omit<Sale, 'id' | 'invoiceNo' | 'createdAt' | 'updatedAt'>,
+    convOpts?: { conversionSourceId?: string }
+  ): Promise<Sale> => {
     if (!companyId || !user) {
       throw new Error('Company ID and User are required');
     }
@@ -455,9 +461,13 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
     }
 
     try {
+      if (convOpts?.conversionSourceId && (saleData as any).isStudioSale) {
+        throw new Error('Studio orders cannot use this conversion. Use Generate Invoice from Studio.');
+      }
       // CRITICAL FIX: Generate document number based on sale source + status (central numbering only)
       // Regular sale (final) → invoice → SL-0001. Studio → studio → STD-0001. POS → POS-. Draft/Quotation/Order → respective prefix.
       // SL and STD have separate counters; never mix.
+      // Canonical conversion: always allocate a NEW final SL- number; source draft/QT/SO stays archived (never posted).
       const isPOS = (saleData as any).isPOS === true;
       const isStudioSale = (saleData as any).isStudioSale === true;
       // Studio orders must have at least one product (fabric/material); block creation of empty studio sales
@@ -465,7 +475,9 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
         throw new Error('Studio order must have at least one product (fabric/material). Add an item in the sale before saving.');
       }
       let docType: 'draft' | 'quotation' | 'order' | 'invoice' | 'pos' | 'studio' = 'invoice';
-      if (isPOS) {
+      if (convOpts?.conversionSourceId) {
+        docType = 'invoice';
+      } else if (isPOS) {
         docType = 'pos';
       } else if (isStudioSale) {
         docType = 'studio';
@@ -540,8 +552,10 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
         invoice_date: saleData.date,
         customer_id: saleData.customer || undefined,
         customer_name: saleData.customerName,
-        type: saleData.type === 'invoice' ? 'invoice' : 'quotation',
-        status: saleData.status || (saleData.type === 'invoice' ? 'final' : 'quotation'), // Use status from saleData if provided
+        type: convOpts?.conversionSourceId ? 'invoice' : saleData.type === 'invoice' ? 'invoice' : 'quotation',
+        status: convOpts?.conversionSourceId
+          ? 'final'
+          : saleData.status || (saleData.type === 'invoice' ? 'final' : 'quotation'), // Conversion = always new posted final row
         payment_status: saleData.paymentStatus,
         payment_method: saleData.paymentMethod ? normalizePaymentMethodForEnum(saleData.paymentMethod) : undefined,
         subtotal: saleData.subtotal,
@@ -590,7 +604,10 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
       let result: any;
       let effectiveInvoiceNo = invoiceNo;
       try {
-        result = await saleService.createSale(supabaseSale, supabaseItems, { allowNegativeStock });
+        result = await saleService.createSale(supabaseSale, supabaseItems, {
+          allowNegativeStock,
+          conversionSourceId: convOpts?.conversionSourceId,
+        });
         const deadlineErr = (result as any)?.deadlineError;
         if (deadlineErr) {
           toast.warning(`Deadline could not be saved: ${deadlineErr}. Run migrations/sales_set_deadline_rpc.sql in Supabase, then try again.`);
@@ -607,7 +624,10 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
           try {
             effectiveInvoiceNo = await documentNumberService.getNextDocumentNumberGlobal(companyId, sequenceType);
             supabaseSale.invoice_no = effectiveInvoiceNo;
-            result = await saleService.createSale(supabaseSale, supabaseItems, { allowNegativeStock });
+            result = await saleService.createSale(supabaseSale, supabaseItems, {
+              allowNegativeStock,
+              conversionSourceId: convOpts?.conversionSourceId,
+            });
             console.warn('[SALES CONTEXT] Duplicate invoice number; retried with DB number', effectiveInvoiceNo);
           } catch (retryErr: any) {
             throw retryErr;
@@ -785,12 +805,28 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
         }
       }
       
-      // Update local state
-      setSales(prev => [newSale, ...prev]);
+      // Update local state (conversion: drop archived source row from list)
+      setSales((prev) => {
+        const rest = convOpts?.conversionSourceId
+          ? prev.filter((s) => s.id !== convOpts.conversionSourceId)
+          : prev;
+        return [newSale, ...rest];
+      });
       
       // Stock OUT only when status is posted (`final`). Never use type=invoice alone (draft invoice must not move stock).
+      // If DB trigger already inserted movements (INSERT final), skip app loop to avoid duplicates.
       // STEP 1 RULE: Silent fail NOT allowed - throw error if stock movement fails
       if (canPostStockForSaleStatus(newSale.status) && newSale.items && newSale.items.length > 0) {
+        const { supabase: sbStock } = await import('@/lib/supabase');
+        const { count: existingSaleMov } = await sbStock
+          .from('stock_movements')
+          .select('*', { count: 'exact', head: true })
+          .eq('reference_type', 'sale')
+          .eq('reference_id', newSale.id);
+        if ((existingSaleMov ?? 0) > 0) {
+          console.log('[SALES CONTEXT] Stock already posted for sale (DB trigger); skipping duplicate app stock loop.');
+          window.dispatchEvent(new CustomEvent('saleSaved', { detail: { saleId: newSale.id } }));
+        } else {
         console.log('[SALES CONTEXT] 🔄 Creating stock movements for sale:', newSale.id, 'Items:', newSale.items.length);
         
         const stockMovementErrors: string[] = [];
@@ -930,6 +966,7 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
         }
         
         console.log('[SALES CONTEXT] ✅ All stock movements created successfully for sale:', newSale.id);
+        }
       }
       
       // Commission: NOT posted per sale (commission_status=pending until batch post).
@@ -983,7 +1020,13 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
       }
 
       const createdLabel = docType === 'pos' ? 'POS sale' : docType === 'invoice' ? 'Invoice' : docType === 'quotation' ? 'Quotation' : docType === 'order' ? 'Order' : 'Draft';
-      toast.success(`${createdLabel} ${effectiveInvoiceNo} created successfully!`);
+      if (convOpts?.conversionSourceId) {
+        toast.success(
+          `Converted to final ${newSale.invoiceNo}. Source draft/quotation/order is archived (still in database for audit) and hidden from the main list.`
+        );
+      } else {
+        toast.success(`${createdLabel} ${effectiveInvoiceNo} created successfully!`);
+      }
       
       // Dispatch event to refresh inventory
       window.dispatchEvent(new CustomEvent('saleSaved', { detail: { saleId: newSale.id } }));
@@ -1901,37 +1944,57 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
-  // Convert quotation to invoice
+  // Convert quotation (or draft/order) to invoice — same canonical flow as SaleForm convert: NEW final row + archive source
   const convertQuotationToInvoice = async (quotationId: string): Promise<Sale> => {
-    const quotation = getSaleById(quotationId);
-    if (!quotation || quotation.type !== 'quotation') {
-      throw new Error('Invalid quotation');
-    }
-
     try {
-      // Update status in Supabase. DB trigger handle_sale_final_stock_movement creates stock_movements when status becomes final.
-      await saleService.updateSaleStatus(quotationId, 'final');
-      
-      // Generate new invoice number
-      const invoiceNo = generateDocumentNumber('invoice');
-      
-      // Update local state
-      const invoice: Sale = {
-        ...quotation,
-        invoiceNo,
+      const full = await saleService.getSaleById(quotationId);
+      if (!full) throw new Error('Sale not found');
+      const q = convertFromSupabaseSale(full);
+      const charges = q.charges || [];
+      const extraExpenses = charges
+        .filter((c: any) => (c.charge_type || c.chargeType) !== 'shipping' && (c.charge_type || c.chargeType) !== 'discount')
+        .map((c: any) => ({
+          type: (c.charge_type || c.chargeType || 'other') as string,
+          amount: Number(c.amount) || 0,
+        }));
+      const shippingFromCharges = charges
+        .filter((c: any) => (c.charge_type || c.chargeType) === 'shipping')
+        .reduce((s: number, c: any) => s + (Number(c.amount) || 0), 0);
+      const saleData: Omit<Sale, 'id' | 'invoiceNo' | 'createdAt' | 'updatedAt'> = {
         type: 'invoice',
-        updatedAt: new Date().toISOString(),
-      };
-
-      setSales(prev => prev.map(s => s.id === quotationId ? invoice : s));
-      incrementNextNumber('invoice');
-
-      toast.success(`Quotation ${quotation.invoiceNo} converted to Invoice ${invoiceNo}!`);
-      
-      return invoice;
+        status: 'final',
+        customer: q.customer,
+        customerName: q.customerName,
+        contactNumber: q.contactNumber || '',
+        date: q.date,
+        location: q.location,
+        items: q.items,
+        itemsCount: q.itemsCount,
+        subtotal: q.subtotal,
+        discount: q.discount,
+        tax: q.tax,
+        expenses: q.expenses,
+        total: q.total,
+        paid: q.paid,
+        due: q.due,
+        returnDue: q.returnDue,
+        paymentStatus: q.paymentStatus,
+        paymentMethod: q.paymentMethod,
+        shippingStatus: q.shippingStatus as ShippingStatus,
+        notes: q.notes,
+        extraExpenses,
+        shippingCharges: shippingFromCharges || q.shippingCharges || 0,
+        partialPayments: [],
+        isStudioSale: false,
+        is_studio: false,
+        commissionAmount: q.commissionAmount,
+        salesmanId: q.salesmanId,
+        commissionPercent: q.commissionPercent,
+      } as any;
+      return await createSale(saleData, { conversionSourceId: quotationId });
     } catch (error: any) {
       console.error('[SALES CONTEXT] Error converting quotation:', error);
-      toast.error(`Failed to convert quotation: ${error.message || 'Unknown error'}`);
+      toast.error(`Failed to convert: ${error.message || 'Unknown error'}`);
       throw error;
     }
   };

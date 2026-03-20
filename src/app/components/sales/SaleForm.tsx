@@ -172,7 +172,7 @@ interface ExtraExpense {
 
 interface SaleFormProps {
   sale?: any; // Sale data for edit mode
-  /** When true (Convert to Final flow): on Save, create new sale with new invoice number and delete the draft. */
+  /** When true (Convert to Final flow): on Save, create NEW final sale (new SL-), archive source row (no delete). */
   convertToFinal?: boolean;
   onClose: () => void;
 }
@@ -1983,11 +1983,11 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                     // Type changed to Studio → regenerate invoice number (STD-XXXX) and persist via update
                     documentType = 'studio';
                     documentNumber = generateDocumentNumber('studio');
-                } else {
-                    // Convert to Final: keep same invoice number (STD-/SO-/QT-/DRAFT-) so same document becomes final
+                    } else {
+                    // Convert to Final: new row gets a NEW SL- number from ERP engine (source draft/QT/SO archived, not updated in place)
                     if (convertToFinal && initialSale?.id) {
-                        documentNumber = initialSale.invoiceNo;
                         documentType = 'invoice';
+                        documentNumber = generateDocumentNumber('invoice');
                     } else if (saleStatus === 'final' && (initialSale.invoiceNo?.startsWith('DRAFT-') || initialSale.invoiceNo?.startsWith('QT-') || initialSale.invoiceNo?.startsWith('SO-'))) {
                         // When user changed status to Final in edit mode (not convert flow), use new SL- number
                         documentNumber = generateDocumentNumber('invoice');
@@ -2134,11 +2134,8 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                 is_studio: isStudioSale
             };
             
-            // Convert to Final: update same sale to status 'final' (same invoice number, one row in DB). No create+delete.
-            // Falls through to edit path below so updateSale(initialSale.id, saleData) runs with status: 'final'.
-
-            // CRITICAL FIX: Check if editing existing sale (includes convertToFinal: same sale updated to final)
-            if (initialSale && initialSale.id) {
+            // Convert to Final: create NEW final sale + archive source (canonical workflow). Edit otherwise: update same row.
+            if (initialSale && initialSale.id && !convertToFinal) {
                 // EDIT MODE: Update existing sale (invoice number updated when converting to Studio)
                 await updateSale(initialSale.id, saleData);
                 if (saleAttachmentFiles.length > 0 && companyId) {
@@ -2158,11 +2155,10 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                 if (isStudioSale && !initialSale.invoiceNo.startsWith('STD-') && !initialSale.invoiceNo.startsWith('ST-')) {
                     incrementNextNumber('studio');
                 }
-                // If we converted draft/quotation/order to final with a NEW SL- number, consume it (not when convertToFinal: we keep same invoice)
-                if (!convertToFinal && documentType === 'invoice' && (initialSale.invoiceNo?.startsWith('DRAFT-') || initialSale.invoiceNo?.startsWith('QT-') || initialSale.invoiceNo?.startsWith('SO-'))) {
+                if (documentType === 'invoice' && (initialSale.invoiceNo?.startsWith('DRAFT-') || initialSale.invoiceNo?.startsWith('QT-') || initialSale.invoiceNo?.startsWith('SO-'))) {
                     incrementNextNumber('invoice');
                 }
-                toast.success(convertToFinal ? `Order converted to final. ${documentNumber} is now final.` : `Sale ${documentNumber} updated successfully!`);
+                toast.success(`Sale ${documentNumber} updated successfully!`);
                 
                 // Store sale ID and invoice number for payment dialog (edit mode)
                 setSavedSaleId(initialSale.id);
@@ -2192,8 +2188,11 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                 onClose();
                 return { saleId: initialSale.id, invoiceNo: documentNumber };
             } else {
-                // NEW SALE: Create new sale
-                const created = await createSale(saleData);
+                // NEW SALE or CONVERT TO FINAL (both insert a new row; convert archives source)
+                const created = await createSale(
+                    saleData,
+                    convertToFinal && initialSale?.id ? { conversionSourceId: initialSale.id } : undefined
+                );
                 // If user entered a shipping charge, create a sale_shipments row so ledger and shipment list stay correct
                 if (created?.id && (shippingChargeInput || 0) > 0 && companyId && finalBranchId) {
                     try {
@@ -2209,7 +2208,7 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                                 shipment_status: 'Pending',
                             },
                             undefined,
-                            documentNumber
+                            created.invoiceNo ?? documentNumber
                         );
                     } catch (shipErr: any) {
                         console.warn('[SALE FORM] Shipment record for shipping charge could not be created:', shipErr?.message);
@@ -2226,14 +2225,16 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                         toast.warning('Sale created but some attachments could not be uploaded.');
                     }
                 }
-                // Increment document number after successful save
+                // Increment document number after successful save (conversion toast comes from SalesContext)
                 incrementNextNumber(documentType);
-                toast.success(`${saleType === 'invoice' ? 'Invoice' : 'Quotation'} created successfully!`);
+                if (!convertToFinal) {
+                    toast.success(`${saleType === 'invoice' ? 'Invoice' : 'Quotation'} created successfully!`);
+                }
                 
                 // Store sale ID and invoice number for payment dialog
                 if (created?.id) {
                     setSavedSaleId(created.id);
-                    setSavedSaleInvoiceNo(documentNumber);
+                    setSavedSaleInvoiceNo(created.invoiceNo ?? documentNumber);
                 }
                 
                 // Studio sale: after save, open Studio Sale Detail for this sale (single master page)
@@ -2252,7 +2253,7 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                 // If payment dialog should open, don't close form yet
                 if (shouldOpenPaymentDialog && created?.id) {
                     // Don't close form - payment dialog will open
-                    return { saleId: created.id, invoiceNo: documentNumber };
+                    return { saleId: created.id, invoiceNo: created.invoiceNo ?? documentNumber };
                 }
                 
                 // Close form (unless payment dialog will open or print view is showing)
@@ -2261,7 +2262,7 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                 }
                 
                 // Return sale ID and invoice number for payment dialog
-                return { saleId: created?.id || null, invoiceNo: documentNumber || null };
+                return { saleId: created?.id || null, invoiceNo: (created?.invoiceNo ?? documentNumber) || null };
             }
         } catch (error: any) {
             console.error('[SALE FORM] Error saving sale:', error);

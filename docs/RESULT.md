@@ -2,6 +2,56 @@
 
 See the full deliverable: **[ACCOUNTING_INTEGRITY_LAB_RESULT.md](./ACCOUNTING_INTEGRITY_LAB_RESULT.md)** (Phase 2 + tooling: payables status filter, **purchase by-id / getPurchase 400**, **`CustomerLedgerInteractiveTest` lazy**, snapshot timestamps/outcome).
 
+## 2026-03-12 — Canonical conversion workflow (sales + purchases)
+
+### Business rule
+
+- **Draft / quotation / order** (sales) and **draft / ordered** (purchases) stay **business-only** until the user **converts** to a **new** final document.
+- **Convert** = **new row** with **new final number** (`SL-…` via `get_next_document_number_global`, `PUR-…` via `generate_document_number`), **copy** of latest header/lines/charges from the form, **posting only on the new row**. Source row: `converted = true`, `converted_to_document_id = new id`, **not deleted**.
+- **Default lists** exclude `converted = true` (archived sources hidden). Direct open by id still works for audit.
+- **Cancel** unchanged from posting gate: non-posted sources never get reversal JE/stock (already enforced).
+
+### Numbering
+
+| Document kind | Sequence / RPC |
+|----------------|------------------|
+| Draft | `DRAFT` (global) |
+| Quotation | `QT` |
+| Order | `SO` |
+| Final sale | `SL` |
+| Final purchase | `PUR` (`generate_document_number` / `purchase` type) |
+
+### Exact conversion flow
+
+**Sales**
+
+1. User uses **Convert to Final** (`SaleForm` + `SalesContext.createSale(saleData, { conversionSourceId })`).
+2. `documentNumberService.getNextDocumentNumberGlobal(companyId, 'SL')` assigns the new invoice number.
+3. `saleService.createSale` inserts **new** `sales` row (`status=final`, `type=invoice`) + line items; then updates source: `converted=true`, `converted_to_document_id=newId`.
+4. `replaceSaleCharges`, payments, document JE, and stock: same post-create path as a normal new final sale; **stock**: DB trigger on **INSERT** final + app loop **skipped** if movements already exist (no double post).
+
+**Purchases**
+
+1. User edits a **draft/ordered** PO, sets status **Final**, saves.
+2. `PurchaseForm` calls `createPurchase(purchaseData, undefined, { conversionSourceId })`.
+3. `purchaseService.createPurchase` inserts new **final** PO + items + charges; marks source converted.
+4. Same **PurchaseContext** post-create path as a normal create (JE, supplier ledger, optional `recordPayment`).
+
+### Files changed (this slice)
+
+- `migrations/20260320_sales_purchases_conversion_workflow.sql` — `converted`, `converted_to_document_id` on `sales`/`purchases`; sale stock trigger **INSERT OR UPDATE** for `final`.
+- `src/app/services/saleService.ts` — `conversionSourceId` on `createSale`; `getAllSales` / `getStudioSales` hide converted (with column fallback).
+- `src/app/services/purchaseService.ts` — `CreatePurchaseOptions`, conversion mark; `getAllPurchases` hide converted.
+- `src/app/context/SalesContext.tsx` — `createSale(..., convOpts)`; conversion numbering; local list drops source; stock skip if trigger ran; `convertQuotationToInvoice` uses same path.
+- `src/app/context/PurchaseContext.tsx` — `createPurchase` third arg; toasts/state for conversion.
+- `src/app/components/sales/SaleForm.tsx` — convert uses **create** path + `conversionSourceId`.
+- `src/app/components/purchases/PurchaseForm.tsx` — draft/ordered → final uses **createPurchase** with conversion.
+- `src/app/services/accountingIntegrityLabService.ts` — posting-gate live sample excludes `converted` sources.
+
+### Git commit hash
+
+Run: `git log -1 --oneline`
+
 ## 2026-03-12 — Hard posting-status gate (sales + purchases)
 
 ### Root causes

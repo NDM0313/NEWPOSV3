@@ -1121,12 +1121,29 @@ function isJeActive(j: { is_void?: boolean | null }): boolean {
 export async function runPostingStatusGateLiveCheck(companyId: string): Promise<LabCheckResult> {
   const failures: LabCheckFailure[] = [];
 
-  const { data: nonFinalSales } = await supabase
-    .from('sales')
-    .select('id, status')
-    .eq('company_id', companyId)
-    .in('status', ['draft', 'quotation', 'order'])
-    .limit(200);
+  let nonFinalSales: { id: string; status?: string }[] | null = null;
+  {
+    const q1 = await supabase
+      .from('sales')
+      .select('id, status')
+      .eq('company_id', companyId)
+      .eq('converted', false)
+      .in('status', ['draft', 'quotation', 'order'])
+      .limit(200);
+    if (q1.error && (q1.error.code === '42703' || String(q1.error.message || '').toLowerCase().includes('converted'))) {
+      const q2 = await supabase
+        .from('sales')
+        .select('id, status')
+        .eq('company_id', companyId)
+        .in('status', ['draft', 'quotation', 'order'])
+        .limit(200);
+      nonFinalSales = q2.data;
+    } else if (q1.error) {
+      nonFinalSales = [];
+    } else {
+      nonFinalSales = q1.data;
+    }
+  }
   const saleIds = (nonFinalSales || []).map((r: { id: string }) => r.id).filter(Boolean);
 
   for (const batch of chunkArray(saleIds, 80)) {
@@ -1189,12 +1206,29 @@ export async function runPostingStatusGateLiveCheck(companyId: string): Promise<
     }
   }
 
-  const { data: nonPostedPurchases } = await supabase
-    .from('purchases')
-    .select('id, status')
-    .eq('company_id', companyId)
-    .in('status', ['draft', 'ordered'])
-    .limit(200);
+  let nonPostedPurchases: { id: string; status?: string }[] | null = null;
+  {
+    const q1 = await supabase
+      .from('purchases')
+      .select('id, status')
+      .eq('company_id', companyId)
+      .eq('converted', false)
+      .in('status', ['draft', 'ordered'])
+      .limit(200);
+    if (q1.error && (q1.error.code === '42703' || String(q1.error.message || '').toLowerCase().includes('converted'))) {
+      const q2 = await supabase
+        .from('purchases')
+        .select('id, status')
+        .eq('company_id', companyId)
+        .in('status', ['draft', 'ordered'])
+        .limit(200);
+      nonPostedPurchases = q2.data;
+    } else if (q1.error) {
+      nonPostedPurchases = [];
+    } else {
+      nonPostedPurchases = q1.data;
+    }
+  }
   const purIds = (nonPostedPurchases || []).map((r: { id: string }) => r.id).filter(Boolean);
 
   for (const batch of chunkArray(purIds, 80)) {

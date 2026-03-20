@@ -111,7 +111,11 @@ interface PurchaseContextType {
   pageSize: number;
   setPage: (page: number) => void;
   getPurchaseById: (id: string) => Purchase | undefined;
-  createPurchase: (purchase: Omit<Purchase, 'id' | 'purchaseNo' | 'createdAt' | 'updatedAt'>, purchaseNo?: string) => Promise<Purchase>;
+  createPurchase: (
+    purchase: Omit<Purchase, 'id' | 'purchaseNo' | 'createdAt' | 'updatedAt'>,
+    purchaseNo?: string,
+    convOpts?: { conversionSourceId?: string }
+  ) => Promise<Purchase>;
   updatePurchase: (id: string, updates: Partial<Purchase>) => Promise<void>;
   deletePurchase: (id: string) => Promise<void>;
   recordPayment: (purchaseId: string, amount: number, method: string, accountId?: string) => Promise<void>;
@@ -273,7 +277,11 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
   };
 
   // Create new purchase
-  const createPurchase = async (purchaseData: Omit<Purchase, 'id' | 'purchaseNo' | 'createdAt' | 'updatedAt'>, providedPurchaseNo?: string): Promise<Purchase> => {
+  const createPurchase = async (
+    purchaseData: Omit<Purchase, 'id' | 'purchaseNo' | 'createdAt' | 'updatedAt'>,
+    providedPurchaseNo?: string,
+    convOpts?: { conversionSourceId?: string }
+  ): Promise<Purchase> => {
     if (!companyId || !user) {
       throw new Error('Company ID and User are required');
     }
@@ -386,7 +394,7 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
         firstItem: supabaseItems[0]
       });
       
-      const result = await purchaseService.createPurchase(supabasePurchase, supabaseItems, charges);
+      const result = await purchaseService.createPurchase(supabasePurchase, supabaseItems, charges, convOpts);
 
       // Convert back to app format
       const newPurchase = convertFromSupabasePurchase(result);
@@ -415,20 +423,29 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
         });
       }
       
-      // Update local state
-      setPurchases(prev => [newPurchase, ...prev]);
+      // Update local state (conversion: remove archived source from list)
+      setPurchases((prev) => {
+        const rest = convOpts?.conversionSourceId
+          ? prev.filter((p) => p.id !== convOpts.conversionSourceId)
+          : prev;
+        return [newPurchase, ...rest];
+      });
 
       // Activity log for timeline
       if (companyId && user?.id) {
-        activityLogService.logActivity({
-          companyId,
-          module: 'purchase',
-          entityId: newPurchase.id,
-          entityReference: newPurchase.purchaseNo,
-          action: 'create',
-          performedBy: user.id,
-          description: `Purchase ${newPurchase.purchaseNo} created`,
-        }).catch((err) => console.warn('[PURCHASE CONTEXT] Activity log failed:', err));
+        activityLogService
+          .logActivity({
+            companyId,
+            module: 'purchase',
+            entityId: newPurchase.id,
+            entityReference: newPurchase.purchaseNo,
+            action: convOpts?.conversionSourceId ? 'convert_to_final' : 'create',
+            performedBy: user.id,
+            description: convOpts?.conversionSourceId
+              ? `Converted to final PO ${newPurchase.purchaseNo} (source archived)`
+              : `Purchase ${newPurchase.purchaseNo} created`,
+          })
+          .catch((err) => console.warn('[PURCHASE CONTEXT] Activity log failed:', err));
       }
 
       // 🔧 PURCHASE DOCUMENT JE — only posted statuses (final/received; app `completed` ≡ final); skip duplicate (DB trigger / retry)
@@ -688,7 +705,11 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
         });
       }
 
-      toast.success(`Purchase Order ${purchaseNo} created successfully!`);
+      toast.success(
+        convOpts?.conversionSourceId
+          ? `Converted to final ${newPurchase.purchaseNo}. Source draft/ordered PO is archived and hidden from the main list.`
+          : `Purchase Order ${purchaseNo} created successfully!`
+      );
       
       // 🔒 CRITICAL FIX: Dispatch event to refresh inventory (like Sale module)
       window.dispatchEvent(new CustomEvent('purchaseSaved', { detail: { purchaseId: newPurchase.id } }));
