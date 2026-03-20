@@ -52,17 +52,163 @@ export function getPurchaseAccountingSnapshot(purchase: {
   return { total, subtotal, discount, otherCharges };
 }
 
-/** Check if a purchase journal entry already exists for this purchase (duplicate guard). */
-async function purchaseJournalEntryExists(purchaseId: string): Promise<boolean> {
+/**
+ * Canonical purchase document JE:
+ * - reference_type = 'purchase'
+ * - reference_id = purchase id
+ * - payment_id IS NULL
+ * - not void
+ */
+export function purchaseDocumentJournalFingerprint(companyId: string, purchaseId: string): string {
+  return `purchase_document:${companyId}:${purchaseId}`;
+}
+
+export async function findActiveCanonicalPurchaseDocumentJournalEntryId(purchaseId: string): Promise<string | null> {
   const { data, error } = await supabase
     .from('journal_entries')
     .select('id')
     .eq('reference_type', 'purchase')
     .eq('reference_id', purchaseId)
-    .limit(1)
-    .maybeSingle();
-  if (error && (error.code === 'PGRST205' || error.message?.includes('does not exist'))) return false;
-  return !!data;
+    .is('payment_id', null)
+    .or('is_void.is.null,is_void.eq.false')
+    .order('created_at', { ascending: true })
+    .limit(1);
+  if (error && (error.code === 'PGRST205' || error.message?.includes('does not exist'))) return null;
+  if (error) return null;
+  const row = (data as { id: string }[] | null)?.[0];
+  return row?.id ?? null;
+}
+
+export async function listActiveCanonicalPurchaseDocumentJournalEntryIds(purchaseId: string): Promise<string[]> {
+  const { data, error } = await supabase
+    .from('journal_entries')
+    .select('id, is_void')
+    .eq('reference_type', 'purchase')
+    .eq('reference_id', purchaseId)
+    .is('payment_id', null)
+    .or('is_void.is.null,is_void.eq.false');
+  if (error && (error.code === 'PGRST205' || error.message?.includes('does not exist'))) return [];
+  if (error || !data?.length) return [];
+  return (data as { id: string; is_void?: boolean | null }[])
+    .filter((r) => r.is_void !== true)
+    .map((r) => r.id)
+    .filter(Boolean);
+}
+
+/** Backward-compatible boolean guard used by context flows. */
+async function purchaseJournalEntryExists(purchaseId: string): Promise<boolean> {
+  const id = await findActiveCanonicalPurchaseDocumentJournalEntryId(purchaseId);
+  return !!id;
+}
+
+export async function createPurchaseJournalEntry(params: {
+  purchaseId: string;
+  companyId: string;
+  branchId?: string | null;
+  total: number;
+  subtotal?: number;
+  poNo: string;
+  supplierName: string;
+  entryDate?: string;
+  charges?: Array<{ charge_type?: string; chargeType?: string; amount?: number }>;
+  createdBy?: string | null;
+}): Promise<string | null> {
+  const {
+    purchaseId,
+    companyId,
+    branchId,
+    total,
+    subtotal,
+    poNo,
+    supplierName,
+    entryDate,
+    charges = [],
+    createdBy,
+  } = params;
+  if (!purchaseId || !companyId) return null;
+  if ((Number(total) || 0) <= 0) return null;
+
+  const existingId = await findActiveCanonicalPurchaseDocumentJournalEntryId(purchaseId);
+  if (existingId) {
+    console.log(`[purchaseAccountingService] Canonical purchase document JE already exists for ${poNo}, reusing ${existingId}`);
+    return existingId;
+  }
+
+  let inventoryAccountId: string | null = null;
+  let apAccountId: string | null = null;
+  let discountAccountId: string | null = null;
+  const { data: invRows } = await supabase
+    .from('accounts')
+    .select('id, code')
+    .eq('company_id', companyId)
+    .eq('is_active', true)
+    .or('code.eq.1200,code.eq.1500,name.ilike.%Inventory%,name.ilike.%Stock%');
+  const invList = (invRows || []) as { id: string; code: string }[];
+  const inv1200 = invList.find((a) => a.code === '1200');
+  const inv1500 = invList.find((a) => a.code === '1500');
+  inventoryAccountId = (inv1200 ?? inv1500 ?? invList[0])?.id ?? null;
+  if (!inventoryAccountId) {
+    const { data: asset } = await supabase.from('accounts').select('id').eq('company_id', companyId).eq('type', 'asset').limit(1);
+    inventoryAccountId = asset?.[0]?.id ?? null;
+  }
+  const { data: apRows } = await supabase
+    .from('accounts')
+    .select('id, code')
+    .eq('company_id', companyId)
+    .eq('is_active', true)
+    .or('name.ilike.%Accounts Payable%,code.eq.2000');
+  const apList = (apRows || []) as { id: string; code: string }[];
+  apAccountId = apList.find((a) => a.code === '2000')?.id ?? apList[0]?.id ?? null;
+  const { data: discRows } = await supabase
+    .from('accounts')
+    .select('id, code')
+    .eq('company_id', companyId)
+    .eq('is_active', true)
+    .or('code.eq.5210,name.ilike.%Discount Received%,name.ilike.%Purchase Discount%,name.ilike.%Operating Expense%');
+  const discList = (discRows || []) as { id: string; code: string }[];
+  discountAccountId = discList.find((a) => a.code === '5210')?.id ?? discList[0]?.id ?? null;
+  if (!inventoryAccountId || !apAccountId) return null;
+
+  const itemsSubtotal = Number(subtotal ?? 0) || Number(total) || 0;
+  const entry: JournalEntry = {
+    id: '',
+    company_id: companyId,
+    branch_id: branchId && branchId !== 'all' ? branchId : undefined,
+    entry_no: `JE-PUR-${Date.now()}-${Math.random().toString(36).substr(2, 6).toUpperCase()}`,
+    entry_date: entryDate || new Date().toISOString().slice(0, 10),
+    description: `Purchase ${poNo} from ${supplierName}`,
+    reference_type: 'purchase',
+    reference_id: purchaseId,
+    created_by: createdBy || undefined,
+    action_fingerprint: purchaseDocumentJournalFingerprint(companyId, purchaseId),
+  };
+
+  const lines: JournalEntryLine[] = [];
+  if (itemsSubtotal > 0) {
+    lines.push(
+      { id: '', journal_entry_id: '', account_id: inventoryAccountId, debit: itemsSubtotal, credit: 0, description: `Inventory purchase ${poNo}` },
+      { id: '', journal_entry_id: '', account_id: apAccountId, debit: 0, credit: itemsSubtotal, description: `Payable to ${supplierName}` },
+    );
+  }
+  for (const c of charges) {
+    const amount = Number(c?.amount ?? 0);
+    const type = String(c?.charge_type ?? c?.chargeType ?? '').toLowerCase();
+    if (amount <= 0) continue;
+    if (type === 'discount' && discountAccountId) {
+      lines.push(
+        { id: '', journal_entry_id: '', account_id: apAccountId, debit: amount, credit: 0, description: 'Purchase discount' },
+        { id: '', journal_entry_id: '', account_id: discountAccountId, debit: 0, credit: amount, description: 'Discount received' },
+      );
+    } else {
+      lines.push(
+        { id: '', journal_entry_id: '', account_id: inventoryAccountId, debit: amount, credit: 0, description: `${type || 'charge'} (purchase)` },
+        { id: '', journal_entry_id: '', account_id: apAccountId, debit: 0, credit: amount, description: `Payable - ${type || 'charge'}` },
+      );
+    }
+  }
+  if (!lines.length) return null;
+  const result = await accountingService.createEntry(entry, lines);
+  return (result as { id?: string } | null)?.id ?? null;
 }
 
 async function postPurchaseAdjustmentJE(
@@ -217,4 +363,8 @@ export const purchaseAccountingService = {
   getPurchaseAccountingSnapshot,
   postPurchaseEditAdjustments,
   purchaseJournalEntryExists,
+  createPurchaseJournalEntry,
+  findActiveCanonicalPurchaseDocumentJournalEntryId,
+  listActiveCanonicalPurchaseDocumentJournalEntryIds,
+  purchaseDocumentJournalFingerprint,
 };

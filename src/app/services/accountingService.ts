@@ -1860,6 +1860,31 @@ export const accountingService = {
         return { ...existing, lines: [] };
       }
     }
+    if (
+      dup &&
+      entry.reference_type === 'purchase' &&
+      entry.reference_id &&
+      !insertData.payment_id
+    ) {
+      const { data: existingRows } = await supabase
+        .from('journal_entries')
+        .select('*')
+        .eq('reference_type', 'purchase')
+        .eq('reference_id', entry.reference_id)
+        .is('payment_id', null)
+        .or('is_void.is.null,is_void.eq.false')
+        .order('created_at', { ascending: true })
+        .limit(1);
+      const existing = (existingRows as Record<string, unknown>[] | null)?.[0] as
+        | { id: string; is_void?: boolean }
+        | undefined;
+      if (existing?.id && existing.is_void !== true) {
+        if (import.meta.env?.DEV) {
+          console.warn('[accountingService] Duplicate canonical purchase JE insert — returning existing row:', existing.id);
+        }
+        return { ...existing, lines: [] };
+      }
+    }
     if (dup && insertData.action_fingerprint) {
       const { data: fpRow } = await supabase
         .from('journal_entries')

@@ -10,6 +10,21 @@ Record **`git rev-parse HEAD`** after each tooling drop (avoid stale SHAs in doc
 
 ---
 
+## 2026-03-12 — Fresh posting gate: canonical purchase **document** JE only
+
+| Item | Detail |
+|------|--------|
+| **Symptom** | Document certification **FAIL**: *Fresh posting gate (purchase)* — expected single canonical document JE, actual `active_je_count = 3`. |
+| **Root cause** | Purchase flow still had direct canonical JE writers in `PurchaseContext` (create + update fallback), and checks were broad by `reference_type='purchase'` without strict canonical filtering (`payment_id IS NULL`). |
+| **Fix** | Centralized canonical creation in `purchaseAccountingService.createPurchaseJournalEntry` with idempotent reuse; added canonical helpers (`findActiveCanonicalPurchaseDocumentJournalEntryId`, `listActiveCanonicalPurchaseDocumentJournalEntryIds`, `purchaseDocumentJournalFingerprint`); duplicate recovery in `accountingService.createEntry` now resolves canonical purchase JE only. |
+| **Lab** | `runPostingStatusGateFreshCheck` and live non-posted purchase sample count only canonical purchase document JEs (`payment_id` null). |
+| **SQL** | `migrations/20260312_canonical_purchase_document_je_unique_and_repair.sql` — preview duplicate canonical purchase JEs, void extras, keep one, add partial unique index `idx_journal_entries_canonical_purchase_document_active`. |
+| **Files** | `purchaseAccountingService.ts`, `PurchaseContext.tsx`, `accountingIntegrityLabService.ts`, `accountingService.ts`, migration above. |
+
+**QA:** draft/ordered → no canonical purchase JE; finalize/received → exactly one canonical purchase document JE; discount/freight edits → `purchase_adjustment` only; payment/account edit → payment JE / `payment_adjustment` only; cancel posted purchase should not create extra canonical document JEs.
+
+---
+
 ## 2026-03-12 — Fresh posting gate: canonical sale **document** JE only
 
 | Item | Detail |

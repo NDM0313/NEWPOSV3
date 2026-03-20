@@ -448,127 +448,27 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
           .catch((err) => console.warn('[PURCHASE CONTEXT] Activity log failed:', err));
       }
 
-      // 🔧 PURCHASE DOCUMENT JE — only posted statuses (final/received; app `completed` ≡ final); skip duplicate (DB trigger / retry)
+      // PURCHASE DOCUMENT JE: canonical, idempotent, and centralized in purchaseAccountingService.
       if (canPostAccountingForPurchaseStatus(newPurchase.status) && companyId && newPurchase.total > 0) {
         try {
-          const { purchaseAccountingService: pac } = await import('@/app/services/purchaseAccountingService');
-          if (await pac.purchaseJournalEntryExists(newPurchase.id)) {
-            console.log('[PURCHASE CONTEXT] Document JE already exists for purchase, skipping duplicate insert');
-          } else {
-          // Import supabase dynamically
-          const { supabase } = await import('@/lib/supabase');
-          
-          // Phase 5: Same account resolution as purchaseAccountingService (COA lock: 1200 then 1500 then name; AP 2000; Discount 5210 then name)
-          const { data: invRows } = await supabase.from('accounts').select('id, code').eq('company_id', companyId).eq('is_active', true).or('code.eq.1200,code.eq.1500,name.ilike.%Inventory%,name.ilike.%Stock%');
-          const invList = (invRows || []) as { id: string; code: string }[];
-          const inv1200 = invList.find((a: { code: string }) => a.code === '1200');
-          const inv1500 = invList.find((a: { code: string }) => a.code === '1500');
-          let inventoryAccountId = (inv1200 ?? inv1500 ?? invList[0])?.id ?? null;
-          if (!inventoryAccountId) {
-            const { data: assetAccounts } = await supabase.from('accounts').select('id').eq('company_id', companyId).eq('type', 'asset').limit(1);
-            inventoryAccountId = assetAccounts?.[0]?.id ?? null;
-          }
-          const { data: apAccounts } = await supabase.from('accounts').select('id, code').eq('company_id', companyId).or('name.ilike.%Accounts Payable%,code.eq.2000').limit(2);
-          const apList = (apAccounts || []) as { id: string; code: string }[];
-          const ap2000 = apList.find((a: { code: string }) => a.code === '2000');
-          const apAccountId = (ap2000 ?? apList[0])?.id ?? null;
-          let discountAccountId: string | null = null;
-          const { data: discRows } = await supabase.from('accounts').select('id, code').eq('company_id', companyId).eq('is_active', true).or('code.eq.5210,name.ilike.%Discount Received%,name.ilike.%Purchase Discount%,name.ilike.%Operating Expense%');
-          const discList = (discRows || []) as { id: string; code: string }[];
-          const disc5210 = discList.find((a: { code: string }) => a.code === '5210');
-          discountAccountId = (disc5210 ?? discList[0])?.id ?? null;
-          
-          if (!inventoryAccountId || !apAccountId) {
-            const errorMsg = `Missing required accounts for purchase journal entry. Inventory: ${inventoryAccountId ? 'OK' : 'MISSING'}, AP: ${apAccountId ? 'OK' : 'MISSING'}`;
-            console.error('[PURCHASE CONTEXT] ❌ CRITICAL:', errorMsg);
-            throw new Error(errorMsg);
-          }
-          
-          // Single journal entry built from detail: items subtotal + charges (line-by-line, no aggregate)
-          const itemsSubtotal = Number(newPurchase.subtotal ?? 0) || Number(newPurchase.total ?? 0);
-          const { data: mainJournalEntry, error: journalError } = await supabase
-            .from('journal_entries')
-            .insert({
-              company_id: companyId,
-              branch_id: finalBranchId,
-              entry_date: newPurchase.date,
-              description: `Purchase ${newPurchase.purchaseNo} from ${newPurchase.supplierName}`,
-              reference_type: 'purchase',
-              reference_id: newPurchase.id,
-              created_by: user?.id,
-            })
-            .select()
-            .single();
-          
-          if (journalError || !mainJournalEntry) {
-            console.error('[PURCHASE CONTEXT] ❌ CRITICAL: Failed to create purchase journal entry:', journalError);
-            throw new Error(`Failed to create purchase journal entry: ${journalError?.message || 'Unknown error'}`);
-          }
-          
-          const jid = mainJournalEntry.id;
-          
-          // 1) Items: Dr Inventory, Cr AP (subtotal only)
-          if (itemsSubtotal > 0) {
-            const { error: debitError } = await supabase.from('journal_entry_lines').insert({
-              journal_entry_id: jid,
-              account_id: inventoryAccountId,
-              debit: itemsSubtotal,
-              credit: 0,
-              description: `Inventory purchase ${newPurchase.purchaseNo}`,
-            });
-            if (debitError) throw debitError;
-            const { error: creditError } = await supabase.from('journal_entry_lines').insert({
-              journal_entry_id: jid,
-              account_id: apAccountId,
-              debit: 0,
-              credit: itemsSubtotal,
-              description: `Payable to ${newPurchase.supplierName}`,
-            });
-            if (creditError) throw creditError;
-          }
-          
-          // 2) Each charge line: expense → Dr Inventory Cr AP; discount → Dr AP Cr Discount Received
-          for (const c of charges) {
-            if (c.amount <= 0) continue;
-            if (c.charge_type === 'discount') {
-              if (!discountAccountId) continue;
-              await supabase.from('journal_entry_lines').insert({
-                journal_entry_id: jid,
-                account_id: apAccountId,
-                debit: c.amount,
-                credit: 0,
-                description: 'Purchase discount',
-              });
-              await supabase.from('journal_entry_lines').insert({
-                journal_entry_id: jid,
-                account_id: discountAccountId,
-                debit: 0,
-                credit: c.amount,
-                description: 'Discount received',
-              });
-            } else {
-              await supabase.from('journal_entry_lines').insert({
-                journal_entry_id: jid,
-                account_id: inventoryAccountId,
-                debit: c.amount,
-                credit: 0,
-                description: `${c.charge_type} (purchase)`,
-              });
-              await supabase.from('journal_entry_lines').insert({
-                journal_entry_id: jid,
-                account_id: apAccountId,
-                debit: 0,
-                credit: c.amount,
-                description: `Payable - ${c.charge_type}`,
-              });
-            }
-          }
-          
-          console.log('[PURCHASE CONTEXT] ✅ Created line-by-line accounting entry for purchase (items + charges):', mainJournalEntry.id);
+          const { createPurchaseJournalEntry } = await import('@/app/services/purchaseAccountingService');
+          const jeId = await createPurchaseJournalEntry({
+            purchaseId: newPurchase.id,
+            companyId,
+            branchId: finalBranchId,
+            total: Number(newPurchase.total) || 0,
+            subtotal: Number(newPurchase.subtotal ?? 0) || undefined,
+            poNo: newPurchase.purchaseNo || `PUR-${newPurchase.id.substring(0, 8)}`,
+            supplierName: newPurchase.supplierName || 'Supplier',
+            entryDate: newPurchase.date,
+            charges,
+            createdBy: user?.id ?? null,
+          });
+          if (!jeId) {
+            throw new Error('Final/received purchase was saved but no canonical purchase document JE exists.');
           }
         } catch (accountingError: any) {
           console.error('[PURCHASE CONTEXT] ❌ CRITICAL: Purchase accounting entry failed:', accountingError);
-          // CRITICAL: Throw error to prevent purchase creation without accounting
           throw new Error(`Failed to create purchase accounting entry: ${accountingError.message || 'Unknown error'}`);
         }
       }
@@ -1165,7 +1065,6 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
       // PF-COMPONENT: Component-level purchase edit — do NOT full-reverse. Only adjust changed components; never touch payment unless payment changed.
       if (needsPurchaseAccountingPass && companyId) {
         try {
-          const { supabase } = await import('@/lib/supabase');
           const { purchaseAccountingService: pac } = await import('@/app/services/purchaseAccountingService');
           const updated = await purchaseService.getPurchase(id);
           if (!updated) throw new Error('Purchase not found after update');
@@ -1200,96 +1099,24 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
             });
             console.log('[PURCHASE CONTEXT] PF-COMPONENT: Posted', adjustmentCount, 'purchase adjustment JE(s); original JE and payment JEs unchanged.');
           } else if (!hasExistingPurchaseJE && newTotal > 0 && willBePosted) {
-            // No existing purchase JE (e.g. legacy data): create one full JE (same as create path)
-            let inventoryAccountId: string | null = null;
-            let apAccountId: string | null = null;
-            let discountAccountId: string | null = null;
-            const { data: invRows } = await supabase.from('accounts').select('id, code').eq('company_id', companyId).eq('is_active', true).or('code.eq.1200,code.eq.1500,name.ilike.%Inventory%,name.ilike.%Stock%');
-            const invList = (invRows || []) as { id: string; code: string }[];
-            const inv1200 = invList.find((a) => a.code === '1200');
-            const inv1500 = invList.find((a) => a.code === '1500');
-            inventoryAccountId = (inv1200 ?? inv1500 ?? invList[0])?.id ?? null;
-            if (!inventoryAccountId) {
-              const { data: asset } = await supabase.from('accounts').select('id').eq('company_id', companyId).eq('type', 'asset').limit(1);
-              inventoryAccountId = asset?.[0]?.id ?? null;
-            }
-            const { data: apRows } = await supabase.from('accounts').select('id, code').eq('company_id', companyId).eq('is_active', true).or('name.ilike.%Accounts Payable%,code.eq.2000');
-            const apList = (apRows || []) as { id: string; code: string }[];
-            apAccountId = apList.find((a) => a.code === '2000')?.id ?? apList[0]?.id ?? null;
-            const { data: discRows } = await supabase.from('accounts').select('id, code').eq('company_id', companyId).eq('is_active', true).or('code.eq.5210,name.ilike.%Discount Received%,name.ilike.%Purchase Discount%,name.ilike.%Operating Expense%');
-            const discList = (discRows || []) as { id: string; code: string }[];
-            discountAccountId = discList.find((a) => a.code === '5210')?.id ?? discList[0]?.id ?? null;
-            if (inventoryAccountId && apAccountId) {
-              const itemsSubtotal = Number((updated as any).subtotal ?? 0) || newTotal;
-              const charges = Array.isArray((updated as any).charges) ? (updated as any).charges : (Array.isArray((updated as any).purchase_charges) ? (updated as any).purchase_charges : []);
-              const { data: mainJE, error: jeErr } = await supabase
-                .from('journal_entries')
-                .insert({
-                  company_id: companyId,
-                  branch_id: effectiveBranchId,
-                  entry_date: entryDate,
-                  description: `Purchase ${poNo} from ${supplierName}`,
-                  reference_type: 'purchase',
-                  reference_id: id,
-                  created_by: user?.id,
-                })
-                .select()
-                .single();
-              if (!jeErr && mainJE) {
-                const jid = mainJE.id;
-                if (itemsSubtotal > 0) {
-                  await supabase.from('journal_entry_lines').insert({
-                    journal_entry_id: jid,
-                    account_id: inventoryAccountId,
-                    debit: itemsSubtotal,
-                    credit: 0,
-                    description: `Inventory purchase ${poNo}`,
-                  });
-                  await supabase.from('journal_entry_lines').insert({
-                    journal_entry_id: jid,
-                    account_id: apAccountId,
-                    debit: 0,
-                    credit: itemsSubtotal,
-                    description: `Payable to ${supplierName}`,
-                  });
-                }
-                for (const c of charges) {
-                  const amount = Number(c?.amount ?? 0);
-                  if (amount <= 0) continue;
-                  if ((c?.charge_type || c?.chargeType) === 'discount' && discountAccountId) {
-                    await supabase.from('journal_entry_lines').insert({
-                      journal_entry_id: jid,
-                      account_id: apAccountId,
-                      debit: amount,
-                      credit: 0,
-                      description: 'Purchase discount',
-                    });
-                    await supabase.from('journal_entry_lines').insert({
-                      journal_entry_id: jid,
-                      account_id: discountAccountId,
-                      debit: 0,
-                      credit: amount,
-                      description: 'Discount received',
-                    });
-                  } else {
-                    await supabase.from('journal_entry_lines').insert({
-                      journal_entry_id: jid,
-                      account_id: inventoryAccountId,
-                      debit: amount,
-                      credit: 0,
-                      description: `${c?.charge_type || c?.chargeType || 'charge'} (purchase)`,
-                    });
-                    await supabase.from('journal_entry_lines').insert({
-                      journal_entry_id: jid,
-                      account_id: apAccountId,
-                      debit: 0,
-                      credit: amount,
-                      description: `Payable - ${c?.charge_type || c?.chargeType || 'charge'}`,
-                    });
-                  }
-                }
-                console.log('[PURCHASE CONTEXT] PF-COMPONENT: Created initial purchase JE (no prior JE):', mainJE.id);
-              }
+            // No existing canonical JE: create/reuse through centralized idempotent path only.
+            const charges = Array.isArray((updated as any).charges)
+              ? (updated as any).charges
+              : (Array.isArray((updated as any).purchase_charges) ? (updated as any).purchase_charges : []);
+            const jeId = await pac.createPurchaseJournalEntry({
+              purchaseId: id,
+              companyId,
+              branchId: effectiveBranchId,
+              total: newTotal,
+              subtotal: Number((updated as any).subtotal ?? 0) || undefined,
+              poNo,
+              supplierName,
+              entryDate,
+              charges,
+              createdBy: user?.id ?? null,
+            });
+            if (jeId) {
+              console.log('[PURCHASE CONTEXT] PF-COMPONENT: Created initial canonical purchase JE:', jeId);
             }
           }
 

@@ -17,6 +17,7 @@ import {
   canPostAccountingForSaleStatus,
 } from '@/app/lib/postingStatusGate';
 import { listActiveCanonicalSaleDocumentJournalEntryIds } from '@/app/services/saleAccountingService';
+import { listActiveCanonicalPurchaseDocumentJournalEntryIds } from '@/app/services/purchaseAccountingService';
 
 /** Re-export for lab UI (prefer importing from @/app/lib/integrityLabConstants in new code) */
 export const INTEGRITY_LAB_SESSION_KEY = _INTEGRITY_LAB_SESSION_KEY;
@@ -1559,16 +1560,17 @@ export async function runPostingStatusGateLiveCheck(companyId: string): Promise<
     if (!batch.length) continue;
     const { data: purJes } = await supabase
       .from('journal_entries')
-      .select('id, reference_id, is_void')
+      .select('id, reference_id, is_void, payment_id')
       .eq('reference_type', 'purchase')
-      .in('reference_id', batch);
+      .in('reference_id', batch)
+      .is('payment_id', null);
     for (const je of purJes || []) {
       if (!isJeActive(je as { is_void?: boolean })) continue;
       failures.push({
         module: 'posting_gate',
         step: 'non_posted_purchase_has_purchase_je',
         record: (je as { id: string }).id,
-        expected: 'no active journal_entries for draft/ordered purchase',
+        expected: 'no active canonical purchase document journal_entries for draft/ordered purchase',
         actual: `purchase_id=${(je as { reference_id: string }).reference_id}`,
         classification: 'engine_bug',
         navActions: [
@@ -1738,12 +1740,8 @@ export async function runPostingStatusGateFreshCheck(
     }
 
     const st = (row as { status?: string }).status;
-    const { data: purJes } = await supabase
-      .from('journal_entries')
-      .select('id, is_void')
-      .eq('reference_type', 'purchase')
-      .eq('reference_id', opts.purchaseId);
-    const activePurJes = (purJes || []).filter((j) => isJeActive(j as { is_void?: boolean }));
+    const canonicalPurJeIds = await listActiveCanonicalPurchaseDocumentJournalEntryIds(opts.purchaseId);
+    const activePurJes = canonicalPurJeIds.map((id) => ({ id, is_void: false as const }));
 
     const { count: stockCount } = await supabase
       .from('stock_movements')

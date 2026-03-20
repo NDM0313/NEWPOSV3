@@ -2,6 +2,23 @@
 
 See the full deliverable: **[ACCOUNTING_INTEGRITY_LAB_RESULT.md](./ACCOUNTING_INTEGRITY_LAB_RESULT.md)** (Phase 2 + tooling: payables status filter, **purchase by-id / getPurchase 400**, **`CustomerLedgerInteractiveTest` lazy**, snapshot timestamps/outcome).
 
+## 2026-03-12 — Canonical purchase document JE vs payment-linked rows (Fresh posting gate)
+
+### Root cause
+
+`PurchaseContext` still had direct `journal_entries`/`journal_entry_lines` insert paths in create + update flows, while duplicate detection and Fresh purchase gate counted broad `reference_type='purchase'` rows. Without strict canonical filtering (`payment_id IS NULL`) and central idempotency, multiple active document-like purchase JEs accumulated (`active_je_count = 3`).
+
+### Fix
+
+- **Classifier:** canonical purchase document JE = `reference_type='purchase'`, `reference_id=purchase_id`, `payment_id IS NULL`, not void.
+- **App:** `purchaseAccountingService` now owns canonical creation via `createPurchaseJournalEntry`, plus `findActiveCanonicalPurchaseDocumentJournalEntryId`, `listActiveCanonicalPurchaseDocumentJournalEntryIds`, and `purchaseDocumentJournalFingerprint`.
+- **Context:** removed direct purchase JE inserts from `PurchaseContext`; both create and “missing JE on edit/finalize” now call centralized idempotent service path.
+- **Recovery:** `accountingService.createEntry` duplicate-key fallback resolves canonical purchase JE only (ignores payment-linked rows).
+- **Lab:** Fresh + Live purchase posting gate now count only canonical purchase document JEs (`payment_id` null).
+- **DB:** `migrations/20260312_canonical_purchase_document_je_unique_and_repair.sql` adds preview query, voids duplicate canonical rows (keeps earliest), adds partial unique index.
+
+---
+
 ## 2026-03-12 — Canonical sale document JE vs payment JEs (Fresh posting gate)
 
 ### Root cause
