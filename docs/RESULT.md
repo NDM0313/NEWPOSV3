@@ -35,7 +35,7 @@ See the full deliverable: **[ACCOUNTING_INTEGRITY_LAB_RESULT.md](./ACCOUNTING_IN
 
 ### Git commit hash
 
-`9b8b251` — `fix(posting): hard status gate for sales/purchases GL stock payments`
+`a73c0e0` — `fix(posting): hard status gate for sales/purchases GL stock payments`
 
 ## 2026-03-12 — Accounting engine hygiene (draft guard, 409, legacy triggers)
 
