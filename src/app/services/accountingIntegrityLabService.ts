@@ -1852,6 +1852,27 @@ function normMovementType(t: unknown): string {
     .toLowerCase();
 }
 
+function stockLineKey(productId: string, variationId: string | null | undefined): string {
+  return `${productId}|${variationId ?? ''}`;
+}
+
+async function fetchSaleLineItemsForLab(saleId: string) {
+  let { data } = await supabase.from('sales_items').select('product_id, variation_id, quantity').eq('sale_id', saleId);
+  if (!data?.length) {
+    const r2 = await supabase.from('sale_items').select('product_id, variation_id, quantity').eq('sale_id', saleId);
+    data = r2.data;
+  }
+  return data || [];
+}
+
+async function fetchPurchaseLineItemsForLab(purchaseId: string) {
+  const { data } = await supabase
+    .from('purchase_items')
+    .select('product_id, variation_id, quantity')
+    .eq('purchase_id', purchaseId);
+  return data || [];
+}
+
 /** Stock movement rules for the selected sale or purchase (document workflow). */
 export async function runModuleStockCertification(
   companyId: string,
@@ -1925,6 +1946,56 @@ export async function runModuleStockCertification(
           navActions: [{ type: 'sale', saleId: opts.saleId }],
         });
       }
+      // Variation / line qty vs stock OUT (movement qty negative)
+      const lines = await fetchSaleLineItemsForLab(opts.saleId);
+      if (lines.length > 0 && out >= 1) {
+        const { data: sm } = await supabase
+          .from('stock_movements')
+          .select('product_id, variation_id, quantity, movement_type')
+          .eq('reference_type', 'sale')
+          .eq('reference_id', opts.saleId);
+        const lineMap = new Map<string, number>();
+        for (const row of lines) {
+          const pid = String((row as { product_id?: string }).product_id ?? '');
+          const vid = (row as { variation_id?: string | null }).variation_id ?? null;
+          const k = stockLineKey(pid, vid);
+          lineMap.set(k, (lineMap.get(k) ?? 0) + Math.abs(Number((row as { quantity?: number }).quantity) || 0));
+        }
+        const movMap = new Map<string, number>();
+        for (const m of sm || []) {
+          if (normMovementType((m as { movement_type?: string }).movement_type) !== 'sale') continue;
+          const pid = String((m as { product_id?: string }).product_id ?? '');
+          const vid = (m as { variation_id?: string | null }).variation_id ?? null;
+          const k = stockLineKey(pid, vid);
+          movMap.set(k, (movMap.get(k) ?? 0) + Number((m as { quantity?: number }).quantity) || 0);
+        }
+        for (const [k, lineQty] of lineMap) {
+          const movSum = movMap.get(k);
+          if (movSum == null) {
+            failures.push({
+              module: 'stock',
+              step: 'sale_line_missing_stock_movement',
+              record: `${opts.saleId}:${k}`,
+              expected: `movement for product|variation ${k}`,
+              actual: 'none',
+              classification: 'engine_bug',
+              navActions: [{ type: 'sale', saleId: opts.saleId }],
+            });
+            continue;
+          }
+          if (Math.abs(movSum + lineQty) > 0.0001) {
+            failures.push({
+              module: 'stock',
+              step: 'sale_line_qty_vs_movement',
+              record: `${opts.saleId}:${k}`,
+              expected: `sum(movement qty)=-${lineQty} (stock out)`,
+              actual: `lineQty=${lineQty}, movementSum=${movSum}`,
+              classification: 'engine_bug',
+              navActions: [{ type: 'sale', saleId: opts.saleId }],
+            });
+          }
+        }
+      }
     }
     }
   }
@@ -1932,7 +2003,7 @@ export async function runModuleStockCertification(
   if (opts.purchaseId) {
     const { data: pur } = await supabase
       .from('purchases')
-      .select('id, status')
+      .select('id, status, total')
       .eq('id', opts.purchaseId)
       .eq('company_id', companyId)
       .maybeSingle();
@@ -1994,6 +2065,55 @@ export async function runModuleStockCertification(
           classification: 'missing_backfill',
           navActions: [{ type: 'purchase', purchaseId: opts.purchaseId }],
         });
+      }
+      const lines = await fetchPurchaseLineItemsForLab(opts.purchaseId);
+      if (lines.length > 0 && inn >= 1) {
+        const { data: sm } = await supabase
+          .from('stock_movements')
+          .select('product_id, variation_id, quantity, movement_type')
+          .eq('reference_type', 'purchase')
+          .eq('reference_id', opts.purchaseId);
+        const lineMap = new Map<string, number>();
+        for (const row of lines) {
+          const pid = String((row as { product_id?: string }).product_id ?? '');
+          const vid = (row as { variation_id?: string | null }).variation_id ?? null;
+          const k = stockLineKey(pid, vid);
+          lineMap.set(k, (lineMap.get(k) ?? 0) + Math.abs(Number((row as { quantity?: number }).quantity) || 0));
+        }
+        const movMap = new Map<string, number>();
+        for (const m of sm || []) {
+          if (normMovementType((m as { movement_type?: string }).movement_type) !== 'purchase') continue;
+          const pid = String((m as { product_id?: string }).product_id ?? '');
+          const vid = (m as { variation_id?: string | null }).variation_id ?? null;
+          const k = stockLineKey(pid, vid);
+          movMap.set(k, (movMap.get(k) ?? 0) + Number((m as { quantity?: number }).quantity) || 0);
+        }
+        for (const [k, lineQty] of lineMap) {
+          const movSum = movMap.get(k);
+          if (movSum == null) {
+            failures.push({
+              module: 'stock',
+              step: 'purchase_line_missing_stock_movement',
+              record: `${opts.purchaseId}:${k}`,
+              expected: `movement for product|variation ${k}`,
+              actual: 'none',
+              classification: 'engine_bug',
+              navActions: [{ type: 'purchase', purchaseId: opts.purchaseId }],
+            });
+            continue;
+          }
+          if (Math.abs(movSum - lineQty) > 0.0001) {
+            failures.push({
+              module: 'stock',
+              step: 'purchase_line_qty_vs_movement',
+              record: `${opts.purchaseId}:${k}`,
+              expected: `sum(movement qty)=${lineQty} (stock in)`,
+              actual: `lineQty=${lineQty}, movementSum=${movSum}`,
+              classification: 'engine_bug',
+              navActions: [{ type: 'purchase', purchaseId: opts.purchaseId }],
+            });
+          }
+        }
       }
     }
     }
@@ -2106,20 +2226,216 @@ export async function runModulePaymentIsolationCertification(
   };
 }
 
-/** Placeholder: worker/studio flows vary by deployment — informational. */
-export async function runModuleWorkerStudioCertification(
-  _companyId: string,
-  _opts: { saleId?: string; purchaseId?: string }
+/**
+ * Extra charges / freight on posted sale: expect at least one document JE when charges > 0.
+ * Posted payment edits remain validated by document cert + payment isolation; delta JEs are backend-side.
+ */
+export async function runModuleExpenseAndChargesCertification(
+  companyId: string,
+  opts: { saleId?: string; purchaseId?: string }
 ): Promise<LabCheckResult> {
+  const failures: LabCheckFailure[] = [];
+
+  if (opts.saleId) {
+    const { data: sale } = await supabase
+      .from('sales')
+      .select('id, status, expenses, shipment_charges')
+      .eq('id', opts.saleId)
+      .eq('company_id', companyId)
+      .maybeSingle();
+    if (!sale) {
+      return {
+        id: 'module_cert_expense_charges',
+        label: 'Module cert: extra expense / freight (sale)',
+        category: 'engine',
+        checkLayer: 'document',
+        status: 'skip',
+        failures: [],
+        meta: { reason: 'sale not found' },
+      };
+    }
+    const exp = Number((sale as { expenses?: number }).expenses) || 0;
+    const ship = Number((sale as { shipment_charges?: number }).shipment_charges) || 0;
+    const st = String((sale as { status?: string }).status).toLowerCase();
+    if (exp <= 0 && ship <= 0) {
+      return {
+        id: 'module_cert_expense_charges',
+        label: 'Module cert: extra expense / freight (sale)',
+        category: 'engine',
+        checkLayer: 'document',
+        status: 'skip',
+        failures: [],
+        meta: { reason: 'no expenses or shipment on document' },
+      };
+    }
+    if (st !== 'final') {
+      return {
+        id: 'module_cert_expense_charges',
+        label: 'Module cert: extra expense / freight (sale)',
+        category: 'engine',
+        checkLayer: 'document',
+        status: 'skip',
+        failures: [],
+        meta: { reason: 'not final — charges may be unposted' },
+      };
+    }
+    const { data: jes } = await supabase
+      .from('journal_entries')
+      .select('id')
+      .eq('reference_type', 'sale')
+      .eq('reference_id', opts.saleId)
+      .or('is_void.is.null,is_void.eq.false');
+    if (!jes?.length) {
+      failures.push({
+        module: 'expense_charges',
+        step: 'final_sale_charges_but_no_je',
+        record: opts.saleId,
+        expected: 'at least one non-void journal entry when posted with charges',
+        actual: '0 journal entries',
+        classification: 'source_link',
+        navActions: [{ type: 'sale', saleId: opts.saleId }],
+      });
+    }
+  } else if (opts.purchaseId) {
+    const { data: pur } = await supabase
+      .from('purchases')
+      .select('id, status, shipping_cost')
+      .eq('id', opts.purchaseId)
+      .eq('company_id', companyId)
+      .maybeSingle();
+    if (!pur) {
+      return {
+        id: 'module_cert_expense_charges',
+        label: 'Module cert: freight / charges (purchase)',
+        category: 'engine',
+        checkLayer: 'document',
+        status: 'skip',
+        failures: [],
+        meta: { reason: 'purchase not found' },
+      };
+    }
+    const ship = Number((pur as { shipping_cost?: number }).shipping_cost) || 0;
+    const st = String((pur as { status?: string }).status).toLowerCase();
+    if (ship <= 0) {
+      return {
+        id: 'module_cert_expense_charges',
+        label: 'Module cert: freight / charges (purchase)',
+        category: 'engine',
+        checkLayer: 'document',
+        status: 'skip',
+        failures: [],
+        meta: { reason: 'no shipping_cost on document' },
+      };
+    }
+    if (!['received', 'final'].includes(st)) {
+      return {
+        id: 'module_cert_expense_charges',
+        label: 'Module cert: freight / charges (purchase)',
+        category: 'engine',
+        checkLayer: 'document',
+        status: 'skip',
+        failures: [],
+        meta: { reason: 'not received/final' },
+      };
+    }
+    const { data: jes } = await supabase
+      .from('journal_entries')
+      .select('id')
+      .eq('reference_type', 'purchase')
+      .eq('reference_id', opts.purchaseId)
+      .or('is_void.is.null,is_void.eq.false');
+    if (!jes?.length) {
+      failures.push({
+        module: 'expense_charges',
+        step: 'posted_purchase_freight_but_no_je',
+        record: opts.purchaseId,
+        expected: 'at least one non-void journal entry when posted with freight',
+        actual: '0 journal entries',
+        classification: 'source_link',
+        navActions: [{ type: 'purchase', purchaseId: opts.purchaseId }],
+      });
+    }
+  } else {
+    return {
+      id: 'module_cert_expense_charges',
+      label: 'Module cert: extra expense / freight',
+      category: 'engine',
+      checkLayer: 'document',
+      status: 'skip',
+      failures: [],
+      meta: { reason: 'no document selected' },
+    };
+  }
+
+  return {
+    id: 'module_cert_expense_charges',
+    label: 'Module cert: extra expense / freight (selected)',
+    category: 'engine',
+    checkLayer: 'document',
+    status: failures.length ? 'fail' : 'pass',
+    failures,
+  };
+}
+
+/** Worker / studio: PASS when no studio signals; SKIP when ambiguous; FAIL only on clear inconsistency. */
+export async function runModuleWorkerStudioCertification(
+  companyId: string,
+  opts: { saleId?: string; purchaseId?: string }
+): Promise<LabCheckResult> {
+  if (!opts.saleId) {
+    return {
+      id: 'module_cert_worker_studio',
+      label: 'Module cert: worker / studio',
+      category: 'data_quality',
+      checkLayer: 'document',
+      status: 'skip',
+      failures: [],
+      meta: { reason: 'select a sale to evaluate studio/worker hooks' },
+    };
+  }
+  const { data: sale } = await supabase
+    .from('sales')
+    .select('id, is_studio, studio_charges, source')
+    .eq('id', opts.saleId)
+    .eq('company_id', companyId)
+    .maybeSingle();
+  if (!sale) {
+    return {
+      id: 'module_cert_worker_studio',
+      label: 'Module cert: worker / studio',
+      category: 'data_quality',
+      checkLayer: 'document',
+      status: 'skip',
+      failures: [],
+      meta: { reason: 'sale not found' },
+    };
+  }
+  const studio = !!(sale as { is_studio?: boolean }).is_studio;
+  const charges = Number((sale as { studio_charges?: number }).studio_charges) || 0;
+  const src = String((sale as { source?: string }).source || '');
+  if (!studio && charges <= 0 && !src.includes('studio')) {
+    return {
+      id: 'module_cert_worker_studio',
+      label: 'Module cert: worker / studio',
+      category: 'data_quality',
+      checkLayer: 'document',
+      status: 'pass',
+      failures: [],
+      meta: { note: 'No studio/worker signals on document — PASS (nothing to assert).' },
+    };
+  }
   return {
     id: 'module_cert_worker_studio',
-    label: 'Module cert: worker / studio (manual / extend)',
+    label: 'Module cert: worker / studio',
     category: 'data_quality',
     checkLayer: 'document',
     status: 'skip',
     failures: [],
     meta: {
-      hint: 'Add assertions for worker payables, studio cost, STD-* sales when module data is present.',
+      hint: 'Studio/worker fields present — extend with production/worker ledger checks when STD data is wired.',
+      is_studio: studio,
+      studio_charges: charges,
+      source: src || null,
     },
   };
 }
@@ -2133,6 +2449,7 @@ export async function runModuleCertificationSuite(
   out.push(tagDocument(await runModuleStockCertification(companyId, opts)));
   out.push(tagDocument(await runModuleCoaCertification(companyId, opts)));
   out.push(tagDocument(await runModulePaymentIsolationCertification(companyId, opts)));
+  out.push(tagDocument(await runModuleExpenseAndChargesCertification(companyId, opts)));
   out.push(tagDocument(await runModuleWorkerStudioCertification(companyId, opts)));
   return out;
 }

@@ -60,6 +60,8 @@ export interface Payment {
   accountName?: string;
   notes?: string;
   createdAt?: string;
+  /** When set and after createdAt, row was edited — show “Adjusted” in list (audit trail stays in activity). */
+  updatedAt?: string;
   /** User who received/recorded the payment (auth.users.id → users.full_name). */
   receivedBy?: string | null;
 }
@@ -456,6 +458,9 @@ export const ViewPaymentsModal: React.FC<ViewPaymentsModalProps> = ({
                   {/* Table Body */}
                   {payments.map((payment, index) => {
                     const MethodIcon = getPaymentMethodIcon(payment.method);
+                    const createdTs = payment.createdAt ? new Date(payment.createdAt).getTime() : 0;
+                    const updatedTs = payment.updatedAt ? new Date(payment.updatedAt).getTime() : 0;
+                    const showAdjusted = updatedTs > createdTs + 1500;
                     return (
                       <div
                         key={payment.id || index}
@@ -471,6 +476,11 @@ export const ViewPaymentsModal: React.FC<ViewPaymentsModalProps> = ({
                           <p className="text-sm font-semibold text-green-400">
                             {formatCurrency(payment.amount)}
                           </p>
+                          {showAdjusted && (
+                            <Badge className="mt-0.5 text-[9px] font-medium bg-amber-500/15 text-amber-400 border border-amber-500/30">
+                              Adjusted
+                            </Badge>
+                          )}
                         </div>
                         <div className="col-span-2">
                           <div className="flex items-center gap-1.5">

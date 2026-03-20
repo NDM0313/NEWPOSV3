@@ -81,6 +81,9 @@ import { exportToCSV, exportToExcel, exportToPDF, type ExportData } from '@/app/
 import { useCheckPermission } from '@/app/hooks/useCheckPermission';
 import { getEffectiveSaleStatus, getSaleStatusBadgeConfig, DEFAULT_SALE_BADGE, isPaymentClosedForSale, canAddPaymentToSale } from '@/app/utils/statusHelpers';
 import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
+import { getSaleDisplayNumber } from '@/app/lib/documentDisplayNumbers';
+import { transitionSaleLifecycle } from '@/app/lib/documentLifecycleActions';
+import { SaleLifecycleMenuBlock, type SaleLifecycleAction } from '@/app/components/sales/SaleLifecycleMenuBlock';
 
 // Mock data removed - using SalesContext which loads from Supabase
 
@@ -1031,8 +1034,28 @@ export const SalesPage = () => {
           </div>
         );
       
-      case 'invoiceNo':
-        return <div className="text-sm text-blue-400 font-mono font-semibold">{sale.invoiceNo}</div>;
+      case 'invoiceNo': {
+        const displayNo =
+          getSaleDisplayNumber({
+            status: sale.status,
+            invoice_no: sale.invoiceNo,
+            draft_no: sale.draftNo,
+            quotation_no: sale.quotationNo,
+            order_no: sale.orderNo,
+          }) || sale.invoiceNo;
+        return (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              void handleSaleAction('view_details', sale);
+            }}
+            className="text-sm text-blue-400 font-mono font-semibold hover:underline text-left"
+          >
+            {displayNo}
+          </button>
+        );
+      }
 
       case 'type':
         return getSourceBadge(sale);
@@ -1109,7 +1132,24 @@ export const SalesPage = () => {
         
         return (
           <div className={cn("flex items-center gap-2", alignments['saleStatus'])}>
-            {statusBadge || <span className="text-xs text-gray-600">—</span>}
+            <Popover>
+              <PopoverTrigger asChild>
+                <button
+                  type="button"
+                  className="p-0 h-auto bg-transparent border-0 cursor-pointer hover:opacity-90"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  {statusBadge || <span className="text-xs text-gray-600">—</span>}
+                </button>
+              </PopoverTrigger>
+              <PopoverContent
+                align="start"
+                className="w-auto p-0 border-gray-700 bg-gray-900 text-white"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <SaleLifecycleMenuBlock sale={sale} onPick={(a) => void runSaleLifecycleFromUi(sale, a)} />
+              </PopoverContent>
+            </Popover>
             {hasReturn && (
               <button
                 onClick={(e) => {
@@ -2009,6 +2049,11 @@ export const SalesPage = () => {
                               <Eye size={14} className="mr-2 text-blue-400" />
                               View Details
                             </DropdownMenuItem>
+                            <DropdownMenuSeparator className="bg-gray-700" />
+                            <div className="px-0 py-1">
+                              <SaleLifecycleMenuBlock variant="menu" sale={sale} onPick={(a) => void runSaleLifecycleFromUi(sale, a)} />
+                            </div>
+                            <DropdownMenuSeparator className="bg-gray-700" />
                             {/* Edit: requires canEditSale (role_permissions sales.edit) and no return lock. RLS allows UPDATE only when created_by = auth.uid() for salesman. */}
                             {canEditSale && !(sale.hasReturn || salesWithReturns.has(sale.id)) && (
                               <DropdownMenuItem 
@@ -2022,15 +2067,6 @@ export const SalesPage = () => {
                               >
                                 <Edit size={14} className="mr-2 text-green-400" />
                                 Edit Sale
-                              </DropdownMenuItem>
-                            )}
-                            {sale.status !== 'final' && getEffectiveSaleStatus(sale) !== 'cancelled' && (
-                              <DropdownMenuItem 
-                                className="hover:bg-gray-800 cursor-pointer"
-                                onClick={() => handleSaleAction('convert_to_final', sale)}
-                              >
-                                <CheckCircle2 size={14} className="mr-2 text-amber-400" />
-                                Convert to Final
                               </DropdownMenuItem>
                             )}
                             <DropdownMenuItem 

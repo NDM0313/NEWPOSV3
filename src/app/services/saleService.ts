@@ -1469,6 +1469,7 @@ export const saleService = {
       notes,
       attachments,
       created_at,
+      updated_at,
       received_by,
       account:accounts(id, name)
     `;
@@ -1492,6 +1493,7 @@ export const saleService = {
           payment_account_id,
           notes,
           created_at,
+          updated_at,
           received_by,
           account:accounts(id, name)
         `)
@@ -1539,6 +1541,7 @@ export const saleService = {
           notes: p.notes || '',
           attachments: att ?? null,
           createdAt: p.created_at,
+          updatedAt: p.updated_at ?? p.created_at,
           receivedBy: p.received_by ? (nameByReceivedBy.get(p.received_by) || null) : null,
         };
       });

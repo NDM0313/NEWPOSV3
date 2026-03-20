@@ -1223,6 +1223,7 @@ export const purchaseService = {
         notes,
         attachments,
         created_at,
+        updated_at,
         account:accounts(id, name)
       `)
       .eq('reference_type', 'purchase')
@@ -1255,6 +1256,7 @@ export const purchaseService = {
         notes: p.notes || '',
         attachments: p.attachments || null,
         createdAt: p.created_at,
+        updatedAt: p.updated_at ?? p.created_at,
       }));
     }
 

@@ -32,8 +32,6 @@ import { saleService } from '@/app/services/saleService';
 import { purchaseService } from '@/app/services/purchaseService';
 import { accountService } from '@/app/services/accountService';
 import {
-  buildSaleTruthSnapshot,
-  buildPurchaseTruthSnapshot,
   buildExtendedLabSnapshot,
   runCompanyReconciliationChecks,
   runDocumentCertificationChecks,
@@ -48,10 +46,12 @@ import {
 } from '@/app/services/accountingIntegrityLabService';
 import { toast } from 'sonner';
 import { formatPostgrestError } from '@/app/lib/formatPostgrestError';
+import { getSaleDisplayNumber, getPurchaseDisplayNumber } from '@/app/lib/documentDisplayNumbers';
 import { Input } from '@/app/components/ui/input';
 import { ScrollArea } from '@/app/components/ui/scroll-area';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/app/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/app/components/ui/tabs';
+import { Checkbox } from '@/app/components/ui/checkbox';
 
 type Scenario = 'sale' | 'purchase' | 'inventory' | 'reconciliation';
 interface DocRow {
@@ -144,6 +144,15 @@ export function AccountingIntegrityLabPage() {
   /** Whole-company suite; null until user runs it explicitly. */
   const [companyReconSummary, setCompanyReconSummary] = useState<'pass' | 'warn' | 'fail' | null>(null);
   /** Audit trail for tab F (no nested <p> inside CardDescription). */
+  /** Include docs with NULL branch_id when a branch is selected (QA: drafts often need this). */
+  const [labIncludeNullBranch, setLabIncludeNullBranch] = useState(true);
+  const [saleListStatusFilter, setSaleListStatusFilter] = useState<
+    'all' | 'draft' | 'quotation' | 'order' | 'final' | 'cancelled'
+  >('all');
+  const [purchaseListStatusFilter, setPurchaseListStatusFilter] = useState<
+    'all' | 'draft' | 'ordered' | 'received' | 'final' | 'cancelled'
+  >('all');
+
   const [snapshotMeta, setSnapshotMeta] = useState<{
     actionId: string | null;
     beforeAt: string | null;
@@ -170,43 +179,78 @@ export function AccountingIntegrityLabPage() {
 
   const loadDocs = useCallback(async () => {
     if (!companyId) return;
+    const DOC_LIMIT = 200;
+
     let sq = supabase
       .from('sales')
-      .select('id, invoice_no, status')
+      .select(
+        'id, invoice_no, status, draft_no, quotation_no, order_no, branch_id, created_at'
+      )
       .eq('company_id', companyId)
       .order('created_at', { ascending: false })
-      .limit(40);
-    if (effectiveBranch) sq = sq.eq('branch_id', effectiveBranch);
-    const { data: s } = await sq;
+      .limit(DOC_LIMIT);
+    if (effectiveBranch) {
+      if (labIncludeNullBranch) {
+        sq = sq.or(`branch_id.eq.${effectiveBranch},branch_id.is.null`);
+      } else {
+        sq = sq.eq('branch_id', effectiveBranch);
+      }
+    }
+    const { data: s, error: sErr } = await sq;
+    if (sErr) console.warn('[Integrity Lab] sales list:', sErr.message);
+    let saleRows = s || [];
+    if (saleListStatusFilter !== 'all') {
+      saleRows = saleRows.filter(
+        (x: any) => String(x.status || '').toLowerCase() === saleListStatusFilter
+      );
+    }
     setSales(
-      (s || []).map((x: any) => ({
-        id: x.id,
-        label: `${x.invoice_no || x.id.slice(0, 8)} · ${x.status}`,
-        status: x.status,
-      }))
+      saleRows.map((x: any) => {
+        const display = getSaleDisplayNumber(x) || x.id.slice(0, 8);
+        return {
+          id: x.id,
+          label: `${display} · ${x.status}`,
+          status: x.status,
+        };
+      })
     );
 
     let pq = supabase
       .from('purchases')
-      .select('id, po_no, status')
+      .select('id, po_no, status, draft_no, order_no, branch_id, po_date')
       .eq('company_id', companyId)
-      .order('id', { ascending: false })
-      .limit(40);
-    if (effectiveBranch) pq = pq.eq('branch_id', effectiveBranch);
+      .order('po_date', { ascending: false })
+      .limit(DOC_LIMIT);
+    if (effectiveBranch) {
+      if (labIncludeNullBranch) {
+        pq = pq.or(`branch_id.eq.${effectiveBranch},branch_id.is.null`);
+      } else {
+        pq = pq.eq('branch_id', effectiveBranch);
+      }
+    }
     const { data: p, error: pErr } = await pq;
     if (pErr) {
       console.warn('[Integrity Lab] purchases list:', pErr.message);
       setPurchases([]);
     } else {
+      let purchaseRows = p || [];
+      if (purchaseListStatusFilter !== 'all') {
+        purchaseRows = purchaseRows.filter(
+          (x: any) => String(x.status || '').toLowerCase() === purchaseListStatusFilter
+        );
+      }
       setPurchases(
-        (p || []).map((x: any) => ({
-          id: x.id,
-          label: `${x.po_no || x.id.slice(0, 8)} · ${x.status}`,
-          status: x.status,
-        }))
+        purchaseRows.map((x: any) => {
+          const display = getPurchaseDisplayNumber(x) || x.id.slice(0, 8);
+          return {
+            id: x.id,
+            label: `${display} · ${x.status}`,
+            status: x.status,
+          };
+        })
       );
     }
-  }, [companyId, effectiveBranch]);
+  }, [companyId, effectiveBranch, labIncludeNullBranch, saleListStatusFilter, purchaseListStatusFilter]);
 
   const loadAccounts = useCallback(async () => {
     if (!companyId) return;
@@ -580,6 +624,13 @@ export function AccountingIntegrityLabPage() {
                     ))}
                   </SelectContent>
                 </Select>
+                <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer mt-2">
+                  <Checkbox
+                    checked={labIncludeNullBranch}
+                    onCheckedChange={(c) => setLabIncludeNullBranch(c === true)}
+                  />
+                  Include documents with no branch (drafts often have NULL branch_id)
+                </label>
               </div>
               <div className="space-y-2">
                 <Label>Scenario type</Label>
@@ -601,6 +652,48 @@ export function AccountingIntegrityLabPage() {
                 <span className="mx-3 text-border">|</span>
                 <span className="text-muted-foreground">Selected purchase: </span>
                 {selectedPurchaseId ? `${selectedPurchaseLabel} (${selectedPurchaseId.slice(0, 8)}…)` : '—'}
+              </div>
+              <div className="space-y-2">
+                <Label>Sale list status</Label>
+                <Select
+                  value={saleListStatusFilter}
+                  onValueChange={(v) =>
+                    setSaleListStatusFilter(v as typeof saleListStatusFilter)
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All</SelectItem>
+                    <SelectItem value="draft">Draft</SelectItem>
+                    <SelectItem value="quotation">Quotation</SelectItem>
+                    <SelectItem value="order">Order</SelectItem>
+                    <SelectItem value="final">Final</SelectItem>
+                    <SelectItem value="cancelled">Cancelled</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Purchase list status</Label>
+                <Select
+                  value={purchaseListStatusFilter}
+                  onValueChange={(v) =>
+                    setPurchaseListStatusFilter(v as typeof purchaseListStatusFilter)
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All</SelectItem>
+                    <SelectItem value="draft">Draft</SelectItem>
+                    <SelectItem value="ordered">Ordered</SelectItem>
+                    <SelectItem value="received">Received</SelectItem>
+                    <SelectItem value="final">Final</SelectItem>
+                    <SelectItem value="cancelled">Cancelled</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
               <div className="space-y-2 md:col-span-2">
                 <Label>Active sale</Label>
@@ -1222,11 +1315,17 @@ export function AccountingIntegrityLabPage() {
           <Card>
             <CardHeader>
               <CardTitle>Effective state vs accounting</CardTitle>
-              <CardDescription>Side-by-side JSON from canonical queries (document, payments, journals, stock sample).</CardDescription>
+              <CardDescription>
+              Extended snapshot = document + payments + journal lines + AR/AP hints. Combined block merges selected sale and/or
+              purchase with the same data (Integrity Lab QA).
+            </CardDescription>
             </CardHeader>
-            <CardContent className="grid gap-4 lg:grid-cols-2">
-              <TruthPanel title="Sale" id={selectedSaleId} kind="sale" />
-              <TruthPanel title="Purchase" id={selectedPurchaseId} kind="purchase" />
+            <CardContent className="grid gap-4">
+              <div className="grid gap-4 lg:grid-cols-2">
+                <ExtendedTruthPanel title="Sale (extended)" id={selectedSaleId} kind="sale" />
+                <ExtendedTruthPanel title="Purchase (extended)" id={selectedPurchaseId} kind="purchase" />
+              </div>
+              <CombinedTracePanel saleId={selectedSaleId} purchaseId={selectedPurchaseId} />
             </CardContent>
           </Card>
         </TabsContent>
@@ -1422,23 +1521,64 @@ function LabCheckResultList({
   );
 }
 
-function TruthPanel({ title, id, kind }: { title: string; id: string; kind: 'sale' | 'purchase' }) {
+function ExtendedTruthPanel({ title, id, kind }: { title: string; id: string; kind: 'sale' | 'purchase' }) {
+  const { companyId, branchId } = useSupabase();
   const [json, setJson] = useState<string>('—');
   useEffect(() => {
-    if (!id) {
-      setJson('—');
+    if (!id || !companyId) {
+      setJson(id ? '—' : '—');
       return;
     }
+    let cancelled = false;
     (async () => {
-      const s =
-        kind === 'sale' ? await buildSaleTruthSnapshot(id) : await buildPurchaseTruthSnapshot(id);
-      setJson(snapshotToComparableJson(s));
+      const ext = await buildExtendedLabSnapshot(companyId, kind, id, branchId);
+      if (!cancelled) setJson(ext ? snapshotToComparableJson(ext) : '—');
     })();
-  }, [id, kind]);
+    return () => {
+      cancelled = true;
+    };
+  }, [id, kind, companyId, branchId]);
   return (
     <div>
       <h4 className="text-sm font-semibold mb-2">{title}</h4>
       <pre className="max-h-[420px] overflow-auto rounded border border-border/50 bg-muted/20 p-2 text-[10px] font-mono whitespace-pre-wrap">
+        {json}
+      </pre>
+    </div>
+  );
+}
+
+function CombinedTracePanel({ saleId, purchaseId }: { saleId: string; purchaseId: string }) {
+  const { companyId, branchId } = useSupabase();
+  const [json, setJson] = useState<string>('—');
+  useEffect(() => {
+    if (!companyId) {
+      setJson('—');
+      return;
+    }
+    if (!saleId && !purchaseId) {
+      setJson('Select a sale and/or purchase in tab A.');
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      const out: Record<string, unknown> = { capturedAt: new Date().toISOString() };
+      if (saleId) {
+        out.sale = await buildExtendedLabSnapshot(companyId, 'sale', saleId, branchId);
+      }
+      if (purchaseId) {
+        out.purchase = await buildExtendedLabSnapshot(companyId, 'purchase', purchaseId, branchId);
+      }
+      if (!cancelled) setJson(snapshotToComparableJson(out));
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [saleId, purchaseId, companyId, branchId]);
+  return (
+    <div>
+      <h4 className="text-sm font-semibold mb-2">Combined — selected document(s)</h4>
+      <pre className="max-h-[480px] overflow-auto rounded border border-border/50 bg-muted/20 p-2 text-[10px] font-mono whitespace-pre-wrap">
         {json}
       </pre>
     </div>

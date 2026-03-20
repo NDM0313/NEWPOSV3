@@ -25,6 +25,11 @@ import {
   AlertDialogAction,
 } from "@/app/components/ui/alert-dialog";
 import { cn } from "@/app/components/ui/utils";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/app/components/ui/popover";
 import { useNavigation } from '@/app/context/NavigationContext';
 import { usePurchases } from '@/app/context/PurchaseContext';
 import { useSupabase } from '@/app/context/SupabaseContext';
@@ -55,6 +60,12 @@ import { exportToCSV, exportToExcel, exportToPDF, type ExportData } from '@/app/
 import { useCheckPermission } from '@/app/hooks/useCheckPermission';
 import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
 import { getEffectivePurchaseStatus, getPurchaseStatusBadgeConfig, DEFAULT_PURCHASE_BADGE, isPaymentClosedForPurchase, canAddPaymentToPurchase } from '@/app/utils/statusHelpers';
+import { getPurchaseDisplayNumber } from '@/app/lib/documentDisplayNumbers';
+import { transitionPurchaseLifecycle, type PurchaseLifecycleTarget } from '@/app/lib/documentLifecycleActions';
+import {
+  PurchaseLifecycleMenuBlock,
+  type PurchaseLifecycleAction,
+} from '@/app/components/purchases/PurchaseLifecycleMenuBlock';
 
 type PurchaseStatus = 'received' | 'ordered' | 'pending' | 'final' | 'draft' | 'cancelled';
 type PaymentStatus = 'paid' | 'partial' | 'unpaid';
@@ -290,6 +301,34 @@ export const PurchasesPage = () => {
     setViewDetailsOpen(true);
   };
 
+  const runPurchaseLifecycleFromUi = async (purchase: Purchase, action: PurchaseLifecycleAction) => {
+    if (action === 'lifecycle_cancel') {
+      setSelectedPurchase(purchase);
+      setCancelPurchaseDialogOpen(true);
+      return;
+    }
+    if (!companyId) {
+      toast.error('No company selected');
+      return;
+    }
+    const map: Partial<Record<PurchaseLifecycleAction, PurchaseLifecycleTarget>> = {
+      lifecycle_draft: 'draft',
+      lifecycle_ordered: 'ordered',
+      lifecycle_received: 'received',
+    };
+    const target = map[action];
+    if (!target) return;
+    try {
+      await transitionPurchaseLifecycle(purchase.uuid, target, companyId);
+      toast.success('Purchase status updated');
+      await refreshPurchases();
+      await loadPurchases();
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : 'Could not update status';
+      toast.error(msg);
+    }
+  };
+
   // Handle purchase actions (edit, delete, make_payment)
   const handlePurchaseAction = (action: 'edit' | 'delete' | 'make_payment', purchase: Purchase) => {
     setSelectedPurchase(purchase);
@@ -336,10 +375,17 @@ export const PurchasesPage = () => {
           }
         }
         
+        const displayPo =
+          getPurchaseDisplayNumber({
+            status: p.status,
+            po_no: p.po_no ?? null,
+            draft_no: p.draft_no ?? null,
+            order_no: p.order_no ?? null,
+          }) || (p.po_no || `PO-${String(index + 1).padStart(3, '0')}`);
         return {
           id: index + 1, // Use index-based ID for compatibility with existing UI
           uuid: p.id, // Store actual Supabase UUID for database operations
-          poNo: p.po_no || `PO-${String(index + 1).padStart(3, '0')}`,
+          poNo: displayPo,
           supplier: p.supplier?.name || p.supplier_name || 'Unknown Supplier',
           supplierContact: p.supplier?.phone || '',
           date: p.po_date || new Date().toISOString().split('T')[0],
@@ -401,10 +447,20 @@ export const PurchasesPage = () => {
           locationDisplay = locationDisplay.split('|').pop()?.trim() || '';
         }
         
+        const displayPoCtx =
+          getPurchaseDisplayNumber({
+            status: p.status,
+            po_no:
+              p.status === 'final' || p.status === 'received' || p.status === 'completed'
+                ? p.purchaseNo
+                : null,
+            draft_no: p.draftNo ?? null,
+            order_no: p.orderNo ?? null,
+          }) || p.purchaseNo || `PO-${String(index + 1).padStart(3, '0')}`;
         return {
           id: index + 1,
           uuid: p.id,
-          poNo: p.purchaseNo || `PO-${String(index + 1).padStart(3, '0')}`,
+          poNo: displayPoCtx,
           supplier: p.supplierName || 'Unknown Supplier',
           supplierContact: p.contactNumber || '',
           date: p.date || new Date().toISOString().split('T')[0],
@@ -768,7 +824,18 @@ export const PurchasesPage = () => {
         );
       }
       case 'poNo':
-        return <div className="text-sm text-orange-400 font-mono font-semibold">{purchase.poNo}</div>;
+        return (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              handleViewDetails(purchase);
+            }}
+            className="text-sm text-orange-400 font-mono font-semibold hover:underline text-left"
+          >
+            {purchase.poNo}
+          </button>
+        );
       case 'reference':
         return <div className="text-sm text-gray-400">{purchase.reference || '-'}</div>;
       case 'supplier':
@@ -822,7 +889,27 @@ export const PurchasesPage = () => {
         
         return (
           <div className="flex items-center gap-2">
-            {statusBadge}
+            <Popover>
+              <PopoverTrigger asChild>
+                <button
+                  type="button"
+                  className="p-0 h-auto bg-transparent border-0 cursor-pointer hover:opacity-90"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  {statusBadge}
+                </button>
+              </PopoverTrigger>
+              <PopoverContent
+                align="start"
+                className="w-auto p-0 border-gray-700 bg-gray-900 text-white"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <PurchaseLifecycleMenuBlock
+                  purchase={purchase}
+                  onPick={(a) => void runPurchaseLifecycleFromUi(purchase, a)}
+                />
+              </PopoverContent>
+            </Popover>
             {hasReturn && (
               <button
                 onClick={(e) => {
@@ -1507,6 +1594,15 @@ export const PurchasesPage = () => {
                               <Eye size={14} className="mr-2 text-blue-400" />
                               View Details
                             </DropdownMenuItem>
+                            <DropdownMenuSeparator className="bg-gray-700" />
+                            <div className="px-0 py-1">
+                              <PurchaseLifecycleMenuBlock
+                                variant="menu"
+                                purchase={purchase}
+                                onPick={(a) => void runPurchaseLifecycleFromUi(purchase, a)}
+                              />
+                            </div>
+                            <DropdownMenuSeparator className="bg-gray-700" />
                             {getEffectivePurchaseStatus(purchase) !== 'cancelled' && (
                             <DropdownMenuItem 
                               onClick={() => handleEdit(purchase)}
