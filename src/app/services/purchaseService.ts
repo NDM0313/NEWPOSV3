@@ -1,4 +1,6 @@
 import { supabase } from '@/lib/supabase';
+import { getDocumentConversionSchemaFlags } from '@/app/lib/documentConversionSchema';
+import { PURCHASE_BUSINESS_ONLY_STATUSES } from '@/app/lib/documentStatusConstants';
 import {
   canPostAccountingForPurchaseStatus,
   wasPurchasePostedForReversal,
@@ -211,7 +213,7 @@ export const purchaseService = {
         throw new Error('This purchase was already converted to a final PO.');
       }
       const st = String((src as { status?: string }).status || '').toLowerCase();
-      if (!['draft', 'ordered'].includes(st)) {
+      if (!(PURCHASE_BUSINESS_ONLY_STATUSES as readonly string[]).includes(st)) {
         throw new Error(`Only draft or ordered purchases can be converted (current status: ${st}).`);
       }
     }
@@ -299,30 +301,27 @@ export const purchaseService = {
           product:products(name)
         )
       `;
+    const schemaFlags = await getDocumentConversionSchemaFlags();
     const runPurchList = (hideConverted: boolean) => {
       let q = supabase
         .from('purchases')
         .select(purchaseSelect, opts ? { count: 'exact' } : undefined)
         .eq('company_id', companyId)
         .order('po_date', { ascending: false });
-      if (hideConverted) q = q.eq('converted', false);
+      if (hideConverted && schemaFlags.purchasesConvertedColumn) q = q.eq('converted', false);
       if (branchId) q = q.eq('branch_id', branchId);
       if (opts) q = q.range(offset, offset + limit - 1);
       return q;
     };
 
     let { data, error, count } = await runPurchList(true);
-    if (
-      error &&
-      (error.code === '42703' ||
-        String(error.message || '')
-          .toLowerCase()
-          .includes('converted'))
-    ) {
+    if (error && schemaFlags.purchasesConvertedColumn) {
       const retry = await runPurchList(false);
-      data = retry.data;
-      error = retry.error;
-      count = retry.count;
+      if (!retry.error) {
+        data = retry.data;
+        error = retry.error;
+        count = retry.count;
+      }
     }
 
     if (error && opts) throw error;

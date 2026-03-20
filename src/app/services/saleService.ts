@@ -1,4 +1,6 @@
 import { supabase } from '@/lib/supabase';
+import { getDocumentConversionSchemaFlags } from '@/app/lib/documentConversionSchema';
+import { SALE_BUSINESS_ONLY_STATUSES } from '@/app/lib/documentStatusConstants';
 import {
   canPostAccountingForSaleStatus,
   canPostStockForSaleStatus,
@@ -126,7 +128,7 @@ export const saleService = {
         throw new Error('This document was already converted to a final sale.');
       }
       const st = String((src as { status?: string }).status || '').toLowerCase();
-      if (!['draft', 'quotation', 'order'].includes(st)) {
+      if (!(SALE_BUSINESS_ONLY_STATUSES as readonly string[]).includes(st)) {
         throw new Error(`Only draft, quotation, or order can be converted (current status: ${st}).`);
       }
       const invUpper = (sale.invoice_no || '').toString().toUpperCase();
@@ -420,6 +422,7 @@ export const saleService = {
     const selectWithoutCreator = `*, customer:contacts(*), branch:branches(id, name, code), items:sales_items(*, product:products(id, name, sku, cost_price, retail_price, has_variations), variation:product_variations(id, product_id, sku, attributes))`;
     const limit = opts?.limit ?? 50;
     const offset = opts?.offset ?? 0;
+    const schemaFlags = await getDocumentConversionSchemaFlags();
     const runMainList = (hideConverted: boolean) => {
       let q = supabase
         .from('sales')
@@ -427,24 +430,20 @@ export const saleService = {
         .eq('company_id', companyId)
         .order('created_at', { ascending: false })
         .order('invoice_date', { ascending: false });
-      if (hideConverted) q = q.eq('converted', false);
+      if (hideConverted && schemaFlags.salesConvertedColumn) q = q.eq('converted', false);
       if (branchId) q = q.eq('branch_id', branchId);
       if (opts) q = q.range(offset, offset + limit - 1);
       return q;
     };
 
     let { data, error, count } = await runMainList(true);
-    if (
-      error &&
-      (error.code === '42703' ||
-        String(error.message || '')
-          .toLowerCase()
-          .includes('converted'))
-    ) {
+    if (error && schemaFlags.salesConvertedColumn) {
       const retry = await runMainList(false);
-      data = retry.data;
-      error = retry.error;
-      count = retry.count;
+      if (!retry.error) {
+        data = retry.data;
+        error = retry.error;
+        count = retry.count;
+      }
     }
 
     if (error && (error.code === '42P01' || error.message?.includes('sales_items'))) {
@@ -575,6 +574,7 @@ export const saleService = {
   ): Promise<any[] | { data: any[]; total: number }> {
     const limit = opts?.limit ?? 50;
     const offset = opts?.offset ?? 0;
+    const schemaFlags = await getDocumentConversionSchemaFlags();
     const selectWithItems = (itemsTable: 'sales_items' | 'sale_items') =>
       `*, customer:contacts(name, phone), items:${itemsTable}(*)`;
     const runQuery = async (
@@ -588,32 +588,22 @@ export const saleService = {
         .select(selectWithItems(itemsTable), useRange ? { count: 'exact' } : undefined)
         .eq('company_id', companyId)
         .ilike('invoice_no', 'STD-%');
-      if (hideConverted) q = q.eq('converted', false);
+      if (hideConverted && schemaFlags.salesConvertedColumn) q = q.eq('converted', false);
       if (branchId && branchId !== 'all') q = q.eq('branch_id', branchId);
       q = q.order(orderBy, { ascending: false });
       if (useRange) q = q.range(offset, offset + limit - 1);
       return await q;
     };
     let result: { data: any[]; error: any; count?: number } = await runQuery('sales_items', 'invoice_date', !!opts, true);
-    if (
-      result.error &&
-      (result.error.code === '42703' ||
-        String(result.error.message || '')
-          .toLowerCase()
-          .includes('converted'))
-    ) {
-      result = await runQuery('sales_items', 'invoice_date', !!opts, false);
+    if (result.error && schemaFlags.salesConvertedColumn) {
+      const r0 = await runQuery('sales_items', 'invoice_date', !!opts, false);
+      if (!r0.error) result = r0;
     }
     if (result.error && (result.error.code === '42P01' || result.error.code === '42703' || String(result.error.message || '').includes('sales_items') || String(result.error.message || '').includes('invoice_date'))) {
       result = await runQuery('sale_items', 'created_at', !!opts, true);
-      if (
-        result.error &&
-        (result.error.code === '42703' ||
-          String(result.error.message || '')
-            .toLowerCase()
-            .includes('converted'))
-      ) {
-        result = await runQuery('sale_items', 'created_at', !!opts, false);
+      if (result.error && schemaFlags.salesConvertedColumn) {
+        const r1 = await runQuery('sale_items', 'created_at', !!opts, false);
+        if (!r1.error) result = r1;
       }
     }
     if (result.error) throw result.error;

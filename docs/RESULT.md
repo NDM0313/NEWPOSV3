@@ -2,6 +2,41 @@
 
 See the full deliverable: **[ACCOUNTING_INTEGRITY_LAB_RESULT.md](./ACCOUNTING_INTEGRITY_LAB_RESULT.md)** (Phase 2 + tooling: payables status filter, **purchase by-id / getPurchase 400**, **`CustomerLedgerInteractiveTest` lazy**, snapshot timestamps/outcome).
 
+## 2026-03-12 — Live `converted` columns + PostgREST 400 fix (production)
+
+### Root cause
+
+- **`sales.converted` / `purchases.converted` were missing on live Postgres** (`supabase-db` on VPS). Migration `20260320_sales_purchases_conversion_workflow.sql` had not been fully applied; PostgREST returned **HTTP 400** for `converted=eq.false`.
+- **`handle_sale_final_stock_movement`** is owned by **`supabase_admin`** on self-hosted Supabase; `CREATE OR REPLACE` as `postgres` failed with *must be owner*. Function/trigger body updated separately via `20260321_handle_sale_final_stock_movement_supabase_admin.sql`.
+
+### Migrations applied (live)
+
+| File | Role |
+|------|------|
+| `migrations/20260320_sales_purchases_conversion_workflow.sql` | `postgres` (columns, indexes, FKs; function step failed — see above) |
+| `migrations/20260321_handle_sale_final_stock_movement_supabase_admin.sql` | `supabase_admin` |
+| `migrations/20260322_app_document_conversion_schema_rpc.sql` | `postgres` — RPC `app_document_conversion_schema()` for client capability flags |
+
+**Audit note:** [LIVE_SCHEMA_AUDIT_20260312_CONVERSION.md](./LIVE_SCHEMA_AUDIT_20260312_CONVERSION.md)
+
+### App changes (no weakening of posting gate)
+
+- **`src/app/lib/documentStatusConstants.ts`** — canonical `SALE_BUSINESS_ONLY_STATUSES`, `PURCHASE_BUSINESS_ONLY_STATUSES`, posted sets (used by lab + services + `postingStatusGate`).
+- **`src/app/lib/documentConversionSchema.ts`** — cached `getDocumentConversionSchemaFlags()` via RPC (avoids repeated failing `converted` filters when schema lags).
+- **`saleService` / `purchaseService` / `accountingIntegrityLabService`** — apply `.eq('converted', false)` only when flags say the column exists; narrow retry if still error.
+- **`postingStatusGate.ts`** — uses constants for posted status checks (**unchanged rules**: sale **final** only; purchase **final** \| **received**).
+
+### Status enums (live)
+
+- **Matched** canonical design; no `status=in.(…)` change required beyond centralizing constants.
+
+### Verification
+
+- Re-run **Accounting Integrity Lab** → **Live** posting gate: expect **no 400 spam**; sample non-posted docs still checked (with `converted` filter when present).
+- `git log -1 --oneline` after push for current commit hash.
+
+---
+
 ## 2026-03-12 — Canonical conversion workflow (sales + purchases)
 
 ### Business rule

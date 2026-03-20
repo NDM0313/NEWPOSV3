@@ -47,6 +47,16 @@ Not used for GL truth in this lab: `chart_accounts`, `account_transactions`, `le
 
 Only **final / posted** documents should drive accounting and stock. The lab UI states this explicitly; actions like **Finalize sale/purchase** call real services that align with production behavior.
 
+### 2026-03-12 — Live posting-gate sample + `converted` filter (400 fix)
+
+| Item | Detail |
+|------|--------|
+| **Symptom** | Browser console spam: `GET .../sales?...converted=eq.false...` **400**, same for `purchases`, Integrity Lab live sample. |
+| **Cause** | Live DB had **no** `sales.converted` / `purchases.converted` until migration applied; PostgREST rejects unknown filter columns. |
+| **DB fix** | Applied `20260320_sales_purchases_conversion_workflow.sql` (+ `20260321_*` as `supabase_admin` for stock function owner). Added RPC `app_document_conversion_schema()` (`20260322_*`). |
+| **App fix** | `getDocumentConversionSchemaFlags()` + canonical statuses in `documentStatusConstants.ts`; `runPostingStatusGateLiveCheck` uses flags before `.eq('converted', false)`. **Posting rules unchanged** (`postingStatusGate.ts` still final-only for sales; final\|received for purchases). |
+| **Audit** | [LIVE_SCHEMA_AUDIT_20260312_CONVERSION.md](./LIVE_SCHEMA_AUDIT_20260312_CONVERSION.md) |
+
 ### 2026-03-12 — Draft JE / 409 / legacy triggers (enforced in code + SQL)
 
 | Item | Root cause | Fix |

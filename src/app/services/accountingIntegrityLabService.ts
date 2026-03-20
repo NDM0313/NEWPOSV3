@@ -4,8 +4,13 @@
  */
 
 import { supabase } from '@/lib/supabase';
+import { getDocumentConversionSchemaFlags } from '@/app/lib/documentConversionSchema';
+import {
+  PURCHASE_BUSINESS_ONLY_STATUSES,
+  PURCHASE_STATUSES_FOR_PAYABLE_RECONCILIATION,
+  SALE_BUSINESS_ONLY_STATUSES,
+} from '@/app/lib/documentStatusConstants';
 import { accountingReportsService } from '@/app/services/accountingReportsService';
-import { PURCHASE_STATUSES_FOR_PAYABLE_RECONCILIATION } from '@/app/lib/purchaseDbConstants';
 import { INTEGRITY_LAB_SESSION_KEY as _INTEGRITY_LAB_SESSION_KEY } from '@/app/lib/integrityLabConstants';
 import {
   canPostAccountingForPurchaseStatus,
@@ -1120,28 +1125,30 @@ function isJeActive(j: { is_void?: boolean | null }): boolean {
  */
 export async function runPostingStatusGateLiveCheck(companyId: string): Promise<LabCheckResult> {
   const failures: LabCheckFailure[] = [];
+  const convSchema = await getDocumentConversionSchemaFlags();
 
   let nonFinalSales: { id: string; status?: string }[] | null = null;
   {
-    const q1 = await supabase
+    let q1 = supabase
       .from('sales')
       .select('id, status')
       .eq('company_id', companyId)
-      .eq('converted', false)
-      .in('status', ['draft', 'quotation', 'order'])
+      .in('status', [...SALE_BUSINESS_ONLY_STATUSES])
       .limit(200);
-    if (q1.error && (q1.error.code === '42703' || String(q1.error.message || '').toLowerCase().includes('converted'))) {
+    if (convSchema.salesConvertedColumn) q1 = q1.eq('converted', false);
+    const r1 = await q1;
+    if (r1.error && convSchema.salesConvertedColumn) {
       const q2 = await supabase
         .from('sales')
         .select('id, status')
         .eq('company_id', companyId)
-        .in('status', ['draft', 'quotation', 'order'])
+        .in('status', [...SALE_BUSINESS_ONLY_STATUSES])
         .limit(200);
-      nonFinalSales = q2.data;
-    } else if (q1.error) {
+      nonFinalSales = q2.error ? [] : q2.data;
+    } else if (r1.error) {
       nonFinalSales = [];
     } else {
-      nonFinalSales = q1.data;
+      nonFinalSales = r1.data;
     }
   }
   const saleIds = (nonFinalSales || []).map((r: { id: string }) => r.id).filter(Boolean);
@@ -1208,25 +1215,26 @@ export async function runPostingStatusGateLiveCheck(companyId: string): Promise<
 
   let nonPostedPurchases: { id: string; status?: string }[] | null = null;
   {
-    const q1 = await supabase
+    let q1 = supabase
       .from('purchases')
       .select('id, status')
       .eq('company_id', companyId)
-      .eq('converted', false)
-      .in('status', ['draft', 'ordered'])
+      .in('status', [...PURCHASE_BUSINESS_ONLY_STATUSES])
       .limit(200);
-    if (q1.error && (q1.error.code === '42703' || String(q1.error.message || '').toLowerCase().includes('converted'))) {
+    if (convSchema.purchasesConvertedColumn) q1 = q1.eq('converted', false);
+    const r1 = await q1;
+    if (r1.error && convSchema.purchasesConvertedColumn) {
       const q2 = await supabase
         .from('purchases')
         .select('id, status')
         .eq('company_id', companyId)
-        .in('status', ['draft', 'ordered'])
+        .in('status', [...PURCHASE_BUSINESS_ONLY_STATUSES])
         .limit(200);
-      nonPostedPurchases = q2.data;
-    } else if (q1.error) {
+      nonPostedPurchases = q2.error ? [] : q2.data;
+    } else if (r1.error) {
       nonPostedPurchases = [];
     } else {
-      nonPostedPurchases = q1.data;
+      nonPostedPurchases = r1.data;
     }
   }
   const purIds = (nonPostedPurchases || []).map((r: { id: string }) => r.id).filter(Boolean);

@@ -3,6 +3,11 @@
  * Draft / quotation / order (sales) and draft / ordered (purchases) = business data only.
  */
 
+import {
+  PURCHASE_POSTED_ACCOUNTING_STATUSES,
+  SALE_POSTED_ACCOUNTING_STATUS,
+} from '@/app/lib/documentStatusConstants';
+
 export function normalizeDocStatus(status: unknown): string {
   return String(status ?? '')
     .trim()
@@ -11,11 +16,11 @@ export function normalizeDocStatus(status: unknown): string {
 
 /** Sale: only `final` is posted for revenue/AR/COGS/stock. */
 export function canPostAccountingForSaleStatus(status: unknown): boolean {
-  return normalizeDocStatus(status) === 'final';
+  return normalizeDocStatus(status) === SALE_POSTED_ACCOUNTING_STATUS;
 }
 
 export function canPostStockForSaleStatus(status: unknown): boolean {
-  return normalizeDocStatus(status) === 'final';
+  return normalizeDocStatus(status) === SALE_POSTED_ACCOUNTING_STATUS;
 }
 
 /** Map app purchase status (`completed` ≡ DB `final`) before posting checks. */
@@ -31,7 +36,7 @@ export function normalizePurchaseStatusForPosting(status: unknown): string {
  */
 export function canPostAccountingForPurchaseStatus(status: unknown): boolean {
   const s = normalizePurchaseStatusForPosting(status);
-  return s === 'final' || s === 'received';
+  return (PURCHASE_POSTED_ACCOUNTING_STATUSES as readonly string[]).includes(s);
 }
 
 export function canPostStockForPurchaseStatus(status: unknown): boolean {
