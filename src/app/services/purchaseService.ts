@@ -7,6 +7,34 @@ import { PURCHASE_HEADER_COLUMNS } from '@/app/lib/purchaseDbConstants';
 import { postPurchaseDocumentAccounting, reversePurchaseDocumentAccounting } from '@/app/services/documentPostingEngine';
 import { documentNumberService } from '@/app/services/documentNumberService';
 
+function purchaseRowNeedsPostedPoAllocation(row: Record<string, unknown>): boolean {
+  const po = String(row.po_no ?? '').trim();
+  if (!po) return true;
+  return /^(PDR-|POR-)/i.test(po);
+}
+
+/** Allocate PUR po_no when purchase becomes posted if missing or still PDR/POR in po_no. */
+async function ensurePostedPurchasePoNoAllocated(purchaseId: string, row: Record<string, unknown>) {
+  if (!purchaseRowNeedsPostedPoAllocation(row)) return row;
+  const companyId = String(row.company_id ?? '');
+  if (!companyId) throw new Error('Cannot post purchase: company_id missing.');
+  let nextNo: string;
+  try {
+    nextNo = await documentNumberService.getNextDocumentNumberGlobal(companyId, 'PUR');
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    throw new Error(`Cannot post purchase: could not allocate PO number (PUR). ${msg}`);
+  }
+  const { data: patched, error } = await supabase
+    .from('purchases')
+    .update({ po_no: nextNo })
+    .eq('id', purchaseId)
+    .select(PURCHASE_HEADER_COLUMNS)
+    .single();
+  if (error) throw new Error(`Cannot post purchase: failed to save po_no: ${error.message}`);
+  return (patched ?? { ...row, po_no: nextNo }) as Record<string, unknown>;
+}
+
 /** Enrich purchases with creator full_name. purchases.created_by = auth.users.id; resolve via users.auth_user_id. */
 async function enrichPurchasesWithCreatorNames(purchases: any[]): Promise<void> {
   const ids = [...new Set((purchases || []).map((p: any) => p.created_by).filter(Boolean))] as string[];
@@ -666,7 +694,7 @@ export const purchaseService = {
       );
     }
 
-    const { data, error } = await supabase
+    let { data, error } = await supabase
       .from('purchases')
       .update({ status })
       .eq('id', id)
@@ -677,7 +705,7 @@ export const purchaseService = {
     if (error && status === 'final') {
       const variants: Array<'final' | 'FINAL' | 'Final'> = ['final', 'FINAL', 'Final'];
       for (const value of variants) {
-        const { data: retryData, error: retryError } = await supabase
+        let { data: retryData, error: retryError } = await supabase
           .from('purchases')
           .update({ status: value })
           .eq('id', id)
@@ -686,6 +714,19 @@ export const purchaseService = {
         if (!retryError && retryData) {
           const newSt = (retryData as { status?: string }).status;
           if (canPostAccountingForPurchaseStatus(newSt) && !canPostAccountingForPurchaseStatus(prevStatus)) {
+            try {
+              retryData = (await ensurePostedPurchasePoNoAllocated(
+                id,
+                retryData as Record<string, unknown>
+              )) as typeof retryData;
+            } catch (allocErr: unknown) {
+              const msg = allocErr instanceof Error ? allocErr.message : String(allocErr);
+              await supabase
+                .from('purchases')
+                .update({ status: (prevStatus as Purchase['status'] | undefined) ?? 'draft' })
+                .eq('id', id);
+              throw new Error(msg);
+            }
             postPurchaseDocumentAccounting(id).catch((err: any) =>
               console.warn('[purchaseService] Document posting engine failed (non-critical):', err?.message)
             );
@@ -697,11 +738,37 @@ export const purchaseService = {
     if (error) throw error;
     const newSt = (data as { status?: string }).status ?? status;
     if (canPostAccountingForPurchaseStatus(newSt) && !canPostAccountingForPurchaseStatus(prevStatus)) {
+      try {
+        data = (await ensurePostedPurchasePoNoAllocated(id, data as Record<string, unknown>)) as typeof data;
+      } catch (allocErr: unknown) {
+        const msg = allocErr instanceof Error ? allocErr.message : String(allocErr);
+        await supabase
+          .from('purchases')
+          .update({ status: (prevStatus as Purchase['status'] | undefined) ?? 'draft' })
+          .eq('id', id);
+        throw new Error(msg);
+      }
       postPurchaseDocumentAccounting(id).catch((err: any) =>
         console.warn('[purchaseService] Document posting engine failed (non-critical):', err?.message)
       );
     }
     return data;
+  },
+
+  /**
+   * QA / repair: if status is received/final but po_no is empty or still PDR/POR, allocate PUR and persist.
+   * Does not change status or re-run document posting.
+   */
+  async repairMissingPostedPurchasePoNo(id: string) {
+    const { data: row, error } = await supabase.from('purchases').select('*').eq('id', id).maybeSingle();
+    if (error || !row) throw new Error('Purchase not found');
+    if (!canPostAccountingForPurchaseStatus((row as { status?: string }).status)) {
+      throw new Error('Repair PO number only applies to received/final (posted) purchases.');
+    }
+    if (!purchaseRowNeedsPostedPoAllocation(row as Record<string, unknown>)) {
+      return row;
+    }
+    return ensurePostedPurchasePoNoAllocated(id, row as Record<string, unknown>);
   },
 
   /**

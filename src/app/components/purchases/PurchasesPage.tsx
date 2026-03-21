@@ -70,6 +70,7 @@ import {
   PurchaseLifecycleMenuBlock,
   type PurchaseLifecycleAction,
 } from '@/app/components/purchases/PurchaseLifecycleMenuBlock';
+import { isPurchaseNonPostedCommercial } from '@/app/lib/postingStatusGate';
 
 type PurchaseStatus = 'received' | 'ordered' | 'pending' | 'final' | 'draft' | 'cancelled';
 type PaymentStatus = 'paid' | 'partial' | 'unpaid';
@@ -757,7 +758,10 @@ export const PurchasesPage = () => {
   // Calculate summary
   const summary = useMemo(() => ({
     totalPurchase: sortedPurchases.reduce((sum, p) => sum + p.grandTotal, 0),
-    totalDue: sortedPurchases.reduce((sum, p) => sum + p.paymentDue, 0),
+    totalDue: sortedPurchases.reduce(
+      (sum, p) => sum + (isPurchaseNonPostedCommercial(p.status) ? 0 : p.paymentDue),
+      0
+    ),
     returns: 2500, // Mock value
     orderCount: sortedPurchases.length,
   }), [sortedPurchases]);
@@ -995,10 +999,16 @@ export const PurchasesPage = () => {
           </div>
         );
       case 'grandTotal':
+        if (isPurchaseNonPostedCommercial(purchase.status)) {
+          return <span className="text-sm text-gray-500 tabular-nums">—</span>;
+        }
         return (
           <div className="text-sm font-semibold text-white tabular-nums">{formatCurrency(purchase.grandTotal)}</div>
         );
       case 'paymentDue': {
+        if (isPurchaseNonPostedCommercial(purchase.status)) {
+          return <span className="text-sm text-gray-500 tabular-nums">—</span>;
+        }
         const paymentClosed = isPaymentClosedForPurchase(purchase);
         const canPay = canAddPaymentToPurchase(purchase, purchase.paymentDue ?? 0);
         if (paymentClosed) {
@@ -1027,6 +1037,9 @@ export const PurchasesPage = () => {
         );
       }
       case 'paymentStatus': {
+        if (isPurchaseNonPostedCommercial(purchase.status)) {
+          return <span className="text-xs text-gray-500">—</span>;
+        }
         const paymentClosed = isPaymentClosedForPurchase(purchase);
         const isCancelled = getEffectivePurchaseStatus(purchase) === 'cancelled';
         if (paymentClosed || isCancelled) {

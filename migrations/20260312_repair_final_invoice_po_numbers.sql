@@ -1,0 +1,4 @@
+-- Optional QA repair: final sales missing SL/STD/PS invoice_no, or received/final purchases missing PUR po_no.
+-- Preferred: Accounting Integrity Lab → Setup → "Repair sale invoice_no" / "Repair purchase po_no"
+-- (calls saleService.repairMissingFinalInvoiceNumber / purchaseService.repairMissingPostedPurchasePoNo).
+-- No automatic SQL here — avoids double-allocating numbers without app sequencing.

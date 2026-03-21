@@ -52,3 +52,15 @@ export function wasSalePostedForReversal(status: unknown): boolean {
 export function wasPurchasePostedForReversal(status: unknown): boolean {
   return canPostAccountingForPurchaseStatus(status);
 }
+
+/** UI + cert: sale stages with no AR / payment / stock posting (draft, quotation, order). */
+export function isSaleNonPostedCommercial(status: unknown): boolean {
+  const s = normalizeDocStatus(status);
+  return s === 'draft' || s === 'quotation' || s === 'order';
+}
+
+/** UI + cert: purchase stages with no AP / payment / stock posting (draft, ordered). */
+export function isPurchaseNonPostedCommercial(status: unknown): boolean {
+  const s = normalizePurchaseStatusForPosting(status);
+  return s === 'draft' || s === 'ordered';
+}

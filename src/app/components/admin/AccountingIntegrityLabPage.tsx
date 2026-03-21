@@ -786,6 +786,86 @@ export function AccountingIntegrityLabPage() {
                 <Button variant="secondary" size="sm" onClick={() => loadDocs()}>
                   <RefreshCw className="h-4 w-4 mr-1" /> Refresh lists
                 </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={!selectedSaleId}
+                  onClick={() =>
+                    wrapAction('Repair sale invoice_no (final)', async () => {
+                      await saleService.repairMissingFinalInvoiceNumber(selectedSaleId);
+                    })
+                  }
+                >
+                  Repair sale invoice_no
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={!selectedPurchaseId}
+                  onClick={() =>
+                    wrapAction('Repair purchase po_no (posted)', async () => {
+                      await purchaseService.repairMissingPostedPurchasePoNo(selectedPurchaseId);
+                    })
+                  }
+                >
+                  Repair purchase po_no
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Playbooks — payment, expense, studio</CardTitle>
+              <CardDescription>
+                What to select, what to click, and how results are interpreted (document cert vs company reconciliation).
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="text-xs text-muted-foreground space-y-4 max-w-4xl">
+              <div>
+                <p className="font-semibold text-foreground mb-1">1 · Customer / supplier payments</p>
+                <ul className="list-disc pl-4 space-y-1">
+                  <li>
+                    Use <strong className="text-foreground">final</strong> sales and <strong className="text-foreground">received</strong> or{' '}
+                    <strong className="text-foreground">final</strong> purchases only — draft / quotation / order / ordered rows have no payment workflow in
+                    the product UI by design.
+                  </li>
+                  <li>
+                    Pick a <strong className="text-foreground">branch</strong> (not &quot;All branches&quot;) before <strong>Add sale payment</strong>.
+                  </li>
+                  <li>
+                    Set <strong>Payment account</strong> + <strong>Payment amount</strong>, then use regression chips or the large buttons in tab B. Use{' '}
+                    <em>Set payment amount / account</em> to verify adjustment JEs: lists show the <strong className="text-foreground">latest effective</strong>{' '}
+                    amount; History / activity and GL keep the trail.
+                  </li>
+                </ul>
+              </div>
+              <div>
+                <p className="font-semibold text-foreground mb-1">2 · Business expenses (module certification)</p>
+                <ul className="list-disc pl-4 space-y-1">
+                  <li>
+                    Paste a <strong className="text-foreground">business expense UUID</strong> in the optional field above. <strong>Draft</strong> expenses should
+                    not post JEs; <strong>posted / approved</strong> should. Edits after post should be adjustment-safe; cancelling a posted expense should
+                    reverse.
+                  </li>
+                  <li>
+                    Run <strong className="text-foreground">C · Auto checks</strong> → module suite with the expense id filled to certify that path without
+                    selecting a sale/purchase.
+                  </li>
+                </ul>
+              </div>
+              <div>
+                <p className="font-semibold text-foreground mb-1">3 · Studio workflow</p>
+                <ul className="list-disc pl-4 space-y-1">
+                  <li>
+                    Create a <strong className="text-foreground">studio sale / studio order</strong> (Sales) with fabric lines, then use <strong>Studio</strong>{' '}
+                    to create production, assign stages/tasks and workers, capture costs, complete production, generate the bill, and add finished inventory.
+                  </li>
+                  <li>
+                    Select that sale as <strong className="text-foreground">Active sale</strong> here and run document + module checks. The row{' '}
+                    <em>Module cert: studio workflow</em> validates production linkage; stock cert validates movements for the same selected document.
+                  </li>
+                </ul>
               </div>
             </CardContent>
           </Card>

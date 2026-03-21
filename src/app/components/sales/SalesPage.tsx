@@ -1285,10 +1285,15 @@ export const SalesPage = () => {
         );
       }
       
-      case 'paymentMethod':
+      case 'paymentMethod': {
+        const st = getEffectiveSaleStatus(sale);
+        if (st === 'draft' || st === 'quotation' || st === 'order') {
+          return <span className="text-xs text-gray-500">—</span>;
+        }
         return (
           <span className="text-xs text-gray-400">{sale.paymentMethod}</span>
         );
+      }
       
       case 'total':
         return (

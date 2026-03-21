@@ -17,6 +17,8 @@ import {
   canPostAccountingForSaleStatus,
   canPostStockForPurchaseStatus,
   canPostStockForSaleStatus,
+  isPurchaseNonPostedCommercial,
+  isSaleNonPostedCommercial,
 } from '@/app/lib/postingStatusGate';
 import { listActiveCanonicalSaleDocumentJournalEntryIds } from '@/app/services/saleAccountingService';
 import { listActiveCanonicalPurchaseDocumentJournalEntryIds } from '@/app/services/purchaseAccountingService';
@@ -1235,30 +1237,41 @@ async function runDocumentTotalsConsistencyCheck(
       .maybeSingle();
     if (s) {
       const st = String((s as any).status || '').toLowerCase();
-      const total = Number((s as any).total) || 0;
-      const paid = Number((s as any).paid_amount) || 0;
-      const due = Number((s as any).due_amount) || 0;
-      const ok = st === 'cancelled' || Math.abs(total - paid - due) < 0.02;
-      out.push({
-        id: 'doc_cert_sale_totals',
-        label: 'Document cert: sale total = paid + due',
-        category: 'engine',
-        status: ok ? 'pass' : 'warn',
-        failures: ok
-          ? []
-          : [
-              {
-                module: 'sales',
-                step: 'totals',
-                record: opts.saleId,
-                expected: `total≈paid+due (${total} vs ${paid + due})`,
-                actual: `total=${total} paid=${paid} due=${due}`,
-                classification: 'engine_bug',
-                navActions: [{ type: 'sale', saleId: opts.saleId, label: 'Open sale' }],
-              },
-            ],
-        meta: { total, paid, due, status: st },
-      });
+      if (isSaleNonPostedCommercial(st)) {
+        out.push({
+          id: 'doc_cert_sale_totals',
+          label: 'Document cert: sale total = paid + due',
+          category: 'engine',
+          status: 'skip',
+          failures: [],
+          meta: { reason: 'non_posted_sale', hint: 'Payment totals check applies after final invoice only.' },
+        });
+      } else {
+        const total = Number((s as any).total) || 0;
+        const paid = Number((s as any).paid_amount) || 0;
+        const due = Number((s as any).due_amount) || 0;
+        const ok = st === 'cancelled' || Math.abs(total - paid - due) < 0.02;
+        out.push({
+          id: 'doc_cert_sale_totals',
+          label: 'Document cert: sale total = paid + due',
+          category: 'engine',
+          status: ok ? 'pass' : 'warn',
+          failures: ok
+            ? []
+            : [
+                {
+                  module: 'sales',
+                  step: 'totals',
+                  record: opts.saleId,
+                  expected: `total≈paid+due (${total} vs ${paid + due})`,
+                  actual: `total=${total} paid=${paid} due=${due}`,
+                  classification: 'engine_bug',
+                  navActions: [{ type: 'sale', saleId: opts.saleId, label: 'Open sale' }],
+                },
+              ],
+          meta: { total, paid, due, status: st },
+        });
+      }
     }
   }
 
@@ -1271,30 +1284,41 @@ async function runDocumentTotalsConsistencyCheck(
       .maybeSingle();
     if (p) {
       const st = String((p as any).status || '').toLowerCase();
-      const total = Number((p as any).total) || 0;
-      const paid = Number((p as any).paid_amount) || 0;
-      const due = Number((p as any).due_amount) || 0;
-      const ok = st === 'cancelled' || Math.abs(total - paid - due) < 0.02;
-      out.push({
-        id: 'doc_cert_purchase_totals',
-        label: 'Document cert: purchase total = paid + due',
-        category: 'engine',
-        status: ok ? 'pass' : 'warn',
-        failures: ok
-          ? []
-          : [
-              {
-                module: 'purchases',
-                step: 'totals',
-                record: opts.purchaseId,
-                expected: `total≈paid+due (${total} vs ${paid + due})`,
-                actual: `total=${total} paid=${paid} due=${due}`,
-                classification: 'engine_bug',
-                navActions: [{ type: 'purchase', purchaseId: opts.purchaseId, label: 'Open purchase' }],
-              },
-            ],
-        meta: { total, paid, due, status: st },
-      });
+      if (isPurchaseNonPostedCommercial(st)) {
+        out.push({
+          id: 'doc_cert_purchase_totals',
+          label: 'Document cert: purchase total = paid + due',
+          category: 'engine',
+          status: 'skip',
+          failures: [],
+          meta: { reason: 'non_posted_purchase', hint: 'Payment totals check applies after received/final only.' },
+        });
+      } else {
+        const total = Number((p as any).total) || 0;
+        const paid = Number((p as any).paid_amount) || 0;
+        const due = Number((p as any).due_amount) || 0;
+        const ok = st === 'cancelled' || Math.abs(total - paid - due) < 0.02;
+        out.push({
+          id: 'doc_cert_purchase_totals',
+          label: 'Document cert: purchase total = paid + due',
+          category: 'engine',
+          status: ok ? 'pass' : 'warn',
+          failures: ok
+            ? []
+            : [
+                {
+                  module: 'purchases',
+                  step: 'totals',
+                  record: opts.purchaseId,
+                  expected: `total≈paid+due (${total} vs ${paid + due})`,
+                  actual: `total=${total} paid=${paid} due=${due}`,
+                  classification: 'engine_bug',
+                  navActions: [{ type: 'purchase', purchaseId: opts.purchaseId, label: 'Open purchase' }],
+                },
+              ],
+          meta: { total, paid, due, status: st },
+        });
+      }
     }
   }
 
@@ -1336,77 +1360,160 @@ export async function runDocumentCertificationChecks(
   if (opts.saleId) {
     const { data: sale } = await supabase
       .from('sales')
-      .select('paid_amount, id, status')
+      .select('paid_amount, id, status, invoice_no, is_studio')
       .eq('id', opts.saleId)
       .single();
-    const { data: pays } = await supabase
-      .from('payments')
-      .select('amount')
-      .eq('reference_type', 'sale')
-      .eq('reference_id', opts.saleId);
-    const sumPay = (pays || []).reduce((a, p: any) => a + (Number(p.amount) || 0), 0);
-    const paid = Number((sale as any)?.paid_amount) || 0;
-    const ok = Math.abs(sumPay - paid) < 0.02;
+    const saleStatus = (sale as any)?.status;
+    const inv = String((sale as any)?.invoice_no ?? '').trim();
+    const postedSale = canPostAccountingForSaleStatus(saleStatus);
+    const invOk =
+      postedSale &&
+      inv.length > 0 &&
+      !/^(SDR-|SQT-|SOR-)/i.test(inv);
     results.push(
       tagDocument({
-        id: 'doc_cert_sale_payments_vs_paid',
-        label: 'Document cert: Σ payments vs sales.paid_amount',
+        id: 'doc_cert_sale_final_invoice_no',
+        label: 'Document cert: final sale has proper invoice_no',
         category: 'engine',
-        status: ok ? 'pass' : 'warn',
-        failures: ok
+        status: !postedSale ? 'skip' : invOk ? 'pass' : 'fail',
+        failures: invOk
           ? []
           : [
               {
                 module: 'sales',
-                step: 'paid_amount',
+                step: 'final_invoice_no',
                 record: opts.saleId,
-                expected: `sum(payments)=${sumPay}`,
-                actual: `paid_amount=${paid}`,
-                classification: 'engine_bug',
+                expected: 'non-empty SL/STD/POS-style invoice_no (not SDR/SQT/SOR)',
+                actual: inv || '(empty)',
+                classification: 'legacy_data',
                 navActions: [{ type: 'sale', saleId: opts.saleId, label: 'Open sale' }],
               },
             ],
-        meta: { sumPay, paid },
+        meta: { invoice_no: inv, posted: postedSale },
       })
     );
+
+    if (postedSale) {
+      const { data: pays } = await supabase
+        .from('payments')
+        .select('amount')
+        .eq('reference_type', 'sale')
+        .eq('reference_id', opts.saleId);
+      const sumPay = (pays || []).reduce((a, p: any) => a + (Number(p.amount) || 0), 0);
+      const paid = Number((sale as any)?.paid_amount) || 0;
+      const ok = Math.abs(sumPay - paid) < 0.02;
+      results.push(
+        tagDocument({
+          id: 'doc_cert_sale_payments_vs_paid',
+          label: 'Document cert: Σ payments vs sales.paid_amount',
+          category: 'engine',
+          status: ok ? 'pass' : 'warn',
+          failures: ok
+            ? []
+            : [
+                {
+                  module: 'sales',
+                  step: 'paid_amount',
+                  record: opts.saleId,
+                  expected: `sum(payments)=${sumPay}`,
+                  actual: `paid_amount=${paid}`,
+                  classification: 'engine_bug',
+                  navActions: [{ type: 'sale', saleId: opts.saleId, label: 'Open sale' }],
+                },
+              ],
+          meta: { sumPay, paid },
+        })
+      );
+    } else {
+      results.push(
+        tagDocument({
+          id: 'doc_cert_sale_payments_vs_paid',
+          label: 'Document cert: Σ payments vs sales.paid_amount',
+          category: 'engine',
+          status: 'skip',
+          failures: [],
+          meta: { reason: 'non_posted_sale' },
+        })
+      );
+    }
   }
 
   if (opts.purchaseId) {
     const { data: pur } = await supabase
       .from('purchases')
-      .select('paid_amount, id')
+      .select('paid_amount, id, status, po_no')
       .eq('id', opts.purchaseId)
       .single();
-    const { data: pays } = await supabase
-      .from('payments')
-      .select('amount')
-      .eq('reference_type', 'purchase')
-      .eq('reference_id', opts.purchaseId);
-    const sumPay = (pays || []).reduce((a, p: any) => a + (Number(p.amount) || 0), 0);
-    const paid = Number((pur as any)?.paid_amount) || 0;
-    const ok = Math.abs(sumPay - paid) < 0.02;
+    const purStatus = (pur as any)?.status;
+    const po = String((pur as any)?.po_no ?? '').trim();
+    const postedPur = canPostAccountingForPurchaseStatus(purStatus);
+    const poOk = postedPur && po.length > 0 && !/^(PDR-|POR-)/i.test(po);
     results.push(
       tagDocument({
-        id: 'doc_cert_purchase_payments_vs_paid',
-        label: 'Document cert: Σ payments vs purchases.paid_amount',
+        id: 'doc_cert_purchase_posted_po_no',
+        label: 'Document cert: posted purchase has proper po_no',
         category: 'engine',
-        status: ok ? 'pass' : 'warn',
-        failures: ok
+        status: !postedPur ? 'skip' : poOk ? 'pass' : 'fail',
+        failures: poOk
           ? []
           : [
               {
                 module: 'purchases',
-                step: 'paid_amount',
+                step: 'posted_po_no',
                 record: opts.purchaseId,
-                expected: `sum(payments)=${sumPay}`,
-                actual: `paid_amount=${paid}`,
-                classification: 'engine_bug',
+                expected: 'non-empty PUR-style po_no (not PDR/POR)',
+                actual: po || '(empty)',
+                classification: 'legacy_data',
                 navActions: [{ type: 'purchase', purchaseId: opts.purchaseId, label: 'Open purchase' }],
               },
             ],
-        meta: { sumPay, paid },
+        meta: { po_no: po, posted: postedPur },
       })
     );
+
+    if (postedPur) {
+      const { data: pays } = await supabase
+        .from('payments')
+        .select('amount')
+        .eq('reference_type', 'purchase')
+        .eq('reference_id', opts.purchaseId);
+      const sumPay = (pays || []).reduce((a, p: any) => a + (Number(p.amount) || 0), 0);
+      const paid = Number((pur as any)?.paid_amount) || 0;
+      const ok = Math.abs(sumPay - paid) < 0.02;
+      results.push(
+        tagDocument({
+          id: 'doc_cert_purchase_payments_vs_paid',
+          label: 'Document cert: Σ payments vs purchases.paid_amount',
+          category: 'engine',
+          status: ok ? 'pass' : 'warn',
+          failures: ok
+            ? []
+            : [
+                {
+                  module: 'purchases',
+                  step: 'paid_amount',
+                  record: opts.purchaseId,
+                  expected: `sum(payments)=${sumPay}`,
+                  actual: `paid_amount=${paid}`,
+                  classification: 'engine_bug',
+                  navActions: [{ type: 'purchase', purchaseId: opts.purchaseId, label: 'Open purchase' }],
+                },
+              ],
+          meta: { sumPay, paid },
+        })
+      );
+    } else {
+      results.push(
+        tagDocument({
+          id: 'doc_cert_purchase_payments_vs_paid',
+          label: 'Document cert: Σ payments vs purchases.paid_amount',
+          category: 'engine',
+          status: 'skip',
+          failures: [],
+          meta: { reason: 'non_posted_purchase' },
+        })
+      );
+    }
   }
 
   for (const r of await runDocumentTotalsConsistencyCheck(companyId, opts)) {
@@ -1884,7 +1991,7 @@ export async function runModuleStockCertification(
   if (opts.saleId) {
     const { data: sale } = await supabase
       .from('sales')
-      .select('id, status, total, invoice_no')
+      .select('id, status, total, invoice_no, is_studio')
       .eq('id', opts.saleId)
       .eq('company_id', companyId)
       .maybeSingle();
@@ -1968,7 +2075,29 @@ export async function runModuleStockCertification(
           const pid = String((m as { product_id?: string }).product_id ?? '');
           const vid = (m as { variation_id?: string | null }).variation_id ?? null;
           const k = stockLineKey(pid, vid);
-          movMap.set(k, (movMap.get(k) ?? 0) + Number((m as { quantity?: number }).quantity) || 0);
+          const q = Number((m as { quantity?: number }).quantity) || 0;
+          movMap.set(k, (movMap.get(k) ?? 0) + q);
+        }
+        // Legacy contamination: posted sale stock rows referencing stage prefixes in notes (not current workflow).
+        const { data: smNotes } = await supabase
+          .from('stock_movements')
+          .select('id, notes, movement_type')
+          .eq('reference_type', 'sale')
+          .eq('reference_id', opts.saleId);
+        for (const m of smNotes || []) {
+          if (normMovementType((m as { movement_type?: string }).movement_type) !== 'sale') continue;
+          const n = String((m as { notes?: string }).notes ?? '');
+          if (/\b(SDR|SQT|SOR)-/i.test(n)) {
+            failures.push({
+              module: 'stock',
+              step: 'legacy_stock_note_uses_stage_prefix',
+              record: String((m as { id?: string }).id ?? opts.saleId),
+              expected: 'posted stock notes should not use SDR/SQT/SOR as final commercial ref',
+              actual: n.slice(0, 120),
+              classification: 'legacy_data',
+              navActions: [{ type: 'sale', saleId: opts.saleId }],
+            });
+          }
         }
         for (const [k, lineQty] of lineMap) {
           const movSum = movMap.get(k);
@@ -2087,7 +2216,28 @@ export async function runModuleStockCertification(
           const pid = String((m as { product_id?: string }).product_id ?? '');
           const vid = (m as { variation_id?: string | null }).variation_id ?? null;
           const k = stockLineKey(pid, vid);
-          movMap.set(k, (movMap.get(k) ?? 0) + Number((m as { quantity?: number }).quantity) || 0);
+          const q = Number((m as { quantity?: number }).quantity) || 0;
+          movMap.set(k, (movMap.get(k) ?? 0) + q);
+        }
+        const { data: smNotesPur } = await supabase
+          .from('stock_movements')
+          .select('id, notes, movement_type')
+          .eq('reference_type', 'purchase')
+          .eq('reference_id', opts.purchaseId);
+        for (const m of smNotesPur || []) {
+          if (normMovementType((m as { movement_type?: string }).movement_type) !== 'purchase') continue;
+          const n = String((m as { notes?: string }).notes ?? '');
+          if (/\b(PDR|POR)-/i.test(n)) {
+            failures.push({
+              module: 'stock',
+              step: 'legacy_stock_note_uses_stage_prefix',
+              record: String((m as { id?: string }).id ?? opts.purchaseId),
+              expected: 'posted stock notes should not use PDR/POR as final commercial ref',
+              actual: n.slice(0, 120),
+              classification: 'legacy_data',
+              navActions: [{ type: 'purchase', purchaseId: opts.purchaseId }],
+            });
+          }
         }
         for (const [k, lineQty] of lineMap) {
           const movSum = movMap.get(k);
@@ -2120,14 +2270,25 @@ export async function runModuleStockCertification(
     }
   }
 
+  const workflowFails = failures.filter((f) => f.classification !== 'legacy_data');
+  const legacyFails = failures.filter((f) => f.classification === 'legacy_data');
+  const status: LabCheckResult['status'] =
+    workflowFails.length > 0 ? 'fail' : legacyFails.length > 0 ? 'warn' : 'pass';
+
   return {
     id: 'module_cert_stock',
     label: 'Module cert: stock movements (selected document)',
     category: 'engine',
     checkLayer: 'document',
-    status: failures.length ? 'fail' : 'pass',
-    failures,
-    meta: { saleId: opts.saleId, purchaseId: opts.purchaseId },
+    defaultClassification: legacyFails.length && !workflowFails.length ? 'legacy_data' : undefined,
+    status,
+    failures: [...workflowFails, ...legacyFails],
+    meta: {
+      saleId: opts.saleId,
+      purchaseId: opts.purchaseId,
+      workflowFailureCount: workflowFails.length,
+      legacyContaminationCount: legacyFails.length,
+    },
   };
 }
 

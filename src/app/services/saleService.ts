@@ -114,6 +114,52 @@ export type CreateSaleOptions = {
   allowNegativeStock?: boolean;
 };
 
+function saleRowNeedsFinalInvoiceAllocation(row: Record<string, unknown>): boolean {
+  const inv = String(row.invoice_no ?? '').trim();
+  if (!inv) return true;
+  return /^(SDR-|SQT-|SOR-)/i.test(inv);
+}
+
+function finalSaleDocumentSequenceKey(row: Record<string, unknown>): 'SL' | 'STD' | 'PS' {
+  const isStudio =
+    row.is_studio === true ||
+    String(row.order_no ?? '')
+      .toUpperCase()
+      .startsWith('STD-') ||
+    String(row.order_no ?? '')
+      .toUpperCase()
+      .startsWith('ST-');
+  if (isStudio) return 'STD';
+  const inv = String(row.invoice_no ?? '').trim();
+  if (/^POS-/i.test(inv)) return 'PS';
+  return 'SL';
+}
+
+/** Allocate SL/STD/PS invoice_no when final if missing or still SDR/SQT/SOR. */
+async function ensureFinalSaleInvoiceNoAllocated(saleId: string, row: Record<string, unknown>) {
+  if (!saleRowNeedsFinalInvoiceAllocation(row)) return row;
+  const companyId = String(row.company_id ?? '');
+  if (!companyId) throw new Error('Cannot finalize: company_id missing.');
+  const seq = finalSaleDocumentSequenceKey(row);
+  let nextNo: string;
+  try {
+    nextNo = await documentNumberService.getNextDocumentNumberGlobal(companyId, seq);
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    throw new Error(`Cannot finalize: could not allocate invoice number (${seq}). ${msg}`);
+  }
+  const { data: patched, error } = await supabase
+    .from('sales')
+    .update({ invoice_no: nextNo })
+    .eq('id', saleId)
+    .select()
+    .single();
+  if (error) {
+    throw new Error(`Cannot finalize: failed to save invoice number: ${error.message}`);
+  }
+  return (patched ?? { ...row, invoice_no: nextNo }) as Record<string, unknown>;
+}
+
 export const saleService = {
   // Create sale with items. options.allowNegativeStock from caller (context or DB) — allow if either says true.
   async createSale(sale: Sale, items: SaleItem[], options?: CreateSaleOptions) {
@@ -719,7 +765,7 @@ export const saleService = {
       );
     }
 
-    const { data, error } = await supabase
+    let { data, error } = await supabase
       .from('sales')
       .update({ status })
       .eq('id', id)
@@ -730,6 +776,13 @@ export const saleService = {
 
     // Accounting: canonical document JE when sale is finalized (single posting engine)
     if (canPostAccountingForSaleStatus(status)) {
+      try {
+        data = (await ensureFinalSaleInvoiceNoAllocated(id, data as Record<string, unknown>)) as typeof data;
+      } catch (allocErr: unknown) {
+        const msg = allocErr instanceof Error ? allocErr.message : String(allocErr);
+        await supabase.from('sales').update({ status: (priorForStatus as { status?: string } | null)?.status ?? 'order' }).eq('id', id);
+        throw new Error(msg);
+      }
       postSaleDocumentAccounting(data.id).catch((err: any) =>
         console.warn('[saleService] Sale document posting engine failed (non-critical):', err?.message)
       );
@@ -739,6 +792,23 @@ export const saleService = {
     // Admin posts via Commission Report → "Post Commission" (batch) only.
 
     return data;
+  },
+
+  /**
+   * QA / repair: if status is final but invoice_no is empty or still SDR/SQT/SOR, allocate SL/STD/PS and persist.
+   * Does not change status or re-run document posting.
+   */
+  async repairMissingFinalInvoiceNumber(id: string) {
+    const { data: row, error } = await supabase.from('sales').select('*').eq('id', id).maybeSingle();
+    if (error || !row) throw new Error('Sale not found');
+    if (!canPostAccountingForSaleStatus((row as { status?: string }).status)) {
+      throw new Error('Repair invoice number only applies to finalized (posted) sales.');
+    }
+    if (!saleRowNeedsFinalInvoiceAllocation(row as Record<string, unknown>)) {
+      return row;
+    }
+    const next = await ensureFinalSaleInvoiceNoAllocated(id, row as Record<string, unknown>);
+    return next;
   },
 
   /**

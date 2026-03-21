@@ -53,6 +53,7 @@ import { toast } from 'sonner';
 import { getAttachmentOpenUrl } from '@/app/utils/paymentAttachmentUrl';
 import { AttachmentPreviewRow } from '@/app/components/shared/AttachmentPreviewRow';
 import { getEffectiveSaleStatus, getSaleStatusBadgeConfig, canAddPaymentToSale } from '@/app/utils/statusHelpers';
+import { isSaleNonPostedCommercial } from '@/app/lib/postingStatusGate';
 import { getStudioDeadlineFromNotes } from '@/app/utils/studioDeadlineNotes';
 import {
   Table,
@@ -562,7 +563,12 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
       ? payments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0)
       : (sale.paid ?? 0);
   const dueAmount = Math.max(0, grandTotal - totalPaidDisplay);
-  const canAddPayment = canAddPaymentToSale(sale, dueAmount);
+  const canAddPayment =
+    !hidePaymentCommercial && canAddPaymentToSale(sale, dueAmount);
+
+  useEffect(() => {
+    if (hidePaymentCommercial && activeTab === 'payments') setActiveTab('details');
+  }, [hidePaymentCommercial, activeTab]);
 
   const getStatusColor = (status: string) => {
     const s = (status || '').toLowerCase();
@@ -718,7 +724,7 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
         </div>
 
         {/* Workflow: next step (e.g. Retail: Sale → Payment → Receipt) */}
-        {sale && !isCancelled && (
+        {sale && !isCancelled && !hidePaymentCommercial && (
           <div className="px-6 py-2 border-b border-gray-800/80 bg-gray-900/30 flex items-center gap-2">
             <WorkflowNextStepBanner currentStepId="sale" compact />
           </div>
@@ -727,11 +733,18 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
         {/* Tabs */}
         <div className="bg-gray-900/50 border-b border-gray-800 px-6 shrink-0">
           <div className="flex gap-1">
-            {[
-              { id: 'details', label: 'Details' },
-              { id: 'payments', label: 'Payments' },
-              { id: 'history', label: 'History' },
-            ].map((tab) => (
+            {(
+              hidePaymentCommercial
+                ? [
+                    { id: 'details' as const, label: 'Details' },
+                    { id: 'history' as const, label: 'History' },
+                  ]
+                : [
+                    { id: 'details' as const, label: 'Details' },
+                    { id: 'payments' as const, label: 'Payments' },
+                    { id: 'history' as const, label: 'History' },
+                  ]
+            ).map((tab) => (
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id as any)}
@@ -874,12 +887,21 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
 
               {/* Status Cards */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
-                  <p className="text-xs text-gray-500 mb-2">Payment Status</p>
-                  <Badge className={cn("text-sm font-semibold", getPaymentStatusColor(sale.paymentStatus === 'paid' ? 'Paid' : sale.paymentStatus === 'partial' ? 'Partial' : 'Unpaid'))}>
-                    {sale.paymentStatus === 'paid' ? 'Paid' : sale.paymentStatus === 'partial' ? 'Partial' : 'Unpaid'}
-                  </Badge>
-                </div>
+                {hidePaymentCommercial ? (
+                  <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
+                    <p className="text-xs text-gray-500 mb-2">Payments</p>
+                    <p className="text-sm text-gray-400">
+                      Customer balance and payment tracking start when this document is a <strong className="text-gray-300">final invoice</strong>.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
+                    <p className="text-xs text-gray-500 mb-2">Payment Status</p>
+                    <Badge className={cn("text-sm font-semibold", getPaymentStatusColor(sale.paymentStatus === 'paid' ? 'Paid' : sale.paymentStatus === 'partial' ? 'Partial' : 'Unpaid'))}>
+                      {sale.paymentStatus === 'paid' ? 'Paid' : sale.paymentStatus === 'partial' ? 'Partial' : 'Unpaid'}
+                    </Badge>
+                  </div>
+                )}
                 <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
                   <p className="text-xs text-gray-500 mb-2">Shipping Status</p>
                   <Badge className={cn("text-sm font-semibold", getShippingStatusColor(sale.shippingStatus === 'delivered' ? 'Delivered' : sale.shippingStatus === 'processing' ? 'Processing' : sale.shippingStatus === 'cancelled' ? 'Cancelled' : 'Pending'))}>
@@ -1233,16 +1255,20 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
                     </div>
                   )}
                   
-                  <div className="flex justify-between text-sm">
-                    <span className="text-gray-400">Total Paid</span>
-                    <span className="text-green-400 font-medium">{formatCurrency(totalPaidDisplay)}</span>
-                  </div>
-                  
-                  <div className="flex justify-between">
-                    <span className="text-gray-400 font-medium">Amount Due</span>
-                    <span className="text-red-400 text-lg font-bold">{formatCurrency(dueAmount)}</span>
-                  </div>
-                  
+                  {!hidePaymentCommercial && (
+                    <>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-gray-400">Total Paid</span>
+                        <span className="text-green-400 font-medium">{formatCurrency(totalPaidDisplay)}</span>
+                      </div>
+
+                      <div className="flex justify-between">
+                        <span className="text-gray-400 font-medium">Amount Due</span>
+                        <span className="text-red-400 text-lg font-bold">{formatCurrency(dueAmount)}</span>
+                      </div>
+                    </>
+                  )}
+
                   {(sale.returnDue ?? 0) > 0 && (
                     <div className="flex justify-between text-sm">
                       <span className="text-gray-400">Return Due</span>
@@ -1324,7 +1350,7 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
             </>
           )}
 
-          {activeTab === 'payments' && (
+          {activeTab === 'payments' && !hidePaymentCommercial && (
             <div className="space-y-4">
               {/* Add Payment Button - hidden when cancelled/returned; shown for final or partially_returned with due */}
               <div className="flex justify-between items-center flex-wrap gap-2">
@@ -1437,10 +1463,23 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
                       >
                         <div className="flex justify-between items-start mb-2">
                           <div className="flex-1">
-                            <div className="flex items-center gap-2 mb-1">
+                            <div className="flex items-center gap-2 mb-1 flex-wrap">
                               <p className="text-white font-semibold">
 {formatCurrency(payment.amount)}
                           </p>
+                              {(() => {
+                                const p = payment as { createdAt?: string; updatedAt?: string };
+                                const c = p.createdAt ? new Date(p.createdAt).getTime() : 0;
+                                const u = p.updatedAt ? new Date(p.updatedAt).getTime() : 0;
+                                if (c && u > c + 1500) {
+                                  return (
+                                    <Badge className="text-[10px] font-medium bg-amber-500/15 text-amber-300 border border-amber-500/30">
+                                      Adjusted
+                                    </Badge>
+                                  );
+                                }
+                                return null;
+                              })()}
                               {payment.referenceNo && (
                                 <code className="text-xs bg-gray-800 px-2 py-0.5 rounded text-blue-400 border border-gray-700">
                                   {payment.referenceNo}
