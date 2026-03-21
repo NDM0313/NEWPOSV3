@@ -5,6 +5,7 @@ import { activityLogService } from '@/app/services/activityLogService';
 import { createSupplierPayment } from '@/app/services/supplierPaymentService';
 import { PURCHASE_HEADER_COLUMNS } from '@/app/lib/purchaseDbConstants';
 import { postPurchaseDocumentAccounting, reversePurchaseDocumentAccounting } from '@/app/services/documentPostingEngine';
+import { documentNumberService } from '@/app/services/documentNumberService';
 
 /** Enrich purchases with creator full_name. purchases.created_by = auth.users.id; resolve via users.auth_user_id. */
 async function enrichPurchasesWithCreatorNames(purchases: any[]): Promise<void> {
@@ -659,6 +660,11 @@ export const purchaseService = {
 
     const { data: priorRow } = await supabase.from('purchases').select('status').eq('id', id).maybeSingle();
     const prevStatus = (priorRow as { status?: string } | null)?.status;
+    if (String(prevStatus).toLowerCase() === 'cancelled') {
+      throw new Error(
+        'Cannot change status from cancelled. Use Restore to Draft or Order from the purchases list first.'
+      );
+    }
 
     const { data, error } = await supabase
       .from('purchases')
@@ -696,6 +702,36 @@ export const purchaseService = {
       );
     }
     return data;
+  },
+
+  /**
+   * Move a cancelled PO back to draft or ordered (unposted). Historical reversals remain for audit.
+   */
+  async restoreCancelledPurchase(id: string, target: 'draft' | 'ordered', companyId: string) {
+    const { data: row, error: fetchErr } = await supabase
+      .from('purchases')
+      .select('*')
+      .eq('id', id)
+      .single();
+    if (fetchErr || !row) throw new Error('Purchase not found');
+    if (String((row as { status?: string }).status).toLowerCase() !== 'cancelled') {
+      throw new Error('Only cancelled purchase orders can be restored.');
+    }
+
+    const r = row as Record<string, unknown>;
+    const patch: Record<string, unknown> = {
+      status: target,
+      po_no: null,
+    };
+    if (target === 'draft' && !(r.draft_no && String(r.draft_no).trim())) {
+      patch.draft_no = await documentNumberService.getNextDocumentNumberGlobal(companyId, 'PDR');
+    }
+    if (target === 'ordered' && !(r.order_no && String(r.order_no).trim())) {
+      patch.order_no = await documentNumberService.getNextDocumentNumberGlobal(companyId, 'POR');
+    }
+
+    const { error } = await supabase.from('purchases').update(patch).eq('id', id).eq('status', 'cancelled');
+    if (error) throw error;
   },
 
   // Update purchase. Only DB columns (discount_amount, no discount_percentage). Map app 'discount' → discount_amount.

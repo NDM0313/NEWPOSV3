@@ -1141,6 +1141,7 @@ export async function runCompanyReconciliationChecks(
     tagCompany(await runInventoryValuationVsStockCheck(companyId)),
     tagCompany(await runAccountsVsJournalCheck(companyId)),
     tagCompany(await runPostingStatusGateLiveCheck(companyId)),
+    tagCompany(await runOwnerEquityCapitalVisibilityCheck(companyId)),
   ];
 }
 
@@ -2382,27 +2383,36 @@ export async function runModuleWorkerStudioCertification(
   companyId: string,
   opts: { saleId?: string; purchaseId?: string }
 ): Promise<LabCheckResult> {
+  return runModuleStudioWorkflowCertification(companyId, opts);
+}
+
+/** Studio / worker: full path when studio sale selected; otherwise PASS/SKIP. */
+export async function runModuleStudioWorkflowCertification(
+  companyId: string,
+  opts: { saleId?: string; purchaseId?: string }
+): Promise<LabCheckResult> {
+  const failures: LabCheckFailure[] = [];
   if (!opts.saleId) {
     return {
-      id: 'module_cert_worker_studio',
-      label: 'Module cert: worker / studio',
+      id: 'module_cert_studio_workflow',
+      label: 'Module cert: studio workflow (selected sale)',
       category: 'data_quality',
       checkLayer: 'document',
       status: 'skip',
       failures: [],
-      meta: { reason: 'select a sale to evaluate studio/worker hooks' },
+      meta: { reason: 'select a sale to evaluate studio production linkage' },
     };
   }
   const { data: sale } = await supabase
     .from('sales')
-    .select('id, is_studio, studio_charges, source')
+    .select('id, is_studio, studio_charges, source, status')
     .eq('id', opts.saleId)
     .eq('company_id', companyId)
     .maybeSingle();
   if (!sale) {
     return {
-      id: 'module_cert_worker_studio',
-      label: 'Module cert: worker / studio',
+      id: 'module_cert_studio_workflow',
+      label: 'Module cert: studio workflow (selected sale)',
       category: 'data_quality',
       checkLayer: 'document',
       status: 'skip',
@@ -2415,35 +2425,334 @@ export async function runModuleWorkerStudioCertification(
   const src = String((sale as { source?: string }).source || '');
   if (!studio && charges <= 0 && !src.includes('studio')) {
     return {
-      id: 'module_cert_worker_studio',
-      label: 'Module cert: worker / studio',
+      id: 'module_cert_studio_workflow',
+      label: 'Module cert: studio workflow (selected sale)',
       category: 'data_quality',
       checkLayer: 'document',
       status: 'pass',
       failures: [],
-      meta: { note: 'No studio/worker signals on document — PASS (nothing to assert).' },
+      meta: { note: 'No studio signals on this sale — PASS (nothing to assert).' },
     };
   }
+
+  const { data: prodsV1 } = await supabase
+    .from('studio_productions')
+    .select('id, status, production_no')
+    .eq('sale_id', opts.saleId)
+    .limit(10);
+  const { data: ordersV2 } = await supabase
+    .from('studio_production_orders_v2')
+    .select('id, status, sale_id')
+    .eq('sale_id', opts.saleId)
+    .limit(10);
+
+  const hasProd = (prodsV1?.length ?? 0) > 0 || (ordersV2?.length ?? 0) > 0;
+  if (!hasProd) {
+    failures.push({
+      module: 'studio',
+      step: 'no_production_for_studio_sale',
+      record: opts.saleId,
+      expected: '≥1 studio_productions or studio_production_orders_v2 for studio sale',
+      actual: 'none',
+      classification: 'missing_backfill',
+      navActions: [{ type: 'sale', saleId: opts.saleId, label: 'Open sale' }],
+    });
+  } else {
+    const prodIds = (prodsV1 || []).map((p: { id: string }) => p.id);
+    if (prodIds.length > 0) {
+      const { data: stages } = await supabase
+        .from('studio_production_stages')
+        .select('id, status, cost, production_id')
+        .in('production_id', prodIds);
+      if (!stages?.length) {
+        failures.push({
+          module: 'studio',
+          step: 'production_without_stages',
+          record: prodIds[0],
+          expected: 'studio_production_stages rows for production',
+          actual: '0',
+          classification: 'informational',
+          navActions: [{ type: 'sale', saleId: opts.saleId }],
+        });
+      }
+    }
+  }
+
+  if (charges > 0 && String((sale as { status?: string }).status).toLowerCase() === 'final') {
+    const { data: sm } = await supabase
+      .from('stock_movements')
+      .select('id')
+      .eq('reference_type', 'sale')
+      .eq('reference_id', opts.saleId)
+      .limit(5);
+    if (!(sm?.length ?? 0)) {
+      failures.push({
+        module: 'studio',
+        step: 'final_studio_sale_no_stock_sample',
+        record: opts.saleId,
+        expected: 'stock movements when final (if physical finished goods posted)',
+        actual: 'none in sample',
+        classification: 'informational',
+        navActions: [{ type: 'sale', saleId: opts.saleId }],
+      });
+    }
+  }
+
   return {
-    id: 'module_cert_worker_studio',
-    label: 'Module cert: worker / studio',
+    id: 'module_cert_studio_workflow',
+    label: 'Module cert: studio workflow (production / stages / stock sample)',
     category: 'data_quality',
     checkLayer: 'document',
-    status: 'skip',
-    failures: [],
+    status: failures.length ? 'warn' : 'pass',
+    failures,
     meta: {
-      hint: 'Studio/worker fields present — extend with production/worker ledger checks when STD data is wired.',
-      is_studio: studio,
+      productionsV1: prodsV1?.length ?? 0,
+      ordersV2: ordersV2?.length ?? 0,
       studio_charges: charges,
-      source: src || null,
     },
+  };
+}
+
+/** Standalone business expense row: draft ⇒ no active expense JE; paid/approved ⇒ expect linked JE. */
+export async function runModuleStandaloneExpenseCertification(
+  companyId: string,
+  expenseId?: string
+): Promise<LabCheckResult> {
+  if (!expenseId?.trim()) {
+    return {
+      id: 'module_cert_business_expense',
+      label: 'Module cert: business expense (selected id)',
+      category: 'engine',
+      checkLayer: 'document',
+      status: 'skip',
+      failures: [],
+      meta: { reason: 'Enter expense UUID in Lab Setup (optional).' },
+    };
+  }
+  const { data: exp } = await supabase
+    .from('expenses')
+    .select('id, status, amount, company_id, created_at, updated_at')
+    .eq('id', expenseId)
+    .eq('company_id', companyId)
+    .maybeSingle();
+  if (!exp) {
+    return {
+      id: 'module_cert_business_expense',
+      label: 'Module cert: business expense (selected id)',
+      category: 'engine',
+      checkLayer: 'document',
+      status: 'fail',
+      failures: [
+        {
+          module: 'expenses',
+          step: 'expense_not_found',
+          record: expenseId,
+          expected: 'expenses row for company',
+          actual: 'not found',
+          classification: 'source_link',
+        },
+      ],
+    };
+  }
+  const st = String((exp as { status?: string }).status).toLowerCase();
+  const { data: jes } = await supabase
+    .from('journal_entries')
+    .select('id, is_void')
+    .eq('company_id', companyId)
+    .eq('reference_type', 'expense')
+    .eq('reference_id', expenseId);
+  const active = (jes || []).filter((j: { is_void?: boolean }) => !j.is_void).length;
+
+  const failures: LabCheckFailure[] = [];
+  const draftLike = st === 'draft' || st === 'submitted';
+  const postedLike = st === 'paid' || st === 'approved';
+
+  if (draftLike && active > 0) {
+    failures.push({
+      module: 'expenses',
+      step: 'draft_expense_has_je',
+      record: expenseId,
+      expected: 'no active journal_entries for draft/submitted expense',
+      actual: `active_je=${active}`,
+      classification: 'engine_bug',
+    });
+  }
+  if (postedLike && active < 1) {
+    failures.push({
+      module: 'expenses',
+      step: 'posted_expense_missing_je',
+      record: expenseId,
+      expected: '≥1 active JE reference_type=expense',
+      actual: `active_je=${active}`,
+      classification: 'missing_backfill',
+    });
+  }
+  if (st === 'rejected' && active > 0) {
+    failures.push({
+      module: 'expenses',
+      step: 'rejected_expense_still_has_je',
+      record: expenseId,
+      expected: 'void or no JEs when rejected/cancelled',
+      actual: `active_je=${active}`,
+      classification: 'legacy_data',
+    });
+  }
+
+  const created = (exp as { created_at?: string }).created_at;
+  const updated = (exp as { updated_at?: string }).updated_at;
+  const edited =
+    created &&
+    updated &&
+    new Date(updated).getTime() > new Date(created).getTime() + 2000;
+
+  return {
+    id: 'module_cert_business_expense',
+    label: 'Module cert: business expense (draft vs posted JE)',
+    category: 'engine',
+    checkLayer: 'document',
+    status: failures.length ? 'fail' : 'pass',
+    failures,
+    meta: {
+      status: st,
+      activeExpenseJEs: active,
+      editedHint: edited ? 'expense row updated_at > created_at — confirm delta JEs in activity only' : undefined,
+    },
+  };
+}
+
+/** Manual JE, supplier payment, transfer-style rows: balance + payment isolation when ids provided. */
+export async function runModuleJournalTransferAndPaymentsCertification(
+  companyId: string,
+  opts: { manualJournalEntryId?: string; supplierPaymentId?: string }
+): Promise<LabCheckResult> {
+  const failures: LabCheckFailure[] = [];
+
+  if (opts.manualJournalEntryId?.trim()) {
+    const jid = opts.manualJournalEntryId.trim();
+    const { data: je } = await supabase
+      .from('journal_entries')
+      .select('id, company_id, is_void')
+      .eq('id', jid)
+      .eq('company_id', companyId)
+      .maybeSingle();
+    if (!je) {
+      failures.push({
+        module: 'journal',
+        step: 'manual_je_not_found',
+        record: jid,
+        expected: 'journal_entries row',
+        actual: 'not found',
+        classification: 'source_link',
+      });
+    } else if (!(je as { is_void?: boolean }).is_void) {
+      const { data: lines } = await supabase
+        .from('journal_entry_lines')
+        .select('debit, credit')
+        .eq('journal_entry_id', jid);
+      let d = 0;
+      let c = 0;
+      (lines || []).forEach((l: { debit?: number; credit?: number }) => {
+        d += Number(l.debit) || 0;
+        c += Number(l.credit) || 0;
+      });
+      if (Math.abs(d - c) > 0.02) {
+        failures.push({
+          module: 'journal',
+          step: 'manual_je_unbalanced',
+          record: jid,
+          expected: 'sum(debit)=sum(credit)',
+          actual: `debit=${d} credit=${c}`,
+          classification: 'engine_bug',
+        });
+      }
+    }
+  }
+
+  if (opts.supplierPaymentId?.trim()) {
+    const pid = opts.supplierPaymentId.trim();
+    const { data: pay } = await supabase
+      .from('payments')
+      .select('id, reference_type, reference_id, amount, company_id')
+      .eq('id', pid)
+      .eq('company_id', companyId)
+      .maybeSingle();
+    if (!pay) {
+      failures.push({
+        module: 'payments',
+        step: 'supplier_payment_not_found',
+        record: pid,
+        expected: 'payments row',
+        actual: 'not found',
+        classification: 'source_link',
+      });
+    } else {
+      const refT = String((pay as { reference_type?: string }).reference_type).toLowerCase();
+      if (refT !== 'purchase') {
+        failures.push({
+          module: 'payments',
+          step: 'payment_not_purchase_ref',
+          record: pid,
+          expected: 'reference_type=purchase for supplier payment check',
+          actual: refT,
+          classification: 'informational',
+        });
+      }
+      const amt = Number((pay as { amount?: number }).amount) || 0;
+      if (amt > 0.01) {
+        const { count } = await supabase
+          .from('journal_entries')
+          .select('*', { count: 'exact', head: true })
+          .eq('company_id', companyId)
+          .eq('payment_id', pid)
+          .or('is_void.is.null,is_void.eq.false');
+        if ((count ?? 0) < 1) {
+          failures.push({
+            module: 'payments',
+            step: 'supplier_payment_missing_je',
+            record: pid,
+            expected: '≥1 active JE with payment_id',
+            actual: `count=${count ?? 0}`,
+            classification: 'source_link',
+          });
+        }
+      }
+    }
+  }
+
+  if (!opts.manualJournalEntryId?.trim() && !opts.supplierPaymentId?.trim()) {
+    return {
+      id: 'module_cert_journal_transfer_payments',
+      label: 'Module cert: manual JE / supplier payment (optional ids)',
+      category: 'engine',
+      checkLayer: 'document',
+      status: 'skip',
+      failures: [],
+      meta: {
+        reason: 'Optional: set manual journal entry id and/or supplier payment id in Lab Setup.',
+      },
+    };
+  }
+
+  return {
+    id: 'module_cert_journal_transfer_payments',
+    label: 'Module cert: manual JE / supplier payment (optional ids)',
+    category: 'engine',
+    checkLayer: 'document',
+    status: failures.length ? 'fail' : 'pass',
+    failures,
   };
 }
 
 /** Run all module certification checks for the selected document. */
 export async function runModuleCertificationSuite(
   companyId: string,
-  opts: { saleId?: string; purchaseId?: string }
+  opts: {
+    saleId?: string;
+    purchaseId?: string;
+    expenseId?: string;
+    manualJournalEntryId?: string;
+    supplierPaymentId?: string;
+  }
 ): Promise<LabCheckResult[]> {
   const out: LabCheckResult[] = [];
   out.push(tagDocument(await runModuleStockCertification(companyId, opts)));
@@ -2451,5 +2760,63 @@ export async function runModuleCertificationSuite(
   out.push(tagDocument(await runModulePaymentIsolationCertification(companyId, opts)));
   out.push(tagDocument(await runModuleExpenseAndChargesCertification(companyId, opts)));
   out.push(tagDocument(await runModuleWorkerStudioCertification(companyId, opts)));
+  out.push(tagDocument(await runModuleStandaloneExpenseCertification(companyId, opts.expenseId)));
+  out.push(
+    tagDocument(
+      await runModuleJournalTransferAndPaymentsCertification(companyId, {
+        manualJournalEntryId: opts.manualJournalEntryId,
+        supplierPaymentId: opts.supplierPaymentId,
+      })
+    )
+  );
   return out;
+}
+
+/** Section 3: surface owner equity / capital accounts for BS coverage (informational WARN if missing). */
+export async function runOwnerEquityCapitalVisibilityCheck(companyId: string): Promise<LabCheckResult> {
+  const { data: accs } = await supabase
+    .from('accounts')
+    .select('id, code, name, type')
+    .eq('company_id', companyId)
+    .limit(5000);
+  const list = accs || [];
+  const lower = (s: string) => s.toLowerCase();
+  const hasCapital = list.some(
+    (a: { name?: string; code?: string }) =>
+      lower(a.name || '').includes('capital') ||
+      lower(a.code || '').startsWith('3')
+  );
+  const hasDrawings = list.some(
+    (a: { name?: string }) =>
+      lower(a.name || '').includes('drawing') || lower(a.name || '').includes('withdrawal')
+  );
+  const hasRetained = list.some(
+    (a: { name?: string }) =>
+      lower(a.name || '').includes('retained') || lower(a.name || '').includes('accumulated')
+  );
+  const failures: LabCheckFailure[] = [];
+  if (!hasCapital) {
+    failures.push({
+      module: 'coa_equity',
+      step: 'owner_capital_not_obvious',
+      record: companyId,
+      expected: 'an owner equity / capital-style account (name or code 3xxx)',
+      actual: 'none detected in sample',
+      classification: 'missing_backfill',
+    });
+  }
+  return {
+    id: 'company_equity_capital_visibility',
+    label: 'Company: owner equity / capital / drawings visibility (COA sample)',
+    category: 'data_quality',
+    checkLayer: 'company',
+    status: failures.length ? 'warn' : 'pass',
+    failures,
+    meta: {
+      hasCapital,
+      hasDrawings,
+      hasRetained,
+      note: 'Drawings / retained naming hints in meta only. Presentation — does not replace TB/BS suite.',
+    },
+  };
 }

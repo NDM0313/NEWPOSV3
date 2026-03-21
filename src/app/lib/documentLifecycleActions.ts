@@ -11,6 +11,22 @@ import { postPurchaseDocumentAccounting } from '@/app/services/documentPostingEn
 /** Headless stage moves only — finalize always via SaleForm / convert_to_final (stock + JE). */
 export type SaleLifecycleTarget = 'draft' | 'quotation' | 'order' | 'cancelled';
 
+export async function restoreSaleFromCancelled(
+  saleId: string,
+  target: 'draft' | 'quotation' | 'order',
+  companyId: string
+): Promise<void> {
+  await saleService.restoreCancelledSale(saleId, target, companyId);
+}
+
+export async function restorePurchaseFromCancelled(
+  purchaseId: string,
+  target: 'draft' | 'ordered',
+  companyId: string
+): Promise<void> {
+  await purchaseService.restoreCancelledPurchase(purchaseId, target, companyId);
+}
+
 export async function transitionSaleLifecycle(
   saleId: string,
   target: SaleLifecycleTarget,
@@ -18,6 +34,11 @@ export async function transitionSaleLifecycle(
 ): Promise<void> {
   const row = await saleService.getSaleById(saleId);
   if (!row) throw new Error('Sale not found');
+
+  const cur = String((row as { status?: string }).status || '').toLowerCase();
+  if (cur === 'cancelled' && target !== 'cancelled') {
+    throw new Error('Cancelled sale must be restored (Draft / Quotation / Order) before other lifecycle moves.');
+  }
 
   const r = row as Record<string, unknown>;
   const patch: Record<string, unknown> = { status: target };
@@ -51,6 +72,11 @@ export async function transitionPurchaseLifecycle(
 ): Promise<void> {
   const row = await purchaseService.getPurchase(purchaseId);
   if (!row) throw new Error('Purchase not found');
+
+  const cur = String((row as { status?: string }).status || '').toLowerCase();
+  if (cur === 'cancelled' && target !== 'cancelled') {
+    throw new Error('Cancelled purchase must be restored (Draft or Order) before other lifecycle moves.');
+  }
 
   const r = row as Record<string, unknown>;
   const dbStatus: 'draft' | 'ordered' | 'received' | 'final' | 'cancelled' =

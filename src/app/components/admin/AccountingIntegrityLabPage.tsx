@@ -30,6 +30,7 @@ import { useNavigation } from '@/app/context/NavigationContext';
 import { supabase } from '@/lib/supabase';
 import { saleService } from '@/app/services/saleService';
 import { purchaseService } from '@/app/services/purchaseService';
+import { restoreSaleFromCancelled, restorePurchaseFromCancelled } from '@/app/lib/documentLifecycleActions';
 import { accountService } from '@/app/services/accountService';
 import {
   buildExtendedLabSnapshot,
@@ -152,6 +153,10 @@ export function AccountingIntegrityLabPage() {
   const [purchaseListStatusFilter, setPurchaseListStatusFilter] = useState<
     'all' | 'draft' | 'ordered' | 'received' | 'final' | 'cancelled'
   >('all');
+  /** Optional module certification targets (expense / manual JE / supplier payment). */
+  const [labExpenseId, setLabExpenseId] = useState('');
+  const [labManualJeId, setLabManualJeId] = useState('');
+  const [labSupplierPaymentId, setLabSupplierPaymentId] = useState('');
 
   const [snapshotMeta, setSnapshotMeta] = useState<{
     actionId: string | null;
@@ -292,8 +297,10 @@ export function AccountingIntegrityLabPage() {
   /** Stock / COA / payment isolation / worker placeholder — document-scoped; primary with document cert for this phase. */
   const runModuleCertification = async () => {
     if (!companyId) return;
-    if (!selectedSaleId && !selectedPurchaseId) {
-      toast.error('Select a sale and/or purchase above.');
+    const hasOpt =
+      labExpenseId.trim() || labManualJeId.trim() || labSupplierPaymentId.trim();
+    if (!selectedSaleId && !selectedPurchaseId && !hasOpt) {
+      toast.error('Select a sale/purchase and/or enter optional expense / JE / payment ids.');
       return;
     }
     setModuleChecksLoading(true);
@@ -301,6 +308,9 @@ export function AccountingIntegrityLabPage() {
       const results = await runModuleCertificationSuite(companyId, {
         saleId: selectedSaleId || undefined,
         purchaseId: selectedPurchaseId || undefined,
+        expenseId: labExpenseId.trim() || undefined,
+        manualJournalEntryId: labManualJeId.trim() || undefined,
+        supplierPaymentId: labSupplierPaymentId.trim() || undefined,
       });
       setModuleChecks(results);
     } catch (e: any) {
@@ -730,6 +740,33 @@ export function AccountingIntegrityLabPage() {
                   </SelectContent>
                 </Select>
               </div>
+              <div className="space-y-2 md:col-span-3">
+                <Label className="text-xs">Optional — module certification (expense / manual JE / supplier payment)</Label>
+                <div className="grid gap-2 sm:grid-cols-3">
+                  <Input
+                    placeholder="Expense UUID (business expense)"
+                    value={labExpenseId}
+                    onChange={(e) => setLabExpenseId(e.target.value)}
+                    className="font-mono text-xs h-9"
+                  />
+                  <Input
+                    placeholder="Manual journal_entries.id"
+                    value={labManualJeId}
+                    onChange={(e) => setLabManualJeId(e.target.value)}
+                    className="font-mono text-xs h-9"
+                  />
+                  <Input
+                    placeholder="Supplier payment payments.id"
+                    value={labSupplierPaymentId}
+                    onChange={(e) => setLabSupplierPaymentId(e.target.value)}
+                    className="font-mono text-xs h-9"
+                  />
+                </div>
+                <p className="text-[10px] text-muted-foreground">
+                  Section 2 runs document checks when sale/purchase selected; optional ids add expense / JE / payment rows without
+                  requiring both documents.
+                </p>
+              </div>
               <div className="flex flex-wrap gap-2 md:col-span-3">
                 <Button variant="outline" size="sm" onClick={() => openDrawer('addSale', undefined, {})}>
                   Open new sale form
@@ -810,6 +847,8 @@ export function AccountingIntegrityLabPage() {
                         await saleService.updatePayment(pid, selectedSaleId, { accountId: payAccountId });
                       }) },
                       { label: 'Sale: cancel', dis: !selectedSaleId, run: () => wrapAction('Cancel sale', async () => saleService.cancelSale(selectedSaleId)) },
+                      { label: 'Sale: restore→draft', dis: !selectedSaleId || !companyId, run: () => wrapAction('Restore cancelled sale → draft', async () => restoreSaleFromCancelled(selectedSaleId, 'draft', companyId!)) },
+                      { label: 'Sale: restore→order', dis: !selectedSaleId || !companyId, run: () => wrapAction('Restore cancelled sale → order', async () => restoreSaleFromCancelled(selectedSaleId, 'order', companyId!)) },
                     ] as const
                   ).map((x) => (
                     <Button key={x.label} size="sm" variant="outline" className="h-7 text-[10px]" disabled={x.dis} onClick={() => x.run()}>
@@ -845,6 +884,14 @@ export function AccountingIntegrityLabPage() {
                       await purchaseService.updatePayment(pid, selectedPurchaseId, { accountId: payAccountId });
                     })],
                     ['Pur: cancel', () => wrapAction('Cancel purchase', async () => purchaseService.cancelPurchase(selectedPurchaseId))],
+                    ['Pur: restore→draft', () => wrapAction('Restore cancelled PO → draft', async () => {
+                      if (!companyId) throw new Error('No company');
+                      await restorePurchaseFromCancelled(selectedPurchaseId, 'draft', companyId);
+                    })],
+                    ['Pur: restore→order', () => wrapAction('Restore cancelled PO → order', async () => {
+                      if (!companyId) throw new Error('No company');
+                      await restorePurchaseFromCancelled(selectedPurchaseId, 'ordered', companyId);
+                    })],
                   ].map(([label, fn]) => (
                     <Button key={String(label)} size="sm" variant="outline" className="h-7 text-[10px]" disabled={!selectedPurchaseId} onClick={() => (fn as () => void)()}>
                       {label}

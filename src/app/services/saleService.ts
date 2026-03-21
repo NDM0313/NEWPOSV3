@@ -712,6 +712,13 @@ export const saleService = {
       return data;
     }
 
+    const { data: priorForStatus } = await supabase.from('sales').select('status').eq('id', id).maybeSingle();
+    if (String((priorForStatus as { status?: string } | null)?.status).toLowerCase() === 'cancelled') {
+      throw new Error(
+        'Cannot change status from cancelled. Use Restore to Draft, Quotation, or Order from the sales list first.'
+      );
+    }
+
     const { data, error } = await supabase
       .from('sales')
       .update({ status })
@@ -732,6 +739,41 @@ export const saleService = {
     // Admin posts via Commission Report → "Post Commission" (batch) only.
 
     return data;
+  },
+
+  /**
+   * Move a cancelled sale back to a non-posted lifecycle stage so it can be edited and finalized again.
+   * Does not delete historical reversal JEs or stock rows — audit trail stays intact.
+   */
+  async restoreCancelledSale(
+    id: string,
+    target: 'draft' | 'quotation' | 'order',
+    companyId: string
+  ) {
+    const { data: row, error: fetchErr } = await supabase.from('sales').select('*').eq('id', id).single();
+    if (fetchErr || !row) throw new Error('Sale not found');
+    if (String((row as { status?: string }).status).toLowerCase() !== 'cancelled') {
+      throw new Error('Only cancelled sales can be restored.');
+    }
+
+    const r = row as Record<string, unknown>;
+    const patch: Record<string, unknown> = {
+      status: target,
+      invoice_no: null,
+    };
+
+    if (target === 'draft' && !(r.draft_no && String(r.draft_no).trim())) {
+      patch.draft_no = await documentNumberService.getNextDocumentNumberGlobal(companyId, 'SDR');
+    }
+    if (target === 'quotation' && !(r.quotation_no && String(r.quotation_no).trim())) {
+      patch.quotation_no = await documentNumberService.getNextDocumentNumberGlobal(companyId, 'SQT');
+    }
+    if (target === 'order' && !(r.order_no && String(r.order_no).trim())) {
+      patch.order_no = await documentNumberService.getNextDocumentNumberGlobal(companyId, 'SOR');
+    }
+
+    const { error } = await supabase.from('sales').update(patch).eq('id', id).eq('status', 'cancelled');
+    if (error) throw error;
   },
 
   // Update sale (full update)

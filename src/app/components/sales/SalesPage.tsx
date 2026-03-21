@@ -82,7 +82,7 @@ import { useCheckPermission } from '@/app/hooks/useCheckPermission';
 import { getEffectiveSaleStatus, getSaleStatusBadgeConfig, DEFAULT_SALE_BADGE, isPaymentClosedForSale, canAddPaymentToSale } from '@/app/utils/statusHelpers';
 import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
 import { getSaleDisplayNumber } from '@/app/lib/documentDisplayNumbers';
-import { transitionSaleLifecycle } from '@/app/lib/documentLifecycleActions';
+import { transitionSaleLifecycle, restoreSaleFromCancelled } from '@/app/lib/documentLifecycleActions';
 import { SaleLifecycleMenuBlock, type SaleLifecycleAction } from '@/app/components/sales/SaleLifecycleMenuBlock';
 
 // Mock data removed - using SalesContext which loads from Supabase
@@ -479,6 +479,54 @@ export const SalesPage = () => {
       default:
         console.warn('Unknown action:', action);
         toast.error('Unknown action');
+    }
+  };
+
+  const runSaleLifecycleFromUi = async (sale: Sale, action: SaleLifecycleAction) => {
+    if (action === 'restore_draft' || action === 'restore_quotation' || action === 'restore_order') {
+      if (!companyId) {
+        toast.error('No company selected');
+        return;
+      }
+      const target =
+        action === 'restore_draft' ? 'draft' : action === 'restore_quotation' ? 'quotation' : 'order';
+      try {
+        await restoreSaleFromCancelled(sale.id, target, companyId);
+        toast.success('Sale restored — you can edit and convert to final when ready.');
+        await refreshSales();
+      } catch (e: unknown) {
+        toast.error(e instanceof Error ? e.message : 'Restore failed');
+      }
+      return;
+    }
+    if (action === 'lifecycle_final') {
+      await handleSaleAction('convert_to_final', sale);
+      return;
+    }
+    if (action === 'lifecycle_cancel') {
+      setSelectedSale(sale);
+      setCancelInvoiceDialogOpen(true);
+      return;
+    }
+    if (!companyId) {
+      toast.error('No company selected');
+      return;
+    }
+    const map: Partial<
+      Record<SaleLifecycleAction, import('@/app/lib/documentLifecycleActions').SaleLifecycleTarget>
+    > = {
+      lifecycle_draft: 'draft',
+      lifecycle_quotation: 'quotation',
+      lifecycle_order: 'order',
+    };
+    const target = map[action];
+    if (!target) return;
+    try {
+      await transitionSaleLifecycle(sale.id, target, companyId);
+      toast.success('Sale status updated');
+      await refreshSales();
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'Could not update status');
     }
   };
   

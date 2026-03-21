@@ -179,6 +179,15 @@ interface SaleFormProps {
 }
 
 export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFormProps) => {
+    useEffect(() => {
+        if (!initialSale?.id || !convertToFinal) return;
+        const st = String((initialSale as { status?: string }).status || '').toLowerCase();
+        if (st === 'cancelled') {
+            toast.error('Cannot convert a cancelled sale to final. Restore it from the sales list first.');
+            onClose();
+        }
+    }, [initialSale?.id, (initialSale as { status?: string })?.status, convertToFinal, onClose]);
+
     // Supabase & Context
     const { companyId, branchId: contextBranchId, user, userRole, accessibleBranchIds, requiresBranchSelection } = useSupabase();
     const { canManageSettings } = useCheckPermission();

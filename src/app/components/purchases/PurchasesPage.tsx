@@ -61,7 +61,11 @@ import { useCheckPermission } from '@/app/hooks/useCheckPermission';
 import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
 import { getEffectivePurchaseStatus, getPurchaseStatusBadgeConfig, DEFAULT_PURCHASE_BADGE, isPaymentClosedForPurchase, canAddPaymentToPurchase } from '@/app/utils/statusHelpers';
 import { getPurchaseDisplayNumber } from '@/app/lib/documentDisplayNumbers';
-import { transitionPurchaseLifecycle, type PurchaseLifecycleTarget } from '@/app/lib/documentLifecycleActions';
+import {
+  transitionPurchaseLifecycle,
+  restorePurchaseFromCancelled,
+  type PurchaseLifecycleTarget,
+} from '@/app/lib/documentLifecycleActions';
 import {
   PurchaseLifecycleMenuBlock,
   type PurchaseLifecycleAction,
@@ -302,6 +306,22 @@ export const PurchasesPage = () => {
   };
 
   const runPurchaseLifecycleFromUi = async (purchase: Purchase, action: PurchaseLifecycleAction) => {
+    if (action === 'restore_draft' || action === 'restore_ordered') {
+      if (!companyId) {
+        toast.error('No company selected');
+        return;
+      }
+      const t = action === 'restore_draft' ? 'draft' : 'ordered';
+      try {
+        await restorePurchaseFromCancelled(purchase.uuid, t, companyId);
+        toast.success('Purchase restored — you can edit and post when ready.');
+        await refreshPurchases();
+        await loadPurchases();
+      } catch (e: unknown) {
+        toast.error(e instanceof Error ? e.message : 'Restore failed');
+      }
+      return;
+    }
     if (action === 'lifecycle_cancel') {
       setSelectedPurchase(purchase);
       setCancelPurchaseDialogOpen(true);
