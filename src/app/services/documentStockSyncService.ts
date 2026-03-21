@@ -87,15 +87,15 @@ export async function syncSaleStockForDocument(saleId: string): Promise<Document
     .eq('reference_type', 'sale')
     .eq('reference_id', saleId);
 
-  const movMap = new Map<string, number>();
-  for (const m of movements || []) {
-    if (normMovType((m as any).movement_type) !== 'sale') continue;
-    const k = lineKey(String((m as any).product_id ?? ''), (m as any).variation_id ?? null);
-    movMap.set(k, (movMap.get(k) ?? 0) + (Number((m as any).quantity) || 0));
-  }
-
-  /** Cancelled: net stock effect for this document must be zero (insert −actual per SKU). */
+  /** Cancelled: net per SKU = sum(sale) + sum(sale_cancelled); insert sale Δ to reach zero. */
   if (st === 'cancelled') {
+    const movMap = new Map<string, number>();
+    for (const m of movements || []) {
+      const mt = normMovType((m as any).movement_type);
+      if (mt !== 'sale' && mt !== 'sale_cancelled') continue;
+      const k = lineKey(String((m as any).product_id ?? ''), (m as any).variation_id ?? null);
+      movMap.set(k, (movMap.get(k) ?? 0) + (Number((m as any).quantity) || 0));
+    }
     const companyId = (sale as any).company_id as string;
     const branchId = (sale as any).branch_id as string | null;
     const invoiceNo = String((sale as any).invoice_no || saleId).slice(0, 80);
@@ -134,6 +134,13 @@ export async function syncSaleStockForDocument(saleId: string): Promise<Document
 
   if (!canPostStockForSaleStatus(st)) {
     return { saleId, adjustmentsInserted: 0, keysAdjusted: [] };
+  }
+
+  const movMap = new Map<string, number>();
+  for (const m of movements || []) {
+    if (normMovType((m as any).movement_type) !== 'sale') continue;
+    const k = lineKey(String((m as any).product_id ?? ''), (m as any).variation_id ?? null);
+    movMap.set(k, (movMap.get(k) ?? 0) + (Number((m as any).quantity) || 0));
   }
 
   const lines = await fetchSaleLines(saleId);
@@ -209,14 +216,14 @@ export async function syncPurchaseStockForDocument(purchaseId: string): Promise<
     .eq('reference_type', 'purchase')
     .eq('reference_id', purchaseId);
 
-  const movMap = new Map<string, number>();
-  for (const m of movements || []) {
-    if (normMovType((m as any).movement_type) !== 'purchase') continue;
-    const k = lineKey(String((m as any).product_id ?? ''), (m as any).variation_id ?? null);
-    movMap.set(k, (movMap.get(k) ?? 0) + (Number((m as any).quantity) || 0));
-  }
-
   if (st === 'cancelled') {
+    const movMap = new Map<string, number>();
+    for (const m of movements || []) {
+      const mt = normMovType((m as any).movement_type);
+      if (mt !== 'purchase' && mt !== 'purchase_cancelled') continue;
+      const k = lineKey(String((m as any).product_id ?? ''), (m as any).variation_id ?? null);
+      movMap.set(k, (movMap.get(k) ?? 0) + (Number((m as any).quantity) || 0));
+    }
     const companyId = (pur as any).company_id as string;
     const branchId = (pur as any).branch_id as string | null;
     const poNo = String((pur as any).po_no || purchaseId).slice(0, 80);
@@ -255,6 +262,13 @@ export async function syncPurchaseStockForDocument(purchaseId: string): Promise<
 
   if (!canPostStockForPurchaseStatus(st)) {
     return { purchaseId, adjustmentsInserted: 0, keysAdjusted: [] };
+  }
+
+  const movMap = new Map<string, number>();
+  for (const m of movements || []) {
+    if (normMovType((m as any).movement_type) !== 'purchase') continue;
+    const k = lineKey(String((m as any).product_id ?? ''), (m as any).variation_id ?? null);
+    movMap.set(k, (movMap.get(k) ?? 0) + (Number((m as any).quantity) || 0));
   }
 
   const lines = await fetchPurchaseLines(purchaseId);

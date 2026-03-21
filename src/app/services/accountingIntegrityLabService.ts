@@ -2007,6 +2007,16 @@ export async function runModuleStockCertification(
       });
     } else {
     const st = (sale as { status?: string }).status;
+    const stLower = String(st ?? '').toLowerCase();
+    // Align lab with app: idempotent document stock sync before cert (fixes drift without re-saving)
+    try {
+      const { syncSaleStockForDocument } = await import('@/app/services/documentStockSyncService');
+      if (canPostStockForSaleStatus(st) || stLower === 'cancelled') {
+        await syncSaleStockForDocument(opts.saleId!);
+      }
+    } catch (e) {
+      console.warn('[accountingIntegrityLab] syncSaleStockForDocument pre-cert:', e);
+    }
     const { data: movs } = await supabase
       .from('stock_movements')
       .select('movement_type')
@@ -2027,16 +2037,30 @@ export async function runModuleStockCertification(
           navActions: [{ type: 'sale', saleId: opts.saleId }],
         });
       }
-    } else if (String(st).toLowerCase() === 'cancelled') {
-      const rev = types.filter((t) => t === 'sale_cancelled').length;
-      const fwd = types.filter((t) => t === 'sale').length;
-      if (fwd > 0 && rev !== fwd) {
+    } else if (stLower === 'cancelled') {
+      const { data: smNet } = await supabase
+        .from('stock_movements')
+        .select('product_id, variation_id, quantity, movement_type')
+        .eq('reference_type', 'sale')
+        .eq('reference_id', opts.saleId);
+      const perKey = new Map<string, number>();
+      for (const m of smNet || []) {
+        const mt = normMovementType((m as { movement_type?: string }).movement_type);
+        if (mt !== 'sale' && mt !== 'sale_cancelled') continue;
+        const pid = String((m as { product_id?: string }).product_id ?? '');
+        const vid = (m as { variation_id?: string | null }).variation_id ?? null;
+        const k = stockLineKey(pid, vid);
+        const q = Number((m as { quantity?: number }).quantity) || 0;
+        perKey.set(k, (perKey.get(k) ?? 0) + q);
+      }
+      const bad = [...perKey.entries()].filter(([, v]) => Math.abs(v) > 0.0001);
+      if (bad.length > 0) {
         failures.push({
           module: 'stock',
-          step: 'cancelled_sale_reversal_count',
+          step: 'cancelled_sale_stock_net_nonzero',
           record: opts.saleId,
-          expected: `SALE_CANCELLED rows match prior sale rows (${fwd})`,
-          actual: `sale=${fwd}, sale_cancelled=${rev}`,
+          expected: 'per SKU: sum(sale qty)+sum(sale_cancelled qty)=0',
+          actual: bad.map(([k, v]) => `${k}=>${v}`).join('; '),
           classification: 'engine_bug',
           navActions: [{ type: 'sale', saleId: opts.saleId }],
         });
@@ -2149,6 +2173,15 @@ export async function runModuleStockCertification(
       });
     } else {
     const st = (pur as { status?: string }).status;
+    const purStLower = String(st ?? '').toLowerCase();
+    try {
+      const { syncPurchaseStockForDocument } = await import('@/app/services/documentStockSyncService');
+      if (canPostStockForPurchaseStatus(st) || purStLower === 'cancelled') {
+        await syncPurchaseStockForDocument(opts.purchaseId!);
+      }
+    } catch (e) {
+      console.warn('[accountingIntegrityLab] syncPurchaseStockForDocument pre-cert:', e);
+    }
     const { data: movs } = await supabase
       .from('stock_movements')
       .select('movement_type')
@@ -2169,16 +2202,30 @@ export async function runModuleStockCertification(
           navActions: [{ type: 'purchase', purchaseId: opts.purchaseId }],
         });
       }
-    } else if (String(st).toLowerCase() === 'cancelled') {
-      const rev = types.filter((t) => t === 'purchase_cancelled').length;
-      const fwd = types.filter((t) => t === 'purchase').length;
-      if (fwd > 0 && rev !== fwd) {
+    } else if (purStLower === 'cancelled') {
+      const { data: smNetP } = await supabase
+        .from('stock_movements')
+        .select('product_id, variation_id, quantity, movement_type')
+        .eq('reference_type', 'purchase')
+        .eq('reference_id', opts.purchaseId);
+      const perKeyP = new Map<string, number>();
+      for (const m of smNetP || []) {
+        const mt = normMovementType((m as { movement_type?: string }).movement_type);
+        if (mt !== 'purchase' && mt !== 'purchase_cancelled') continue;
+        const pid = String((m as { product_id?: string }).product_id ?? '');
+        const vid = (m as { variation_id?: string | null }).variation_id ?? null;
+        const k = stockLineKey(pid, vid);
+        const q = Number((m as { quantity?: number }).quantity) || 0;
+        perKeyP.set(k, (perKeyP.get(k) ?? 0) + q);
+      }
+      const badP = [...perKeyP.entries()].filter(([, v]) => Math.abs(v) > 0.0001);
+      if (badP.length > 0) {
         failures.push({
           module: 'stock',
-          step: 'cancelled_purchase_reversal_count',
+          step: 'cancelled_purchase_stock_net_nonzero',
           record: opts.purchaseId,
-          expected: `PURCHASE_CANCELLED rows match prior purchase rows (${fwd})`,
-          actual: `purchase=${fwd}, purchase_cancelled=${rev}`,
+          expected: 'per SKU: sum(purchase)+sum(purchase_cancelled)=0',
+          actual: badP.map(([k, v]) => `${k}=>${v}`).join('; '),
           classification: 'engine_bug',
           navActions: [{ type: 'purchase', purchaseId: opts.purchaseId }],
         });
