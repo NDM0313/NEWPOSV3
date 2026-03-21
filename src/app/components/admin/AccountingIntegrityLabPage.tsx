@@ -30,6 +30,7 @@ import { useNavigation } from '@/app/context/NavigationContext';
 import { supabase } from '@/lib/supabase';
 import { saleService } from '@/app/services/saleService';
 import { purchaseService } from '@/app/services/purchaseService';
+import { studioProductionService } from '@/app/services/studioProductionService';
 import { restoreSaleFromCancelled, restorePurchaseFromCancelled } from '@/app/lib/documentLifecycleActions';
 import { accountService } from '@/app/services/accountService';
 import {
@@ -136,6 +137,7 @@ export function AccountingIntegrityLabPage() {
   const [documentChecksLoading, setDocumentChecksLoading] = useState(false);
   const [moduleChecksLoading, setModuleChecksLoading] = useState(false);
   const [companyChecksLoading, setCompanyChecksLoading] = useState(false);
+  const [workerStageRepairLoading, setWorkerStageRepairLoading] = useState(false);
   const [snapshotBefore, setSnapshotBefore] = useState<string | null>(null);
   const [snapshotAfter, setSnapshotAfter] = useState<string | null>(null);
   const [lastActionError, setLastActionError] = useState<string | null>(null);
@@ -332,6 +334,22 @@ export function AccountingIntegrityLabPage() {
       setCompanyReconSummary('fail');
     } finally {
       setCompanyChecksLoading(false);
+    }
+  };
+
+  /** Align worker_ledger stage job rows with historical worker_payment rows (FIFO). Does not change GL or workers.current_balance. */
+  const runWorkerStagePaidRepair = async () => {
+    if (!companyId) return;
+    setWorkerStageRepairLoading(true);
+    try {
+      const { paymentsProcessed } = await studioProductionService.repairStageJobPaidFlagsFromWorkerPayments(companyId);
+      toast.success(
+        `Replayed ${paymentsProcessed} worker payment(s); marked stage jobs paid where FIFO covers amount. Re-run company reconciliation to verify.`
+      );
+    } catch (e: any) {
+      toast.error(e?.message || 'Worker stage repair failed');
+    } finally {
+      setWorkerStageRepairLoading(false);
     }
   };
 
@@ -1417,16 +1435,29 @@ export function AccountingIntegrityLabPage() {
                   the latest document action succeeded — run only when you intend to review legacy scope.
                 </CardDescription>
               </div>
-              <Button
-                onClick={() => runCompanyReconciliation()}
-                disabled={companyChecksLoading}
-                size="sm"
-                variant="outline"
-                className="border-amber-500/50"
-              >
-                {companyChecksLoading ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4 mr-1" />}
-                Run company reconciliation
-              </Button>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  onClick={() => runCompanyReconciliation()}
+                  disabled={companyChecksLoading}
+                  size="sm"
+                  variant="outline"
+                  className="border-amber-500/50"
+                >
+                  {companyChecksLoading ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4 mr-1" />}
+                  Run company reconciliation
+                </Button>
+                <Button
+                  onClick={() => runWorkerStagePaidRepair()}
+                  disabled={workerStageRepairLoading || !companyId}
+                  size="sm"
+                  variant="secondary"
+                  className="border border-amber-700/40"
+                  title="Marks studio_production_stage worker_ledger rows paid (FIFO) from payments.worker_payment — fixes remaining due vs Accounting when job rows stayed unpaid"
+                >
+                  {workerStageRepairLoading ? <RefreshCw className="h-4 w-4 animate-spin" /> : null}
+                  Repair worker stage paid (from payments)
+                </Button>
+              </div>
             </CardHeader>
             <CardContent>
               <LabCheckResultList

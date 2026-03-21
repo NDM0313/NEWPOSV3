@@ -1785,6 +1785,48 @@ export const studioProductionService = {
   },
 
   /**
+   * After an accounting_payment row is posted: mark unpaid studio_production_stage job rows paid (FIFO by created_at)
+   * until the payment amount is exhausted. Does NOT change workers.current_balance (payment path already decrements once).
+   * Fixes subledger vs payments mismatch (e.g. Integrity Lab "remaining due" vs GL).
+   */
+  async allocateUnpaidStageJobsAfterWorkerPayment(
+    companyId: string,
+    workerId: string,
+    paymentAmount: number
+  ): Promise<void> {
+    if (!companyId || !workerId || paymentAmount <= 0.01) return;
+    const { data: rows, error } = await supabase
+      .from('worker_ledger_entries')
+      .select('id, reference_id, amount, status, created_at')
+      .eq('company_id', companyId)
+      .eq('worker_id', workerId)
+      .eq('reference_type', 'studio_production_stage')
+      .order('created_at', { ascending: true, nullsFirst: true });
+    if (error || !rows?.length) return;
+    let pool = paymentAmount;
+    for (const row of rows as { id: string; amount?: number; status?: string }[]) {
+      if (String(row.status || '').toLowerCase() === 'paid') continue;
+      const amt = Number(row.amount) || 0;
+      if (amt <= 0.01) continue;
+      if (pool + 1e-4 < amt) break;
+      const { error: upErr } = await supabase
+        .from('worker_ledger_entries')
+        .update({
+          status: 'paid',
+          paid_at: new Date().toISOString(),
+          payment_reference: null,
+        })
+        .eq('id', row.id);
+      if (upErr) {
+        console.warn('[studioProductionService] allocateUnpaidStageJobsAfterWorkerPayment:', upErr.message);
+        continue;
+      }
+      pool -= amt;
+      if (pool <= 1e-4) break;
+    }
+  },
+
+  /**
    * Record an accounting payment in worker ledger (Accounting → Pay Worker flow).
    * Inserts one row: amount, status=paid, reference_type=accounting_payment.
    * Used when user pays worker from Ledger/Accounting without a specific stage (generic payment).
@@ -1839,11 +1881,36 @@ export const studioProductionService = {
       console.log('[WORKER LEDGER DEBUG] worker_ledger_entries insert result', { id: insertData?.id ?? null, error: error?.message ?? null });
     }
     if (error) throw new Error(`Worker ledger (accounting payment) failed: ${error.message}`);
+    await this.allocateUnpaidStageJobsAfterWorkerPayment(companyId, workerId, amount);
     // Reduce worker's current_balance (amount we owe) only when we actually inserted
     const { data: workerRow } = await supabase.from('workers').select('current_balance').eq('id', workerId).single();
     const currentBalance = Number((workerRow as any)?.current_balance) || 0;
     const newBalance = Math.max(0, currentBalance - amount);
     await supabase.from('workers').update({ current_balance: newBalance, updated_at: new Date().toISOString() }).eq('id', workerId);
+  },
+
+  /**
+   * One-off repair: replay `payments` (worker_payment, oldest first) and FIFO-allocate to unpaid stage job rows.
+   * Does not change `workers.current_balance`. Safe to re-run; skips rows already `paid`.
+   */
+  async repairStageJobPaidFlagsFromWorkerPayments(companyId: string): Promise<{ paymentsProcessed: number }> {
+    let paymentsProcessed = 0;
+    const { data: pays, error } = await supabase
+      .from('payments')
+      .select('reference_id, amount, payment_date, created_at')
+      .eq('company_id', companyId)
+      .eq('reference_type', 'worker_payment')
+      .order('payment_date', { ascending: true })
+      .order('created_at', { ascending: true });
+    if (error) throw new Error(error.message);
+    for (const p of pays || []) {
+      const wid = (p as { reference_id?: string }).reference_id;
+      const amt = Number((p as { amount?: number }).amount) || 0;
+      if (!wid || amt <= 0.01) continue;
+      await this.allocateUnpaidStageJobsAfterWorkerPayment(companyId, wid, amt);
+      paymentsProcessed += 1;
+    }
+    return { paymentsProcessed };
   },
 
   /**
