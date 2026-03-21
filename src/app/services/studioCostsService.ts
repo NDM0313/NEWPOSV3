@@ -366,6 +366,44 @@ export const studioCostsService = {
           });
         }
 
+        // Z2: payments.worker_payment (Accounting) — source of truth when rows exist; refine card totals + entry status (FIFO by stage ref)
+        {
+          const { data: payRows } = await supabase
+            .from('payments')
+            .select('reference_id, amount, branch_id')
+            .eq('company_id', companyId)
+            .eq('reference_type', 'worker_payment');
+          const payByWorker = new Map<string, number>();
+          (payRows || []).forEach((r: any) => {
+            const wid = r.reference_id as string;
+            if (!wid) return;
+            if (branchId && branchId !== 'all') {
+              const bid = r.branch_id as string | null | undefined;
+              if (bid != null && bid !== branchId) return;
+            }
+            payByWorker.set(wid, (payByWorker.get(wid) ?? 0) + (Number(r.amount) || 0));
+          });
+          const jEPS = 0.02;
+          byWorker.forEach((workerSum) => {
+            const pt = payByWorker.get(workerSum.workerId) ?? 0;
+            if (pt <= jEPS) return;
+            const paidCap = Math.min(workerSum.totalCost, pt);
+            workerSum.paidAmount = paidCap;
+            workerSum.unpaidAmount = Math.max(0, workerSum.totalCost - paidCap);
+            const sorted = [...workerSum.ledgerEntries].sort((a, b) =>
+              a.referenceId.localeCompare(b.referenceId)
+            );
+            let pool = paidCap;
+            sorted.forEach((entry) => {
+              const amt = entry.amount;
+              const ap = Math.min(amt, pool);
+              pool -= ap;
+              const due = Math.max(0, amt - ap);
+              entry.status = due <= jEPS ? 'paid' : ap > jEPS ? 'partial' : 'unpaid';
+            });
+          });
+        }
+
         workerCosts = Array.from(byWorker.values())
           .filter((w) => w.workerId !== '__unknown__')
           .sort((a, b) => b.unpaidAmount - a.unpaidAmount);

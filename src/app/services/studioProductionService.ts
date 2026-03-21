@@ -20,6 +20,131 @@ async function resolveStageWorker(stage: any): Promise<void> {
 
 export type StudioProductionStatus = 'draft' | 'in_progress' | 'completed' | 'cancelled';
 
+/** Z2: per-stage paid/due from payments.worker_payment + worker_ledger (FIFO), for Studio UI. */
+export type StageWorkerPaymentDetail = {
+  status: 'unpaid' | 'partial' | 'paid';
+  paidAmount: number;
+  remainingDue: number;
+};
+
+const STAGE_PAY_EPS = 0.02;
+
+async function fetchStageWorkerPaymentDetailsImpl(
+  companyId: string,
+  stageIds: string[],
+  branchId?: string | null
+): Promise<Record<string, StageWorkerPaymentDetail>> {
+  const out: Record<string, StageWorkerPaymentDetail> = {};
+  if (!companyId || stageIds.length === 0) return out;
+
+  const { data: stages, error: stErr } = await supabase
+    .from('studio_production_stages')
+    .select('id, production_id, assigned_worker_id, cost, expected_cost, status, completed_at')
+    .in('id', stageIds);
+  if (stErr || !stages?.length) {
+    stageIds.forEach((id) => {
+      out[id] = { status: 'unpaid', paidAmount: 0, remainingDue: 0 };
+    });
+    return out;
+  }
+
+  const prodIds = [...new Set((stages as any[]).map((s) => s.production_id).filter(Boolean))];
+  const { data: prods } = await supabase
+    .from('studio_productions')
+    .select('id, company_id')
+    .in('id', prodIds);
+  const prodCompany = new Map((prods || []).map((p: any) => [p.id, p.company_id as string]));
+
+  const stagesInCo = (stages as any[]).filter((s) => prodCompany.get(s.production_id) === companyId);
+
+  let payQuery = supabase
+    .from('payments')
+    .select('reference_id, amount, branch_id')
+    .eq('company_id', companyId)
+    .eq('reference_type', 'worker_payment');
+  const { data: payRows } = await payQuery;
+  const paymentByWorker = new Map<string, number>();
+  (payRows || []).forEach((r: any) => {
+    const wid = r.reference_id as string | null;
+    if (!wid) return;
+    if (branchId && branchId !== 'all') {
+      const bid = r.branch_id as string | null | undefined;
+      if (bid != null && bid !== branchId) return;
+    }
+    paymentByWorker.set(wid, (paymentByWorker.get(wid) ?? 0) + (Number(r.amount) || 0));
+  });
+
+  const { data: ledgerRows } = await supabase
+    .from('worker_ledger_entries')
+    .select('reference_id, status')
+    .eq('reference_type', 'studio_production_stage')
+    .in('reference_id', stageIds);
+  const ledgerPaid = new Set<string>();
+  (ledgerRows || []).forEach((r: any) => {
+    if (String(r.status || '').toLowerCase() === 'paid') ledgerPaid.add(r.reference_id);
+  });
+
+  const byWorker = new Map<string, any[]>();
+  for (const s of stagesInCo) {
+    const w = s.assigned_worker_id as string | null;
+    if (!w) continue;
+    if (!byWorker.has(w)) byWorker.set(w, []);
+    byWorker.get(w)!.push(s);
+  }
+
+  for (const [workerId, arr] of byWorker) {
+    let pool = paymentByWorker.get(workerId) ?? 0;
+    const sorted = [...arr].sort((a, b) => {
+      const ca = (a.completed_at as string) || '';
+      const cb = (b.completed_at as string) || '';
+      if (ca && cb) return ca.localeCompare(cb);
+      if (ca) return -1;
+      if (cb) return 1;
+      return 0;
+    });
+    for (const s of sorted) {
+      const sid = s.id as string;
+      const completed = String(s.status || '').toLowerCase() === 'completed';
+      const cost = completed
+        ? Number(s.cost) || 0
+        : Number(s.expected_cost) || Number(s.cost) || 0;
+
+      if (ledgerPaid.has(sid)) {
+        out[sid] = { status: 'paid', paidAmount: cost, remainingDue: 0 };
+        pool = Math.max(0, pool - cost);
+        continue;
+      }
+      if (!completed || cost <= 0) {
+        out[sid] = { status: 'unpaid', paidAmount: 0, remainingDue: cost };
+        continue;
+      }
+      const applied = Math.min(cost, pool);
+      pool -= applied;
+      const due = Math.max(0, cost - applied);
+      let st: 'unpaid' | 'partial' | 'paid';
+      if (due <= STAGE_PAY_EPS) st = 'paid';
+      else if (applied > STAGE_PAY_EPS) st = 'partial';
+      else st = 'unpaid';
+      out[sid] = { status: st, paidAmount: applied, remainingDue: due };
+    }
+  }
+
+  for (const s of stagesInCo) {
+    const sid = s.id as string;
+    if (out[sid]) continue;
+    const completed = String(s.status || '').toLowerCase() === 'completed';
+    const cost = completed
+      ? Number(s.cost) || 0
+      : Number(s.expected_cost) || Number(s.cost) || 0;
+    out[sid] = { status: 'unpaid', paidAmount: 0, remainingDue: cost };
+  }
+
+  for (const id of stageIds) {
+    if (!out[id]) out[id] = { status: 'unpaid', paidAmount: 0, remainingDue: 0 };
+  }
+  return out;
+}
+
 export interface StudioProduction {
   id: string;
   company_id: string;
@@ -913,9 +1038,42 @@ export const studioProductionService = {
     }
   },
 
-  /** Ledger status per stage (for Payable vs Paid vs Partial). Returns {} if status column missing. */
-  async getLedgerStatusForStages(stageIds: string[]): Promise<Record<string, 'unpaid' | 'partial' | 'paid'>> {
+  /**
+   * Z2: Paid / partial / unpaid per stage — uses `payments` (worker_payment) + FIFO + worker_ledger when companyId set.
+   * Legacy: worker_ledger rows only when companyId omitted.
+   */
+  async getStageWorkerPaymentDetails(
+    companyId: string,
+    stageIds: string[],
+    branchId?: string | null
+  ): Promise<Record<string, StageWorkerPaymentDetail>> {
     if (stageIds.length === 0) return {};
+    try {
+      return await fetchStageWorkerPaymentDetailsImpl(companyId, stageIds, branchId);
+    } catch {
+      return Object.fromEntries(stageIds.map((id) => [id, { status: 'unpaid' as const, paidAmount: 0, remainingDue: 0 }]));
+    }
+  },
+
+  /** Ledger status per stage (for Payable vs Paid vs Partial). Pass companyId for Accounting worker payments visibility. */
+  async getLedgerStatusForStages(
+    stageIds: string[],
+    companyId?: string | null,
+    branchId?: string | null
+  ): Promise<Record<string, 'unpaid' | 'partial' | 'paid'>> {
+    if (stageIds.length === 0) return {};
+    if (companyId) {
+      try {
+        const det = await fetchStageWorkerPaymentDetailsImpl(companyId, stageIds, branchId);
+        const out: Record<string, 'unpaid' | 'partial' | 'paid'> = {};
+        stageIds.forEach((id) => {
+          out[id] = det[id]?.status ?? 'unpaid';
+        });
+        return out;
+      } catch {
+        /* fall through to ledger-only */
+      }
+    }
     try {
       const { data, error } = await supabase
         .from('worker_ledger_entries')

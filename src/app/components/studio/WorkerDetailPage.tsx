@@ -70,6 +70,8 @@ interface WorkerDetail {
   
   // Financial (read-only indicators)
   totalEarnings: number;
+  /** Paid to worker from Accounting (payments.worker_payment), capped at studio job cost in summary service */
+  totalPaid: number;
   pendingAmount: number;
   
   // Current jobs
@@ -202,7 +204,7 @@ export const WorkerDetailPage: React.FC = () => {
       const mapDept = (tt?: string) => mapStageTypeToDept(tt || w.worker_type || '');
       const stageIds = [...data.currentStages.map((s) => s.id), ...data.recentCompletedStages.map((s) => s.id)];
       const ledgerStatus = stageIds.length > 0
-        ? await studioProductionService.getLedgerStatusForStages(stageIds)
+        ? await studioProductionService.getLedgerStatusForStages(stageIds, companyId, undefined)
         : {};
       const paymentStatus = (sid: string): PaymentStatus => ledgerStatus[sid] || 'unpaid';
       const currentJobs: WorkerJob[] = data.currentStages.map((s) => ({
@@ -242,6 +244,7 @@ export const WorkerDetailPage: React.FC = () => {
         pendingJobs: w.pendingJobs ?? 0,
         completedJobs: w.completedJobs ?? 0,
         totalEarnings: costForWorker != null ? costForWorker.totalCost : (w.totalEarnings ?? 0),
+        totalPaid: costForWorker != null ? costForWorker.paidAmount : 0,
         pendingAmount: costForWorker != null ? costForWorker.unpaidAmount : (w.pendingAmount ?? 0),
         currentJobs,
         recentCompletedJobs,
@@ -405,7 +408,7 @@ export const WorkerDetailPage: React.FC = () => {
           </div>
 
           {/* Stats Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mt-6 pt-6 border-t border-gray-800">
+          <div className="grid grid-cols-2 md:grid-cols-6 gap-4 mt-6 pt-6 border-t border-gray-800">
             <div className="text-center">
               <p className="text-gray-400 text-sm mb-1">Active Jobs</p>
               <p className="text-3xl font-bold text-yellow-400">{worker.activeJobs}</p>
@@ -419,7 +422,13 @@ export const WorkerDetailPage: React.FC = () => {
               <p className="text-3xl font-bold text-green-400">{worker.completedJobs}</p>
             </div>
             <div className="text-center border-l border-gray-800">
-              <p className="text-gray-400 text-sm mb-1">Total Due Amount</p>
+              <p className="text-gray-400 text-sm mb-1">Total Paid</p>
+              <p className={`text-2xl font-bold ${worker.totalPaid > 0 ? 'text-green-400' : 'text-gray-500'}`}>
+                Rs {worker.totalPaid.toLocaleString()}
+              </p>
+            </div>
+            <div className="text-center border-l border-gray-800">
+              <p className="text-gray-400 text-sm mb-1">Remaining Due</p>
               <p className={`text-2xl font-bold ${worker.pendingAmount > 0 ? 'text-orange-400' : 'text-green-400'}`}>
                 {worker.pendingAmount > 0 ? `Rs ${worker.pendingAmount.toLocaleString()}` : 'Cleared'}
               </p>
@@ -438,12 +447,12 @@ export const WorkerDetailPage: React.FC = () => {
           <div className="bg-gradient-to-r from-orange-500/10 to-red-500/10 border border-orange-500/20 rounded-xl p-5">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-orange-400 font-semibold text-sm mb-1">Total Due Amount (Payable)</p>
+                <p className="text-orange-400 font-semibold text-sm mb-1">Remaining Due (Payable)</p>
                 <p className="text-3xl font-bold text-white">
                   Rs {worker.pendingAmount.toLocaleString()}
                 </p>
                 <p className="text-xs text-gray-400 mt-2">
-                  Ledger-driven: unpaid payable entries. Pay via Accounting → Worker Payments.
+                  From studio costs + worker payments in Accounting. Pay via Accounting → Worker Payments.
                 </p>
               </div>
               <Button

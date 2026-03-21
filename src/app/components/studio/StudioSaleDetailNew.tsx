@@ -135,6 +135,9 @@ interface ProductionStep {
   actualCompletionDate?: string;
   workerCost: number; // Legacy - total cost
   workerPaymentStatus?: 'Payable' | 'Pending' | 'Partial' | 'Paid'; // ERP: Payment status (handled in Accounting)
+  /** Z2: allocated from Accounting worker payments (FIFO) */
+  workerPaidAmount?: number;
+  workerRemainingDue?: number;
   status: StepStatus;
   notes?: string;
 }
@@ -545,7 +548,8 @@ export const StudioSaleDetailNew = () => {
   // ledgerStatusByStageId: optional map from stage id to 'unpaid'|'partial'|'paid' for Payable vs Partial vs Paid
   const stagesToProductionSteps = useCallback((
     stages: Array<{ id: string; stage_type: string; assigned_worker_id?: string | null; assigned_at?: string | null; cost?: number; expected_cost?: number | null; status?: string; expected_completion_date?: string | null; completed_at?: string | null; notes?: string | null; worker?: { id: string; name: string } }>,
-    ledgerStatusByStageId?: Record<string, 'unpaid' | 'partial' | 'paid'>
+    ledgerStatusByStageId?: Record<string, 'unpaid' | 'partial' | 'paid'>,
+    paymentDetailByStageId?: Record<string, { paidAmount: number; remainingDue: number }>
   ): ProductionStep[] => {
     const stageTypeMap: Record<string, 'dyer' | 'stitching' | 'handwork' | 'extra'> = { dyer: 'dyer', dyeing: 'dyer', stitching: 'stitching', handwork: 'handwork', extra: 'extra' };
     return stages.map((s, i) => {
@@ -557,6 +561,10 @@ export const StudioSaleDetailNew = () => {
         ledgerStatus === 'paid' ? 'Paid' : ledgerStatus === 'partial' ? 'Partial' : (s.status === 'completed' ? 'Payable' : 'Pending');
       const isCompleted = (s.status || '').toLowerCase() === 'completed';
       const displayCost = isCompleted ? (s.cost ?? 0) : (s.expected_cost ?? s.cost ?? 0);
+      const pd = paymentDetailByStageId?.[s.id];
+      const workerPaidAmount = pd?.paidAmount ?? 0;
+      const workerRemainingDue =
+        pd != null ? pd.remainingDue : isCompleted ? displayCost : 0;
       // CRITICAL: Only show Assigned when worker exists. status=assigned/in_progress + worker null = invalid; force Pending.
       const rawStatus = (s.status || 'pending').toLowerCase();
       const hasWorker = !!s.assigned_worker_id;
@@ -583,6 +591,8 @@ export const StudioSaleDetailNew = () => {
         actualCompletionDate: s.completed_at || undefined,
         workerCost: displayCost,
         workerPaymentStatus,
+        workerPaidAmount,
+        workerRemainingDue,
         status,
         notes: s.notes || ''
       };
@@ -667,10 +677,19 @@ export const StudioSaleDetailNew = () => {
               window.dispatchEvent(new CustomEvent('studio-production-saved'));
               const stages = await studioProductionService.getStagesByProductionId(prodId);
               const stageIds = stages.map((s: any) => s.id);
-              const ledgerStatusByStageId = stageIds.length > 0
-                ? await studioProductionService.getLedgerStatusForStages(stageIds)
-                : undefined;
-              productionSteps = stagesToProductionSteps(stages, ledgerStatusByStageId);
+              let payDet: Record<string, { paidAmount: number; remainingDue: number }> = {};
+              let ledgerStatusByStageId: Record<string, 'unpaid' | 'partial' | 'paid'> | undefined;
+              if (stageIds.length > 0) {
+                if (companyId) {
+                  payDet = await studioProductionService.getStageWorkerPaymentDetails(companyId, stageIds, branchId);
+                  ledgerStatusByStageId = Object.fromEntries(
+                    stageIds.map((id) => [id, payDet[id]?.status ?? 'unpaid'])
+                  ) as Record<string, 'unpaid' | 'partial' | 'paid'>;
+                } else {
+                  ledgerStatusByStageId = await studioProductionService.getLedgerStatusForStages(stageIds);
+                }
+              }
+              productionSteps = stagesToProductionSteps(stages, ledgerStatusByStageId, payDet);
             } else {
               setProductionId(null);
               setInvoiceLinked(false);
@@ -701,10 +720,19 @@ export const StudioSaleDetailNew = () => {
                   // No auto-stages: manager decides via Customize Tasks
                   const stages = await studioProductionService.getStagesByProductionId(production.id);
                   const stageIds = stages.map((s: any) => s.id);
-                  const ledgerStatusByStageId = stageIds.length > 0
-                    ? await studioProductionService.getLedgerStatusForStages(stageIds)
-                    : undefined;
-                  productionSteps = stagesToProductionSteps(stages, ledgerStatusByStageId);
+                  let payDet: Record<string, { paidAmount: number; remainingDue: number }> = {};
+                  let ledgerStatusByStageId: Record<string, 'unpaid' | 'partial' | 'paid'> | undefined;
+                  if (stageIds.length > 0) {
+                    if (companyId) {
+                      payDet = await studioProductionService.getStageWorkerPaymentDetails(companyId, stageIds, branchId);
+                      ledgerStatusByStageId = Object.fromEntries(
+                        stageIds.map((id) => [id, payDet[id]?.status ?? 'unpaid'])
+                      ) as Record<string, 'unpaid' | 'partial' | 'paid'>;
+                    } else {
+                      ledgerStatusByStageId = await studioProductionService.getLedgerStatusForStages(stageIds);
+                    }
+                  }
+                  productionSteps = stagesToProductionSteps(stages, ledgerStatusByStageId, payDet);
                 }
               }
             }
@@ -797,17 +825,26 @@ export const StudioSaleDetailNew = () => {
       window.dispatchEvent(new CustomEvent('studio-production-saved'));
       const stages = await studioProductionService.getStagesByProductionId(productionId);
       const stageIds = stages.map((s: any) => s.id);
-      const ledgerStatusByStageId = stageIds.length > 0
-        ? await studioProductionService.getLedgerStatusForStages(stageIds)
-        : undefined;
-      const steps = stagesToProductionSteps(stages, ledgerStatusByStageId);
+      let payDet: Record<string, { paidAmount: number; remainingDue: number }> = {};
+      let ledgerStatusByStageId: Record<string, 'unpaid' | 'partial' | 'paid'> | undefined;
+      if (stageIds.length > 0) {
+        if (companyId) {
+          payDet = await studioProductionService.getStageWorkerPaymentDetails(companyId, stageIds, branchId);
+          ledgerStatusByStageId = Object.fromEntries(
+            stageIds.map((id) => [id, payDet[id]?.status ?? 'unpaid'])
+          ) as Record<string, 'unpaid' | 'partial' | 'paid'>;
+        } else {
+          ledgerStatusByStageId = await studioProductionService.getLedgerStatusForStages(stageIds);
+        }
+      }
+      const steps = stagesToProductionSteps(stages, ledgerStatusByStageId, payDet);
       setSaleDetail(prev => prev ? { ...prev, productionSteps: steps } : prev);
       return steps;
     } catch (e) {
       console.warn('[StudioSaleDetail] Reload stages failed:', e);
       return undefined;
     }
-  }, [productionId, saleDetail, stagesToProductionSteps]);
+  }, [productionId, saleDetail, stagesToProductionSteps, companyId, branchId]);
 
   // Calculate costs
   const calculateInternalCosts = () => {
@@ -1753,9 +1790,16 @@ export const StudioSaleDetailNew = () => {
     if (!step) return;
     const isServerUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(stepId);
     if (isServerUuid) {
-      studioProductionService.getLedgerStatusForStages([stepId]).then((statusMap) => {
-        setWorkerStagePaymentStatus(prev => ({ ...prev, ...statusMap }));
-      }).catch(() => {});
+      studioProductionService
+        .getLedgerStatusForStages(
+          [stepId],
+          companyId ?? undefined,
+          branchId ?? undefined
+        )
+        .then((statusMap) => {
+          setWorkerStagePaymentStatus((prev) => ({ ...prev, ...statusMap }));
+        })
+        .catch(() => {});
     }
     // Load existing workers or create from legacy data
     const workers = step.assignedWorkers && step.assignedWorkers.length > 0
@@ -2723,6 +2767,22 @@ export const StudioSaleDetailNew = () => {
                                             </Badge>
                                           )}
                                         </div>
+                                        {(step.workerPaidAmount ?? 0) > 0 || (step.workerRemainingDue ?? 0) > 0 ? (
+                                          <div className="flex flex-wrap gap-3 text-[11px] text-gray-500 pl-0.5">
+                                            <span>
+                                              Worker paid:{' '}
+                                              <span className="text-green-400 font-semibold tabular-nums">
+                                                {formatCurrency(step.workerPaidAmount ?? 0)}
+                                              </span>
+                                            </span>
+                                            <span>
+                                              Remaining:{' '}
+                                              <span className="text-orange-400 font-semibold tabular-nums">
+                                                {formatCurrency(step.workerRemainingDue ?? 0)}
+                                              </span>
+                                            </span>
+                                          </div>
+                                        ) : null}
                                       </div>
                                     ) : (
                                       <p className="text-sm text-gray-600">
@@ -2867,6 +2927,22 @@ export const StudioSaleDetailNew = () => {
                       <span className="text-sm text-gray-400">Total Worker Cost</span>
                       <span className="text-lg font-bold text-orange-400">
                         {formatCurrency(saleDetail.productionSteps.reduce((sum, step) => sum + step.workerCost, 0))}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-gray-400">Total Worker Paid (Accounting)</span>
+                      <span className="text-lg font-bold text-green-400">
+                        {formatCurrency(
+                          saleDetail.productionSteps.reduce((sum, step) => sum + (step.workerPaidAmount ?? 0), 0)
+                        )}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-gray-400">Total Worker Unpaid</span>
+                      <span className="text-lg font-bold text-amber-400">
+                        {formatCurrency(
+                          saleDetail.productionSteps.reduce((sum, step) => sum + (step.workerRemainingDue ?? 0), 0)
+                        )}
                       </span>
                     </div>
                     <p className="text-xs text-gray-500">

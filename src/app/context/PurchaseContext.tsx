@@ -14,7 +14,11 @@ import { getOrCreateLedger, addLedgerEntry } from '@/app/services/ledgerService'
 import { branchService } from '@/app/services/branchService';
 import { toast } from 'sonner';
 import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
-import { canPostAccountingForPurchaseStatus } from '@/app/lib/postingStatusGate';
+import {
+  canPostAccountingForPurchaseStatus,
+  canPostStockForPurchaseStatus,
+  normalizePurchaseStatusForPosting,
+} from '@/app/lib/postingStatusGate';
 import { getPurchaseDisplayNumber } from '@/app/lib/documentDisplayNumbers';
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -515,6 +519,23 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
       // when purchase status is 'final' (AFTER INSERT/UPDATE). Do NOT create here to avoid double posting.
       if (canPostAccountingForPurchaseStatus(newPurchase.status) && newPurchase.items && newPurchase.items.length > 0) {
         console.log('[PURCHASE CONTEXT] Stock for purchase', newPurchase.id, 'handled by DB trigger (single posting).');
+      }
+
+      // Z1: Reconcile lines vs stock_movements after trigger + any race
+      const pst = normalizePurchaseStatusForPosting(newPurchase.status);
+      if (
+        newPurchase.id &&
+        (canPostStockForPurchaseStatus(pst) || String(newPurchase.status).toLowerCase() === 'cancelled')
+      ) {
+        try {
+          const { syncPurchaseStockForDocument } = await import('@/app/services/documentStockSyncService');
+          const z1 = await syncPurchaseStockForDocument(newPurchase.id);
+          if (z1.adjustmentsInserted > 0) {
+            console.log('[PURCHASE CONTEXT] Z1 stock sync (create):', z1.keysAdjusted);
+          }
+        } catch (z1Err) {
+          console.warn('[PURCHASE CONTEXT] Z1 stock sync (create) failed:', z1Err);
+        }
       }
       
       // Extra expenses and discount are now in the single line-by-line journal above (from purchase_charges).
@@ -1195,6 +1216,26 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
           console.error('[PURCHASE CONTEXT] PF-COMPONENT: Purchase edit accounting failed:', repostErr);
           toast.warning('Purchase updated, but accounting repost failed. Check logs.');
         }
+      }
+
+      // Z1: Reconcile purchase stock movements to line totals (posted + cancelled net-zero)
+      try {
+        const pRow = await purchaseService.getPurchase(id);
+        const pst = normalizePurchaseStatusForPosting((pRow as any)?.status);
+        const stRaw = String((pRow as any)?.status ?? '').toLowerCase();
+        if (
+          pRow &&
+          (canPostStockForPurchaseStatus(pst) || stRaw === 'cancelled')
+        ) {
+          const { syncPurchaseStockForDocument } = await import('@/app/services/documentStockSyncService');
+          const z1 = await syncPurchaseStockForDocument(id);
+          if (z1.adjustmentsInserted > 0) {
+            console.log('[PURCHASE CONTEXT] Z1 stock sync (update):', z1.keysAdjusted);
+            window.dispatchEvent(new CustomEvent('purchaseSaved', { detail: { purchaseId: id } }));
+          }
+        }
+      } catch (z1Err) {
+        console.warn('[PURCHASE CONTEXT] Z1 stock sync (update) failed:', z1Err);
       }
 
       // Update local state

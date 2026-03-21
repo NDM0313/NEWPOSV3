@@ -1674,16 +1674,6 @@ export const PurchasesPage = () => {
                                 Create Purchase Return
                               </DropdownMenuItem>
                             )}
-                            
-                            {canDeletePurchase && getEffectivePurchaseStatus(purchase) !== 'cancelled' && (
-                            <>
-                            <DropdownMenuSeparator className="bg-gray-700" />
-                            <DropdownMenuItem className="hover:bg-gray-800 cursor-pointer text-red-400" onClick={() => handleDelete(purchase)}>
-                              <Trash2 size={14} className="mr-2" />
-                              Delete
-                            </DropdownMenuItem>
-                            </>
-                            )}
                           </DropdownMenuContent>
                         </DropdownMenu>
                             </div>

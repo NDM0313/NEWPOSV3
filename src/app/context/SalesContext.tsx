@@ -990,6 +990,19 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
         console.log('[SALES CONTEXT] ✅ All stock movements created successfully for sale:', newSale.id);
         }
       }
+
+      // Z1: Idempotent line ↔ movements reconciliation (trigger/app drift, combos edge cases)
+      if (newSale.id && (canPostStockForSaleStatus(newSale.status) || String(newSale.status).toLowerCase() === 'cancelled')) {
+        try {
+          const { syncSaleStockForDocument } = await import('@/app/services/documentStockSyncService');
+          const z1 = await syncSaleStockForDocument(newSale.id);
+          if (z1.adjustmentsInserted > 0) {
+            console.log('[SALES CONTEXT] Z1 stock sync (create):', z1.keysAdjusted);
+          }
+        } catch (z1Err) {
+          console.warn('[SALES CONTEXT] Z1 stock sync (create) failed:', z1Err);
+        }
+      }
       
       // Commission: NOT posted per sale (commission_status=pending until batch post).
 
@@ -1789,6 +1802,22 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
         }
       }
       
+      // Z1: Reconcile stock_movements to line totals (posted + cancelled net-zero)
+      try {
+        const preReload = await saleService.getSaleById(id);
+        const syncSt = String((preReload as any)?.status ?? '').toLowerCase();
+        if (preReload && (canPostStockForSaleStatus(syncSt) || syncSt === 'cancelled')) {
+          const { syncSaleStockForDocument } = await import('@/app/services/documentStockSyncService');
+          const z1 = await syncSaleStockForDocument(id);
+          if (z1.adjustmentsInserted > 0) {
+            console.log('[SALES CONTEXT] Z1 stock sync (update):', z1.keysAdjusted);
+            window.dispatchEvent(new CustomEvent('saleSaved', { detail: { saleId: id } }));
+          }
+        }
+      } catch (z1Err) {
+        console.warn('[SALES CONTEXT] Z1 stock sync (update) failed:', z1Err);
+      }
+
       // CRITICAL FIX: Reload sale from database to get fresh data
       const updatedSaleData = await saleService.getSaleById(id);
       if (updatedSaleData) {
