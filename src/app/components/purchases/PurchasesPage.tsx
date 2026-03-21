@@ -999,9 +999,6 @@ export const PurchasesPage = () => {
           </div>
         );
       case 'grandTotal':
-        if (isPurchaseNonPostedCommercial(purchase.status)) {
-          return <span className="text-sm text-gray-500 tabular-nums">—</span>;
-        }
         return (
           <div className="text-sm font-semibold text-white tabular-nums">{formatCurrency(purchase.grandTotal)}</div>
         );
@@ -1598,16 +1595,6 @@ export const PurchasesPage = () => {
                         if (key === 'actions') {
                           return (
                             <div key="actions" className="flex items-center justify-center gap-1">
-                              {canDeletePurchase && (
-                                <button
-                                  type="button"
-                                  onClick={(e) => { e.stopPropagation(); handleDelete(purchase); }}
-                                  className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:text-red-400 hover:bg-gray-800/80 transition-all"
-                                  title="Delete"
-                                >
-                                  <Trash2 size={16} />
-                                </button>
-                              )}
                               <DropdownMenu>
                           <DropdownMenuTrigger asChild>
                             <button 

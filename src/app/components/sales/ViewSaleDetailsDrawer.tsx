@@ -520,6 +520,17 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
       });
   }, [salesmanId]);
 
+  /** Non-posted stages: hide payment UI (defined before early returns for hook + derived state consistency). */
+  const hidePaymentCommercial = sale
+    ? isSaleNonPostedCommercial(getEffectiveSaleStatus(sale))
+    : false;
+
+  useEffect(() => {
+    if (hidePaymentCommercial && activeTab === 'payments') {
+      setActiveTab('details');
+    }
+  }, [hidePaymentCommercial, activeTab]);
+
   if (!isOpen || !saleId) return null;
 
   if (loading) {
@@ -565,10 +576,6 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
   const dueAmount = Math.max(0, grandTotal - totalPaidDisplay);
   const canAddPayment =
     !hidePaymentCommercial && canAddPaymentToSale(sale, dueAmount);
-
-  useEffect(() => {
-    if (hidePaymentCommercial && activeTab === 'payments') setActiveTab('details');
-  }, [hidePaymentCommercial, activeTab]);
 
   const getStatusColor = (status: string) => {
     const s = (status || '').toLowerCase();
