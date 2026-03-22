@@ -18,7 +18,7 @@ DECLARE
   v_wp uuid;
   v_wa uuid;
   v_eq uuid;
-  r public.contacts%ROWTYPE;
+  r RECORD;
   v_je uuid;
   v_amt numeric;
   v_ap_src numeric;
@@ -102,10 +102,19 @@ BEGIN
     END IF;
   END LOOP;
 
+  -- supplier_opening_balance via JSON so older DBs without the column still work
   FOR r IN
-    SELECT * FROM public.contacts
-    WHERE company_id = v_company
-      AND lower(type::text) IN ('supplier', 'both')
+    SELECT
+      t.id,
+      t.company_id,
+      t.branch_id,
+      t.type,
+      t.name,
+      t.opening_balance,
+      NULLIF(trim(COALESCE(to_jsonb(t) ->> 'supplier_opening_balance', '')), '')::numeric AS supplier_opening_balance
+    FROM public.contacts t
+    WHERE t.company_id = v_company
+      AND lower(t.type::text) IN ('supplier', 'both')
   LOOP
     IF lower(r.type::text) = 'supplier' THEN
       v_ap_src := CASE
