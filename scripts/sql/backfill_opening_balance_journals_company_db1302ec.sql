@@ -22,10 +22,11 @@ DECLARE
   v_je uuid;
   v_amt numeric;
   v_ap_src numeric;
-  a RECORD;
+  acc_row RECORD;
   v_abal numeric;
 BEGIN
   -- Self-heal: create missing control / offset accounts (no manual COA step required)
+  -- Note: do not alias accounts as "a" here — PL/pgSQL record name must not shadow SQL aliases.
   INSERT INTO public.accounts (company_id, code, name, type, balance, is_active)
   SELECT v_company, ac.code, ac.name, ac.typ, 0, true
   FROM (
@@ -37,8 +38,8 @@ BEGIN
       ('1180', 'Worker Advance', 'asset')
   ) AS ac(code, name, typ)
   WHERE NOT EXISTS (
-    SELECT 1 FROM public.accounts a
-    WHERE a.company_id = v_company AND trim(coalesce(a.code, '')) = trim(ac.code)
+    SELECT 1 FROM public.accounts ax
+    WHERE ax.company_id = v_company AND trim(coalesce(ax.code, '')) = trim(ac.code)
   );
 
   SELECT id INTO v_ar FROM public.accounts WHERE company_id = v_company AND trim(code) = '1100' AND COALESCE(is_active, true) LIMIT 1;
@@ -207,7 +208,7 @@ BEGIN
     END IF;
   END LOOP;
 
-  FOR a IN
+  FOR acc_row IN
     SELECT *
     FROM public.accounts
     WHERE company_id = v_company
@@ -219,13 +220,13 @@ BEGIN
       SELECT 1 FROM public.journal_entries je
       WHERE je.company_id = v_company
         AND je.reference_type = 'opening_balance_account'
-        AND je.reference_id = a.id
+        AND je.reference_id = acc_row.id
         AND COALESCE(je.is_void, false) = false
     ) THEN
       CONTINUE;
     END IF;
 
-    v_abal := round(abs(COALESCE(a.balance, 0))::numeric, 2);
+    v_abal := round(abs(COALESCE(acc_row.balance, 0))::numeric, 2);
 
     INSERT INTO public.journal_entries (
       company_id, branch_id, entry_date, description, reference_type, reference_id, is_void
@@ -233,14 +234,14 @@ BEGIN
       v_company,
       NULL,
       CURRENT_DATE,
-      'Opening balance — account ' || COALESCE(trim(a.code), '') || ' — ' || COALESCE(a.name, a.id::text),
+      'Opening balance — account ' || COALESCE(trim(acc_row.code), '') || ' — ' || COALESCE(acc_row.name, acc_row.id::text),
       'opening_balance_account',
-      a.id,
+      acc_row.id,
       false
     ) RETURNING id INTO v_je;
 
     INSERT INTO public.journal_entry_lines (journal_entry_id, account_id, debit, credit, description) VALUES
-      (v_je, a.id, v_abal, 0, 'Opening balance — ' || COALESCE(a.name, '')),
+      (v_je, acc_row.id, v_abal, 0, 'Opening balance — ' || COALESCE(acc_row.name, '')),
       (v_je, v_eq, 0, v_abal, 'Opening balance — offset (Owner Capital)');
   END LOOP;
 
