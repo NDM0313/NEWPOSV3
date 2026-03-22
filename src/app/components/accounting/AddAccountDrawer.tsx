@@ -8,8 +8,18 @@ import { Switch } from "../ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../ui/tabs";
 import { Textarea } from "../ui/textarea";
 import { accountService } from '@/app/services/accountService';
+import type { AccountCategory } from '@/app/services/chartAccountService';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { toast } from 'sonner';
+
+function mapDbAccountTypeToOpeningCategory(type: string): AccountCategory {
+  const t = String(type || '').toLowerCase();
+  if (['asset', 'cash', 'bank', 'mobile_wallet', 'receivable'].includes(t)) return 'Assets';
+  if (['liability', 'payable'].includes(t)) return 'Liabilities';
+  if (t === 'equity') return 'Equity';
+  if (t === 'revenue' || t === 'income') return 'Income';
+  return 'Expenses';
+}
 
 // Operational: only these roles; category is derived, no parent, no equity/fixed assets
 const OPERATIONAL_ROLES = [
@@ -152,7 +162,7 @@ export const AddAccountDrawer = ({ isOpen, onClose, onSuccess }: AddAccountDrawe
         company_id: companyId,
         name: accountName.trim(),
         code,
-        balance: openingBalance,
+        balance: 0,
         is_active: isActive,
         ...(notes.trim() ? { description: notes.trim() } : {}),
       };
@@ -164,7 +174,24 @@ export const AddAccountDrawer = ({ isOpen, onClose, onSuccess }: AddAccountDrawe
         if (parentId) payload.parent_id = parentId;
       }
 
-      await accountService.createAccount(payload);
+      const created = await accountService.createAccount(payload);
+      const ob = Math.round((Number(openingBalance) || 0) * 100) / 100;
+      if (created?.id && Math.abs(ob) >= 0.01) {
+        try {
+          const { openingBalanceJournalService } = await import('@/app/services/openingBalanceJournalService');
+          await openingBalanceJournalService.syncChartAccountOpening({
+            companyId,
+            accountId: created.id,
+            accountCode: created.code,
+            accountName: created.name,
+            category: mapDbAccountTypeToOpeningCategory(String(payload.type)),
+            openingAmount: ob,
+          });
+        } catch (e: any) {
+          console.error('[ADD ACCOUNT] Opening balance JE failed:', e);
+          toast.error('Account saved but opening balance did not post to GL', { description: e?.message });
+        }
+      }
 
       toast.success('Account created successfully');
       setAccountName('');

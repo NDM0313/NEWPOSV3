@@ -1,6 +1,16 @@
 import { supabase } from '@/lib/supabase';
 import { documentNumberService } from '@/app/services/documentNumberService';
 
+async function syncOpeningGlForContact(contactId: string | undefined | null) {
+  if (!contactId) return;
+  try {
+    const { openingBalanceJournalService } = await import('./openingBalanceJournalService');
+    await openingBalanceJournalService.syncFromContactRow(contactId);
+  } catch (e) {
+    console.error('[contactService] Opening balance GL sync failed:', e);
+  }
+}
+
 export interface Contact {
   id?: string;
   company_id: string;
@@ -179,7 +189,10 @@ export const contactService = {
       .select()
       .single();
 
-    if (!error) return data;
+    if (!error) {
+      await syncOpeningGlForContact((data as { id?: string })?.id);
+      return data;
+    }
 
     const isBadRequest = error.code === 'PGRST204' || error.code === 'PGRST116' || error.status === 400;
     if (!isBadRequest) throw error;
@@ -202,7 +215,10 @@ export const contactService = {
         .insert(reduced)
         .select()
         .single();
-      if (!retryError) return retryData;
+      if (!retryError) {
+        await syncOpeningGlForContact((retryData as { id?: string })?.id);
+        return retryData;
+      }
     }
 
     // Retry with only base schema columns (no optional/extended columns)
@@ -220,7 +236,10 @@ export const contactService = {
       .insert(minimal)
       .select()
       .single();
-    if (!minimalError) return minimalData;
+    if (!minimalError) {
+      await syncOpeningGlForContact((minimalData as { id?: string })?.id);
+      return minimalData;
+    }
 
     console.error('[CONTACT SERVICE] createContact failed:', error.message, minimalError?.message);
     throw error;
@@ -256,6 +275,7 @@ export const contactService = {
       .single();
 
     if (error) throw error;
+    await syncOpeningGlForContact((data as { id?: string })?.id);
     return data;
   },
 

@@ -8,7 +8,6 @@ import { useNavigation } from '../../context/NavigationContext';
 import { useSupabase } from '../../context/SupabaseContext';
 import { contactService } from '../../services/contactService';
 import { contactGroupService } from '../../services/contactGroupService';
-import { supabase } from '@/lib/supabase';
 import {
   Sheet,
   SheetContent,
@@ -663,22 +662,7 @@ const ContactFormContent = ({ onClose }: { onClose: () => void }) => {
       const contactId = createdContact?.id || (createdContact as { uuid?: string })?.uuid;
       const contactName = (createdContact as { name?: string })?.name || (formData.get('business-name') as string) || '';
 
-      // Customer/supplier opening balances are stored on contacts; statements use sales/purchases + payments + GL.
-
-      // Link worker opening balance to workers.current_balance so balance shows in contacts list and studio
-      if (contactId && contactRoles.worker) {
-        const workerOpening = Number(contactData.opening_balance ?? 0) || 0;
-        if (workerOpening > 0) {
-          try {
-            await supabase.from('workers').update({
-              current_balance: workerOpening,
-              updated_at: new Date().toISOString(),
-            }).eq('id', contactId);
-          } catch (workerErr: any) {
-            console.warn('[CONTACT FORM] Could not set worker opening balance:', workerErr?.message);
-          }
-        }
-      }
+      // Opening balances: contactService.createContact triggers GL sync (AR/AP/worker) + worker operational balance.
 
       if (contactId && setCreatedContactId) {
         // Determine the contact type for filtering

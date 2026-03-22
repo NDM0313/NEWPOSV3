@@ -2,6 +2,10 @@ import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
 import { accountService } from './accountService';
 
+function roundMoneyOpening(n: number): number {
+  return Math.round((Number(n) || 0) * 100) / 100;
+}
+
 // ============================================
 // 🎯 TYPES & INTERFACES
 // ============================================
@@ -220,12 +224,14 @@ export const chartAccountService = {
       
       // Clean data - ONLY include fields that exist in actual schema
       // Actual schema columns: id, company_id, code, name, type, parent_id, balance, is_active, created_at, updated_at
+      const openingForJe = roundMoneyOpening(account.opening_balance ?? account.current_balance ?? 0);
       const cleanData: any = {
         company_id: accountData.company_id,
         code: accountData.code,
         name: accountData.name,
         type: accountData.type,
-        balance: accountData.balance, // Use 'balance' not 'current_balance'
+        // GL is journal-derived; opening posts via openingBalanceJournalService (avoid duplicate stored "balance").
+        balance: 0,
         is_active: accountData.is_active,
       };
       
@@ -293,6 +299,25 @@ export const chartAccountService = {
       
       const updated = await accountService.updateAccount(id, cleanData);
       if (!updated) return null;
+
+      if (updates.opening_balance !== undefined && updated.id) {
+        const ob = roundMoneyOpening(updates.opening_balance);
+        const cat = (updates.category ?? existingAccount?.category ?? 'Expenses') as AccountCategory;
+        try {
+          const { openingBalanceJournalService } = await import('./openingBalanceJournalService');
+          await openingBalanceJournalService.syncChartAccountOpening({
+            companyId,
+            accountId: updated.id,
+            accountCode: updated.code,
+            accountName: updated.name,
+            category: cat,
+            openingAmount: ob,
+          });
+        } catch (e: any) {
+          console.error('[CHART ACCOUNT SERVICE] Opening balance JE sync failed:', e?.message || e);
+          toast.error('Account updated but opening balance GL sync failed', { description: e?.message });
+        }
+      }
       
       toast.success('Account updated successfully');
       return mapAccountToChartAccount(updated, companyId);
