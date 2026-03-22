@@ -1,7 +1,5 @@
 import { supabase } from '@/lib/supabase';
 import { productService } from './productService';
-import { getOrCreateLedger, addLedgerEntry } from './ledgerService';
-
 export interface SaleReturn {
   id?: string;
   company_id: string;

@@ -10,6 +10,11 @@ import { accountingService } from '@/app/services/accountingService';
 import type { JournalEntry, JournalEntryLine } from '@/app/services/accountingService';
 import { studioProductionService } from '@/app/services/studioProductionService';
 import { generatePaymentReference } from '@/app/utils/paymentUtils';
+import {
+  getWorkerAdvanceAccountId,
+  shouldDebitWorkerPayableForPayment,
+} from '@/app/services/workerAdvanceService';
+import { dispatchContactBalancesRefresh } from '@/app/lib/contactBalancesRefresh';
 
 export interface CreateWorkerPaymentParams {
   companyId: string;
@@ -103,7 +108,8 @@ export async function createWorkerPayment(params: CreateWorkerPaymentParams): Pr
   if (paymentErr) throw new Error(`Worker payment (payments row) failed: ${paymentErr.message}`);
   const paymentId = (paymentRow as { id: string }).id;
 
-  // 3) Worker Payable account (2010)
+  // 3) Debit Worker Payable (2010) if a stage bill exists; else Worker Advance (1180)
+  const payToPayable = await shouldDebitWorkerPayableForPayment(companyId, workerId, stageId ?? null, validBranchId);
   const { data: wpAccounts } = await supabase
     .from('accounts')
     .select('id')
@@ -113,20 +119,27 @@ export async function createWorkerPayment(params: CreateWorkerPaymentParams): Pr
   const workerPayableAccountId = (wpAccounts?.[0] as { id: string } | undefined)?.id;
   if (!workerPayableAccountId) throw new Error('Worker Payable account (2010) not found');
 
-  // 4) Journal entry (Dr Worker Payable, Cr Cash/Bank) linked to payment
+  let debitAccountId = workerPayableAccountId;
+  if (!payToPayable) {
+    const advId = await getWorkerAdvanceAccountId(companyId);
+    if (!advId) throw new Error('Worker Advance account (1180) not found. Run migrations or ensure default accounts.');
+    debitAccountId = advId;
+  }
+
+  const debitLabel = payToPayable ? 'Worker payable' : 'Worker advance (pre-bill)';
   const entryNo = `JE-${Date.now()}-${Math.random().toString(36).substr(2, 5).toUpperCase()}`;
   const journalEntry: JournalEntry = {
     company_id: companyId,
     branch_id: validBranchId ?? undefined,
     entry_no: entryNo,
     entry_date: paymentDate,
-    description: `Payment to worker ${workerName}`,
+    description: `Payment to worker ${workerName} (${debitLabel})`,
     reference_type: 'worker_payment',
     reference_id: workerId,
     created_by: authUserId ?? undefined,
   };
   const lines: JournalEntryLine[] = [
-    { account_id: workerPayableAccountId, debit: amount, credit: 0, description: `Payment to worker ${workerName}` },
+    { account_id: debitAccountId, debit: amount, credit: 0, description: `${debitLabel} – ${workerName}` },
     { account_id: paymentAccountId, debit: 0, credit: amount, description: `Payment to worker ${workerName}` },
   ];
   const savedEntry = await accountingService.createEntry(journalEntry, lines, paymentId);
@@ -150,5 +163,6 @@ export async function createWorkerPayment(params: CreateWorkerPaymentParams): Pr
     await studioProductionService.markStageLedgerPaid(stageId, null);
   }
 
+  dispatchContactBalancesRefresh(companyId);
   return { paymentId, journalEntryId, referenceNumber };
 }

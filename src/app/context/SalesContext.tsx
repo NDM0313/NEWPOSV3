@@ -11,7 +11,6 @@ import { saleService, Sale as SupabaseSale, SaleItem as SupabaseSaleItem } from 
 import { productService } from '@/app/services/productService';
 import { branchService } from '@/app/services/branchService';
 import { comboService } from '@/app/services/comboService';
-import { getOrCreateLedger, addLedgerEntry } from '@/app/services/ledgerService';
 import { useSettings } from '@/app/context/SettingsContext';
 import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
 import { toast } from 'sonner';

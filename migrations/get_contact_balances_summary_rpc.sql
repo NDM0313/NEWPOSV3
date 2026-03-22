@@ -29,9 +29,29 @@ BEGIN
            AND (s.status IS NULL OR s.status != 'cancelled')),
         0
       ) AS receivables,
-    -- Payables: worker = current_balance/opening; supplier/both = supplier_opening + sum(purchases due)
+    -- Payables: worker = unpaid worker_ledger (studio) else workers.current_balance else contact fields; supplier/both unchanged
     (CASE
-       WHEN c.type = 'worker' THEN GREATEST(0, COALESCE(c.current_balance, c.opening_balance, 0)::numeric)
+       WHEN c.type = 'worker' THEN
+         CASE
+           WHEN EXISTS (
+             SELECT 1 FROM worker_ledger_entries wle
+             WHERE wle.company_id = p_company_id AND wle.worker_id = c.id
+           )
+           THEN GREATEST(0, COALESCE(
+             (SELECT SUM(GREATEST(0, wle.amount::numeric))
+              FROM worker_ledger_entries wle
+              WHERE wle.company_id = p_company_id
+                AND wle.worker_id = c.id
+                AND (wle.status IS NULL OR LOWER(TRIM(wle.status::text)) <> 'paid')),
+             0::numeric
+           ))
+           ELSE GREATEST(0, COALESCE(
+             (SELECT w.current_balance::numeric FROM workers w WHERE w.id = c.id AND w.company_id = p_company_id LIMIT 1),
+             c.current_balance,
+             c.opening_balance,
+             0
+           )::numeric)
+         END
        WHEN c.type IN ('supplier', 'both') THEN
          GREATEST(0, COALESCE(c.supplier_opening_balance, c.opening_balance, 0)::numeric)
          + COALESCE(
@@ -42,7 +62,7 @@ BEGIN
                 AND (p_branch_id IS NULL OR p.branch_id = p_branch_id)),
              0
            )
-       ELSE 0
+       ELSE 0::numeric
      END) AS payables
   FROM contacts c
   WHERE c.company_id = p_company_id;
@@ -50,4 +70,4 @@ END;
 $$;
 
 COMMENT ON FUNCTION public.get_contact_balances_summary(UUID, UUID) IS
-  'Returns per-contact receivables and payables for Contacts page. Reduces load vs fetching all sales and purchases.';
+  'Per-contact receivables/payables. Workers: unpaid worker_ledger_entries (studio) when rows exist, else workers.current_balance.';

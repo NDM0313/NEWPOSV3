@@ -10,7 +10,6 @@ import { useSupabase } from '@/app/context/SupabaseContext';
 import { purchaseService, Purchase as SupabasePurchase, PurchaseItem as SupabasePurchaseItem } from '@/app/services/purchaseService';
 import { productService } from '@/app/services/productService';
 import { activityLogService } from '@/app/services/activityLogService';
-import { getOrCreateLedger, addLedgerEntry } from '@/app/services/ledgerService';
 import { branchService } from '@/app/services/branchService';
 import { toast } from 'sonner';
 import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
@@ -474,47 +473,15 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
         }
       }
       
-      // Supplier ledger / balances: only when purchase is posted (draft/ordered must not move AP or supplier subledger)
       if (
         canPostAccountingForPurchaseStatus(newPurchase.status) &&
         companyId &&
         newPurchase.supplier &&
-        newPurchase.total != null
+        typeof window !== 'undefined'
       ) {
-        try {
-          const ledger = await getOrCreateLedger(companyId, 'supplier', newPurchase.supplier, newPurchase.supplierName);
-          if (ledger) {
-            await addLedgerEntry({
-              companyId,
-              ledgerId: ledger.id,
-              entryDate: newPurchase.date,
-              debit: 0,
-              credit: newPurchase.total,
-              source: 'purchase',
-              referenceNo: newPurchase.purchaseNo,
-              referenceId: newPurchase.id,
-              remarks: `Purchase ${newPurchase.purchaseNo}`,
-            });
-            // If purchase created with paid amount, also post Payment → DEBIT
-            if (newPurchase.paid > 0) {
-              await addLedgerEntry({
-                companyId,
-                ledgerId: ledger.id,
-                entryDate: newPurchase.date,
-                debit: newPurchase.paid,
-                credit: 0,
-                source: 'payment',
-                referenceNo: newPurchase.purchaseNo,
-                referenceId: newPurchase.id,
-                remarks: `Payment for ${newPurchase.purchaseNo}`,
-              });
-            }
-          }
-        } catch (e) {
-          console.warn('[PurchaseContext] Supplier ledger entry failed:', e);
-        }
+        window.dispatchEvent(new CustomEvent('ledgerUpdated', { detail: { ledgerType: 'supplier', entityId: newPurchase.supplier } }));
       }
-      
+
       // Stock movements for purchase: created by DB trigger purchase_final_stock_movement_trigger
       // when purchase status is 'final' (AFTER INSERT/UPDATE). Do NOT create here to avoid double posting.
       if (canPostAccountingForPurchaseStatus(newPurchase.status) && newPurchase.items && newPurchase.items.length > 0) {
@@ -535,29 +502,6 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
           }
         } catch (z1Err) {
           console.warn('[PURCHASE CONTEXT] Z1 stock sync (create) failed:', z1Err);
-        }
-      }
-      
-      // Extra expenses and discount are now in the single line-by-line journal above (from purchase_charges).
-      // Supplier ledger: still post discount as debit to reduce payable (posted POs only)
-      if (canPostAccountingForPurchaseStatus(newPurchase.status) && companyId && newPurchase.discount > 0) {
-        try {
-          const ledger = await getOrCreateLedger(companyId, 'supplier', newPurchase.supplier, newPurchase.supplierName);
-          if (ledger) {
-            await addLedgerEntry({
-              companyId,
-              ledgerId: ledger.id,
-              entryDate: newPurchase.date,
-              debit: newPurchase.discount,
-              credit: 0,
-              source: 'purchase',
-              referenceNo: newPurchase.purchaseNo,
-              referenceId: newPurchase.id,
-              remarks: `Discount for ${newPurchase.purchaseNo}`,
-            });
-          }
-        } catch (e) {
-          console.warn('[PURCHASE CONTEXT] Supplier ledger discount entry failed:', e);
         }
       }
       
@@ -1122,95 +1066,12 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
             }
           }
 
-          // Supplier ledger: only reverse and re-post components that CHANGED (never touch payment unless paid changed)
           const totalChanged = Math.round((newTotal - oldTotalForRepost) * 100) !== 0;
           const paidChanged = Math.round((newPaid - oldPaidForRepost) * 100) !== 0;
           const discountChanged = Math.round((newDiscount - oldDiscountForRepost) * 100) !== 0;
 
-          if (supplierId) {
-            const ledger = await getOrCreateLedger(companyId, 'supplier', supplierId, supplierName);
-            if (ledger) {
-              if (totalChanged && oldTotalForRepost > 0) {
-                await addLedgerEntry({
-                  companyId,
-                  ledgerId: ledger.id,
-                  entryDate,
-                  debit: oldTotalForRepost,
-                  credit: 0,
-                  source: 'purchase',
-                  referenceNo: poNo,
-                  referenceId: id,
-                  remarks: `Reversal (edit): Purchase ${poNo}`,
-                });
-              }
-              if (totalChanged && newTotal > 0) {
-                await addLedgerEntry({
-                  companyId,
-                  ledgerId: ledger.id,
-                  entryDate,
-                  debit: 0,
-                  credit: newTotal,
-                  source: 'purchase',
-                  referenceNo: poNo,
-                  referenceId: id,
-                  remarks: `Purchase ${poNo} (edited)`,
-                });
-              }
-              if (paidChanged && oldPaidForRepost > 0) {
-                await addLedgerEntry({
-                  companyId,
-                  ledgerId: ledger.id,
-                  entryDate,
-                  debit: 0,
-                  credit: oldPaidForRepost,
-                  source: 'payment',
-                  referenceNo: poNo,
-                  referenceId: id,
-                  remarks: `Reversal (edit): Payment ${poNo}`,
-                });
-              }
-              if (paidChanged && newPaid > 0) {
-                await addLedgerEntry({
-                  companyId,
-                  ledgerId: ledger.id,
-                  entryDate,
-                  debit: newPaid,
-                  credit: 0,
-                  source: 'payment',
-                  referenceNo: poNo,
-                  referenceId: id,
-                  remarks: `Payment for ${poNo}`,
-                });
-              }
-              if (discountChanged && oldDiscountForRepost > 0) {
-                await addLedgerEntry({
-                  companyId,
-                  ledgerId: ledger.id,
-                  entryDate,
-                  debit: 0,
-                  credit: oldDiscountForRepost,
-                  source: 'purchase',
-                  referenceNo: poNo,
-                  referenceId: id,
-                  remarks: `Reversal (edit): Discount ${poNo}`,
-                });
-              }
-              if (discountChanged && newDiscount > 0) {
-                await addLedgerEntry({
-                  companyId,
-                  ledgerId: ledger.id,
-                  entryDate,
-                  debit: newDiscount,
-                  credit: 0,
-                  source: 'purchase',
-                  referenceNo: poNo,
-                  referenceId: id,
-                  remarks: `Discount for ${poNo}`,
-                });
-              }
-              console.log('[PURCHASE CONTEXT] PF-COMPONENT: Supplier ledger updated (component-level).');
-              window.dispatchEvent(new CustomEvent('ledgerUpdated', { detail: { ledgerType: 'supplier', entityId: supplierId } }));
-            }
+          if (supplierId && (totalChanged || paidChanged || discountChanged) && typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('ledgerUpdated', { detail: { ledgerType: 'supplier', entityId: supplierId } }));
           }
         } catch (repostErr: any) {
           console.error('[PURCHASE CONTEXT] PF-COMPONENT: Purchase edit accounting failed:', repostErr);
@@ -1347,27 +1208,8 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
       // Record payment in Supabase
       await purchaseService.recordPayment(purchaseId, amount, method, paymentAccountId, companyId, branchId);
 
-      // Supplier Ledger: Payment → DEBIT (we paid)
-      if (companyId && purchase.supplier) {
-        try {
-          const ledger = await getOrCreateLedger(companyId, 'supplier', purchase.supplier, purchase.supplierName);
-          if (ledger) {
-            await addLedgerEntry({
-              companyId,
-              ledgerId: ledger.id,
-              entryDate: new Date().toISOString().split('T')[0],
-              debit: amount,
-              credit: 0,
-              source: 'payment',
-              referenceNo: purchase.purchaseNo,
-              referenceId: purchaseId,
-              remarks: `Payment for ${purchase.purchaseNo}`,
-            });
-            window.dispatchEvent(new CustomEvent('ledgerUpdated', { detail: { ledgerType: 'supplier', entityId: purchase.supplier } }));
-          }
-        } catch (e) {
-          console.warn('[PurchaseContext] Supplier ledger (payment) failed:', e);
-        }
+      if (companyId && purchase.supplier && typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('ledgerUpdated', { detail: { ledgerType: 'supplier', entityId: purchase.supplier } }));
       }
 
       const newPaid = purchase.paid + amount;

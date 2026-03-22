@@ -271,15 +271,20 @@ export const Dashboard = () => {
   // Prefer RPC metrics whenever we have a successful response (even if all zeros for selected range).
   // Only fall back to context when RPC failed or returned null.
   const displayMetrics = financialMetrics ?? executiveFromContext;
+  /** Cash/bank from COA rows in AccountingContext (journal TB merge) — not stored accounts.balance or date-window entry sums. */
   const displayMetricsWithCashBank = useMemo(() => {
-    if (financialMetrics && (financialMetrics.cash_balance !== 0 || financialMetrics.bank_balance !== 0)) {
-      return displayMetrics;
+    let cash = 0;
+    let bank = 0;
+    for (const a of accounting.accounts || []) {
+      const t = String(a.type || a.accountType || '').toLowerCase();
+      if (t === 'cash') cash += Number(a.balance) || 0;
+      if (t === 'bank') bank += Number(a.balance) || 0;
     }
-    const cash = accounting.getAccountBalance ? accounting.getAccountBalance('Cash' as any) : 0;
-    const bank = accounting.getAccountBalance ? accounting.getAccountBalance('Bank' as any) : 0;
-    if (cash === 0 && bank === 0) return displayMetrics;
-    return { ...displayMetrics, cash_balance: cash, bank_balance: bank };
-  }, [displayMetrics, financialMetrics, accounting]);
+    if ((accounting.accounts?.length ?? 0) > 0) {
+      return { ...displayMetrics, cash_balance: cash, bank_balance: bank };
+    }
+    return displayMetrics;
+  }, [displayMetrics, accounting.accounts]);
 
   // Generate chart data from date range (or last 7 days if no range)
   const chartData = useMemo(() => {

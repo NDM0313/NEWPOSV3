@@ -4,7 +4,7 @@ import type { Customer } from '@/app/services/customerLedgerTypes';
 
 interface ModernCustomerSearchProps {
   customers: Customer[];
-  selectedCustomer: Customer;
+  selectedCustomer: Customer | null;
   onSelect: (customer: Customer) => void;
 }
 
@@ -43,8 +43,14 @@ export function ModernCustomerSearch({ customers, selectedCustomer, onSelect }: 
               <User className="w-4 h-4 text-blue-500" />
             </div>
             <div>
-              <div className="text-white font-medium">{selectedCustomer.name}</div>
-              <div className="text-xs text-gray-500">{selectedCustomer.code} • {selectedCustomer.phone}</div>
+              <div className="text-white font-medium">
+                {selectedCustomer ? selectedCustomer.name : 'Select customer…'}
+              </div>
+              <div className="text-xs text-gray-500">
+                {selectedCustomer
+                  ? `${selectedCustomer.code} • ${selectedCustomer.phone}`
+                  : 'Search and choose a customer'}
+              </div>
             </div>
           </div>
           <ChevronDown className={`w-4 h-4 transition-transform text-gray-400 ${isOpen ? 'rotate-180' : ''}`} />
@@ -76,7 +82,7 @@ export function ModernCustomerSearch({ customers, selectedCustomer, onSelect }: 
                   setSearchTerm('');
                 }}
                 className={`w-full px-4 py-3 text-left text-sm transition-colors flex items-center gap-3 border-l-4 ${
-                  selectedCustomer.id === customer.id
+                  selectedCustomer?.id === customer.id
                     ? 'bg-gray-800 border-blue-500'
                     : 'bg-transparent border-transparent hover:bg-gray-800/50'
                 }`}

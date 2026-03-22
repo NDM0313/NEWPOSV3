@@ -6,10 +6,10 @@ import { accountingService, JournalEntryWithLines, JournalEntryLine } from '@/ap
 import { accountingReportsService } from '@/app/services/accountingReportsService';
 import { documentNumberService } from '@/app/services/documentNumberService';
 import { generatePaymentReference } from '@/app/utils/paymentUtils';
-import { getOrCreateLedger, addLedgerEntry } from '@/app/services/ledgerService';
 import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
 import { canPostAccountingForSaleStatus } from '@/app/lib/postingStatusGate';
+import { warnIfUsingStoredBalanceAsTruth } from '@/app/services/accountingCanonicalGuard';
 
 /** True if account is a payment account (Cash/Bank/Mobile Wallet) – used for Manual Entry → Roznamcha rule */
 function isPaymentAccount(acc: { code?: string; type?: string; name?: string } | null): boolean {
@@ -279,6 +279,8 @@ export interface OnAccountCustomerPaymentParams {
   paymentMethod: PaymentMethod;
   accountId?: string;
   referenceNo: string;
+  /** Row from `saleService.recordOnAccountPayment` — required so JE gets payment_id + reference_id (tie-out / GL / display ref). */
+  paymentId: string;
 }
 
 // ============================================
@@ -335,7 +337,8 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
       name: supabaseAccount.name || '',
       type: accountType as PaymentMethod,
       accountType: accountType, // Use type as accountType (no separate account_type column)
-      balance: parseFloat(supabaseAccount.balance || supabaseAccount.current_balance || 0),
+      // Stored accounts.balance / current_balance is not used for GL display (journal TB only).
+      balance: 0,
       branch: supabaseAccount.branch_name || supabaseAccount.branch_id || '',
       branchId: supabaseAccount.branch_id || undefined, // For payment dialog branch filter
       isActive: supabaseAccount.is_active !== false,
@@ -423,11 +426,16 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
         const journalBalances = await accountingReportsService.getAccountBalancesFromJournal(companyId, asOf, branchId === 'all' ? undefined : branchId);
         const merged = convertedAccounts.map((acc) => ({
           ...acc,
-          balance: journalBalances[acc.id!] !== undefined ? journalBalances[acc.id!]! : acc.balance,
+          balance: journalBalances[acc.id!] !== undefined ? journalBalances[acc.id!]! : 0,
         }));
         setAccounts(merged);
       } catch (jbErr) {
-        if (import.meta.env?.DEV) console.warn('[ACCOUNTING CONTEXT] Journal balances fallback to account.balance:', jbErr);
+        warnIfUsingStoredBalanceAsTruth(
+          'AccountingContext.loadAccounts',
+          'balance',
+          'Journal balance merge failed — COA balances shown as 0 (not stored accounts.balance)'
+        );
+        if (import.meta.env?.DEV) console.warn('[ACCOUNTING CONTEXT] Journal balances unavailable:', jbErr);
         setAccounts(convertedAccounts);
       }
       if (import.meta.env?.DEV) console.log('✅ Accounts loaded:', convertedAccounts.length);
@@ -777,6 +785,10 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
                 descRetry += (descRetry ? '\n' : '') + 'Ref: ' + entry.metadata.optionalReference.trim();
               }
       const isWorkerPaymentRetry = entry.debitAccount === 'Worker Payable' && entry.metadata?.workerId;
+      const prelinkedPayIdRetry =
+        entry.source === 'Payment' && (entry.metadata as { paymentId?: string })?.paymentId
+          ? String((entry.metadata as { paymentId?: string }).paymentId)
+          : null;
       const journalEntry: JournalEntry = {
         company_id: companyId,
         branch_id: validBranchId,
@@ -784,7 +796,15 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
         entry_date: new Date().toISOString().split('T')[0],
         description: descRetry || undefined,
         reference_type: isWorkerPaymentRetry ? 'worker_payment' : entry.source.toLowerCase(),
-        reference_id: isWorkerPaymentRetry ? entry.metadata.workerId : (entry.metadata?.purchaseReturnId || entry.metadata?.saleId || entry.metadata?.purchaseId || entry.metadata?.expenseId || entry.metadata?.bookingId || null),
+        reference_id: isWorkerPaymentRetry
+          ? entry.metadata.workerId
+          : (prelinkedPayIdRetry ||
+              entry.metadata?.purchaseReturnId ||
+              entry.metadata?.saleId ||
+              entry.metadata?.purchaseId ||
+              entry.metadata?.expenseId ||
+              entry.metadata?.bookingId ||
+              null),
         created_by: currentUserId || null,
         attachments: entry.metadata?.attachments && entry.metadata.attachments.length > 0 ? entry.metadata.attachments : undefined,
       };
@@ -934,6 +954,15 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
       // CRITICAL FIX: Use validBranchId (not "all") to prevent UUID error
       // Worker payment: store worker_id in journal so ledger/backfill can trace (reference_type=worker_payment, reference_id=workerId)
       const isWorkerPayment = entry.debitAccount === 'Worker Payable' && entry.metadata?.workerId;
+      const prelinkedCustomerPaymentId =
+        entry.source === 'Payment' && (entry.metadata as { paymentId?: string })?.paymentId
+          ? String((entry.metadata as { paymentId?: string }).paymentId)
+          : null;
+      if (entry.source === 'Payment' && entry.creditAccount === 'Accounts Receivable' && !prelinkedCustomerPaymentId && import.meta.env?.DEV) {
+        console.warn(
+          '[ACCOUNTING] Customer on-account JE without metadata.paymentId — journal will not link to payments row (tie-out PAYMENT_WITHOUT_JE).'
+        );
+      }
       if (typeof window !== 'undefined' && entry.debitAccount === 'Worker Payable') {
         console.log('[WORKER LEDGER DEBUG] journal payload', {
           isWorkerPayment,
@@ -950,7 +979,15 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
         entry_date: entryDate,
         description: descriptionToSave || undefined,
         reference_type: manualRefType || (isWorkerPayment ? 'worker_payment' : entry.source.toLowerCase()),
-        reference_id: isWorkerPayment ? entry.metadata.workerId : (entry.metadata?.purchaseReturnId || entry.metadata?.saleId || entry.metadata?.purchaseId || entry.metadata?.expenseId || entry.metadata?.bookingId || null),
+        reference_id: isWorkerPayment
+          ? entry.metadata.workerId
+          : (prelinkedCustomerPaymentId ||
+              entry.metadata?.purchaseReturnId ||
+              entry.metadata?.saleId ||
+              entry.metadata?.purchaseId ||
+              entry.metadata?.expenseId ||
+              entry.metadata?.bookingId ||
+              null),
         created_by: currentUserId || null,
         attachments: entry.metadata?.attachments && entry.metadata.attachments.length > 0 ? entry.metadata.attachments : undefined,
       };
@@ -981,42 +1018,11 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
         });
       }
 
-      // Manual supplier payment (Dr AP, Cr Cash/Bank): sync to supplier ledger (ledger_master.entity_id = supplier contact id)
+      // Manual supplier payment: refresh supplier statement (operational = payments + purchases)
       if (manualRefType === 'manual_payment' && manualPaymentId && companyId && entry.debitAccount === 'Accounts Payable') {
         const supplierContactId = (entry.metadata as any)?.contactId;
-        const supplierName = (entry.metadata as any)?.contactName ?? (entry.metadata as any)?.supplierName ?? 'Supplier';
-        if (supplierContactId) {
-          try {
-            const ledger = await getOrCreateLedger(companyId, 'supplier', supplierContactId, supplierName);
-            if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
-              console.debug('[SUPPLIER_LEDGER] getOrCreateLedger result', { ledgerId: ledger?.id ?? null, entity_id: ledger?.entity_id ?? null, entity_name: ledger?.entity_name ?? null });
-            }
-            if (ledger) {
-              const addParams = {
-                companyId,
-                ledgerId: ledger.id,
-                entryDate,
-                debit: entry.amount,
-                credit: 0,
-                source: 'payment' as const,
-                referenceNo: (savedEntry as any)?.entry_no ?? manualPaymentId,
-                referenceId: manualPaymentId,
-                remarks: entry.description || `Manual payment to ${supplierName}`,
-              };
-              if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
-                console.debug('[SUPPLIER_LEDGER] addLedgerEntry payload', addParams);
-              }
-              const ledgerEntryRow = await addLedgerEntry(addParams);
-              if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
-                console.debug('[SUPPLIER_LEDGER] addLedgerEntry result', { id: (ledgerEntryRow as any)?.id ?? null });
-              }
-              window.dispatchEvent(new CustomEvent('ledgerUpdated', { detail: { ledgerType: 'supplier', entityId: supplierContactId } }));
-            }
-          } catch (e) {
-            console.warn('[AccountingContext] Supplier ledger sync for manual payment failed:', e);
-          }
-        } else if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
-          console.warn('[SUPPLIER_LEDGER] Skip supplier ledger sync: no contactId in metadata');
+        if (supplierContactId && typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('ledgerUpdated', { detail: { ledgerType: 'supplier', entityId: supplierContactId } }));
         }
       }
 
@@ -1338,19 +1344,13 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
           .limit(1)
           .maybeSingle();
         
-        if (!existingPayment) {
-          console.warn('[ACCOUNTING] Payment not found - trigger will create journal entry when payment is inserted');
+        if (existingPayment?.id) {
+          const { ensureSalePaymentJournalAfterInsert } = await import('@/app/services/saleAccountingService');
+          const { assertActiveJournalForPaymentId } = await import('@/app/lib/paymentPostingInvariant');
+          await ensureSalePaymentJournalAfterInsert(existingPayment.id as string);
+          await assertActiveJournalForPaymentId(existingPayment.id as string, 'AccountingContext.recordSalePayment');
         } else {
-          // Check if journal entry already exists (from trigger)
-          const { data: existingJournal } = await supabase
-            .from('journal_entries')
-            .select('id')
-            .eq('payment_id', existingPayment.id)
-            .maybeSingle();
-          
-          if (!existingJournal) {
-            console.warn('[ACCOUNTING] Journal entry not yet created by trigger - it should be created automatically');
-          }
+          console.warn('[ACCOUNTING] recordSalePayment: no matching payments row yet for sale/amount — caller must insert payment first');
         }
       }
     } catch (error: any) {
@@ -1691,23 +1691,27 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
     });
   };
 
-  /** On-account customer payment: no sale; Dr Cash/Bank, Cr AR. Ledger by metadata.customerId */
+  /**
+   * On-account customer payment JE — idempotent. Prefer saleService.recordOnAccountPayment (posts payment + JE).
+   * Kept for callers that already inserted payments and only need the journal.
+   */
   const recordOnAccountCustomerPayment = async (params: OnAccountCustomerPaymentParams): Promise<boolean> => {
-    const { customerId, customerName, amount, paymentMethod, accountId, referenceNo } = params;
+    const { customerName, accountId, paymentId } = params;
     if (!accountId) {
       toast.error('Payment account is required for on-account payment.');
       return false;
     }
-    return await createEntry({
-      source: 'Payment',
-      referenceNo,
-      debitAccount: paymentMethod as AccountType,
-      creditAccount: 'Accounts Receivable',
-      amount,
-      description: `On-account payment from ${customerName}`,
-      module: 'Sales',
-      metadata: { customerId, customerName, debitAccountId: accountId }
-    });
+    if (!paymentId) {
+      toast.error('Payment record is missing — save the payment first, then post to the ledger.');
+      return false;
+    }
+    const { ensureOnAccountCustomerJournalIfMissing } = await import('@/app/services/saleAccountingService');
+    const jeId = await ensureOnAccountCustomerJournalIfMissing(paymentId, customerName || 'customer');
+    if (!jeId) {
+      toast.error('Could not create or verify on-account journal entry.');
+      return false;
+    }
+    return true;
   };
 
   // ============================================

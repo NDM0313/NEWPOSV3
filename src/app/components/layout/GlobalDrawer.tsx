@@ -8,7 +8,6 @@ import { useNavigation } from '../../context/NavigationContext';
 import { useSupabase } from '../../context/SupabaseContext';
 import { contactService } from '../../services/contactService';
 import { contactGroupService } from '../../services/contactGroupService';
-import { getOrCreateLedger, updateLedgerOpeningBalance } from '../../services/ledgerService';
 import { supabase } from '@/lib/supabase';
 import {
   Sheet,
@@ -664,45 +663,7 @@ const ContactFormContent = ({ onClose }: { onClose: () => void }) => {
       const contactId = createdContact?.id || (createdContact as { uuid?: string })?.uuid;
       const contactName = (createdContact as { name?: string })?.name || (formData.get('business-name') as string) || '';
 
-      // 🔧 FIX 1: CUSTOMER LEDGER AUTO-CREATION (MANDATORY)
-      // CRITICAL: ALL customers MUST have ledger (opening balance or not)
-      if (contactId && companyId && (contactRoles.customer || primaryType === 'customer')) {
-        try {
-          const customerLedger = await getOrCreateLedger(companyId, 'customer', contactId, contactName);
-          if (customerLedger) {
-            const customerOpening = Number(contactData.opening_balance ?? 0) || 0;
-            if (customerOpening > 0) {
-              await updateLedgerOpeningBalance(customerLedger.id, customerOpening);
-            }
-            console.log('[CONTACT FORM] ✅ Customer ledger created/verified:', customerLedger.id);
-          } else {
-            console.error('[CONTACT FORM] ❌ CRITICAL: Failed to create customer ledger');
-          }
-        } catch (ledgerErr: any) {
-          console.error('[CONTACT FORM] ❌ CRITICAL: Customer ledger creation failed:', ledgerErr?.message);
-          // Don't block contact creation, but log error
-        }
-      }
-
-      // 🔧 FIX 1: SUPPLIER LEDGER AUTO-CREATION (MANDATORY)
-      // CRITICAL: ALL suppliers MUST have ledger (opening balance or not)
-      if (contactId && companyId && (contactRoles.supplier || primaryType === 'supplier')) {
-        try {
-          const supplierLedger = await getOrCreateLedger(companyId, 'supplier', contactId, contactName);
-          if (supplierLedger) {
-            const supplierOpening = Number(contactData.supplier_opening_balance ?? contactData.opening_balance ?? 0) || 0;
-            if (supplierOpening > 0) {
-              await updateLedgerOpeningBalance(supplierLedger.id, supplierOpening);
-            }
-            console.log('[CONTACT FORM] ✅ Supplier ledger created/verified:', supplierLedger.id);
-          } else {
-            console.error('[CONTACT FORM] ❌ CRITICAL: Failed to create supplier ledger');
-          }
-        } catch (ledgerErr: any) {
-          console.error('[CONTACT FORM] ❌ CRITICAL: Supplier ledger creation failed:', ledgerErr?.message);
-          // Don't block contact creation, but log error
-        }
-      }
+      // Customer/supplier opening balances are stored on contacts; statements use sales/purchases + payments + GL.
 
       // Link worker opening balance to workers.current_balance so balance shows in contacts list and studio
       if (contactId && contactRoles.worker) {

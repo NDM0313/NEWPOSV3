@@ -1,3 +1,8 @@
+/**
+ * Customer party views: operational open items (sales/rentals dues + contacts.opening_balance).
+ * Not GL journal truth — use account ledger / AR GL slice for journal-based balances.
+ * @see docs/accounting/BALANCE_SOURCE_POLICY.md
+ */
 import { supabase } from '@/lib/supabase';
 import { formatCurrency } from '@/app/utils/formatCurrency';
 import type { Customer, Transaction, Invoice, Payment, LedgerData } from './customerLedgerTypes';

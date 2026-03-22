@@ -3,7 +3,8 @@ import { createPortal } from 'react-dom';
 import { 
   Search, Filter, Download, Upload, Users, DollarSign, TrendingUp, 
   MoreVertical, Eye, Edit, Trash2, FileText, X, Phone, Mail, MapPin,
-  Check, User, AlertCircle, Briefcase, CheckCircle, Clock, UserCheck, Loader2
+  Check, User, AlertCircle, Briefcase, CheckCircle, Clock, UserCheck, Loader2,
+  Scale, BarChart3, Shield,
 } from 'lucide-react';
 import { Button } from "@/app/components/ui/button";
 import { Input } from "@/app/components/ui/input";
@@ -15,9 +16,6 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
   DropdownMenuSeparator,
-  DropdownMenuSub,
-  DropdownMenuSubTrigger,
-  DropdownMenuSubContent,
 } from "@/app/components/ui/dropdown-menu";
 import { cn } from "@/app/components/ui/utils";
 import { useNavigation } from '@/app/context/NavigationContext';
@@ -25,14 +23,22 @@ import { useSupabase } from '@/app/context/SupabaseContext';
 import { contactService } from '@/app/services/contactService';
 import { saleService } from '@/app/services/saleService';
 import { purchaseService } from '@/app/services/purchaseService';
+import { accountingReportsService } from '@/app/services/accountingReportsService';
+import type { TrialBalanceRow } from '@/app/services/accountingReportsService';
+import {
+  getCompanyReconciliationSnapshot,
+  type CompanyReconciliationSnapshot,
+} from '@/app/services/contactBalanceReconciliationService';
 import { UnifiedPaymentDialog } from '@/app/components/shared/UnifiedPaymentDialog';
-import { CustomerLedgerPage } from '@/app/components/accounting/CustomerLedgerPage';
 import CustomerLedgerPageOriginal from '@/app/components/customer-ledger-test/CustomerLedgerPageOriginal';
 import { GenericLedgerView } from '@/app/components/accounting/GenericLedgerView';
 import { ViewContactProfile } from './ViewContactProfile';
 import { ImportContactsModal } from './ImportContactsModal';
 import { toast } from 'sonner';
 import { formatCurrency } from '@/app/utils/formatCurrency';
+import { supabase } from '@/lib/supabase';
+import { CONTACT_BALANCES_REFRESH_EVENT } from '@/app/lib/contactBalancesRefresh';
+import { CONTACTS_PARTY_DRILLDOWN_KEY } from '@/app/lib/contactsPartyDrilldown';
 import { Pagination } from '@/app/components/ui/pagination';
 import { CustomSelect } from '@/app/components/ui/custom-select';
 import { ListToolbar } from '@/app/components/ui/list-toolbar';
@@ -70,6 +76,7 @@ interface Contact {
   lastTransaction?: string;
   is_system_generated?: boolean;
   system_type?: string;
+  is_default?: boolean;
 }
 
 const workerRoleLabels: Record<WorkerRole, string> = {
@@ -82,11 +89,66 @@ const workerRoleLabels: Record<WorkerRole, string> = {
   'embroidery': 'Embroidery',
 };
 
+/** Operational (open-doc) vs party-attributed GL slice — flag mismatch for row badge only; do not replace operational amount. */
+const OP_VS_PARTY_GL_TOL = 1.01;
+
+/** Dev-only: set localStorage DEBUG_CONTACT_BALANCE_TRACE to a contact UUID to log balance source per load. */
+function readDebugContactBalanceTraceId(): string | null {
+  if (!import.meta.env?.DEV || typeof localStorage === 'undefined') return null;
+  try {
+    const v = localStorage.getItem('DEBUG_CONTACT_BALANCE_TRACE')?.trim();
+    return v && v.length >= 32 ? v : null;
+  } catch {
+    return null;
+  }
+}
+
+function partyGlMismatchFlags(
+  contact: Contact,
+  gl: { glArReceivable: number; glApPayable: number; glWorkerPayable: number } | undefined
+): { receivables: boolean; payables: boolean } {
+  if (!gl) return { receivables: false, payables: false };
+  let receivables = false;
+  let payables = false;
+  if (contact.type === 'customer' || contact.type === 'both') {
+    receivables =
+      Math.abs(Number(contact.receivables) - Math.max(0, Number(gl.glArReceivable) || 0)) >= OP_VS_PARTY_GL_TOL;
+  }
+  if (contact.type === 'supplier' || contact.type === 'both') {
+    payables =
+      Math.abs(Number(contact.payables) - Math.max(0, Number(gl.glApPayable) || 0)) >= OP_VS_PARTY_GL_TOL;
+  }
+  if (contact.type === 'worker') {
+    payables =
+      Math.abs(Number(contact.payables) - Math.max(0, Number(gl.glWorkerPayable) || 0)) >= OP_VS_PARTY_GL_TOL;
+  }
+  return { receivables, payables };
+}
+
 export const ContactsPage = () => {
   const { openDrawer, setCurrentView, createdContactId, setCreatedContactId } = useNavigation();
-  const { companyId, branchId, loading: contextLoading } = useSupabase();
+  const { companyId, branchId } = useSupabase();
   const [contacts, setContacts] = useState<Contact[]>([]);
-  const [loading, setLoading] = useState(false);
+  /** True until first contact list is ready to show (before / without balance RPC). */
+  const [listLoading, setListLoading] = useState(false);
+  /** True while RPC or sales/purchase merge updates receivables/payables. */
+  const [balancesLoading, setBalancesLoading] = useState(false);
+  /** GL snapshot for AR/AP vs subledger reconciliation (journal, life-to-date). */
+  const [glArAp, setGlArAp] = useState<{
+    ar: TrialBalanceRow | null;
+    ap: TrialBalanceRow | null;
+    apNetCredit: number | null;
+  } | null>(null);
+  const [reconSnapshot, setReconSnapshot] = useState<CompanyReconciliationSnapshot | null>(null);
+  /** Operational row amounts: from get_contact_balances_summary vs merged sales/purchases fallback. */
+  const [operationalEngine, setOperationalEngine] = useState<'rpc' | 'fallback' | null>(null);
+  /** Party-attributed GL slice per contact (optional compare-only; does not drive row numbers). */
+  const [partyGlByContactId, setPartyGlByContactId] = useState<Map<
+    string,
+    { glArReceivable: number; glApPayable: number; glWorkerPayable: number }
+  > | null>(null);
+  /** Balance phase timed out — do not show opening-only/partial numbers as final. */
+  const [balancesStale, setBalancesStale] = useState(false);
   const [activeTab, setActiveTab] = useState<ContactType>('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [filterOpen, setFilterOpen] = useState(false);
@@ -96,7 +158,6 @@ export const ContactsPage = () => {
   const [selectedContact, setSelectedContact] = useState<Contact | null>(null);
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
   const [ledgerOpen, setLedgerOpen] = useState(false);
-  const [ledgerType, setLedgerType] = useState<'classic' | 'modern' | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [editContactOpen, setEditContactOpen] = useState(false);
   const [viewProfileOpen, setViewProfileOpen] = useState(false);
@@ -104,10 +165,23 @@ export const ContactsPage = () => {
   const filterRef = useRef<HTMLDivElement>(null);
   const filterTriggerRef = useRef<HTMLButtonElement>(null);
   const loadContactsInProgressRef = useRef(false);
+  /** If refresh is requested while a load runs, run one more load when the current one finishes. */
+  const pendingContactsBalanceRefreshRef = useRef(false);
+  /** Incremented on each loadContacts start; stale async RPC/fallback must not call setContacts after a newer load began. */
+  const loadContactsGenerationRef = useRef(0);
+  const loadContactsRef = useRef<() => Promise<void>>(async () => {});
   const [filterPosition, setFilterPosition] = useState({ top: 0, left: 0 });
 
   // Convert Supabase contact to app format (receivables = due from customer, payables = due to supplier/worker)
-  const convertFromSupabaseContact = useCallback((supabaseContact: any, index: number, sales: any[], purchases: any[]): Contact => {
+  const convertFromSupabaseContact = useCallback(
+    (
+      supabaseContact: any,
+      index: number,
+      sales: any[],
+      purchases: any[],
+      /** Same id as contact (type=worker); studio stores payables on workers + worker_ledger */
+      workerBalanceByContactId?: Map<string, number>
+    ): Contact => {
     // Determine contact type (worker | supplier | customer | both)
     const isWorker = supabaseContact.type === 'worker';
     const isSupplier = supabaseContact.type === 'supplier' || supabaseContact.type === 'both';
@@ -116,8 +190,11 @@ export const ContactsPage = () => {
       supabaseContact.type === 'both' ? 'both' : isWorker ? 'worker' : isSupplier ? 'supplier' : 'customer';
 
     // Receivables: opening_balance + sales due (for customer or both)
-    const contactSales = sales.filter(s =>
-      s.customer_id === supabaseContact.id || (s.customer_name && s.customer_name === supabaseContact.name)
+    const cid = String(supabaseContact.id ?? '');
+    const contactSales = sales.filter(
+      (s) =>
+        String(s.customer_id ?? '') === cid ||
+        (s.customer_name && s.customer_name === supabaseContact.name)
     );
     const salesReceivables = contactSales.reduce((sum, s) => {
       const due = s.due_amount != null ? Number(s.due_amount) : (Number(s.total) || 0) - (Number(s.paid_amount) || 0);
@@ -129,10 +206,19 @@ export const ContactsPage = () => {
     // Payables: supplier_opening/opening + purchases for supplier/both; current_balance/opening for workers
     let payables = 0;
     if (isWorker) {
-      payables = Math.max(0, Number(supabaseContact.current_balance) || Number(supabaseContact.opening_balance) || 0);
+      const wid = String(supabaseContact.id);
+      const fromWorkers = workerBalanceByContactId?.get(wid);
+      payables = Math.max(
+        0,
+        fromWorkers !== undefined && fromWorkers !== null
+          ? fromWorkers
+          : Number(supabaseContact.current_balance) || Number(supabaseContact.opening_balance) || 0
+      );
     } else if (isSupplier) {
-      const contactPurchases = purchases.filter(p =>
-        p.supplier_id === supabaseContact.id || (p.supplier_name && p.supplier_name === supabaseContact.name)
+      const contactPurchases = purchases.filter(
+        (p) =>
+          String(p.supplier_id ?? '') === cid ||
+          (p.supplier_name && p.supplier_name === supabaseContact.name)
       );
       const purchasePayables = contactPurchases.reduce((sum, p) => {
         const due = p.due_amount != null ? Number(p.due_amount) : (Number(p.total) || 0) - (Number(p.paid_amount) || 0);
@@ -157,7 +243,7 @@ export const ContactsPage = () => {
 
     return {
       id: index + 1, // Display ID
-      uuid: supabaseContact.id, // Supabase UUID
+      uuid: String(supabaseContact.id ?? ''), // Supabase UUID (normalized)
       name: supabaseContact.name || '',
       code,
       type: contactType,
@@ -176,87 +262,260 @@ export const ContactsPage = () => {
     };
   }, []);
 
-  // Load contacts in two phases: (1) contacts list fast, (2) receivables/payables from sales/purchases
+  // Load contacts in two phases: (1) contacts list fast, (2) receivables/payables from RPC or merged sales/purchases
   const loadContacts = useCallback(async () => {
     if (!companyId) {
-      setLoading(false);
+      setListLoading(false);
+      setBalancesLoading(false);
       return;
     }
-    if (loadContactsInProgressRef.current) return;
+    if (loadContactsInProgressRef.current) {
+      pendingContactsBalanceRefreshRef.current = true;
+      return;
+    }
     loadContactsInProgressRef.current = true;
+    const myGen = ++loadContactsGenerationRef.current;
+    const debugTraceId = readDebugContactBalanceTraceId();
 
     const timeoutMs = 25000;
     let timeoutId: ReturnType<typeof setTimeout> | null = null;
     const timeoutPromise = new Promise<never>((_, reject) => {
       timeoutId = setTimeout(() => reject(new Error('Request timed out')), timeoutMs);
     });
+    const clearBalanceTimeout = () => {
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+        timeoutId = null;
+      }
+    };
 
     try {
-      setLoading(true);
+      setListLoading(true);
+      setBalancesLoading(false);
+      setBalancesStale(false);
+      setOperationalEngine(null);
+      setPartyGlByContactId(null);
 
-      await contactService.ensureDefaultWalkingCustomerForCompany(companyId);
-      const contactsData = await contactService.getAllContacts(companyId);
+      const [, contactsData] = await Promise.all([
+        contactService.ensureDefaultWalkingCustomerForCompany(companyId),
+        contactService.getAllContacts(companyId),
+      ]);
       if (!contactsData?.length) {
         setContacts([]);
-        setLoading(false);
-        if (timeoutId) clearTimeout(timeoutId);
+        setListLoading(false);
+        setBalancesLoading(false);
+        clearBalanceTimeout();
         return;
       }
 
-      // Phase 1: show contacts immediately with opening balances only (no sales/purchases query yet)
-      const phase1Contacts: Contact[] = contactsData.map((c: any, index: number) =>
-        convertFromSupabaseContact(c, index, [], [])
+      const { data: workerRows } = await supabase
+        .from('workers')
+        .select('id, current_balance')
+        .eq('company_id', companyId);
+      const workerBalMap = new Map<string, number>(
+        (workerRows || []).map((w: { id: string; current_balance?: number | null }) => [
+          String(w.id),
+          Number(w.current_balance) || 0,
+        ])
       );
-      setContacts(phase1Contacts);
 
-      // Phase 2: load balances via RPC (one call) or fallback to sales + purchases
-      const loadBalances = async () => {
-        const balanceMap = await contactService.getContactBalancesSummary(companyId, branchId === 'all' ? null : branchId).catch(() => null);
-        if (balanceMap && balanceMap.size > 0) {
-          const withBalances: Contact[] = phase1Contacts.map((contact) => {
-            const uuid = contact.uuid;
-            const bal = uuid ? balanceMap.get(uuid) : undefined;
-            if (!bal) return contact;
-            return {
-              ...contact,
-              receivables: bal.receivables,
-              payables: bal.payables,
-              netBalance: bal.receivables - bal.payables,
-            };
+      // Phase 1: show contacts immediately with opening-only numbers; balance columns stay skeleton until phase 2
+      const phase1Contacts: Contact[] = contactsData.map((c: any, index: number) =>
+        convertFromSupabaseContact(c, index, [], [], workerBalMap)
+      );
+      if (debugTraceId) {
+        const row = phase1Contacts.find((c) => c.uuid === debugTraceId);
+        if (row) {
+          console.log('[CONTACTS BALANCE TRACE]', {
+            contactId: debugTraceId,
+            source: 'phase1_opening_workers_table',
+            row: { r: row.receivables, p: row.payables },
           });
-          setContacts(withBalances);
-          return;
         }
-        const [salesData, purchasesData] = await Promise.all([
-          saleService.getAllSales(companyId, branchId === 'all' ? undefined : branchId || undefined).catch(() => []),
-          purchaseService.getAllPurchases(companyId, branchId === 'all' ? undefined : branchId || undefined).catch(() => []),
-        ]);
-        const withBalances: Contact[] = contactsData.map((c: any, index: number) =>
-          convertFromSupabaseContact(c, index, salesData, purchasesData)
-        );
-        setContacts(withBalances);
+      }
+      setContacts(phase1Contacts);
+      setListLoading(false);
+      setBalancesLoading(true);
+
+      // Phase 2: RPC success (non-null Map) always overwrites row amounts — no phase1/fallback mix after that.
+      const loadBalances = async () => {
+        try {
+          const balanceMap = await contactService.getContactBalancesSummary(companyId, branchId === 'all' ? null : branchId).catch(() => null);
+          if (myGen !== loadContactsGenerationRef.current) return;
+
+          if (balanceMap != null) {
+            setOperationalEngine('rpc');
+            if (balanceMap.size === 0 && phase1Contacts.length > 0 && import.meta.env?.DEV) {
+              console.warn(
+                '[CONTACTS PAGE] get_contact_balances_summary returned zero rows but contacts exist — applying 0/0 per row (check RLS or RPC).'
+              );
+            }
+            const withBalances: Contact[] = phase1Contacts.map((contact) => {
+              const uuid = contact.uuid;
+              const bal = uuid ? balanceMap.get(String(uuid)) : undefined;
+              const r = Number(bal?.receivables ?? 0) || 0;
+              const p = Number(bal?.payables ?? 0) || 0;
+              if (debugTraceId && uuid === debugTraceId) {
+                console.log('[CONTACTS BALANCE TRACE]', {
+                  contactId: uuid,
+                  source: 'rpc',
+                  before: { r: contact.receivables, p: contact.payables },
+                  after: { r, p },
+                });
+              }
+              return { ...contact, receivables: r, payables: p, netBalance: r - p };
+            });
+            if (myGen !== loadContactsGenerationRef.current) return;
+            setBalancesStale(false);
+            setContacts(withBalances);
+            return;
+          }
+
+          setOperationalEngine('fallback');
+          const [salesData, purchasesData] = await Promise.all([
+            saleService.getAllSales(companyId, branchId === 'all' ? undefined : branchId || undefined).catch(() => []),
+            purchaseService.getAllPurchases(companyId, branchId === 'all' ? undefined : branchId || undefined).catch(() => []),
+          ]);
+          if (myGen !== loadContactsGenerationRef.current) return;
+          const withBalances: Contact[] = contactsData.map((c: any, index: number) =>
+            convertFromSupabaseContact(c, index, salesData, purchasesData, workerBalMap)
+          );
+          for (const row of withBalances) {
+            if (debugTraceId && row.uuid === debugTraceId) {
+              const prev = phase1Contacts.find((x) => x.uuid === row.uuid);
+              console.log('[CONTACTS BALANCE TRACE]', {
+                contactId: row.uuid,
+                source: 'fallback',
+                before: prev ? { r: prev.receivables, p: prev.payables } : null,
+                after: { r: row.receivables, p: row.payables },
+              });
+            }
+          }
+          setBalancesStale(false);
+          setContacts(withBalances);
+        } finally {
+          clearBalanceTimeout();
+        }
       };
 
       await Promise.race([loadBalances(), timeoutPromise]);
     } catch (error: any) {
       console.error('[CONTACTS PAGE] Error loading contacts:', error);
-      toast.error('Failed to load contacts: ' + (error.message || 'Unknown error'));
-      setContacts([]);
+      clearBalanceTimeout();
+      const msg = error?.message || '';
+      if (msg === 'Request timed out') {
+        setBalancesStale(true);
+        setOperationalEngine(null);
+        toast.error('Due balances timed out; refresh the page or try again — row amounts are hidden until operational load completes.');
+      } else {
+        setBalancesStale(false);
+        toast.error('Failed to load contacts: ' + (msg || 'Unknown error'));
+        setContacts([]);
+      }
     } finally {
-      if (timeoutId) clearTimeout(timeoutId);
-      setLoading(false);
+      clearBalanceTimeout();
+      setListLoading(false);
+      setBalancesLoading(false);
       loadContactsInProgressRef.current = false;
+      if (pendingContactsBalanceRefreshRef.current) {
+        pendingContactsBalanceRefreshRef.current = false;
+        queueMicrotask(() => {
+          void loadContactsRef.current();
+        });
+      }
     }
   }, [companyId, branchId, convertFromSupabaseContact]);
+
+  useEffect(() => {
+    loadContactsRef.current = loadContacts;
+  }, [loadContacts]);
 
   // Load contacts as soon as companyId is available (no click needed)
   useEffect(() => {
     if (companyId) {
       loadContacts();
     } else {
-      setLoading(false);
+      setListLoading(false);
+      setBalancesLoading(false);
     }
   }, [companyId, loadContacts]);
+
+  const balanceColumnsPending = balancesLoading || balancesStale;
+
+  /** Load party-attributed GL slice for row-level op vs GL badges (never overwrites operational amounts). */
+  useEffect(() => {
+    if (!companyId || listLoading || balancesLoading || balancesStale) {
+      if (listLoading || balancesLoading || balancesStale) setPartyGlByContactId(null);
+      return;
+    }
+    let cancelled = false;
+    contactService
+      .getContactPartyGlBalancesMap(companyId, branchId === 'all' ? null : branchId)
+      .then((m) => {
+        if (!cancelled) setPartyGlByContactId(m);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [companyId, branchId, listLoading, balancesLoading, balancesStale]);
+
+  /** Control-account drawer → open this contact’s canonical party statement */
+  useEffect(() => {
+    if (listLoading || contacts.length === 0) return;
+    let raw: string | null = null;
+    try {
+      raw = sessionStorage.getItem(CONTACTS_PARTY_DRILLDOWN_KEY);
+    } catch {
+      return;
+    }
+    if (!raw) return;
+    let payload: { contactId?: string; tabHint?: string };
+    try {
+      payload = JSON.parse(raw);
+    } catch {
+      sessionStorage.removeItem(CONTACTS_PARTY_DRILLDOWN_KEY);
+      return;
+    }
+    const id = payload.contactId;
+    if (!id) {
+      sessionStorage.removeItem(CONTACTS_PARTY_DRILLDOWN_KEY);
+      return;
+    }
+    const row = contacts.find((c) => String(c.uuid) === String(id));
+    if (!row) {
+      sessionStorage.removeItem(CONTACTS_PARTY_DRILLDOWN_KEY);
+      toast.error('Contact not found for drill-down');
+      return;
+    }
+    sessionStorage.removeItem(CONTACTS_PARTY_DRILLDOWN_KEY);
+    if (payload.tabHint === 'customers') setActiveTab('customers');
+    else if (payload.tabHint === 'suppliers') setActiveTab('suppliers');
+    else if (payload.tabHint === 'workers') setActiveTab('workers');
+    setSelectedContact(row);
+    setLedgerOpen(true);
+  }, [listLoading, contacts]);
+
+  // GL AR/AP from journal (life-to-date, same branch scope as contact balance RPC)
+  useEffect(() => {
+    if (!companyId) {
+      setGlArAp(null);
+      return;
+    }
+    if (balancesLoading || balancesStale) return;
+    let cancelled = false;
+    const b = branchId === 'all' || !branchId ? undefined : branchId;
+    accountingReportsService
+      .getArApGlSnapshot(companyId, new Date().toISOString().slice(0, 10), b)
+      .then((snap) => {
+        if (!cancelled) setGlArAp(snap);
+      })
+      .catch(() => {
+        if (!cancelled) setGlArAp(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [companyId, branchId, balancesLoading, balancesStale]);
 
   // Refetch list when a new contact is created (e.g. Add Worker) so it shows without refresh
   useEffect(() => {
@@ -271,6 +530,26 @@ export const ContactsPage = () => {
     const onFocus = () => { if (companyId) loadContacts(); };
     window.addEventListener('focus', onFocus);
     return () => window.removeEventListener('focus', onFocus);
+  }, [companyId, loadContacts]);
+
+  // After Add Entry / manual receipt saves — refresh operational balances + reconciliation snapshot inputs
+  useEffect(() => {
+    const onBalancesRefresh = (e: Event) => {
+      const d = (e as CustomEvent<{ companyId?: string }>).detail;
+      if (d?.companyId && d.companyId !== companyId) return;
+      loadContacts();
+    };
+    window.addEventListener(CONTACT_BALANCES_REFRESH_EVENT, onBalancesRefresh as EventListener);
+    return () => window.removeEventListener(CONTACT_BALANCES_REFRESH_EVENT, onBalancesRefresh as EventListener);
+  }, [companyId, loadContacts]);
+
+  /** Catch-all for sale/purchase flows that dispatch paymentAdded without contactBalancesRefresh (Phase 8 sync). */
+  useEffect(() => {
+    const onPaymentAdded = () => {
+      if (companyId) loadContacts();
+    };
+    window.addEventListener('paymentAdded', onPaymentAdded);
+    return () => window.removeEventListener('paymentAdded', onPaymentAdded);
   }, [companyId, loadContacts]);
 
   // Position filter dropdown when open (for portal)
@@ -358,6 +637,53 @@ export const ContactsPage = () => {
       totalCount: filtered.length,
     };
   }, [activeTab, contacts]);
+
+  /** Contacts subledger vs GL (Trial Balance) — explains differences vs Reports. */
+  const subledgerVsGl = useMemo(() => {
+    if (!glArAp) return null;
+    const ar =
+      glArAp.ar != null
+        ? {
+            label: `${glArAp.ar.account_code || '—'} ${glArAp.ar.account_name}`.trim(),
+            contactsTotal: summary.totalReceivables,
+            glNetDrMinusCr: glArAp.ar.balance,
+            variance: summary.totalReceivables - glArAp.ar.balance,
+            assetNegative: glArAp.ar.balance < -0.01,
+          }
+        : null;
+    const ap =
+      glArAp.ap != null && glArAp.apNetCredit != null
+        ? {
+            label: `${glArAp.ap.account_code || '—'} ${glArAp.ap.account_name}`.trim(),
+            contactsTotal: summary.totalPayables,
+            glNetCredit: glArAp.apNetCredit,
+            variance: summary.totalPayables - glArAp.apNetCredit,
+          }
+        : null;
+    return { ar, ap };
+  }, [glArAp, summary.totalReceivables, summary.totalPayables]);
+
+  // Journal vs operational (tab-scoped operational totals from summary)
+  useEffect(() => {
+    if (!companyId || balancesLoading || balancesStale) {
+      setReconSnapshot(null);
+      return;
+    }
+    let cancelled = false;
+    getCompanyReconciliationSnapshot(companyId, branchId, undefined, {
+      operationalReceivablesTotal: summary.totalReceivables,
+      operationalPayablesTotal: summary.totalPayables,
+    })
+      .then((snap) => {
+        if (!cancelled) setReconSnapshot(snap);
+      })
+      .catch(() => {
+        if (!cancelled) setReconSnapshot(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [companyId, branchId, balancesLoading, balancesStale, summary.totalReceivables, summary.totalPayables]);
 
   // Calculate tab counts (type 'both' counts in both Customer and Supplier)
   const tabCounts = useMemo(() => ({
@@ -486,6 +812,18 @@ export const ContactsPage = () => {
           <div>
             <h1 className="text-2xl font-bold text-white">Contacts</h1>
             <p className="text-sm text-gray-400 mt-0.5">Manage your suppliers, customers, and workers</p>
+            <p className="text-xs text-gray-500 mt-2 max-w-3xl leading-relaxed">
+              <strong className="text-gray-400">Receivables / Payables</strong> columns = operational open-document balances from{' '}
+              <code className="text-gray-500 text-[10px]">get_contact_balances_summary</code>
+              {operationalEngine === 'rpc' && ' (loaded via RPC). '}
+              {operationalEngine === 'fallback' && (
+                <span className="text-amber-400/90"> (summary RPC unavailable or empty — merged from sales/purchases). </span>
+              )}
+              {operationalEngine === null && !listLoading && contacts.length > 0 && <span> (resolving…). </span>}
+              Values are <strong className="text-gray-400">not</strong> swapped for GL. Amber icon on a row = operational total differs from party-attributed GL (
+              <code className="text-gray-500 text-[10px]">get_contact_party_gl_balances</code>
+              ); use the party statement <strong className="text-gray-400">GL</strong> tab. Control-account reconciliation remains in the strip below.
+            </p>
           </div>
           <Button 
             onClick={() => openDrawer('addContact')}
@@ -526,12 +864,22 @@ export const ContactsPage = () => {
           {/* Total Receivables */}
           <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
             <div className="flex items-start justify-between mb-3">
-              <div>
+              <div className="min-w-0 flex-1">
                 <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Total Receivables</p>
-                <p className="text-2xl font-bold text-green-400 mt-1">{formatCurrency(summary.totalReceivables)}</p>
-                <p className="text-xs text-gray-500 mt-1">
-                  Money to receive
+                <p className="text-[10px] text-amber-500/90 font-medium uppercase tracking-wide">Operational · open documents</p>
+                <p className={cn('text-2xl font-bold text-green-400 mt-1 tabular-nums', balanceColumnsPending && 'animate-pulse')}>
+                  {balanceColumnsPending ? '—' : formatCurrency(summary.totalReceivables)}
                 </p>
+                <p className="text-xs text-gray-500 mt-1">Not statutory GL; see reconciliation below</p>
+                {balancesStale && (
+                  <p className="text-[10px] text-amber-400/95 mt-1">Operational totals incomplete — refresh to reload.</p>
+                )}
+                {balancesLoading && !balancesStale && (
+                  <p className="text-[10px] text-blue-400/90 mt-1 flex items-center gap-1">
+                    <Loader2 size={10} className="animate-spin shrink-0" />
+                    Syncing invoice balances…
+                  </p>
+                )}
               </div>
               <div className="w-12 h-12 rounded-full bg-green-500/10 flex items-center justify-center">
                 <DollarSign size={24} className="text-green-500" />
@@ -542,12 +890,19 @@ export const ContactsPage = () => {
           {/* Total Payables */}
           <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
             <div className="flex items-start justify-between mb-3">
-              <div>
+              <div className="min-w-0 flex-1">
                 <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Total Payables</p>
-                <p className="text-2xl font-bold text-red-400 mt-1">{formatCurrency(summary.totalPayables)}</p>
-                <p className="text-xs text-gray-500 mt-1">
-                  Money to pay
+                <p className="text-[10px] text-amber-500/90 font-medium uppercase tracking-wide">Operational · open documents</p>
+                <p className={cn('text-2xl font-bold text-red-400 mt-1 tabular-nums', balanceColumnsPending && 'animate-pulse')}>
+                  {balanceColumnsPending ? '—' : formatCurrency(summary.totalPayables)}
                 </p>
+                <p className="text-xs text-gray-500 mt-1">Not statutory GL; see reconciliation below</p>
+                {balancesLoading && !balancesStale && (
+                  <p className="text-[10px] text-blue-400/90 mt-1 flex items-center gap-1">
+                    <Loader2 size={10} className="animate-spin shrink-0" />
+                    Syncing supplier/worker dues…
+                  </p>
+                )}
               </div>
               <div className="w-12 h-12 rounded-full bg-red-500/10 flex items-center justify-center">
                 <DollarSign size={24} className="text-red-500" />
@@ -571,6 +926,180 @@ export const ContactsPage = () => {
             </div>
           </div>
         </div>
+
+        {!listLoading && reconSnapshot && (
+          <div className="mt-4 rounded-xl border border-blue-500/25 bg-blue-950/20 p-4 space-y-3">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="flex items-start gap-2">
+                <Scale className="w-5 h-5 text-blue-400 shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-sm font-semibold text-white">Reconciliation · this tab vs GL control</p>
+                  <p className="text-xs text-gray-400 mt-0.5 max-w-3xl">{reconSnapshot.message}</p>
+                  <p className="text-[11px] text-amber-400/90 mt-1 font-medium">
+                    Per-contact GL-aligned balance: pending journal mapping (no party_contact_id on lines yet).
+                  </p>
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-2 shrink-0">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="border-indigo-500/40 text-indigo-200 hover:bg-indigo-950/40 gap-1.5"
+                  onClick={() => setCurrentView('ar-ap-reconciliation-center')}
+                >
+                  <Shield size={14} />
+                  Reconciliation Center
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="border-blue-500/40 text-blue-200 hover:bg-blue-950/50 gap-1.5"
+                  onClick={() => setCurrentView('reports')}
+                >
+                  <BarChart3 size={14} />
+                  Trial Balance
+                </Button>
+              </div>
+            </div>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+              <div className="rounded-lg bg-gray-950/60 border border-gray-800 p-3 text-xs space-y-2">
+                <p className="text-[10px] uppercase font-bold text-gray-500 tracking-wide">Accounts Receivable</p>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  <div>
+                    <p className="text-gray-500">Operational</p>
+                    <p className="text-green-400 font-semibold tabular-nums">{formatCurrency(reconSnapshot.operationalReceivablesTotal)}</p>
+                  </div>
+                  <div>
+                    <p className="text-gray-500">GL (Dr−Cr)</p>
+                    <p className="text-white font-semibold tabular-nums">
+                      {reconSnapshot.glArNetDrMinusCr != null ? formatCurrency(reconSnapshot.glArNetDrMinusCr) : '—'}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-gray-500">Variance</p>
+                    <p
+                      className={cn(
+                        'font-semibold tabular-nums',
+                        reconSnapshot.varianceReceivablesVsAr != null && Math.abs(reconSnapshot.varianceReceivablesVsAr) >= 1
+                          ? 'text-amber-400'
+                          : 'text-gray-400'
+                      )}
+                    >
+                      {reconSnapshot.varianceReceivablesVsAr != null ? formatCurrency(reconSnapshot.varianceReceivablesVsAr) : '—'}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-gray-500">Unmapped JEs</p>
+                    <Badge className="bg-amber-500/20 text-amber-200 border-amber-500/40 tabular-nums">
+                      {reconSnapshot.unmappedArJournalCount}
+                    </Badge>
+                  </div>
+                </div>
+              </div>
+              <div className="rounded-lg bg-gray-950/60 border border-gray-800 p-3 text-xs space-y-2">
+                <p className="text-[10px] uppercase font-bold text-gray-500 tracking-wide">Accounts Payable</p>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  <div>
+                    <p className="text-gray-500">Operational</p>
+                    <p className="text-red-400 font-semibold tabular-nums">{formatCurrency(reconSnapshot.operationalPayablesTotal)}</p>
+                  </div>
+                  <div>
+                    <p className="text-gray-500">GL (Cr−Dr)</p>
+                    <p className="text-white font-semibold tabular-nums">
+                      {reconSnapshot.glApNetCredit != null ? formatCurrency(reconSnapshot.glApNetCredit) : '—'}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-gray-500">Variance</p>
+                    <p
+                      className={cn(
+                        'font-semibold tabular-nums',
+                        reconSnapshot.variancePayablesVsAp != null && Math.abs(reconSnapshot.variancePayablesVsAp) >= 1
+                          ? 'text-amber-400'
+                          : 'text-gray-400'
+                      )}
+                    >
+                      {reconSnapshot.variancePayablesVsAp != null ? formatCurrency(reconSnapshot.variancePayablesVsAp) : '—'}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-gray-500">Unmapped JEs</p>
+                    <Badge className="bg-amber-500/20 text-amber-200 border-amber-500/40 tabular-nums">
+                      {reconSnapshot.unmappedApJournalCount}
+                    </Badge>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {!listLoading && subledgerVsGl && (subledgerVsGl.ar || subledgerVsGl.ap) && (
+          <div className="mt-4 rounded-xl border border-amber-500/25 bg-amber-500/[0.06] p-4 text-xs text-gray-300 space-y-3">
+            <div className="flex items-start gap-2 text-amber-200/95">
+              <AlertCircle size={16} className="shrink-0 mt-0.5" />
+              <div>
+                <p className="font-semibold text-amber-100">Contacts vs general ledger (same branch)</p>
+                <p className="text-gray-400 mt-1 leading-relaxed">
+                  <strong>Contacts</strong> = invoice / opening subledger (<code className="text-amber-400/80">get_contact_balances_summary</code>).
+                  <strong className="ml-1">Trial Balance</strong> = net on AR/AP accounts from <strong>all</strong> journal lines (life-to-date). A gap usually means
+                  manual journals, mis-posted receipts, or legacy data — not a math bug in either screen.
+                </p>
+              </div>
+            </div>
+            {subledgerVsGl.ar && (
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 rounded-lg bg-gray-950/50 border border-gray-800/80 p-3">
+                <div>
+                  <p className="text-[10px] uppercase text-gray-500 font-semibold">Receivables (this tab)</p>
+                  <p className="text-sm font-bold text-green-400 tabular-nums">{formatCurrency(subledgerVsGl.ar.contactsTotal)}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] uppercase text-gray-500 font-semibold">GL {subledgerVsGl.ar.label}</p>
+                  <p className="text-sm font-bold text-white tabular-nums">Dr−Cr = {formatCurrency(subledgerVsGl.ar.glNetDrMinusCr)}</p>
+                  {subledgerVsGl.ar.assetNegative && (
+                    <p className="text-[10px] text-red-400 mt-1">Credit-heavy asset — review postings to this account.</p>
+                  )}
+                </div>
+                <div>
+                  <p className="text-[10px] uppercase text-gray-500 font-semibold">Variance (contacts − GL net)</p>
+                  <p
+                    className={cn(
+                      'text-sm font-bold tabular-nums',
+                      Math.abs(subledgerVsGl.ar.variance) < 1 ? 'text-gray-400' : 'text-amber-400'
+                    )}
+                  >
+                    {formatCurrency(subledgerVsGl.ar.variance)}
+                  </p>
+                </div>
+              </div>
+            )}
+            {subledgerVsGl.ap && (
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 rounded-lg bg-gray-950/50 border border-gray-800/80 p-3">
+                <div>
+                  <p className="text-[10px] uppercase text-gray-500 font-semibold">Payables (this tab)</p>
+                  <p className="text-sm font-bold text-red-400 tabular-nums">{formatCurrency(subledgerVsGl.ap.contactsTotal)}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] uppercase text-gray-500 font-semibold">GL {subledgerVsGl.ap.label}</p>
+                  <p className="text-sm font-bold text-white tabular-nums">Cr−Dr = {formatCurrency(subledgerVsGl.ap.glNetCredit)}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] uppercase text-gray-500 font-semibold">Variance (contacts − GL)</p>
+                  <p
+                    className={cn(
+                      'text-sm font-bold tabular-nums',
+                      Math.abs(subledgerVsGl.ap.variance) < 1 ? 'text-gray-400' : 'text-amber-400'
+                    )}
+                  >
+                    {formatCurrency(subledgerVsGl.ap.variance)}
+                  </p>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Search & Actions Bar */}
@@ -839,19 +1368,44 @@ export const ContactsPage = () => {
       {/* Contacts Table - Scrollable (min-h-0 lets flex-1 shrink so overflow works) */}
       <div className="flex-1 min-h-0 overflow-auto px-6 py-4">
         <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden min-h-[280px]">
-          {loading ? (
-            <div className="py-12 text-center">
-              <Loader2 size={48} className="mx-auto text-blue-500 mb-3 animate-spin" />
-              <p className="text-gray-400 text-sm">Loading contacts...</p>
-              <Button
-                type="button"
-                variant="outline"
-                className="mt-4 border-gray-600 text-gray-300 hover:bg-gray-800"
-                onClick={() => openDrawer('addContact')}
-              >
-                <Users size={16} className="mr-2" />
-                Add Contact
-              </Button>
+          {listLoading ? (
+            <div className="p-6 md:p-8">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-lg mx-auto mb-8">
+                <div className="rounded-xl border border-gray-800 bg-gradient-to-br from-gray-900 to-gray-950 p-4 animate-pulse">
+                  <div className="h-3 w-28 bg-gray-700 rounded mb-3" />
+                  <div className="h-9 w-36 bg-green-900/40 rounded-md mb-2" />
+                  <p className="text-[11px] text-gray-500">Receivables (due from customers)</p>
+                </div>
+                <div className="rounded-xl border border-gray-800 bg-gradient-to-br from-gray-900 to-gray-950 p-4 animate-pulse">
+                  <div className="h-3 w-28 bg-gray-700 rounded mb-3" />
+                  <div className="h-9 w-36 bg-red-900/40 rounded-md mb-2" />
+                  <p className="text-[11px] text-gray-500">Payables (due to suppliers)</p>
+                </div>
+              </div>
+              <div className="space-y-2 max-w-4xl mx-auto mb-6">
+                {Array.from({ length: 8 }).map((_, i) => (
+                  <div
+                    key={i}
+                    className="h-14 rounded-lg bg-gray-800/35 border border-gray-800/60 animate-pulse"
+                    style={{ animationDelay: `${i * 40}ms` }}
+                  />
+                ))}
+              </div>
+              <div className="text-center space-y-3">
+                <p className="text-sm text-gray-400 flex items-center justify-center gap-2">
+                  <Loader2 size={18} className="text-blue-500 animate-spin" />
+                  Loading contacts &amp; due balances…
+                </p>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="border-gray-600 text-gray-300 hover:bg-gray-800"
+                  onClick={() => openDrawer('addContact')}
+                >
+                  <Users size={16} className="mr-2" />
+                  Add Contact
+                </Button>
+              </div>
             </div>
           ) : (
             <>
@@ -860,13 +1414,19 @@ export const ContactsPage = () => {
                 <div className="min-w-[1000px]">
                   {/* Table Header - Fixed within scroll container */}
                   <div className="sticky top-0 bg-gray-950/95 backdrop-blur-sm z-10 border-b border-gray-800">
-                    <div className="grid grid-cols-[40px_1fr_120px_160px_100px_100px_110px_60px] gap-3 px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                    <div className="grid grid-cols-[40px_1fr_120px_160px_112px_112px_110px_60px] gap-3 px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">
                       <div className="text-left">#</div>
                       <div className="text-left">Name</div>
                       <div className="text-left">Type</div>
                       <div className="text-left">Contact Info</div>
-                      <div className="text-right">Receivables</div>
-                      <div className="text-right">Payables</div>
+                      <div className="text-right leading-tight">
+                        <span className="block text-[9px] normal-case text-gray-500 font-medium tracking-normal">Operational</span>
+                        <span className="block">Recv.</span>
+                      </div>
+                      <div className="text-right leading-tight">
+                        <span className="block text-[9px] normal-case text-gray-500 font-medium tracking-normal">Operational</span>
+                        <span className="block">Pay.</span>
+                      </div>
                       <div className="text-center">Status</div>
                       <div className="text-center">Actions</div>
                     </div>
@@ -894,7 +1454,7 @@ export const ContactsPage = () => {
                       key={contact.id}
                       onMouseEnter={() => setHoveredRow(contact.id)}
                       onMouseLeave={() => setHoveredRow(null)}
-                      className="grid grid-cols-[40px_1fr_120px_160px_100px_100px_110px_60px] gap-3 px-4 h-14 hover:bg-gray-800/30 transition-colors items-center border-b border-gray-800/50 last:border-b-0"
+                      className="grid grid-cols-[40px_1fr_120px_160px_112px_112px_110px_60px] gap-3 px-4 min-h-14 py-1 hover:bg-gray-800/30 transition-colors items-center border-b border-gray-800/50 last:border-b-0"
                     >
                       {/* # */}
                       <div className="text-sm text-gray-500 font-medium">{index + 1}</div>
@@ -949,24 +1509,72 @@ export const ContactsPage = () => {
                         </div>
                       </div>
 
-                      {/* Receivables */}
+                      {/* Receivables — operational only; stale/loading → no misleading 0 */}
                       <div className="text-right">
-                        <div className={cn(
-                          "text-sm font-semibold tabular-nums leading-[1.4]",
-                          contact.receivables > 0 ? "text-green-400" : "text-gray-600"
-                        )}>
-                          {formatCurrency(contact.receivables)}
-                        </div>
+                        {balanceColumnsPending ? (
+                          <div
+                            className="h-5 w-[4.25rem] ml-auto rounded bg-gray-800/60 border border-gray-800/50 animate-pulse"
+                            title={
+                              balancesStale
+                                ? 'Operational balances did not finish loading — refresh'
+                                : 'Loading open invoice balance…'
+                            }
+                          />
+                        ) : (
+                          <div className="flex items-center justify-end gap-1">
+                            {partyGlByContactId &&
+                              partyGlMismatchFlags(contact, partyGlByContactId.get(String(contact.uuid))).receivables && (
+                                <AlertCircle
+                                  size={14}
+                                  className="text-amber-400 shrink-0"
+                                  title="Operational receivable ≠ party AR (1100) from journals — check party statement GL tab"
+                                />
+                              )}
+                            <div
+                              className={cn(
+                                'text-sm font-semibold tabular-nums leading-[1.4]',
+                                contact.receivables > 0 ? 'text-green-400' : 'text-gray-600'
+                              )}
+                              title="Operational (open documents), not GL"
+                            >
+                              {formatCurrency(contact.receivables)}
+                            </div>
+                          </div>
+                        )}
                       </div>
 
-                      {/* Payables */}
+                      {/* Payables — operational only */}
                       <div className="text-right">
-                        <div className={cn(
-                          "text-sm font-semibold tabular-nums leading-[1.4]",
-                          contact.payables > 0 ? "text-red-400" : "text-gray-600"
-                        )}>
-                          {formatCurrency(contact.payables)}
-                        </div>
+                        {balanceColumnsPending ? (
+                          <div
+                            className="h-5 w-[4.25rem] ml-auto rounded bg-gray-800/60 border border-gray-800/50 animate-pulse"
+                            title={
+                              balancesStale
+                                ? 'Operational balances did not finish loading — refresh'
+                                : 'Loading open bill / worker balance…'
+                            }
+                          />
+                        ) : (
+                          <div className="flex items-center justify-end gap-1">
+                            {partyGlByContactId &&
+                              partyGlMismatchFlags(contact, partyGlByContactId.get(String(contact.uuid))).payables && (
+                                <AlertCircle
+                                  size={14}
+                                  className="text-amber-400 shrink-0"
+                                  title="Operational payable ≠ party AP/worker GL from journals — check party statement GL tab"
+                                />
+                              )}
+                            <div
+                              className={cn(
+                                'text-sm font-semibold tabular-nums leading-[1.4]',
+                                contact.payables > 0 ? 'text-red-400' : 'text-gray-600'
+                              )}
+                              title="Operational (open documents), not GL"
+                            >
+                              {formatCurrency(contact.payables)}
+                            </div>
+                          </div>
+                        )}
                       </div>
 
                       {/* Status */}
@@ -1033,37 +1641,16 @@ export const ContactsPage = () => {
                                   <DollarSign size={14} className="mr-2 text-green-400" />
                                   Receive Payment
                                 </DropdownMenuItem>
-                                {/* Ledger Submenu */}
-                                <DropdownMenuSub>
-                                  <DropdownMenuSubTrigger className="hover:bg-gray-800 cursor-pointer">
-                                    <FileText size={14} className="mr-2 text-purple-400" />
-                                    Ledger / Transactions
-                                  </DropdownMenuSubTrigger>
-                                  <DropdownMenuSubContent className="bg-gray-900 border-gray-700 text-white">
-                                    <DropdownMenuItem 
-                                      onClick={() => {
-                                        setSelectedContact(contact);
-                                        setLedgerType('classic');
-                                        setLedgerOpen(true);
-                                      }}
-                                      className="hover:bg-gray-800 cursor-pointer"
-                                    >
-                                      <FileText size={14} className="mr-2 text-blue-400" />
-                                      Classic Ledger
-                                    </DropdownMenuItem>
-                                    <DropdownMenuItem 
-                                      onClick={() => {
-                                        setSelectedContact(contact);
-                                        setLedgerType('modern');
-                                        setLedgerOpen(true);
-                                      }}
-                                      className="hover:bg-gray-800 cursor-pointer"
-                                    >
-                                      <FileText size={14} className="mr-2 text-green-400" />
-                                      Modern Ledger (New Design)
-                                    </DropdownMenuItem>
-                                  </DropdownMenuSubContent>
-                                </DropdownMenuSub>
+                                <DropdownMenuItem
+                                  onClick={() => {
+                                    setSelectedContact(contact);
+                                    setLedgerOpen(true);
+                                  }}
+                                  className="hover:bg-gray-800 cursor-pointer"
+                                >
+                                  <FileText size={14} className="mr-2 text-purple-400" />
+                                  Party statement (Operational / GL / Reconciliation)
+                                </DropdownMenuItem>
                                 <DropdownMenuSeparator className="bg-gray-700" />
                                 <DropdownMenuItem 
                                   onClick={() => openDrawer('addContact', undefined, { contact, prefillName: contact.name, prefillPhone: contact.phone })}
@@ -1107,7 +1694,7 @@ export const ContactsPage = () => {
                                   onClick={() => {
                                     setCurrentView('purchases');
                                     // Store supplier filter in sessionStorage for PurchasesPage to read
-                                    sessionStorage.setItem('purchasesFilter_supplierId', contact.id || '');
+                                    sessionStorage.setItem('purchasesFilter_supplierId', contact.uuid || '');
                                     sessionStorage.setItem('purchasesFilter_supplierName', contact.name || '');
                                     toast.info(`Filtering purchases for ${contact.name}`);
                                   }}
@@ -1126,37 +1713,16 @@ export const ContactsPage = () => {
                                   <DollarSign size={14} className="mr-2 text-red-400" />
                                   Make Payment
                                 </DropdownMenuItem>
-                                {/* Ledger Submenu for Suppliers */}
-                                <DropdownMenuSub>
-                                  <DropdownMenuSubTrigger className="hover:bg-gray-800 cursor-pointer">
-                                    <FileText size={14} className="mr-2 text-blue-400" />
-                                    Ledger / Transactions
-                                  </DropdownMenuSubTrigger>
-                                  <DropdownMenuSubContent className="bg-gray-900 border-gray-700 text-white">
-                                    <DropdownMenuItem 
-                                      onClick={() => {
-                                        setSelectedContact(contact);
-                                        setLedgerType('classic');
-                                        setLedgerOpen(true);
-                                      }}
-                                      className="hover:bg-gray-800 cursor-pointer"
-                                    >
-                                      <FileText size={14} className="mr-2 text-blue-400" />
-                                      Classic Ledger
-                                    </DropdownMenuItem>
-                                    <DropdownMenuItem 
-                                      onClick={() => {
-                                        setSelectedContact(contact);
-                                        setLedgerType('modern');
-                                        setLedgerOpen(true);
-                                      }}
-                                      className="hover:bg-gray-800 cursor-pointer"
-                                    >
-                                      <FileText size={14} className="mr-2 text-green-400" />
-                                      Modern Ledger (New Design)
-                                    </DropdownMenuItem>
-                                  </DropdownMenuSubContent>
-                                </DropdownMenuSub>
+                                <DropdownMenuItem
+                                  onClick={() => {
+                                    setSelectedContact(contact);
+                                    setLedgerOpen(true);
+                                  }}
+                                  className="hover:bg-gray-800 cursor-pointer"
+                                >
+                                  <FileText size={14} className="mr-2 text-blue-400" />
+                                  Party statement (Operational / GL / Reconciliation)
+                                </DropdownMenuItem>
                                 <DropdownMenuSeparator className="bg-gray-700" />
                                 <DropdownMenuItem 
                                   onClick={() => openDrawer('addContact', undefined, { contact, prefillName: contact.name, prefillPhone: contact.phone })}
@@ -1226,6 +1792,16 @@ export const ContactsPage = () => {
                                 >
                                   <DollarSign size={14} className="mr-2 text-green-400" />
                                   Payments
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  onClick={() => {
+                                    setSelectedContact(contact);
+                                    setLedgerOpen(true);
+                                  }}
+                                  className="hover:bg-gray-800 cursor-pointer"
+                                >
+                                  <FileText size={14} className="mr-2 text-violet-400" />
+                                  Party statement (Operational / GL / Reconciliation)
                                 </DropdownMenuItem>
                                 <DropdownMenuSeparator className="bg-gray-700" />
                                 <DropdownMenuItem 
@@ -1305,43 +1881,33 @@ export const ContactsPage = () => {
       {/* Customer Ledger - Full Screen (for customers and both) */}
       {selectedContact && (selectedContact.type === 'customer' || selectedContact.type === 'both') && ledgerOpen && (
         <div className="fixed inset-0 z-50 bg-[#111827] overflow-y-auto">
-          {ledgerType === 'modern' ? (
-            <CustomerLedgerPageOriginal 
-              initialCustomerId={selectedContact.uuid}
-              onClose={() => {
-                setLedgerOpen(false);
-                setLedgerType(null);
-                setSelectedContact(null);
-              }}
-            />
-          ) : (
-            <CustomerLedgerPage
-              customerId={selectedContact.uuid}
-              customerName={selectedContact.name}
-              customerCode={selectedContact.code}
-              onClose={() => {
-                setLedgerOpen(false);
-                setLedgerType(null);
-                setSelectedContact(null);
-              }}
-            />
-          )}
+          <CustomerLedgerPageOriginal
+            initialCustomerId={selectedContact.uuid}
+            onClose={() => {
+              setLedgerOpen(false);
+              setSelectedContact(null);
+            }}
+          />
         </div>
       )}
 
       {/* Supplier / Worker Ledger - Full screen (exclude customer-only so 'both' uses Customer Ledger above) */}
       {selectedContact && (selectedContact.type === 'supplier' || selectedContact.type === 'worker') && ledgerOpen && (
         <div className="fixed inset-0 z-50 bg-[#111827] overflow-y-auto">
-          <div className="sticky top-0 z-10 bg-[#111827] border-b border-gray-800 px-6 py-4 flex items-center justify-between">
-            <h2 className="text-xl font-bold text-white">
-              {selectedContact.type === 'supplier' ? 'Supplier' : 'Worker'} Ledger — {selectedContact.name}
-            </h2>
+          <div className="sticky top-0 z-10 bg-[#111827] border-b border-gray-800 px-6 py-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h2 className="text-xl font-bold text-white">
+                {selectedContact.type === 'supplier' ? 'Supplier' : 'Worker'} statement — {selectedContact.name}
+              </h2>
+              <p className="text-[11px] text-gray-500 mt-1 max-w-xl">
+                Operational (Not GL) · GL (Journal) · Reconciliation (Variance) — three engines; no mixed running balance.
+              </p>
+            </div>
             <Button
               variant="outline"
-              className="border-gray-600 text-gray-300 hover:bg-gray-800"
+              className="border-gray-600 text-gray-300 hover:bg-gray-800 shrink-0"
               onClick={() => {
                 setLedgerOpen(false);
-                setLedgerType(null);
                 setSelectedContact(null);
               }}
             >

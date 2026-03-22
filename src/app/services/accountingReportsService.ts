@@ -5,12 +5,13 @@
  * SOURCE LOCK (Phase 1): All GL reports use only:
  * - COA: accounts
  * - Journal: journal_entries + journal_entry_lines
- * No ledger_entries or ledger_master for GL totals (they are UI ledger layer only).
+ * GL totals must not use retired duplicate subledger tables — journal + COA only.
  *
  * Canonical sale line table: sales_items; fallback: sale_items (legacy).
  */
 
 import { supabase } from '@/lib/supabase';
+import { assertGlTruthQueryTable } from '@/app/services/accountingCanonicalGuard';
 
 /** Fetch sale line items: sales_items first (canonical), fallback to sale_items for backward compatibility. */
 async function getSaleLineItems<T = any>(selectColumns: string, saleIds: string[]): Promise<T[]> {
@@ -145,7 +146,7 @@ export const accountingReportsService = {
   /**
    * Phase 7: Account balances from journal only (single source of truth).
    * Returns account_id -> balance (debit - credit) for all accounts with activity up to asOfDate.
-   * Use for Accounts screen and reconciliation; when no journal lines exist for an account, it will not appear in the map (caller can use accounts.balance as fallback).
+   * Use for Accounts screen and reconciliation; accounts with no journal activity map to balance 0 (do not use stored accounts.balance for GL UI).
    */
   async getAccountBalancesFromJournal(
     companyId: string,
@@ -162,6 +163,39 @@ export const accountingReportsService = {
   },
 
   /**
+   * Single TB pass for Contacts ↔ GL reconciliation (same branch scope as Contacts RPC).
+   * - AR: TB row balance = debit − credit (asset; positive = usual).
+   * - AP: compare contact payables to (credit − debit) on AP account = −balance.
+   */
+  async getArApGlSnapshot(
+    companyId: string,
+    asOfDate?: string,
+    branchId?: string
+  ): Promise<{
+    ar: TrialBalanceRow | null;
+    ap: TrialBalanceRow | null;
+    /** Net liability on AP account (credits − debits), comparable to Contacts payables subtotal */
+    apNetCredit: number | null;
+  }> {
+    const end = (asOfDate ?? new Date().toISOString().slice(0, 10)).slice(0, 10);
+    const tb = await this.getTrialBalance(companyId, '1900-01-01', end, branchId);
+    const ar =
+      tb.rows.find((r) => (r.account_code || '').trim() === '1100') ||
+      tb.rows.find(
+        (r) => /receivable/i.test(r.account_name || '') && accountTypeCategory(r.account_type) === 'asset'
+      ) ||
+      null;
+    const ap =
+      tb.rows.find((r) => (r.account_code || '').trim() === '2000') ||
+      tb.rows.find(
+        (r) => /payable/i.test(r.account_name || '') && accountTypeCategory(r.account_type) === 'liability'
+      ) ||
+      null;
+    const apNetCredit = ap ? ap.credit - ap.debit : null;
+    return { ar, ap, apNetCredit };
+  },
+
+  /**
    * Trial Balance: SUM(debit), SUM(credit) per account for date range.
    * Join journal_entry_lines -> journal_entries (filter by company, date), join accounts.
    * When every journal entry is double-entry balanced, totalDebit = totalCredit and difference = 0.
@@ -172,6 +206,8 @@ export const accountingReportsService = {
     endDate: string,
     branchId?: string
   ): Promise<TrialBalanceResult> {
+    assertGlTruthQueryTable('accountingReportsService.getTrialBalance', 'accounts');
+    assertGlTruthQueryTable('accountingReportsService.getTrialBalance', 'journal_entry_lines');
     const { data: accounts } = await supabase
       .from('accounts')
       .select('id, code, name, type')

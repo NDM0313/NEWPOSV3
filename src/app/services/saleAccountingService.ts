@@ -929,3 +929,171 @@ async function postAdjustmentJE(
   }));
   await accountingService.createEntry(entry, lineRows);
 }
+
+const TRIGGER_JE_POLL_MS = 120;
+const TRIGGER_JE_MAX_WAIT_MS = 900;
+
+async function waitForJournalOnPaymentId(paymentId: string): Promise<string | null> {
+  const deadline = Date.now() + TRIGGER_JE_MAX_WAIT_MS;
+  while (Date.now() < deadline) {
+    const { data } = await supabase
+      .from('journal_entries')
+      .select('id')
+      .eq('payment_id', paymentId)
+      .or('is_void.is.null,is_void.eq.false')
+      .maybeSingle();
+    if (data?.id) return data.id as string;
+    await new Promise((r) => setTimeout(r, TRIGGER_JE_POLL_MS));
+  }
+  return null;
+}
+
+/**
+ * Idempotent: if DB trigger already created Dr Cash/Bank, Cr AR for this sale payment, returns that JE id.
+ * Otherwise creates the same shape as create_payment_journal_entry (reference_type sale + sale id + payment_id).
+ */
+export async function ensureSalePaymentJournalIfMissing(paymentId: string): Promise<string | null> {
+  const { data: pay, error } = await supabase
+    .from('payments')
+    .select('id, company_id, branch_id, reference_type, reference_id, amount, payment_account_id, payment_date')
+    .eq('id', paymentId)
+    .maybeSingle();
+  if (error || !pay) return null;
+  const p = pay as {
+    company_id: string;
+    branch_id: string | null;
+    reference_type: string | null;
+    reference_id: string | null;
+    amount: number | null;
+    payment_account_id: string | null;
+    payment_date: string | null;
+  };
+  if (String(p.reference_type || '').toLowerCase() !== 'sale' || !p.reference_id) return null;
+
+  const { data: existing } = await supabase
+    .from('journal_entries')
+    .select('id')
+    .eq('payment_id', paymentId)
+    .or('is_void.is.null,is_void.eq.false')
+    .maybeSingle();
+  if (existing?.id) return existing.id as string;
+
+  const arAccount = await ensureARAccount(p.company_id);
+  if (!arAccount?.id || !p.payment_account_id) {
+    console.error('[saleAccountingService] ensureSalePaymentJournalIfMissing: missing AR (1100) or payment_account_id', paymentId);
+    return null;
+  }
+
+  const { data: sale } = await supabase.from('sales').select('invoice_no').eq('id', p.reference_id).maybeSingle();
+  const inv = String((sale as { invoice_no?: string } | null)?.invoice_no || '').trim();
+
+  const { data: auth } = await supabase.auth.getUser();
+  const uid = auth?.user?.id ?? null;
+
+  const entryDate = p.payment_date ? String(p.payment_date).slice(0, 10) : new Date().toISOString().slice(0, 10);
+  const entryNo = `JE-PAY-${Date.now()}-${Math.random().toString(36).slice(2, 7).toUpperCase()}`;
+  const amt = Math.round((Number(p.amount) || 0) * 100) / 100;
+  if (amt <= 0) return null;
+
+  const entry: JournalEntry = {
+    id: '',
+    company_id: p.company_id,
+    branch_id: p.branch_id || undefined,
+    entry_no: entryNo,
+    entry_date: entryDate,
+    description: `Payment received${inv ? ` – ${inv}` : ''}`,
+    reference_type: 'sale',
+    reference_id: p.reference_id,
+    created_by: uid || undefined,
+  };
+  const lines: JournalEntryLine[] = [
+    {
+      id: '',
+      journal_entry_id: '',
+      account_id: p.payment_account_id,
+      debit: amt,
+      credit: 0,
+      description: `Payment received - ${inv || 'invoice'}`,
+    },
+    {
+      id: '',
+      journal_entry_id: '',
+      account_id: arAccount.id,
+      debit: 0,
+      credit: amt,
+      description: `Payment received - ${inv || 'invoice'}`,
+    },
+  ];
+  const saved = await accountingService.createEntry(entry, lines, paymentId);
+  return (saved as { id: string }).id;
+}
+
+/** After insert of a sale payment row: wait for trigger, else app-side JE (avoids PAYMENT_WITHOUT_JE if trigger is off). */
+export async function ensureSalePaymentJournalAfterInsert(paymentId: string): Promise<string | null> {
+  let jeId = await waitForJournalOnPaymentId(paymentId);
+  if (!jeId) jeId = await ensureSalePaymentJournalIfMissing(paymentId);
+  return jeId;
+}
+
+/**
+ * Customer on-account (payments.reference_type = on_account): Dr payment account, Cr AR; JE reference_type payment, reference_id = payment id.
+ */
+export async function ensureOnAccountCustomerJournalIfMissing(
+  paymentId: string,
+  customerDisplayName: string
+): Promise<string | null> {
+  const { data: pay, error } = await supabase
+    .from('payments')
+    .select('id, company_id, branch_id, reference_type, contact_id, amount, payment_account_id, payment_date')
+    .eq('id', paymentId)
+    .maybeSingle();
+  if (error || !pay) return null;
+  const p = pay as {
+    company_id: string;
+    branch_id: string | null;
+    reference_type: string | null;
+    contact_id: string | null;
+    amount: number | null;
+    payment_account_id: string | null;
+    payment_date: string | null;
+  };
+  if (String(p.reference_type || '').toLowerCase() !== 'on_account') return null;
+  if (!p.contact_id || !p.payment_account_id) return null;
+
+  const { data: existing } = await supabase
+    .from('journal_entries')
+    .select('id')
+    .eq('payment_id', paymentId)
+    .or('is_void.is.null,is_void.eq.false')
+    .maybeSingle();
+  if (existing?.id) return existing.id as string;
+
+  const arAccount = await ensureARAccount(p.company_id);
+  if (!arAccount?.id) return null;
+
+  const { data: auth } = await supabase.auth.getUser();
+  const uid = auth?.user?.id ?? null;
+  const entryDate = p.payment_date ? String(p.payment_date).slice(0, 10) : new Date().toISOString().slice(0, 10);
+  const entryNo = `JE-OA-${Date.now()}-${Math.random().toString(36).slice(2, 7).toUpperCase()}`;
+  const amt = Math.round((Number(p.amount) || 0) * 100) / 100;
+  if (amt <= 0) return null;
+
+  const desc = `On-account payment from ${customerDisplayName || 'customer'}`;
+  const entry: JournalEntry = {
+    id: '',
+    company_id: p.company_id,
+    branch_id: p.branch_id || undefined,
+    entry_no: entryNo,
+    entry_date: entryDate,
+    description: desc,
+    reference_type: 'payment',
+    reference_id: paymentId,
+    created_by: uid || undefined,
+  };
+  const lines: JournalEntryLine[] = [
+    { id: '', journal_entry_id: '', account_id: p.payment_account_id, debit: amt, credit: 0, description: desc },
+    { id: '', journal_entry_id: '', account_id: arAccount.id, debit: 0, credit: amt, description: desc },
+  ];
+  const saved = await accountingService.createEntry(entry, lines, paymentId);
+  return (saved as { id: string }).id;
+}

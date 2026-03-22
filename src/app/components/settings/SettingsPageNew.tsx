@@ -1878,7 +1878,7 @@ export const SettingsPageNew = () => {
                         .filter(acc => acc.type === 'Cash' && acc.isActive)
                         .map(acc => (
                           <option key={acc.id} value={acc.name}>
-                            {acc.name} {acc.code ? `(${acc.code})` : ''} • Balance: Rs {acc.balance.toLocaleString()}
+                            {acc.name} {acc.code ? `(${acc.code})` : ''} • GL (journal): Rs {acc.balance.toLocaleString()}
                           </option>
                         ))}
                     </select>
@@ -1905,7 +1905,7 @@ export const SettingsPageNew = () => {
                         .filter(acc => acc.type === 'Bank' && acc.isActive)
                         .map(acc => (
                           <option key={acc.id} value={acc.name}>
-                            {acc.name} {acc.code ? `(${acc.code})` : ''} • Balance: Rs {acc.balance.toLocaleString()}
+                            {acc.name} {acc.code ? `(${acc.code})` : ''} • GL (journal): Rs {acc.balance.toLocaleString()}
                           </option>
                         ))}
                     </select>
@@ -1932,7 +1932,7 @@ export const SettingsPageNew = () => {
                         .filter(acc => acc.type === 'Mobile Wallet' && acc.isActive)
                         .map(acc => (
                           <option key={acc.id} value={acc.name}>
-                            {acc.name} {acc.code ? `(${acc.code})` : ''} • Balance: Rs {acc.balance.toLocaleString()}
+                            {acc.name} {acc.code ? `(${acc.code})` : ''} • GL (journal): Rs {acc.balance.toLocaleString()}
                           </option>
                         ))}
                     </select>

@@ -12,6 +12,7 @@ import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
 import { getAttachmentOpenUrl, getSupabaseStorageDashboardUrl } from '@/app/utils/paymentAttachmentUrl';
 import { showStorageRlsToast, MAX_FILE_SIZE_BYTES, showFileTooLargeToast } from '@/app/utils/uploadTransactionAttachments';
+import { dispatchContactBalancesRefresh } from '@/app/lib/contactBalancesRefresh';
 
 // ============================================
 // 🎯 TYPES
@@ -685,15 +686,13 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
                 paymentDateTime.split('T')[0],
                 { notes: notes.trim() || undefined, attachments: attachmentPayload.length ? attachmentPayload : undefined }
               );
-              const paymentRefNo = onAccountData?.reference_number || `PAY-${Date.now()}`;
-              success = await accounting.recordOnAccountCustomerPayment({
-                customerId: entityId,
-                customerName: entityName,
-                amount,
-                paymentMethod,
-                accountId: selectedAccount,
-                referenceNo: paymentRefNo
-              });
+              if (!onAccountData?.id) {
+                toast.error('Payment saved but missing id.');
+                success = false;
+              } else {
+                // Journal is created inside recordOnAccountPayment (single canonical path).
+                success = true;
+              }
             } else {
               await saleService.recordPayment(
                 referenceId,
@@ -785,6 +784,7 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
         toast.success(labels.successMessage, {
           description: `${formatCurrency(amount)} via ${paymentMethod}${accountInfo} on ${paymentDateTime}`
         });
+        if (companyId) dispatchContactBalancesRefresh(companyId);
         if (context === 'worker') onSuccess?.(workerPaymentRef, amount);
         else onSuccess?.();
         onClose();
@@ -1035,7 +1035,7 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
                       </option>
                       {getFilteredAccounts().map(account => (
                         <option key={account.id} value={account.id} className="text-white bg-gray-900">
-                          {account.name} • Balance: {formatCurrency(account.balance)}
+                          {account.name} • GL: {formatCurrency(account.balance)}
                         </option>
                       ))}
                     </select>
@@ -1059,7 +1059,7 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
                       return (
                         <div className="flex items-center gap-2 mt-2 text-orange-400 text-xs bg-orange-500/10 border border-orange-500/20 rounded-lg p-2">
                           <AlertCircle size={14} />
-                          <span>Warning: Amount exceeds account balance</span>
+                          <span>Warning: Amount exceeds GL (journal) balance</span>
                         </div>
                       );
                     }

@@ -1,0 +1,74 @@
+{
+  "meta": {
+    "company_id": "",
+    "branch_scope": "all | uuid",
+    "recorded_by": "",
+    "recorded_at_utc": "",
+    "notes": "Fill BEFORE running APPLY blocks; re-fill AFTER each batch. Rows repaired = COUNT(*) FROM je_payment_linkage_repair_audit WHERE repair_batch_id = ..."
+  },
+  "before": {
+    "1A_payment_je_weak_link_by_company": {},
+    "1B_sale_purchase_pay_je_missing_doc_ref_by_company": {},
+    "1C_payment_row_no_active_je_top_companies": {},
+    "1D_walkin_payments_missing_je_count": null,
+    "1E_weak_payment_je_walkin_company_count": null,
+    "bucket_P3_ref_from_payment_id": null,
+    "bucket_P4_payment_id_from_reference_id": null,
+    "bucket_P5_sale_purchase_doc_ref": null,
+    "bucket_P6_heuristic_unique": null
+  },
+  "repair_batches": [
+    {
+      "batch_id": "11111111-1111-1111-1111-111111111101",
+      "part": "P3_ref_from_payment_id",
+      "rows_inserted_audit": null,
+      "rows_updated_je": null
+    },
+    {
+      "batch_id": "11111111-1111-1111-1111-111111111102",
+      "part": "P4_payment_id_from_reference_id",
+      "rows_inserted_audit": null,
+      "rows_updated_je": null
+    },
+    {
+      "batch_id": "11111111-1111-1111-1111-111111111103",
+      "part": "P5_doc_ref_from_payment",
+      "rows_inserted_audit": null,
+      "rows_updated_je": null
+    },
+    {
+      "batch_id": "11111111-1111-1111-1111-111111111104",
+      "part": "P6_heuristic_unique",
+      "rows_inserted_audit": null,
+      "rows_updated_je": null
+    }
+  ],
+  "after": {
+    "1A_payment_je_weak_link_by_company": {},
+    "1B_sale_purchase_pay_je_missing_doc_ref_by_company": {},
+    "1C_payment_row_no_active_je_top_companies": {},
+    "1D_walkin_payments_missing_je_count": null,
+    "1E_weak_payment_je_walkin_company_count": null,
+    "bucket_P3_ref_from_payment_id": null,
+    "bucket_P4_payment_id_from_reference_id": null,
+    "bucket_P5_sale_purchase_doc_ref": null,
+    "bucket_P6_heuristic_unique": null
+  },
+  "spot_checks": [
+    {
+      "label": "JE-0135 style (example ids from tenant)",
+      "journal_entry_id": "",
+      "payment_id": "",
+      "reference_id_before": "",
+      "reference_id_after": "",
+      "pass": null
+    },
+    {
+      "label": "PAY-0084 style (example ids from tenant)",
+      "payment_id": "",
+      "had_active_je_before": null,
+      "has_active_je_after": null,
+      "pass": null
+    }
+  ]
+}

@@ -6,10 +6,10 @@
  */
 
 import { useState, useEffect, useRef } from 'react';
-import { Search, Calendar, Download, Printer, Filter, ChevronDown, FileText, X } from 'lucide-react';
+import { Download, Printer, Filter, FileText, X } from 'lucide-react';
 import { useSupabase } from '@/app/context/SupabaseContext';
-import { customerLedgerAPI, type CustomerLedgerSummary, type AgingReport } from '@/app/services/customerLedgerApi';
-import type { Customer, Transaction, Invoice, Payment } from '@/app/services/customerLedgerTypes';
+import { customerLedgerAPI } from '@/app/services/customerLedgerApi';
+import type { Customer, Transaction } from '@/app/services/customerLedgerTypes';
 import { buildTransactionsWithOpeningBalance } from '@/app/services/customerLedgerTypes';
 import { ModernCustomerSearch } from './modern-original/ModernCustomerSearch';
 import { ModernDateFilter } from './modern-original/ModernDateFilter';
@@ -20,10 +20,18 @@ import { LedgerPrintView } from './modern-original/print/LedgerPrintView';
 import { ViewSaleDetailsDrawer } from '@/app/components/sales/ViewSaleDetailsDrawer';
 import type { LedgerData } from '@/app/services/customerLedgerTypes';
 import { LoadingSpinner } from '@/app/components/shared/LoadingSpinner';
-import { getTodayYYYYMMDD } from '@/app/components/ui/utils';
+import { getTodayYYYYMMDD, cn } from '@/app/components/ui/utils';
 import { supabase } from '@/lib/supabase';
 import { ErrorMessage } from '@/app/components/shared/ErrorMessage';
 import { toast } from 'sonner';
+import { accountingService, type AccountLedgerEntry } from '@/app/services/accountingService';
+import {
+  getSingleCustomerPartyReconciliation,
+  type SingleCustomerPartyReconciliation,
+} from '@/app/services/contactBalanceReconciliationService';
+import { CustomerGlJournalTable } from './CustomerGlJournalTable';
+import { Badge } from '@/app/components/ui/badge';
+import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
 
 // LedgerData interface is imported from customerLedgerTypes
 
@@ -39,9 +47,12 @@ export default function CustomerLedgerPageOriginal({
   onClose,
   embedded = false,
 }: CustomerLedgerPageOriginalProps = {}) {
-  const { companyId } = useSupabase();
+  const { companyId, branchId } = useSupabase();
+  const { formatCurrency } = useFormatCurrency();
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [customers, setCustomers] = useState<Customer[]>([]);
+  /** Canonical cutover: three explicit engines — no single mixed “ledger” list. */
+  const [statementEngine, setStatementEngine] = useState<'operational' | 'gl' | 'reconciliation'>('operational');
   // Default: Last 90 Days (rentals + sales; Pakistan timezone)
   const [dateRange, setDateRange] = useState(() => {
     const to = getTodayYYYYMMDD();
@@ -55,8 +66,17 @@ export default function CustomerLedgerPageOriginal({
 
   // Data states
   const [ledgerData, setLedgerData] = useState<LedgerData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [customersLoading, setCustomersLoading] = useState(true);
+  const [operationalLoading, setOperationalLoading] = useState(false);
+  const [customersError, setCustomersError] = useState<string | null>(null);
+  const [operationalError, setOperationalError] = useState<string | null>(null);
+  const [glEntries, setGlEntries] = useState<AccountLedgerEntry[]>([]);
+  const [glLoading, setGlLoading] = useState(false);
+  const [glError, setGlError] = useState<string | null>(null);
+  const [recon, setRecon] = useState<SingleCustomerPartyReconciliation | null>(null);
+  const [reconLoading, setReconLoading] = useState(false);
+  const [reconError, setReconError] = useState<string | null>(null);
+  const [balanceRefreshTick, setBalanceRefreshTick] = useState(0);
   const [printOpen, setPrintOpen] = useState(false);
   const [saleItemsMap, setSaleItemsMap] = useState<Map<string, any[]>>(new Map());
   const [studioDetailsMap, setStudioDetailsMap] = useState<Map<string, { notes?: string; productionStatus?: string }>>(new Map());
@@ -86,8 +106,8 @@ export default function CustomerLedgerPageOriginal({
     if (!selectedCustomer || !companyId) return;
 
     try {
-      setLoading(true);
-      setError(null);
+      setOperationalLoading(true);
+      setOperationalError(null);
 
       // Load all data in parallel
       const [summary, transactions, invoices, payments, aging] = await Promise.all([
@@ -141,10 +161,10 @@ export default function CustomerLedgerPageOriginal({
       setLedgerData(ledger);
     } catch (err: any) {
       console.error('[CUSTOMER LEDGER] Error loading ledger data:', err);
-      setError(err.message || 'Failed to load ledger data');
-      toast.error('Failed to load ledger data');
+      setOperationalError(err.message || 'Failed to load operational statement');
+      toast.error('Failed to load operational statement');
     } finally {
-      setLoading(false);
+      setOperationalLoading(false);
     }
   };
 
@@ -178,12 +198,80 @@ export default function CustomerLedgerPageOriginal({
     };
   }, [currentCustomerId, companyId]);
 
+  useEffect(() => {
+    const bump = () => setBalanceRefreshTick((t) => t + 1);
+    window.addEventListener('contactBalancesRefresh', bump);
+    return () => window.removeEventListener('contactBalancesRefresh', bump);
+  }, []);
+
+  useEffect(() => {
+    if (statementEngine !== 'gl' || !selectedCustomer || !companyId) return;
+    let cancelled = false;
+    (async () => {
+      setGlLoading(true);
+      setGlError(null);
+      try {
+        const entries = await accountingService.getCustomerLedger(
+          selectedCustomer.id,
+          companyId,
+          branchId ?? undefined,
+          dateRange.from,
+          dateRange.to,
+          undefined,
+          'gl_journal_only'
+        );
+        if (!cancelled) setGlEntries(entries);
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : 'Failed to load GL statement';
+        if (!cancelled) setGlError(msg);
+      } finally {
+        if (!cancelled) setGlLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    statementEngine,
+    selectedCustomer?.id,
+    companyId,
+    branchId,
+    dateRange.from,
+    dateRange.to,
+    balanceRefreshTick,
+  ]);
+
+  useEffect(() => {
+    if (statementEngine !== 'reconciliation' || !selectedCustomer || !companyId) return;
+    let cancelled = false;
+    (async () => {
+      setReconLoading(true);
+      setReconError(null);
+      try {
+        const r = await getSingleCustomerPartyReconciliation(companyId, selectedCustomer.id, branchId);
+        if (!cancelled) setRecon(r);
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : 'Failed to load reconciliation';
+        if (!cancelled) setReconError(msg);
+      } finally {
+        if (!cancelled) setReconLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [statementEngine, selectedCustomer?.id, companyId, branchId, balanceRefreshTick]);
+
+  useEffect(() => {
+    setLedgerData(null);
+  }, [selectedCustomer?.id]);
+
   const loadCustomers = async () => {
     if (!companyId) return;
     
     try {
-      setLoading(true);
-      setError(null);
+      setCustomersLoading(true);
+      setCustomersError(null);
       const data = await customerLedgerAPI.getCustomers(companyId);
       setCustomers(data);
       if (data.length > 0 && !selectedCustomer) {
@@ -198,10 +286,10 @@ export default function CustomerLedgerPageOriginal({
       }
     } catch (err: any) {
       console.error('[CUSTOMER LEDGER] Error loading customers:', err);
-      setError(err.message || 'Failed to load customers');
+      setCustomersError(err.message || 'Failed to load customers');
       toast.error('Failed to load customers');
     } finally {
-      setLoading(false);
+      setCustomersLoading(false);
     }
   };
 
@@ -326,7 +414,73 @@ export default function CustomerLedgerPageOriginal({
     fetchStudioDetails();
   }, [ledgerData?.transactions, companyId]);
 
-  // Display transactions = Opening Balance (first row) + period transactions — shown in all views
+  const spinnerWrapClass = embedded
+    ? 'py-12 flex justify-center'
+    : 'min-h-screen flex items-center justify-center bg-[#0B0F19]';
+
+  if (!companyId) {
+    return (
+      <div className={embedded ? 'py-8 text-center text-sm text-gray-400' : spinnerWrapClass}>
+        {!embedded ? <p className="text-sm text-gray-400">Company context required</p> : null}
+      </div>
+    );
+  }
+
+  if (customersLoading && customers.length === 0) {
+    return (
+      <div className={spinnerWrapClass}>
+        <LoadingSpinner />
+      </div>
+    );
+  }
+
+  if (customersError && customers.length === 0) {
+    return (
+      <div className={spinnerWrapClass}>
+        <ErrorMessage message={customersError} onRetry={loadCustomers} />
+      </div>
+    );
+  }
+
+  if (!selectedCustomer) {
+    return (
+      <div
+        className={
+          embedded ? 'py-6 text-sm text-amber-200/90 text-center' : 'min-h-screen flex flex-col bg-[#0B0F19]'
+        }
+      >
+        {!embedded && (
+          <header className="shrink-0 px-6 py-4 border-b border-gray-800">
+            <div className="flex items-center gap-4 mb-4">
+              {onClose && (
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="p-2 rounded-lg hover:bg-gray-800 transition-colors text-white"
+                  title="Close"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              )}
+              <h1 className="text-xl font-bold text-white">Customer statement</h1>
+            </div>
+            <ModernCustomerSearch
+              customers={customers}
+              selectedCustomer={null}
+              onSelect={setSelectedCustomer}
+            />
+          </header>
+        )}
+        <p className={cn('text-center text-gray-400', embedded ? '' : 'mt-8 px-6')}>
+          {embedded
+            ? 'Customer not in list or still loading. Pick another customer above.'
+            : 'Select a customer to open operational, GL, and reconciliation views.'}
+        </p>
+      </div>
+    );
+  }
+
+  // Operational only: opening row + period rows (never mixed with GL running balance on this screen).
   const displayTransactions = ledgerData
     ? buildTransactionsWithOpeningBalance(
         ledgerData.openingBalance,
@@ -338,31 +492,13 @@ export default function CustomerLedgerPageOriginal({
     ? { ...ledgerData, transactions: displayTransactions }
     : null;
 
-  if (loading && !ledgerData) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-[#0B0F19]">
-        <LoadingSpinner />
-      </div>
-    );
-  }
-
-  if (error && !ledgerData) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-[#0B0F19]">
-        <ErrorMessage message={error} onRetry={loadCustomers} />
-      </div>
-    );
-  }
-
-  if (!ledgerData || !selectedCustomer) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-[#0B0F19]">
-        <div className="text-center">
-          <p className="text-sm text-gray-400">No customer selected or no data available</p>
-        </div>
-      </div>
-    );
-  }
+  const openPrint = () => {
+    if (statementEngine !== 'operational' || !ledgerData) {
+      toast.message('Switch to the Operational tab to print or export.');
+      return;
+    }
+    setPrintOpen(true);
+  };
 
   const content = (
     <>
@@ -384,21 +520,26 @@ export default function CustomerLedgerPageOriginal({
                   <FileText className="w-5 h-5 text-blue-500" />
                 </div>
                 <div>
-                  <h1 className="text-2xl font-bold text-white">Customer Ledger</h1>
-                  <p className="text-sm text-gray-400 mt-0.5">Manage and track customer accounts</p>
+                  <h1 className="text-2xl font-bold text-white">Customer statement</h1>
+                  <p className="text-sm text-gray-400 mt-0.5">
+                    Operational (Not GL) · GL (Journal) · Reconciliation (Variance) — three engines only; no blended
+                    balance.
+                  </p>
                 </div>
               </div>
             </div>
             <div className="flex items-center gap-3">
               <button
-                onClick={() => setPrintOpen(true)}
+                type="button"
+                onClick={openPrint}
                 className="px-4 py-2 text-sm rounded-lg transition-colors flex items-center gap-2 bg-gray-900 border border-gray-700 text-white hover:bg-gray-800"
               >
                 <Download className="w-4 h-4" />
                 Export / PDF
               </button>
               <button
-                onClick={() => setPrintOpen(true)}
+                type="button"
+                onClick={openPrint}
                 className="px-4 py-2 text-sm rounded-lg transition-colors flex items-center gap-2 bg-gray-900 border border-gray-700 text-white hover:bg-gray-800"
               >
                 <Printer className="w-4 h-4" />
@@ -424,39 +565,186 @@ export default function CustomerLedgerPageOriginal({
         </header>
       )}
       {embedded && (
-        <div className="flex items-center gap-4 mb-4">
-          <ModernDateFilter
-            dateRange={dateRange}
-            onApply={setDateRange}
-          />
+        <div className="flex flex-col gap-3 mb-4">
+          <p className="text-[11px] text-gray-500">
+            <Badge variant="outline" className="mr-2 border-gray-600 text-gray-300">
+              Customer statement
+            </Badge>
+            Choose engine below; each tab has its own source of truth.
+          </p>
+          <ModernDateFilter dateRange={dateRange} onApply={setDateRange} />
         </div>
       )}
       <div className={embedded ? '' : 'flex-1 overflow-auto px-6 py-4'}>
-        {/* Summary Cards Section – same strip as Products (bg-[#0F1419], border-b) */}
-        <div className="shrink-0 pb-6 border-b border-gray-800">
-          <ModernSummaryCards ledgerData={ledgerData} />
+        <div className="flex flex-wrap gap-2 mb-6">
+          {(
+            [
+              {
+                id: 'operational' as const,
+                label: 'Operational',
+                badge: 'Not GL',
+                sub: 'Sales, rentals, openings, payments (subledger)',
+              },
+              {
+                id: 'gl' as const,
+                label: 'GL (journal)',
+                badge: 'Journal',
+                sub: 'AR lines from journal only',
+              },
+              {
+                id: 'reconciliation' as const,
+                label: 'Reconciliation',
+                badge: 'Variance',
+                sub: 'Operational receivable vs GL AR slice',
+              },
+            ] as const
+          ).map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => setStatementEngine(t.id)}
+              className={cn(
+                'flex flex-col items-start rounded-lg border px-3 py-2 text-left transition-colors min-w-[160px]',
+                statementEngine === t.id
+                  ? 'border-blue-500/80 bg-blue-500/15 text-white'
+                  : 'border-gray-700 bg-[#0F1419] text-gray-300 hover:border-gray-600'
+              )}
+            >
+              <span className="flex items-center gap-2 flex-wrap">
+                <span className="text-sm font-semibold">{t.label}</span>
+                <Badge variant="secondary" className="text-[10px] px-1.5 py-0 bg-gray-700/80 text-gray-100">
+                  {t.badge}
+                </Badge>
+              </span>
+              <span className="text-[11px] text-gray-500 mt-0.5">{t.sub}</span>
+            </button>
+          ))}
         </div>
 
-        {/* Ledger Content – tabs same as Products table section (transactions include Opening Balance as first row) */}
-        <div className="mt-6">
-          <ModernLedgerTabs
-            ledgerData={ledgerDataForViews!}
-            saleItemsMap={saleItemsMap}
-            studioDetailsMap={studioDetailsMap}
-            accountName={selectedCustomer?.name ?? ''}
-            dateRange={dateRange}
-            onTransactionClick={(transaction) => {
-              if (transaction.documentType === 'Opening Balance') return;
-              if (transaction.documentType === 'Sale' || transaction.documentType === 'Studio Sale') {
-                setSaleDrawerSaleId(transaction.id);
-                setSelectedTransaction(null);
-              } else {
-                setSaleDrawerSaleId(null);
-                setSelectedTransaction(transaction);
-              }
-            }}
-          />
-        </div>
+        {statementEngine === 'operational' && (
+          <>
+            {operationalError && (
+              <div className="mb-4 rounded-lg border border-red-900/40 bg-red-950/30 px-3 py-2 text-sm text-red-200">
+                {operationalError}
+              </div>
+            )}
+            <p className="text-[11px] text-sky-200/80 mb-3">
+              <Badge className="mr-2 bg-sky-600/25 text-sky-100 border-0">Operational</Badge>
+              Running balance is subledger only (not GL). Same sources as customer ledger API — not journal truth.
+            </p>
+            <div className="shrink-0 pb-6 border-b border-gray-800">
+              {operationalLoading && !ledgerData ? (
+                <div className="flex justify-center py-16">
+                  <LoadingSpinner />
+                </div>
+              ) : ledgerData ? (
+                <ModernSummaryCards ledgerData={ledgerData} />
+              ) : (
+                <p className="text-sm text-gray-500 py-8 text-center">No operational summary in this range.</p>
+              )}
+            </div>
+            <div className="mt-6">
+              {operationalLoading && !ledgerData ? null : ledgerDataForViews ? (
+                <ModernLedgerTabs
+                  ledgerData={ledgerDataForViews}
+                  saleItemsMap={saleItemsMap}
+                  studioDetailsMap={studioDetailsMap}
+                  accountName={selectedCustomer.name}
+                  dateRange={dateRange}
+                  onTransactionClick={(transaction) => {
+                    if (transaction.documentType === 'Opening Balance') return;
+                    if (transaction.documentType === 'Sale' || transaction.documentType === 'Studio Sale') {
+                      setSaleDrawerSaleId(transaction.id);
+                      setSelectedTransaction(null);
+                    } else {
+                      setSaleDrawerSaleId(null);
+                      setSelectedTransaction(transaction);
+                    }
+                  }}
+                />
+              ) : (
+                <p className="text-sm text-gray-500">No operational rows in this date range.</p>
+              )}
+            </div>
+          </>
+        )}
+
+        {statementEngine === 'gl' && (
+          <div className="space-y-3">
+            <p className="text-[11px] text-violet-200/85">
+              <Badge className="mr-2 bg-violet-600/30 text-violet-100 border-0">GL (journal)</Badge>
+              Running balance from AR journal lines only — no sales/rentals due column merged here.
+            </p>
+            <CustomerGlJournalTable
+              entries={glEntries}
+              loading={glLoading}
+              error={glError}
+              formatCurrency={formatCurrency}
+              dateFrom={dateRange.from}
+              dateTo={dateRange.to}
+            />
+          </div>
+        )}
+
+        {statementEngine === 'reconciliation' && (
+          <div className="rounded-xl border border-gray-800 bg-[#0F1419] p-6 space-y-4">
+            <p className="text-[11px] text-amber-200/85">
+              <Badge className="mr-2 bg-amber-600/25 text-amber-100 border-0">Reconciliation</Badge>
+              Operational receivable (RPC summary) vs GL AR slice for this contact. Company unmapped JE count is a
+              global hygiene signal (not only this customer).
+            </p>
+            {reconLoading && (
+              <div className="flex justify-center py-12">
+                <LoadingSpinner />
+              </div>
+            )}
+            {reconError && (
+              <div className="rounded-lg border border-red-900/40 bg-red-950/30 px-3 py-2 text-sm text-red-200">
+                {reconError}
+              </div>
+            )}
+            {!reconLoading && !reconError && recon && (
+              <dl className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
+                <div className="rounded-lg border border-gray-800 bg-[#0B0F14] p-4">
+                  <dt className="text-gray-500 text-xs uppercase tracking-wide">Operational receivable</dt>
+                  <dd className="text-xl font-semibold text-white mt-1 tabular-nums">
+                    {formatCurrency(recon.operationalReceivable)}
+                  </dd>
+                </div>
+                <div className="rounded-lg border border-gray-800 bg-[#0B0F14] p-4">
+                  <dt className="text-gray-500 text-xs uppercase tracking-wide">GL AR (journal slice)</dt>
+                  <dd className="text-xl font-semibold text-violet-200 mt-1 tabular-nums">
+                    {formatCurrency(recon.glArReceivable)}
+                  </dd>
+                </div>
+                <div className="rounded-lg border border-gray-800 bg-[#0B0F14] p-4 sm:col-span-2">
+                  <dt className="text-gray-500 text-xs uppercase tracking-wide">Variance (operational − GL)</dt>
+                  <dd
+                    className={cn(
+                      'text-2xl font-bold mt-1 tabular-nums',
+                      Math.abs(recon.variance) < 0.01 ? 'text-emerald-300' : 'text-amber-300'
+                    )}
+                  >
+                    {formatCurrency(recon.variance)}
+                  </dd>
+                  <p className="text-[11px] text-gray-500 mt-2">As of {recon.asOfDate} (company date).</p>
+                </div>
+                <div className="rounded-lg border border-amber-900/30 bg-amber-950/15 p-4 sm:col-span-2">
+                  <dt className="text-amber-200/90 text-xs uppercase tracking-wide">
+                    Unmapped / suspicious (company AR JEs)
+                  </dt>
+                  <dd className="text-lg font-semibold text-amber-100 mt-1 tabular-nums">
+                    {recon.companyUnmappedArCount} distinct journal entries
+                  </dd>
+                  <p className="text-[11px] text-gray-500 mt-2">
+                    Use AR/AP Reconciliation Center for line-level review. Non-zero variance or unmapped counts warrant
+                    investigation.
+                  </p>
+                </div>
+              </dl>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Sale Transaction Details (full page) – opens when sale reference is clicked */}

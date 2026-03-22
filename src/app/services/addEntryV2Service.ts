@@ -1,15 +1,19 @@
 /**
  * Add Entry V2 – Typed entry services. One path per entry type.
  * SOURCE LOCK (Phase 1): COA=accounts, Journal=journal_entries+journal_entry_lines, Roznamcha=payments, numbering=erp_document_sequences.
- * ledger_master + ledger_entries used only for UI ledger sync (supplier/user screens), not for GL reports.
+ * Supplier statement uses payments + purchases; GL uses journal_entries only.
  * Rule: If entry touches Cash/Bank/Wallet → create payments row first, then JE with payment_id, then ledger sync where applicable.
  */
 
 import { supabase } from '@/lib/supabase';
 import { documentNumberService } from '@/app/services/documentNumberService';
 import { accountingService, type JournalEntry, type JournalEntryLine } from '@/app/services/accountingService';
-import { getOrCreateLedger, addLedgerEntry } from '@/app/services/ledgerService';
+import { dispatchContactBalancesRefresh } from '@/app/lib/contactBalancesRefresh';
 import { generatePaymentReference } from '@/app/utils/paymentUtils';
+import {
+  getWorkerAdvanceAccountId,
+  shouldDebitWorkerPayableForPayment,
+} from '@/app/services/workerAdvanceService';
 
 const PAYMENT_METHOD_MAP: Record<string, string> = {
   cash: 'cash', Cash: 'cash', bank: 'bank', Bank: 'bank', 'mobile wallet': 'mobile_wallet', 'Mobile Wallet': 'mobile_wallet',
@@ -225,7 +229,7 @@ export async function createSupplierPaymentEntry(params: CreateSupplierPaymentPa
     entry_date: paymentDate,
     description: desc,
     reference_type: 'manual_payment',
-    reference_id: null,
+    reference_id: paymentId,
     created_by: uid ?? undefined,
   };
   const lines: JournalEntryLine[] = [
@@ -234,20 +238,6 @@ export async function createSupplierPaymentEntry(params: CreateSupplierPaymentPa
   ];
   const saved = await accountingService.createEntry(journalEntry, lines, paymentId);
 
-  const ledger = await getOrCreateLedger(companyId, 'supplier', supplierContactId, supplierName);
-  if (ledger) {
-    await addLedgerEntry({
-      companyId,
-      ledgerId: ledger.id,
-      entryDate: paymentDate,
-      debit: amount,
-      credit: 0,
-      source: 'payment',
-      referenceNo: (saved as any)?.entry_no ?? refNo,
-      referenceId: paymentId,
-      remarks: desc,
-    });
-  }
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new CustomEvent('ledgerUpdated', { detail: { ledgerType: 'supplier', entityId: supplierContactId } }));
   }
@@ -264,11 +254,13 @@ export interface CreateWorkerPaymentParams {
   paymentAccountId: string;
   paymentDate: string;
   paymentMethod: string;
+  /** Pay Now: when set, routing uses this stage's bill row if present */
+  stageId?: string | null;
   notes?: string | null;
 }
 
 export async function createWorkerPaymentEntry(params: CreateWorkerPaymentParams): Promise<{ paymentId: string; journalEntryId: string; referenceNumber: string }> {
-  const { companyId, branchId, workerId, workerName, amount, paymentAccountId, paymentDate, paymentMethod, notes } = params;
+  const { companyId, branchId, workerId, workerName, amount, paymentAccountId, paymentDate, paymentMethod, notes, stageId } = params;
   if (!companyId || !workerId || amount <= 0 || !paymentAccountId) throw new Error('Invalid worker payment params');
   const branch = validBranchId(branchId);
   const refNo = await getPayRef(companyId, branch);
@@ -293,8 +285,13 @@ export async function createWorkerPaymentEntry(params: CreateWorkerPaymentParams
   if (payErr) throw new Error(`Payment row failed: ${payErr.message}`);
   const paymentId = (paymentRow as { id: string }).id;
 
+  const payToPayable = await shouldDebitWorkerPayableForPayment(companyId, workerId, stageId ?? null, branch);
   const wpId = await getWorkerPayableAccountId(companyId);
-  const desc = notes || `Payment to worker ${workerName}`;
+  const advId = payToPayable ? null : await getWorkerAdvanceAccountId(companyId);
+  if (!payToPayable && !advId) throw new Error('Worker Advance account (1180) not found');
+  const debitId = payToPayable ? wpId : advId!;
+  const debitNote = payToPayable ? 'Worker payable' : 'Worker advance (pre-bill)';
+  const desc = notes || `Payment to worker ${workerName} (${debitNote})`;
   const entryNo = `JE-${Date.now()}-${Math.random().toString(36).substr(2, 5).toUpperCase()}`;
   const journalEntry: JournalEntry = {
     company_id: companyId,
@@ -307,7 +304,7 @@ export async function createWorkerPaymentEntry(params: CreateWorkerPaymentParams
     created_by: uid ?? undefined,
   };
   const lines: JournalEntryLine[] = [
-    { account_id: wpId, debit: amount, credit: 0, description: desc },
+    { account_id: debitId, debit: amount, credit: 0, description: desc },
     { account_id: paymentAccountId, debit: 0, credit: amount, description: desc },
   ];
   const saved = await accountingService.createEntry(journalEntry, lines, paymentId);
@@ -324,6 +321,7 @@ export async function createWorkerPaymentEntry(params: CreateWorkerPaymentParams
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new CustomEvent('ledgerUpdated', { detail: { ledgerType: 'worker', entityId: workerId } }));
   }
+  dispatchContactBalancesRefresh(companyId);
   return { paymentId, journalEntryId: (saved as { id: string }).id, referenceNumber: refNo };
 }
 
@@ -374,7 +372,7 @@ export async function createExpensePaymentEntry(params: CreateExpensePaymentPara
     entry_date: paymentDate,
     description: desc,
     reference_type: 'expense',
-    reference_id: null,
+    reference_id: paymentId,
     created_by: uid ?? undefined,
   };
   const lines: JournalEntryLine[] = [

@@ -25,12 +25,15 @@ import {
   Factory,
   FlaskConical,
   Plus,
-  Shield
+  Shield,
+  Scale,
 } from 'lucide-react';
 import { useNavigation } from '../../context/NavigationContext';
 import { useModules } from '../../context/ModuleContext';
 import { useSettings } from '../../context/SettingsContext';
+import { useSupabase } from '../../context/SupabaseContext';
 import { useCheckPermission } from '../../hooks/useCheckPermission';
+import { canAccessDeveloperIntegrityLab } from '@/app/lib/developerAccountingAccess';
 import { clsx } from 'clsx';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -47,6 +50,8 @@ export const Sidebar = () => {
   const { modules: moduleContextModules } = useModules();
   const { modules: settingsModules, featureFlags, isPermissionLoaded } = useSettings();
   const { hasPermission } = useCheckPermission();
+  const { userRole } = useSupabase();
+  const developerIntegrityLabAllowed = canAccessDeveloperIntegrityLab(userRole);
   const studioProductionV2 = featureFlags?.studio_production_v2 === true;
   const studioProductionV3 = featureFlags?.studio_production_v3 === true;
   const [expandedItems, setExpandedItems] = useState<string[]>([]);
@@ -92,6 +97,12 @@ export const Sidebar = () => {
     },
     { id: 'expenses', label: 'Expenses', icon: Receipt, isHidden: !hasPermission('expenses.view') },
     { id: 'accounting', label: 'Accounting', icon: Calculator, isHidden: !settingsModules.accountingModuleEnabled || !hasPermission('accounting.view') },
+    {
+      id: 'ar-ap-reconciliation-center',
+      label: 'AR/AP Reconciliation',
+      icon: Scale,
+      isHidden: !settingsModules.accountingModuleEnabled || !hasPermission('accounting.view'),
+    },
     { id: 'reports', label: 'Reports', icon: PieChart, isHidden: !hasPermission('reports.view') },
     { id: 'settings', label: 'Settings', icon: Settings, isHidden: !hasPermission('settings.view') },
     { 
@@ -116,6 +127,9 @@ export const Sidebar = () => {
         { id: 'inventory-design-test', label: 'Inventory Design Test' },
         { id: 'rls-validation', label: 'RLS Validation' },
         { id: 'accounting-integrity-lab', label: 'Accounting Integrity Lab' },
+        ...(developerIntegrityLabAllowed
+          ? ([{ id: 'developer-integrity-lab', label: 'Developer Integrity Lab' }] as { id: string; label: string }[])
+          : []),
         { id: 'day4-certification', label: 'Day 4 Certification' },
         { id: 'erp-integration-test', label: 'ERP Integration Test' },
         { id: 'cutover-prep', label: 'Cutover Prep' },
@@ -135,7 +149,11 @@ export const Sidebar = () => {
       if (typeof window !== 'undefined') {
         if (item.id === 'permission-inspector') {
           window.history.pushState({}, '', '/admin/permission-inspector');
-        } else if (pathname === '/admin/permission-inspector') {
+        } else if (
+          pathname === '/admin/permission-inspector' ||
+          pathname === '/admin/developer-integrity-lab' ||
+          pathname === '/admin/accounting-test-bench'
+        ) {
           window.history.pushState({}, '', '/');
         }
       }
@@ -174,7 +192,13 @@ export const Sidebar = () => {
       <nav className="flex-1 py-6 px-3 space-y-1 overflow-y-auto">
         {visibleNavItems.map((item) => {
           const isExpanded = expandedItems.includes(item.id);
-          const isActive = currentView === item.id || item.children?.some(c => c.id === currentView) || (item.id === 'test-pages-group' && pathname === '/admin/permission-inspector');
+          const isActive =
+            currentView === item.id ||
+            item.children?.some((c) => c.id === currentView) ||
+            (item.id === 'test-pages-group' &&
+              (pathname === '/admin/permission-inspector' ||
+                pathname === '/admin/developer-integrity-lab' ||
+                pathname === '/admin/accounting-test-bench'));
           
           return (
             <div key={item.id}>
@@ -250,8 +274,12 @@ export const Sidebar = () => {
                           key={child.id}
                           onClick={() => {
                             setCurrentView(child.id as any);
-                            if (child.id === 'permission-inspector' && typeof window !== 'undefined') {
-                              window.history.pushState({}, '', '/admin/permission-inspector');
+                            if (typeof window !== 'undefined') {
+                              if (child.id === 'permission-inspector') {
+                                window.history.pushState({}, '', '/admin/permission-inspector');
+                              } else if (child.id === 'developer-integrity-lab') {
+                                window.history.pushState({}, '', '/admin/developer-integrity-lab');
+                              }
                             }
                           }}
                           className={clsx(

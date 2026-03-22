@@ -278,32 +278,26 @@ export default function TestLedger() {
       console.log('[TEST SUITE] Using customer for tests:', testCustomer);
 
       // Test 2: Get Customer By ID
-      await runTest('2. Get Customer By ID', () => testGetCustomerById(testCustomer.id));
+      const r2 = await runTest('2. Get Customer By ID', () => testGetCustomerById(testCustomer.id));
 
       // Test 3: Get Ledger Summary
-      const summaryResult = await runTest('3. Get Ledger Summary', () => 
+      const summaryResult = await runTest('3. Get Ledger Summary', () =>
         testGetLedgerSummary(testCustomer.id)
       );
 
       // Test 4: Get Transactions
-      const transactionsResult = await runTest('4. Get Transactions', () => 
+      const transactionsResult = await runTest('4. Get Transactions', () =>
         testGetTransactions(testCustomer.id)
       );
 
       // Test 5: Get Invoices
-      const invoicesResult = await runTest('5. Get Invoices', () => 
-        testGetInvoices(testCustomer.id)
-      );
+      const invoicesResult = await runTest('5. Get Invoices', () => testGetInvoices(testCustomer.id));
 
       // Test 6: Get Payments
-      const paymentsResult = await runTest('6. Get Payments', () => 
-        testGetPayments(testCustomer.id)
-      );
+      const paymentsResult = await runTest('6. Get Payments', () => testGetPayments(testCustomer.id));
 
       // Test 7: Get Aging Report
-      const agingResult = await runTest('7. Get Aging Report', () => 
-        testGetAgingReport(testCustomer.id)
-      );
+      const agingResult = await runTest('7. Get Aging Report', () => testGetAgingReport(testCustomer.id));
 
       // Compile test data
       setTestData({
@@ -315,10 +309,19 @@ export default function TestLedger() {
         aging: agingResult.data,
       });
 
-      // Summary
-      const passed = testResults.filter(t => t.status === 'success').length;
-      const failed = testResults.filter(t => t.status === 'error').length;
-      const total = testResults.length;
+      // Summary from awaited results (testResults state is async — stale in this closure)
+      const outcomeRows = [
+        customersResult,
+        r2,
+        summaryResult,
+        transactionsResult,
+        invoicesResult,
+        paymentsResult,
+        agingResult,
+      ];
+      const passed = outcomeRows.filter((r) => r.success).length;
+      const failed = outcomeRows.filter((r) => !r.success).length;
+      const total = outcomeRows.length;
 
       console.log('='.repeat(80));
       console.log('[TEST SUITE] Test Summary');

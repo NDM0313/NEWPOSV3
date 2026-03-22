@@ -1,11 +1,8 @@
 /**
- * Ledger service for Supplier and User ledgers (ledger_master + ledger_entries).
- * SOURCE LOCK (Phase 1): This is the UI ledger layer only — not GL truth.
- * Trial Balance, P&L, Balance Sheet must use journal_entries + journal_entry_lines only.
- * Customer ledger = customerLedgerApi (sales/payments). Worker = worker_ledger_entries (studio).
+ * Legacy duplicate supplier/user subledger tables have been removed from the app.
+ * Supplier/user UI uses purchases + payments + contacts; GL uses journal_entries only.
+ * These exports stay as no-ops / empty reads so existing call sites do not write duplicate rows.
  */
-
-import { supabase } from '@/lib/supabase';
 
 export type LedgerType = 'supplier' | 'user';
 
@@ -36,48 +33,12 @@ export interface LedgerEntryRow {
 }
 
 export async function getOrCreateLedger(
-  companyId: string,
-  type: LedgerType,
-  entityId: string,
-  entityName?: string
+  _companyId: string,
+  _type: LedgerType,
+  _entityId: string,
+  _entityName?: string
 ): Promise<LedgerMaster | null> {
-  try {
-    const { data: existing, error: fetchError } = await supabase
-      .from('ledger_master')
-      .select('*')
-      .eq('company_id', companyId)
-      .eq('ledger_type', type)
-      .eq('entity_id', entityId)
-      .maybeSingle();
-
-    if (fetchError) {
-      console.warn('[ledgerService] getOrCreateLedger fetch error (tables may not exist):', fetchError.message);
-      return null;
-    }
-    if (existing) return existing as LedgerMaster;
-
-    const { data: inserted, error } = await supabase
-      .from('ledger_master')
-      .insert({
-        company_id: companyId,
-        ledger_type: type,
-        entity_id: entityId,
-        entity_name: entityName ?? null,
-        opening_balance: 0,
-        updated_at: new Date().toISOString(),
-      })
-      .select()
-      .single();
-
-    if (error) {
-      console.warn('[ledgerService] getOrCreateLedger insert error:', error.message);
-      return null;
-    }
-    return inserted as LedgerMaster;
-  } catch (e) {
-    console.warn('[ledgerService] getOrCreateLedger exception:', e);
-    return null;
-  }
+  return null;
 }
 
 export interface AddLedgerEntryParams {
@@ -92,148 +53,31 @@ export interface AddLedgerEntryParams {
   remarks?: string;
 }
 
-export async function addLedgerEntry(params: AddLedgerEntryParams): Promise<LedgerEntryRow | null> {
-  const { companyId, ledgerId, entryDate, debit, credit, source, referenceNo, referenceId, remarks } = params;
-
-  try {
-    const { data: prev, error: prevError } = await supabase
-      .from('ledger_entries')
-      .select('balance_after')
-      .eq('ledger_id', ledgerId)
-      .order('entry_date', { ascending: false })
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    if (prevError) {
-      console.warn('[ledgerService] addLedgerEntry fetch prev balance error:', prevError.message);
-      return null;
-    }
-
-    const prevBalance = (prev as { balance_after?: number } | null)?.balance_after ?? 0;
-    const balanceAfter = prevBalance + (debit - credit);
-
-    const { data: inserted, error } = await supabase
-      .from('ledger_entries')
-      .insert({
-      company_id: companyId,
-      ledger_id: ledgerId,
-      entry_date: entryDate,
-      debit,
-      credit,
-      balance_after: balanceAfter,
-      source,
-      reference_no: referenceNo ?? null,
-      reference_id: referenceId ?? null,
-      remarks: remarks ?? null,
-    })
-    .select()
-    .single();
-
-    if (error) {
-      console.warn('[ledgerService] addLedgerEntry error:', error.message);
-      return null;
-    }
-    if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development' && source === 'payment') {
-      console.debug('[SUPPLIER_LEDGER] addLedgerEntry inserted', { id: (inserted as any)?.id, ledger_id: ledgerId, reference_id: referenceId });
-    }
-    return inserted as LedgerEntryRow;
-  } catch (e) {
-    console.warn('[ledgerService] addLedgerEntry exception:', e);
-    return null;
-  }
+export async function addLedgerEntry(_params: AddLedgerEntryParams): Promise<LedgerEntryRow | null> {
+  return null;
 }
 
 export async function getLedgerEntries(
-  ledgerId: string,
-  fromDate?: string,
-  toDate?: string
+  _ledgerId: string,
+  _fromDate?: string,
+  _toDate?: string
 ): Promise<LedgerEntryRow[]> {
-  let q = supabase
-    .from('ledger_entries')
-    .select('*')
-    .eq('ledger_id', ledgerId)
-    .order('entry_date', { ascending: false })
-    .order('created_at', { ascending: false });
-
-  if (fromDate) q = q.gte('entry_date', fromDate);
-  if (toDate) q = q.lte('entry_date', toDate);
-
-  const { data, error } = await q;
-  if (error) return [];
-  return (data || []) as LedgerEntryRow[];
+  return [];
 }
 
-export async function getLedgerById(ledgerId: string): Promise<LedgerMaster | null> {
-  const { data, error } = await supabase
-    .from('ledger_master')
-    .select('*')
-    .eq('id', ledgerId)
-    .maybeSingle();
-  if (error || !data) return null;
-  return data as LedgerMaster;
+export async function getLedgerById(_ledgerId: string): Promise<LedgerMaster | null> {
+  return null;
 }
 
-/** Set opening_balance on ledger_master (e.g. when adding a supplier with opening balance). */
-export async function updateLedgerOpeningBalance(ledgerId: string, openingBalance: number): Promise<boolean> {
-  const { error } = await supabase
-    .from('ledger_master')
-    .update({
-      opening_balance: openingBalance,
-      updated_at: new Date().toISOString(),
-    })
-    .eq('id', ledgerId);
-  if (error) {
-    console.warn('[ledgerService] updateLedgerOpeningBalance error:', error.message);
-    return false;
-  }
+/** Opening balances live on contacts (customer/supplier fields). */
+export async function updateLedgerOpeningBalance(_ledgerId: string, _openingBalance: number): Promise<boolean> {
   return true;
 }
 
-export async function getSupplierLedgersWithBalance(companyId: string): Promise<Array<{ id: string; name: string; balance: number }>> {
-  const { data: ledgers } = await supabase
-    .from('ledger_master')
-    .select('id, entity_id, entity_name')
-    .eq('company_id', companyId)
-    .eq('ledger_type', 'supplier');
-
-  if (!ledgers?.length) return [];
-
-  const out: Array<{ id: string; name: string; balance: number }> = [];
-  for (const l of ledgers as { id: string; entity_id: string; entity_name: string | null }[]) {
-    const { data: last } = await supabase
-      .from('ledger_entries')
-      .select('balance_after')
-      .eq('ledger_id', l.id)
-      .order('entry_date', { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    const balance = (last as { balance_after?: number } | null)?.balance_after ?? 0;
-    out.push({ id: l.entity_id, name: l.entity_name || 'Supplier', balance });
-  }
-  return out;
+export async function getSupplierLedgersWithBalance(_companyId: string): Promise<Array<{ id: string; name: string; balance: number }>> {
+  return [];
 }
 
-export async function getUserLedgersWithBalance(companyId: string): Promise<Array<{ id: string; name: string; balance: number }>> {
-  const { data: ledgers } = await supabase
-    .from('ledger_master')
-    .select('id, entity_id, entity_name')
-    .eq('company_id', companyId)
-    .eq('ledger_type', 'user');
-
-  if (!ledgers?.length) return [];
-
-  const out: Array<{ id: string; name: string; balance: number }> = [];
-  for (const l of ledgers as { id: string; entity_id: string; entity_name: string | null }[]) {
-    const { data: last } = await supabase
-      .from('ledger_entries')
-      .select('balance_after')
-      .eq('ledger_id', l.id)
-      .order('entry_date', { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    const balance = (last as { balance_after?: number } | null)?.balance_after ?? 0;
-    out.push({ id: l.entity_id, name: l.entity_name || 'User', balance });
-  }
-  return out;
+export async function getUserLedgersWithBalance(_companyId: string): Promise<Array<{ id: string; name: string; balance: number }>> {
+  return [];
 }

@@ -28,10 +28,13 @@ import {
   ChevronDown,
   ChevronUp,
   ChevronsUpDown,
+  ChevronRight,
   X,
   BookMarked,
   Truck,
-  RotateCcw
+  RotateCcw,
+  Scale,
+  ShieldAlert,
 } from 'lucide-react';
 import { Button } from '@/app/components/ui/button';
 import { Badge } from '@/app/components/ui/badge';
@@ -55,6 +58,8 @@ import { AccountingTestPage } from '@/app/components/test/AccountingTestPage';
 import { AddEntryV2 } from './AddEntryV2';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { INTEGRITY_LAB_SESSION_KEY } from '@/app/lib/integrityLabConstants';
+import { ControlAccountBreakdownDrawer } from './ControlAccountBreakdownDrawer';
+import type { ControlAccountBreakdownResult } from '@/app/services/controlAccountBreakdownService';
 
 /** Add Entry: V2 = new default (typed, theme-matched). Set false to use legacy AccountingTestPage. */
 const USE_ADD_ENTRY_V2 = true;
@@ -103,6 +108,26 @@ const EXPENSE_ACCOUNTS = new Set([
 const AR_ACCOUNTS = new Set(['Accounts Receivable']);
 const AP_ACCOUNTS = new Set(['Accounts Payable', 'Worker Payable']);
 
+/** COA row → GL control bucket for breakdown + actions (code first, then name). */
+function getControlAccountKind(account: {
+  name?: string;
+  code?: string;
+}): ControlAccountBreakdownResult['controlKind'] | null {
+  const c = String(account.code || '').trim();
+  if (c === '1100') return 'ar';
+  if (c === '2000') return 'ap';
+  if (c === '2010') return 'worker_payable';
+  if (c === '1180') return 'worker_advance';
+  if (c === '1195') return 'suspense';
+  const n = (account.name || '').trim().toLowerCase();
+  if (n === 'accounts receivable' || (n.includes('receivable') && c.startsWith('11'))) return 'ar';
+  if (n === 'accounts payable') return 'ap';
+  if (n.includes('worker payable')) return 'worker_payable';
+  if (n.includes('worker advance')) return 'worker_advance';
+  if (n.includes('suspense') || n.includes('reconciliation suspense')) return 'suspense';
+  return null;
+}
+
 export const AccountingDashboard = () => {
   const { canAccessAccounting, canPostAccounting } = useCheckPermission();
   const { modules: settingsModules } = useSettings();
@@ -110,7 +135,7 @@ export const AccountingDashboard = () => {
   const sales = useSales();
   const purchases = usePurchases();
   const expenses = useExpenses();
-  const { openDrawer } = useNavigation();
+  const { openDrawer, setCurrentView } = useNavigation();
   const { companyId, branchId } = useSupabase();
   const { setCurrentModule, startDate: globalStartDate, endDate: globalEndDate } = useGlobalFilter();
   const { formatCurrency } = useFormatCurrency();
@@ -148,6 +173,10 @@ export const AccountingDashboard = () => {
   
   // 🎯 Ledger & Transaction State
   const [ledgerAccount, setLedgerAccount] = useState<any>(null);
+  const [controlBreakdown, setControlBreakdown] = useState<{
+    account: { id: string; name: string; code?: string };
+    kind: ControlAccountBreakdownResult['controlKind'];
+  } | null>(null);
   const [transactionReference, setTransactionReference] = useState<string | null>(null);
   /** PF-14.3B: When opening a grouped journal row, pass all entries in the group for the detail trail. */
   const [selectedGroupEntries, setSelectedGroupEntries] = useState<AccountingEntry[] | null>(null);
@@ -217,7 +246,7 @@ export const AccountingDashboard = () => {
     { key: 'daybook', label: 'Day Book', icon: List },
     { key: 'roznamcha', label: 'Roznamcha', icon: BookMarked },
     { key: 'accounts', label: 'Accounts', icon: Wallet },
-    { key: 'ledger', label: 'Ledger', icon: FileText },
+    { key: 'ledger', label: 'Party statements', icon: FileText },
     { key: 'receivables', label: 'Receivables', icon: TrendingUp },
     { key: 'payables', label: 'Payables', icon: TrendingDown },
     { key: 'courier', label: 'Courier Reports', icon: Truck },
@@ -993,7 +1022,12 @@ export const AccountingDashboard = () => {
                             <th className="px-4 py-3 text-left">Scope</th>
                           </>
                         )}
-                        <th className="px-4 py-3 text-right">Balance</th>
+                        <th className="px-4 py-3 text-right">
+                          <span className="block">Balance</span>
+                          <span className="block text-[10px] font-normal text-gray-500 normal-case tracking-normal">
+                            GL (journal)
+                          </span>
+                        </th>
                         <th className="px-4 py-3 text-left">Status</th>
                         <th className="px-4 py-3 text-left">Actions</th>
                       </tr>
@@ -1007,21 +1041,28 @@ export const AccountingDashboard = () => {
                             return (
                               t.includes('cash') || t.includes('bank') || t.includes('wallet') ||
                               t.includes('expense') || t.includes('revenue') || t.includes('income') ||
-                              t.includes('receivable') || t.includes('payable') ||
+                              t.includes('receivable') || t.includes('payable') || t.includes('advance') ||
+                              t.includes('suspense') ||
                               acc.code === '1000' || acc.code === '1010' || acc.code === '1020' ||
-                              acc.code === '1100' || acc.code === '2000'
+                              acc.code === '1100' || acc.code === '2000' ||
+                              acc.code === '2010' || acc.code === '1180' || acc.code === '1195'
                             );
                           })
                         : showSubAccounts
                           ? accounting.accounts
                           : accounting.accounts.filter(acc => !(acc as any).parent_id)
-                      ).map((account) => (
+                      ).map((account) => {
+                        const controlKind = getControlAccountKind({
+                          name: account.name,
+                          code: (account as any).code,
+                        });
+                        return (
                         <tr 
                           key={account.id} 
                           className="border-b border-gray-800 hover:bg-gray-800/30 transition-colors"
                         >
                           <td className="px-4 py-3 text-sm text-gray-300 font-medium">
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-2 flex-wrap">
                               {account.name}
                               {(account as any).is_default_cash && (
                                 <Badge className="bg-green-500/20 text-green-400 border-green-500/30 text-xs">
@@ -1032,6 +1073,30 @@ export const AccountingDashboard = () => {
                                 <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/30 text-xs">
                                   Default Bank
                                 </Badge>
+                              )}
+                              {controlKind && (
+                                <Badge className="bg-indigo-500/15 text-indigo-300 border-indigo-500/35 text-[10px] uppercase tracking-wide">
+                                  GL control
+                                </Badge>
+                              )}
+                              {controlKind && account.id && (
+                                <button
+                                  type="button"
+                                  title="Control breakdown (GL / operational / party)"
+                                  onClick={() =>
+                                    setControlBreakdown({
+                                      account: {
+                                        id: account.id!,
+                                        name: account.name || '',
+                                        code: (account as any).code,
+                                      },
+                                      kind: controlKind,
+                                    })
+                                  }
+                                  className="p-1 rounded-md text-indigo-300 hover:bg-indigo-500/15 border border-indigo-500/25 shrink-0"
+                                >
+                                  <ChevronRight className="w-4 h-4" />
+                                </button>
                               )}
                             </div>
                           </td>
@@ -1084,8 +1149,70 @@ export const AccountingDashboard = () => {
                                   }}
                                   className="text-gray-300 hover:text-white hover:bg-gray-800 cursor-pointer"
                                 >
-                                  <FileText size={14} className="mr-2" /> View Ledger
+                                  <FileText size={14} className="mr-2" />{' '}
+                                  {controlKind ? 'Open GL ledger' : 'View Ledger'}
                                 </DropdownMenuItem>
+                                {controlKind && (
+                                  <DropdownMenuItem
+                                    onClick={() =>
+                                      setControlBreakdown({
+                                        account: {
+                                          id: account.id!,
+                                          name: account.name || '',
+                                          code: (account as any).code,
+                                        },
+                                        kind: controlKind,
+                                      })
+                                    }
+                                    className="text-gray-300 hover:text-white hover:bg-gray-800 cursor-pointer"
+                                  >
+                                    <BarChart3 size={14} className="mr-2" /> Control breakdown…
+                                  </DropdownMenuItem>
+                                )}
+                                {controlKind && controlKind !== 'suspense' && (
+                                  <>
+                                    <DropdownMenuItem
+                                      onClick={() => {
+                                        setCurrentView('contacts');
+                                        toast.info(
+                                          controlKind === 'ar'
+                                            ? 'Operational: Contacts → Customers tab → party statement (Operational / GL / Reconciliation).'
+                                            : controlKind === 'ap'
+                                              ? 'Operational: Contacts → Suppliers tab.'
+                                              : 'Operational: Contacts → Workers tab.'
+                                        );
+                                      }}
+                                      className="text-gray-300 hover:text-white hover:bg-gray-800 cursor-pointer"
+                                    >
+                                      <Users size={14} className="mr-2" /> Open operational (Contacts)
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem
+                                      onClick={() => {
+                                        setCurrentView('contacts');
+                                        toast.info(
+                                          'On Contacts, use reconciliation copy vs GL control for variance context.'
+                                        );
+                                      }}
+                                      className="text-gray-300 hover:text-white hover:bg-gray-800 cursor-pointer"
+                                    >
+                                      <Scale size={14} className="mr-2" /> Open reconciliation (Contacts)
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem
+                                      onClick={() => setCurrentView('ar-ap-reconciliation-center')}
+                                      className="text-gray-300 hover:text-white hover:bg-gray-800 cursor-pointer"
+                                    >
+                                      <ShieldAlert size={14} className="mr-2" /> AR/AP Reconciliation Center
+                                    </DropdownMenuItem>
+                                  </>
+                                )}
+                                {controlKind === 'suspense' && (
+                                  <DropdownMenuItem
+                                    onClick={() => setCurrentView('ar-ap-reconciliation-center')}
+                                    className="text-gray-300 hover:text-white hover:bg-gray-800 cursor-pointer"
+                                  >
+                                    <ShieldAlert size={14} className="mr-2" /> Reconciliation Center (suspense)
+                                  </DropdownMenuItem>
+                                )}
                                 {/* Professional mode: extra account actions */}
                                 {accountsViewMode === 'professional' && (
                                   <>
@@ -1189,7 +1316,8 @@ export const AccountingDashboard = () => {
                             </DropdownMenu>
                           </td>
                         </tr>
-                      ))}
+                      );
+                      })}
                     </tbody>
                   </table>
                 </div>
@@ -1459,6 +1587,20 @@ export const AccountingDashboard = () => {
         )}
       </DialogContent>
       </Dialog>
+
+      <ControlAccountBreakdownDrawer
+        open={!!controlBreakdown}
+        onClose={() => setControlBreakdown(null)}
+        companyId={companyId ?? ''}
+        branchId={branchId}
+        account={controlBreakdown?.account ?? null}
+        controlKind={controlBreakdown?.kind ?? null}
+        formatCurrency={formatCurrency}
+        onOpenGlLedger={(a) => setLedgerAccount(a)}
+        onNavigate={(view) =>
+          setCurrentView(view === 'contacts' ? 'contacts' : 'ar-ap-reconciliation-center')
+        }
+      />
 
       {/* Account Ledger View - Full Screen */}
       {ledgerAccount && (

@@ -258,13 +258,14 @@ async function createProductionCostJournalEntry(params: {
   companyId: string;
   branchId: string | null;
   stageId: string;
+  workerId: string;
   productionNo: string;
   saleId: string | null;
   amount: number;
   stageType: string;
   performedBy?: string | null;
 }): Promise<string | null> {
-  const { companyId, branchId, stageId, productionNo, saleId, amount, stageType, performedBy } = params;
+  const { companyId, branchId, stageId, workerId, productionNo, saleId, amount, stageType, performedBy } = params;
   if (amount <= 0) return null;
   const costAccount = await accountHelperService.getAccountByCode('5000', companyId);
   const payableAccount = await accountHelperService.getAccountByCode('2010', companyId);
@@ -290,7 +291,22 @@ async function createProductionCostJournalEntry(params: {
     { id: '', journal_entry_id: '', account_id: payableAccount.id, debit: 0, credit: amount, description: `Worker payable – ${stageType}` },
   ];
   const result = await accountingService.createEntry(entry, lines);
-  return (result as any)?.id ?? null;
+  const billJeId = (result as any)?.id ?? null;
+  if (billJeId && workerId) {
+    const { applyWorkerAdvanceAgainstNewBill } = await import('@/app/services/workerAdvanceService');
+    await applyWorkerAdvanceAgainstNewBill({
+      companyId,
+      branchId,
+      workerId,
+      stageId,
+      billAmount: amount,
+      billJournalEntryId: billJeId,
+      productionNo,
+      stageType,
+      performedBy: performedBy ?? null,
+    });
+  }
+  return billJeId;
 }
 
 /** PHASE 4: Create reversal entry Dr Worker Payable Cr Production Expense (same amount). */
@@ -1461,6 +1477,7 @@ export const studioProductionService = {
           companyId: prod.company_id,
           branchId: prod.branch_id || null,
           stageId,
+          workerId,
           productionNo: prod.production_no,
           saleId: prod.sale_id ?? null,
           amount: cost,
@@ -1712,6 +1729,7 @@ export const studioProductionService = {
       companyId: production.company_id,
       branchId: production.branch_id || null,
       stageId,
+      workerId: stage.assigned_worker_id,
       productionNo: production.production_no,
       saleId: null,
       amount: newCost,

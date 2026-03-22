@@ -8,7 +8,6 @@ import { documentNumberService } from '@/app/services/documentNumberService';
 import { useAccounting } from '@/app/context/AccountingContext';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { expenseService, Expense as SupabaseExpense } from '@/app/services/expenseService';
-import { getOrCreateLedger, addLedgerEntry } from '@/app/services/ledgerService';
 import { toast } from 'sonner';
 
 // ============================================
@@ -236,27 +235,8 @@ export const ExpenseProvider = ({ children }: { children: ReactNode }) => {
       // Update local state
       setExpenses(prev => [newExpense, ...prev]);
 
-      // Salary = User only → post to User Ledger (Salary paid = DEBIT to user ledger)
-      if (newExpense.status === 'paid' && options?.paidToUserId && companyId) {
-        try {
-          const ledger = await getOrCreateLedger(companyId, 'user', options.paidToUserId, newExpense.payeeName || undefined);
-          if (ledger) {
-            await addLedgerEntry({
-              companyId,
-              ledgerId: ledger.id,
-              entryDate: newExpense.date,
-              debit: newExpense.amount,
-              credit: 0,
-              source: 'expense',
-              referenceNo: newExpense.expenseNo,
-              referenceId: newExpense.id,
-              remarks: newExpense.description || `Salary - ${newExpense.payeeName || 'User'}`,
-            });
-            window.dispatchEvent(new CustomEvent('ledgerUpdated', { detail: { ledgerType: 'user', entityId: options.paidToUserId } }));
-          }
-        } catch (e) {
-          console.warn('[ExpenseContext] User ledger entry failed:', e);
-        }
+      if (newExpense.status === 'paid' && options?.paidToUserId && typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('ledgerUpdated', { detail: { ledgerType: 'user', entityId: options.paidToUserId } }));
       }
 
       // Auto-post to accounting if paid

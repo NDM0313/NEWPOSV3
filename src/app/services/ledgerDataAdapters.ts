@@ -1,16 +1,17 @@
 /**
  * Build LedgerData (same shape as Customer Ledger) for Supplier, User, and Worker.
- * SOURCE LOCK (Phase 1): ledger_master + ledger_entries = UI display only (not GL truth).
- * Customer ledger stays on customerLedgerApi. Supplier/User use ledger_master + ledger_entries; Worker uses worker_ledger_entries.
+ * Supplier/user operational statements use purchases, payments, expenses, and sales (commission) — not duplicate subledger tables.
+ * Worker uses worker_ledger_entries. Customer ledger stays on customerLedgerApi.
  */
 
 import { supabase } from '@/lib/supabase';
 import type { LedgerData, Transaction, Invoice } from '@/app/services/customerLedgerTypes';
-import { getOrCreateLedger, getLedgerEntries, type LedgerEntryRow } from '@/app/services/ledgerService';
 
 export type LedgerEntityType = 'supplier' | 'user' | 'worker';
 
-/** Supplier: Purchase = Credit (we owe), Payment = Debit. Balance = amount to pay. */
+/**
+ * @deprecated Alias for {@link getSupplierOperationalLedgerData} (legacy duplicate subledger removed).
+ */
 export async function getSupplierLedgerData(
   companyId: string,
   supplierId: string,
@@ -18,201 +19,193 @@ export async function getSupplierLedgerData(
   fromDate: string,
   toDate: string
 ): Promise<LedgerData> {
-  const ledger = await getOrCreateLedger(companyId, 'supplier', supplierId, supplierName);
-  if (!ledger) return emptyLedgerData();
+  return getSupplierOperationalLedgerData(companyId, supplierId, supplierName, fromDate, toDate);
+}
 
-  const entries = await getLedgerEntries(ledger.id, fromDate, toDate);
-  const openingBalance = Number(ledger.opening_balance ?? 0);
-
-  // Entries before fromDate for opening
-  const { data: prevEntries } = await supabase
-    .from('ledger_entries')
-    .select('debit, credit, balance_after')
-    .eq('ledger_id', ledger.id)
-    .lt('entry_date', fromDate)
-    .order('entry_date', { ascending: false })
-    .limit(1)
+/**
+ * Supplier operational statement: purchases + supplier-linked payments from source tables.
+ * Running balance = opening (supplier opening on contact) + payments − purchase bill credits (same sign convention as legacy supplier subledger).
+ */
+export async function getSupplierOperationalLedgerData(
+  companyId: string,
+  supplierId: string,
+  supplierName: string,
+  fromDate: string,
+  toDate: string
+): Promise<LedgerData> {
+  const { data: contact } = await supabase
+    .from('contacts')
+    .select('supplier_opening_balance, opening_balance')
+    .eq('id', supplierId)
+    .eq('company_id', companyId)
     .maybeSingle();
 
-  let runningBalance = openingBalance;
-  if (prevEntries && (prevEntries as { balance_after?: number }).balance_after != null) {
-    runningBalance = Number((prevEntries as { balance_after: number }).balance_after);
+  const openingBase =
+    Number((contact as { supplier_opening_balance?: number; opening_balance?: number } | null)?.supplier_opening_balance ??
+      (contact as { opening_balance?: number } | null)?.opening_balance ??
+      0) || 0;
+
+  const { data: purchases } = await supabase
+    .from('purchases')
+    .select('id, po_date, po_no, total, paid_amount, due_amount, status')
+    .eq('company_id', companyId)
+    .eq('supplier_id', supplierId);
+
+  const purchaseRows = (purchases || []).filter((p: { status?: string }) => {
+    const s = String(p.status || '').toLowerCase();
+    return s !== 'cancelled' && s !== 'draft';
+  });
+
+  const supplierPurchaseIds = new Set(purchaseRows.map((p: { id: string }) => p.id));
+
+  const { data: payments } = await supabase
+    .from('payments')
+    .select('id, payment_date, amount, reference_number, reference_type, reference_id, contact_id, payment_type, notes')
+    .eq('company_id', companyId)
+    .eq('payment_type', 'paid');
+
+  type Ev = {
+    ts: number;
+    date: string;
+    ord: number;
+    debit: number;
+    credit: number;
+    ref: string;
+    desc: string;
+    docType: Transaction['documentType'];
+    id: string;
+  };
+  const events: Ev[] = [];
+
+  purchaseRows.forEach((p: any) => {
+    const d = (p.po_date || '').toString().slice(0, 10);
+    if (!d) return;
+    const total = Number(p.total) || 0;
+    events.push({
+      ts: new Date(d + 'T12:00:00').getTime(),
+      date: d,
+      ord: 0,
+      debit: 0,
+      credit: total,
+      ref: p.po_no || `PUR-${String(p.id).slice(0, 8)}`,
+      desc: `Purchase ${p.po_no || ''}`.trim() || 'Purchase',
+      docType: 'Purchase',
+      id: p.id,
+    });
+  });
+
+  (payments || []).forEach((p: any) => {
+    const rt = String(p.reference_type || '').toLowerCase();
+    const isSupplier =
+      p.contact_id === supplierId ||
+      (rt === 'purchase' && p.reference_id && supplierPurchaseIds.has(p.reference_id));
+    if (!isSupplier) return;
+    const d = (p.payment_date || '').toString().slice(0, 10);
+    if (!d) return;
+    const amt = Number(p.amount) || 0;
+    events.push({
+      ts: new Date(d + 'T12:00:00').getTime(),
+      date: d,
+      ord: 1,
+      debit: amt,
+      credit: 0,
+      ref: p.reference_number || `PAY-${String(p.id).slice(0, 8)}`,
+      desc: (p.notes && String(p.notes).trim()) || 'Supplier payment',
+      docType: 'Payment',
+      id: p.id,
+    });
+  });
+
+  events.sort((a, b) => a.ts - b.ts || a.ord - b.ord);
+
+  const fromTs = new Date(fromDate + 'T12:00:00').getTime();
+  const toTs = new Date(toDate + 'T23:59:59').getTime();
+
+  let running = openingBase;
+  for (const e of events) {
+    if (e.ts < fromTs) running = running + e.debit - e.credit;
   }
+  const openingAtFrom = running;
 
   const transactions: Transaction[] = [];
   const invoices: Invoice[] = [];
   let totalDebit = 0;
   let totalCredit = 0;
 
-  // CRITICAL: Filter out entries for deleted purchases
-  // Only show entries where purchase still exists in database
-  const validEntries: LedgerEntryRow[] = [];
-  const purchaseIds = entries
-    .filter(e => e.source === 'purchase' && e.reference_id)
-    .map(e => e.reference_id) as string[];
-  
-  let existingPurchases: Set<string> = new Set();
-  const purchaseStatusMap: Record<string, { status: string; po_no: string }> = {};
-  if (purchaseIds.length > 0) {
-    const { data: purchases } = await supabase
-      .from('purchases')
-      .select('id, status, po_no')
-      .in('id', purchaseIds);
-    
-    if (purchases) {
-      existingPurchases = new Set(purchases.map((p: any) => p.id));
-      purchases.forEach((p: any) => {
-        purchaseStatusMap[p.id] = { status: p.status || '', po_no: p.po_no || `PUR-${(p.id || '').substring(0, 8)}` };
-      });
-    }
-  }
-  
-  // Payment entries: reference_id = payment_id (manual/on_account) or purchase_id (purchase-linked from PurchaseContext).
-  // Include if: (1) payment.contact_id = supplierId, or (2) reference_id is a purchase_id with purchases.supplier_id = supplierId.
-  const paymentRefIds = entries
-    .filter(e => e.source === 'payment' && e.reference_id)
-    .map(e => e.reference_id) as string[];
-  let validPaymentEntryRefIds: Set<string> = new Set();
-  const { data: paymentsByContact } = await supabase
-    .from('payments')
-    .select('id')
-    .eq('company_id', companyId)
-    .eq('contact_id', supplierId);
-  if (paymentsByContact) {
-    (paymentsByContact as { id: string }[]).forEach((p: { id: string }) => validPaymentEntryRefIds.add(p.id));
-  }
-  const { data: supplierPurchaseRows } = await supabase
-    .from('purchases')
-    .select('id')
-    .eq('company_id', companyId)
-    .eq('supplier_id', supplierId);
-  const supplierPurchaseIdSet = new Set((supplierPurchaseRows || []).map((p: { id: string }) => p.id));
-  supplierPurchaseIdSet.forEach((id) => validPaymentEntryRefIds.add(id));
-
-  if (supplierPurchaseIdSet.size > 0) {
-    const { data: purchaseLinkedPayments } = await supabase
-      .from('payments')
-      .select('id')
-      .eq('company_id', companyId)
-      .eq('reference_type', 'purchase')
-      .in('reference_id', Array.from(supplierPurchaseIdSet));
-    if (purchaseLinkedPayments) {
-      (purchaseLinkedPayments as { id: string }[]).forEach((p) => validPaymentEntryRefIds.add(p.id));
-    }
-  }
-  paymentRefIds.forEach((id) => validPaymentEntryRefIds.add(id));
-
-  // Filter entries: only include if purchase still exists or payment is valid for this supplier
-  for (const e of entries as LedgerEntryRow[]) {
-    if (e.source === 'purchase' && e.reference_id && !existingPurchases.has(e.reference_id)) {
-      if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
-        console.debug('[SupplierLedger] Filtered out purchase entry (purchase missing)', { reference_id: e.reference_id });
-      }
-      continue;
-    }
-    if (e.source === 'payment' && e.reference_id && !validPaymentEntryRefIds.has(e.reference_id)) {
-      if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
-        console.debug('[SupplierLedger] Filtered out payment entry (ref not valid for supplier)', { reference_id: e.reference_id, supplierId });
-      }
-      continue;
-    }
-    validEntries.push(e);
-  }
-
-  // Process only valid entries
-  for (const e of validEntries) {
-    const debit = Number(e.debit ?? 0);
-    const credit = Number(e.credit ?? 0);
-    totalDebit += debit;
-    totalCredit += credit;
-    runningBalance = runningBalance + debit - credit;
-
-    const docType =
-      e.source === 'purchase'
-        ? 'Purchase'
-        : e.source === 'purchase_return'
-          ? 'Purchase Return'
-          : 'Payment';
-    const purchaseMeta = e.source === 'purchase' && e.reference_id ? purchaseStatusMap[e.reference_id] : null;
-    const isCancelled = purchaseMeta && (purchaseMeta.status || '').toString().toLowerCase() === 'cancelled';
-    const description = isCancelled
-      ? `Reversal of ${purchaseMeta!.po_no} (Cancelled)`
-      : (e.remarks || `${e.source} ${e.reference_no || ''}`.trim());
+  running = openingAtFrom;
+  for (const e of events) {
+    if (e.ts < fromTs || e.ts > toTs) continue;
+    totalDebit += e.debit;
+    totalCredit += e.credit;
+    running = running + e.debit - e.credit;
     transactions.push({
-      id: e.reference_id || e.id,
-      date: e.entry_date,
-      referenceNo: e.reference_no || e.source,
-      documentType: docType as Transaction['documentType'],
-      description,
+      id: e.id,
+      date: e.date,
+      referenceNo: e.ref,
+      documentType: e.docType,
+      description: e.desc,
       paymentAccount: '—',
-      notes: e.remarks || '',
-      debit,
-      credit,
-      runningBalance,
+      notes: '',
+      debit: e.debit,
+      credit: e.credit,
+      runningBalance: running,
       linkedInvoices: [],
       linkedPayments: [],
-      ...(isCancelled ? { referenceStatus: 'cancelled' as const } : {}),
     });
-
-    if (e.source === 'purchase' && credit > 0) {
-      const paid = 0;
-      invoices.push({
-        invoiceNo: e.reference_no || e.id,
-        date: e.entry_date,
-        invoiceTotal: credit,
-        items: [],
-        status: 'Unpaid',
-        paidAmount: paid,
-        pendingAmount: credit,
-      });
-    }
   }
 
-  const closingBalance = runningBalance;
+  purchaseRows.forEach((p: any) => {
+    const d = (p.po_date || '').toString().slice(0, 10);
+    if (!d) return;
+    const ts = new Date(d + 'T12:00:00').getTime();
+    if (ts < fromTs || ts > toTs) return;
+    const due = Math.max(0, Number(p.due_amount ?? 0) || (Number(p.total) || 0) - (Number(p.paid_amount) || 0));
+    if (due <= 0) return;
+    invoices.push({
+      invoiceNo: p.po_no || `PUR-${String(p.id).slice(0, 8)}`,
+      date: d,
+      invoiceTotal: Number(p.total) || due,
+      items: [],
+      status: 'Unpaid',
+      paidAmount: Number(p.paid_amount) || 0,
+      pendingAmount: due,
+    });
+  });
+
+  const closingBalance = running;
   const totalInvoices = invoices.length;
   const totalInvoiceAmount = invoices.reduce((s, i) => s + i.invoiceTotal, 0);
   const totalPaymentReceived = totalDebit;
   const pendingAmount = invoices.reduce((s, i) => s + i.pendingAmount, 0);
-  const fullyPaid = 0;
-  const partiallyPaid = 0;
-  const unpaid = invoices.length;
 
   if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
-    console.debug('[SupplierLedger]', {
-      supplierId,
-      supplierName,
-      ledgerId: ledger.id,
-      fromDate,
-      toDate,
-      rawEntries: entries.length,
-      validEntries: validEntries.length,
-      totalDebit,
-      totalCredit,
-      closingBalance,
-    });
+    console.debug('[SupplierOperationalLedger]', { supplierId, supplierName, openingBase, openingAtFrom, rows: transactions.length });
   }
 
   return {
-    openingBalance,
+    openingBalance: openingAtFrom,
     totalDebit,
     totalCredit,
     closingBalance,
     transactions,
-    detailTransactions: transactions.map(t => ({ ...t })),
+    detailTransactions: transactions.map((t) => ({ ...t })),
     invoices,
     invoicesSummary: {
       totalInvoices,
       totalInvoiceAmount,
       totalPaymentReceived,
       pendingAmount,
-      fullyPaid,
-      partiallyPaid,
-      unpaid,
+      fullyPaid: 0,
+      partiallyPaid: 0,
+      unpaid: invoices.length,
     },
   };
 }
 
-/** User: Staff/Salesman/Admin only. Salary/Expense/Commission/Bonus = Debit, Payment = Credit. No sales, no purchases. */
+/**
+ * User (staff/salesman) operational statement: paid expenses with paid_to_user_id + posted sale commission.
+ * Debits increase company obligation to the user; credits would come from dedicated payment flows (not yet linked by user id on payments).
+ */
 export async function getUserLedgerData(
   companyId: string,
   userId: string,
@@ -220,88 +213,145 @@ export async function getUserLedgerData(
   fromDate: string,
   toDate: string
 ): Promise<LedgerData> {
-  const ledger = await getOrCreateLedger(companyId, 'user', userId, userName);
-  if (!ledger) return emptyLedgerData();
+  const openingBase = 0;
 
-  const entries = await getLedgerEntries(ledger.id, fromDate, toDate);
-  // Only expense and payment – no sales, no purchases, no grouping
-  const allowedSources = ['expense', 'payment', 'salary', 'commission', 'bonus'];
-  const filteredEntries = (entries as LedgerEntryRow[]).filter((e) =>
-    allowedSources.includes((e.source || '').toLowerCase())
-  );
+  const { data: expenseRows } = await supabase
+    .from('expenses')
+    .select('id, expense_date, expense_no, amount, status, description, vendor_name, notes')
+    .eq('company_id', companyId)
+    .eq('paid_to_user_id', userId);
 
-  const openingBalance = Number(ledger.opening_balance ?? 0);
+  const { data: commSales } = await supabase
+    .from('sales')
+    .select('id, invoice_no, invoice_date, commission_amount')
+    .eq('company_id', companyId)
+    .eq('salesman_id', userId)
+    .eq('commission_status', 'posted');
 
-  const { data: prevEntries } = await supabase
-    .from('ledger_entries')
-    .select('balance_after')
-    .eq('ledger_id', ledger.id)
-    .lt('entry_date', fromDate)
-    .order('entry_date', { ascending: false })
-    .limit(1)
-    .maybeSingle();
+  type Ev = {
+    ts: number;
+    date: string;
+    ord: number;
+    debit: number;
+    credit: number;
+    ref: string;
+    desc: string;
+    docType: Transaction['documentType'];
+    id: string;
+  };
+  const events: Ev[] = [];
 
-  let runningBalance = openingBalance;
-  if (prevEntries && (prevEntries as { balance_after?: number }).balance_after != null) {
-    runningBalance = Number((prevEntries as { balance_after: number }).balance_after);
+  (expenseRows || []).forEach((row: any) => {
+    const st = String(row.status || '').toLowerCase();
+    if (st !== 'paid') return;
+    const amt = Number(row.amount) || 0;
+    if (amt <= 0) return;
+    const d = (row.expense_date || '').toString().slice(0, 10);
+    if (!d) return;
+    const ref = row.expense_no || `EXP-${String(row.id).slice(0, 8)}`;
+    const desc =
+      (row.description && String(row.description).trim()) ||
+      (row.vendor_name && String(row.vendor_name).trim()) ||
+      row.notes ||
+      'Expense (paid to user)';
+    events.push({
+      ts: new Date(d + 'T12:00:00').getTime(),
+      date: d,
+      ord: 0,
+      debit: amt,
+      credit: 0,
+      ref,
+      desc,
+      docType: 'Expense',
+      id: row.id,
+    });
+  });
+
+  (commSales || []).forEach((s: any) => {
+    const amt = Number(s.commission_amount) || 0;
+    if (amt <= 0) return;
+    const d = (s.invoice_date || '').toString().slice(0, 10);
+    if (!d) return;
+    const ref = s.invoice_no || `SL-${String(s.id).slice(0, 8)}`;
+    events.push({
+      ts: new Date(d + 'T12:00:00').getTime(),
+      date: d,
+      ord: 1,
+      debit: amt,
+      credit: 0,
+      ref,
+      desc: `Commission — ${ref}`,
+      docType: 'Expense',
+      id: s.id,
+    });
+  });
+
+  events.sort((a, b) => a.ts - b.ts || a.ord - b.ord);
+
+  const fromTs = new Date(fromDate + 'T12:00:00').getTime();
+  const toTs = new Date(toDate + 'T23:59:59').getTime();
+
+  let running = openingBase;
+  for (const e of events) {
+    if (e.ts < fromTs) running = running + e.debit - e.credit;
   }
+  const openingAtFrom = running;
 
   const transactions: Transaction[] = [];
   const invoices: Invoice[] = [];
   let totalDebit = 0;
   let totalCredit = 0;
 
-  for (const e of filteredEntries) {
-    const debit = Number(e.debit ?? 0);
-    const credit = Number(e.credit ?? 0);
-    totalDebit += debit;
-    totalCredit += credit;
-    runningBalance = runningBalance + debit - credit;
-
-    const docType = (e.source || '').toLowerCase() === 'payment' ? 'Payment' : 'Expense';
+  running = openingAtFrom;
+  for (const e of events) {
+    if (e.ts < fromTs || e.ts > toTs) continue;
+    totalDebit += e.debit;
+    totalCredit += e.credit;
+    running = running + e.debit - e.credit;
     transactions.push({
-      id: e.reference_id || e.id,
-      date: e.entry_date,
-      referenceNo: e.reference_no || e.source,
-      documentType: docType as Transaction['documentType'],
-      description: e.remarks || `${e.source} ${e.reference_no || ''}`.trim(),
+      id: e.id,
+      date: e.date,
+      referenceNo: e.ref,
+      documentType: e.docType,
+      description: e.desc,
       paymentAccount: '—',
-      notes: e.remarks || '',
-      debit,
-      credit,
-      runningBalance,
+      notes: userName ? `User: ${userName}` : '',
+      debit: e.debit,
+      credit: e.credit,
+      runningBalance: running,
       linkedInvoices: [],
       linkedPayments: [],
     });
-
-    // Expenses (salary/commission/bonus) show as "invoices" for Aging tab
-    const isExpense = !(e.source || '').toLowerCase().includes('payment') && debit > 0;
-    if (isExpense) {
+    if (e.debit > 0) {
       invoices.push({
-        invoiceNo: e.reference_no || e.id,
-        date: e.entry_date,
-        invoiceTotal: debit,
+        invoiceNo: e.ref,
+        date: e.date,
+        invoiceTotal: e.debit,
         items: [],
         status: 'Unpaid',
         paidAmount: 0,
-        pendingAmount: debit,
+        pendingAmount: e.debit,
       });
     }
   }
 
-  const closingBalance = runningBalance;
+  const closingBalance = running;
   const totalInvoices = invoices.length;
   const totalInvoiceAmount = invoices.reduce((s, i) => s + i.invoiceTotal, 0);
   const totalPaymentReceived = totalCredit;
   const pendingAmount = invoices.reduce((s, i) => s + i.pendingAmount, 0);
 
+  if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
+    console.debug('[UserOperationalLedger]', { userId, userName, openingAtFrom, rows: transactions.length });
+  }
+
   return {
-    openingBalance,
+    openingBalance: openingAtFrom,
     totalDebit,
     totalCredit,
     closingBalance,
     transactions,
-    detailTransactions: transactions.map(t => ({ ...t })),
+    detailTransactions: transactions.map((t) => ({ ...t })),
     invoices,
     invoicesSummary: {
       totalInvoices,

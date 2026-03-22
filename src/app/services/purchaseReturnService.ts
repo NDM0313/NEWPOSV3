@@ -4,7 +4,6 @@
  */
 import { supabase } from '@/lib/supabase';
 import { productService } from './productService';
-import { getOrCreateLedger, addLedgerEntry } from './ledgerService';
 
 export interface PurchaseReturn {
   id?: string;
@@ -261,23 +260,9 @@ export const purchaseReturnService = {
       });
     }
 
-    // Supplier ledger: CREDIT (reduces payable)
     const supplierId = purchaseReturn.supplier_id || originalPurchase?.supplier_id;
-    if (companyId && supplierId && purchaseReturn.total > 0) {
-      const ledger = await getOrCreateLedger(companyId, 'supplier', supplierId, purchaseReturn.supplier_name);
-      if (ledger) {
-        await addLedgerEntry({
-          companyId,
-          ledgerId: ledger.id,
-          entryDate: purchaseReturn.return_date,
-          debit: 0,
-          credit: purchaseReturn.total,
-          source: 'purchase_return',
-          referenceNo: purchaseReturn.return_no || `PRET-${returnId.slice(0, 8)}`,
-          referenceId: returnId,
-          remarks: `Purchase Return ${purchaseReturn.return_no || returnId}`,
-        });
-      }
+    if (companyId && supplierId && typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('ledgerUpdated', { detail: { ledgerType: 'supplier', entityId: supplierId } }));
     }
 
     const { error: updateError } = await supabase
@@ -290,7 +275,7 @@ export const purchaseReturnService = {
 
   /**
    * Void a finalized purchase return (same as Sale Return: saved by mistake).
-   * Reverses stock (positive movement = stock back IN) and supplier ledger (debit = increase payable).
+   * Reverses stock (positive movement = stock back IN); supplier statement refreshes from purchases + payments.
    * Marks return as void; record kept for audit.
    */
   async voidPurchaseReturn(returnId: string, companyId: string, branchId?: string, userId?: string): Promise<void> {
@@ -364,23 +349,9 @@ export const purchaseReturnService = {
       });
     }
 
-    // Supplier ledger: reverse CREDIT with DEBIT (increase payable again)
     const supplierId = purchaseReturn.supplier_id;
-    if (companyId && supplierId && purchaseReturn.total > 0) {
-      const ledger = await getOrCreateLedger(companyId, 'supplier', supplierId, purchaseReturn.supplier_name);
-      if (ledger) {
-        await addLedgerEntry({
-          companyId,
-          ledgerId: ledger.id,
-          entryDate: purchaseReturn.return_date,
-          debit: purchaseReturn.total,
-          credit: 0,
-          source: 'purchase_return',
-          referenceNo: purchaseReturn.return_no || `PRET-${returnId.slice(0, 8)}`,
-          referenceId: returnId,
-          remarks: `Void Purchase Return ${purchaseReturn.return_no || returnId}`,
-        });
-      }
+    if (companyId && supplierId && typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('ledgerUpdated', { detail: { ledgerType: 'supplier', entityId: supplierId } }));
     }
 
     const { error: updateError } = await supabase

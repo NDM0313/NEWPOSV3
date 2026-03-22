@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
-import { Loader2, FileText, FileSpreadsheet, ExternalLink } from 'lucide-react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { Loader2, FileText, FileSpreadsheet, ExternalLink, AlertTriangle, ShieldAlert } from 'lucide-react';
 import { Button } from '@/app/components/ui/button';
 import { useSupabase } from '@/app/context/SupabaseContext';
+import { useNavigation } from '@/app/context/NavigationContext';
 import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
 import { accountingReportsService, TrialBalanceResult, TrialBalanceRow } from '@/app/services/accountingReportsService';
 import { exportToPDF, exportToExcel, ExportData } from '@/app/utils/exportUtils';
@@ -26,12 +27,24 @@ const toExport = (r: TrialBalanceResult, formatCurrency: (n: number) => string):
   ],
 });
 
+function isArApControlTrialBalanceRow(row: TrialBalanceRow): boolean {
+  const c = (row.account_code || '').trim();
+  if (c === '1100' || c === '2000') return true;
+  const n = (row.account_name || '').trim().toLowerCase();
+  const t = (row.account_type || '').toLowerCase();
+  if (n === 'accounts receivable' || n === 'accounts payable' || n === 'worker payable') return true;
+  if (n.includes('receivable') && t.includes('asset')) return true;
+  if (n.includes('payable') && t.includes('liab')) return true;
+  return false;
+}
+
 export const TrialBalancePage: React.FC<{
   startDate: string;
   endDate: string;
   branchId?: string;
 }> = ({ startDate, endDate, branchId }) => {
   const { companyId } = useSupabase();
+  const { setCurrentView } = useNavigation();
   const { formatCurrency } = useFormatCurrency();
   const [data, setData] = useState<TrialBalanceResult | null>(null);
   const [loading, setLoading] = useState(true);
@@ -50,6 +63,17 @@ export const TrialBalancePage: React.FC<{
       .catch(() => setData(null))
       .finally(() => setLoading(false));
   }, [companyId, startDate, endDate, branchId]);
+
+  /** Debit−Credit; negative on receivable-type assets usually indicates mis-posting or legacy journals. */
+  const creditHeavyAssetRows = useMemo(() => {
+    if (!data?.rows?.length) return [];
+    return data.rows.filter((r) => {
+      const t = (r.account_type || '').toLowerCase();
+      const looksAsset = t.includes('asset') || t.includes('receivable') || t.includes('cash') || t.includes('bank');
+      const isPayable = /payable/i.test(r.account_name || '');
+      return looksAsset && !isPayable && r.balance < -0.01;
+    });
+  }, [data]);
 
   const handleExportPDF = () => {
     if (!data) return;
@@ -78,6 +102,27 @@ export const TrialBalancePage: React.FC<{
 
   return (
     <div className="space-y-4">
+      {creditHeavyAssetRows.length > 0 && (
+        <div className="rounded-xl border border-amber-500/35 bg-amber-500/[0.08] p-4 text-sm text-amber-100/95 flex gap-3">
+          <AlertTriangle className="w-5 h-5 shrink-0 text-amber-400 mt-0.5" />
+          <div>
+            <p className="font-semibold text-amber-100">Credit-heavy asset account(s)</p>
+            <p className="text-gray-400 text-xs mt-1 leading-relaxed">
+              Trial Balance uses <strong className="text-gray-300">Balance = Debits − Credits</strong> per account. For receivables/cash/bank,
+              a <strong className="text-gray-300">negative</strong> balance means total credits posted to that account exceed debits (e.g. reversed entries,
+              receipts mis-posted, or journals not tied to sales). This does <strong className="text-gray-300">not</strong> match the Contacts “receivables” column,
+              which is built from <strong className="text-gray-300">open invoice dues</strong> only. Use <strong className="text-gray-300">Ledger</strong> on the row to trace lines.
+            </p>
+            <ul className="mt-2 text-xs font-mono text-amber-200/90 space-y-0.5">
+              {creditHeavyAssetRows.map((r) => (
+                <li key={r.account_id}>
+                  {r.account_code} {r.account_name} → {formatCurrency(r.balance)}
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      )}
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-sm text-gray-400">
           Period: {startDate} to {endDate}
@@ -109,7 +154,7 @@ export const TrialBalancePage: React.FC<{
               <th className="p-3 text-right font-medium text-gray-300">Debit</th>
               <th className="p-3 text-right font-medium text-gray-300">Credit</th>
               <th className="p-3 text-right font-medium text-gray-300">Balance</th>
-              <th className="p-3 w-24 font-medium text-gray-300">Action</th>
+              <th className="p-3 w-40 font-medium text-gray-300">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-800">
@@ -120,8 +165,17 @@ export const TrialBalancePage: React.FC<{
                 </td>
               </tr>
             ) : (
-              data.rows.map((row) => (
-                <tr key={row.account_id} className="hover:bg-gray-800/30">
+              data.rows.map((row) => {
+                const t = (row.account_type || '').toLowerCase();
+                const looksAsset = t.includes('asset') || t.includes('receivable') || t.includes('cash') || t.includes('bank');
+                const isPayable = /payable/i.test(row.account_name || '');
+                const creditHeavyAsset = looksAsset && !isPayable && row.balance < -0.01;
+                const arApControl = isArApControlTrialBalanceRow(row);
+                return (
+                <tr
+                  key={row.account_id}
+                  className={creditHeavyAsset ? 'bg-amber-500/10 hover:bg-amber-500/15' : 'hover:bg-gray-800/30'}
+                >
                   <td className="p-3 font-mono text-gray-300">{row.account_code}</td>
                   <td className="p-3 text-white">{row.account_name}</td>
                   <td className="p-3 text-gray-400">{row.account_type}</td>
@@ -129,17 +183,30 @@ export const TrialBalancePage: React.FC<{
                   <td className="p-3 text-right text-gray-300">{row.credit ? formatCurrency(row.credit) : '—'}</td>
                   <td className="p-3 text-right font-medium text-white">{formatCurrency(row.balance)}</td>
                   <td className="p-3">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-7 px-2 text-blue-400 hover:text-blue-300"
-                      onClick={() => setLedgerRow(row)}
-                    >
-                      <ExternalLink size={12} className="mr-1" /> Ledger
-                    </Button>
+                    <div className="flex flex-col gap-1 items-start">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 px-2 text-blue-400 hover:text-blue-300"
+                        onClick={() => setLedgerRow(row)}
+                      >
+                        <ExternalLink size={12} className="mr-1" /> Ledger
+                      </Button>
+                      {arApControl && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 px-2 text-indigo-400 hover:text-indigo-300"
+                          onClick={() => setCurrentView('ar-ap-reconciliation-center')}
+                        >
+                          <ShieldAlert size={12} className="mr-1" /> Integrity Lab
+                        </Button>
+                      )}
+                    </div>
                   </td>
                 </tr>
-              ))
+              );
+              })
             )}
           </tbody>
           {data.rows.length > 0 && (

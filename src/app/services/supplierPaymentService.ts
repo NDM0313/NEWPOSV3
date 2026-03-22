@@ -9,6 +9,7 @@ import { documentNumberService } from '@/app/services/documentNumberService';
 import { accountingService } from '@/app/services/accountingService';
 import type { JournalEntry, JournalEntryLine } from '@/app/services/accountingService';
 import { generatePaymentReference } from '@/app/utils/paymentUtils';
+import { dispatchContactBalancesRefresh } from '@/app/lib/contactBalancesRefresh';
 
 export type SupplierPaymentReferenceType = 'purchase' | 'on_account';
 
@@ -160,5 +161,6 @@ export async function createSupplierPayment(params: CreateSupplierPaymentParams)
   const savedEntry = await accountingService.createEntry(journalEntry, lines, paymentId);
   const journalEntryId = (savedEntry as { id: string }).id;
 
+  dispatchContactBalancesRefresh(companyId);
   return { paymentId, journalEntryId, referenceNumber };
 }

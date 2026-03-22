@@ -14,6 +14,7 @@ import { settingsService } from '@/app/services/settingsService';
 import { productService } from '@/app/services/productService';
 import { postSaleDocumentAccounting, reverseSaleDocumentAccounting } from './documentPostingEngine';
 import { auditLogService } from './auditLogService';
+import { dispatchContactBalancesRefresh } from '@/app/lib/contactBalancesRefresh';
 
 /** Enrich sales with creator full_name. sales.created_by stores auth.users.id; resolve via users.auth_user_id. */
 async function enrichSalesWithCreatorNames(sales: any[]): Promise<void> {
@@ -991,27 +992,7 @@ export const saleService = {
         }
       }
 
-      // STEP 3: Delete ledger entries (customer ledger)
-      // CRITICAL: Delete ALL entries related to this sale (sale, payment, discount)
-      const { data: allLedgerEntries } = await supabase
-        .from('ledger_entries')
-        .select('id, source, reference_no, reference_id')
-        .eq('reference_id', id);
-
-      if (allLedgerEntries && allLedgerEntries.length > 0) {
-        console.log(`[SALE SERVICE] Found ${allLedgerEntries.length} ledger entries to delete`);
-        const { error: ledgerError } = await supabase
-          .from('ledger_entries')
-          .delete()
-          .eq('reference_id', id);
-
-        if (ledgerError) {
-          console.error('[SALE SERVICE] Error deleting ledger entries:', ledgerError);
-          throw ledgerError;
-        }
-      }
-
-      // STEP 4: Delete journal entries directly linked to sale
+      // STEP 3: Delete journal entries directly linked to sale (customer balance = sales + payments + GL; no duplicate subledger)
       const { data: journalEntries } = await supabase
         .from('journal_entries')
         .select('id')
@@ -1252,6 +1233,21 @@ export const saleService = {
       paymentAccountId: accountId,
       description: `Payment of Rs ${Number(amount).toLocaleString()} via ${paymentMethod} recorded`,
     }).catch((err) => console.warn('[SALE SERVICE] Activity log payment_added failed:', err));
+
+    const paymentRow = result.data as { id?: string } | null;
+    if (paymentRow?.id) {
+      const { ensureSalePaymentJournalAfterInsert } = await import('@/app/services/saleAccountingService');
+      const { assertActiveJournalForPaymentId } = await import('@/app/lib/paymentPostingInvariant');
+      const jeId = await ensureSalePaymentJournalAfterInsert(paymentRow.id);
+      if (!jeId) {
+        throw new Error(
+          'Payment was saved but no journal entry was created (trigger may be disabled or AR/payment account missing). Check Accounts Receivable (1100) and re-post.'
+        );
+      }
+      await assertActiveJournalForPaymentId(paymentRow.id, 'saleService.recordPayment');
+    }
+
+    dispatchContactBalancesRefresh(companyId);
     return result.data;
   },
 
@@ -1316,7 +1312,20 @@ export const saleService = {
       result = await doInsert(paymentData);
     }
     if (result.error) throw result.error;
-    return result.data as { id: string; reference_number: string };
+    const row = result.data as { id: string; reference_number: string };
+    if (row?.id) {
+      const { ensureOnAccountCustomerJournalIfMissing } = await import('@/app/services/saleAccountingService');
+      const { assertActiveJournalForPaymentId } = await import('@/app/lib/paymentPostingInvariant');
+      const jeId = await ensureOnAccountCustomerJournalIfMissing(row.id, contactName);
+      if (!jeId) {
+        throw new Error(
+          'On-account payment was saved but the journal entry could not be posted (AR 1100 or payment account missing).'
+        );
+      }
+      await assertActiveJournalForPaymentId(row.id, 'saleService.recordOnAccountPayment');
+    }
+    dispatchContactBalancesRefresh(companyId);
+    return row;
   },
 
   // Update payment
@@ -1509,6 +1518,7 @@ export const saleService = {
       }
 
       console.log('[SALE SERVICE] Payment updated successfully');
+      if ((data as any)?.company_id) dispatchContactBalancesRefresh(String((data as any).company_id));
       return data;
     } catch (error: any) {
       console.error('[SALE SERVICE] Error updating payment:', error);

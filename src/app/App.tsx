@@ -84,7 +84,9 @@ import { AccountingTestPage } from './components/test/AccountingTestPage';
 import { SalesListDesignTestPage } from './components/test/SalesListDesignTestPage';
 const CustomerLedgerTestPage = lazy(() => import('./components/customer-ledger-test/CustomerLedgerTestPage').then(m => ({ default: m.CustomerLedgerTestPage })));
 import TestLedger from './TestLedger';
-const CustomerLedgerInteractiveTest = lazy(() => import('./components/customer-ledger-test/CustomerLedgerInteractiveTest'));
+const CustomerLedgerInteractiveTest = lazy(() =>
+  import('./components/customer-ledger-test/CustomerLedgerInteractiveTest').then((m) => ({ default: m.default }))
+);
 import { SupabaseProvider } from './context/SupabaseContext';
 import { ProtectedRoute } from './components/auth/ProtectedRoute';
 import { PublicContactForm } from './components/public/PublicContactForm';
@@ -92,7 +94,15 @@ import { ErrorBoundary } from './components/shared/ErrorBoundary';
 import { useSettings } from './context/SettingsContext';
 import { GlobalFilterProvider } from './context/GlobalFilterContext';
 import { PermissionInspectorPage } from './components/admin/PermissionInspectorPage';
-const AccountingIntegrityLabPage = lazy(() => import('./components/admin/AccountingIntegrityLabPage'));
+const AccountingIntegrityLabPage = lazy(() =>
+  import('./components/admin/AccountingIntegrityLabPage').then((m) => ({ default: m.default }))
+);
+const AccountingTestBenchPage = lazy(() =>
+  import('./components/admin/AccountingTestBenchPage').then((m) => ({ default: m.default }))
+);
+const ArApReconciliationCenterPage = lazy(() =>
+  import('./components/accounting/ArApReconciliationCenterPage').then((m) => ({ default: m.default }))
+);
 
 // v1.0.1 - Enhanced Product Form with SKU auto-generation and global access
 
@@ -120,6 +130,23 @@ const AppContent = () => {
     return (
       <Layout>
         <PermissionInspectorPage />
+        <GlobalDrawer />
+      </Layout>
+    );
+  }
+
+  // Developer Integrity Lab (routes: /admin/developer-integrity-lab | legacy /admin/accounting-test-bench)
+  if (
+    pathname === '/admin/developer-integrity-lab' ||
+    pathname === '/admin/accounting-test-bench' ||
+    currentView === 'developer-integrity-lab' ||
+    currentView === 'accounting-test-bench'
+  ) {
+    return (
+      <Layout>
+        <Suspense fallback={<div className="flex items-center justify-center p-12 text-gray-500">Loading Integrity Lab…</div>}>
+          <AccountingTestBenchPage />
+        </Suspense>
         <GlobalDrawer />
       </Layout>
     );
@@ -165,7 +192,7 @@ const AppContent = () => {
     );
   }
 
-  if (currentView === 'accounting' && !modules.accountingModuleEnabled) {
+  if ((currentView === 'accounting' || currentView === 'ar-ap-reconciliation-center') && !modules.accountingModuleEnabled) {
     return (
       <Layout>
         <div className="flex items-center justify-center h-full">
@@ -225,7 +252,11 @@ const AppContent = () => {
           {studioProductionV3 ? <StudioProductionV3Dashboard /> : studioProductionV2 ? <StudioProductionV2Dashboard /> : <StudioDashboardNew />}
         </Suspense>
       )}
-      {currentView === 'studio-sales-list-new' && <StudioSalesListNew />}
+      {currentView === 'studio-sales-list-new' && (
+        <Suspense fallback={<div className="flex items-center justify-center p-12"><div className="animate-pulse text-gray-500">Loading...</div></div>}>
+          <StudioSalesListNew />
+        </Suspense>
+      )}
       {currentView === 'studio-pipeline' && (
         <Suspense fallback={<div className="flex items-center justify-center p-12"><div className="animate-pulse text-gray-500">Loading...</div></div>}>
           {studioProductionV3 ? <StudioProductionV3Pipeline /> : studioProductionV2 ? <StudioProductionV2Pipeline /> : <StudioPipelinePage />}
@@ -334,6 +365,11 @@ const AppContent = () => {
       {currentView === 'accounting-integrity-lab' && (
         <Suspense fallback={<div className="flex items-center justify-center p-12"><div className="animate-pulse text-gray-500">Loading lab…</div></div>}>
           <AccountingIntegrityLabPage />
+        </Suspense>
+      )}
+      {currentView === 'ar-ap-reconciliation-center' && (
+        <Suspense fallback={<div className="flex items-center justify-center p-12"><div className="animate-pulse text-gray-500">Loading…</div></div>}>
+          <ArApReconciliationCenterPage />
         </Suspense>
       )}
       {currentView === 'test-ledger' && <TestLedger />}

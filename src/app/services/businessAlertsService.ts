@@ -6,6 +6,7 @@
 import { inventoryIntelligenceService } from './inventoryIntelligenceService';
 import { getFinancialDashboardMetrics } from './financialDashboardService';
 import { supabase } from '@/lib/supabase';
+import { PURCHASE_POSTED_ACCOUNTING_STATUSES } from '@/app/lib/documentStatusConstants';
 
 export type AlertSeverity = 'info' | 'warning' | 'critical';
 
@@ -40,7 +41,12 @@ export async function getBusinessAlerts(companyId: string): Promise<BusinessAler
       inventoryIntelligenceService.getDeadStock(companyId),
       getFinancialDashboardMetrics(companyId),
       supabase.from('sales').select('id, due_amount, invoice_date, invoice_no').eq('company_id', companyId).eq('status', 'final').gt('due_amount', 0),
-      supabase.from('purchases').select('id, due_amount, po_date').eq('company_id', companyId).in('status', ['final', 'received']).gt('due_amount', 0),
+      supabase
+        .from('purchases')
+        .select('id, due_amount, po_date')
+        .eq('company_id', companyId)
+        .in('status', [...PURCHASE_POSTED_ACCOUNTING_STATUSES])
+        .gt('due_amount', 0),
     ]);
 
     if (lowStock.length > 0) {

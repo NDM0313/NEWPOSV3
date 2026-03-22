@@ -77,12 +77,57 @@ export const contactService = {
     const map = new Map<string, { receivables: number; payables: number }>();
     (data ?? []).forEach((row: { contact_id: string; receivables?: number; payables?: number }) => {
       if (row?.contact_id) {
-        map.set(row.contact_id, {
+        map.set(String(row.contact_id), {
           receivables: Number(row.receivables ?? 0) || 0,
           payables: Number(row.payables ?? 0) || 0,
         });
       }
     });
+    return map;
+  },
+
+  /**
+   * Per-contact GL slice (AR/AP/worker) from journal attribution — for UI comparison to operational
+   * (`get_contact_balances_summary`), not for replacing row operational amounts.
+   * Returns null if RPC missing / error (e.g. migration not applied).
+   */
+  async getContactPartyGlBalancesMap(
+    companyId: string,
+    branchId?: string | null
+  ): Promise<
+    Map<string, { glArReceivable: number; glApPayable: number; glWorkerPayable: number }> | null
+  > {
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    const safeBranchId =
+      branchId && branchId !== 'all' && typeof branchId === 'string' && uuidRegex.test(branchId.trim())
+        ? branchId.trim()
+        : null;
+    const { data, error } = await supabase.rpc('get_contact_party_gl_balances', {
+      p_company_id: companyId,
+      p_branch_id: safeBranchId,
+    });
+    if (error) {
+      if (import.meta.env?.DEV) {
+        console.warn('[CONTACT SERVICE] get_contact_party_gl_balances RPC error:', error.message);
+      }
+      return null;
+    }
+    const map = new Map<string, { glArReceivable: number; glApPayable: number; glWorkerPayable: number }>();
+    (data ?? []).forEach(
+      (row: {
+        contact_id: string;
+        gl_ar_receivable?: number | string | null;
+        gl_ap_payable?: number | string | null;
+        gl_worker_payable?: number | string | null;
+      }) => {
+        if (!row?.contact_id) return;
+        map.set(String(row.contact_id), {
+          glArReceivable: Number(row.gl_ar_receivable ?? 0) || 0,
+          glApPayable: Number(row.gl_ap_payable ?? 0) || 0,
+          glWorkerPayable: Number(row.gl_worker_payable ?? 0) || 0,
+        });
+      }
+    );
     return map;
   },
 

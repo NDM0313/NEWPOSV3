@@ -4,11 +4,8 @@
  * No per-sale ledger clutter; batch posting only via Post Commission action.
  */
 import { supabase } from '@/lib/supabase';
-import { toast } from 'sonner';
 import { accountHelperService } from './accountHelperService';
 import { accountingService } from './accountingService';
-import { getOrCreateLedger, addLedgerEntry } from './ledgerService';
-
 export interface CommissionSaleRow {
   id: string;
   invoice_no: string;
@@ -355,57 +352,15 @@ export async function postCommissionBatch(params: PostCommissionBatchParams): Pr
 
   if (updateError) throw updateError;
 
-  // Sync to User Ledger so posted commission shows in User Ledger (ledger_entries)
-  const bySalesman = new Map<string, number>();
-  for (const s of pendingSales as { salesman_id: string | null; commission_amount: number }[]) {
-    const sid = s.salesman_id ?? 'unassigned';
-    if (sid === 'unassigned') continue;
-    bySalesman.set(sid, (bySalesman.get(sid) ?? 0) + (Number(s.commission_amount) || 0));
-  }
-  // When all sales have no salesman_id, attribute full batch to batch's primary salesman so it still shows in User Ledger
-  if (bySalesman.size === 0 && firstSalesmanId && totalCommission > 0) {
-    bySalesman.set(firstSalesmanId, totalCommission);
-  }
-  const salesmanIds = [...bySalesman.keys()];
-  let nameBySalesman: Record<string, string> = {};
-  if (salesmanIds.length > 0) {
-    const { data: users } = await supabase.from('users').select('id, full_name, email').in('id', salesmanIds);
-    (users || []).forEach((u: any) => { nameBySalesman[u.id] = u.full_name || u.email || 'User'; });
-  }
-  let ledgerSyncFailed = false;
-  for (const [sid, amount] of bySalesman) {
-    if (amount <= 0) continue;
-    try {
-      const ledger = await getOrCreateLedger(companyId, 'user', sid, nameBySalesman[sid] || 'User');
-      if (!ledger) {
-        ledgerSyncFailed = true;
-        console.warn('[CommissionReport] User ledger not found/created for salesman', sid);
-        continue;
-      }
-      const entry = await addLedgerEntry({
-        companyId,
-        ledgerId: ledger.id,
-        entryDate: end,
-        debit: amount,
-        credit: 0,
-        source: 'commission',
-        referenceNo: batchNo,
-        referenceId: batch.id,
-        remarks: `Commission - ${batchNo}`,
-      });
-      if (entry && typeof window !== 'undefined') {
-        window.dispatchEvent(new CustomEvent('ledgerUpdated', { detail: { ledgerType: 'user', entityId: sid } }));
-      } else if (!entry) {
-        ledgerSyncFailed = true;
-        console.warn('[CommissionReport] addLedgerEntry failed for salesman', sid, '(check RLS/company)');
-      }
-    } catch (ledgerErr) {
-      ledgerSyncFailed = true;
-      console.warn('[CommissionReport] User ledger sync failed for salesman', sid, ledgerErr);
+  if (typeof window !== 'undefined') {
+    const uids = new Set<string>();
+    for (const s of pendingSales as { salesman_id: string | null }[]) {
+      if (s.salesman_id) uids.add(s.salesman_id);
     }
-  }
-  if (ledgerSyncFailed && typeof window !== 'undefined') {
-    toast.warning('Commission posted but User Ledger sync failed for some entries. Check console.');
+    if (uids.size === 0 && firstSalesmanId) uids.add(firstSalesmanId);
+    uids.forEach((entityId) =>
+      window.dispatchEvent(new CustomEvent('ledgerUpdated', { detail: { ledgerType: 'user', entityId } }))
+    );
   }
 
   return {

@@ -2,6 +2,7 @@ import { supabase } from '@/lib/supabase';
 import { getDocumentConversionSchemaFlags } from '@/app/lib/documentConversionSchema';
 import { canPostAccountingForPurchaseStatus, wasPurchasePostedForReversal } from '@/app/lib/postingStatusGate';
 import { activityLogService } from '@/app/services/activityLogService';
+import { dispatchContactBalancesRefresh } from '@/app/lib/contactBalancesRefresh';
 import { createSupplierPayment } from '@/app/services/supplierPaymentService';
 import { PURCHASE_HEADER_COLUMNS } from '@/app/lib/purchaseDbConstants';
 import { postPurchaseDocumentAccounting, reversePurchaseDocumentAccounting } from '@/app/services/documentPostingEngine';
@@ -944,53 +945,7 @@ export const purchaseService = {
         }
       }
 
-      // STEP 3: Delete ledger entries (supplier ledger)
-      // CRITICAL: Delete ALL entries related to this purchase (purchase, payment, discount, cargo)
-      const { data: ledgerEntries } = await supabase
-        .from('ledger_entries')
-        .select('id, source, reference_no')
-        .or(`and(source.eq.purchase,reference_id.eq.${id}),and(source.eq.payment,reference_id.eq.${id})`)
-        .like('reference_no', `%${id}%`); // Also match by reference_no pattern
-
-      // More comprehensive: Delete by reference_id regardless of source
-      const { data: allLedgerEntries } = await supabase
-        .from('ledger_entries')
-        .select('id, source, reference_no, reference_id')
-        .eq('reference_id', id);
-
-      const entriesToDelete = allLedgerEntries || ledgerEntries || [];
-      
-      if (entriesToDelete.length > 0) {
-        console.log(`[PURCHASE SERVICE] Found ${entriesToDelete.length} ledger entries to delete:`, entriesToDelete.map(e => ({ source: e.source, ref: e.reference_no })));
-        
-        // Delete by reference_id (catches all entries linked to this purchase)
-        const { error: ledgerError } = await supabase
-          .from('ledger_entries')
-          .delete()
-          .eq('reference_id', id);
-
-        if (ledgerError) {
-          console.error('[PURCHASE SERVICE] Error deleting ledger entries:', ledgerError);
-          // Try alternative: delete by source and reference_no pattern
-          const purchaseNo = entriesToDelete[0]?.reference_no;
-          if (purchaseNo) {
-            const { error: altError } = await supabase
-              .from('ledger_entries')
-              .delete()
-              .eq('reference_no', purchaseNo);
-            
-            if (altError) {
-              console.error('[PURCHASE SERVICE] Alternative ledger delete also failed:', altError);
-            } else {
-              console.log('[PURCHASE SERVICE] ✅ Deleted ledger entries by reference_no');
-            }
-          }
-        } else {
-          console.log('[PURCHASE SERVICE] ✅ Deleted ledger entries by reference_id');
-        }
-      }
-
-      // STEP 4: Delete journal entries directly linked to purchase (if any)
+      // STEP 3: Delete journal entries directly linked to purchase (supplier statement = purchases + payments; no duplicate subledger)
       const { data: journalEntries } = await supabase
         .from('journal_entries')
         .select('id')
@@ -1303,6 +1258,7 @@ export const purchaseService = {
       }
 
       console.log('[PURCHASE SERVICE] Payment updated successfully');
+      if ((data as any)?.company_id) dispatchContactBalancesRefresh(String((data as any).company_id));
       return data;
     } catch (error: any) {
       console.error('[PURCHASE SERVICE] Error updating payment:', error);

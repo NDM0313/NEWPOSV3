@@ -28,6 +28,7 @@ const CORE_PAYMENT_ACCOUNTS: DefaultAccount[] = [
 // Additional mandatory accounts (for accounting module)
 const ADDITIONAL_MANDATORY_ACCOUNTS: DefaultAccount[] = [
   { code: '1100', name: 'Accounts Receivable', type: 'asset' }, // Required for customer payment entries
+  { code: '1180', name: 'Worker Advance', type: 'asset' }, // Prepaid worker pay before stage bill (studio)
   { code: '2000', name: 'Accounts Payable', type: 'liability' }, // Required for supplier/purchase payment entries
   { code: '2010', name: 'Worker Payable', type: 'liability' }, // Required for studio worker payments
   { code: '2011', name: 'Security Deposit', type: 'liability' }, // Rental security deposit (Issue 11)

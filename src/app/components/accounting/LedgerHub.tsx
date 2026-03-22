@@ -1,6 +1,6 @@
 /**
- * Ledger content: same page, same Customer Ledger UI. Type comes from top-menu dropdown (no inner Ledger dropdown).
- * Only entity selector (Customer/Supplier/User/Worker) + date filter + summary cards + tabs.
+ * Party statements: Operational / GL / Reconciliation per entity (no mixed running balance).
+ * Entity type from Accounting tab “Party statements” dropdown — no second ledger switch inside the page.
  */
 
 import { useState, useEffect } from 'react';
@@ -95,8 +95,18 @@ export function LedgerHub({ ledgerType }: LedgerHubProps) {
 
   const entityLabel = ledgerType === 'customer' ? 'Customer' : ledgerType === 'supplier' ? 'Supplier' : ledgerType === 'user' ? 'User' : 'Worker';
 
+  const engineHint =
+    ledgerType === 'customer'
+      ? 'Customer statement: Operational / GL / Reconciliation tabs (LedgerHub).'
+      : ledgerType === 'supplier' || ledgerType === 'worker'
+        ? 'Same three-engine statement below — no mixed running balance.'
+        : 'User statement: operational subledger; GL party slice not applicable.';
+
   return (
     <div className="space-y-4">
+      <p className="text-[11px] text-amber-200/80 bg-amber-500/10 border border-amber-500/25 rounded-lg px-3 py-2">
+        {engineHint}. GL truth: journal lines / Trial Balance.
+      </p>
       {/* Only entity selector – same page, same filters, same date picker, same summary cards (no Ledger type dropdown here) */}
       <div className="flex flex-wrap items-center gap-4">
         <div className="flex items-center gap-2">

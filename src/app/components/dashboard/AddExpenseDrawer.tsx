@@ -30,6 +30,7 @@ import { format } from "date-fns";
 import { cn } from "../ui/utils";
 import { VirtualNumpad } from "../ui/virtual-numpad";
 import { useExpenses } from "@/app/context/ExpenseContext";
+import { useAccounting } from "@/app/context/AccountingContext";
 import { useSupabase } from "@/app/context/SupabaseContext";
 import { branchService } from "@/app/services/branchService";
 import { accountService } from "@/app/services/accountService";
@@ -64,6 +65,7 @@ export const AddExpenseDrawer = ({ isOpen, onClose, onSuccess, expenseToEdit }: 
   const { canManageSettings } = useCheckPermission();
   const { companyId, branchId: contextBranchId, requiresBranchSelection } = useSupabase();
   const { createExpense, updateExpense, refreshExpenses } = useExpenses();
+  const { accounts: coaAccounts } = useAccounting();
 
   const [date, setDate] = useState<Date | undefined>(new Date());
   const [amount, setAmount] = useState("");
@@ -103,14 +105,17 @@ export const AddExpenseDrawer = ({ isOpen, onClose, onSuccess, expenseToEdit }: 
   useEffect(() => {
     if (!isOpen || !companyId) return;
     accountService.getPaymentAccountsOnly(companyId).then((list) => {
-      setPaymentAccounts((list || []).map((a: any) => ({
-        id: a.id,
-        name: a.name || a.code || '',
-        balance: a.balance ?? 0,
-        icon: Wallet,
-      })));
+      setPaymentAccounts((list || []).map((a: any) => {
+        const gl = coaAccounts.find((c) => c.id === a.id);
+        return {
+          id: a.id,
+          name: a.name || a.code || '',
+          balance: gl ? Number(gl.balance) || 0 : 0,
+          icon: Wallet,
+        };
+      }));
     }).catch(() => setPaymentAccounts([]));
-  }, [isOpen, companyId]);
+  }, [isOpen, companyId, coaAccounts]);
 
   // Pre-fill form when editing
   useEffect(() => {

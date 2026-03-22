@@ -56,6 +56,8 @@ export interface AccountLedgerEntry {
   counter_account?: string;
   notes?: string; // User notes/narration (separate from description)
   document_type?: string; // Document Type (Sale, Payment, etc.)
+  /** GL account code on the viewed line (e.g. 2000, 2010) for multi-account party views */
+  gl_account_code?: string;
 }
 
 export const accountingService = {
@@ -67,7 +69,7 @@ export const accountingService = {
       const startStr = startDate == null ? undefined : typeof startDate === 'string' ? startDate.slice(0, 10) : startDate.toISOString().slice(0, 10);
       const endStr = endDate == null ? undefined : typeof endDate === 'string' ? endDate.slice(0, 10) : endDate.toISOString().slice(0, 10);
 
-      // SOURCE LOCK (Phase 1): journal_entries + journal_entry_lines only (no ledger_entries for GL).
+      // SOURCE LOCK (Phase 1): journal_entries + journal_entry_lines only for GL.
       // Embed account name per line for display; avoid payment embed so query works when payment_id column is missing.
       let query = supabase
         .from('journal_entries')
@@ -1011,14 +1013,19 @@ export const accountingService = {
   },
 
   // Get customer ledger from journal_entries (filtered by Accounts Receivable account)
+  /**
+   * @param ledgerMode `gl_journal_only` — AR journal lines for this customer only; no document/RPC merge into running balance.
+   */
   async getCustomerLedger(
     customerId: string,
     companyId: string,
     branchId?: string,
     startDate?: string,
     endDate?: string,
-    searchTerm?: string
+    searchTerm?: string,
+    ledgerMode: 'default' | 'gl_journal_only' = 'default'
   ): Promise<AccountLedgerEntry[]> {
+    const glJournalOnly = ledgerMode === 'gl_journal_only';
     try {
       // Accounts Receivable only: canonical code 1100. Exclude 2000 (Accounts Payable).
       const { data: rawAr } = await supabase
@@ -1078,8 +1085,8 @@ export const accountingService = {
       const rpcSales = await supabase.rpc('get_customer_ledger_sales', {
         p_company_id: companyId,
         p_customer_id: customerId,
-        p_from_date: startDate || null,
-        p_to_date: endDate || null,
+        p_from_date: glJournalOnly ? null : startDate || null,
+        p_to_date: glJournalOnly ? null : endDate || null,
       });
       const customerSales = !rpcSales.error ? (rpcSales.data ?? []) : [];
       const saleIds = customerSales.map((s: any) => s.id);
@@ -1091,8 +1098,8 @@ export const accountingService = {
         const rpcPay = await supabase.rpc('get_customer_ledger_payments', {
           p_company_id: companyId,
           p_sale_ids: saleIds,
-          p_from_date: startDate || null,
-          p_to_date: endDate || null,
+          p_from_date: glJournalOnly ? null : startDate || null,
+          p_to_date: glJournalOnly ? null : endDate || null,
         });
         if (!rpcPay.error) customerPayments = rpcPay.data ?? [];
       }
@@ -1108,12 +1115,14 @@ export const accountingService = {
         .eq('contact_id', customerId)
         .eq('reference_type', 'on_account');
       if (onAccountData?.length) {
-        const dateFiltered = (onAccountData as any[]).filter((p: any) => {
-          const d = (p.payment_date || '').toString().slice(0, 10);
-          if (startDate && d < startDate) return false;
-          if (endDate && d > endDate) return false;
-          return true;
-        });
+        const dateFiltered = glJournalOnly
+          ? (onAccountData as any[])
+          : (onAccountData as any[]).filter((p: any) => {
+              const d = (p.payment_date || '').toString().slice(0, 10);
+              if (startDate && d < startDate) return false;
+              if (endDate && d > endDate) return false;
+              return true;
+            });
         onAccountPayments = dateFiltered.map((p: any) => ({ ...p, reference_type: 'on_account', reference_id: p.reference_id ?? null }));
       }
       // Add Entry V2: manual_receipt (customer receipt) — same contact, must appear in customer ledger
@@ -1125,12 +1134,14 @@ export const accountingService = {
         .eq('contact_id', customerId)
         .eq('reference_type', 'manual_receipt');
       if (manualReceiptData?.length) {
-        const dateFiltered = (manualReceiptData as any[]).filter((p: any) => {
-          const d = (p.payment_date || '').toString().slice(0, 10);
-          if (startDate && d < startDate) return false;
-          if (endDate && d > endDate) return false;
-          return true;
-        });
+        const dateFiltered = glJournalOnly
+          ? (manualReceiptData as any[])
+          : (manualReceiptData as any[]).filter((p: any) => {
+              const d = (p.payment_date || '').toString().slice(0, 10);
+              if (startDate && d < startDate) return false;
+              if (endDate && d > endDate) return false;
+              return true;
+            });
         manualReceiptPayments = dateFiltered.map((p: any) => ({ ...p, reference_type: 'manual_receipt', reference_id: p.reference_id ?? null }));
       }
       const existingPaymentIds = new Set(customerPayments.map((p: any) => p.id));
@@ -1294,6 +1305,12 @@ export const accountingService = {
 
         // Pattern 2b: reference_type='manual_receipt' (Add Entry V2 customer receipt) with payment_id set
         if (entry.reference_type === 'manual_receipt' && entry.payment_id && paymentIds.includes(entry.payment_id)) {
+          paymentMatchCount++;
+          return true;
+        }
+
+        // Pattern 2c: manual_receipt JE stores reference_id = customer contact id
+        if (entry.reference_type === 'manual_receipt' && entry.reference_id && String(entry.reference_id) === String(customerId)) {
           paymentMatchCount++;
           return true;
         }
@@ -1514,8 +1531,12 @@ export const accountingService = {
         };
       });
 
-      // Fallback: no journal entries but we have sales/payments/rentals – build ledger from RPC data
-      if (ledgerEntriesFromRange.length === 0 && (customerSales.length > 0 || customerPayments.length > 0 || customerRentals.length > 0)) {
+      // Fallback: no journal entries but we have sales/payments/rentals – build ledger from RPC data (operational only — never in gl_journal_only)
+      if (
+        !glJournalOnly &&
+        ledgerEntriesFromRange.length === 0 &&
+        (customerSales.length > 0 || customerPayments.length > 0 || customerRentals.length > 0)
+      ) {
         const items: { date: string; reference_number: string; description: string; debit: number; credit: number; sale_id?: string; payment_id?: string; rental_id?: string; source_module: string; document_type: string }[] = [];
         customerSales.forEach((s: any) => {
           const d = (s.invoice_date || '').toString();
@@ -1625,7 +1646,7 @@ export const accountingService = {
       const missingSales = customerSales.filter((s: any) => !saleIdsInJournal.has(s.id));
       const missingPayments = customerPayments.filter((p: any) => !paymentIdsInJournal.has(p.id));
       const hasRentalsToAdd = customerRentals.length > 0 || customerRentalPayments.length > 0;
-      if (missingSales.length > 0 || missingPayments.length > 0 || hasRentalsToAdd) {
+      if (!glJournalOnly && (missingSales.length > 0 || missingPayments.length > 0 || hasRentalsToAdd)) {
         const mergeItems: { date: string; reference_number: string; description: string; debit: number; credit: number; sale_id?: string; payment_id?: string; rental_id?: string; source_module: string; document_type: string }[] = [];
         missingSales.forEach((s: any) => {
           const d = (s.invoice_date || '').toString();
@@ -1756,6 +1777,332 @@ export const accountingService = {
   },
 
   /**
+   * Supplier AP only: journal lines on Accounts Payable (2000) for this supplier — no purchase/payment document merge.
+   * Running balance = cumulative (credit − debit) on AP (liability: credit increases what we owe).
+   */
+  async getSupplierApGlJournalLedger(
+    supplierId: string,
+    companyId: string,
+    branchId?: string,
+    startDate?: string,
+    endDate?: string
+  ): Promise<AccountLedgerEntry[]> {
+    try {
+      const { data: rawAp } = await supabase
+        .from('accounts')
+        .select('id, code, name')
+        .eq('company_id', companyId)
+        .eq('is_active', true)
+        .or('code.eq.2000,name.ilike.%Accounts Payable%');
+      const apAccounts = (rawAp || []).filter((a: any) => String(a.code).trim() !== '1100');
+      if (apAccounts.length === 0) return [];
+      const apAccountIds = apAccounts.map((a: any) => a.id);
+
+      const { data: lines, error } = await supabase
+        .from('journal_entry_lines')
+        .select(
+          `
+          *,
+          account:accounts(id, name, code),
+          journal_entry:journal_entries(
+            id, entry_no, entry_date, description, reference_type, reference_id, payment_id,
+            branch_id, created_by, created_at, is_void,
+            branch:branches(id, name, code)
+          )
+        `
+        )
+        .in('account_id', apAccountIds)
+        .order('created_at', { ascending: true });
+
+      if (error) console.error('[ACCOUNTING SERVICE] getSupplierApGlJournalLedger lines error:', error);
+      const linesToUse = (lines || []).filter((l: any) => (l.journal_entry && (l.journal_entry as any).is_void) !== true);
+
+      const { data: purchases } = await supabase
+        .from('purchases')
+        .select('id')
+        .eq('company_id', companyId)
+        .eq('supplier_id', supplierId);
+      const supplierPurchaseIds = new Set((purchases || []).map((p: { id: string }) => p.id));
+
+      const { data: payRows } = await supabase
+        .from('payments')
+        .select('id, contact_id, reference_type, reference_id')
+        .eq('company_id', companyId);
+      const supplierPaymentIds = new Set<string>();
+      (payRows || []).forEach((p: any) => {
+        if (p.contact_id === supplierId) supplierPaymentIds.add(p.id);
+        if (String(p.reference_type).toLowerCase() === 'purchase' && p.reference_id && supplierPurchaseIds.has(p.reference_id)) {
+          supplierPaymentIds.add(p.id);
+        }
+      });
+
+      const supplierLines = linesToUse.filter((line: any) => {
+        const entry = line.journal_entry;
+        if (!entry) return false;
+        const rt = String(entry.reference_type || '').toLowerCase();
+        const rid = entry.reference_id;
+
+        if (
+          ['purchase', 'purchase_return', 'purchase_adjustment', 'purchase_reversal'].includes(rt) &&
+          rid &&
+          supplierPurchaseIds.has(rid)
+        ) {
+          return true;
+        }
+        if (entry.payment_id && supplierPaymentIds.has(entry.payment_id)) return true;
+        if (rt === 'payment' && rid && supplierPaymentIds.has(rid)) return true;
+        if (rt === 'on_account' && rid && String(rid) === String(supplierId)) return true;
+        if (rt === 'manual_payment' && rid && String(rid) === String(supplierId)) return true;
+        return false;
+      });
+
+      const branchFiltered = branchId
+        ? supplierLines.filter((line: any) => line.journal_entry?.branch_id === branchId)
+        : supplierLines;
+
+      let openingBalance = 0;
+      if (startDate) {
+        branchFiltered.forEach((line: any) => {
+          const entry = line.journal_entry;
+          if (!entry || entry.entry_date >= startDate) return;
+          openingBalance += (line.credit || 0) - (line.debit || 0);
+        });
+      }
+
+      const rangeLines = branchFiltered.filter((line: any) => {
+        const entry = line.journal_entry;
+        if (!entry) return false;
+        const entryDate = entry.entry_date;
+        if (startDate && entryDate < startDate) return false;
+        if (endDate && entryDate > endDate) return false;
+        return true;
+      });
+
+      rangeLines.sort((a: any, b: any) => {
+        const dateA = String(a.journal_entry?.entry_date || '');
+        const dateB = String(b.journal_entry?.entry_date || '');
+        if (dateA !== dateB) return dateA.localeCompare(dateB);
+        const createdA = String(a.journal_entry?.created_at || a.created_at || '');
+        const createdB = String(b.journal_entry?.created_at || b.created_at || '');
+        return createdA.localeCompare(createdB);
+      });
+
+      let runningBalance = openingBalance;
+      const ledgerEntriesFromRange: AccountLedgerEntry[] = rangeLines.map((line: any) => {
+        const entry = line.journal_entry;
+        const debit = line.debit || 0;
+        const credit = line.credit || 0;
+        runningBalance += credit - debit;
+        const code = line.account?.code != null ? String(line.account.code) : '';
+        return {
+          date: entry.entry_date,
+          created_at: entry.created_at,
+          reference_number: entry.entry_no || entry.id?.slice(0, 8) || '—',
+          entry_no: entry.entry_no,
+          description: entry.description || line.description || '—',
+          debit,
+          credit,
+          running_balance: runningBalance,
+          source_module: 'Accounting',
+          journal_entry_id: entry.id,
+          payment_id: entry.payment_id,
+          branch_id: entry.branch_id,
+          branch_name: entry.branch?.name,
+          account_name: line.account?.name || '',
+          gl_account_code: code,
+          document_type: 'AP Journal',
+        };
+      });
+
+      const ledgerEntries: AccountLedgerEntry[] = startDate
+        ? [
+            {
+              date: startDate,
+              reference_number: '—',
+              entry_no: undefined,
+              description: 'Opening Balance (AP GL)',
+              debit: 0,
+              credit: 0,
+              running_balance: openingBalance,
+              source_module: 'Accounting',
+              journal_entry_id: '',
+              document_type: 'Opening Balance',
+              account_name: '',
+            },
+            ...ledgerEntriesFromRange,
+          ]
+        : ledgerEntriesFromRange;
+
+      return ledgerEntries;
+    } catch (e) {
+      console.error('[ACCOUNTING SERVICE] getSupplierApGlJournalLedger:', e);
+      return [];
+    }
+  },
+
+  /**
+   * Worker party: journal lines on Worker Payable (2010) and Worker Advance (1180) only — no worker_ledger_entries merge.
+   * running_balance = net GL exposure (WP liability credit−debit minus WA asset debit−credit), same basis as get_contact_party_gl_balances worker slice.
+   */
+  async getWorkerPartyGlJournalLedger(
+    workerId: string,
+    companyId: string,
+    branchId?: string,
+    startDate?: string,
+    endDate?: string
+  ): Promise<AccountLedgerEntry[]> {
+    try {
+      const { data: accts } = await supabase
+        .from('accounts')
+        .select('id, code, name')
+        .eq('company_id', companyId)
+        .eq('is_active', true)
+        .or('code.eq.2010,code.eq.1180,name.ilike.%Worker Payable%,name.ilike.%Worker Advance%');
+      const wpWa = (accts || []).filter((a: any) => {
+        const c = String(a.code || '').trim();
+        return c === '2010' || c === '1180';
+      });
+      if (wpWa.length === 0) return [];
+      const accountIds = wpWa.map((a: any) => a.id);
+      const codeById = new Map(wpWa.map((a: any) => [a.id, String(a.code || '').trim()]));
+      const nameById = new Map(wpWa.map((a: any) => [a.id, String(a.name || '')]));
+
+      const { data: lines, error } = await supabase
+        .from('journal_entry_lines')
+        .select(
+          `
+          *,
+          account:accounts(id, name, code),
+          journal_entry:journal_entries(
+            id, entry_no, entry_date, description, reference_type, reference_id, payment_id,
+            branch_id, created_by, created_at, is_void,
+            branch:branches(id, name, code)
+          )
+        `
+        )
+        .in('account_id', accountIds)
+        .order('created_at', { ascending: true });
+
+      if (error) console.error('[ACCOUNTING SERVICE] getWorkerPartyGlJournalLedger lines error:', error);
+      const linesToUse = (lines || []).filter((l: any) => (l.journal_entry && (l.journal_entry as any).is_void) !== true);
+
+      const { data: workerPayments } = await supabase
+        .from('payments')
+        .select('id')
+        .eq('company_id', companyId)
+        .eq('contact_id', workerId);
+      const workerPaymentIds = new Set((workerPayments || []).map((p: { id: string }) => p.id));
+
+      const workerLines = linesToUse.filter((line: any) => {
+        const entry = line.journal_entry;
+        if (!entry) return false;
+        const rt = String(entry.reference_type || '').toLowerCase();
+        const rid = entry.reference_id;
+        if ((rt === 'worker_payment' || rt === 'worker_advance_settlement') && rid && String(rid) === String(workerId)) {
+          return true;
+        }
+        if (entry.payment_id && workerPaymentIds.has(entry.payment_id)) return true;
+        return false;
+      });
+
+      const branchFiltered = branchId
+        ? workerLines.filter((line: any) => line.journal_entry?.branch_id === branchId)
+        : workerLines;
+
+      let openWp = 0;
+      let openWa = 0;
+      if (startDate) {
+        branchFiltered.forEach((line: any) => {
+          const entry = line.journal_entry;
+          if (!entry || entry.entry_date >= startDate) return;
+          const aid = line.account_id;
+          const code = codeById.get(aid) || '';
+          const debit = line.debit || 0;
+          const credit = line.credit || 0;
+          if (code === '2010') openWp += credit - debit;
+          else if (code === '1180') openWa += debit - credit;
+        });
+      }
+      let openingNet = openWp - openWa;
+
+      const rangeLines = branchFiltered.filter((line: any) => {
+        const entry = line.journal_entry;
+        if (!entry) return false;
+        const entryDate = entry.entry_date;
+        if (startDate && entryDate < startDate) return false;
+        if (endDate && entryDate > endDate) return false;
+        return true;
+      });
+
+      rangeLines.sort((a: any, b: any) => {
+        const dateA = String(a.journal_entry?.entry_date || '');
+        const dateB = String(b.journal_entry?.entry_date || '');
+        if (dateA !== dateB) return dateA.localeCompare(dateB);
+        const createdA = String(a.journal_entry?.created_at || a.created_at || '');
+        const createdB = String(b.journal_entry?.created_at || b.created_at || '');
+        return createdA.localeCompare(createdB);
+      });
+
+      let wpRun = openWp;
+      let waRun = openWa;
+      let runningBalance = openingNet;
+
+      const ledgerEntriesFromRange: AccountLedgerEntry[] = rangeLines.map((line: any) => {
+        const entry = line.journal_entry;
+        const debit = line.debit || 0;
+        const credit = line.credit || 0;
+        const aid = line.account_id;
+        const code = codeById.get(aid) || String(line.account?.code || '').trim();
+        if (code === '2010') wpRun += credit - debit;
+        else if (code === '1180') waRun += debit - credit;
+        runningBalance = wpRun - waRun;
+        return {
+          date: entry.entry_date,
+          created_at: entry.created_at,
+          reference_number: entry.entry_no || entry.id?.slice(0, 8) || '—',
+          entry_no: entry.entry_no,
+          description: `${nameById.get(aid) || line.account?.name || code} — ${entry.description || line.description || '—'}`,
+          debit,
+          credit,
+          running_balance: runningBalance,
+          source_module: 'Accounting',
+          journal_entry_id: entry.id,
+          payment_id: entry.payment_id,
+          branch_id: entry.branch_id,
+          branch_name: entry.branch?.name,
+          account_name: line.account?.name || '',
+          gl_account_code: code,
+          document_type: code === '2010' ? 'Worker Payable' : 'Worker Advance',
+        };
+      });
+
+      const ledgerEntries: AccountLedgerEntry[] = startDate
+        ? [
+            {
+              date: startDate,
+              reference_number: '—',
+              entry_no: undefined,
+              description: 'Opening Balance (WP/WA GL net)',
+              debit: 0,
+              credit: 0,
+              running_balance: openingNet,
+              source_module: 'Accounting',
+              journal_entry_id: '',
+              document_type: 'Opening Balance',
+              account_name: '',
+            },
+            ...ledgerEntriesFromRange,
+          ]
+        : ledgerEntriesFromRange;
+
+      return ledgerEntries;
+    } catch (e) {
+      console.error('[ACCOUNTING SERVICE] getWorkerPartyGlJournalLedger:', e);
+      return [];
+    }
+  },
+
+  /**
    * Create journal entry with lines.
    * Canonical rule: when the entry touches Cash/Bank/Wallet (payment account), callers must create
    * a payments row first and pass paymentId so Roznamcha shows the transaction.
@@ -1802,6 +2149,21 @@ export const accountingService = {
     // CRITICAL: Link journal entry to payment if provided
     if (paymentId) {
       insertData.payment_id = paymentId;
+    }
+    // Payment contract (Phase 5): mirror payments.id onto reference_id when unset (except document-root JEs and
+    // manual_receipt, which may use contact_id on reference_id for customer ledger matching).
+    if (paymentId && !insertData.reference_id) {
+      const rt = String(entry.reference_type || '').toLowerCase();
+      if (rt !== 'sale' && rt !== 'purchase' && rt !== 'manual_receipt') {
+        insertData.reference_id = paymentId;
+      }
+    }
+    // Standalone payment / payment_adjustment rows: always keep reference_id = payment_id when linked
+    if (paymentId) {
+      const rt = String(entry.reference_type || '').toLowerCase();
+      if (rt === 'payment' || rt === 'payment_adjustment') {
+        insertData.reference_id = paymentId;
+      }
     }
     if (entry.attachments !== undefined && entry.attachments != null && Array.isArray(entry.attachments) && entry.attachments.length > 0) {
       insertData.attachments = JSON.parse(JSON.stringify(entry.attachments));

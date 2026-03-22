@@ -20,6 +20,7 @@
     "inventory-validate": "node scripts/inventory-validate.js",
     "phase1-analysis": "node scripts/erp-phase1-analysis.js",
     "verify:final": "node scripts/final-acceptance-verification.js",
+    "verify:journal-sot": "node scripts/verify-journal-source-of-truth.mjs",
     "apply-storage-rls": "node scripts/apply-storage-rls.js",
     "dev:with-migrate": "node scripts/run-migrations.js && vite",
     "seed": "node scripts/run-seed.js",

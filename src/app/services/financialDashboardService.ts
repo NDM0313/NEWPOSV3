@@ -4,6 +4,8 @@
  * ERP Final Stabilization: get_dashboard_metrics RPC returns metrics + sales_by_category + low_stock in one call.
  */
 import { supabase } from '@/lib/supabase';
+import { accountingReportsService } from '@/app/services/accountingReportsService';
+import { PURCHASE_POSTED_ACCOUNTING_STATUSES } from '@/app/lib/documentStatusConstants';
 
 export interface FinancialDashboardMetrics {
   today_sales: number;
@@ -107,18 +109,42 @@ async function getMetricsFallback(companyId: string): Promise<FinancialDashboard
   const purchDateCol = 'po_date';
   const expDateCol = 'expense_date';
 
-  const [salesToday, salesMonth, purchasesToday, purchasesMonth, expensesToday, expensesMonth, salesDue, purchasesDue, accounts] =
+  const [salesToday, salesMonth, purchasesToday, purchasesMonth, expensesToday, expensesMonth, salesDue, purchasesDue, coaMeta] =
     await Promise.all([
       supabase.from('sales').select('total').eq('company_id', companyId).eq('status', 'final').gte(saleDateCol, today).lte(saleDateCol, today),
       supabase.from('sales').select('total').eq('company_id', companyId).eq('status', 'final').gte(saleDateCol, monthStartStr).lte(saleDateCol, monthEnd),
-      supabase.from('purchases').select('total').eq('company_id', companyId).in('status', ['final', 'received']).gte(purchDateCol, today).lte(purchDateCol, today),
-      supabase.from('purchases').select('total').eq('company_id', companyId).in('status', ['final', 'received']).gte(purchDateCol, monthStartStr).lte(purchDateCol, monthEnd),
+      supabase
+        .from('purchases')
+        .select('total')
+        .eq('company_id', companyId)
+        .in('status', [...PURCHASE_POSTED_ACCOUNTING_STATUSES])
+        .gte(purchDateCol, today)
+        .lte(purchDateCol, today),
+      supabase
+        .from('purchases')
+        .select('total')
+        .eq('company_id', companyId)
+        .in('status', [...PURCHASE_POSTED_ACCOUNTING_STATUSES])
+        .gte(purchDateCol, monthStartStr)
+        .lte(purchDateCol, monthEnd),
       supabase.from('expenses').select('amount').eq('company_id', companyId).eq('status', 'paid').gte(expDateCol, today).lte(expDateCol, today),
       supabase.from('expenses').select('amount').eq('company_id', companyId).eq('status', 'paid').gte(expDateCol, monthStartStr).lte(expDateCol, monthEnd),
       supabase.from('sales').select('due_amount').eq('company_id', companyId).eq('status', 'final').gt('due_amount', 0),
-      supabase.from('purchases').select('due_amount').eq('company_id', companyId).in('status', ['final', 'received']).gt('due_amount', 0),
-      supabase.from('accounts').select('code, balance, current_balance, type').eq('company_id', companyId).eq('is_active', true),
+      supabase
+        .from('purchases')
+        .select('due_amount')
+        .eq('company_id', companyId)
+        .in('status', [...PURCHASE_POSTED_ACCOUNTING_STATUSES])
+        .gt('due_amount', 0),
+      supabase.from('accounts').select('id, code, type').eq('company_id', companyId).eq('is_active', true),
     ]);
+
+  let journalBalances: Record<string, number> = {};
+  try {
+    journalBalances = await accountingReportsService.getAccountBalancesFromJournal(companyId, today, undefined);
+  } catch (e) {
+    console.warn('[FINANCIAL DASHBOARD] Journal balances for cash/bank unavailable:', e);
+  }
 
   const sum = (arr: { total?: number; amount?: number; due_amount?: number }[] | null, key: 'total' | 'amount' | 'due_amount') =>
     (arr || []).reduce((s, r) => s + (Number((r as any)[key]) || 0), 0);
@@ -134,10 +160,12 @@ async function getMetricsFallback(companyId: string): Promise<FinancialDashboard
 
   let cash_balance = 0;
   let bank_balance = 0;
-  (accounts.data || []).forEach((a: any) => {
-    const bal = a.balance ?? a.current_balance ?? 0;
-    if (a.code === '1000' || (a.type && String(a.type).toLowerCase() === 'cash')) cash_balance += Number(bal);
-    if (a.code === '1010' || (a.type && String(a.type).toLowerCase() === 'bank')) bank_balance += Number(bal);
+  (coaMeta.data || []).forEach((a: { id: string; code?: string | null; type?: string | null }) => {
+    const bal = Number(journalBalances[a.id]) || 0;
+    const code = String(a.code || '').trim();
+    const typ = String(a.type || '').toLowerCase();
+    if (code === '1000' || typ === 'cash') cash_balance += bal;
+    if (code === '1010' || typ === 'bank') bank_balance += bal;
   });
 
   const monthlyExpTotal = monthlyPurchases + monthlyExpenses;
